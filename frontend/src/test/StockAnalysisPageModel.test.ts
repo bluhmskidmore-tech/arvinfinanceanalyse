@@ -18,13 +18,14 @@ import {
   buildReviewQueueEmptyState,
   localizeImplementationStage,
   buildDailyJudgmentStrip,
+  buildInlineMetaSegments,
   buildDataBoundaryNotes,
+  buildStockAnalysisEvidenceStatus,
   buildMarketStateCard,
   buildRiskExitRows,
   buildSectorRows,
   buildSectorFilterSummary,
   buildSectorViewModel,
-  buildStockAnalysisEvidenceStatus,
   buildStockAnalysisEventMonitorRows,
   buildStockAnalysisKpiStrip,
   buildThemeBreakoutCards,
@@ -372,6 +373,76 @@ describe("stockAnalysisPageModel", () => {
     expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面 overlay 已接入候选排序");
     expect(queue[0].invalidationFocus).toContain("10EMA");
     expect(queue[0].reviewFocus).not.toContain("买入");
+  });
+
+  it("uses the page-level missing data date label in decision summaries", () => {
+    const summary = buildDecisionSummary(
+      {
+        ...strategyPayload,
+        as_of_date: null,
+        requested_as_of_date: "2026-05-08",
+      },
+      {
+        quality_flag: "warning",
+        vendor_status: "ok",
+      },
+    );
+
+    expect(summary.asOfLabel).toBe("日期待补");
+    expect(summary.asOfLabel).not.toBe("待补日期");
+    expect(summary.asOfLabel).not.toBe("2026-05-08");
+  });
+
+  it("uses the page-level missing data date label in page purpose and inline meta", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      as_of_date: null,
+      requested_as_of_date: "2026-05-08",
+    };
+    const purpose = buildStockAnalysisPagePurpose(payload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+    });
+    const inlineMeta = buildInlineMetaSegments(payload, {});
+    const asOfMeta = inlineMeta.find((item) => item.key === "as_of");
+
+    expect(purpose.asOfLine).toBe("观察日 日期待补");
+    expect(purpose.dataStatusLine).toContain("日期待补");
+    expect(purpose.asOfLine).not.toContain("2026-05-08");
+    expect(purpose.dataStatusLine).not.toContain("2026-05-08");
+    expect(asOfMeta?.text).toBe("日期待补");
+    expect(asOfMeta?.text).not.toBe("待补日期");
+    expect(asOfMeta?.text).not.toBe("2026-05-08");
+  });
+
+  it("keeps requested dates separate from missing data dates in evidence status", () => {
+    const rows = buildStockAnalysisEvidenceStatus(
+      {
+        ...strategyPayload,
+        as_of_date: null,
+        requested_as_of_date: "2026-05-08",
+      },
+      {},
+    );
+    const asOfRow = rows.find((item) => item.key === "as-of-date");
+
+    expect(asOfRow?.label).toBe("数据日期");
+    expect(asOfRow?.statusLabel).toBe("日期待补");
+    expect(asOfRow?.statusLabel).not.toBe("待补");
+    expect(asOfRow?.statusLabel).not.toBe("2026-05-08");
+    expect(asOfRow?.detail).toBe("请求日期 2026-05-08");
+  });
+
+  it("does not use payload formula versions as the response rule-version lineage", () => {
+    const rows = buildStockAnalysisEvidenceStatus(strategyPayload, {
+      source_version: "sv_livermore_test",
+    });
+    const ruleRow = rows.find((item) => item.key === "rule-version");
+
+    expect(ruleRow?.label).toBe("规则版本");
+    expect(ruleRow?.statusLabel).toBe("待补");
+    expect(ruleRow?.tone).toBe("warning");
+    expect(ruleRow?.statusLabel).not.toBe(strategyPayload.sector_rank?.formula_version);
   });
 
   it("summarizes cycle macro layer landed state and macro gaps", () => {

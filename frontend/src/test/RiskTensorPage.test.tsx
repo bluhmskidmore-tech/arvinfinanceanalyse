@@ -7,13 +7,26 @@ import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
-  default: ({ onEvents }: { onEvents?: Record<string, (params: { name?: string }) => void> }) => (
-    <button
-      type="button"
-      data-testid="risk-tensor-echarts-stub"
-      onClick={() => onEvents?.click?.({ name: "1Y" })}
-    />
-  ),
+  default: ({
+    onEvents,
+    option,
+  }: {
+    onEvents?: Record<string, (params: { name?: string }) => void>;
+    option?: { series?: Array<{ data?: unknown[] }> };
+  }) => {
+    const data = option?.series?.[0]?.data ?? [];
+    const first = data[0];
+    const chartData =
+      first && typeof first === "object" && "value" in first && Array.isArray(first.value) ? first.value : data;
+    return (
+      <button
+        type="button"
+        data-testid="risk-tensor-echarts-stub"
+        data-series={JSON.stringify(chartData)}
+        onClick={() => onEvents?.click?.({ name: "1Y" })}
+      />
+    );
+  },
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -928,12 +941,14 @@ describe("RiskTensorPage", () => {
     const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
 
     expect(qualityDetail).toHaveTextContent("evidence_rows 128");
+    expect(qualityDetail).toHaveTextContent("trace_id tr_tensor_meta_evidence_2026-02-28");
     expect(qualityDetail).toHaveTextContent("risk_tensor_daily");
     expect(qualityDetail).toHaveTextContent("bond_position_snapshot");
     expect(qualityDetail).toHaveTextContent("report_date=2026-02-28");
     expect(qualityDetail).toHaveTextContent("desk=FI");
     expect(tracePriority).toHaveTextContent("证据范围");
     expect(tracePriority).toHaveTextContent("evidence_rows 128");
+    expect(tracePriority).toHaveTextContent("trace_id tr_tensor_meta_evidence_2026-02-28");
     expect(tracePriority).toHaveTextContent("tables_used risk_tensor_daily / bond_position_snapshot");
     expect(tracePriority).toHaveTextContent("filters_applied report_date=2026-02-28；desk=FI");
     expect(tracePriority).toHaveTextContent("证据字段复核");
@@ -1069,23 +1084,91 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("报告日 2026-02-28"));
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("确认状态 业务已确认"));
-      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("证据范围 evidence_rows 128"));
+      expect(writeText).toHaveBeenLastCalledWith(
+        expect.stringContaining("证据范围 trace_id tr_tensor_meta_copy_2026-02-28；evidence_rows 128"),
+      );
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("证据字段复核"));
       expect(tracePriority).toHaveTextContent("已复制确认记录");
 
       const reportDateSelect = screen.getByLabelText("风险报告日");
       await user.selectOptions(reportDateSelect, "2026-01-31");
 
-      await waitFor(() => {
-        expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
-      });
       const nextTracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
         "risk-tensor-quality-trace-priority",
       );
+      await waitFor(() => {
+        expect(nextTracePriority).toHaveTextContent("evidence_rows 96");
+      });
       expect(nextTracePriority).toHaveTextContent("复核状态：待复核");
-      expect(nextTracePriority).toHaveTextContent("evidence_rows 96");
       expect(nextTracePriority).not.toHaveTextContent("已复制证据摘要");
       expect(nextTracePriority).not.toHaveTextContent("已复制确认记录");
+      expect(within(nextTracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+      expect(within(nextTracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("resets quality review state when report date changes even if trace id is reused", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_reused_trace_dates"),
+        result: { report_dates: ["2026-02-28", "2026-01-31"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", "tr_tensor_reused_trace"),
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          evidence_rows: reportDate === "2026-01-31" ? 96 : 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: reportDate,
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const tracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+      await user.click(await within(tracePriority).findByRole("button", { name: "确认业务复核" }));
+
+      expect(tracePriority).toHaveTextContent("复核状态：业务已确认");
+      expect(within(tracePriority).getByRole("button", { name: "复制确认记录" })).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("风险报告日"), "2026-01-31");
+
+      const nextTracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await waitFor(() => {
+        expect(nextTracePriority).toHaveTextContent("evidence_rows 96");
+      });
+      expect(nextTracePriority).toHaveTextContent("复核状态：待复核");
+      expect(nextTracePriority).not.toHaveTextContent("已复制证据摘要");
+      expect(nextTracePriority).not.toHaveTextContent("业务已确认");
       expect(within(nextTracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
       expect(within(nextTracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
     } finally {
@@ -1145,7 +1228,9 @@ describe("RiskTensorPage", () => {
       expect(manualCopy).toHaveTextContent("风险张量质量证据");
       expect(manualCopy).toHaveTextContent("trace_id tr_tensor_meta_copy_failure_2026-02-28");
       expect(manualCopy).toHaveTextContent("报告日 2026-02-28");
-      expect(manualCopy).toHaveTextContent("证据范围 evidence_rows 128");
+      expect(manualCopy).toHaveTextContent(
+        "证据范围 trace_id tr_tensor_meta_copy_failure_2026-02-28；evidence_rows 128",
+      );
       expect(manualCopy).toHaveTextContent("tables_used risk_tensor_daily / bond_position_snapshot");
       expect(manualCopy).toHaveTextContent("filters_applied report_date=2026-02-28；desk=FI");
     } finally {
@@ -1359,7 +1444,9 @@ describe("RiskTensorPage", () => {
       expect(manualCopy).toHaveTextContent("trace_id tr_tensor_review_record_failure_2026-02-28");
       expect(manualCopy).toHaveTextContent("报告日 2026-02-28");
       expect(manualCopy).toHaveTextContent("确认状态 业务已确认");
-      expect(manualCopy).toHaveTextContent("证据范围 evidence_rows 128");
+      expect(manualCopy).toHaveTextContent(
+        "证据范围 trace_id tr_tensor_review_record_failure_2026-02-28；evidence_rows 128",
+      );
       expect(manualCopy).toHaveTextContent("证据字段复核");
     } finally {
       if (originalClipboard) {
@@ -1736,6 +1823,246 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
       new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`),
     );
+  });
+
+  it("flags missing or unparseable main payload fields without frontend recalculation", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_payload_quality_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_payload_quality_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        portfolio_dv01: "",
+        liquidity_gap_30d_ratio: "not-a-number",
+        krd_5y: {
+          raw: Number.NaN,
+          unit: "dv01" as const,
+          display: "--",
+          precision: 2,
+          sign_aware: false,
+        },
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const warning = await screen.findByTestId("risk-tensor-payload-quality-warning");
+    expect(warning).toHaveTextContent("主读 payload 字段待核对");
+    expect(warning).toHaveTextContent("trace_id tr_tensor_payload_quality_2026-02-28");
+    expect(warning).toHaveTextContent("portfolio_dv01");
+    expect(warning).toHaveTextContent("liquidity_gap_30d_ratio");
+    expect(warning).toHaveTextContent("krd_5y");
+    expect(warning).toHaveTextContent("不会在前端补算正式指标");
+
+    const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
+    expect(kpi).toHaveTextContent("估值口径 DV01");
+    expect(kpi).toHaveTextContent("—");
+    expect(screen.getByTestId("risk-tensor-liquidity-action")).toHaveTextContent("not-a-number");
+  });
+
+  it("keeps unparseable KRD buckets out of frontend chart magnitudes and dominant bucket fallback", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_payload_quality_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_krd_payload_quality_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        krd_1y: "10000",
+        krd_3y: "90000",
+        krd_5y: "not-a-number",
+        krd_7y: "25000",
+        krd_10y: "15000",
+        krd_30y: "5000",
+        dv01_controls: null,
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const brief = await screen.findByTestId("risk-tensor-brief");
+    expect(brief).toHaveTextContent("主风险桶 3Y");
+
+    const krdChart = screen.getAllByTestId("risk-tensor-echarts-stub")[1]!;
+    expect(JSON.parse(krdChart.getAttribute("data-series") ?? "[]")).toEqual([1, 9, null, 2.5, 1.5, 0.5]);
+
+    const drill = await screen.findByTestId("risk-tensor-tenor-drill");
+    expect(drill).toHaveTextContent("当前桶：3Y");
+    expect(drill).toHaveTextContent("krd_5y 不可解析");
+    expect(drill).toHaveTextContent("未参与前端主风险桶排序和图表数值");
+  });
+
+  it("keeps unparseable radar dimensions out of chart magnitudes", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_payload_quality_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_radar_payload_quality_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        portfolio_modified_duration: "bad-duration",
+        liquidity_gap_30d_ratio: "not-a-number",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const radarCard = await screen.findByTestId("risk-tensor-radar-card");
+    const radarChart = screen.getAllByTestId("risk-tensor-echarts-stub")[0]!;
+    const radarData = JSON.parse(radarChart.getAttribute("data-series") ?? "[]");
+    expect(radarData[0]).toBeNull();
+    expect(radarData[1]).toBeCloseTo(0.001234);
+    expect(radarData[2]).toBeCloseTo(0.42);
+    expect(radarData[3]).toBeCloseTo(0.000888);
+    expect(radarData[4]).toBeCloseTo(0.18);
+    expect(radarData[5]).toBeNull();
+
+    const radarQualityNote = within(radarCard).getByTestId("risk-tensor-radar-quality-note");
+    expect(radarQualityNote).toHaveTextContent("portfolio_modified_duration");
+    expect(radarQualityNote).toHaveTextContent("liquidity_gap_30d_ratio");
+  });
+
+  it("copies a supplement request for missing or unparseable main payload fields", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_payload_request_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_payload_request_${reportDate}`),
+          evidence_rows: 128,
+          tables_used: ["risk_tensor_daily"],
+          filters_applied: { report_date: reportDate },
+        },
+        result: {
+          ...tensorResult(reportDate),
+          portfolio_dv01: "",
+          liquidity_gap_30d_ratio: "not-a-number",
+          krd_5y: {
+            raw: Number.NaN,
+            unit: "dv01" as const,
+            display: "--",
+            precision: 2,
+            sign_aware: false,
+          },
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const payloadChecklist = within(qualityDetail).getByTestId("risk-tensor-quality-payload-checklist");
+
+      expect(within(qualityDetail).queryByRole("button", { name: "复制补证请求" })).not.toBeInTheDocument();
+
+      await user.click(within(payloadChecklist).getByRole("button", { name: "复制字段补证请求" }));
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量主读 payload 补证请求"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("trace_id tr_tensor_payload_request_2026-02-28"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("异常字段 portfolio_dv01 缺失 / krd_5y 不可解析 / liquidity_gap_30d_ratio 不可解析"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不会在前端补算正式指标"));
+      expect(payloadChecklist).toHaveTextContent("已复制字段补证请求");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("shows manual payload supplement request text when clipboard copy fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard denied");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_payload_request_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_payload_request_failure_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          portfolio_dv01: "",
+          liquidity_gap_30d_ratio: "not-a-number",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const payloadChecklist = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-payload-checklist",
+      );
+      await user.click(within(payloadChecklist).getByRole("button", { name: "复制字段补证请求" }));
+
+      await waitFor(() => {
+        expect(payloadChecklist).toHaveTextContent("复制失败，请手动选择字段补证请求");
+      });
+
+      const manualCopy = within(payloadChecklist).getByTestId("risk-tensor-payload-quality-request-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量主读 payload 补证请求");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_payload_request_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("报告日 2026-02-28");
+      expect(manualCopy).toHaveTextContent("异常字段 portfolio_dv01 缺失 / liquidity_gap_30d_ratio 不可解析");
+      expect(manualCopy).toHaveTextContent("不会在前端补算正式指标");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("renders backend-provided regulatory DV01 instead of the pending marker", async () => {
@@ -2207,5 +2534,8 @@ describe("RiskTensorPage", () => {
     expect(errorContext).toHaveTextContent(message);
     expect(errorContext).toHaveTextContent(reportDate);
     expect(errorContext).toHaveTextContent(String(statusCode));
+    expect(errorContext).toHaveTextContent("日期治理 trace_id tr_tensor_error_dates");
+    expect(errorContext).toHaveTextContent("主读面 trace_id 未提供");
+    expect(errorContext).toHaveTextContent("不会使用缓存或前端补算替代正式主读结果");
   });
 });

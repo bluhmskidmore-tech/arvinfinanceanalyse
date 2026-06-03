@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
@@ -34,7 +34,7 @@ def run_formal_materialize(
     run_id: str | None = None,
 ) -> dict[str, object]:
     descriptor = require_registered_formal_module(descriptor)
-    queued_at = datetime.now(timezone.utc).isoformat()
+    queued_at = datetime.now(UTC).isoformat()
     governance_path = Path(governance_dir)
     governance_repo = GovernanceRepository(base_dir=governance_path)
     run = BuildRunRecord(
@@ -57,7 +57,7 @@ def run_formal_materialize(
             "queued_at": queued_at,
         },
     )
-    started_at = datetime.now(timezone.utc).isoformat()
+    started_at = datetime.now(UTC).isoformat()
     governance_repo.append(
         CACHE_BUILD_RUN_STREAM,
         {
@@ -80,7 +80,7 @@ def run_formal_materialize(
                 execute_materialization()
             )
     except FormalComputeMaterializeFailure as exc:
-        finished_at = datetime.now(timezone.utc).isoformat()
+        finished_at = datetime.now(UTC).isoformat()
         failure_reason = _failure_reason(exc)
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
@@ -105,7 +105,7 @@ def run_formal_materialize(
         )
         raise
     except Exception as exc:
-        finished_at = datetime.now(timezone.utc).isoformat()
+        finished_at = datetime.now(UTC).isoformat()
         failure_reason = _failure_reason(exc)
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
@@ -129,7 +129,7 @@ def run_formal_materialize(
         )
         raise
 
-    finished_at = datetime.now(timezone.utc).isoformat()
+    finished_at = datetime.now(UTC).isoformat()
     lineage_payload = FormalComputeRuntimeLineagePayload(
         cache_key=descriptor.cache_key,
         cache_version=descriptor.stable_output_version,

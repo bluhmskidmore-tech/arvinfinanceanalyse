@@ -1,15 +1,16 @@
-from __future__ import annotations
-
 """
 Balance-analysis read surfaces: DuckDB access only via `BalanceAnalysisRepository` and other read repositories.
 
 Formal fact writes (`replace_formal_balance_rows`, snapshot tables) are restricted to `backend/app/tasks/` workers.
 """
 
+from __future__ import annotations
+
 import importlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
+
 from backend.app.core_finance.balance_calibration import (
     balance_calibration_meta_to_dict,
     build_calibration_meta,
@@ -30,13 +31,13 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.balance_analysis import (
     BalanceAnalysisBasisBreakdownPayload,
     BalanceAnalysisBasisBreakdownRow,
+    BalanceAnalysisDatesPayload,
     BalanceAnalysisDecisionItemRow,
-    BalanceAnalysisDecisionItemStatusRow,
-    BalanceAnalysisDecisionItemsSection,
     BalanceAnalysisDecisionItemsPayload,
+    BalanceAnalysisDecisionItemsSection,
+    BalanceAnalysisDecisionItemStatusRow,
     BalanceAnalysisDecisionStatusRecord,
     BalanceAnalysisDecisionStatusUpdateRequest,
-    BalanceAnalysisDatesPayload,
     BalanceAnalysisDetailRow,
     BalanceAnalysisEventCalendarRow,
     BalanceAnalysisEventCalendarSection,
@@ -53,8 +54,7 @@ from backend.app.schemas.balance_analysis import (
     BalanceAnalysisWorkbookTable,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
-from backend.app.services import balance_analysis_summary_export_service
-from backend.app.services import balance_analysis_workbook_service
+from backend.app.services import balance_analysis_summary_export_service, balance_analysis_workbook_service
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
@@ -179,7 +179,7 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                 )
 
             run_id = _build_run_id()
-            queued_at = datetime.now(timezone.utc).isoformat()
+            queued_at = datetime.now(UTC).isoformat()
             GovernanceRepository(base_dir=settings.governance_path).append(
                 CACHE_BUILD_RUN_STREAM,
                 {
@@ -729,7 +729,7 @@ def update_balance_analysis_decision_status(
     record = BalanceAnalysisDecisionStatusRecord(
         decision_key=update.decision_key,
         status=update.status,
-        updated_at=datetime.now(timezone.utc).isoformat(),
+        updated_at=datetime.now(UTC).isoformat(),
         updated_by=(updated_by or DEFAULT_BALANCE_DECISION_UPDATED_BY).strip()
         or DEFAULT_BALANCE_DECISION_UPDATED_BY,
         comment=update.comment,
@@ -1029,7 +1029,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
         if not raw_value:
             continue
         timestamp = _parse_timestamp(raw_value)
-        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+        return datetime.now(UTC) - timestamp > STALE_IN_FLIGHT_AFTER
     return True
 
 
@@ -1037,8 +1037,8 @@ def _parse_timestamp(raw_value: str) -> datetime:
     normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _update_run_status(
@@ -1098,12 +1098,12 @@ def _mark_stale_inflight_run(
         report_date=report_date,
         error_message=error_message,
         source_version="sv_balance_analysis_stale",
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(UTC).isoformat(),
     )
 
 
 def _build_run_id() -> str:
-    return f"{BALANCE_ANALYSIS_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{BALANCE_ANALYSIS_JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _formal_balance_calibration_dict(

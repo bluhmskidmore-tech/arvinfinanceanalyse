@@ -176,7 +176,7 @@ describe("mapToHomeView", () => {
     expect(view.macroBriefing.newsSourceLabel).toBe("来源：Choice 宏观新闻");
     expect(view.macroBriefing.newsAsOfLabel).toBe("数据截至 05-20 09:00");
     expect(view.macroBriefing.newsStatusLabel).toBe("来源状态：偏旧");
-    expect(view.macroBriefing.newsRefreshLabel).toBe("刷新：随页面查询自动更新");
+    expect(view.macroBriefing.newsRefreshLabel).toBe("刷新：随页面查询读取已落库数据");
     expect(view.macroBriefing.supplyItems[0]?.label).toBe("供给/招标：当前窗口无事件");
   });
 

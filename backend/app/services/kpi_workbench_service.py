@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
-
-from sqlalchemy import select
 
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
 from backend.app.repositories.kpi_repo import KpiRepository
+from sqlalchemy import select
 
 
 class KpiWorkbenchError(RuntimeError):
@@ -80,7 +79,7 @@ def _apply_value_payload(
     score_value: Decimal | None = None,
     source: str | None = None,
 ) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if target_value is not None:
         metric.target_value = target_value
         metric.updated_at = now
@@ -214,7 +213,7 @@ def get_metric(*, dsn: str, metric_id: int) -> dict[str, object]:
 def create_metric(*, dsn: str, data: dict[str, object]) -> dict[str, object]:
     try:
         repo = _repo(dsn)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         metric = KpiMetric(
             metric_code=str(data["metric_code"]),
             metric_name=str(data["metric_name"]),
@@ -264,7 +263,7 @@ def update_metric(*, dsn: str, metric_id: int, data: dict[str, object]) -> dict[
             metric.unit = data.get("unit")
             metric.scoring_text = data.get("scoring_text")
             metric.remarks = data.get("remarks")
-            metric.updated_at = datetime.now(timezone.utc)
+            metric.updated_at = datetime.now(UTC)
             session.commit()
             session.refresh(metric)
             return _metric_to_dict(metric)
@@ -355,7 +354,7 @@ def create_value(*, dsn: str, data: dict[str, object]) -> dict[str, object]:
     target_date = _parse_as_of_date(str(data["as_of_date"]))
     try:
         repo = _repo(dsn)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with repo.session() as session:
             metric = session.get(KpiMetric, int(data["metric_id"]))
             if metric is None:
@@ -428,7 +427,7 @@ def batch_update_values(*, dsn: str, as_of_date: str, items: list[dict[str, obje
         success_count = 0
         failed_count = 0
         errors: list[str] = []
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with repo.session() as session:
             for item in items:
                 metric = session.get(KpiMetric, int(item["metric_id"]))
@@ -635,7 +634,7 @@ def build_report(
 
         return {
             "year": year,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "rows": rows,
             "total": len(rows),
         }

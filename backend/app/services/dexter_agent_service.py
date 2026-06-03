@@ -5,7 +5,7 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -122,7 +122,7 @@ def build_dexter_envelope(
 ) -> AgentEnvelope:
     has_research_context = bool(research_context and research_context.get("domain"))
     trace_id = f"tr_agent_dexter_{uuid4().hex[:12]}"
-    generated_at = datetime.now(timezone.utc)
+    generated_at = datetime.now(UTC)
     filters_applied = {
         key: value for key, value in request.filters.items() if value not in (None, "")
     }

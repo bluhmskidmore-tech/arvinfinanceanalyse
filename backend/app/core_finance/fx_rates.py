@@ -7,16 +7,15 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
-from typing import List, Optional, Tuple
 
 from .decimal_utils import to_decimal
 
 
 def get_usd_cny_rate(
-    rows: List[Tuple[date, Optional[Decimal]]],
+    rows: list[tuple[date, Decimal | None]],
     target_date: date,
-) -> Tuple[Decimal, Optional[date], List[str]]:
-    warnings: List[str] = []
+) -> tuple[Decimal, date | None, list[str]]:
+    warnings: list[str] = []
     default_rate = Decimal("7.25")
 
     valid = [(d, to_decimal(v)) for d, v in rows if v is not None and to_decimal(v) > 0]

@@ -1,11 +1,11 @@
-﻿"""Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
+"""Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
 from __future__ import annotations
 
 import logging
 import threading
 import time
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
@@ -98,11 +98,18 @@ from backend.app.schemas.bond_analytics import (
     ConcentrationItem,
     ConcentrationMetrics,
     CreditSpreadMigrationResponse,
-    DV01ReconciliationResponse,
-    DV01ReconciliationRow,
+    DV01ActionBondItem,
+    DV01ActionIssuerItem,
+    DV01ActionPlanResponse,
+    DV01ActionScenarioBreach,
+    DV01ActionTenorItem,
+    DV01LimitConfigStatusResponse,
+    DV01LimitConfigStatusRow,
     DV01MovementAttributionItem,
     DV01MovementBondItem,
     DV01MovementResponse,
+    DV01ReconciliationResponse,
+    DV01ReconciliationRow,
     DV01RiskResponse,
     DV01ShockScenario,
     DV01TenorBucket,
@@ -128,6 +135,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
     build_formal_result_meta,
     build_formal_result_meta_from_lineage,
+    build_result_envelope,
 )
 from backend.app.tasks.bond_analytics_materialize import (
     BOND_ANALYTICS_LOCK,
@@ -528,7 +536,6 @@ def _build_numeric_fact_envelope(
     )
 
 
-
 def _credit_spread_candidate_meta(
     *,
     formal_meta,
@@ -556,6 +563,8 @@ def _credit_spread_candidate_meta(
         evidence_rows=len(rows),
         source_surface="bond_analytics",
     )
+
+
 def bond_analytics_dates_envelope() -> dict[str, object]:
     report_dates = _repo().list_report_dates()
     lineage = resolve_formal_dates_lineage(
@@ -606,7 +615,7 @@ def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str,
                 ) from exc
 
             run_id = _build_run_id()
-            queued_at = datetime.now(timezone.utc).isoformat()
+            queued_at = datetime.now(UTC).isoformat()
             GovernanceRepository(base_dir=settings.governance_path).append(
                 CACHE_BUILD_RUN_STREAM,
                 {
@@ -730,15 +739,15 @@ def _empty_return_response(meta, report_date: date, period_type: str, period_sta
 
 
 def _fetch_fx_rates(
-    curve_repo: "YieldCurveRepository",
+    curve_repo: YieldCurveRepository,
     *,
     current_date: str,
     prior_date: str,
 ) -> tuple[
-    "dict[str, Decimal] | None",
-    "str | None",
-    "dict[str, Decimal] | None",
-    "str | None",
+    dict[str, Decimal] | None,
+    str | None,
+    dict[str, Decimal] | None,
+    str | None,
 ]:
     """Fetch FX rates for both period dates in one place. Returns (current, current_warning, prior, prior_warning)."""
     fx_current, fx_current_warning = curve_repo.fetch_fx_rates_with_fallback_warning(current_date)
@@ -749,10 +758,10 @@ def _fetch_fx_rates(
 def _fetch_all_curve_pairs(
     rows: list[dict[str, object]],
     *,
-    curve_repo: "YieldCurveRepository",
+    curve_repo: YieldCurveRepository,
     report_date: str,
     prior_date: str,
-    extra_curve_types: "set[str] | None" = None,
+    extra_curve_types: set[str] | None = None,
 ) -> dict[str, object]:
     """Resolve treasury/cdb/aaa_credit current+prior snapshots for the given rows.
 
@@ -821,7 +830,7 @@ def _fetch_all_curve_pairs(
     }
 
 
-def _build_asset_class_breakdown(row: dict[str, object]) -> "AssetClassBreakdown":
+def _build_asset_class_breakdown(row: dict[str, object]) -> AssetClassBreakdown:
     return AssetClassBreakdown.model_validate(
         promote_flat_payload(
             {
@@ -841,7 +850,7 @@ def _build_asset_class_breakdown(row: dict[str, object]) -> "AssetClassBreakdown
     )
 
 
-def _build_bond_level_decomposition(row: dict[str, object]) -> "BondLevelDecomposition":
+def _build_bond_level_decomposition(row: dict[str, object]) -> BondLevelDecomposition:
     trading = row.get("trading", ZERO)
     return BondLevelDecomposition.model_validate(
         promote_flat_payload(
@@ -881,12 +890,12 @@ def _build_return_decomposition_payload(
     summary: dict[str, object],
     meta,
     relevant_curve_warnings: list,
-    fx_current_warning: "str | None",
-    fx_prior_warning: "str | None",
+    fx_current_warning: str | None,
+    fx_prior_warning: str | None,
     fx_missing_warnings: list[str],
     trading_extra_warnings: list[str] | None = None,
     warnings_detail: list[dict[str, str]] | None = None,
-) -> "ReturnDecompositionResponse":
+) -> ReturnDecompositionResponse:
     trading_total = safe_decimal(summary.get("trading_total", ZERO))
     explained_total = (
         summary["carry_total"]
@@ -950,7 +959,7 @@ def _build_return_decomposition_payload(
 def _fetch_return_decomposition_inputs(
     *,
     rows: list[dict[str, object]],
-    curve_repo: "YieldCurveRepository",
+    curve_repo: YieldCurveRepository,
     report_date: str,
     period_start: str,
 ) -> dict[str, object]:
@@ -1347,7 +1356,7 @@ def _select_benchmark_curve(curves: dict[str, object], curve_type: str) -> tuple
 def _fetch_benchmark_curves(
     rows: list[dict[str, object]],
     *,
-    curve_repo: "YieldCurveRepository",
+    curve_repo: YieldCurveRepository,
     report_date: str,
     prior_date: str,
     benchmark_id: str,
@@ -1404,7 +1413,7 @@ def _build_benchmark_excess_payload(
     summary: dict[str, object],
     meta,
     warnings: list[str],
-) -> "BenchmarkExcessResponse":
+) -> BenchmarkExcessResponse:
     return BenchmarkExcessResponse.model_validate(
         promote_flat_payload(
             {
@@ -1657,7 +1666,7 @@ def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dic
 
 def _fetch_credit_curves(
     *,
-    curve_repo: "YieldCurveRepository",
+    curve_repo: YieldCurveRepository,
     trade_date: str,
 ) -> dict[str, object]:
     """Fetch treasury + aaa_credit snapshots for credit spread analysis (single date, no prior needed).
@@ -1696,7 +1705,7 @@ def _build_credit_spread_payload(
     spread_scenarios: str,
     meta,
     warnings: list[str],
-) -> "CreditSpreadMigrationResponse":
+) -> CreditSpreadMigrationResponse:
     return CreditSpreadMigrationResponse.model_validate(
         promote_flat_payload(
             {
@@ -1845,7 +1854,7 @@ def _build_portfolio_headlines_empty_response(report_date: date) -> dict:
                 "issuer_hhi": ZERO,
                 "issuer_top5_weight": ZERO,
                 "by_asset_class": [],
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": [EMPTY_WARNING],
             },
             PortfolioHeadlinesResponse,
@@ -1932,7 +1941,7 @@ def get_portfolio_headlines(report_date: date) -> dict:
                     )
                     for row in metrics["by_ac"]
                 ],
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": [],
             },
             PortfolioHeadlinesResponse,
@@ -1992,7 +2001,7 @@ def get_dv01_risk(
                 "tenor_buckets": _build_dv01_tenor_buckets(rows, total_abs_dv01=total_abs_dv01),
                 "top_bonds": _build_dv01_top_bonds(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
                 "top_issuers": _build_dv01_top_issuers(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": warnings,
             },
             DV01RiskResponse,
@@ -2031,7 +2040,7 @@ def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") ->
                 "total_dv01": total_dv01,
                 "position_count": len(rows),
                 "rows": _build_dv01_reconciliation_rows(rows, total_abs_dv01=total_abs_dv01),
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": warnings,
             },
             DV01ReconciliationResponse,
@@ -2101,7 +2110,7 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
                     "attribution": [],
                     "anomaly_bonds": [],
                     "methodology_checks": [],
-                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "computed_at": datetime.now(UTC).isoformat(),
                     "warnings": warnings,
                 },
                 DV01MovementResponse,
@@ -2162,7 +2171,7 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
                 "attribution": attribution,
                 "anomaly_bonds": anomaly_bonds,
                 "methodology_checks": methodology_checks,
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": warnings,
             },
             DV01MovementResponse,
@@ -2176,6 +2185,557 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
         source_surface="bond_analytics",
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+DEFAULT_DV01_LIMIT = Decimal("5000000")
+DEFAULT_DV01_WARNING = Decimal("4000000")
+DEFAULT_DV01_HEDGE_UNIT = Decimal("100000")
+DEFAULT_DV01_HEDGE_TARGET = Decimal("4000000")
+DV01_ACTION_SHOCKS = (Decimal("10"), Decimal("25"))
+DV01_LIMIT_CONFIG_STREAM = "bond_dv01_limit_config"
+DV01_ACTION_FORMAL_LIMIT_NOTE = "已接入正式 DV01 限额；按限额配置计算使用率、剩余额度和动作建议。"
+DV01_ACTION_THRESHOLD_NOTE = "页面预警阈值，不代表正式限额；未接入正式限额源时仅作参考。"
+DV01_PAGE_THRESHOLD_RULE_VERSION = "rv_dv01_page_threshold_v3"
+
+
+def get_dv01_action_plan(
+    report_date: date,
+    accounting_class: str = "OCI",
+    top_n: int = 20,
+    limit_dv01: str | int | float | Decimal | None = None,
+    warning_dv01: str | int | float | Decimal | None = None,
+    hedge_instrument_dv01: str | int | float | Decimal | None = None,
+    hedge_target_dv01: str | int | float | Decimal | None = None,
+) -> dict:
+    normalized_class = _normalize_dv01_accounting_class(accounting_class)
+    top_n = max(1, min(int(top_n), 100))
+    rows = _repo().fetch_bond_analytics_rows(
+        report_date=report_date.isoformat(),
+        accounting_class=normalized_class,
+    )
+    hedge_unit = _positive_decimal_or_default(hedge_instrument_dv01, DEFAULT_DV01_HEDGE_UNIT)
+    limit_config = _resolve_dv01_limit_config(
+        report_date=report_date,
+        accounting_class=normalized_class,
+    )
+    if limit_config is not None:
+        limit = limit_config.limit_dv01
+        warning = limit_config.warning_dv01
+        hedge_target = limit_config.hedge_target_dv01
+        policy_basis = "formal_limit"
+        threshold_note = DV01_ACTION_FORMAL_LIMIT_NOTE
+        limit_source = limit_config.limit_source
+        limit_source_version = limit_config.limit_source_version
+        limit_rule_version = limit_config.limit_rule_version
+        limit_effective_date = limit_config.limit_effective_date
+    else:
+        limit = _positive_decimal_or_default(limit_dv01, DEFAULT_DV01_LIMIT)
+        warning = _positive_decimal_or_default(warning_dv01, DEFAULT_DV01_WARNING)
+        hedge_target = _positive_decimal_or_default(hedge_target_dv01, min(warning, limit))
+        policy_basis = "page_threshold_fallback"
+        threshold_note = DV01_ACTION_THRESHOLD_NOTE
+        limit_source = "page_threshold"
+        limit_source_version = "unconfigured"
+        limit_rule_version = DV01_PAGE_THRESHOLD_RULE_VERSION
+        limit_effective_date = None
+    total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
+    total_abs_dv01 = _total_abs_dv01(rows)
+    dv01_to_reduce = max(total_dv01 - hedge_target, ZERO)
+    limit_usage = (total_dv01 / limit) if limit > ZERO else ZERO
+    remaining_limit_dv01 = limit - total_dv01
+    suggested_hedge_units = (dv01_to_reduce / hedge_unit) if hedge_unit > ZERO else ZERO
+    risk_level = _dv01_action_risk_level(total_dv01=total_dv01, warning_dv01=warning, limit_dv01=limit, has_rows=bool(rows))
+    warnings = [] if limit_config is not None else [DV01_ACTION_THRESHOLD_NOTE]
+    if not rows:
+        warnings.append(EMPTY_WARNING)
+
+    scenario_breaches = _build_dv01_action_scenarios(
+        total_dv01=total_dv01,
+        warning_dv01=warning,
+        limit_dv01=limit,
+        has_rows=bool(rows),
+    )
+    tenor_actions = _build_dv01_action_tenors(
+        rows,
+        total_abs_dv01=total_abs_dv01,
+        dv01_to_reduce=dv01_to_reduce,
+        top_n=top_n,
+    )
+    issuer_actions = _build_dv01_action_issuers(
+        rows,
+        total_abs_dv01=total_abs_dv01,
+        dv01_to_reduce=dv01_to_reduce,
+        top_n=top_n,
+    )
+    bond_actions = _build_dv01_action_bonds(
+        rows,
+        total_abs_dv01=total_abs_dv01,
+        dv01_to_reduce=dv01_to_reduce,
+        top_n=top_n,
+    )
+    breach_count = int(risk_level == "breach") + sum(
+        1 for row in scenario_breaches if row.risk_level in {"watch", "breach"}
+    )
+    payload = DV01ActionPlanResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "accounting_class": normalized_class,
+                "risk_level": risk_level,
+                "policy_basis": policy_basis,
+                "threshold_note": threshold_note,
+                "limit_source": limit_source,
+                "limit_source_version": limit_source_version,
+                "limit_rule_version": limit_rule_version,
+                "limit_effective_date": limit_effective_date,
+                "total_dv01": total_dv01,
+                "limit_dv01": limit,
+                "warning_dv01": warning,
+                "limit_usage": limit_usage,
+                "remaining_limit_dv01": remaining_limit_dv01,
+                "dv01_to_reduce": dv01_to_reduce,
+                "hedge_instrument_label": "DV01 hedge unit",
+                "hedge_instrument_dv01": hedge_unit,
+                "suggested_hedge_units": suggested_hedge_units,
+                "position_count": len(rows),
+                "breach_count": breach_count,
+                "scenario_breaches": scenario_breaches,
+                "tenor_actions": tenor_actions,
+                "issuer_actions": issuer_actions,
+                "bond_actions": bond_actions,
+                "computed_at": datetime.now(UTC).isoformat(),
+                "warnings": warnings,
+            },
+            DV01ActionPlanResponse,
+        )
+    )
+    lineage = _lineage(report_date.isoformat(), rows)
+    result_payload = payload.model_dump(mode="json")
+    result_kind = "bond_analytics.dv01_action_plan"
+    return build_result_envelope(
+        basis="analytical",
+        trace_id=_trace_id(),
+        result_kind=result_kind,
+        cache_version=str(lineage.get("cache_version") or CACHE_VERSION),
+        source_version=str(lineage.get("source_version") or "sv_unknown"),
+        rule_version=str(lineage.get("rule_version") or "rv_unknown"),
+        vendor_version=str(lineage.get("vendor_version") or "vv_none"),
+        source_surface="bond_analytics",
+        requested_report_date=report_date.isoformat(),
+        resolved_report_date=report_date.isoformat(),
+        as_of_date=report_date.isoformat(),
+        date_basis=BOND_ANALYTICS_DATE_BASIS,
+        filters_applied={
+            "report_date": report_date.isoformat(),
+            "accounting_class": normalized_class,
+            "policy_basis": policy_basis,
+        },
+        tables_used=[BOND_ANALYTICS_FACT_TABLE],
+        evidence_rows=len(rows),
+        result_payload=result_payload,
+    )
+
+
+def _positive_decimal_or_default(value: str | int | float | Decimal | None, default: Decimal) -> Decimal:
+    parsed = safe_decimal(value)
+    if parsed <= ZERO:
+        return default
+    return parsed
+
+
+class _DV01LimitConfig:
+    def __init__(
+        self,
+        *,
+        limit_dv01: Decimal,
+        warning_dv01: Decimal,
+        hedge_target_dv01: Decimal,
+        limit_source: str,
+        limit_source_version: str,
+        limit_rule_version: str,
+        limit_effective_date: date,
+    ) -> None:
+        self.limit_dv01 = limit_dv01
+        self.warning_dv01 = warning_dv01
+        self.hedge_target_dv01 = hedge_target_dv01
+        self.limit_source = limit_source
+        self.limit_source_version = limit_source_version
+        self.limit_rule_version = limit_rule_version
+        self.limit_effective_date = limit_effective_date
+
+
+DV01_LIMIT_CONFIG_CLASSES = ("AC", "OCI", "TPL", "all")
+
+
+def get_dv01_limit_config_status(report_date: date) -> dict:
+    rows = [_build_dv01_limit_config_status_row(report_date, accounting_class) for accounting_class in DV01_LIMIT_CONFIG_CLASSES]
+    configured_count = sum(1 for row in rows if row.status == "ready")
+    missing_count = sum(1 for row in rows if row.status == "missing")
+    invalid_count = sum(1 for row in rows if row.status == "invalid")
+    warnings: list[str] = []
+    if missing_count:
+        warnings.append("部分会计分类未配置正式 DV01 限额。")
+    if invalid_count:
+        warnings.append("部分会计分类的正式 DV01 限额配置无效，动作计划将回退页面阈值。")
+    payload = DV01LimitConfigStatusResponse.model_validate(
+        {
+            "report_date": report_date,
+            "overall_status": "ready" if configured_count == len(DV01_LIMIT_CONFIG_CLASSES) else "incomplete",
+            "configured_count": configured_count,
+            "missing_count": missing_count,
+            "invalid_count": invalid_count,
+            "rows": [row.model_dump(mode="json") for row in rows],
+            "computed_at": datetime.now(UTC).isoformat(),
+            "warnings": warnings,
+        }
+    )
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind="bond_analytics.dv01_limit_config_status",
+        lineage=_lineage(report_date.isoformat(), []),
+        default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def _build_dv01_limit_config_status_row(
+    report_date: date,
+    accounting_class: str,
+) -> DV01LimitConfigStatusRow:
+    candidate = _resolve_dv01_limit_config_candidate(
+        report_date=report_date,
+        accounting_class=accounting_class,
+    )
+    if candidate is None:
+        return _dv01_limit_config_status_row(
+            accounting_class=accounting_class,
+            status="missing",
+            message="未找到正式 DV01 限额配置。",
+        )
+    config, message = candidate
+    if config is None:
+        return _dv01_limit_config_status_row(
+            accounting_class=accounting_class,
+            status="invalid",
+            message=message,
+        )
+    return _dv01_limit_config_status_row(
+        accounting_class=accounting_class,
+        status="ready",
+        limit_dv01=config.limit_dv01,
+        warning_dv01=config.warning_dv01,
+        hedge_target_dv01=config.hedge_target_dv01,
+        limit_source=config.limit_source,
+        limit_source_version=config.limit_source_version,
+        limit_rule_version=config.limit_rule_version,
+        limit_effective_date=config.limit_effective_date,
+        message="已接入正式 DV01 限额。",
+    )
+
+
+def _dv01_limit_config_status_row(
+    *,
+    accounting_class: str,
+    status: Literal["ready", "missing", "invalid"],
+    message: str,
+    limit_dv01: Decimal = ZERO,
+    warning_dv01: Decimal = ZERO,
+    hedge_target_dv01: Decimal = ZERO,
+    limit_source: str = "unconfigured",
+    limit_source_version: str = "unconfigured",
+    limit_rule_version: str = "unconfigured",
+    limit_effective_date: date | None = None,
+) -> DV01LimitConfigStatusRow:
+    return DV01LimitConfigStatusRow.model_validate(
+        promote_flat_payload(
+            {
+                "accounting_class": accounting_class,
+                "status": status,
+                "limit_dv01": limit_dv01,
+                "warning_dv01": warning_dv01,
+                "hedge_target_dv01": hedge_target_dv01,
+                "limit_source": limit_source,
+                "limit_source_version": limit_source_version,
+                "limit_rule_version": limit_rule_version,
+                "limit_effective_date": limit_effective_date,
+                "message": message,
+            },
+            DV01LimitConfigStatusRow,
+        )
+    )
+
+
+def _resolve_dv01_limit_config(
+    *,
+    report_date: date,
+    accounting_class: str,
+) -> _DV01LimitConfig | None:
+    candidate = _resolve_dv01_limit_config_candidate(
+        report_date=report_date,
+        accounting_class=accounting_class,
+    )
+    if candidate is None:
+        return None
+    return candidate[0]
+
+
+def _resolve_dv01_limit_config_candidate(
+    *,
+    report_date: date,
+    accounting_class: str,
+) -> tuple[_DV01LimitConfig | None, str] | None:
+    try:
+        records = GovernanceRepository(base_dir=get_settings().governance_path).read_all(
+            DV01_LIMIT_CONFIG_STREAM
+        )
+    except (OSError, ValueError):
+        logger.exception("Failed to read DV01 limit config governance stream")
+        return None
+
+    scoped: list[tuple[int, date, int, _DV01LimitConfig | None, str]] = []
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            continue
+        record_class = _normalize_limit_config_accounting_class(record.get("accounting_class"))
+        if record_class not in {accounting_class, "all"}:
+            continue
+        effective_date = _parse_limit_effective_date(record)
+        if effective_date is None or effective_date > report_date:
+            continue
+        limit = safe_decimal(record.get("limit_dv01"))
+        if limit <= ZERO:
+            scoped.append((1 if record_class == accounting_class else 0, effective_date, index, None, "limit_dv01 必须大于 0。"))
+            continue
+        warning = _positive_decimal_or_default(record.get("warning_dv01"), limit)
+        if warning > limit:
+            warning = limit
+        hedge_target = _positive_decimal_or_default(record.get("hedge_target_dv01"), warning)
+        if hedge_target > limit:
+            hedge_target = warning
+        source_version = str(record.get("limit_source_version") or record.get("source_version") or "").strip()
+        rule_version = str(record.get("limit_rule_version") or record.get("rule_version") or "").strip()
+        limit_source = str(record.get("limit_source") or "governance_config").strip()
+        if not source_version or not rule_version:
+            scoped.append((1 if record_class == accounting_class else 0, effective_date, index, None, "limit_source_version 和 limit_rule_version 必须配置。"))
+            continue
+        specificity = 1 if record_class == accounting_class else 0
+        scoped.append(
+            (
+                specificity,
+                effective_date,
+                index,
+                _DV01LimitConfig(
+                    limit_dv01=limit,
+                    warning_dv01=warning,
+                    hedge_target_dv01=hedge_target,
+                    limit_source=limit_source,
+                    limit_source_version=source_version,
+                    limit_rule_version=rule_version,
+                    limit_effective_date=effective_date,
+                ),
+                "已接入正式 DV01 限额。",
+            )
+        )
+    if not scoped:
+        return None
+    selected = max(scoped, key=lambda item: (item[0], item[1], item[2]))
+    return selected[3], selected[4]
+
+
+def _normalize_limit_config_accounting_class(value: object) -> str:
+    try:
+        return _normalize_dv01_accounting_class(str(value or "all"))
+    except ValueError:
+        return ""
+
+
+def _parse_limit_effective_date(record: dict[str, object]) -> date | None:
+    raw = record.get("limit_effective_date") or record.get("effective_date") or record.get("report_date")
+    try:
+        return date.fromisoformat(str(raw or "").strip())
+    except ValueError:
+        return None
+
+
+def _dv01_action_risk_level(
+    *,
+    total_dv01: Decimal,
+    warning_dv01: Decimal,
+    limit_dv01: Decimal,
+    has_rows: bool,
+) -> str:
+    if not has_rows:
+        return "no_data"
+    if total_dv01 >= limit_dv01:
+        return "breach"
+    if total_dv01 >= warning_dv01:
+        return "watch"
+    return "ok"
+
+
+def _dv01_action_scenario_level(
+    *,
+    estimated_loss: Decimal,
+    warning_loss: Decimal,
+    limit_loss: Decimal,
+) -> str:
+    if estimated_loss >= limit_loss:
+        return "breach"
+    if estimated_loss >= warning_loss:
+        return "watch"
+    return "ok"
+
+
+def _build_dv01_action_scenarios(
+    *,
+    total_dv01: Decimal,
+    warning_dv01: Decimal,
+    limit_dv01: Decimal,
+    has_rows: bool,
+) -> list[DV01ActionScenarioBreach]:
+    if not has_rows:
+        return []
+    scenarios: list[DV01ActionScenarioBreach] = []
+    for shock in DV01_ACTION_SHOCKS:
+        estimated_loss = (total_dv01 * shock).copy_abs()
+        warning_loss = (warning_dv01 * shock).copy_abs()
+        limit_loss = (limit_dv01 * shock).copy_abs()
+        scenarios.append(
+            DV01ActionScenarioBreach.model_validate(
+                promote_flat_payload(
+                    {
+                        "scenario_name": f"rate_up_{shock}bp",
+                        "shock_bp": shock,
+                        "estimated_loss": estimated_loss,
+                        "loss_threshold": limit_loss,
+                        "risk_level": _dv01_action_scenario_level(
+                            estimated_loss=estimated_loss,
+                            warning_loss=warning_loss,
+                            limit_loss=limit_loss,
+                        ),
+                    },
+                    DV01ActionScenarioBreach,
+                )
+            )
+        )
+    return scenarios
+
+
+def _suggested_reduction_for_share(dv01: Decimal, total_abs_dv01: Decimal, dv01_to_reduce: Decimal) -> Decimal:
+    if dv01_to_reduce <= ZERO or total_abs_dv01 <= ZERO:
+        return ZERO
+    return dv01_to_reduce * _dv01_share(dv01, total_abs_dv01)
+
+
+def _build_dv01_action_tenors(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    dv01_to_reduce: Decimal,
+    top_n: int,
+) -> list[DV01ActionTenorItem]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        tenor = str(row.get("tenor_bucket") or "UNKNOWN").strip() or "UNKNOWN"
+        grouped.setdefault(tenor, []).append(row)
+    items: list[DV01ActionTenorItem] = []
+    for tenor, bucket_rows in grouped.items():
+        dv01 = sum((safe_decimal(row.get("dv01")) for row in bucket_rows), ZERO)
+        items.append(
+            DV01ActionTenorItem.model_validate(
+                promote_flat_payload(
+                    {
+                        "tenor_bucket": tenor,
+                        "dv01": dv01,
+                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
+                        "suggested_reduction_dv01": _suggested_reduction_for_share(
+                            dv01,
+                            total_abs_dv01,
+                            dv01_to_reduce,
+                        ),
+                        "position_count": len(bucket_rows),
+                    },
+                    DV01ActionTenorItem,
+                )
+            )
+        )
+    return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.tenor_bucket), reverse=True)[:top_n]
+
+
+def _build_dv01_action_issuers(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    dv01_to_reduce: Decimal,
+    top_n: int,
+) -> list[DV01ActionIssuerItem]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        issuer = str(row.get("issuer_name") or "UNKNOWN").strip() or "UNKNOWN"
+        grouped.setdefault(issuer, []).append(row)
+    items: list[DV01ActionIssuerItem] = []
+    for issuer, issuer_rows in grouped.items():
+        dv01 = sum((safe_decimal(row.get("dv01")) for row in issuer_rows), ZERO)
+        items.append(
+            DV01ActionIssuerItem.model_validate(
+                promote_flat_payload(
+                    {
+                        "issuer_name": issuer,
+                        "dv01": dv01,
+                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
+                        "suggested_reduction_dv01": _suggested_reduction_for_share(
+                            dv01,
+                            total_abs_dv01,
+                            dv01_to_reduce,
+                        ),
+                        "position_count": len(issuer_rows),
+                    },
+                    DV01ActionIssuerItem,
+                )
+            )
+        )
+    return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.issuer_name), reverse=True)[:top_n]
+
+
+def _build_dv01_action_bonds(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    dv01_to_reduce: Decimal,
+    top_n: int,
+) -> list[DV01ActionBondItem]:
+    ordered = sorted(
+        rows,
+        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
+        reverse=True,
+    )
+    return [
+        DV01ActionBondItem.model_validate(
+            promote_flat_payload(
+                {
+                    "instrument_code": str(row.get("instrument_code") or ""),
+                    "instrument_name": _optional_text(row.get("instrument_name")),
+                    "issuer_name": _optional_text(row.get("issuer_name")),
+                    "rating": _optional_text(row.get("rating")),
+                    "tenor_bucket": str(row.get("tenor_bucket") or ""),
+                    "accounting_class": str(row.get("accounting_class") or ""),
+                    "face_value": safe_decimal(row.get("face_value")),
+                    "market_value": safe_decimal(row.get("market_value")),
+                    "modified_duration": safe_decimal(row.get("modified_duration")),
+                    "dv01": safe_decimal(row.get("dv01")),
+                    "dv01_share": _dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
+                    "suggested_reduction_dv01": _suggested_reduction_for_share(
+                        safe_decimal(row.get("dv01")),
+                        total_abs_dv01,
+                        dv01_to_reduce,
+                    ),
+                },
+                DV01ActionBondItem,
+            )
+        )
+        for row in ordered[:top_n]
+    ]
 
 
 def _normalize_dv01_accounting_class(value: str) -> str:
@@ -2587,7 +3147,7 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
                     "top_n": top_n,
                     "items": [],
                     "total_market_value": ZERO,
-                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "computed_at": datetime.now(UTC).isoformat(),
                     "warnings": [EMPTY_WARNING],
                 },
                 BondTopHoldingsResponse,
@@ -2630,7 +3190,7 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
                 "top_n": top_n,
                 "items": items,
                 "total_market_value": total_mv_dec,
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": [],
             },
             BondTopHoldingsResponse,
@@ -2737,7 +3297,7 @@ def get_position_changes(report_date: date, top_n: int = 5) -> dict:
                     "items": [],
                     "total_market_value": total_market_value,
                     "prev_total_market_value": prev_total_market_value,
-                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "computed_at": datetime.now(UTC).isoformat(),
                     "warnings": warnings,
                 },
                 BondPositionChangesResponse,
@@ -2787,7 +3347,7 @@ def get_position_changes(report_date: date, top_n: int = 5) -> dict:
                 "items": ordered[:top_n],
                 "total_market_value": total_market_value,
                 "prev_total_market_value": prev_total_market_value,
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": [],
             },
             BondPositionChangesResponse,
@@ -2839,7 +3399,7 @@ def get_accounting_class_audit(report_date: date) -> dict:
                     )
                     for row in audit["rows"]
                 ],
-                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": [EMPTY_WARNING] if not rows else [],
             },
             AccountingClassAuditResponse,
@@ -3086,7 +3646,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
         if not raw_value:
             continue
         timestamp = _parse_timestamp(raw_value)
-        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+        return datetime.now(UTC) - timestamp > STALE_IN_FLIGHT_AFTER
     return True
 
 
@@ -3094,8 +3654,8 @@ def _parse_timestamp(raw_value: str) -> datetime:
     normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _record_dispatch_failure(
@@ -3140,10 +3700,10 @@ def _mark_stale_inflight_run(
             "vendor_version": "vv_none",
             "report_date": report_date,
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
     )
 
 
 def _build_run_id() -> str:
-    return f"{JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{JOB_NAME}:{datetime.now(UTC).isoformat()}"

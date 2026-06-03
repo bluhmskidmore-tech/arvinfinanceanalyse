@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
-
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS as _ZQTZ_ASSET_ROWS
 
 _LEDGER_BUSINESS_ROWS = [

@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
-
-from pydantic import BaseModel
 
 from backend.app.governance.formal_compute_lineage import (
     resolve_formal_dates_lineage,
@@ -30,6 +28,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta_from_lineage,
     build_result_envelope,
 )
+from pydantic import BaseModel
 
 # Mirrors `FormalComputeModuleDescriptor` for bond_analytics materialize (avoid importing tasks module).
 BOND_ANALYTICS_JOB_NAME = "bond_analytics_materialize"

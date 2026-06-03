@@ -47,7 +47,7 @@ class _GitNexusMcpSession:
         self._process: subprocess.Popen[bytes] | None = None
         self._next_id = 1
 
-    def __enter__(self) -> "_GitNexusMcpSession":
+    def __enter__(self) -> _GitNexusMcpSession:
         self._process = subprocess.Popen(
             self._command,
             stdin=subprocess.PIPE,

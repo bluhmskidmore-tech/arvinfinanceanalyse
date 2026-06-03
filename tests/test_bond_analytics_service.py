@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -761,6 +761,372 @@ def test_bond_analytics_dv01_movement_without_prior_returns_warning(tmp_path, mo
     assert result["attribution"] == []
     assert result["anomaly_bonds"] == []
     assert result["methodology_checks"] == []
+    assert result["warnings"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_action_plan_flags_risk_and_hedge_size(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = "2026-03-31"
+    rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("1000000"),
+            "market_value": Decimal("1005000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("800"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+        {
+            "report_date": report_date,
+            "instrument_code": "B-001",
+            "instrument_name": "Beta Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AA+",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("500000"),
+            "market_value": Decimal("501000"),
+            "modified_duration": Decimal("7"),
+            "dv01": Decimal("350"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_b",
+        },
+        {
+            "report_date": report_date,
+            "instrument_code": "C-001",
+            "instrument_name": "Gamma Bond",
+            "issuer_name": "Issuer C",
+            "rating": "AAA",
+            "tenor_bucket": "1-3Y",
+            "accounting_class": "TPL",
+            "face_value": Decimal("400000"),
+            "market_value": Decimal("401000"),
+            "modified_duration": Decimal("2"),
+            "dv01": Decimal("80"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_c",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            scoped = list(rows)
+            if accounting_class != "all":
+                scoped = [row for row in scoped if row["accounting_class"] == accounting_class]
+            return scoped
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(
+        date(2026, 3, 31),
+        accounting_class="OCI",
+        top_n=2,
+        limit_dv01="1000",
+        warning_dv01="900",
+        hedge_instrument_dv01="250",
+        hedge_target_dv01="900",
+    )
+    result = payload["result"]
+
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_action_plan"
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert result["accounting_class"] == "OCI"
+    assert result["risk_level"] == "breach"
+    assert result["breach_count"] == 3
+    assert _numeric_raw(result["total_dv01"]) == Decimal("1150")
+    assert _numeric_raw(result["limit_dv01"]) == Decimal("1000")
+    assert _numeric_raw(result["warning_dv01"]) == Decimal("900")
+    assert _numeric_raw(result["dv01_to_reduce"]) == Decimal("250")
+    assert result["hedge_instrument_label"] == "DV01 hedge unit"
+    assert _numeric_raw(result["hedge_instrument_dv01"]) == Decimal("250")
+    assert _numeric_raw(result["suggested_hedge_units"]) == Decimal("1")
+    assert result["scenario_breaches"][0]["scenario_name"] == "rate_up_10bp"
+    assert _numeric_raw(result["scenario_breaches"][0]["estimated_loss"]) == Decimal("11500")
+    assert result["scenario_breaches"][0]["risk_level"] == "breach"
+    assert result["tenor_actions"][0]["tenor_bucket"] == "7-10Y"
+    assert _numeric_raw(result["tenor_actions"][0]["dv01_share"]) == Decimal("1")
+    assert result["issuer_actions"][0]["issuer_name"] == "Issuer A"
+    assert result["bond_actions"][0]["instrument_code"] == "A-001"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_action_plan_uses_formal_limit_config(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    GovernanceRepository(base_dir=governance_dir).append(
+        "bond_dv01_limit_config",
+        {
+            "report_date": "2026-03-31",
+            "accounting_class": "OCI",
+            "limit_dv01": "1200",
+            "warning_dv01": "1000",
+            "hedge_target_dv01": "1000",
+            "source_version": "sv_limit_committee_202603",
+            "rule_version": "rv_dv01_limit_policy_v1",
+            "limit_source": "risk_committee_minutes",
+            "limit_source_version": "risk_minutes_2026_03",
+            "limit_rule_version": "rv_dv01_limit_policy_v1",
+            "limit_effective_date": "2026-03-01",
+        },
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("1000000"),
+            "market_value": Decimal("1005000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("900"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "B-001",
+            "instrument_name": "Beta Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AA+",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("500000"),
+            "market_value": Decimal("501000"),
+            "modified_duration": Decimal("7"),
+            "dv01": Decimal("300"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_b",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return [row for row in rows if row["accounting_class"] == accounting_class]
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(date(2026, 3, 31), accounting_class="OCI")
+    result = payload["result"]
+
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert result["policy_basis"] == "formal_limit"
+    assert result["limit_source"] == "risk_committee_minutes"
+    assert result["limit_source_version"] == "risk_minutes_2026_03"
+    assert result["limit_rule_version"] == "rv_dv01_limit_policy_v1"
+    assert result["limit_effective_date"] == "2026-03-01"
+    assert "正式 DV01 限额" in result["threshold_note"]
+    assert _numeric_raw(result["limit_dv01"]) == Decimal("1200")
+    assert _numeric_raw(result["warning_dv01"]) == Decimal("1000")
+    assert _numeric_raw(result["limit_usage"]) == Decimal("1")
+    assert _numeric_raw(result["remaining_limit_dv01"]) == Decimal("0")
+    assert result["warnings"] == []
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_limit_config_status_reports_ready_missing_and_invalid(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    repo = GovernanceRepository(base_dir=governance_dir)
+    repo.append(
+        "bond_dv01_limit_config",
+        {
+            "report_date": "2026-03-31",
+            "accounting_class": "OCI",
+            "limit_dv01": "1200",
+            "warning_dv01": "1000",
+            "hedge_target_dv01": "1000",
+            "limit_source": "risk_committee_minutes",
+            "limit_source_version": "risk_minutes_2026_03",
+            "limit_rule_version": "rv_dv01_limit_policy_v1",
+            "limit_effective_date": "2026-03-01",
+        },
+    )
+    repo.append(
+        "bond_dv01_limit_config",
+        {
+            "report_date": "2026-03-31",
+            "accounting_class": "TPL",
+            "limit_dv01": "0",
+            "warning_dv01": "100",
+            "limit_source": "risk_committee_minutes",
+            "limit_source_version": "risk_minutes_2026_03",
+            "limit_rule_version": "rv_dv01_limit_policy_v1",
+            "limit_effective_date": "2026-03-01",
+        },
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_limit_config_status(date(2026, 3, 31))
+    result = payload["result"]
+    rows_by_class = {row["accounting_class"]: row for row in result["rows"]}
+
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_limit_config_status"
+    assert result["configured_count"] == 1
+    assert result["missing_count"] == 2
+    assert result["invalid_count"] == 1
+    assert result["overall_status"] == "incomplete"
+    assert rows_by_class["OCI"]["status"] == "ready"
+    assert _numeric_raw(rows_by_class["OCI"]["limit_dv01"]) == Decimal("1200")
+    assert rows_by_class["OCI"]["limit_source"] == "risk_committee_minutes"
+    assert rows_by_class["AC"]["status"] == "missing"
+    assert rows_by_class["TPL"]["status"] == "invalid"
+    assert "limit_dv01" in rows_by_class["TPL"]["message"]
+    assert result["warnings"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_action_plan_marks_page_threshold_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("1000000"),
+            "market_value": Decimal("1005000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("1150"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(
+        date(2026, 3, 31),
+        accounting_class="OCI",
+        limit_dv01="1000",
+        warning_dv01="900",
+    )
+    result = payload["result"]
+
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert result["policy_basis"] == "page_threshold_fallback"
+    assert result["limit_source"] == "page_threshold"
+    assert result["limit_source_version"] == "unconfigured"
+    assert result["limit_rule_version"] == "rv_dv01_page_threshold_v3"
+    assert result["limit_effective_date"] is None
+    assert "不代表正式限额" in result["threshold_note"]
+    assert _numeric_raw(result["limit_usage"]) == Decimal("1.15")
+    assert _numeric_raw(result["remaining_limit_dv01"]) == Decimal("-150")
+    assert any("未接入正式限额源" in warning for warning in result["warnings"])
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_action_plan_empty_scope_returns_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return []
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_empty",
+            "rule_version": "rv_empty",
+            "cache_version": "cv_empty",
+            "vendor_version": "vv_empty",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(date(2026, 3, 31))
+    result = payload["result"]
+
+    assert result["risk_level"] == "no_data"
+    assert result["position_count"] == 0
+    assert result["scenario_breaches"] == []
+    assert result["tenor_actions"] == []
+    assert result["issuer_actions"] == []
+    assert result["bond_actions"] == []
     assert result["warnings"]
     get_settings.cache_clear()
 

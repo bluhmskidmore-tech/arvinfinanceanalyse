@@ -77,7 +77,8 @@ const NEWS_LIMIT = 6;
 const NEWS_STALE_DAYS = 7;
 const MACRO_NEWS_CHOICE_SOURCE_LABEL = "来源：Choice 宏观新闻";
 const MACRO_NEWS_FALLBACK_SOURCE_LABEL = "来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）";
-const MACRO_NEWS_REFRESH_LABEL = "刷新：随页面查询自动更新";
+const MACRO_NEWS_RELAXED_FALLBACK_SOURCE_LABEL = "来源：Tushare 宏观快讯（Choice 不可用时非严格资金面兜底）";
+const MACRO_NEWS_REFRESH_LABEL = "刷新：随页面查询读取已落库数据";
 const POLICY_FUNDING_EMPTY_MESSAGE = "政策与资金面：暂无债券相关更新";
 const macroReleaseCalendar = macroReleaseCalendarRaw as readonly MacroReleaseCalendarRow[];
 
@@ -219,6 +220,37 @@ function buildNewsItemsFromEvents(input: {
   };
 }
 
+function latestChoiceSourceError(events?: readonly ChoiceNewsEvent[] | null): ChoiceNewsEvent | null {
+  return (events ?? [])
+    .filter((event) => event.error_code !== 0)
+    .slice()
+    .sort((left, right) => right.received_at.localeCompare(left.received_at))[0] ?? null;
+}
+
+function isChoicePermissionError(event: ChoiceNewsEvent): boolean {
+  const message = event.error_msg.trim().toLowerCase();
+  return event.error_code === 10001012 || message.includes("insufficient user access");
+}
+
+function buildChoiceSourceErrorResult(event: ChoiceNewsEvent): MacroNewsItemsResult {
+  const timeLabel = dateTimeLabel(event.received_at);
+  const isPermissionError = isChoicePermissionError(event);
+  const errorMessage = event.error_msg.trim();
+
+  return {
+    newsItems: [],
+    newsMessage: isPermissionError
+      ? "Choice 新闻权限不足，请恢复数据源权限后重新采集。"
+      : `Choice 新闻源返回错误${errorMessage ? `：${errorMessage}` : ""}。`,
+    newsStale: false,
+    newsFreshnessLabel: isPermissionError ? "Choice 新闻权限不足" : "新闻源返回错误",
+    newsSourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+    newsAsOfLabel: `数据截至 ${timeLabel}`,
+    newsStatusLabel: isPermissionError ? "来源状态：Choice 权限不足" : "来源状态：新闻源错误",
+    newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+  };
+}
+
 export function shouldUseMacroNewsFallback(choiceNews: MacroNewsItemsResult): boolean {
   if (choiceNews.newsItems.length === 0) {
     return true;
@@ -288,6 +320,28 @@ export function resolveHomeMacroNewsBriefing(input: {
 
   if (fallbackNews.newsItems.length > 0) {
     return fallbackNews;
+  }
+
+  const sourceError = latestChoiceSourceError(input.choiceEvents);
+  if (sourceError) {
+    const relaxedFallbackNews = buildNewsItemsFromEvents({
+      events: input.fallbackEvents,
+      todayIsoDate: input.todayIsoDate,
+      topicLabel: dashboardMacroNewsFallbackTopicLabel,
+      sourceLabel: MACRO_NEWS_RELAXED_FALLBACK_SOURCE_LABEL,
+      emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
+      statusWhenFresh: "来源状态：Tushare 宏观兜底（非严格资金面）",
+      statusWhenStale: "来源状态：Tushare 宏观兜底偏旧（非严格资金面）",
+      statusWhenEmpty: "来源状态：暂无数据",
+      requireMacroRelevance: true,
+      requirePolicyFundingRelevance: false,
+    });
+
+    if (relaxedFallbackNews.newsItems.length > 0) {
+      return relaxedFallbackNews;
+    }
+
+    return buildChoiceSourceErrorResult(sourceError);
   }
 
   return choiceNews;

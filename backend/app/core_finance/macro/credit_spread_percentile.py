@@ -6,9 +6,10 @@ M16: 信用利差历史分位（纯函数，自 V1 macro_analysis.credit_spread_
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
 
 from app.core_finance.macro.helpers import build_curve_history
 

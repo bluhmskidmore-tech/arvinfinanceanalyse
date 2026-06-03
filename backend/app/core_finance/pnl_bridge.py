@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Mapping
 
 from backend.app.core_finance.bond_analytics.common import (
     build_curve_points,
@@ -14,7 +14,6 @@ from backend.app.core_finance.bond_analytics.common import (
     infer_curve_type,
     interpolate_rate,
 )
-
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")

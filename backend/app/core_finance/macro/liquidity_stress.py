@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Iterable
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
-from app.core_finance.safe_decimal import safe_decimal
 from app.core_finance.macro.helpers import get_value as _get_value
+from app.core_finance.safe_decimal import safe_decimal
 
 
 def _round(value: Decimal | None) -> float | None:

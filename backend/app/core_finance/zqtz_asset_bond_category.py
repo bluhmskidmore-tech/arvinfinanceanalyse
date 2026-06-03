@@ -6,7 +6,8 @@ ZQTZ 资产侧债券明细分类 — 与 `accounting_asset_movement_repo` 中资
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 # 固收/非标 V1 的 classification_row 里，bond_type、business_type_primary 常为「资管计划」「证券业资管计划」等，
 # 与 ZQTZ 敞口「其他」并存；仅匹配「其他」会使 match_zqtz_asset_bond_rows 落空，业务种类损益该行严重偏小。

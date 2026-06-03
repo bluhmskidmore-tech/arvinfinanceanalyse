@@ -1921,6 +1921,52 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
             Crisis Score 公式仍仅使用 {commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}；本区块为{" "}
             {commodityCoverage.role}
           </small>
+          {commodityCoverage.candidate_summary ? (
+            <>
+              <div className="macro-toolkit-crisis-evidence__summary">
+                <MetricTile
+                  icon={<SafetyCertificateOutlined />}
+                  label="商品扩展候选"
+                  value={`${commodityCoverage.candidate_summary.shadow_review_ready_count} 个就绪`}
+                  detail={formatCommodityCandidateSummaryDetail(commodityCoverage.candidate_summary)}
+                  tone="neutral"
+                />
+                <MetricTile
+                  icon={<WarningOutlined />}
+                  label="公式变更需审批"
+                  value={commodityCoverage.candidate_summary.approval_required ? "是" : "否"}
+                  detail={
+                    commodityCoverage.candidate_summary.formula_change_required
+                      ? "从旁证进入 Crisis Score 公式需要版本化审批"
+                      : "当前无公式变更"
+                  }
+                  tone="neutral"
+                />
+                <MetricTile
+                  icon={<ToolOutlined />}
+                  label="下一步"
+                  value="影子评估"
+                  detail={commodityCoverage.candidate_summary.next_step || "下一步待确认"}
+                  tone="neutral"
+                />
+                <MetricTile
+                  icon={<LineChartOutlined />}
+                  label="影子评估结果"
+                  value={`${commodityCoverage.candidate_summary.shadow_evaluation_ready_count} 个可读`}
+                  detail={formatCommodityShadowSummary(commodityCoverage)}
+                  tone="neutral"
+                />
+              </div>
+              <small className="macro-toolkit-crisis-coverage-note">
+                {commodityCoverage.candidate_summary.next_step || "商品扩展候选下一步待确认"}
+              </small>
+              {commodityCoverage.candidate_summary.shadow_evaluation_next_step ? (
+                <small className="macro-toolkit-crisis-coverage-note">
+                  {commodityCoverage.candidate_summary.shadow_evaluation_next_step}
+                </small>
+              ) : null}
+            </>
+          ) : null}
           <div className="macro-toolkit-crisis-input-grid">
             {commodityCoverage.items.map((item) => (
               <div
@@ -1945,6 +1991,18 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
                   {item.source ?? "source missing"} · {item.series_id ?? "series missing"} · matched{" "}
                   {item.matched_alias ?? "alias missing"} · {item.used_in_formula ? "纳入公式" : "未纳入公式"}
                 </small>
+                {item.candidate_decision ? (
+                  <small>
+                    {item.candidate_decision.label} · {item.candidate_decision.reason} ·{" "}
+                    {item.candidate_decision.next_step}
+                  </small>
+                ) : null}
+                {item.shadow_evaluation ? (
+                  <small>
+                    {item.shadow_evaluation.label} · {item.shadow_evaluation.summary} ·{" "}
+                    {formatCommodityShadowDetail(item.shadow_evaluation)}
+                  </small>
+                ) : null}
               </div>
             ))}
           </div>
@@ -2515,6 +2573,45 @@ type CrisisCommodityCoverageItem = {
   series_id: string | null;
   source: string | null;
   value: number | null;
+  candidate_decision: CrisisCommodityCandidateDecision | null;
+  shadow_evaluation: CrisisCommodityShadowEvaluation | null;
+};
+
+type CrisisCommodityCandidateDecision = {
+  status: string;
+  label: string;
+  reason: string;
+  next_step: string;
+};
+
+type CrisisCommodityCandidateSummary = {
+  shadow_review_ready_count: number;
+  needs_current_data_count: number;
+  missing_data_count: number;
+  shadow_evaluation_ready_count: number;
+  shadow_evaluation_short_count: number;
+  shadow_evaluation_status_counts: Record<string, number>;
+  shadow_evaluation_next_step: string;
+  formula_change_required: boolean;
+  approval_required: boolean;
+  next_step: string;
+};
+
+type CrisisCommodityShadowEvaluation = {
+  status: string;
+  label: string;
+  sample_count: number | null;
+  window_start: string | null;
+  window_end: string | null;
+  target: string;
+  candidate_metric: string;
+  same_day_correlation: number | null;
+  lead_1d_correlation: number | null;
+  lag_1d_correlation: number | null;
+  crisis_hit_rate: number | null;
+  crisis_sample_count: number | null;
+  summary: string;
+  next_step: string;
 };
 
 type CrisisCommodityCoverage = {
@@ -2522,6 +2619,7 @@ type CrisisCommodityCoverage = {
   tracked_count: number;
   available_count: number;
   used_in_crisis_score: string[];
+  candidate_summary: CrisisCommodityCandidateSummary | null;
   items: CrisisCommodityCoverageItem[];
 };
 
@@ -2554,8 +2652,43 @@ function normalizeCommodityCoverage(value: unknown): CrisisCommodityCoverage | n
     used_in_crisis_score: Array.isArray(value.used_in_crisis_score)
       ? value.used_in_crisis_score.map((item) => String(item)).filter(Boolean)
       : [],
+    candidate_summary: normalizeCommodityCandidateSummary(value.candidate_summary),
     items,
   };
+}
+
+function normalizeCommodityCandidateSummary(value: unknown): CrisisCommodityCandidateSummary | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    shadow_review_ready_count:
+      typeof value.shadow_review_ready_count === "number" ? value.shadow_review_ready_count : 0,
+    needs_current_data_count:
+      typeof value.needs_current_data_count === "number" ? value.needs_current_data_count : 0,
+    missing_data_count: typeof value.missing_data_count === "number" ? value.missing_data_count : 0,
+    shadow_evaluation_ready_count:
+      typeof value.shadow_evaluation_ready_count === "number" ? value.shadow_evaluation_ready_count : 0,
+    shadow_evaluation_short_count:
+      typeof value.shadow_evaluation_short_count === "number" ? value.shadow_evaluation_short_count : 0,
+    shadow_evaluation_status_counts: normalizeNumberRecord(value.shadow_evaluation_status_counts),
+    shadow_evaluation_next_step:
+      typeof value.shadow_evaluation_next_step === "string" ? value.shadow_evaluation_next_step : "",
+    formula_change_required: value.formula_change_required === true,
+    approval_required: value.approval_required === true,
+    next_step: typeof value.next_step === "string" ? value.next_step : "",
+  };
+}
+
+function normalizeNumberRecord(value: unknown) {
+  if (!isRecord(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter((entry): entry is [string, number] => typeof entry[1] === "number")
+      .map(([key, count]) => [key, count]),
+  );
 }
 
 function normalizeCommodityCoverageItem(value: unknown): CrisisCommodityCoverageItem | null {
@@ -2577,6 +2710,42 @@ function normalizeCommodityCoverageItem(value: unknown): CrisisCommodityCoverage
     series_id: typeof value.series_id === "string" ? value.series_id : null,
     source: typeof value.source === "string" ? value.source : null,
     value: typeof value.value === "number" ? value.value : null,
+    candidate_decision: normalizeCommodityCandidateDecision(value.candidate_decision),
+    shadow_evaluation: normalizeCommodityShadowEvaluation(value.shadow_evaluation),
+  };
+}
+
+function normalizeCommodityCandidateDecision(value: unknown): CrisisCommodityCandidateDecision | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    status: typeof value.status === "string" ? value.status : "unknown",
+    label: typeof value.label === "string" ? value.label : "候选状态待确认",
+    reason: typeof value.reason === "string" ? value.reason : "候选原因待确认",
+    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
+  };
+}
+
+function normalizeCommodityShadowEvaluation(value: unknown): CrisisCommodityShadowEvaluation | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    status: typeof value.status === "string" ? value.status : "unknown",
+    label: typeof value.label === "string" ? value.label : "影子评估待确认",
+    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
+    window_start: typeof value.window_start === "string" ? value.window_start : null,
+    window_end: typeof value.window_end === "string" ? value.window_end : null,
+    target: typeof value.target === "string" ? value.target : "crisis_score",
+    candidate_metric: typeof value.candidate_metric === "string" ? value.candidate_metric : "daily_return",
+    same_day_correlation: typeof value.same_day_correlation === "number" ? value.same_day_correlation : null,
+    lead_1d_correlation: typeof value.lead_1d_correlation === "number" ? value.lead_1d_correlation : null,
+    lag_1d_correlation: typeof value.lag_1d_correlation === "number" ? value.lag_1d_correlation : null,
+    crisis_hit_rate: typeof value.crisis_hit_rate === "number" ? value.crisis_hit_rate : null,
+    crisis_sample_count: typeof value.crisis_sample_count === "number" ? value.crisis_sample_count : null,
+    summary: typeof value.summary === "string" ? value.summary : "影子评估摘要待确认",
+    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
   };
 }
 
@@ -2604,6 +2773,41 @@ function formatCommodityCoverageDateStatus(status: string | null | undefined) {
     return "日期缺失";
   }
   return "对齐状态缺失";
+}
+
+function formatCommodityCandidateSummaryDetail(summary: CrisisCommodityCandidateSummary) {
+  return `影子评估就绪 ${summary.shadow_review_ready_count}，待补当日 ${summary.needs_current_data_count}，缺失 ${summary.missing_data_count}`;
+}
+
+function formatCommodityShadowSummary(coverage: CrisisCommodityCoverage) {
+  const firstReady = coverage.items.find((item) => item.shadow_evaluation?.status === "review_ready")?.shadow_evaluation;
+  const summary = coverage.candidate_summary;
+  if (!firstReady) {
+    return summary?.shadow_evaluation_next_step || "影子评估样本不足";
+  }
+  const shortText = summary?.shadow_evaluation_short_count
+    ? `${summary.shadow_evaluation_short_count} 个样本不足`
+    : "样本不足 0";
+  return [
+    `${summary?.shadow_evaluation_ready_count ?? 0} 个可读`,
+    shortText,
+    formatCommodityShadowDetail(firstReady),
+    summary?.shadow_evaluation_next_step,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatCommodityShadowDetail(evaluation: CrisisCommodityShadowEvaluation) {
+  return [
+    `样本 ${evaluation.sample_count ?? "缺失"}`,
+    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
+    `危机期命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
+  ].join(" · ");
+}
+
+function formatSignedDecimal(value: number | null | undefined) {
+  return typeof value === "number" ? value.toFixed(2) : "缺失";
 }
 
 function formatCrisisInputDetail(input: MacroToolkitInputEvidenceItem | undefined) {
@@ -2972,7 +3176,7 @@ function commodityFuturesPermissionNotice(permission: MacroToolkitChoiceStockRef
   const actions = permission?.actions?.length ? permission.actions.join(" / ") : "dry_run / refresh";
   const user = permission?.user_id || "anonymous";
   const role = permission?.role || "unknown";
-  return `请授予 ${resource}: ${actions}；当前用户 ${user}，角色 ${role}。`;
+  return `请在 scope store 授予 ${resource} 的 action refresh；dry_run / refresh 都需要这条授权。当前用户 ${user}，角色 ${role}，动作 ${actions}。`;
 }
 
 function choiceStockFallbackText(

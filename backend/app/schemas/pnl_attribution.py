@@ -10,9 +10,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, model_validator
-
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:

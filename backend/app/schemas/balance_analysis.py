@@ -5,7 +5,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-
 BalanceAnalysisSourceFamily = Literal["zqtz", "tyw", "combined"]
 BalancePositionScope = Literal["asset", "liability", "all"]
 BalanceCurrencyBasis = Literal["native", "CNY"]

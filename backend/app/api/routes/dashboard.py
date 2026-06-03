@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
-
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.services.dashboard_service import get_core_metrics, get_daily_changes
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 

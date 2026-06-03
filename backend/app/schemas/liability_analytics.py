@@ -3,9 +3,8 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:

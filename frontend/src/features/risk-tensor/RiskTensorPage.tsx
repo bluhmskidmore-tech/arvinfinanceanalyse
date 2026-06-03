@@ -14,7 +14,6 @@ import {
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
 import {
-  bondChartMagnitude,
   bondNumericDisplay,
   bondNumericRawOrNull,
 } from "../bond-analytics/adapters/bondAnalyticsAdapter";
@@ -126,6 +125,36 @@ const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
 const WAN_YUAN_UNIT = "\u4e07\u5143";
 const YI_YUAN_UNIT = "\u4ebf\u5143";
+const MAIN_PAYLOAD_NUMERIC_FIELDS = [
+  { key: "portfolio_dv01", label: "portfolio_dv01" },
+  { key: "krd_1y", label: "krd_1y" },
+  { key: "krd_3y", label: "krd_3y" },
+  { key: "krd_5y", label: "krd_5y" },
+  { key: "krd_7y", label: "krd_7y" },
+  { key: "krd_10y", label: "krd_10y" },
+  { key: "krd_30y", label: "krd_30y" },
+  { key: "cs01", label: "cs01" },
+  { key: "portfolio_convexity", label: "portfolio_convexity" },
+  { key: "portfolio_modified_duration", label: "portfolio_modified_duration" },
+  { key: "issuer_concentration_hhi", label: "issuer_concentration_hhi" },
+  { key: "issuer_top5_weight", label: "issuer_top5_weight" },
+  { key: "asset_cashflow_30d", label: "asset_cashflow_30d" },
+  { key: "asset_cashflow_90d", label: "asset_cashflow_90d" },
+  { key: "liability_cashflow_30d", label: "liability_cashflow_30d" },
+  { key: "liability_cashflow_90d", label: "liability_cashflow_90d" },
+  { key: "liquidity_gap_30d", label: "liquidity_gap_30d" },
+  { key: "liquidity_gap_90d", label: "liquidity_gap_90d" },
+  { key: "liquidity_gap_30d_ratio", label: "liquidity_gap_30d_ratio" },
+  { key: "total_market_value", label: "total_market_value" },
+] as const;
+const KRD_FIELDS = [
+  { key: "krd_1y", tenor: "1Y" },
+  { key: "krd_3y", tenor: "3Y" },
+  { key: "krd_5y", tenor: "5Y" },
+  { key: "krd_7y", tenor: "7Y" },
+  { key: "krd_10y", tenor: "10Y" },
+  { key: "krd_30y", tenor: "30Y" },
+] as const;
 
 function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
   if (value === null || value === undefined) {
@@ -140,6 +169,30 @@ function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
     return Number.isFinite(raw) ? raw : null;
   }
   return value.raw !== null && Number.isFinite(value.raw) ? value.raw : null;
+}
+
+function riskTensorScalarIssue(value: RiskTensorDisplayValue | null | undefined) {
+  if (value === null || value === undefined) {
+    return "缺失";
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized || normalized === "undefined") {
+      return "缺失";
+    }
+    return riskTensorRawOrNull(value) === null ? "不可解析" : null;
+  }
+  if (value.raw === null) {
+    return "缺失";
+  }
+  return Number.isFinite(value.raw) ? null : "不可解析";
+}
+
+function riskTensorPayloadQualityIssues(result: RiskTensorPayload) {
+  return MAIN_PAYLOAD_NUMERIC_FIELDS.flatMap((field) => {
+    const issue = riskTensorScalarIssue(result[field.key]);
+    return issue ? [{ ...field, issue }] : [];
+  });
 }
 
 function amountUnit(value: RiskTensorDisplayValue, unit: string) {
@@ -187,9 +240,9 @@ function yuanAsYiWithUnit(value: RiskTensorDisplayValue) {
   return riskTensorRawOrNull(value) === null ? display : `${display} ${YI_YUAN_UNIT}`;
 }
 
-function yuanAsWanMagnitude(value: RiskTensorDisplayValue) {
+function yuanAsWanMagnitudeOrNull(value: RiskTensorDisplayValue) {
   const raw = riskTensorRawOrNull(value);
-  return raw === null ? 0 : raw / YUAN_PER_WAN;
+  return raw === null ? null : raw / YUAN_PER_WAN;
 }
 
 function isWanAmountMetric(key: string) {
@@ -204,8 +257,9 @@ function priorMetricDisplay(metric: RiskTensorChangeMetric, key: PriorMetricValu
   return yuanAsWanWithUnit(metric[key] as Numeric);
 }
 
-function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
-  return bondChartMagnitude(value);
+function chartMagnitudeOrNull(value: RiskTensorDisplayValue) {
+  const raw = riskTensorRawOrNull(value);
+  return raw === null ? null : raw;
 }
 
 function ratioPercentDisplay(value: Parameters<typeof bondNumericRawOrNull>[0]) {
@@ -495,6 +549,9 @@ export default function RiskTensorPage() {
   const [qualityEvidenceRequestCopyStatus, setQualityEvidenceRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [payloadQualityRequestCopyStatus, setPayloadQualityRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -553,16 +610,8 @@ export default function RiskTensorPage() {
     if (!result) {
       return null;
     }
-    const labels = ["1Y", "3Y", "5Y", "7Y", "10Y", "30Y"];
-    const keys = [
-      "krd_1y",
-      "krd_3y",
-      "krd_5y",
-      "krd_7y",
-      "krd_10y",
-      "krd_30y",
-    ] as const;
-    const data = keys.map((key) => yuanAsWanMagnitude(result[key]));
+    const labels = KRD_FIELDS.map((item) => item.tenor);
+    const data = KRD_FIELDS.map((item) => yuanAsWanMagnitudeOrNull(result[item.key]));
     return {
       grid: { left: 52, right: 16, top: 36, bottom: 28 },
       tooltip: {
@@ -593,14 +642,27 @@ export default function RiskTensorPage() {
     if (!result) {
       return [];
     }
+    return KRD_FIELDS.map((item) => ({
+      key: item.key,
+      tenor: item.tenor,
+      value: result[item.key],
+      magnitude: yuanAsWanMagnitudeOrNull(result[item.key]),
+    }));
+  }, [result]);
+
+  const invalidKrdRows = useMemo(() => tenorRows.filter((row) => row.magnitude === null), [tenorRows]);
+  const invalidRadarRows = useMemo(() => {
+    if (!result) {
+      return [];
+    }
     return [
-      { tenor: "1Y", value: result.krd_1y },
-      { tenor: "3Y", value: result.krd_3y },
-      { tenor: "5Y", value: result.krd_5y },
-      { tenor: "7Y", value: result.krd_7y },
-      { tenor: "10Y", value: result.krd_10y },
-      { tenor: "30Y", value: result.krd_30y },
-    ];
+      { key: "portfolio_modified_duration", issue: riskTensorScalarIssue(result.portfolio_modified_duration) },
+      { key: "portfolio_dv01", issue: riskTensorScalarIssue(result.portfolio_dv01) },
+      { key: "portfolio_convexity", issue: riskTensorScalarIssue(result.portfolio_convexity) },
+      { key: "cs01", issue: riskTensorScalarIssue(result.cs01) },
+      { key: "issuer_concentration_hhi", issue: riskTensorScalarIssue(result.issuer_concentration_hhi) },
+      { key: "liquidity_gap_30d_ratio", issue: riskTensorScalarIssue(result.liquidity_gap_30d_ratio) },
+    ].filter((item): item is { key: string; issue: string } => Boolean(item.issue));
   }, [result]);
 
   const dominantTenorRow = useMemo(() => {
@@ -609,10 +671,12 @@ export default function RiskTensorPage() {
     }
     const backendBucket = result?.dv01_controls?.dominant_krd_bucket;
     const backendRow = backendBucket ? tenorRows.find((row) => row.tenor === backendBucket) : undefined;
-    if (backendRow) {
+    if (backendRow && backendRow.magnitude !== null) {
       return backendRow;
     }
-    return [...tenorRows].sort((left, right) => chartMagnitude(right.value) - chartMagnitude(left.value))[0];
+    return [...tenorRows]
+      .filter((row) => row.magnitude !== null)
+      .sort((left, right) => Math.abs(right.magnitude ?? 0) - Math.abs(left.magnitude ?? 0))[0];
   }, [result?.dv01_controls?.dominant_krd_bucket, tenorRows]);
 
   useEffect(() => {
@@ -620,24 +684,17 @@ export default function RiskTensorPage() {
       setSelectedTenor("");
       return;
     }
-    const defaultTenor = dominantTenorRow?.tenor ?? tenorRows[0]!.tenor;
+    const defaultTenor = dominantTenorRow?.tenor ?? tenorRows.find((row) => row.magnitude !== null)?.tenor ?? "";
     if (!selectedTenor || !tenorRows.some((row) => row.tenor === selectedTenor)) {
       setSelectedTenor(defaultTenor);
     }
   }, [dominantTenorRow?.tenor, selectedTenor, tenorRows]);
 
-  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? dominantTenorRow ?? tenorRows[0];
+  const selectedTenorRow =
+    tenorRows.find((row) => row.tenor === selectedTenor) ??
+    dominantTenorRow ??
+    tenorRows.find((row) => row.magnitude !== null);
   const tensorMeta = envelope?.result_meta;
-
-  useEffect(() => {
-    setQualityEvidenceCopyStatus("idle");
-  }, [tensorMeta?.trace_id]);
-
-  useEffect(() => {
-    setQualityEvidenceReviewConfirmed(false);
-    setQualityEvidenceReviewRecordCopyStatus("idle");
-    setQualityEvidenceRequestCopyStatus("idle");
-  }, [tensorMeta?.trace_id]);
 
   const fallbackStatus = fallbackModeLabel(tensorMeta?.fallback_mode);
   const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
@@ -702,9 +759,24 @@ export default function RiskTensorPage() {
       }`
     : blockedReportDateSummary;
   const qualityTraceWarningDetail = result?.warnings[0] ?? "无预警";
-  const qualityTraceMetadataDetail = `evidence_rows ${
+  const qualityTraceMetadataDetail = `trace_id ${tensorMeta?.trace_id ?? "未提供"}；evidence_rows ${
     typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
   }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
+  const payloadQualityIssues = result ? riskTensorPayloadQualityIssues(result) : [];
+  const payloadQualityIssueLabels = payloadQualityIssues.map((item) => `${item.label} ${item.issue}`);
+  const payloadQualityIssueSummary = payloadQualityIssueLabels.join(" / ");
+  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}`;
+
+  useEffect(() => {
+    setQualityEvidenceCopyStatus("idle");
+  }, [qualityStateKey]);
+
+  useEffect(() => {
+    setQualityEvidenceReviewConfirmed(false);
+    setQualityEvidenceReviewRecordCopyStatus("idle");
+    setQualityEvidenceRequestCopyStatus("idle");
+    setPayloadQualityRequestCopyStatus("idle");
+  }, [qualityStateKey]);
   const qualityEvidenceReviewItems = [
     {
       key: "evidence_rows",
@@ -749,6 +821,7 @@ export default function RiskTensorPage() {
     `fallback ${qualityTraceFallbackDetail}`,
     `陈旧日期 ${qualityTraceBlockedDetail}`,
     `warning ${qualityTraceWarningDetail}`,
+    `主读 payload 字段 ${payloadQualityIssueSummary || "全部可解析"}`,
     `证据范围 ${qualityTraceMetadataDetail}`,
     "证据字段复核",
     ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
@@ -763,6 +836,17 @@ export default function RiskTensorPage() {
     `缺失字段 ${missingQualityEvidenceLabels.join(" / ") || "无"}`,
     "请在 result_meta 补充 evidence_rows、tables_used、filters_applied 后重新出具",
   ].join("\n");
+  const payloadQualityRequestCopyText = [
+    "风险张量主读 payload 补证请求",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    `异常字段 ${payloadQualityIssueSummary || "无"}`,
+    "后端主读字段缺失或不可解析时，页面只保留后端原始展示/占位，不会在前端补算正式指标",
+    "请核对风险张量物化任务、字段序列化、result_meta 证据和来源 lineage 后重新出具",
+  ].join("\n");
   const qualityEvidenceReviewRecordCopyText = [
     "风险张量质量证据确认记录",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -772,6 +856,7 @@ export default function RiskTensorPage() {
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
     `证据范围 ${qualityTraceMetadataDetail}`,
+    `主读 payload 字段 ${payloadQualityIssueSummary || "全部可解析"}`,
     "证据字段复核",
     ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
   ].join("\n");
@@ -792,6 +877,12 @@ export default function RiskTensorPage() {
       ? "已复制确认记录"
       : qualityEvidenceReviewRecordCopyStatus === "failed"
         ? "复制失败，请手动选择确认记录"
+        : "";
+  const payloadQualityRequestCopyMessage =
+    payloadQualityRequestCopyStatus === "copied"
+      ? "已复制字段补证请求"
+      : payloadQualityRequestCopyStatus === "failed"
+        ? "复制失败，请手动选择字段补证请求"
         : "";
 
   const handlePrimaryTenorDrill = () => {
@@ -857,6 +948,17 @@ export default function RiskTensorPage() {
       .catch(() => setQualityEvidenceRequestCopyStatus("failed"));
   };
 
+  const handleCopyPayloadQualityRequest = () => {
+    if (!navigator.clipboard?.writeText) {
+      setPayloadQualityRequestCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(payloadQualityRequestCopyText)
+      .then(() => setPayloadQualityRequestCopyStatus("copied"))
+      .catch(() => setPayloadQualityRequestCopyStatus("failed"));
+  };
+
   const handleConfirmQualityEvidenceReview = () => {
     setQualityEvidenceReviewConfirmed(true);
   };
@@ -900,15 +1002,15 @@ export default function RiskTensorPage() {
     if (!result) {
       return null;
     }
-    const duration = chartMagnitude(result.portfolio_modified_duration);
-    const dv01 = yuanAsWanMagnitude(result.portfolio_dv01);
-    const convexity = chartMagnitude(result.portfolio_convexity);
-    const cs01 = yuanAsWanMagnitude(result.cs01);
-    const hhi = chartMagnitude(result.issuer_concentration_hhi);
-    const liqRatio = chartMagnitude(result.liquidity_gap_30d_ratio);
+    const duration = chartMagnitudeOrNull(result.portfolio_modified_duration);
+    const dv01 = yuanAsWanMagnitudeOrNull(result.portfolio_dv01);
+    const convexity = chartMagnitudeOrNull(result.portfolio_convexity);
+    const cs01 = yuanAsWanMagnitudeOrNull(result.cs01);
+    const hhi = chartMagnitudeOrNull(result.issuer_concentration_hhi);
+    const liqRatio = chartMagnitudeOrNull(result.liquidity_gap_30d_ratio);
 
-    const dv01Max = dynamicAxisMax(dv01, 1);
-    const cs01Max = dynamicAxisMax(cs01, 1);
+    const dv01Max = dynamicAxisMax(dv01 ?? 0, 1);
+    const cs01Max = dynamicAxisMax(cs01 ?? 0, 1);
 
     const indicator = RADAR_META.map((m) => {
       if (m.max === "dynamic_dv01") {
@@ -1070,7 +1172,9 @@ export default function RiskTensorPage() {
           <strong>{riskTensorErrorMessage(tensorErrorStatusCode)}</strong>
           <span>
             报告日 {reportDate || explicitReportDate || "未选择"}；HTTP 状态{" "}
-            {tensorErrorStatusCode || "未知"}。请先核对正式风险张量物化和 lineage 新鲜度。
+            {tensorErrorStatusCode || "未知"}。日期治理 trace_id{" "}
+            {datesQuery.data?.result_meta.trace_id ?? "未提供"}；主读面 trace_id 未提供。请先核对正式风险张量物化和
+            lineage 新鲜度；页面不会使用缓存或前端补算替代正式主读结果。
           </span>
         </div>
       ) : datesBlockingError ? (
@@ -1254,6 +1358,19 @@ export default function RiskTensorPage() {
                 )}
               </div>
             </section>
+
+            {payloadQualityIssues.length > 0 ? (
+              <div className="risk-tensor-payload-quality" data-testid="risk-tensor-payload-quality-warning">
+                <strong>主读 payload 字段待核对</strong>
+                <span>报告日 {result.report_date}</span>
+                <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
+                <span>字段 {payloadQualityIssueSummary}</span>
+                <p>
+                  后端主读返回了缺失或不可解析字段；页面只保留后端原始展示/占位，不会在前端补算正式指标，请结合下方
+                  result_meta 与质量证据复核。
+                </p>
+              </div>
+            ) : null}
 
             <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
               <KpiCard
@@ -1511,6 +1628,12 @@ export default function RiskTensorPage() {
                       style={{ height: 400, width: "100%" }}
                     />
                   ) : null}
+                  {invalidRadarRows.length > 0 ? (
+                    <div className="risk-tensor-radar-quality" data-testid="risk-tensor-radar-quality-note">
+                      {invalidRadarRows.map((row) => `${row.key} ${row.issue}`).join(" / ")}
+                      ；未参与前端雷达图数值。
+                    </div>
+                  ) : null}
                   {radarNavigationItems.length > 0 ? (
                     <div className="risk-tensor-radar-actions" aria-label="risk tensor radar dimension navigation">
                       {radarNavigationItems.map((item) => (
@@ -1552,8 +1675,14 @@ export default function RiskTensorPage() {
                     期限桶下钻
                   </div>
                   <div style={{ color: t.colorTextSecondary, fontSize: 13, marginTop: 6 }}>
-                    先用现有风险张量 payload 选择 KRD 最强的期限桶，再查看该桶的敏感度读数。
+                    先用现有风险张量 payload 中可解析的 KRD 字段选择最强期限桶，再查看该桶的敏感度读数。
                   </div>
+                  {invalidKrdRows.length > 0 ? (
+                    <div className="risk-tensor-tenor-drill__quality" data-testid="risk-tensor-krd-quality-note">
+                      {invalidKrdRows.map((row) => `${row.key} ${riskTensorScalarIssue(row.value) ?? "不可解析"}`).join(" / ")}
+                      ；未参与前端主风险桶排序和图表数值。
+                    </div>
+                  ) : null}
                   <div style={chipRowStyle}>
                     {tenorRows.map((row) => (
                       <button
@@ -1692,6 +1821,7 @@ export default function RiskTensorPage() {
               </div>
               <div className="risk-tensor-quality-detail__evidence" data-testid="risk-tensor-quality-evidence">
                 <strong>证据范围</strong>
+                <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
                 <span>来源 {compactVersion(tensorMeta?.source_version)}</span>
                 <span>规则 {compactVersion(tensorMeta?.rule_version)}</span>
                 <span>{fallbackStatus}</span>
@@ -1830,6 +1960,46 @@ export default function RiskTensorPage() {
                         </div>
                       ) : null}
                     </div>
+                    {payloadQualityIssues.length > 0 ? (
+                      <div
+                        className="risk-tensor-quality-detail__payload-checklist"
+                        data-testid="risk-tensor-quality-payload-checklist"
+                      >
+                        <strong>主读 payload 字段复核</strong>
+                        <p>trace_id {tensorMeta?.trace_id ?? "未提供"}；不会在前端补算正式指标。</p>
+                        <ul>
+                          {payloadQualityIssues.map((item) => (
+                            <li key={item.key}>
+                              <span>{item.label}</span>
+                              <b>{item.issue}</b>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="risk-tensor-quality-detail__evidence-request">
+                          <button
+                            type="button"
+                            className="risk-tensor-quality-detail__trace-action"
+                            onClick={handleCopyPayloadQualityRequest}
+                          >
+                            复制字段补证请求
+                          </button>
+                          {payloadQualityRequestCopyMessage ? (
+                            <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                              {payloadQualityRequestCopyMessage}
+                            </small>
+                          ) : null}
+                          {payloadQualityRequestCopyStatus === "failed" ? (
+                            <pre
+                              className="risk-tensor-quality-detail__manual-copy"
+                              data-testid="risk-tensor-payload-quality-request-manual-copy"
+                              tabIndex={0}
+                            >
+                              {payloadQualityRequestCopyText}
+                            </pre>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
                   </li>
                 </ol>
               </div>

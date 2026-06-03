@@ -1,10 +1,10 @@
+import hashlib
+import re
 import socket
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
-import re
 from uuid import uuid4
 
 
@@ -40,7 +40,7 @@ class ObjectStoreRepository:
 
     @staticmethod
     def _new_archive_batch_id() -> str:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         return f"archive-{timestamp}-{uuid4().hex[:8]}"
 
     def healthcheck(self) -> dict[str, object]:
@@ -99,7 +99,7 @@ class ObjectStoreRepository:
             "source_path": str(source_path),
             "ingest_batch_id": effective_ingest_batch_id,
             "archived_path": str(target_path),
-            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_at": datetime.now(UTC).isoformat(),
         }
 
     def archive_bytes(
@@ -131,7 +131,7 @@ class ObjectStoreRepository:
             "source_path": source_key,
             "ingest_batch_id": effective_ingest_batch_id,
             "archived_path": str(target_path),
-            "archived_at": datetime.now(timezone.utc).isoformat(),
+            "archived_at": datetime.now(UTC).isoformat(),
         }
 
     def build_vendor_snapshot_manifest(

@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
-
 import backend.app.services.positions_service as positions_service
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
 

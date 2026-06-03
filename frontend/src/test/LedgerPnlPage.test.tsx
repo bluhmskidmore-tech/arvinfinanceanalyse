@@ -76,6 +76,25 @@ function buildAnalyticalMeta(resultKind: string): ResultMeta {
   };
 }
 
+function buildLedgerMeta(resultKind: string): ResultMeta {
+  return {
+    ...buildMeta(resultKind),
+    basis: "ledger",
+    formal_use_allowed: false,
+    trace_id: `tr_${resultKind}`,
+    source_version: "sv_ledger_test",
+    rule_version: "rv_ledger_test",
+    cache_version: "cv_ledger_test",
+    requested_report_date: "2026-03-31",
+    resolved_report_date: "2026-03-31",
+    as_of_date: "2026-03-31",
+    date_basis: "ledger_report_date",
+    evidence_rows: 1,
+    tables_used: ["qdb_general_ledger_workbook"],
+    filters_applied: { report_date: "2026-03-31", currency: "ALL" },
+  };
+}
+
 function money(yuan: string, wan = "999.99"): LedgerMoneyValue {
   return {
     yuan,
@@ -205,6 +224,94 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
 }
 
 describe("LedgerPnlPage", () => {
+  it("renders ledger summary and detail metadata as non-formal ledger basis", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.dates"),
+        result: { dates: ["2026-03-31"] },
+      })),
+      getLedgerPnlSummary: vi.fn(async () => ({
+        result_meta: buildLedgerMeta("ledger_pnl.summary"),
+        result: {
+          report_date: "2026-03-31",
+          source_version: "sv_ledger_test",
+          ledger_monthly_pnl_core: money("10.00"),
+          ledger_monthly_pnl_all: money("10.00"),
+          ledger_total_assets: money("100.00"),
+          ledger_total_liabilities: money("50.00"),
+          ledger_net_assets: money("50.00"),
+          by_currency: [{ currency: "CNX", total_pnl: money("10.00") }],
+          by_account: [
+            {
+              account_code: "51401000001",
+              account_name: "利息收入",
+              total_pnl: money("10.00"),
+              count: 1,
+            },
+          ],
+        },
+      })),
+      getLedgerPnlData: vi.fn(async () => ({
+        result_meta: buildLedgerMeta("ledger_pnl.data"),
+        result: {
+          report_date: "2026-03-31",
+          summary: {
+            total_pnl_cnx: money("10.00"),
+            total_pnl_cny: money("0.00"),
+            total_pnl: money("10.00"),
+            count: 1,
+          },
+          items: [
+            {
+              account_code: "51401000001",
+              account_name: "利息收入",
+              currency: "CNX",
+              beginning_balance: money("0.00"),
+              ending_balance: money("0.00"),
+              monthly_pnl: money("10.00"),
+              daily_avg_balance: money("0.00"),
+              days_in_period: 31,
+            },
+          ],
+        },
+      })),
+      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+        result: { report_months: [] },
+      })),
+      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+        result_meta: {
+          ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          basis: "ledger" as const,
+          formal_use_allowed: false,
+        },
+        result: buildFormalIndicatorContractPayload(),
+      })),
+    });
+
+    const resultMetaPanel = await screen.findByTestId("ledger-pnl-result-meta-panel");
+    const summaryMeta = await within(resultMetaPanel).findByTestId("ledger-pnl-result-meta-panel-summary");
+    const dataMeta = await within(resultMetaPanel).findByTestId("ledger-pnl-result-meta-panel-data");
+
+    expect(summaryMeta).toHaveTextContent("Ledger 汇总");
+    expect(summaryMeta).toHaveTextContent("台账口径");
+    expect(summaryMeta).toHaveTextContent("正式可用");
+    expect(summaryMeta).toHaveTextContent("否");
+    expect(summaryMeta).toHaveTextContent("ledger_report_date");
+    expect(summaryMeta).toHaveTextContent("qdb_general_ledger_workbook");
+
+    expect(dataMeta).toHaveTextContent("Ledger 明细");
+    expect(dataMeta).toHaveTextContent("台账口径");
+    expect(dataMeta).toHaveTextContent("正式可用");
+    expect(dataMeta).toHaveTextContent("否");
+    expect(dataMeta).toHaveTextContent("ledger_report_date");
+    expect(dataMeta).toHaveTextContent("qdb_general_ledger_workbook");
+  });
+
   it("renders the formal financial indicator source contract without promoting candidate values", async () => {
     const base = createApiClient({ mode: "mock" });
     const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => ({
@@ -1445,6 +1552,13 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("科目层残差 10.00 亿元");
     expect(panel).toHaveTextContent("明细层残差 20.00 亿元");
     expect(panel).toHaveTextContent("补明细或确认过滤口径");
+    expect(panel).toHaveTextContent("明细残差候选科目");
+    expect(panel).toHaveTextContent("科目汇总金额");
+    expect(panel).toHaveTextContent("明细合计金额");
+    expect(panel).toHaveTextContent("602101 存款利息支出");
+    expect(panel).toHaveTextContent("缺明细 10.00 亿元");
+    expect(panel).toHaveTextContent("610101 公允价值变动收益");
+    expect(panel).toHaveTextContent("明细多 10.00 亿元");
     expect(panel).toHaveTextContent("利息收支");
     expect(panel).toHaveTextContent("估值变动");
     expect(panel).toHaveTextContent("衍生品/套保");

@@ -569,6 +569,98 @@ export type DV01MovementPayload = {
   computed_at: string;
 };
 
+export type DV01ActionScenarioBreach = {
+  scenario_name: string;
+  shock_bp: Numeric;
+  estimated_loss: Numeric;
+  loss_threshold: Numeric;
+  risk_level: string;
+};
+
+export type DV01ActionTenorItem = {
+  tenor_bucket: string;
+  dv01: Numeric;
+  dv01_share: Numeric;
+  suggested_reduction_dv01: Numeric;
+  position_count: number;
+};
+
+export type DV01ActionIssuerItem = {
+  issuer_name: string;
+  dv01: Numeric;
+  dv01_share: Numeric;
+  suggested_reduction_dv01: Numeric;
+  position_count: number;
+};
+
+export type DV01ActionBondItem = {
+  instrument_code: string;
+  instrument_name: string | null;
+  issuer_name: string | null;
+  rating: string | null;
+  tenor_bucket: string;
+  accounting_class: string;
+  face_value: Numeric;
+  market_value: Numeric;
+  modified_duration: Numeric;
+  dv01: Numeric;
+  dv01_share: Numeric;
+  suggested_reduction_dv01: Numeric;
+};
+
+export type DV01ActionPlanPayload = {
+  report_date: string;
+  accounting_class: string;
+  risk_level: "ok" | "watch" | "breach" | "no_data";
+  policy_basis: string;
+  threshold_note: string;
+  limit_source: string;
+  limit_source_version: string;
+  limit_rule_version: string;
+  limit_effective_date: string | null;
+  total_dv01: Numeric;
+  limit_dv01: Numeric;
+  warning_dv01: Numeric;
+  limit_usage: Numeric;
+  remaining_limit_dv01: Numeric;
+  dv01_to_reduce: Numeric;
+  hedge_instrument_label: string;
+  hedge_instrument_dv01: Numeric;
+  suggested_hedge_units: Numeric;
+  position_count: number;
+  breach_count: number;
+  scenario_breaches: DV01ActionScenarioBreach[];
+  tenor_actions: DV01ActionTenorItem[];
+  issuer_actions: DV01ActionIssuerItem[];
+  bond_actions: DV01ActionBondItem[];
+  warnings: string[];
+  computed_at: string;
+};
+
+export type DV01LimitConfigStatusRow = {
+  accounting_class: string;
+  status: "ready" | "missing" | "invalid";
+  limit_dv01: Numeric;
+  warning_dv01: Numeric;
+  hedge_target_dv01: Numeric;
+  limit_source: string;
+  limit_source_version: string;
+  limit_rule_version: string;
+  limit_effective_date: string | null;
+  message: string;
+};
+
+export type DV01LimitConfigStatusPayload = {
+  report_date: string;
+  overall_status: "ready" | "incomplete";
+  configured_count: number;
+  missing_count: number;
+  invalid_count: number;
+  rows: DV01LimitConfigStatusRow[];
+  computed_at: string;
+  warnings: string[];
+};
+
 export type SpreadScenarioResult = {
   scenario_name: string;
   spread_change_bp: Numeric;

@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.app.agent.schemas.agent_response import AgentEnvelope
-
+from pydantic import BaseModel, Field
 
 AgentRunStatus = Literal["queued", "starting", "running", "completed", "failed"]
 

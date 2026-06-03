@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
-
 from backend.app.models.base import Base
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
 
 def _normalize_sqlalchemy_dsn(dsn: str) -> str:

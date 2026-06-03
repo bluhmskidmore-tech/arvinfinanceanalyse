@@ -4,7 +4,6 @@ import math
 from pathlib import Path
 
 import pandas as pd
-
 from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
 
 _FINAL_SIGNAL_FILE = "final_signal.csv"

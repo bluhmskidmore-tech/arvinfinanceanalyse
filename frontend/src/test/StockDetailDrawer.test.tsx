@@ -29,17 +29,24 @@ function buildStockDetailEnvelope(
       rule_version?: string;
       quality_flag?: ApiQuality;
       vendor_status?: ResultMeta["vendor_status"];
-    };
+    } | null;
   } = {},
 ): ApiEnvelope<LivermoreStockDetailPayload> {
-  return buildMockApiEnvelope(
+  const requestedAsOfDate: LivermoreStockDetailPayload["requested_as_of_date"] =
+    overrides.payload && "requested_as_of_date" in overrides.payload
+      ? (overrides.payload.requested_as_of_date ?? null)
+      : "2026-04-29";
+  const asOfDate: LivermoreStockDetailPayload["as_of_date"] =
+    overrides.payload && "as_of_date" in overrides.payload ? (overrides.payload.as_of_date ?? null) : "2026-04-29";
+
+  const envelope = buildMockApiEnvelope<LivermoreStockDetailPayload>(
     "market_data.livermore.stock_detail",
     {
       basis: "analytical",
       state: "ok",
       stock_code: "000001.SZ",
-      requested_as_of_date: overrides.payload?.requested_as_of_date ?? "2026-04-29",
-      as_of_date: overrides.payload?.as_of_date ?? "2026-04-29",
+      requested_as_of_date: requestedAsOfDate,
+      as_of_date: asOfDate,
       lookback: 60,
       candles: [
         {
@@ -68,6 +75,11 @@ function buildStockDetailEnvelope(
       vendor_status: overrides.meta?.vendor_status ?? "ok",
     },
   );
+  if (overrides.meta === null) {
+    const responseWithoutMeta = { result: envelope.result };
+    return responseWithoutMeta as ApiEnvelope<LivermoreStockDetailPayload>;
+  }
+  return envelope;
 }
 
 function buildCandidateHistoryEnvelope(items: LivermoreCandidateHistoryRow[]) {
@@ -164,6 +176,62 @@ describe("StockDetailDrawer", () => {
     expect(screen.getByText("截至日 2026-04-29")).toBeInTheDocument();
     expect(screen.getByText("请求日期 2026-05-08")).toBeInTheDocument();
     expect(screen.queryByText("截至日 2026-05-08")).not.toBeInTheDocument();
+  });
+
+  it("keeps stock detail lineage visible as pending when result metadata is missing", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope({ meta: null }));
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    const footerMeta = await screen.findByTestId("stock-detail-footer-meta");
+    expect(footerMeta).toHaveTextContent("来源版本 待确认");
+    expect(footerMeta).toHaveTextContent("规则版本 待确认");
+    expect(footerMeta).toHaveTextContent("质量 待确认");
+    expect(footerMeta).toHaveTextContent("通道 待确认");
+  });
+
+  it("does not show the requested date as the stock detail data date when no data date is resolved", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        payload: {
+          requested_as_of_date: "2026-05-08",
+          as_of_date: null,
+        },
+      }),
+    );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-05-08" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    await screen.findByTestId("stock-detail-footer-meta");
+    expect(screen.getByText("截至日 日期待补")).toBeInTheDocument();
+    expect(screen.getByText("请求日期 2026-05-08")).toBeInTheDocument();
+    expect(screen.queryByText("截至日 2026-05-08")).not.toBeInTheDocument();
+    expect(histSpy).not.toHaveBeenCalled();
   });
 
   it("fetches candidate history with the resolved detail date when a requested date falls back", async () => {

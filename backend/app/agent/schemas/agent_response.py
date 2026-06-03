@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
-
 from backend.app.schemas.result_meta import ResultMeta
+from pydantic import BaseModel, Field
 
 
 class AgentDrill(BaseModel):
@@ -56,4 +55,3 @@ class AgentDisabledResponse(BaseModel):
     enabled: bool = False
     phase: str = "phase1"
     detail: str = "Agent endpoint is planned but disabled in Phase 1."
-

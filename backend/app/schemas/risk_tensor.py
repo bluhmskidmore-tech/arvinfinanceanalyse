@@ -5,10 +5,9 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field, model_validator
-
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
+from pydantic import BaseModel, Field, model_validator
 
 
 class Dv01StressScenario(BaseModel):
@@ -170,5 +169,5 @@ class RiskTensorPayload(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
     @classmethod
-    def from_tensor(cls, tensor: PortfolioRiskTensor) -> "RiskTensorPayload":
+    def from_tensor(cls, tensor: PortfolioRiskTensor) -> RiskTensorPayload:
         return cls(**asdict(tensor))

@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 from backend.app.schemas.common_numeric import Numeric
+from pydantic import BaseModel, Field
 
 
 class CoreMetricsCardData(BaseModel):

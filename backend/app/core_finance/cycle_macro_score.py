@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 PMI_SERIES_ID = "M0017126"
 SOCIAL_FINANCING_YOY_SERIES_ID = "M5525763"

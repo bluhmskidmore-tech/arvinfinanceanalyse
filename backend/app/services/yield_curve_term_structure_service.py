@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from backend.app.governance.settings import get_settings
@@ -165,7 +165,7 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         report_date=report_date,
         curves=curves_out,
         warnings=warnings,
-        computed_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        computed_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
     return build_formal_result_envelope(
         result_meta=meta,

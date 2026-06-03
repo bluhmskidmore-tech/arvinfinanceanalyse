@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.accounting_asset_movement_service import (
@@ -12,6 +10,7 @@ from backend.app.services.accounting_asset_movement_service import (
     accounting_asset_movement_envelope,
     refresh_accounting_asset_movement,
 )
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui/balance-movement-analysis")
 

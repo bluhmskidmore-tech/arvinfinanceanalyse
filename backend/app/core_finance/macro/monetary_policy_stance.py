@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from math import sqrt
-from typing import Any, Iterable
+from typing import Any
 
 from .helpers import (
     available_dates,

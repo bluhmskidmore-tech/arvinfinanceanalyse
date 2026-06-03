@@ -41,7 +41,7 @@ describe("ResearchCalendarSection", () => {
           newsSourceLabel: "来源：Choice 宏观新闻",
           newsAsOfLabel: "数据截至 04-21 15:06",
           newsStatusLabel: "来源状态：正常",
-          newsRefreshLabel: "刷新：随页面查询自动更新",
+          newsRefreshLabel: "刷新：随页面查询读取已落库数据",
           supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
         }}
       />,
@@ -54,7 +54,7 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("来源：Choice 宏观新闻")).toBeInTheDocument();
     expect(screen.getByText("数据截至 04-21 15:06")).toBeInTheDocument();
     expect(screen.getByText("来源状态：正常")).toBeInTheDocument();
-    expect(screen.getByText("刷新：随页面查询自动更新")).toBeInTheDocument();
+    expect(screen.getByText("刷新：随页面查询读取已落库数据")).toBeInTheDocument();
     expect(screen.getByText("ISM 制造业 PMI")).toBeInTheDocument();
     expect(screen.getByText("明日")).toBeInTheDocument();
     expect(screen.getByText("高优先级")).toBeInTheDocument();

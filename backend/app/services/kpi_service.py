@@ -4,7 +4,12 @@ from datetime import date
 from decimal import Decimal
 
 from backend.app.repositories.kpi_repo import KpiRepository
-from backend.app.schemas.kpi import KpiOwnerListPayload, KpiOwnerPayload, KpiPeriodMetricSummaryPayload, KpiPeriodSummaryPayload
+from backend.app.schemas.kpi import (
+    KpiOwnerListPayload,
+    KpiOwnerPayload,
+    KpiPeriodMetricSummaryPayload,
+    KpiPeriodSummaryPayload,
+)
 
 
 class KpiAuthorityBlockedError(RuntimeError):

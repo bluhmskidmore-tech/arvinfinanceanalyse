@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from datetime import date
 from decimal import Decimal
-from typing import Any, Iterable, Mapping
-
-logger = logging.getLogger(__name__)
+from typing import Any
 
 from .attribution_core import get_tenor_bucket
 from .bond_duration import estimate_duration, modified_duration_from_macaulay
 from .krd import classify_asset_class, map_accounting_class
 from .safe_decimal import safe_decimal
+
+logger = logging.getLogger(__name__)
 
 CURVE_TENOR_YEARS = {
     "1Y": 1.0,
@@ -118,14 +119,16 @@ def interpolate_curve_rate(
     if target_years is None:
         return Decimal("0")
 
-    from backend.app.core_finance.curve_engine.interpolation import (
-        interpolate as _engine_interpolate,
-        build_cubic_spline as _build_spline,
-    )
     from backend.app.core_finance.curve_engine.curve_types import (
         CurvePoint,
         FittedCurve,
         InterpolationMethod,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
     )
 
     points: list[CurvePoint] = []

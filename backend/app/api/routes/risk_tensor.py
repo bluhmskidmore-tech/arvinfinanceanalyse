@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
-
 from backend.app.governance.settings import get_settings
 from backend.app.services.risk_tensor_service import (
     risk_tensor_dates_envelope,
     risk_tensor_envelope,
 )
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 

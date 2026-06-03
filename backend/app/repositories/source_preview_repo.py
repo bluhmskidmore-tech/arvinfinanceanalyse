@@ -5,7 +5,6 @@ from functools import lru_cache
 from pathlib import Path
 
 import duckdb
-
 from backend.app.core_finance.source_preview_parsers import (
     RULE_VERSION,
     build_source_version,

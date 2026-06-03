@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Bond Analytics domain — type slice of ApiClient.
  * Imported and re-exported by client.ts for backward compatibility.
  */
@@ -9,6 +9,8 @@ import type {
   BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
+  DV01ActionPlanPayload,
+  DV01LimitConfigStatusPayload,
   DV01MovementPayload,
   DV01ReconciliationPayload,
   DV01RiskPayload,
@@ -95,6 +97,13 @@ type BondAnalyticsCoreSurfaceMethods = {
     reportDate: string,
     options?: { accountingClass?: string; topN?: number },
   ) => Promise<ApiEnvelope<DV01MovementPayload>>;
+  getBondAnalyticsDv01ActionPlan: (
+    reportDate: string,
+    options?: { accountingClass?: string; topN?: number },
+  ) => Promise<ApiEnvelope<DV01ActionPlanPayload>>;
+  getBondAnalyticsDv01LimitConfigStatus: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<DV01LimitConfigStatusPayload>>;
   getBondAnalyticsActionAttribution: (
     reportDate: string,
     periodType: string,
@@ -142,6 +151,8 @@ type BondAnalyticsCoreClientMethods = Pick<
   | "getBondAnalyticsDv01Risk"
   | "getBondAnalyticsDv01Reconciliation"
   | "getBondAnalyticsDv01Movement"
+  | "getBondAnalyticsDv01ActionPlan"
+  | "getBondAnalyticsDv01LimitConfigStatus"
   | "getBondAnalyticsActionAttribution"
   | "getBondAnalyticsAccountingClassAudit"
   | "getBondAnalyticsCreditSpreadMigration"
@@ -360,7 +371,7 @@ export function createDemoBondAnalyticsClient(
       _options?: { assetClass?: string; accountingClass?: string },
     ) {
       await delay();
-      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
+      void _options;
       const zy = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware });
       const zp = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware });
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
@@ -440,7 +451,7 @@ export function createDemoBondAnalyticsClient(
       _options?: { scenarioSet?: string },
     ) {
       await delay();
-      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
+      void _options;
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.krd_curve_risk",
         {
@@ -549,6 +560,93 @@ export function createDemoBondAnalyticsClient(
           computed_at: "2026-04-13T00:00:00Z",
         },
         { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsDv01ActionPlan(
+      reportDate: string,
+      options?: { accountingClass?: string; topN?: number },
+    ) {
+      await delay();
+      void options?.topN;
+      const accountingClass = options?.accountingClass ?? "OCI";
+      const zeroRatio = formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: true });
+      const zeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
+      const signedZeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: true });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope<DV01ActionPlanPayload>(
+        "bond_analytics.dv01_action_plan",
+        {
+          report_date: reportDate,
+          accounting_class: accountingClass,
+          risk_level: "no_data",
+          policy_basis: "page_threshold_fallback",
+          threshold_note: "页面预警阈值，不代表正式限额；未接入正式限额源时仅作参考。",
+          limit_source: "page_threshold",
+          limit_source_version: "unconfigured",
+          limit_rule_version: "rv_dv01_page_threshold_v3",
+          limit_effective_date: null,
+          total_dv01: zeroDv01,
+          limit_dv01: zeroDv01,
+          warning_dv01: zeroDv01,
+          limit_usage: zeroRatio,
+          remaining_limit_dv01: signedZeroDv01,
+          dv01_to_reduce: signedZeroDv01,
+          hedge_instrument_label: "DV01 hedge unit",
+          hedge_instrument_dv01: zeroDv01,
+          suggested_hedge_units: zeroRatio,
+          position_count: 0,
+          breach_count: 0,
+          scenario_breaches: [],
+          tenor_actions: [],
+          issuer_actions: [],
+          bond_actions: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          as_of_date: reportDate,
+          date_basis: "bond_analytics_report_date",
+          filters_applied: {
+            report_date: reportDate,
+            accounting_class: accountingClass,
+            policy_basis: "page_threshold_fallback",
+          },
+          tables_used: ["fact_formal_bond_analytics_daily"],
+          evidence_rows: 0,
+        },
+      );
+    },
+    async getBondAnalyticsDv01LimitConfigStatus(reportDate: string) {
+      await delay();
+      const zeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope<DV01LimitConfigStatusPayload>(
+        "bond_analytics.dv01_limit_config_status",
+        {
+          report_date: reportDate,
+          overall_status: "incomplete",
+          configured_count: 0,
+          missing_count: 4,
+          invalid_count: 0,
+          rows: ["AC", "OCI", "TPL", "all"].map((accountingClass) => ({
+            accounting_class: accountingClass,
+            status: "missing" as const,
+            limit_dv01: zeroDv01,
+            warning_dv01: zeroDv01,
+            hedge_target_dv01: zeroDv01,
+            limit_source: "unconfigured",
+            limit_source_version: "unconfigured",
+            limit_rule_version: "unconfigured",
+            limit_effective_date: null,
+            message: "未找到正式 DV01 限额配置。",
+          })),
+          warnings: ["未接入正式 DV01 限额配置；页面仅展示配置状态，不生成业务限额。"],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true, quality_flag: "warning" },
       );
     },
     async getBondAnalyticsActionAttribution(reportDate: string, periodType: string) {
@@ -706,7 +804,7 @@ export function createDemoBondAnalyticsClient(
       _options?: { curveTypes?: string },
     ) {
       await delay();
-      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
+      void _options;
       return mockBondAnalyticsYieldCurveTermStructure(reportDate);
     },
     async getCreditSpreadAnalysisDetail(reportDate: string) {
@@ -1118,6 +1216,25 @@ export function createRealBondAnalyticsClient(
         `/api/bond-analytics/dv01-movement?${params.toString()}`,
       );
     },
+    getBondAnalyticsDv01ActionPlan: (
+      reportDate: string,
+      options?: { accountingClass?: string; topN?: number },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      params.set("accounting_class", options?.accountingClass ?? "OCI");
+      params.set("top_n", String(options?.topN ?? 20));
+      return requestJson<DV01ActionPlanPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/dv01-action-plan?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsDv01LimitConfigStatus: (reportDate: string) =>
+      requestJson<DV01LimitConfigStatusPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/dv01-limit-config-status?report_date=${encodeURIComponent(reportDate)}`,
+      ),
     getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>
       requestJson<ActionAttributionPayload>(
         fetchImpl,

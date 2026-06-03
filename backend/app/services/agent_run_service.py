@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
@@ -154,7 +155,7 @@ def _execute_agent_run(
                 started_at=started_at,
             ),
         )
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         try:
             envelope = executor(
                 request,
@@ -230,7 +231,7 @@ def _transition_record(
 
 
 def _append_record(settings: Any, record: AgentRunRecord) -> None:
-    GovernanceRepository(base_dir=getattr(settings, "governance_path")).append(
+    GovernanceRepository(base_dir=settings.governance_path).append(
         AGENT_RUN_STREAM,
         {
             "job_name": AGENT_RUN_JOB_NAME,
@@ -259,7 +260,7 @@ def _load_cached_run_record(run_id: str) -> dict[str, object] | None:
 def _load_run_records(settings: Any, *, run_id: str) -> list[dict[str, object]]:
     records = [
         record
-        for record in GovernanceRepository(base_dir=getattr(settings, "governance_path")).read_all(AGENT_RUN_STREAM)
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(AGENT_RUN_STREAM)
         if str(record.get("run_id") or "") == run_id
     ]
     return records
@@ -285,15 +286,15 @@ def _status_from_record(record: dict[str, object]) -> AgentRunStatusResponse:
 
 
 def _build_run_id() -> str:
-    return f"agent_run:{datetime.now(timezone.utc).isoformat()}:{uuid4().hex[:8]}"
+    return f"agent_run:{datetime.now(UTC).isoformat()}:{uuid4().hex[:8]}"
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _elapsed_seconds(started: datetime) -> float:
-    return round((datetime.now(timezone.utc) - started).total_seconds(), 3)
+    return round((datetime.now(UTC) - started).total_seconds(), 3)
 
 
 def _optional_text(value: object) -> str | None:

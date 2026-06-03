@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
-
 from backend.app.services.cashflow_projection_service import get_cashflow_projection
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/cashflow-projection", tags=["cashflow-projection"])
 

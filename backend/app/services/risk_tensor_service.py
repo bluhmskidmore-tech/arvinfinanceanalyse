@@ -13,8 +13,8 @@ from backend.app.repositories.risk_tensor_repo import (
     load_latest_bond_analytics_lineage,
     load_latest_bond_analytics_lineage_by_report_date,
 )
-from backend.app.schemas.risk_tensor import RiskTensorPayload
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, null_numeric, numeric_from_raw
+from backend.app.schemas.risk_tensor import RiskTensorPayload
 from backend.app.services.explicit_numeric import promote_flat_payload
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,

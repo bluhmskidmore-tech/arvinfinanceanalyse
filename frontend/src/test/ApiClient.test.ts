@@ -1427,6 +1427,187 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode for the bond analytics DV01 action plan endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_action_plan",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_action_plan",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          accounting_class: "OCI",
+          risk_level: "ok",
+          policy_basis: "page_threshold",
+          threshold_note: "页面预警阈值，不代表正式限额。",
+          limit_source: "page_threshold",
+          limit_source_version: "unconfigured",
+          limit_rule_version: "rv_dv01_page_threshold_v3",
+          limit_effective_date: null,
+          total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          limit_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          warning_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          limit_usage: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          remaining_limit_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "+0",
+            precision: 0,
+            sign_aware: true,
+          },
+          dv01_to_reduce: {
+            raw: 0,
+            unit: "dv01",
+            display: "+0",
+            precision: 0,
+            sign_aware: true,
+          },
+          hedge_instrument_label: "DV01 hedge unit",
+          hedge_instrument_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          suggested_hedge_units: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: true,
+          },
+          position_count: 0,
+          breach_count: 0,
+          scenario_breaches: [],
+          tenor_actions: [],
+          issuer_actions: [],
+          bond_actions: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01ActionPlan("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_action_plan");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-action-plan?report_date=2026-03-31&accounting_class=all&top_n=50",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("uses real mode for the bond analytics DV01 limit config status endpoint", async () => {
+    const zeroDv01 = {
+      raw: 0,
+      unit: "dv01",
+      display: "0",
+      precision: 0,
+      sign_aware: false,
+    };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_limit_config_status",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_limit_config_status",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          overall_status: "incomplete",
+          configured_count: 0,
+          missing_count: 4,
+          invalid_count: 0,
+          rows: [
+            {
+              accounting_class: "OCI",
+              status: "missing",
+              limit_dv01: zeroDv01,
+              warning_dv01: zeroDv01,
+              hedge_target_dv01: zeroDv01,
+              limit_source: "unconfigured",
+              limit_source_version: "unconfigured",
+              limit_rule_version: "unconfigured",
+              limit_effective_date: null,
+              message: "未找到正式 DV01 限额配置。",
+            },
+          ],
+          warnings: ["未接入正式 DV01 限额配置。"],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01LimitConfigStatus("2026-03-31");
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_limit_config_status");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-limit-config-status?report_date=2026-03-31",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
   it("returns a structured analytical macro-bond-linkage mock envelope", async () => {
     const client = createApiClient({ mode: "mock" });
 

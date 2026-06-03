@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
@@ -13,7 +13,6 @@ from backend.app.tasks.source_preview_refresh import (
     build_source_preview_refresh_lock_key,
     refresh_source_preview_cache,
 )
-
 
 IN_FLIGHT_STATUSES = {"queued", "running"}
 TERMINAL_STATUSES = {"completed", "failed"}
@@ -67,7 +66,7 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                 status="queued",
                 source_version="sv_preview_pending",
                 vendor_version="vv_none",
-                queued_at=datetime.now(timezone.utc).isoformat(),
+                queued_at=datetime.now(UTC).isoformat(),
             )
 
             actor_kwargs = {
@@ -146,7 +145,7 @@ def source_preview_refresh_status(
 
 
 def _build_run_id() -> str:
-    return f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _refresh_trigger_lock(settings: Settings) -> LockDefinition:
@@ -186,10 +185,10 @@ def _is_stale_source_preview_inflight_record(record: dict[str, object]) -> bool:
         )
         parsed = datetime.fromisoformat(normalized)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         else:
-            parsed = parsed.astimezone(timezone.utc)
-        return datetime.now(timezone.utc) - parsed > STALE_IN_FLIGHT_AFTER
+            parsed = parsed.astimezone(UTC)
+        return datetime.now(UTC) - parsed > STALE_IN_FLIGHT_AFTER
     return True
 
 
@@ -213,7 +212,7 @@ def _mark_stale_source_preview_inflight_run(
             "vendor_version": "vv_none",
             "preview_sources": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
         error_message="Source preview refresh stale-run governance write failed.",
     )
@@ -239,7 +238,7 @@ def _record_dispatch_failure(
             "vendor_version": "vv_none",
             "preview_sources": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
         error_message="Source preview refresh governance write failed.",
     )
@@ -250,7 +249,7 @@ def _record_dispatch_failure(
         source_version="sv_preview_failed",
         vendor_version="vv_none",
         error_message=error_message,
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(UTC).isoformat(),
     )
 
 

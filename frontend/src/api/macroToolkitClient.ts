@@ -670,6 +670,40 @@ export type MacroToolkitClientMethods = {
   getChoiceStockRefreshStatus: (runId: string) => Promise<MacroToolkitChoiceStockRefreshResponse>;
 };
 
+const MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION = {
+  status: "shadow_review_ready",
+  label: "影子评估就绪",
+  reason: "数据已命中且与分析日同日；当前仍作为 supplemental_observation，不改变 Crisis Score 公式。",
+  next_step: "完成历史回测、相关性检验、权重审批后，才能作为公式候选提交。",
+};
+
+const MOCK_CRISIS_COMMODITY_SHADOW_EVALUATION = {
+  status: "review_ready",
+  label: "影子评估可读",
+  sample_count: 41,
+  window_start: "2026-03-01",
+  window_end: "2026-04-10",
+  target: "crisis_score",
+  candidate_metric: "daily_return",
+  same_day_correlation: 0,
+  lead_1d_correlation: 0,
+  lag_1d_correlation: 0,
+  crisis_hit_rate: 0.55,
+  crisis_sample_count: 11,
+  summary: "影子评估：样本 41，同日相关 0.00，危机期命中率 0.55。",
+  next_step: "进入公式前仍需历史回测、相关性检验、权重审批和版本记录。",
+};
+
+const MOCK_CRISIS_COMMODITY_SHORT_SHADOW_EVALUATION = {
+  status: "history_short",
+  label: "影子评估样本不足",
+  sample_count: 17,
+  target: "crisis_score",
+  candidate_metric: "daily_return",
+  summary: "商品候选与 Crisis Score 仅 17 个重叠样本，暂不能评估相关性。",
+  next_step: "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
+};
+
 const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
   {
     key: "monetary_policy_stance",
@@ -1008,6 +1042,18 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
         sources: ["tushare"],
         latest_dates: ["2026-04-10"],
         used_in_crisis_score: ["nanhua"],
+        candidate_summary: {
+          shadow_review_ready_count: 6,
+          needs_current_data_count: 0,
+          missing_data_count: 0,
+          shadow_evaluation_ready_count: 2,
+          shadow_evaluation_short_count: 4,
+          shadow_evaluation_status_counts: { review_ready: 2, history_short: 4 },
+          shadow_evaluation_next_step: "2 个商品候选可读，4 个样本不足；先补齐样本不足品种的历史数据，再做人工复核和权重审批。",
+          formula_change_required: true,
+          approval_required: true,
+          next_step: "商品旁证进入 Crisis Score 公式前，需要先完成历史回测、相关性检验、权重审批和版本记录。",
+        },
         items: [
           {
             field: "rebar",
@@ -1024,6 +1070,8 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
             series_id: "COMMODITY.RB",
             source: "tushare",
             value: 3588,
+            candidate_decision: MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION,
+            shadow_evaluation: MOCK_CRISIS_COMMODITY_SHORT_SHADOW_EVALUATION,
           },
           {
             field: "iron_ore",
@@ -1040,6 +1088,8 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
             series_id: "COMMODITY.I",
             source: "tushare",
             value: 812.5,
+            candidate_decision: MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION,
+            shadow_evaluation: MOCK_CRISIS_COMMODITY_SHORT_SHADOW_EVALUATION,
           },
           {
             field: "copper",
@@ -1056,6 +1106,8 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
             series_id: "CA.COPPER",
             source: "tushare",
             value: 81234.5,
+            candidate_decision: MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION,
+            shadow_evaluation: MOCK_CRISIS_COMMODITY_SHADOW_EVALUATION,
           },
           {
             field: "aluminum",
@@ -1072,6 +1124,8 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
             series_id: "CA.ALUMINUM",
             source: "tushare",
             value: 19876,
+            candidate_decision: MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION,
+            shadow_evaluation: MOCK_CRISIS_COMMODITY_SHORT_SHADOW_EVALUATION,
           },
           {
             field: "crude_oil",
@@ -1088,6 +1142,8 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
             series_id: "COMMODITY.SC",
             source: "tushare",
             value: 612.3,
+            candidate_decision: MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION,
+            shadow_evaluation: MOCK_CRISIS_COMMODITY_SHADOW_EVALUATION,
           },
           {
             field: "gold",
@@ -1104,6 +1160,8 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
             series_id: "COMMODITY.AU",
             source: "tushare",
             value: 548.2,
+            candidate_decision: MOCK_CRISIS_COMMODITY_CANDIDATE_DECISION,
+            shadow_evaluation: MOCK_CRISIS_COMMODITY_SHORT_SHADOW_EVALUATION,
           },
         ],
       },

@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type {
   ApiEnvelope,
+  DV01ActionPlanPayload,
+  DV01LimitConfigStatusPayload,
   DV01MovementPayload,
   DV01ReconciliationPayload,
   DV01RiskPayload,
@@ -29,6 +31,15 @@ type GetBondAnalyticsDv01Movement = (
   reportDate: string,
   options?: { accountingClass?: string; topN?: number },
 ) => Promise<ApiEnvelope<DV01MovementPayload>>;
+
+type GetBondAnalyticsDv01ActionPlan = (
+  reportDate: string,
+  options?: { accountingClass?: string; topN?: number },
+) => Promise<ApiEnvelope<DV01ActionPlanPayload>>;
+
+type GetBondAnalyticsDv01LimitConfigStatus = (
+  reportDate: string,
+) => Promise<ApiEnvelope<DV01LimitConfigStatusPayload>>;
 
 const yuan = (raw: number, signAware = false) =>
   formatRawAsNumeric({ raw, unit: "yuan", sign_aware: signAware });
@@ -68,6 +79,22 @@ function movementMeta(): ResultMeta {
     ...resultMeta(),
     trace_id: "tr_dv01_movement",
     result_kind: "bond_analytics.dv01_movement",
+  };
+}
+
+function actionPlanMeta(): ResultMeta {
+  return {
+    ...resultMeta(),
+    trace_id: "tr_dv01_action_plan",
+    result_kind: "bond_analytics.dv01_action_plan",
+  };
+}
+
+function limitConfigStatusMeta(): ResultMeta {
+  return {
+    ...resultMeta(),
+    trace_id: "tr_dv01_limit_config_status",
+    result_kind: "bond_analytics.dv01_limit_config_status",
   };
 }
 
@@ -269,6 +296,149 @@ function movementPayload(overrides: Partial<DV01MovementPayload> = {}): DV01Move
   };
 }
 
+function actionPlanPayload(overrides: Partial<DV01ActionPlanPayload> = {}): DV01ActionPlanPayload {
+  return {
+    report_date: "2026-03-31",
+    accounting_class: "OCI",
+    risk_level: "breach",
+    policy_basis: "page_threshold",
+    threshold_note: "页面预警阈值，不代表正式限额。",
+    limit_source: "page_threshold",
+    limit_source_version: "unconfigured",
+    limit_rule_version: "rv_dv01_page_threshold_v3",
+    limit_effective_date: null,
+    total_dv01: dv01(1_150_000),
+    limit_dv01: dv01(1_000_000),
+    warning_dv01: dv01(900_000),
+    limit_usage: ratio(1.15, 2),
+    remaining_limit_dv01: formatRawAsNumeric({ raw: -150_000, unit: "dv01", sign_aware: true }),
+    dv01_to_reduce: formatRawAsNumeric({ raw: 250_000, unit: "dv01", sign_aware: true }),
+    hedge_instrument_label: "DV01 hedge unit",
+    hedge_instrument_dv01: dv01(50_000),
+    suggested_hedge_units: ratio(5, 2),
+    position_count: 12,
+    breach_count: 3,
+    scenario_breaches: [
+      {
+        scenario_name: "rate_up_10bp",
+        shock_bp: bp(10),
+        estimated_loss: yuan(11_500_000, false),
+        loss_threshold: yuan(10_000_000, false),
+        risk_level: "watch",
+      },
+      {
+        scenario_name: "rate_up_25bp",
+        shock_bp: bp(25),
+        estimated_loss: yuan(28_750_000, false),
+        loss_threshold: yuan(25_000_000, false),
+        risk_level: "breach",
+      },
+    ],
+    tenor_actions: [
+      {
+        tenor_bucket: "7-10Y",
+        dv01: dv01(900_000),
+        dv01_share: ratio(0.7826, 4),
+        suggested_reduction_dv01: formatRawAsNumeric({ raw: 250_000, unit: "dv01", sign_aware: true }),
+        position_count: 8,
+      },
+    ],
+    issuer_actions: [
+      {
+        issuer_name: "发行人A",
+        dv01: dv01(700_000),
+        dv01_share: ratio(0.6087, 4),
+        suggested_reduction_dv01: formatRawAsNumeric({ raw: 250_000, unit: "dv01", sign_aware: true }),
+        position_count: 3,
+      },
+    ],
+    bond_actions: [
+      {
+        instrument_code: "BOND-1",
+        instrument_name: "测试债 01",
+        issuer_name: "发行人A",
+        rating: "AAA",
+        tenor_bucket: "7-10Y",
+        accounting_class: "OCI",
+        face_value: yuan(1_000_000_000),
+        market_value: yuan(1_050_000_000),
+        modified_duration: ratio(7.2),
+        dv01: dv01(390_000),
+        dv01_share: ratio(0.3391, 4),
+        suggested_reduction_dv01: formatRawAsNumeric({ raw: 135_000, unit: "dv01", sign_aware: true }),
+      },
+    ],
+    warnings: [],
+    computed_at: "2026-04-12T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function limitConfigStatusPayload(
+  overrides: Partial<DV01LimitConfigStatusPayload> = {},
+): DV01LimitConfigStatusPayload {
+  return {
+    report_date: "2026-03-31",
+    overall_status: "incomplete",
+    configured_count: 1,
+    missing_count: 3,
+    invalid_count: 0,
+    rows: [
+      {
+        accounting_class: "AC",
+        status: "missing",
+        limit_dv01: dv01(0),
+        warning_dv01: dv01(0),
+        hedge_target_dv01: dv01(0),
+        limit_source: "unconfigured",
+        limit_source_version: "unconfigured",
+        limit_rule_version: "unconfigured",
+        limit_effective_date: null,
+        message: "未找到正式 DV01 限额配置。",
+      },
+      {
+        accounting_class: "OCI",
+        status: "ready",
+        limit_dv01: dv01(1_200_000),
+        warning_dv01: dv01(1_000_000),
+        hedge_target_dv01: dv01(1_000_000),
+        limit_source: "risk_committee_minutes",
+        limit_source_version: "risk_minutes_2026_03",
+        limit_rule_version: "rv_dv01_limit_policy_v1",
+        limit_effective_date: "2026-03-01",
+        message: "已接入正式 DV01 限额。",
+      },
+      {
+        accounting_class: "TPL",
+        status: "missing",
+        limit_dv01: dv01(0),
+        warning_dv01: dv01(0),
+        hedge_target_dv01: dv01(0),
+        limit_source: "unconfigured",
+        limit_source_version: "unconfigured",
+        limit_rule_version: "unconfigured",
+        limit_effective_date: null,
+        message: "未找到正式 DV01 限额配置。",
+      },
+      {
+        accounting_class: "all",
+        status: "missing",
+        limit_dv01: dv01(0),
+        warning_dv01: dv01(0),
+        hedge_target_dv01: dv01(0),
+        limit_source: "unconfigured",
+        limit_source_version: "unconfigured",
+        limit_rule_version: "unconfigured",
+        limit_effective_date: null,
+        message: "未找到正式 DV01 限额配置。",
+      },
+    ],
+    warnings: ["部分会计分类未配置正式 DV01 限额。"],
+    computed_at: "2026-04-12T00:00:00Z",
+    ...overrides,
+  };
+}
+
 function renderView(
   getDv01Risk: GetBondAnalyticsDv01Risk,
   getDv01Reconciliation: GetBondAnalyticsDv01Reconciliation = vi.fn(async () => ({
@@ -279,6 +449,14 @@ function renderView(
     result_meta: movementMeta(),
     result: movementPayload(),
   })),
+  getDv01ActionPlan: GetBondAnalyticsDv01ActionPlan = vi.fn(async () => ({
+    result_meta: actionPlanMeta(),
+    result: actionPlanPayload(),
+  })),
+  getDv01LimitConfigStatus: GetBondAnalyticsDv01LimitConfigStatus = vi.fn(async () => ({
+    result_meta: limitConfigStatusMeta(),
+    result: limitConfigStatusPayload(),
+  })),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -288,6 +466,8 @@ function renderView(
     getBondAnalyticsDv01Risk: getDv01Risk,
     getBondAnalyticsDv01Reconciliation: getDv01Reconciliation,
     getBondAnalyticsDv01Movement: getDv01Movement,
+    getBondAnalyticsDv01ActionPlan: getDv01ActionPlan,
+    getBondAnalyticsDv01LimitConfigStatus: getDv01LimitConfigStatus,
   };
   return render(
     <QueryClientProvider client={queryClient}>
@@ -361,11 +541,16 @@ describe("DV01RiskView", () => {
       result_meta: movementMeta(),
       result: movementPayload({ accounting_class: options?.accountingClass ?? "OCI" }),
     }));
+    const getDv01ActionPlan = vi.fn(async (_reportDate: string, options?: { accountingClass?: string }) => ({
+      result_meta: actionPlanMeta(),
+      result: actionPlanPayload({ accounting_class: options?.accountingClass ?? "OCI" }),
+    }));
 
-    renderView(getDv01Risk, getDv01Reconciliation, getDv01Movement);
+    renderView(getDv01Risk, getDv01Reconciliation, getDv01Movement, getDv01ActionPlan);
     await waitFor(() => expect(getDv01Risk).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(getDv01Reconciliation).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(getDv01Movement).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getDv01ActionPlan).toHaveBeenCalledTimes(1));
 
     await user.click(within(screen.getByTestId("dv01-risk-accounting-class")).getByText("全部"));
     await waitFor(() => expect(getDv01Risk).toHaveBeenCalledTimes(2));
@@ -383,6 +568,11 @@ describe("DV01RiskView", () => {
       "2026-03-31",
       { accountingClass: "all", topN: 20 },
     ]);
+    await waitFor(() => expect(getDv01ActionPlan).toHaveBeenCalledTimes(2));
+    expect(getDv01ActionPlan.mock.calls[1]).toEqual([
+      "2026-03-31",
+      { accountingClass: "all", topN: 20 },
+    ]);
 
     await user.selectOptions(screen.getByTestId("dv01-risk-topn"), "50");
     await waitFor(() => expect(getDv01Risk).toHaveBeenCalledTimes(3));
@@ -396,6 +586,135 @@ describe("DV01RiskView", () => {
       "2026-03-31",
       { accountingClass: "all", topN: 50 },
     ]);
+    await waitFor(() => expect(getDv01ActionPlan).toHaveBeenCalledTimes(3));
+    expect(getDv01ActionPlan.mock.calls[2]).toEqual([
+      "2026-03-31",
+      { accountingClass: "all", topN: 50 },
+    ]);
+  });
+
+  it("renders DV01 action plan risk alerts and hedge sizing", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01ActionPlan = vi.fn(async () => ({
+      result_meta: actionPlanMeta(),
+      result: actionPlanPayload(),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, getDv01ActionPlan);
+
+    await waitFor(() =>
+      expect(getDv01ActionPlan).toHaveBeenCalledWith("2026-03-31", {
+        accountingClass: "OCI",
+        topN: 20,
+      }),
+    );
+    const panel = await screen.findByTestId("dv01-action-plan-panel");
+    expect(panel).toHaveTextContent("DV01 风险动作");
+    expect(panel).toHaveTextContent("超限");
+    expect(panel).toHaveTextContent("需压降 DV01");
+    expect(panel).toHaveTextContent("250,000");
+    expect(panel).toHaveTextContent("限额来源");
+    expect(panel).toHaveTextContent("page_threshold");
+    expect(panel).toHaveTextContent("使用率");
+    expect(panel).toHaveTextContent("1.15");
+    expect(panel).toHaveTextContent("剩余额度");
+    expect(panel).toHaveTextContent("-150,000");
+    expect(panel).toHaveTextContent("建议对冲手数");
+    expect(panel).toHaveTextContent("5.00");
+    expect(within(panel).getByTestId("dv01-action-plan-scenarios-table")).toHaveTextContent("rate_up_25bp");
+    expect(within(panel).getByTestId("dv01-action-plan-tenors-table")).toHaveTextContent("7-10Y");
+    expect(within(panel).getByTestId("dv01-action-plan-issuers-table")).toHaveTextContent("发行人A");
+    expect(within(panel).getByTestId("dv01-action-plan-bonds-table")).toHaveTextContent("BOND-1");
+  });
+
+  it("renders DV01 formal limit configuration status for the selected accounting class", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01LimitConfigStatus = vi.fn(async () => ({
+      result_meta: limitConfigStatusMeta(),
+      result: limitConfigStatusPayload(),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, undefined, getDv01LimitConfigStatus);
+
+    await waitFor(() => expect(getDv01LimitConfigStatus).toHaveBeenCalledWith("2026-03-31"));
+    const panel = await screen.findByTestId("dv01-limit-config-status-panel");
+    expect(panel).toHaveTextContent("限额配置状态");
+    expect(panel).toHaveTextContent("整体未完成");
+    expect(panel).toHaveTextContent("OCI");
+    expect(panel).toHaveTextContent("已配置");
+    expect(panel).toHaveTextContent("risk_committee_minutes");
+    expect(panel).toHaveTextContent("risk_minutes_2026_03");
+    expect(panel).toHaveTextContent("1,200,000");
+  });
+
+  it("renders formal DV01 limit source version and effective date", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01ActionPlan = vi.fn(async () => ({
+      result_meta: actionPlanMeta(),
+      result: actionPlanPayload({
+        policy_basis: "formal_limit",
+        threshold_note: "已接入正式 DV01 限额。",
+        limit_source: "risk_committee_minutes",
+        limit_source_version: "risk_minutes_2026_03",
+        limit_rule_version: "rv_dv01_limit_policy_v1",
+        limit_effective_date: "2026-03-01",
+        limit_usage: ratio(0.64, 2),
+        remaining_limit_dv01: formatRawAsNumeric({ raw: 650_000, unit: "dv01", sign_aware: true }),
+      }),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, getDv01ActionPlan);
+
+    const panel = await screen.findByTestId("dv01-action-plan-panel");
+    expect(panel).toHaveTextContent("已接入正式 DV01 限额");
+    expect(panel).toHaveTextContent("risk_committee_minutes");
+    expect(panel).toHaveTextContent("risk_minutes_2026_03");
+    expect(panel).toHaveTextContent("rv_dv01_limit_policy_v1");
+    expect(panel).toHaveTextContent("2026-03-01");
+    expect(panel).toHaveTextContent("0.64");
+    expect(panel).toHaveTextContent("650,000");
+  });
+
+  it("keeps DV01 action plan limit metadata visible when there are no action rows", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01ActionPlan = vi.fn(async () => ({
+      result_meta: actionPlanMeta(),
+      result: actionPlanPayload({
+        risk_level: "no_data",
+        breach_count: 0,
+        position_count: 0,
+        total_dv01: dv01(0),
+        limit_usage: ratio(0, 2),
+        remaining_limit_dv01: formatRawAsNumeric({ raw: 1_000_000, unit: "dv01", sign_aware: true }),
+        scenario_breaches: [],
+        tenor_actions: [],
+        issuer_actions: [],
+        bond_actions: [],
+      }),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, getDv01ActionPlan);
+
+    const panel = await screen.findByTestId("dv01-action-plan-panel");
+    expect(panel).toHaveTextContent("该报告日/分类暂无债券 DV01 风险动作数据");
+    expect(panel).toHaveTextContent("限额来源");
+    expect(panel).toHaveTextContent("page_threshold");
+    expect(panel).toHaveTextContent("使用率");
+    expect(panel).toHaveTextContent("0.00");
+    expect(panel).toHaveTextContent("剩余额度");
+    expect(panel).toHaveTextContent("1,000,000");
   });
 
   it("renders movement attribution, anomaly bonds, and methodology checks", async () => {

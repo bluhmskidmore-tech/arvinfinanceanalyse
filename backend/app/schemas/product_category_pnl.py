@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
@@ -134,7 +134,7 @@ class ProductCategoryManualAdjustmentCreateRequest(BaseModel):
         return _validate_report_date(value)
 
     @model_validator(mode="after")
-    def validate_amount_presence(self) -> "ProductCategoryManualAdjustmentCreateRequest":
+    def validate_amount_presence(self) -> ProductCategoryManualAdjustmentCreateRequest:
         if all(
             value is None
             for value in (
@@ -218,7 +218,7 @@ class ProductCategoryManualAdjustmentQuery(BaseModel):
             return None
         if value.tzinfo is None or value.utcoffset() != timedelta(0):
             raise ValueError("created_at filters must be ISO 8601 UTC timestamps")
-        return value.astimezone(timezone.utc)
+        return value.astimezone(UTC)
 
 
 class ProductCategoryManualAdjustmentListPayload(BaseModel):

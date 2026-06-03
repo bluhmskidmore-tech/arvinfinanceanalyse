@@ -257,8 +257,16 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
   }, [detailQuery.data?.result?.candles]);
 
   const factor = detailQuery.data?.result?.factor;
-  const meta = detailQuery.data?.result_meta;
-  const resolvedAsOfDate = detailQuery.data?.result?.as_of_date ?? asOfDate ?? "—";
+  const meta =
+    detailQuery.data?.result == null
+      ? null
+      : (detailQuery.data.result_meta ?? {
+          source_version: stockDetailMetaPendingLabel,
+          rule_version: stockDetailMetaPendingLabel,
+          quality_flag: "pending",
+          vendor_status: "pending",
+        });
+  const resolvedAsOfDate = detailQuery.data?.result?.as_of_date ?? "日期待补";
   const requestedAsOfDate = detailQuery.data?.result?.requested_as_of_date ?? asOfDate ?? null;
   const showRequestedAsOfDate = requestedAsOfDate != null && requestedAsOfDate !== resolvedAsOfDate;
 

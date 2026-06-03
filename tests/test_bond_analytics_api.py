@@ -310,6 +310,105 @@ def test_bond_analytics_dv01_movement_returns_numeric_payload(tmp_path, monkeypa
     get_settings.cache_clear()
 
 
+def test_bond_analytics_dv01_action_plan_returns_numeric_payload(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/api/bond-analytics/dv01-action-plan",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+            "top_n": "20",
+            "limit_dv01": "1000",
+            "warning_dv01": "800",
+            "hedge_instrument_dv01": "250",
+            "hedge_target_dv01": "800",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_action_plan"
+    result = payload["result"]
+    assert result["accounting_class"] == "OCI"
+    assert result["total_dv01"]["unit"] == "dv01"
+    assert result["limit_dv01"]["unit"] == "dv01"
+    assert result["warning_dv01"]["unit"] == "dv01"
+    assert result["dv01_to_reduce"]["unit"] == "dv01"
+    assert result["limit_usage"]["unit"] == "ratio"
+    assert result["remaining_limit_dv01"]["unit"] == "dv01"
+    assert result["policy_basis"] == "page_threshold_fallback"
+    assert result["limit_source"] == "page_threshold"
+    assert result["limit_source_version"] == "unconfigured"
+    assert result["limit_rule_version"] == "rv_dv01_page_threshold_v3"
+    assert result["hedge_instrument_dv01"]["unit"] == "dv01"
+    assert result["suggested_hedge_units"]["unit"] == "ratio"
+    if result["scenario_breaches"]:
+        assert result["scenario_breaches"][0]["shock_bp"]["unit"] == "bp"
+        assert result["scenario_breaches"][0]["estimated_loss"]["unit"] == "yuan"
+    if result["tenor_actions"]:
+        assert result["tenor_actions"][0]["dv01_share"]["unit"] == "ratio"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_limit_config_status_returns_formal_envelope(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    GovernanceRepository(base_dir=governance_dir).append(
+        "bond_dv01_limit_config",
+        {
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+            "limit_dv01": "1200",
+            "warning_dv01": "1000",
+            "hedge_target_dv01": "1000",
+            "limit_source": "risk_committee_minutes",
+            "limit_source_version": "risk_minutes_2026_03",
+            "limit_rule_version": "rv_dv01_limit_policy_v1",
+            "limit_effective_date": "2026-03-01",
+        },
+    )
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get(
+        "/api/bond-analytics/dv01-limit-config-status",
+        params={"report_date": REPORT_DATE},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_limit_config_status"
+    result = payload["result"]
+    assert result["overall_status"] == "incomplete"
+    rows_by_class = {row["accounting_class"]: row for row in result["rows"]}
+    assert rows_by_class["OCI"]["status"] == "ready"
+    assert rows_by_class["OCI"]["limit_dv01"]["unit"] == "dv01"
+    assert rows_by_class["OCI"]["warning_dv01"]["unit"] == "dv01"
+    assert rows_by_class["OCI"]["hedge_target_dv01"]["unit"] == "dv01"
+    assert rows_by_class["AC"]["status"] == "missing"
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_home_supplement_routes_log_api_perf(tmp_path, monkeypatch, caplog):
     duckdb_path = tmp_path / "empty-bond-analytics-perf.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))

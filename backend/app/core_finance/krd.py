@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Iterable, Mapping
-
-logger = logging.getLogger(__name__)
+from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -21,6 +20,8 @@ from .bond_duration import (
     modified_duration_from_macaulay,
 )
 from .safe_decimal import safe_decimal
+
+logger = logging.getLogger(__name__)
 
 KRD_TENORS = ("1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y")
 

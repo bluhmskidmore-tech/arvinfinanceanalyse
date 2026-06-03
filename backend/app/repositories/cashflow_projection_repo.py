@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import duckdb
 
-
 FACT_TYW_TABLE = "fact_formal_tyw_balance_daily"
 FACT_ZQTZ_TABLE = "fact_formal_zqtz_balance_daily"
 

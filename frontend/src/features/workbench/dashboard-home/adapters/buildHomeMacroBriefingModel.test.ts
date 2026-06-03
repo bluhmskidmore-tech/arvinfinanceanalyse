@@ -53,6 +53,57 @@ describe("shouldUseMacroNewsFallback", () => {
 });
 
 describe("resolveHomeMacroNewsBriefing", () => {
+  it("surfaces Choice permission errors from landed events without treating the query as failed", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-permission-error",
+          received_at: "2026-06-01T00:24:35.004899+00:00",
+          topic_code: "S888010007API",
+          error_code: 10001012,
+          error_msg: "insufficient user access",
+          payload_text: null,
+        }),
+      ],
+      fallbackEvents: [],
+    });
+
+    expect(result.newsItems).toHaveLength(0);
+    expect(result.newsMessage).toBe("Choice 新闻权限不足，请恢复数据源权限后重新采集。");
+    expect(result.newsFreshnessLabel).toBe("Choice 新闻权限不足");
+    expect(result.newsStatusLabel).toBe("来源状态：Choice 权限不足");
+    expect(result.newsAsOfLabel).toBe("数据截至 06-01 00:24");
+    expect(result.newsRefreshLabel).toBe("刷新：随页面查询读取已落库数据");
+  });
+
+  it("surfaces non-permission Choice source errors from landed events", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-source-error",
+          received_at: "2026-06-01T00:24:35.004899+00:00",
+          topic_code: "S888010007API",
+          error_code: 10003013,
+          error_msg: "vendor timeout",
+          payload_text: null,
+        }),
+      ],
+      fallbackEvents: [],
+    });
+
+    expect(result.newsItems).toHaveLength(0);
+    expect(result.newsMessage).toBe("Choice 新闻源返回错误：vendor timeout。");
+    expect(result.newsFreshnessLabel).toBe("新闻源返回错误");
+    expect(result.newsStatusLabel).toBe("来源状态：新闻源错误");
+    expect(result.newsAsOfLabel).toBe("数据截至 06-01 00:24");
+  });
+
   it("uses Tushare fallback when Choice macro news is stale", () => {
     const result = resolveHomeMacroNewsBriefing({
       todayIsoDate: "2026-06-01",
@@ -84,6 +135,64 @@ describe("resolveHomeMacroNewsBriefing", () => {
     expect(result.newsStatusLabel).toBe("来源状态：Tushare 兜底");
     expect(result.newsStale).toBe(false);
     expect(result.newsAsOfLabel).toBe("数据截至 06-01 08:19");
+    expect(result.newsRefreshLabel).toBe("刷新：随页面查询读取已落库数据");
+  });
+
+  it("uses relaxed Tushare macro fallback when Choice has a permission error and no strict funding news is available", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-permission-error",
+          received_at: "2026-06-01T00:24:35.004899+00:00",
+          topic_code: "S888010007API",
+          error_code: 10001012,
+          error_msg: "insufficient user access",
+          payload_text: null,
+        }),
+      ],
+      fallbackEvents: [
+        choiceEvent({
+          event_key: "unrelated-story",
+          received_at: "2026-06-01T09:30:00+00:00",
+          topic_code: "tushare.major_news",
+          payload_text: "影视公司发布暑期片单，票房预期升温",
+          group_id: "tushare_major",
+        }),
+        choiceEvent({
+          event_key: "macro-story",
+          received_at: "2026-06-01T08:19:56+00:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "国家统计局公布 PMI 延续扩张，经济数据改善",
+          group_id: "tushare_news",
+        }),
+      ],
+    });
+
+    expect(result.newsItems).toHaveLength(1);
+    expect(result.newsItems[0]?.title).toBe("国家统计局公布 PMI 延续扩张，经济数据改善");
+    expect(result.newsItems[0]?.topicLabel).toBe("市场快讯");
+    expect(result.newsMessage).toBeNull();
+    expect(result.newsSourceLabel).toBe("来源：Tushare 宏观快讯（Choice 不可用时非严格资金面兜底）");
+    expect(result.newsStatusLabel).toBe("来源状态：Tushare 宏观兜底（非严格资金面）");
+    expect(result.newsAsOfLabel).toBe("数据截至 06-01 08:19");
+  });
+
+  it("keeps HTTP query failures separate from landed source errors", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: false,
+      isError: true,
+      choiceEvents: [],
+      fallbackEvents: [],
+    });
+
+    expect(result.newsItems).toHaveLength(0);
+    expect(result.newsMessage).toBe("政策与资金面加载失败，请稍后刷新。");
+    expect(result.newsFreshnessLabel).toBe("新闻源异常");
+    expect(result.newsStatusLabel).toBe("来源状态：异常");
   });
 
   it("drops non-policy tushare fallback items such as pet hospital stories", () => {

@@ -56,6 +56,22 @@ export const apiQueryKeys = {
       accountingClass,
       topN,
     ] as const,
+  bondAnalyticsDv01ActionPlan: (
+    mode: string,
+    reportDate: string | null | undefined,
+    accountingClass: string,
+    topN: number,
+  ) =>
+    [
+      "bond-analytics",
+      "dv01-action-plan",
+      mode,
+      normalizeReportDate(reportDate),
+      accountingClass,
+      topN,
+    ] as const,
+  bondAnalyticsDv01LimitConfigStatus: (mode: string, reportDate: string | null | undefined) =>
+    ["bond-analytics", "dv01-limit-config-status", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardPortfolioComparison: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "portfolio-comparison", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardAssetStructure: (

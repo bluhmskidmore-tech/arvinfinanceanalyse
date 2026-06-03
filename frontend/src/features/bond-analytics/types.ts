@@ -15,6 +15,11 @@ import type {
   CreditSpreadDetailBondRow as ApiCreditSpreadDetailBondRow,
   CreditSpreadMigrationPayload as ApiCreditSpreadMigrationPayload,
   CreditSpreadTermStructurePoint as ApiCreditSpreadTermStructurePoint,
+  DV01ActionBondItem as ApiDV01ActionBondItem,
+  DV01ActionIssuerItem as ApiDV01ActionIssuerItem,
+  DV01ActionPlanPayload as ApiDV01ActionPlanPayload,
+  DV01ActionScenarioBreach as ApiDV01ActionScenarioBreach,
+  DV01ActionTenorItem as ApiDV01ActionTenorItem,
   DV01MovementAttributionItem as ApiDV01MovementAttributionItem,
   DV01MovementBondItem as ApiDV01MovementBondItem,
   DV01MovementPayload as ApiDV01MovementPayload,
@@ -67,6 +72,11 @@ export type DV01ReconciliationResponse = ApiDV01ReconciliationPayload;
 export type DV01MovementAttributionItem = ApiDV01MovementAttributionItem;
 export type DV01MovementBondItem = ApiDV01MovementBondItem;
 export type DV01MovementResponse = ApiDV01MovementPayload;
+export type DV01ActionScenarioBreach = ApiDV01ActionScenarioBreach;
+export type DV01ActionTenorItem = ApiDV01ActionTenorItem;
+export type DV01ActionIssuerItem = ApiDV01ActionIssuerItem;
+export type DV01ActionBondItem = ApiDV01ActionBondItem;
+export type DV01ActionPlanResponse = ApiDV01ActionPlanPayload;
 
 // Credit spread types
 export type SpreadScenarioResult = ApiSpreadScenarioResult;

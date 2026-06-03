@@ -55,7 +55,7 @@ def acquire_lock(
         assert handle is not None
         handle.seek(0)
         handle.truncate()
-        handle.write(f"{definition.key}|pid={os.getpid()}".encode("utf-8"))
+        handle.write(f"{definition.key}|pid={os.getpid()}".encode())
         handle.flush()
         yield lock_path
     finally:

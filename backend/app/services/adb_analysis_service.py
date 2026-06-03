@@ -24,9 +24,6 @@ from typing import Any
 
 import duckdb
 import pandas as pd
-
-logger = logging.getLogger(__name__)
-
 from backend.app.core_finance.adb_analytics import (
     aggregate_daily_totals,
     build_comparison_rows,
@@ -38,15 +35,17 @@ from backend.app.core_finance.adb_analytics import (
     enrich_breakdown,
     month_date_range,
 )
+from backend.app.core_finance.adb_interbank_labels import map_ib_category
+from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
 from backend.app.core_finance.balance_calibration import (
     balance_calibration_meta_to_dict,
     build_adb_daily_balance_calibration_meta,
 )
-from backend.app.core_finance.adb_interbank_labels import map_ib_category
-from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
 from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
 from backend.app.governance.settings import get_settings
 from backend.app.services.formal_result_runtime import build_result_envelope
+
+logger = logging.getLogger(__name__)
 
 IB_ASSET_PRED = (
     "(instr(lower(coalesce(position_side, '')), 'asset') > 0 "
@@ -1028,20 +1027,20 @@ def _adb_breakdown_from_frames(
         bonds_liab_df = bonds_df[issued_mask].copy()
         for row in bonds_assets_df.itertuples(index=False):
             key = (_clean_cat(getattr(row, "bond_category", None)), "Asset")
-            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "market_value"))
+            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(row.market_value)
         for row in bonds_liab_df.itertuples(index=False):
             key = (f"Issuance-{_clean_cat(getattr(row, 'bond_category', None))}", "Liability")
-            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "market_value"))
+            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(row.market_value)
 
     if not interbank_df.empty:
         for row in interbank_df.itertuples(index=False):
             side = "Asset" if str(getattr(row, "direction", "") or "").upper() == "ASSET" else "Liability"
             category = map_ib_category(
-                str(getattr(row, "product_type")) if getattr(row, "product_type", None) is not None else None,
+                str(row.product_type) if getattr(row, "product_type", None) is not None else None,
                 side,
             )
             key = (category, side)
-            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "amount"))
+            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(row.amount)
 
     nd = Decimal(str(num_days))
     out: list[dict[str, Any]] = []

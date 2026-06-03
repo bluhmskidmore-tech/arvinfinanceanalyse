@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Query
-
 from backend.app.services.pnl_attribution_service import (
     advanced_attribution_summary_envelope,
     attribution_analysis_summary_envelope,
@@ -16,6 +14,7 @@ from backend.app.services.pnl_attribution_service import (
     tpl_market_correlation_envelope,
     volume_rate_attribution_envelope,
 )
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/pnl-attribution", tags=["pnl-attribution"])
 

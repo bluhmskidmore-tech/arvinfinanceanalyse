@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
 from backend.app.schemas.result_meta import ResultMeta
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 CubeBasis = Literal["formal", "scenario", "analytical", "ledger"]
 

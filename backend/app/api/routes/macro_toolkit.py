@@ -623,6 +623,11 @@ def macro_toolkit_refresh_commodity_futures(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except duckdb.IOException as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="DuckDB is busy during commodity futures refresh; close other readers and retry.",
+        ) from exc
     if not refresh_request.dry_run:
         market_home_response_cache.invalidate()
     status = str(refresh.get("status") or "")
@@ -989,12 +994,7 @@ def _commodity_futures_refresh_permission_payload(
     allowed: bool | None = None,
 ) -> dict[str, object]:
     resolved_allowed = allowed
-    if (
-        resolved_allowed is None
-        and auth is not None
-        and settings is not None
-        and auth.identity_source != "fallback"
-    ):
+    if resolved_allowed is None and auth is not None and settings is not None:
         try:
             ensure_user_allowed(
                 auth=auth,
@@ -2560,6 +2560,7 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         )
 
     result = compute_crisis_score_payload(series_data, report_date=report_date)
+    crisis_history = _crisis_score_history(series_data, report_date)
     missing_inputs = [
         str(item["warning"])
         for item in inputs
@@ -2583,6 +2584,7 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         duckdb_path,
         report_date=report_date,
         start=start,
+        crisis_history=crisis_history,
     )
     return enriched
 
@@ -2592,6 +2594,7 @@ def _crisis_commodity_coverage(
     *,
     report_date: date,
     start: date,
+    crisis_history: pd.DataFrame,
 ) -> dict[str, object]:
     items = [
         _crisis_commodity_coverage_item(
@@ -2599,10 +2602,12 @@ def _crisis_commodity_coverage(
             duckdb_path=duckdb_path,
             report_date=report_date,
             start=start,
+            crisis_history=crisis_history,
         )
         for config in _CRISIS_COMMODITY_COVERAGE_INPUTS
     ]
     available_count = sum(1 for item in items if item["available"])
+    candidate_summary = _crisis_commodity_candidate_summary(items)
     return {
         "role": "supplemental_observation",
         "tracked_count": len(items),
@@ -2611,6 +2616,7 @@ def _crisis_commodity_coverage(
         "sources": _unique_sorted_texts(item.get("source") for item in items),
         "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in items),
         "used_in_crisis_score": ["nanhua"],
+        "candidate_summary": candidate_summary,
         "items": items,
     }
 
@@ -2621,6 +2627,7 @@ def _crisis_commodity_coverage_item(
     duckdb_path: str | Path,
     report_date: date,
     start: date,
+    crisis_history: pd.DataFrame,
 ) -> dict[str, object]:
     aliases = tuple(str(alias) for alias in config["aliases"])
     matched_alias = None
@@ -2656,6 +2663,180 @@ def _crisis_commodity_coverage_item(
         "series_id": str(latest["series_id"]) if latest is not None else None,
         "source": str(latest["vendor_name"]) if latest is not None else None,
         "value": _float_or_none(latest["value"]) if latest is not None else None,
+        "candidate_decision": _crisis_commodity_candidate_decision(
+            available=latest is not None,
+            date_alignment_status=date_alignment_status,
+        ),
+        "shadow_evaluation": _crisis_commodity_shadow_evaluation(frame, crisis_history),
+    }
+
+
+def _crisis_commodity_candidate_summary(items: list[dict[str, object]]) -> dict[str, object]:
+    statuses = [
+        str(decision.get("status") or "")
+        for item in items
+        if isinstance(decision := item.get("candidate_decision"), dict)
+    ]
+    shadow_statuses = [
+        str(shadow.get("status") or "")
+        for item in items
+        if isinstance(shadow := item.get("shadow_evaluation"), dict)
+    ]
+    shadow_ready_count = shadow_statuses.count("review_ready")
+    shadow_short_count = shadow_statuses.count("history_short")
+    return {
+        "shadow_review_ready_count": statuses.count("shadow_review_ready"),
+        "needs_current_data_count": statuses.count("needs_current_data"),
+        "missing_data_count": statuses.count("missing_data"),
+        "shadow_evaluation_ready_count": shadow_ready_count,
+        "shadow_evaluation_short_count": shadow_short_count,
+        "shadow_evaluation_status_counts": {
+            status: shadow_statuses.count(status)
+            for status in sorted(set(shadow_statuses))
+            if status
+        },
+        "shadow_evaluation_next_step": _crisis_commodity_shadow_next_step(
+            ready_count=shadow_ready_count,
+            short_count=shadow_short_count,
+        ),
+        "formula_change_required": True,
+        "approval_required": True,
+        "next_step": "商品旁证进入 Crisis Score 公式前，需要先完成历史回测、相关性检验、权重审批和版本记录。",
+    }
+
+
+def _crisis_commodity_shadow_next_step(*, ready_count: int, short_count: int) -> str:
+    if ready_count > 0 and short_count == 0:
+        return f"{ready_count} 个商品候选可进入人工复核；进入公式前仍需历史回测、相关性检验、权重审批和版本记录。"
+    if ready_count > 0:
+        return (
+            f"{ready_count} 个商品候选可读，{short_count} 个样本不足；"
+            "先补齐样本不足品种的历史数据，再做人工复核和权重审批。"
+        )
+    return "商品候选影子评估样本不足；先补齐历史数据，再做历史回测、相关性检验和权重审批。"
+
+
+def _crisis_score_history(series_data: dict[str, list[tuple[date, float]]], report_date: date) -> pd.DataFrame:
+    from backend.app.core_finance.macro.crisis_score import compute_crisis_score, compute_crisis_indicators  # noqa: PLC0415
+
+    indicators = compute_crisis_indicators(series_data)
+    indicators = indicators[indicators.index.date <= report_date]
+    if indicators.empty:
+        return pd.DataFrame(columns=["crisis_score"])
+    score_frame = compute_crisis_score(indicators)
+    score_frame = score_frame[score_frame.index.date <= report_date]
+    if score_frame.empty:
+        return pd.DataFrame(columns=["crisis_score"])
+    return score_frame[["crisis_score"]].dropna()
+
+
+def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.DataFrame) -> dict[str, object]:
+    if frame.empty or crisis_history.empty or "crisis_score" not in crisis_history.columns:
+        return {
+            "status": "history_short",
+            "label": "影子评估样本不足",
+            "sample_count": 0,
+            "target": "crisis_score",
+            "candidate_metric": "daily_return",
+            "summary": "商品候选缺少足够历史样本，暂不能评估相关性。",
+            "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
+        }
+
+    points = _frame_to_crisis_points(frame)
+    if len(points) < 3:
+        return {
+            "status": "history_short",
+            "label": "影子评估样本不足",
+            "sample_count": len(points),
+            "target": "crisis_score",
+            "candidate_metric": "daily_return",
+            "summary": f"商品候选仅 {len(points)} 个历史点，暂不能评估相关性。",
+            "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
+        }
+
+    price_series = pd.Series({pd.Timestamp(point_date): value for point_date, value in points}, dtype="float64").sort_index()
+    candidate_returns = price_series.pct_change().replace([float("inf"), float("-inf")], pd.NA).dropna()
+    aligned = pd.concat(
+        {
+            "candidate_return": candidate_returns,
+            "crisis_score": crisis_history["crisis_score"],
+        },
+        axis=1,
+    ).dropna()
+    if len(aligned) < 20:
+        return {
+            "status": "history_short",
+            "label": "影子评估样本不足",
+            "sample_count": int(len(aligned)),
+            "target": "crisis_score",
+            "candidate_metric": "daily_return",
+            "summary": f"商品候选与 Crisis Score 仅 {len(aligned)} 个重叠样本，暂不能评估相关性。",
+            "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
+        }
+
+    same_day = _series_corr(aligned["candidate_return"], aligned["crisis_score"])
+    lead_1d = _series_corr(aligned["candidate_return"].shift(1), aligned["crisis_score"])
+    lag_1d = _series_corr(aligned["candidate_return"].shift(-1), aligned["crisis_score"])
+    crisis_threshold = aligned["crisis_score"].quantile(0.75)
+    crisis_rows = aligned[aligned["crisis_score"] >= crisis_threshold]
+    hit_rate = None
+    if not crisis_rows.empty:
+        expected_sign = 1 if (same_day or 0) >= 0 else -1
+        hit_rate = float((crisis_rows["candidate_return"] * expected_sign > 0).mean())
+
+    return {
+        "status": "review_ready",
+        "label": "影子评估可读",
+        "sample_count": int(len(aligned)),
+        "window_start": aligned.index.min().date().isoformat(),
+        "window_end": aligned.index.max().date().isoformat(),
+        "target": "crisis_score",
+        "candidate_metric": "daily_return",
+        "same_day_correlation": same_day,
+        "lead_1d_correlation": lead_1d,
+        "lag_1d_correlation": lag_1d,
+        "crisis_hit_rate": round(hit_rate, 2) if hit_rate is not None else None,
+        "crisis_sample_count": int(len(crisis_rows)),
+        "summary": (
+            f"影子评估：样本 {len(aligned)}，同日相关 {_format_shadow_metric(same_day)}，"
+            f"危机期命中率 {_format_shadow_metric(hit_rate)}。"
+        ),
+        "next_step": "进入公式前仍需历史回测、相关性检验、权重审批和版本记录。",
+    }
+
+
+def _series_corr(left: pd.Series, right: pd.Series) -> float | None:
+    aligned = pd.concat({"left": left, "right": right}, axis=1).dropna()
+    if len(aligned) < 3 or aligned["left"].nunique() < 2 or aligned["right"].nunique() < 2:
+        return None
+    value = aligned["left"].corr(aligned["right"])
+    return round(float(value), 2) if pd.notna(value) else None
+
+
+def _format_shadow_metric(value: float | None) -> str:
+    return "缺失" if value is None else f"{value:.2f}"
+
+
+def _crisis_commodity_candidate_decision(*, available: bool, date_alignment_status: str) -> dict[str, object]:
+    if not available:
+        return {
+            "status": "missing_data",
+            "label": "缺少数据",
+            "reason": "商品旁证未命中，不能进入影子评估。",
+            "next_step": "先完成商品期货刷新或源映射修复。",
+        }
+    if date_alignment_status != "aligned":
+        return {
+            "status": "needs_current_data",
+            "label": "需要补齐当日数据",
+            "reason": "商品旁证已命中但与分析日不一致；当前仍作为 supplemental_observation。",
+            "next_step": "补齐到分析日后，再进入历史回测、相关性检验和权重审批。",
+        }
+    return {
+        "status": "shadow_review_ready",
+        "label": "影子评估就绪",
+        "reason": "数据已命中且与分析日同日；当前仍作为 supplemental_observation，不改变 Crisis Score 公式。",
+        "next_step": "完成历史回测、相关性检验、权重审批后，才能作为公式候选提交。",
     }
 
 

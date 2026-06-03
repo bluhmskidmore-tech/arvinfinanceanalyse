@@ -727,6 +727,18 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("Crude oil futures");
     expect(crisisEvidence).toHaveTextContent("Gold futures");
     expect(crisisEvidence).toHaveTextContent("未纳入公式");
+    expect(crisisEvidence).toHaveTextContent("商品扩展候选");
+    expect(crisisEvidence).toHaveTextContent("影子评估就绪");
+    expect(crisisEvidence).toHaveTextContent("6 个就绪");
+    expect(crisisEvidence).toHaveTextContent("公式变更需审批");
+    expect(crisisEvidence).toHaveTextContent("历史回测、相关性检验、权重审批");
+    expect(crisisEvidence).toHaveTextContent("影子评估结果");
+    expect(crisisEvidence).toHaveTextContent("2 个可读");
+    expect(crisisEvidence).toHaveTextContent("4 个样本不足");
+    expect(crisisEvidence).toHaveTextContent("样本 41");
+    expect(crisisEvidence).toHaveTextContent("同日相关 0.00");
+    expect(crisisEvidence).toHaveTextContent("危机期命中率 55.0%");
+    expect(crisisEvidence).toHaveTextContent("先补齐样本不足品种的历史数据");
     expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
   });
 
@@ -783,6 +795,7 @@ describe("MacroToolkitPage", () => {
     expect(await screen.findByText("完整结果待加载")).toBeInTheDocument();
     expect(calls.filter((item) => item?.detail === "full")).toHaveLength(0);
     expect(screen.queryByLabelText("Crisis Score 数据来源")).not.toBeInTheDocument();
+    expect(screen.queryByText("影子评估结果")).not.toBeInTheDocument();
 
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(1), {
       timeout: 3_000,
@@ -974,6 +987,21 @@ describe("MacroToolkitPage", () => {
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
     const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    const permissionTile = await waitFor(() => {
+      const tile = within(commodityPanel).getByText("商品权限").closest(".macro-toolkit-metric");
+      expect(tile).toHaveTextContent("已授权");
+      return tile;
+    });
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      expect.stringContaining("resource macro_toolkit.commodity_futures"),
+    );
+    expect(permissionTile?.querySelector("small")).toHaveAttribute(
+      "title",
+      expect.stringContaining("actions dry_run / refresh"),
+    );
+    expect(within(commodityPanel).getByRole("button", { name: /预估商品期货/ })).toBeEnabled();
+    expect(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ })).toBeEnabled();
     expect(within(commodityPanel).getByRole("checkbox", { name: /南华指数/ })).toBeChecked();
     await user.click(within(commodityPanel).getByRole("checkbox", { name: /螺纹钢/ }));
     await user.click(within(commodityPanel).getByRole("checkbox", { name: /^铁矿石/ }));
@@ -1026,6 +1054,9 @@ describe("MacroToolkitPage", () => {
     expect(completedResult).toHaveTextContent("2026-04-30");
     expect(completedResult).toHaveTextContent("3187.42");
     await waitFor(() => expect(calls).toContainEqual({ detail: "full" }));
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    expect(crisisEvidence).toHaveTextContent("Nanhua commodity index");
+    expect(crisisEvidence).toHaveTextContent("NH0100.NHF");
   });
 
   it("keeps commodity futures permission fallback tied to the commodity resource", async () => {
@@ -1196,7 +1227,6 @@ describe("MacroToolkitPage", () => {
             ...scriptsEnvelope.result.commodity_futures_refresh!,
             permission: {
               mode: "scoped_refresh",
-              allowed: null,
               user_id: "anonymous",
               role: "viewer",
               identity_source: "fallback",
@@ -1236,6 +1266,8 @@ describe("MacroToolkitPage", () => {
     expect(commodityPanel).toHaveTextContent("商品期货刷新授权待确认");
     expect(commodityPanel).toHaveTextContent("macro_toolkit.commodity_futures");
     expect(commodityPanel).toHaveTextContent("dry_run / refresh");
+    expect(commodityPanel).toHaveTextContent("action refresh");
+    expect(commodityPanel).toHaveTextContent("scope store");
     expect(commodityPanel).toHaveTextContent("anonymous");
     expect(commodityPanel).toHaveTextContent("viewer");
 

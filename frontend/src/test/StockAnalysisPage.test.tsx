@@ -1972,7 +1972,7 @@ describe("StockAnalysisPage", () => {
     expect(summary).toHaveTextContent("回放证据");
     expect(summary).toHaveTextContent("已接通");
     expect(summary).not.toHaveTextContent("2 条快照 / 覆盖 1 个当前候选");
-    await userEvent.click(within(summary).getAllByText("明细")[3]);
+    await userEvent.click(within(screen.getByTestId("stock-analysis-replay-status")).getByText("明细"));
     expect(summary).toHaveTextContent("2 条快照 / 覆盖 1 个当前候选");
     expect(summary).toHaveTextContent("血缘状态");
     expect(summary).toHaveTextContent("完整");
@@ -2051,11 +2051,10 @@ describe("StockAnalysisPage", () => {
     expect(summary).toHaveTextContent("数据不足");
     expect(summary).toHaveTextContent("待补");
     expect(summary).not.toHaveTextContent("不能视为中性证明");
-    expect(summary).not.toHaveTextContent("latest_snapshot");
-    await userEvent.click(within(summary).getAllByText("明细")[1]);
+    await userEvent.click(within(screen.getByTestId("stock-analysis-closed-loop-adversarial_gate")).getByText("明细"));
     expect(summary).toHaveTextContent("不能视为中性证明");
-    await userEvent.click(within(summary).getAllByText("明细")[4]);
-    expect(summary).toHaveTextContent("回退快照");
+    expect(summary).not.toHaveTextContent("latest_snapshot");
+    expect(screen.getByTestId("stock-analysis-boundary-summary")).toHaveTextContent("边界");
     expect(summary).not.toHaveTextContent("latest_snapshot");
   });
 

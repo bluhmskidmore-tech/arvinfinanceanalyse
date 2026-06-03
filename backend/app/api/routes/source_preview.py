@@ -49,9 +49,27 @@ def _validate_source_family(source_family: str) -> str:
     return normalized
 
 
+def _ensure_source_preview_allowed(*, auth: AuthContext, action: str) -> None:
+    settings = get_settings()
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="source_preview.source_foundation",
+            action=action,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/source-foundation")
-def source_foundation() -> dict[str, object]:
+def source_foundation(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
     _require_source_preview_http_enabled()
+    _ensure_source_preview_allowed(auth=auth, action="read")
     settings = get_settings()
     return source_preview_envelope(
         duckdb_path=str(settings.duckdb_path),
@@ -60,11 +78,13 @@ def source_foundation() -> dict[str, object]:
 
 @router.get("/source-foundation/history")
 def source_foundation_history(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     source_family: str | None = None,
 ) -> dict[str, object]:
     _require_source_preview_http_enabled()
+    _ensure_source_preview_allowed(auth=auth, action="read")
     if source_family is not None:
         source_family = _validate_source_family(source_family)
     settings = get_settings()
@@ -102,8 +122,12 @@ def refresh(
 
 
 @router.get("/source-foundation/refresh-status")
-def refresh_status(run_id: str | None = Query(default=None)) -> dict[str, object]:
+def refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str | None = Query(default=None),
+) -> dict[str, object]:
     _require_source_preview_http_enabled()
+    _ensure_source_preview_allowed(auth=auth, action="read")
     try:
         return source_preview_refresh_status(get_settings(), run_id=run_id)
     except ValueError as exc:
@@ -114,12 +138,14 @@ def refresh_status(run_id: str | None = Query(default=None)) -> dict[str, object
 
 @router.get("/source-foundation/{source_family}/rows")
 def source_rows(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     source_family: str,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     ingest_batch_id: str | None = None,
 ) -> dict[str, object]:
     _require_source_preview_http_enabled()
+    _ensure_source_preview_allowed(auth=auth, action="read")
     settings = get_settings()
     return preview_rows_envelope(
         duckdb_path=str(settings.duckdb_path),
@@ -132,12 +158,14 @@ def source_rows(
 
 @router.get("/source-foundation/{source_family}/traces")
 def source_traces(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     source_family: str,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     ingest_batch_id: str | None = None,
 ) -> dict[str, object]:
     _require_source_preview_http_enabled()
+    _ensure_source_preview_allowed(auth=auth, action="read")
     settings = get_settings()
     return preview_traces_envelope(
         duckdb_path=str(settings.duckdb_path),

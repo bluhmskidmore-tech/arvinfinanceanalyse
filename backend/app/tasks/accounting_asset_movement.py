@@ -2,31 +2,28 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import date
-from datetime import datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
-from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
 from backend.app.core_finance.accounting_asset_movement import (
     AccountingAssetMovementRow,
     GlAccountingAssetBalance,
     ZqtzAccountingAssetBalance,
     build_accounting_asset_movement_rows,
 )
+from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
-
 
 RULE_VERSION = "rv_accounting_asset_movement_v2"
 CACHE_KEY = "accounting_asset_movement.monthly"
@@ -132,7 +129,7 @@ def _refresh_accounting_asset_movement_window(
         currency_basis=currency_basis,
     )
     active_run_id = run_id or _build_refresh_run_id()
-    queued_at = datetime.now(timezone.utc).isoformat()
+    queued_at = datetime.now(UTC).isoformat()
     governance_repo.append(
         CACHE_BUILD_RUN_STREAM,
         _build_run_record(
@@ -144,7 +141,7 @@ def _refresh_accounting_asset_movement_window(
             queued_at=queued_at,
         ),
     )
-    started_at = datetime.now(timezone.utc).isoformat()
+    started_at = datetime.now(UTC).isoformat()
     governance_repo.append(
         CACHE_BUILD_RUN_STREAM,
         _build_run_record(
@@ -201,7 +198,7 @@ def _refresh_accounting_asset_movement_window(
                 report_date=anchor_report_date,
                 queued_at=queued_at,
                 started_at=started_at,
-                finished_at=datetime.now(timezone.utc).isoformat(),
+                finished_at=datetime.now(UTC).isoformat(),
                 error_message=str(exc),
                 failure_category="lock_timeout" if isinstance(exc, TimeoutError) else "materialize_failure",
                 failure_reason=_failure_reason(exc),
@@ -258,7 +255,7 @@ def _refresh_accounting_asset_movement_window(
                 report_date=anchor_report_date,
                 queued_at=queued_at,
                 started_at=started_at,
-                finished_at=datetime.now(timezone.utc).isoformat(),
+                finished_at=datetime.now(UTC).isoformat(),
             ),
         )
     )
@@ -315,7 +312,7 @@ def _refresh_lock_definition(
 
 
 def _build_refresh_run_id() -> str:
-    return f"{JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _build_run_record(

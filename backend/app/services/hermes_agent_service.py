@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import threading
@@ -7,8 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -290,7 +290,7 @@ def build_hermes_envelope(
     result: dict[str, str],
 ) -> AgentEnvelope:
     trace_id = f"tr_agent_hermes_{uuid4().hex[:12]}"
-    generated_at = datetime.now(timezone.utc)
+    generated_at = datetime.now(UTC)
     filters_applied = {
         key: value for key, value in request.filters.items() if value not in (None, "")
     }

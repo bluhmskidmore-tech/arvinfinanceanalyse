@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pandas as pd
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -656,6 +657,33 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "choice_stock_daily_observation",
         "choice_stock_factor_snapshot",
     ]
+
+
+def test_macro_toolkit_scripts_surfaces_granted_commodity_futures_permission_for_fallback_user(
+    tmp_path, monkeypatch
+) -> None:
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+    get_settings.cache_clear()
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="anonymous",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    response = client.get("/ui/macro/toolkit/scripts")
+
+    assert response.status_code == 200, response.text
+    permission = response.json()["result"]["commodity_futures_refresh"]["permission"]
+    assert permission["allowed"] is True
+    assert permission["identity_source"] == "fallback"
+    assert permission["user_id"] == "anonymous"
+    assert permission["resource"] == "macro_toolkit.commodity_futures"
 
 
 def test_macro_toolkit_scripts_surfaces_empty_commodity_futures_status(tmp_path, monkeypatch) -> None:
@@ -2070,38 +2098,49 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
             )
             """
         )
-        conn.execute(
+        commodity_rows: list[tuple[object, ...]] = []
+        start_date = date(2025, 12, 12)
+        product_specs = {
+            "RB": ("RB2605.SHF", "SHF", 3200.0, 3.2),
+            "I": ("I2605.DCE", "DCE", 700.0, 0.9),
+            "CU": ("CU2605.SHF", "SHF", 78000.0, 27.18),
+            "AL": ("AL2605.SHF", "SHF", 18800.0, 9.046),
+            "SC": ("SC2605.INE", "INE", 560.0, 0.44),
+            "AU": ("AU2605.SHF", "SHF", 510.0, 0.318),
+        }
+        for offset in range(120):
+            trade_date = (start_date + pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
+            stress = max(0.0, (offset - 89) / 30)
+            alternating = -1 if offset % 2 else 1
+            for product_code, (contract_code, exchange, base_value, daily_step) in product_specs.items():
+                price = base_value + offset * daily_step + alternating * stress * daily_step * 18
+                commodity_rows.append(
+                    (
+                        trade_date,
+                        product_code,
+                        contract_code,
+                        exchange,
+                        None,
+                        None,
+                        None,
+                        price,
+                        None,
+                        1000,
+                        2000,
+                        f"sv_tushare_fut_daily_{product_code.lower()}",
+                        f"vv_tushare_fut_daily_{product_code}_{exchange}_20260410",
+                        "rv_commodity_daily_v1",
+                    )
+                )
+        conn.executemany(
             """
             insert into fact_commodity_futures_daily (
               trade_date, product_code, contract_code, exchange,
               open_value, high_value, low_value, close_value, settle_value,
               volume, open_interest, source_version, vendor_version, rule_version
-            ) values
-              ('2026-04-10', 'RB', 'RB2605.SHF', 'SHF',
-               null, null, null, 3588.0, null,
-               1000, 2000, 'sv_tushare_fut_daily_rb', 'vv_tushare_fut_daily_RB_SHF_20260410',
-               'rv_commodity_daily_v1'),
-              ('2026-04-10', 'I', 'I2605.DCE', 'DCE',
-               null, null, null, 812.5, null,
-               1000, 2000, 'sv_tushare_fut_daily_i', 'vv_tushare_fut_daily_I_DCE_20260410',
-               'rv_commodity_daily_v1'),
-              ('2026-04-10', 'CU', 'CU2605.SHF', 'SHF',
-               null, null, null, 81234.5, null,
-               1000, 2000, 'sv_tushare_fut_daily_cu', 'vv_tushare_fut_daily_CU_SHF_20260410',
-               'rv_commodity_daily_v1'),
-              ('2026-04-10', 'AL', 'AL2605.SHF', 'SHF',
-               null, null, null, 19876.0, null,
-               1000, 2000, 'sv_tushare_fut_daily_al', 'vv_tushare_fut_daily_AL_SHF_20260410',
-               'rv_commodity_daily_v1'),
-              ('2026-04-10', 'SC', 'SC2605.INE', 'INE',
-               null, null, null, 612.3, null,
-               1000, 2000, 'sv_tushare_fut_daily_sc', 'vv_tushare_fut_daily_SC_INE_20260410',
-               'rv_commodity_daily_v1'),
-              ('2026-04-10', 'AU', 'AU2605.SHF', 'SHF',
-               null, null, null, 548.2, null,
-               1000, 2000, 'sv_tushare_fut_daily_au', 'vv_tushare_fut_daily_AU_SHF_20260410',
-               'rv_commodity_daily_v1')
-            """
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            commodity_rows,
         )
     finally:
         conn.close()
@@ -2130,21 +2169,56 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     assert coverage["used_in_crisis_score"] == ["nanhua"]
     items = {item["field"]: item for item in coverage["items"]}
     assert set(items) == {"rebar", "iron_ore", "copper", "aluminum", "crude_oil", "gold"}
-    assert load_series_by_alias("SC0.INE", duckdb_path=duckdb_path)["series_id"].tolist() == ["COMMODITY.SC"]
+    crude_series = load_series_by_alias("SC0.INE", duckdb_path=duckdb_path)
+    assert crude_series["series_id"].drop_duplicates().tolist() == ["COMMODITY.SC"]
+    assert len(crude_series) == 120
     assert items["copper"]["available"] is True
     assert items["copper"]["aliases"] == ["CU0", "CU0.SHF"]
     assert items["copper"]["matched_alias"] == "CU0"
     assert items["copper"]["role"] == "supplemental_observation"
     assert items["copper"]["used_in_formula"] is False
+    assert items["copper"]["candidate_decision"] == {
+        "status": "shadow_review_ready",
+        "label": "影子评估就绪",
+        "reason": "数据已命中且与分析日同日；当前仍作为 supplemental_observation，不改变 Crisis Score 公式。",
+        "next_step": "完成历史回测、相关性检验、权重审批后，才能作为公式候选提交。",
+    }
     assert items["copper"]["report_date"] == "2026-04-10"
     assert items["copper"]["date_alignment_status"] == "aligned"
     assert items["copper"]["series_id"] == "CA.COPPER"
     assert items["copper"]["source"] == "tushare"
     assert items["copper"]["latest_date"] == "2026-04-10"
-    assert items["copper"]["row_count"] == 1
-    assert items["copper"]["value"] == 81234.5
+    assert items["copper"]["row_count"] == 120
+    assert items["copper"]["value"] == pytest.approx(81234.5)
+    copper_shadow = items["copper"]["shadow_evaluation"]
+    assert copper_shadow["status"] == "review_ready"
+    assert copper_shadow["label"] == "影子评估可读"
+    assert copper_shadow["sample_count"] == 41
+    assert copper_shadow["window_start"] == "2026-03-01"
+    assert copper_shadow["window_end"] == "2026-04-10"
+    assert copper_shadow["target"] == "crisis_score"
+    assert copper_shadow["candidate_metric"] == "daily_return"
+    assert copper_shadow["same_day_correlation"] == pytest.approx(0.0)
+    assert copper_shadow["lead_1d_correlation"] == pytest.approx(0.0)
+    assert copper_shadow["lag_1d_correlation"] == pytest.approx(0.0)
+    assert copper_shadow["crisis_hit_rate"] == pytest.approx(0.55)
+    assert copper_shadow["crisis_sample_count"] == 11
+    assert "样本 41" in copper_shadow["summary"]
+    assert copper_shadow["next_step"] == "进入公式前仍需历史回测、相关性检验、权重审批和版本记录。"
     assert items["crude_oil"]["series_id"] == "COMMODITY.SC"
     assert items["gold"]["series_id"] == "COMMODITY.AU"
+    assert coverage["candidate_summary"] == {
+        "shadow_review_ready_count": 6,
+        "needs_current_data_count": 0,
+        "missing_data_count": 0,
+        "shadow_evaluation_ready_count": 6,
+        "shadow_evaluation_short_count": 0,
+        "shadow_evaluation_status_counts": {"review_ready": 6},
+        "shadow_evaluation_next_step": "6 个商品候选可进入人工复核；进入公式前仍需历史回测、相关性检验、权重审批和版本记录。",
+        "formula_change_required": True,
+        "approval_required": True,
+        "next_step": "商品旁证进入 Crisis Score 公式前，需要先完成历史回测、相关性检验、权重审批和版本记录。",
+    }
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["component_count"] == 5
 
@@ -2559,6 +2633,40 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
             "dry_run": False,
         }
     ]
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_refresh_reports_locked_duckdb(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+
+    def fake_run_commodity_daily_ingest(**_kwargs: object) -> dict[str, object]:
+        raise duckdb.IOException('IO Error: Cannot open file "moss.duckdb": another process is using it')
+
+    monkeypatch.setattr(macro_toolkit_route, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json={"end_date": "2026-06-01", "products": ["NHCI"], "dry_run": False},
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 503, response.text
+    assert "DuckDB" in response.text
+    assert "retry" in response.text.lower()
     get_settings.cache_clear()
 
 

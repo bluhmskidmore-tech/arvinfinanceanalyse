@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Sequence
 
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
 from backend.app.services.formal_result_runtime import build_formal_result_meta
-
 
 _MEASURE_RE = re.compile(r"^(?P<func>[a-z]+)\((?P<field>\*|[a-zA-Z_][a-zA-Z0-9_]*)\)$")
 

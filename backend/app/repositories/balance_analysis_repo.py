@@ -4,11 +4,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import (
-    apply_pending_migrations_on_connection,
-    ensure_balance_zqtz_legacy_columns,
-)
 from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
@@ -16,6 +11,10 @@ from backend.app.core_finance.balance_analysis import (
     ZqtzSnapshotRow,
 )
 from backend.app.repositories.currency_codes import normalize_currency_code
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_balance_zqtz_legacy_columns,
+)
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
 

@@ -6,9 +6,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final
 
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
-
 from backend.app.schemas.qdb_gl_contract import (
     QdbGlBaselineBinding,
     QdbGlBaselineValidationEvidence,
@@ -16,7 +13,8 @@ from backend.app.schemas.qdb_gl_contract import (
     QdbGlContractFinding,
     QdbGlLineage,
 )
-
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 RULE_VERSION = "rv_qdb_gl_input_contract_v1"
 

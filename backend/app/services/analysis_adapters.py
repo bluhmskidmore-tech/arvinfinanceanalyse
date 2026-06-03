@@ -24,7 +24,6 @@ from backend.app.services.formal_result_runtime import (
     build_scenario_result_meta,
 )
 
-
 PRODUCT_CATEGORY_AVAILABLE_VIEWS = [
     "monthly",
     "qtd",

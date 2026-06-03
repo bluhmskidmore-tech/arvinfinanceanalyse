@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
-
 
 SourceSurface = Literal[
     "executive_analytical",
@@ -60,7 +59,7 @@ class ResultMeta(BaseModel):
     as_of_date: str | None = None
     date_basis: str | None = None
     fallback_date: str | None = None
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     filters_applied: dict[str, Any] = Field(default_factory=dict)
     tables_used: list[str] = Field(default_factory=list)
     evidence_rows: int | None = None

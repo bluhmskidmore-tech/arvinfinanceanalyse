@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.schemas.result_meta import ResultMeta
-
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 AnalysisBasis = Literal["formal", "scenario", "analytical"]
 assert set(get_args(AnalysisBasis)) == {b.value for b in Basis}, (
@@ -26,7 +24,7 @@ class AnalysisQuery(BaseModel):
     filters: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_basis_inputs(self) -> "AnalysisQuery":
+    def validate_basis_inputs(self) -> AnalysisQuery:
         if self.basis == Basis.SCENARIO.value and self.scenario_rate_pct is None:
             raise ValueError("scenario_rate_pct is required when basis=scenario")
         if self.basis != Basis.SCENARIO.value and self.scenario_rate_pct is not None:

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Mapping
-
-from pydantic import BaseModel
+from typing import Any
 
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
-
+from pydantic import BaseModel
 
 NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
 _Q8 = Decimal("0.00000001")

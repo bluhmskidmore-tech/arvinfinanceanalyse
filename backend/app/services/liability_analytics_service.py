@@ -20,12 +20,12 @@ from backend.app.repositories.liability_analytics_repo import LiabilityAnalytics
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.schemas.liability_analytics import (
     LiabilitiesMonthlyPayload,
+    LiabilityBucketAmountItem,
     LiabilityCounterpartyByTypeItem,
     LiabilityCounterpartyPayload,
     LiabilityCounterpartyTopItem,
     LiabilityMonthlyBreakdownRow,
     LiabilityMonthlyItem,
-    LiabilityBucketAmountItem,
     LiabilityNameAmountItem,
     LiabilityRiskBucketsPayload,
     LiabilityYieldHistoryPoint,

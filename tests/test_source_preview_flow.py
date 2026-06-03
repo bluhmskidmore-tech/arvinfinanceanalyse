@@ -285,6 +285,50 @@ def test_source_preview_refresh_requires_explicit_refresh_scope_grant(tmp_path, 
     get_settings.cache_clear()
 
 
+def test_source_preview_read_surfaces_require_explicit_read_scope_grant(tmp_path, monkeypatch):
+    sqlite_path = _configure_source_preview_refresh_scope_store(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    route_module = load_module(
+        "backend.app.api.routes.source_preview",
+        "backend/app/api/routes/source_preview.py",
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-User-Id": "source-preview-read-user", "X-User-Role": "viewer"}
+
+    read_paths = (
+        "/ui/preview/source-foundation",
+        "/ui/preview/source-foundation/history",
+        "/ui/preview/source-foundation/refresh-status",
+        "/ui/preview/source-foundation/zqtz/rows",
+        "/ui/preview/source-foundation/zqtz/traces",
+    )
+
+    for path in read_paths:
+        denied = client.get(path, headers=headers)
+        assert denied.status_code == 403, f"{path}: {denied.text}"
+
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="source-preview-read-user",
+        role=None,
+        resource="source_preview.source_foundation",
+        action="read",
+    )
+
+    for path in read_paths:
+        allowed = client.get(path, headers=headers)
+        assert allowed.status_code != 403, f"{path}: {allowed.text}"
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_async_run_dual_writes_job_state_when_configured(tmp_path, monkeypatch):
     _configure_source_preview_refresh_env(tmp_path, monkeypatch, include_pnl_preview_source=True)
     job_state_path = tmp_path / "job-state.db"

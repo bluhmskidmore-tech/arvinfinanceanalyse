@@ -9,27 +9,27 @@ from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
 )
-from backend.app.core_finance.balance_workbook._utils import (
-    _ZERO,
-    _RATE_BUCKETS,
-    _CAMPISI_POLICY_BOND,
-    _group_rows,
-    _sum_decimal,
-    _weighted_average,
-    _optional_remaining_years,
-    _match_bucket,
-    _safe_ratio,
-    _rate_value,
-    _normalize_interest_mode,
-    _to_wanyuan,
-    _decimal_value,
-    _severity_from_gap,
-    _section,
-    _table,
-)
 from backend.app.core_finance.balance_workbook._bond_tables import (
-    _build_maturity_gap_table,
     _build_issuance_business_type_table,
+    _build_maturity_gap_table,
+)
+from backend.app.core_finance.balance_workbook._utils import (
+    _CAMPISI_POLICY_BOND,
+    _RATE_BUCKETS,
+    _ZERO,
+    _decimal_value,
+    _group_rows,
+    _match_bucket,
+    _normalize_interest_mode,
+    _optional_remaining_years,
+    _rate_value,
+    _safe_ratio,
+    _section,
+    _severity_from_gap,
+    _sum_decimal,
+    _table,
+    _to_wanyuan,
+    _weighted_average,
 )
 
 _INTEREST_RATE_BOND_DEFAULT_RATING = "AAA"
@@ -269,7 +269,7 @@ def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str,
         spread_value = ((spread_bp or _ZERO) - benchmark_rate) * Decimal("100")
         spread_income = _sum_decimal(
             entries,
-            lambda row: row.face_value_amount * (((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100"))),
+            lambda row: row.face_value_amount * ((_rate_value(row.coupon_rate) - benchmark_rate) / Decimal("100")),
         )
         rows.append(
             {

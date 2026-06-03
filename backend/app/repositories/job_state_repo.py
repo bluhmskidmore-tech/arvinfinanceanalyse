@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
 
 from backend.app.models.base import Base
 from backend.app.models.job_state import JobRunState
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
 
 @dataclass
@@ -113,7 +112,7 @@ class JobStateRepository:
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _to_dict(row: JobRunState) -> dict[str, Any]:

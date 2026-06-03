@@ -16,6 +16,8 @@ from backend.app.services.bond_analytics_service import (
     get_action_attribution,
     get_benchmark_excess,
     get_credit_spread_migration,
+    get_dv01_action_plan,
+    get_dv01_limit_config_status,
     get_dv01_movement,
     get_dv01_reconciliation,
     get_dv01_risk,
@@ -106,6 +108,37 @@ def dv01_movement(
         return get_dv01_movement(report_date, accounting_class=accounting_class, top_n=top_n)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-action-plan")
+def dv01_action_plan(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+    top_n: int = Query(20, ge=1, le=100, description="Number of action rows"),
+    limit_dv01: str | None = Query(None, description="Page warning limit in DV01 units"),
+    warning_dv01: str | None = Query(None, description="Page warning threshold in DV01 units"),
+    hedge_instrument_dv01: str | None = Query(None, description="DV01 per hedge unit"),
+    hedge_target_dv01: str | None = Query(None, description="Target DV01 after hedge/reduction"),
+):
+    try:
+        return get_dv01_action_plan(
+            report_date,
+            accounting_class=accounting_class,
+            top_n=top_n,
+            limit_dv01=limit_dv01,
+            warning_dv01=warning_dv01,
+            hedge_instrument_dv01=hedge_instrument_dv01,
+            hedge_target_dv01=hedge_target_dv01,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-limit-config-status")
+def dv01_limit_config_status(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+):
+    return get_dv01_limit_config_status(report_date)
 
 
 @router.get("/credit-spread-migration")

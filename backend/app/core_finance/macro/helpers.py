@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 import math
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, MutableMapping
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Iterable, Mapping, MutableMapping
-
-logger = logging.getLogger(__name__)
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from app.core_finance.safe_decimal import safe_decimal
+
+logger = logging.getLogger(__name__)
 
 
 def get_value(record: Any, *keys: str, default: Any = None) -> Any:

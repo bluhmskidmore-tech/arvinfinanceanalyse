@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Query
-
 from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/api/macro-bond-linkage", tags=["macro-analysis"])
 

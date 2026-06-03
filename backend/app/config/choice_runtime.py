@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
 _EM_C: Any | None = None
 _GOVERNANCE_SETTINGS_MODULE = "backend.app.governance.settings"
 

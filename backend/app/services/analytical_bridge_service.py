@@ -18,9 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Callable, Sequence
-
-logger = logging.getLogger(__name__)
+from collections.abc import Callable, Sequence
 
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
@@ -31,6 +29,8 @@ from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_ledger_result_meta,
 )
+
+logger = logging.getLogger(__name__)
 
 # ── Ledger table registry ──────────────────────────────────────────────
 # Maps the logical fact_table name from CubeQueryRequest to the physical

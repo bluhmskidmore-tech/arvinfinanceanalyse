@@ -9,13 +9,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Any, Mapping
+from typing import Any
 
 from .safe_decimal import safe_decimal
-
 
 ACTION_TYPE_NAMES: dict[str, str] = {
     "TIMING_BUY": "择时买入",

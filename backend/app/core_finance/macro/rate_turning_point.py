@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Iterable
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from .helpers import available_dates, build_curve_history, get_curve_rate
 

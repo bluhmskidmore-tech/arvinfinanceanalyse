@@ -16,8 +16,8 @@ Decimal('2.66...')
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
-from typing import Mapping
 
 from backend.app.core_finance.curve_engine.curve_types import (
     CurvePoint,

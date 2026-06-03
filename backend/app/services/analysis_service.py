@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Iterable, Protocol
+from collections.abc import Iterable
+from typing import Protocol
 
 from backend.app.schemas.analysis_service import AnalysisQuery, AnalysisResultEnvelope
 

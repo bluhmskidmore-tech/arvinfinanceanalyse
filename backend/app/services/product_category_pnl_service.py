@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import logging
-
-logger = logging.getLogger(__name__)
-
 from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,6 +49,8 @@ from backend.app.tasks.product_category_pnl import (
     product_category_pnl_payload_from_canonical_ytd_anchor,
 )
 
+logger = logging.getLogger(__name__)
+
 RULE_VERSION = "rv_product_category_pnl_v1"
 CACHE_VERSION = "cv_product_category_pnl_v1"
 AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
@@ -94,7 +93,7 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                 )
 
             run_id = _build_run_id()
-            queued_at = datetime.now(timezone.utc).isoformat()
+            queued_at = datetime.now(UTC).isoformat()
             governance_repo = GovernanceRepository(base_dir=settings.governance_path)
             governance_repo.append(
                 CACHE_BUILD_RUN_STREAM,
@@ -178,7 +177,7 @@ def create_product_category_manual_adjustment(
     settings: Settings,
     payload: ProductCategoryManualAdjustmentCreateRequest,
 ) -> dict[str, object]:
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     adjustment_id = f"pca-{uuid4()}"
     record = ProductCategoryManualAdjustmentPayload(
         adjustment_id=adjustment_id,
@@ -350,7 +349,7 @@ def revoke_product_category_manual_adjustment(
         {
             **current,
             "event_type": "revoked",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "approval_status": "rejected",
         }
     )
@@ -375,7 +374,7 @@ def update_product_category_manual_adjustment(
             **current,
             **payload.model_dump(),
             "event_type": "edited",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
     )
     GovernanceRepository(base_dir=settings.governance_path).append(
@@ -399,7 +398,7 @@ def restore_product_category_manual_adjustment(
         {
             **current,
             "event_type": "restored",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "approval_status": "approved",
         }
     )
@@ -735,7 +734,7 @@ def _previous_year_same_month_end(report_date: str) -> str:
 
 
 def _build_run_id() -> str:
-    return f"{PRODUCT_CATEGORY_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    return f"{PRODUCT_CATEGORY_JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _refresh_trigger_lock() -> LockDefinition:
@@ -780,7 +779,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
         if not raw_value:
             continue
         timestamp = _parse_timestamp(raw_value)
-        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+        return datetime.now(UTC) - timestamp > STALE_IN_FLIGHT_AFTER
     return False
 
 
@@ -788,8 +787,8 @@ def _parse_timestamp(raw_value: str) -> datetime:
     normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _record_dispatch_failure(
@@ -830,7 +829,7 @@ def _mark_stale_inflight_run(
             "source_version": "sv_product_category_stale",
             "vendor_version": "vv_none",
             "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -928,7 +927,7 @@ def _sort_adjustment_payloads(
     if field == "created_at":
         return sorted(
             items,
-            key=lambda item: _parse_created_at(item.created_at) or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda item: _parse_created_at(item.created_at) or datetime.min.replace(tzinfo=UTC),
             reverse=reverse,
         )
     return sorted(
@@ -944,8 +943,8 @@ def _parse_created_at(value: str) -> datetime | None:
     normalized = value.replace("Z", "+00:00") if value.endswith("Z") else value
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _build_adjustment_csv(

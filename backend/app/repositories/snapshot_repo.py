@@ -6,7 +6,6 @@ from decimal import Decimal
 from typing import Any
 
 import duckdb
-
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 
 ZQTZ_TABLE = "zqtz_bond_daily_snapshot"

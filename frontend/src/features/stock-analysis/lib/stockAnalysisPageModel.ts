@@ -816,7 +816,7 @@ export function buildStockAnalysisPagePurpose(
   const vendor = meta.vendor_status ?? "pending";
   const fallback = meta.fallback_mode ?? "none";
   const aligned = quality === "ok" && vendor === "ok" && fallback === "none";
-  const asOf = payload.as_of_date ?? "待补";
+  const asOf = payload.as_of_date ?? "日期待补";
   return {
     eyebrow: "趋势策略 · 只读复核台",
     title: "股票策略复核台",
@@ -885,7 +885,7 @@ export function buildInlineMetaSegments(
   }>,
 ): StockMetaSegment[] {
   const out: StockMetaSegment[] = [
-    { key: "as_of", text: payload.as_of_date ?? "待补日期" },
+    { key: "as_of", text: payload.as_of_date ?? "日期待补" },
     { key: "source_version", text: extras.source_version ?? "待补" },
     { key: "rule_version", text: extras.rule_version ?? "待补" },
     { key: "quality_flag", text: extras.quality_flag ?? "待补" },
@@ -1535,19 +1535,13 @@ export function buildStockAnalysisEvidenceStatus(
   const fallback = meta.fallback_mode ?? "none";
   const qualityTone = isMetaBoundary(meta) ? "warning" : "positive";
   const lineageLabel = meta.source_version ?? "待补";
-  const ruleVersion =
-    meta.rule_version ??
-    payload.hybrid_fusion_candidates?.formula_version ??
-    payload.sector_rank?.formula_version ??
-    payload.stock_candidates?.formula_version ??
-    payload.risk_exit?.formula_version ??
-    "待补";
+  const ruleVersion = meta.rule_version ?? "待补";
 
   return [
     {
       key: "as-of-date",
       label: "数据日期",
-      statusLabel: payload.as_of_date ?? "待补",
+      statusLabel: payload.as_of_date ?? "日期待补",
       tone: payload.as_of_date ? "positive" : "warning",
       detail: payload.requested_as_of_date ? `请求日期 ${payload.requested_as_of_date}` : "使用最新可用交易日",
     },
@@ -1959,7 +1953,7 @@ export function buildDecisionSummary(
       ? `下一步：先复核 ${firstReview.stockName}（${firstReview.stockCode}），${firstReview.sectorName}，距观察位 ${firstReview.distanceToBreakoutPct}。`
       : buildReviewQueueEmptyState(payload).detail,
     basisLabel: localizeBasisLabel(payload.basis),
-    asOfLabel: payload.as_of_date ?? "待补日期",
+    asOfLabel: payload.as_of_date ?? "日期待补",
   };
 }
 

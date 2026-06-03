@@ -8,9 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from decimal import Decimal
-from typing import Any, Dict
-
-logger = logging.getLogger(__name__)
+from typing import Any
 
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
@@ -23,11 +21,13 @@ from .bond_duration import (
 )
 from .safe_decimal import safe_decimal
 
+logger = logging.getLogger(__name__)
+
 
 def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
     for k in keys:
         try:
-            v = bond.get(k, None) if hasattr(bond, "get") and callable(getattr(bond, "get")) else getattr(bond, k, None)
+            v = bond.get(k, None) if hasattr(bond, "get") and callable(bond.get) else getattr(bond, k, None)
         except (KeyError, AttributeError):
             v = None
         if v is None:
@@ -52,7 +52,7 @@ def _annual_rate_decimal(value: Any) -> Decimal:
 
 
 def compute_bond_four_effects(
-    bond: Dict[str, Any],
+    bond: dict[str, Any],
     num_days: int,
     benchmark_yield_change: Decimal,
     spread_change: Decimal,
@@ -190,7 +190,7 @@ def compute_bond_four_effects(
 
 
 def compute_bond_six_effects(
-    bond: Dict[str, Any],
+    bond: dict[str, Any],
     num_days: int,
     benchmark_yield_change: Decimal,
     spread_change: Decimal,

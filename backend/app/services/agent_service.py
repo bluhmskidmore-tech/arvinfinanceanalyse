@@ -87,10 +87,8 @@ def _build_intent_handlers(
 def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
     repo_cls = BalanceAnalysisRepository
     if repo_cls is None:
-        repo_cls = getattr(
-            importlib.import_module("backend.app.repositories.balance_analysis_repo"),
-            "BalanceAnalysisRepository",
-        )
+        balance_analysis_repo_module = importlib.import_module("backend.app.repositories.balance_analysis_repo")
+        repo_cls = balance_analysis_repo_module.BalanceAnalysisRepository
     repo = repo_cls(duckdb_path)
     report_date = _latest_or_requested(request, repo.list_report_dates())
     if report_date is None:

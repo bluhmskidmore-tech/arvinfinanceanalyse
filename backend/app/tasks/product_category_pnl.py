@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.config.product_category_mapping import build_product_category_config_for_report_date
 from backend.app.core_finance.product_category_pnl import (
     CanonicalFactRow,
@@ -17,6 +15,7 @@ from backend.app.core_finance.product_category_pnl import (
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -31,7 +30,6 @@ from backend.app.services.product_category_source_service import (
 )
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
-
 
 PRODUCT_CATEGORY_PNL_LOCK = LockDefinition(
     key="lock:duckdb:product-category-pnl",
@@ -150,7 +148,7 @@ def _materialize_product_category_pnl(
                 {
                     **failed_run.model_dump(),
                     "error_message": str(exc),
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "finished_at": datetime.now(UTC).isoformat(),
                 },
             )
             raise
