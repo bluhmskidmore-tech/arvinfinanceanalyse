@@ -52,6 +52,12 @@ To review both pre-enable and post-enable gates in one read-only bundle, run:
 python scripts/tushare_news_backup_timer_preflight.py --stage all
 ```
 
+For operator handoff Markdown, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown
+```
+
 Do not enable the timer while this preflight returns `blocked`.
 
 Acceptance:

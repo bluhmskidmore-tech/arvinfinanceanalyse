@@ -16,6 +16,9 @@ GO_LIVE_EVIDENCE_PATH = (
 TIMER_PREFLIGHT_STATUS_PATH = (
     ROOT / "docs" / "handoff" / "2026-06-03-tushare-news-backup-timer-preflight-status.md"
 )
+TIMER_OPS_GAP_PACKET_PATH = (
+    ROOT / "docs" / "handoff" / "2026-06-03-tushare-news-backup-timer-ops-gap-packet.md"
+)
 
 
 def _load_preflight_module():
@@ -47,8 +50,11 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in runbook
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in runbook
     assert "docs/handoff/2026-06-03-tushare-news-backup-timer-preflight-status.md" in runbook
+    assert "docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md" in runbook
     assert "scripts/tushare_news_backup_timer_preflight.py" in runbook
     assert "--stage all" in runbook
+    assert "--format markdown" in runbook
+    assert "--format ops-gap" in runbook
     assert "--stage pre-enable" in runbook
     assert "--stage post-enable" in runbook
     assert "timer enablement packet is filled" in runbook
@@ -75,6 +81,7 @@ def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_p
     assert "Do not schedule the homepage" in handoff
     assert "scripts/tushare_news_backup_timer_preflight.py" in handoff
     assert "--stage all" in handoff
+    assert "--format markdown" in handoff
     assert "--stage pre-enable" in handoff
     assert "--stage post-enable" in handoff
     assert "preflight returns `blocked`" in handoff
@@ -101,6 +108,7 @@ def test_tushare_news_backup_refresh_go_live_checklist_requires_evidence_before_
     assert "Do not enable the timer" in checklist
     assert "scripts/tushare_news_backup_timer_preflight.py" in checklist
     assert "--stage all" in checklist
+    assert "--format markdown" in checklist
     assert "--stage pre-enable" in checklist
     assert "--stage post-enable" in checklist
     assert "returns `pass`" in checklist
@@ -128,11 +136,14 @@ def test_tushare_news_backup_timer_enablement_packet_is_ops_fillable_not_executa
     assert "scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run" in packet
     assert "scripts/tushare_news_backup_timer_preflight.py" in packet
     assert "--stage all" in packet
+    assert "--format markdown" in packet
+    assert "--format ops-gap" in packet
     assert "--stage pre-enable" in packet
     assert "--stage post-enable" in packet
     assert "preflight must return `pass` before enablement" in packet
     assert "External timer enablement: enabled" in packet
     assert "Timer evidence in go-live bundle" in packet
+    assert "docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md" in packet
     assert "timer_enablement_packet_filled" in packet
     assert "No `schtasks /Create` command is provided" in packet
     assert "No `crontab` install command is provided" in packet
@@ -201,6 +212,25 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "Tushare News Backup Timer Preflight Status" in status
     assert "External timer is not enabled" in status
     assert "--stage all" in status
+    assert "--format markdown" in status
+    assert "--format ops-gap" in status
+    assert "Combined verdict: `blocked`" in status
+    assert "Blocking stages: `pre-enable`, `post-enable`" in status
+    assert "Pre-enable summary: `6 pass / 5 blocked`" in status
+    assert "Post-enable summary: `6 pass / 7 blocked`" in status
+    assert "Operator Fill Order" in status
+    assert "Fill owner fields first" in status
+    assert "Confirm boundary rows with evidence" in status
+    assert "Complete the timer enablement packet" in status
+    assert "Record page acceptance sign-off" in status
+    assert "Set Enable timer to yes after pre-enable evidence is accepted" in status
+    assert "rerun `--stage pre-enable` before creating the external timer" in status
+    assert "After the first scheduled run, attach timer evidence" in status
+    assert "Already Verified Evidence Gates" in status
+    assert "`checklist_exists`" in status
+    assert "`page_evidence_json_confirms_read_only_fallback`" in status
+    assert "Reserved routes remain reserved:" in status
+    assert "Homepage read path remains `/ui/news/choice-events/latest`." in status
     assert "pre-enable" in status
     assert "post-enable" in status
     assert "owners_filled" in status
@@ -214,6 +244,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in status
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
     assert "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md" in status
+    assert "docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md" in status
     assert "Do not enable the timer" in status
 
 
@@ -223,9 +254,22 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
 
     pre_enable = module.build_timer_preflight_report(repo_root=ROOT, stage="pre-enable")
     post_enable = module.build_timer_preflight_report(repo_root=ROOT, stage="post-enable")
+    all_stage = module.build_timer_preflight_bundle(repo_root=ROOT)
 
     assert pre_enable["verdict"] == "blocked"
     assert post_enable["verdict"] == "blocked"
+    assert all_stage["verdict"] == "blocked"
+    assert all_stage["blocking_stages"] == ["pre-enable", "post-enable"]
+    assert f"Combined verdict: `{all_stage['verdict']}`" in status
+    assert "Blocking stages: `pre-enable`, `post-enable`" in status
+    assert (
+        f"Pre-enable summary: `{pre_enable['summary']['pass']} pass / "
+        f"{pre_enable['summary']['blocked']} blocked`"
+    ) in status
+    assert (
+        f"Post-enable summary: `{post_enable['summary']['pass']} pass / "
+        f"{post_enable['summary']['blocked']} blocked`"
+    ) in status
 
     for item in pre_enable["blocking_items"]:
         assert f"`{item}`" in status
@@ -237,3 +281,47 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         assert f"`{action['gate']}`" in status
         assert f"`{action['path']}`" in status
         assert action["action"] in status
+
+
+def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_enabling_timer() -> None:
+    packet = TIMER_OPS_GAP_PACKET_PATH.read_text(encoding="utf-8")
+    module = _load_preflight_module()
+    generated = module.render_timer_ops_gap_markdown(
+        module.build_timer_preflight_bundle(repo_root=ROOT)
+    )
+
+    assert "Tushare News Backup Timer Ops Gap Packet" in packet
+    assert "This packet does not enable the timer" in packet
+    assert "Do not run a real Tushare refresh from this packet" in packet
+    assert "Do not open reserved ingest routes" in packet
+    assert "External timer remains disabled" in packet
+    assert "--format ops-gap" in packet
+    assert "Current verdict: `blocked`" in packet
+    assert "Required External Inputs" in packet
+    assert "Credential owner" in packet
+    assert "Schedule owner" in packet
+    assert "Page acceptance owner" in packet
+    assert "Rollback owner" in packet
+    assert "Timer host" in packet
+    assert "Repository root" in packet
+    assert "Python executable" in packet
+    assert "Log path" in packet
+    assert "Refresh window" in packet
+    assert "Write-window exclusion note" in packet
+    assert "Page evidence owner sign-off" in packet
+    assert "Enable timer decision" in packet
+    assert "Timer evidence" in packet
+    assert "Post-Enable Inputs" in packet
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs." in packet
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in packet
+    assert "POST /ui/news/tushare-npr/ingest" in packet
+    assert "POST /api/news/tushare-npr/ingest" in packet
+    assert "/ui/news/choice-events/latest" in packet
+
+    for marker in (
+        "Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer.",
+        "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.",
+        "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
+    ):
+        assert marker in generated
+        assert marker in packet

@@ -9,6 +9,9 @@ This status is a handoff summary of the read-only preflight output. It does not
 call Tushare, write DuckDB, enqueue the actor, create a scheduler job, or open
 reserved ingest routes.
 
+External operations gap packet:
+`docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md`.
+
 ## Combined Status
 
 Command:
@@ -19,6 +22,38 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all
 
 This prints both the `pre-enable` and `post-enable` reports in one read-only
 bundle. It is for review only and does not enable the timer.
+
+Markdown handoff command:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown
+```
+
+Operations gap packet command:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
+```
+
+Combined verdict: `blocked`
+
+Blocking stages: `pre-enable`, `post-enable`
+
+Pre-enable summary: `6 pass / 5 blocked`
+
+Post-enable summary: `6 pass / 7 blocked`
+
+## Operator Fill Order
+
+1. Fill owner fields first in
+   `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`.
+2. Confirm boundary rows with evidence, without exposing secrets.
+3. Complete the timer enablement packet in
+   `docs/templates/tushare_news_backup_timer_enablement_packet.md`.
+4. Record page acceptance sign-off for the attached homepage evidence.
+5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.
+6. After the first scheduled run, attach timer evidence and rerun
+   `--stage post-enable`.
 
 ## Pre-Enable Status
 
@@ -46,7 +81,7 @@ Current `next_actions`:
 | `boundary_confirmation_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Mark each boundary row yes and attach evidence without secrets. |
 | `timer_enablement_packet_filled` | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Fill timer host, repository root, Python executable, log path, refresh window, write-window note, and packet owners. |
 | `page_acceptance_signoff_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Page evidence owner sign-off. |
-| `enable_timer_decision_yes` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set Enable timer to yes only after pre-enable evidence is accepted. |
+| `enable_timer_decision_yes` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set Enable timer to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
 
 ## Post-Enable Status
 

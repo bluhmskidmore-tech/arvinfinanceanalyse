@@ -4,6 +4,10 @@ This packet does not enable the timer. It is an operations fill-in packet for
 the recurring Tushare news backup refresh after the go-live checklist and
 preflight are complete.
 
+Use `docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md` to
+track the external owner, host, runtime, sign-off, and evidence inputs that must
+be filled before this packet can pass preflight.
+
 ## Ownership And Runtime
 
 - Credential owner: `<team/person>`
@@ -67,6 +71,18 @@ For a combined read-only review of both pre-enable and post-enable gates:
 
 ```powershell
 python scripts/tushare_news_backup_timer_preflight.py --stage all
+```
+
+For operator handoff Markdown:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown
+```
+
+For the external operations gap packet:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
 ```
 
 The preflight must return `pass` before enablement. A `blocked` verdict with

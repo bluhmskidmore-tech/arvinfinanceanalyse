@@ -122,6 +122,8 @@ window, first scheduled-run evidence, and rollback owner. The packet deliberatel
 does not include `schtasks /Create` or `crontab` install commands.
 The current preflight handoff status is recorded in
 `docs/handoff/2026-06-03-tushare-news-backup-timer-preflight-status.md`.
+The external operations gaps are tracked in
+`docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md`.
 
 Then run the read-only timer preflight before creating the external timer:
 
@@ -139,6 +141,18 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all
 The `all` stage prints both reports together and does not call Tushare, write
 DuckDB, enqueue the actor, create a scheduler job, or open reserved ingest
 routes.
+
+To render the same combined status as handoff Markdown on stdout, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown
+```
+
+To render the external operations gap packet on stdout, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
+```
 
 The preflight does not call Tushare, write DuckDB, enqueue the actor, or modify
 the scheduler. It checks that evidence files exist, owner fields are filled,

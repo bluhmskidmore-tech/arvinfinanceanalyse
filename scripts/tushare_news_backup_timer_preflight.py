@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict, dataclass
+from datetime import date
 from pathlib import Path
 
 
@@ -22,6 +23,7 @@ DISALLOWED_INSTALL_COMMANDS = (
 )
 PREFLIGHT_STAGES = ("pre-enable", "post-enable")
 CLI_STAGES = (*PREFLIGHT_STAGES, "all")
+OUTPUT_FORMATS = ("json", "markdown", "ops-gap")
 
 
 @dataclass(frozen=True)
@@ -273,7 +275,7 @@ NEXT_ACTIONS: dict[str, dict[str, str]] = {
     },
     "enable_timer_decision_yes": {
         "path": CHECKLIST_PATH.as_posix(),
-        "action": "Set Enable timer to yes only after pre-enable evidence is accepted.",
+        "action": "Set Enable timer to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer.",
     },
     "timer_evidence_filled": {
         "path": CHECKLIST_PATH.as_posix(),
@@ -408,6 +410,225 @@ def build_timer_preflight_bundle(*, repo_root: str | Path = ROOT) -> dict[str, o
     }
 
 
+def _format_blocking_stages(stages: list[str]) -> str:
+    if not stages:
+        return "`none`"
+    return ", ".join(f"`{stage}`" for stage in stages)
+
+
+def _format_summary(report: dict[str, object]) -> str:
+    summary = report["summary"]
+    if not isinstance(summary, dict):
+        raise TypeError("preflight summary must be a dictionary")
+    return f"`{summary['pass']} pass / {summary['blocked']} blocked`"
+
+
+def _passed_gate_names(reports: dict[str, object]) -> list[str]:
+    stage_reports = [
+        report for report in reports.values() if isinstance(report, dict)
+    ]
+    if not stage_reports:
+        return []
+    passed_sets = []
+    for report in stage_reports:
+        gates = report.get("gates", [])
+        if not isinstance(gates, list):
+            continue
+        passed_sets.append(
+            {
+                gate["name"]
+                for gate in gates
+                if isinstance(gate, dict) and gate.get("outcome") == "pass"
+            }
+        )
+    if not passed_sets:
+        return []
+    common = set.intersection(*passed_sets)
+    first_stage_order = [
+        gate["name"]
+        for gate in stage_reports[0].get("gates", [])
+        if isinstance(gate, dict) and gate.get("name") in common
+    ]
+    return first_stage_order
+
+
+def render_timer_preflight_markdown(report: dict[str, object]) -> str:
+    if report.get("stage") != "all":
+        return "\n".join(
+            (
+                "# Tushare News Backup Timer Preflight Status",
+                "",
+                f"Current verdict: `{report['verdict']}`",
+                "",
+                "Current blocking items:",
+                "",
+                *[f"- `{item}`" for item in report["blocking_items"]],
+                "",
+                "Current `next_actions`:",
+                "",
+                "| Gate | Path | Action |",
+                "| --- | --- | --- |",
+                *[
+                    f"| `{action['gate']}` | `{action['path']}` | {action['action']} |"
+                    for action in report["next_actions"]
+                ],
+                "",
+            )
+        )
+
+    reports = report["reports"]
+    if not isinstance(reports, dict):
+        raise TypeError("all-stage preflight report must contain reports")
+    pre_enable = reports["pre-enable"]
+    post_enable = reports["post-enable"]
+    rows = [
+        "# Tushare News Backup Timer Preflight Status",
+        "",
+        f"Status timestamp: {date.today().isoformat()}",
+        "",
+        "External timer is not enabled. Do not enable the timer until the `pre-enable` preflight returns `pass`.",
+        "",
+        "Combined verdict: `" + str(report["verdict"]) + "`",
+        "",
+        "Blocking stages: " + _format_blocking_stages(report["blocking_stages"]),
+        "",
+        "Pre-enable summary: " + _format_summary(pre_enable),
+        "",
+        "Post-enable summary: " + _format_summary(post_enable),
+        "",
+        "## Operator Fill Order",
+        "",
+        "1. Fill owner fields first in `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`.",
+        "2. Confirm boundary rows with evidence, without exposing secrets.",
+        "3. Complete the timer enablement packet in `docs/templates/tushare_news_backup_timer_enablement_packet.md`.",
+        "4. Record page acceptance sign-off for the attached homepage evidence.",
+        "5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.",
+        "6. After the first scheduled run, attach timer evidence and rerun `--stage post-enable`.",
+        "",
+    ]
+
+    for stage in PREFLIGHT_STAGES:
+        stage_report = reports[stage]
+        rows.extend(
+            (
+                f"## {stage.title()} Status",
+                "",
+                f"Current verdict: `{stage_report['verdict']}`",
+                "",
+                "Current blocking items:",
+                "",
+            )
+        )
+        blocking_items = stage_report["blocking_items"]
+        if blocking_items:
+            rows.extend(f"- `{item}`" for item in blocking_items)
+        else:
+            rows.append("- `none`")
+        rows.extend(
+            (
+                "",
+                "Current `next_actions`:",
+                "",
+                "| Gate | Path | Action |",
+                "| --- | --- | --- |",
+            )
+        )
+        next_actions = stage_report["next_actions"]
+        if next_actions:
+            rows.extend(
+                f"| `{action['gate']}` | `{action['path']}` | {action['action']} |"
+                for action in next_actions
+            )
+        else:
+            rows.append("| `none` | `none` | No action required. |")
+        rows.append("")
+    rows.extend(
+        (
+            "## Already Verified Evidence Gates",
+            "",
+        )
+    )
+    passed_gates = _passed_gate_names(reports)
+    if passed_gates:
+        rows.extend(f"- `{gate}`" for gate in passed_gates)
+    else:
+        rows.append("- `none`")
+    rows.extend(
+        (
+            "",
+            "Reserved routes remain reserved:",
+            "",
+            "- `POST /ui/news/tushare-npr/ingest`",
+            "- `POST /api/news/tushare-npr/ingest`",
+            "",
+            "Homepage read path remains `/ui/news/choice-events/latest`.",
+            "",
+        )
+    )
+    return "\n".join(rows)
+
+
+def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
+    return "\n".join(
+        (
+            "# Tushare News Backup Timer Ops Gap Packet",
+            "",
+            f"Status timestamp: {date.today().isoformat()}",
+            "",
+            "This packet does not enable the timer. It converts the current blocked preflight gates into external operations inputs to collect before enablement.",
+            "",
+            "Do not run a real Tushare refresh from this packet.",
+            "Do not open reserved ingest routes.",
+            "External timer remains disabled.",
+            "",
+            f"Current verdict: `{report['verdict']}`",
+            "",
+            "## Required External Inputs",
+            "",
+            "Fill these before rerunning `pre-enable`:",
+            "",
+            "| Input | Target document | Evidence to attach |",
+            "| --- | --- | --- |",
+            "| Credential owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person responsible for `MOSS_TUSHARE_TOKEN`; no token value. |",
+            "| Schedule owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person responsible for the external timer. |",
+            "| Page acceptance owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person accepting homepage fallback evidence. |",
+            "| Rollback owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person who can disable the timer. |",
+            "| Timer host | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Hostname or scheduler host identifier. |",
+            "| Repository root | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute repo path used as job working directory. |",
+            "| Python executable | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute Python path on the timer host. |",
+            "| Log path | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute scheduler log path. |",
+            "| Refresh window | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Local time and timezone. |",
+            "| Write-window exclusion note | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Evidence that the job avoids other DuckDB writers. |",
+            "| Page evidence owner sign-off | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Sign-off for the attached homepage screenshot and browser JSON. |",
+            "| Enable timer decision | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |",
+            "",
+            "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.",
+            "",
+            "## Post-Enable Inputs",
+            "",
+            "Fill these only after the first scheduled run:",
+            "",
+            "| Input | Target document | Evidence to attach |",
+            "| --- | --- | --- |",
+            "| Enabled by | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person who enabled the external timer. |",
+            "| Enabled at | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Timestamp with timezone. |",
+            "| Timer evidence | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Scheduler screenshot, job config excerpt, or first scheduled-run log without secrets. |",
+            "| Timer evidence in go-live bundle | `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md` | Same timer evidence linked from the go-live bundle. |",
+            "",
+            "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
+            "",
+            "## Boundaries",
+            "",
+            "- Homepage read path remains `/ui/news/choice-events/latest`.",
+            "- `POST /ui/news/tushare-npr/ingest` remains reserved.",
+            "- `POST /api/news/tushare-npr/ingest` remains reserved.",
+            "- Do not add homepage auto-ingest behavior.",
+            "- Do not change database schema, auth/permission framework, scheduler base, cache base, or global SDK wrappers.",
+            "",
+        )
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Check whether the Tushare news backup timer can be enabled.",
@@ -419,13 +640,24 @@ def main(argv: list[str] | None = None) -> int:
         default="post-enable",
         help="Use pre-enable before creating the external timer; use post-enable after the first scheduled run; use all to print both reports.",
     )
+    parser.add_argument(
+        "--format",
+        choices=OUTPUT_FORMATS,
+        default="json",
+        help="Output JSON, status Markdown, or operations gap Markdown.",
+    )
     args = parser.parse_args(argv)
 
     if args.stage == "all":
         report = build_timer_preflight_bundle(repo_root=args.repo_root)
     else:
         report = build_timer_preflight_report(repo_root=args.repo_root, stage=args.stage)
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    if args.format == "ops-gap":
+        print(render_timer_ops_gap_markdown(report))
+    elif args.format == "markdown":
+        print(render_timer_preflight_markdown(report))
+    else:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["verdict"] == "pass" else 1
 
 

@@ -516,3 +516,78 @@ def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) ->
     assert payload["reports"]["pre-enable"]["verdict"] == "pass"
     assert payload["reports"]["post-enable"]["verdict"] == "blocked"
     assert "timer_evidence_filled" in payload["reports"]["post-enable"]["blocking_items"]
+
+
+def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(
+        tmp_path,
+        checklist=_ready_pre_enable_checklist(),
+        evidence=_evidence(),
+    )
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "all", "--format", "markdown"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Combined verdict: `blocked`" in output
+    assert "Blocking stages: `post-enable`" in output
+    assert "Pre-enable summary: `11 pass / 0 blocked`" in output
+    assert "Post-enable summary: `11 pass / 2 blocked`" in output
+    assert "Operator Fill Order" in output
+    assert "Fill owner fields first" in output
+    assert "After the first scheduled run, attach timer evidence" in output
+    assert "Status timestamp:" in output
+    assert "Already Verified Evidence Gates" in output
+    assert "`checklist_exists`" in output
+    assert "Reserved routes remain reserved:" in output
+    assert "POST /ui/news/tushare-npr/ingest" in output
+    assert "Homepage read path remains `/ui/news/choice-events/latest`." in output
+    assert "`timer_evidence_filled`" in output
+    assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in output
+
+
+def test_timer_preflight_cli_can_render_single_stage_markdown_status(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "pre-enable", "--format", "markdown"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Current verdict: `blocked`" in output
+    assert "Current blocking items:" in output
+    assert "`owners_filled`" in output
+    assert "Current `next_actions`:" in output
+    assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in output
+
+
+def test_timer_preflight_cli_can_render_ops_gap_packet(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "all", "--format", "ops-gap"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Tushare News Backup Timer Ops Gap Packet" in output
+    assert "This packet does not enable the timer" in output
+    assert "Do not run a real Tushare refresh from this packet" in output
+    assert "External timer remains disabled" in output
+    assert "Current verdict: `blocked`" in output
+    assert "Required External Inputs" in output
+    assert "Credential owner" in output
+    assert "Timer host" in output
+    assert "Python executable" in output
+    assert "Write-window exclusion note" in output
+    assert "Post-Enable Inputs" in output
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs." in output
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in output
+    assert "POST /ui/news/tushare-npr/ingest" in output
+    assert "/ui/news/choice-events/latest" in output
