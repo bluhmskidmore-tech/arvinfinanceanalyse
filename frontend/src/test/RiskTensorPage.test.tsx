@@ -1032,7 +1032,10 @@ describe("RiskTensorPage", () => {
             desk: "FI",
           },
         },
-        result: tensorResult(reportDate),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: ["Issuer concentration above desk threshold", "Liquidity stress input requires desk signoff"],
+        },
       }));
 
       renderRiskTensorRoute("/risk-tensor", {
@@ -1047,6 +1050,9 @@ describe("RiskTensorPage", () => {
 
       expect(tracePriority).toHaveTextContent("复核状态：待复核");
       expect(within(tracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+      expect(qualityDetail).toHaveTextContent("basis formal");
+      expect(qualityDetail).toHaveTextContent("cache_version cv_tensor_test");
+      expect(qualityDetail).toHaveTextContent("generated_at 2026-04-12T08:00:00Z");
 
       await user.click(copyEvidence);
 
@@ -1055,6 +1061,9 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("复核状态 待复核"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("source_version sv_tensor_test"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("warning Issuer concentration above desk threshold / Liquidity stress input requires desk signoff"),
+      );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("evidence_rows 128"));
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("tables_used risk_tensor_daily / bond_position_snapshot"),
@@ -1085,6 +1094,12 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("报告日 2026-02-28"));
       expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("确认状态 业务已确认"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("quality_flag warning"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("fallback 未降级"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("陈旧日期 0 个陈旧日期已拦截"));
+      expect(writeText).toHaveBeenLastCalledWith(
+        expect.stringContaining("warning Issuer concentration above desk threshold / Liquidity stress input requires desk signoff"),
+      );
       expect(writeText).toHaveBeenLastCalledWith(
         expect.stringContaining("证据范围 trace_id tr_tensor_meta_copy_2026-02-28；evidence_rows 128"),
       );
@@ -1294,6 +1309,9 @@ describe("RiskTensorPage", () => {
         expect.stringContaining("trace_id tr_tensor_missing_meta_evidence_2026-02-28"),
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version cv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("generated_at 2026-04-12T08:00:00Z"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("缺失字段 evidence_rows / tables_used / filters_applied"));
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("请在 result_meta 补充 evidence_rows、tables_used、filters_applied 后重新出具"),
@@ -2056,6 +2074,9 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("trace_id tr_tensor_payload_warning_evidence_request_2026-02-28"),
       );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version cv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("generated_at 2026-04-12T08:00:00Z"));
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("缺失字段 evidence_rows / tables_used / filters_applied"),
       );
@@ -2846,7 +2867,7 @@ describe("RiskTensorPage", () => {
 
   it("lets users copy a combined payload and evidence supplement package from the first-screen warning", async () => {
     const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
+    const writeText = vi.fn(async (_text: string) => undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -2890,6 +2911,13 @@ describe("RiskTensorPage", () => {
         expect.stringContaining("缺失字段 evidence_rows / tables_used / filters_applied"),
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不会在前端补算正式指标"));
+      const copiedPackage = writeText.mock.calls.at(-1)?.[0] ?? "";
+      expect(copiedPackage).toContain("basis formal");
+      expect(copiedPackage).toContain("cache_version cv_tensor_test");
+      expect(copiedPackage).toContain("generated_at 2026-04-12T08:00:00Z");
+      expect(copiedPackage.match(/^basis formal$/gm)).toHaveLength(2);
+      expect(copiedPackage.match(/^cache_version cv_tensor_test$/gm)).toHaveLength(2);
+      expect(copiedPackage.match(/^generated_at 2026-04-12T08:00:00Z$/gm)).toHaveLength(2);
       await waitFor(() => {
         expect(warning).toHaveTextContent("已复制完整补证包");
       });
@@ -3049,6 +3077,9 @@ describe("RiskTensorPage", () => {
         expect.stringContaining("trace_id tr_tensor_payload_warning_copy_2026-02-28"),
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version cv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("generated_at 2026-04-12T08:00:00Z"));
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("异常字段 portfolio_dv01 缺失 / liquidity_gap_30d_ratio 不可解析"),
       );
@@ -3277,6 +3308,9 @@ describe("RiskTensorPage", () => {
         expect.stringContaining("trace_id tr_tensor_payload_request_2026-02-28"),
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version cv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("generated_at 2026-04-12T08:00:00Z"));
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("异常字段 portfolio_dv01 缺失 / krd_5y 不可解析 / liquidity_gap_30d_ratio 不可解析"),
       );

@@ -778,7 +778,7 @@ export default function RiskTensorPage() {
         highlightedBlockedReportDate.reason ? ` ${highlightedBlockedReportDate.reason}` : ""
       }`
     : blockedReportDateSummary;
-  const qualityTraceWarningDetail = result?.warnings[0] ?? "无预警";
+  const qualityTraceWarningDetail = result?.warnings.filter(Boolean).join(" / ") || "无预警";
   const qualityTraceMetadataDetail = `trace_id ${tensorMeta?.trace_id ?? "未提供"}；evidence_rows ${
     typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
   }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
@@ -880,6 +880,7 @@ export default function RiskTensorPage() {
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
     `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
     `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
     `缺失字段 ${missingQualityEvidenceLabels.join(" / ") || "无"}`,
@@ -890,6 +891,7 @@ export default function RiskTensorPage() {
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
     `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
     `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
     `异常字段 ${payloadQualityIssueSummary || "无"}`,
@@ -911,6 +913,10 @@ export default function RiskTensorPage() {
     ...qualityIssuanceCopyLines,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
+    `fallback ${qualityTraceFallbackDetail}`,
+    `陈旧日期 ${qualityTraceBlockedDetail}`,
+    `warning ${qualityTraceWarningDetail}`,
     `证据范围 ${qualityTraceMetadataDetail}`,
     `主读 payload 字段 ${payloadQualityIssueSummary || "全部可解析"}`,
     "证据字段复核",
@@ -1985,6 +1991,9 @@ export default function RiskTensorPage() {
               <div className="risk-tensor-quality-detail__evidence" data-testid="risk-tensor-quality-evidence">
                 <strong>证据范围</strong>
                 <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
+                <span>basis {tensorMeta?.basis ?? "未提供"}</span>
+                <span>cache_version {tensorMeta?.cache_version ?? "未提供"}</span>
+                <span>generated_at {tensorMeta?.generated_at ?? "未提供"}</span>
                 <span>来源 {compactVersion(tensorMeta?.source_version)}</span>
                 <span>规则 {compactVersion(tensorMeta?.rule_version)}</span>
                 <span>{fallbackStatus}</span>
