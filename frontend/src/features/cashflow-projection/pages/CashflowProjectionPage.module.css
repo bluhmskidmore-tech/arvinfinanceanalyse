@@ -239,6 +239,32 @@
   text-align: right;
 }
 
+.contractStatus {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--cf-accent) 36%, var(--cf-border));
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--cf-accent) 10%, transparent), transparent 40%),
+    var(--cf-paper);
+}
+
+.contractStatusTitle {
+  color: var(--cf-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.contractStatusGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  color: var(--cf-subtle);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .rail {
   grid-column: 1 / -1;
   display: grid;

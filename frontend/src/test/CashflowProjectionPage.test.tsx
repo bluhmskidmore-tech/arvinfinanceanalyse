@@ -185,4 +185,32 @@ describe("CashflowProjectionPage", () => {
 
     expect(await screen.findByTestId("data-section-fallback-banner")).toHaveTextContent("已回退至最近可用日");
   });
+
+  it("surfaces candidate metric contract status and source evidence", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const contractPanel = await screen.findByTestId("cashflow-contract-status");
+
+    expect(contractPanel).toHaveTextContent("候选指标");
+    expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/cashflow-projection");
+    expect(contractPanel).toHaveTextContent("正式可用: 否");
+    expect(contractPanel).toHaveTextContent("口径 analytical");
+    expect(contractPanel).toHaveTextContent("质量 warning");
+    expect(contractPanel).toHaveTextContent("cashflow_projection.overview");
+    expect(contractPanel).toHaveTextContent("cashflow_projection_report_date");
+    expect(contractPanel).toHaveTextContent("fact_formal_zqtz_balance_daily");
+    expect(contractPanel).toHaveTextContent("fact_formal_tyw_balance_daily");
+    expect(contractPanel).toHaveTextContent("证据行 0");
+  });
 });

@@ -151,6 +151,7 @@ export default function CashflowProjectionPage() {
     return adapted.state;
   }, [adapted.state, datesQuery.isLoading, effectiveDate]);
   const vm = adapted.vm;
+  const projectionMeta = adapted.meta;
   const conclusion = buildConclusion(vm?.kpis.durationGap);
   const monthlySeries = useMemo(() => selectCashflowMonthlyProjectionSeries(vm), [vm]);
   const riskReadout = useMemo(() => selectCashflowProjectionRiskReadout(vm), [vm]);
@@ -400,6 +401,23 @@ export default function CashflowProjectionPage() {
                 </div>
               ) : null}
             </div>
+
+            {projectionMeta ? (
+              <section className={styles.contractStatus} data-testid="cashflow-contract-status">
+                <div className={styles.contractStatusTitle}>
+                  候选指标 · PAGE-CONTRACT-PENDING:/cashflow-projection
+                </div>
+                <div className={styles.contractStatusGrid}>
+                  <span>正式可用: {projectionMeta.formal_use_allowed ? "是" : "否"}</span>
+                  <span>口径 {projectionMeta.basis}</span>
+                  <span>质量 {projectionMeta.quality_flag}</span>
+                  <span>结果类型 {projectionMeta.result_kind}</span>
+                  <span>日期基准 {projectionMeta.date_basis ?? "—"}</span>
+                  <span>使用表 {projectionMeta.tables_used?.join(", ") || "—"}</span>
+                  <span>证据行 {projectionMeta.evidence_rows ?? "—"}</span>
+                </div>
+              </section>
+            ) : null}
 
             <section className={styles.panel}>
               <div className={styles.sectionHeader}>
