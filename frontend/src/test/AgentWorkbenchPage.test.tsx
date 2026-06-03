@@ -2991,6 +2991,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
     expect(window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY)).toBe("[]");
+    expect(screen.getByText("已开启新对话 · 可以直接提问")).toBeInTheDocument();
 
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "fresh thread question");
     await user.click(screen.getByTestId("agent-panel-submit"));

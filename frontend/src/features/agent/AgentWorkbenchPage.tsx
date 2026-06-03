@@ -2697,6 +2697,7 @@ export function EmbeddedAgentCopilot({
     setRestoreErrorRunId("");
     clearQueuedQueries();
     clearComposerQuery();
+    setComposerAssistHint("已开启新对话 · 可以直接提问");
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
       persistStoredConversationTurns([]);
