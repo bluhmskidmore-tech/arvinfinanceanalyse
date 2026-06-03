@@ -1101,6 +1101,7 @@ describe("AgentWorkbenchPage", () => {
       "F:\\GAMMA",
       "F:\\BETA",
     ]);
+    expect(screen.getByText("已调整固定仓库顺序 · 可继续提问")).toBeInTheDocument();
   });
 
   it("pins directly from recent repos, de-duplicates sections, and caps pinned repos", async () => {

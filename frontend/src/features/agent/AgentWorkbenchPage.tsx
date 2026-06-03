@@ -1507,6 +1507,7 @@ export function EmbeddedAgentCopilot({
       persistPinnedRepoPaths(nextPaths);
       return nextPaths;
     });
+    setComposerAssistHint("已调整固定仓库顺序 · 可继续提问");
   }
 
   function updateConversationTurn(
