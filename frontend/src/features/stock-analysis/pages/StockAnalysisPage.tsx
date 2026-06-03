@@ -738,7 +738,7 @@ function outputKeyLabel(key: string | null | undefined) {
     hybrid_fusion: "融合池",
     risk_exit: "风险退出",
   };
-  return key ? (labels[key] ?? key.replace(/_/g, " ")) : "待补";
+  return key ? (labels[key] ?? "输出待确认") : "待补";
 }
 
 function dataGapFamilyLabel(inputFamily: string | null | undefined) {

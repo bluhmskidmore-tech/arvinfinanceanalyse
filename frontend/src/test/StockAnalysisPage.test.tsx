@@ -2328,6 +2328,13 @@ describe("StockAnalysisPage", () => {
               evidence: "external_vendor_factor_feed 未落地。",
             },
           ],
+          supported_outputs: ["market_gate", "external_vendor_alpha_output"],
+          unsupported_outputs: [
+            {
+              key: "external_vendor_alpha_output",
+              reason: "external_vendor_alpha_output pending.",
+            },
+          ],
         } as unknown as Partial<LivermoreStrategyPayload>),
       }),
     });
@@ -2336,8 +2343,8 @@ describe("StockAnalysisPage", () => {
     expect(decisionPanel).toHaveTextContent("边界");
 
     const boundarySummary = screen.getByTestId("stock-analysis-boundary-summary");
-    expect(boundarySummary).toHaveTextContent("2 条边界");
-    expect(boundarySummary).toHaveTextContent("诊断 1 / 缺口 1 / 未支持 0");
+    expect(boundarySummary).toHaveTextContent("3 条边界");
+    expect(boundarySummary).toHaveTextContent("诊断 1 / 缺口 1 / 未支持 1");
     const boundaryRail = screen.getByTestId("stock-analysis-boundary-rail");
     expect(boundaryRail).toHaveTextContent("数据日期");
     expect(boundaryRail).toHaveTextContent("规则版本");
@@ -2362,6 +2369,9 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByText(/external_vendor_factor_feed/)).not.toBeInTheDocument();
     expect(screen.getByText("可用输出")).toBeInTheDocument();
     expect(screen.getByText("阻断输出")).toBeInTheDocument();
+    expect(screen.getAllByText("输出待确认").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/external_vendor_alpha_output/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/external vendor alpha output/)).not.toBeInTheDocument();
     expect(screen.queryByText("data_gaps")).not.toBeInTheDocument();
     expect(screen.queryByText("unsupported_outputs")).not.toBeInTheDocument();
   });
