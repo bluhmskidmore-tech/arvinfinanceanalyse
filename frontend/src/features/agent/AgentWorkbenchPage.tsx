@@ -2662,25 +2662,27 @@ export function EmbeddedAgentCopilot({
     setComposerAssistHint("正在查看 GitNexus 流程 · 可继续输入");
     try {
       const payload = await executeAgentQuery(question, "query", turn.id);
-      if (payload) {
-        updateConversationTurn(turn.id, (currentTurn) => ({
-          ...currentTurn,
-          agentRun: {
-            run_id: "agent_run:sync_query",
-            status: "completed",
-            run_kind: "sync",
-            provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
-            model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
-            transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
-            toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "default"),
-            result: payload,
-          },
-          result: payload,
-          error: null,
-          stopped: false,
-          activeSuggestedActionPayload: null,
-        }));
+      if (!payload) {
+        setComposerAssistHint("查看 GitNexus 流程失败 · 可重新选择流程后重试");
+        return;
       }
+      updateConversationTurn(turn.id, (currentTurn) => ({
+        ...currentTurn,
+        agentRun: {
+          run_id: "agent_run:sync_query",
+          status: "completed",
+          run_kind: "sync",
+          provider: formatRuntimeLabel(payload.evidence.filters_applied.provider, "local"),
+          model: formatRuntimeLabel(payload.evidence.filters_applied.model, "default"),
+          transport: formatRuntimeLabel(payload.evidence.filters_applied.transport, "sync"),
+          toolsets: formatRuntimeLabel(payload.evidence.filters_applied.toolsets, "default"),
+          result: payload,
+        },
+        result: payload,
+        error: null,
+        stopped: false,
+        activeSuggestedActionPayload: null,
+      }));
     } finally {
       setComposerAssistHint((currentHint) =>
         currentHint === "正在查看 GitNexus 流程 · 可继续输入" ? null : currentHint,

@@ -1422,6 +1422,50 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
+  it("cues retry after viewing a selected GitNexus process fails", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          answer: "GitNexus processes ready.",
+          cards: [
+            {
+              title: "GitNexus Processes Table",
+              type: "table",
+              data: [{ name: "CheckoutFlow", type: "cross_community", steps: 6 }],
+              spec: { columns: ["name", "type", "steps"] },
+            },
+          ],
+          evidence: {
+            tables_used: ["gitnexus://repo/MOSS-SYSTEM-V1/processes"],
+            filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+            evidence_rows: 1,
+            quality_flag: "ok",
+          },
+          result_meta: {
+            trace_id: "tr_gitnexus_processes",
+            basis: "analytical",
+            generated_at: "2026-04-12T09:00:00Z",
+          },
+          next_drill: [],
+        }),
+      )
+      .mockResolvedValueOnce(buildJsonResponse({}, 500));
+
+    render(<AgentWorkbenchPage />);
+
+    openGitNexusTools();
+    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
+    openProcessTools();
+    await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
+
+    await user.click(screen.getByRole("button", { name: "查看所选流程" }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    expect(screen.getByText("查看 GitNexus 流程失败 · 可重新选择流程后重试")).toBeInTheDocument();
+  });
+
   it("shows local-sync pending copy before the selected GitNexus process request resolves", async () => {
     const user = userEvent.setup();
     let resolveProcesses!: (value: Response) => void;
