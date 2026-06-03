@@ -562,10 +562,26 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["result_meta"]["basis"] == "formal"
-    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "cashflow_projection.overview"
+    assert payload["result_meta"]["source_surface"] == "cashflow"
+    assert payload["result_meta"]["requested_report_date"] == "2026-01-01"
+    assert payload["result_meta"]["resolved_report_date"] == "2026-01-01"
+    assert payload["result_meta"]["as_of_date"] == "2026-01-01"
+    assert payload["result_meta"]["date_basis"] == "cashflow_projection_report_date"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2026-01-01",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+    }
+    assert payload["result_meta"]["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["report_date"] == "2026-01-01"
     assert "duration_gap" in payload["result"]
     assert "monthly_buckets" in payload["result"]

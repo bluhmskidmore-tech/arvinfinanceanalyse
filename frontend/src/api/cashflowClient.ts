@@ -44,7 +44,22 @@ export function createDemoCashflowClient(delay: Delay): CashflowClientMethods {
           warnings: [],
           computed_at: new Date().toISOString(),
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          as_of_date: reportDate,
+          date_basis: "cashflow_projection_report_date",
+          filters_applied: {
+            report_date: reportDate,
+            position_scope: "all",
+            currency_basis: "CNY",
+          },
+          tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+          evidence_rows: 0,
+        },
       );
     },
   };

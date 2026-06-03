@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Bond Analytics domain — type slice of ApiClient.
  * Imported and re-exported by client.ts for backward compatibility.
  */
@@ -360,7 +360,7 @@ export function createDemoBondAnalyticsClient(
       _options?: { assetClass?: string; accountingClass?: string },
     ) {
       await delay();
-      void _options;
+      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
       const zy = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware });
       const zp = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware });
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
@@ -440,7 +440,7 @@ export function createDemoBondAnalyticsClient(
       _options?: { scenarioSet?: string },
     ) {
       await delay();
-      void _options;
+      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.krd_curve_risk",
         {
@@ -603,10 +603,10 @@ export function createDemoBondAnalyticsClient(
     },
     async getBondAnalyticsCreditSpreadMigration(
       reportDate: string,
-      _options?: { spreadScenarios?: string },
+      options?: { spreadScenarios?: string },
     ) {
       await delay();
-      void _options;
+      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.credit_spread_migration",
         {
@@ -625,7 +625,21 @@ export function createDemoBondAnalyticsClient(
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          as_of_date: reportDate,
+          date_basis: "bond_analytics_report_date",
+          filters_applied: {
+            report_date: reportDate,
+            spread_scenarios: spreadScenarios,
+          },
+          tables_used: ["fact_formal_bond_analytics_daily"],
+          evidence_rows: 0,
+        },
       );
     },
     async getBondAnalyticsPortfolioHeadlines(reportDate: string) {
@@ -692,7 +706,7 @@ export function createDemoBondAnalyticsClient(
       _options?: { curveTypes?: string },
     ) {
       await delay();
-      void _options;
+      const spreadScenarios = options?.spreadScenarios ?? "10,25,50";
       return mockBondAnalyticsYieldCurveTermStructure(reportDate);
     },
     async getCreditSpreadAnalysisDetail(reportDate: string) {

@@ -184,6 +184,14 @@ def test_cashflow_projection_envelope_carries_cashflow_surface(tmp_path, monkeyp
     payload = service_mod.get_cashflow_projection(date(2026, 1, 1))
 
     assert payload["result_meta"]["source_surface"] == "cashflow"
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["date_basis"] == "cashflow_projection_report_date"
+    assert payload["result_meta"]["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
     get_settings.cache_clear()
 
 

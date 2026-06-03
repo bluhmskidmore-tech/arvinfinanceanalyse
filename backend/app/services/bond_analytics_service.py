@@ -1,4 +1,4 @@
-"""Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
+﻿"""Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
 from __future__ import annotations
 
 import logging
@@ -123,6 +123,7 @@ from backend.app.services.explicit_numeric import (
     promote_flat_payload,
 )
 from backend.app.services.formal_result_runtime import (
+    build_analytical_result_meta,
     build_formal_result_envelope,
     build_formal_result_envelope_from_lineage,
     build_formal_result_meta,
@@ -145,6 +146,8 @@ __all__ = ["STANDARD_SCENARIOS", "build_formal_result_meta"]
 
 JOB_NAME = "bond_analytics_materialize"
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
+BOND_ANALYTICS_DATE_BASIS = "bond_analytics_report_date"
+BOND_ANALYTICS_FACT_TABLE = "fact_formal_bond_analytics_daily"
 EMPTY_WARNING = "DuckDB bond analytics fact table not yet populated — returning empty result"
 RETURN_TRADING_GAP_WARNING = (
     "Trading PnL remains a Phase 3 placeholder (0); transaction-level trade inputs are not integrated."
@@ -525,6 +528,34 @@ def _build_numeric_fact_envelope(
     )
 
 
+
+def _credit_spread_candidate_meta(
+    *,
+    formal_meta,
+    report_date: date,
+    spread_scenarios: str,
+    rows: list[dict[str, object]],
+):
+    report_date_text = report_date.isoformat()
+    return build_analytical_result_meta(
+        trace_id=formal_meta.trace_id,
+        result_kind=formal_meta.result_kind,
+        cache_version=formal_meta.cache_version,
+        source_version=formal_meta.source_version,
+        rule_version=formal_meta.rule_version,
+        quality_flag=formal_meta.quality_flag if formal_meta.quality_flag in {"error", "stale"} else "warning",
+        vendor_version=formal_meta.vendor_version,
+        vendor_status=formal_meta.vendor_status,
+        fallback_mode=formal_meta.fallback_mode,
+        requested_report_date=report_date_text,
+        resolved_report_date=report_date_text,
+        as_of_date=report_date_text,
+        date_basis=BOND_ANALYTICS_DATE_BASIS,
+        filters_applied={"report_date": report_date_text, "spread_scenarios": spread_scenarios},
+        tables_used=[BOND_ANALYTICS_FACT_TABLE],
+        evidence_rows=len(rows),
+        source_surface="bond_analytics",
+    )
 def bond_analytics_dates_envelope() -> dict[str, object]:
     report_dates = _repo().list_report_dates()
     lineage = resolve_formal_dates_lineage(
@@ -1750,6 +1781,12 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
         [EMPTY_WARNING]
         if not all_rows
         else _ordered_unique_warnings([SPREAD_WARNING if spread_level_incomplete else None, *curve_warnings])
+    )
+    meta = _credit_spread_candidate_meta(
+        formal_meta=meta,
+        report_date=report_date,
+        spread_scenarios=spread_scenarios,
+        rows=all_rows,
     )
     payload = _build_credit_spread_payload(
         report_date=report_date,

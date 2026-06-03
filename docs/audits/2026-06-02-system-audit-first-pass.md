@@ -6,15 +6,18 @@ This report started as an evidence-first first pass and now includes the 2026-06
 
 ## Executive Verdict
 
-Release posture: **core automated gates are now green**, but do not call this release-ready until the direct business MCP evidence gap and broad backend Ruff debt are addressed or formally accepted.
+Release posture: **core automated quality gates are now green**, but do not call this release-ready until the API authorization boundary, direct business MCP evidence gap, formal-calculation boundary drift, and broad backend Ruff debt are addressed or formally accepted.
 
 Current top blockers:
 
-1. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
-2. **P2 - Candidate metric API metadata still overstates formal-use readiness on sampled unresolved surfaces.** Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, and Cashflow Projection metadata have been weakened away from formal-use approval while preserving source/date evidence. Follow-up samples still show the formal metadata pattern on Concentration Monitor candidate/page-contract-pending metrics.
-3. **P2 - Page-level MCP trace bundle coverage now has first-pass closure.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers. Seeded page trace bundles now cover 26 of 26 page-contract IDs, including the remaining Agent, Cube Query, and module-home surfaces. This closes the bundle-coverage gap, but it does not replace full data-catalog/date-lineage review for every governed metric page.
-4. **P2 - Direct business MCP tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass. This continuation used the equivalent local JSON-RPC MCP process instead of direct deferred `moss-*` tool calls.
-5. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green and `PAGE-RISK-001` is now bundle-backed and page-evidence checked, but every governed metric page has not yet been re-audited with contract/catalog/lineage evidence.
+1. **P1 - API authorization boundary is inconsistent on sensitive read surfaces.** Several business and governance read routes expose data without `Depends(get_auth_context)`, while the auth helper itself can fall back to anonymous/env identity and optionally trust `X-User-*` headers.
+2. **P1 - Source preview read endpoints expose governance rows/traces behind only an environment flag.** Refresh is permission checked, but read/list/history/rows/traces endpoints are not.
+3. **P1 - Formal calculation boundary drift remains in `bond_analytics_service`.** DV01 shock expansion, duration aggregation, DV01 share/bucket helpers, and action attribution orchestration still live in the service layer instead of a `core_finance` calculation boundary.
+4. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
+5. **P2 - Candidate metric API metadata sampled in this pass is now weakened away from formal-use approval.** Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, Cashflow Projection, and Concentration Monitor metadata now avoid `formal_use_allowed=true` while preserving source/date evidence. These fields still remain candidate or page-contract-pending until dictionary approval, golden samples, and lineage closure exist.
+6. **P2 - Page-level MCP trace bundle coverage now has first-pass closure.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers. Seeded page trace bundles now cover 26 of 26 page-contract IDs, including the remaining Agent, Cube Query, and module-home surfaces. This closes the bundle-coverage gap, but it does not replace full data-catalog/date-lineage review for every governed metric page.
+7. **P2 - Direct business MCP tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass. This continuation used the equivalent local JSON-RPC MCP process instead of direct deferred `moss-*` tool calls.
+8. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green and `PAGE-RISK-001` is now bundle-backed and page-evidence checked, but every governed metric page has not yet been re-audited with contract/catalog/lineage evidence.
 
 ## Audit Health Score
 
@@ -25,7 +28,7 @@ Current top blockers:
 | 3 | Theming | 3/4 | Theme guard now passes after restoring the bond-analysis selector ownership boundary; broad global CSS remains a risk area. |
 | 4 | Responsive design | 3/4 | Unit/build gates are green; browser smoke for all modified pages is not yet complete. |
 | 5 | Anti-patterns / maintainability | 3/4 | Frontend debt audit passes no-growth baseline and focused Ruff passes; broad backend Ruff debt remains outside this pass. |
-| **Total** |  | **16/20** | **Core gates green; evidence gaps remain** |
+| **Total** |  | **16/20** | **Core gates green; security, boundary, and evidence gaps remain** |
 
 ## Continuation Changes
 
@@ -187,6 +190,58 @@ Current verification:
 
 ## Open Findings
 
+### P1 - API authorization boundary is inconsistent on sensitive read surfaces
+
+Evidence from the second-pass security review:
+
+- `backend/app/security/auth_context.py:12-26` defines `anonymous` / `viewer` defaults and accepts `X-User-Id` / `X-User-Role` headers.
+- `backend/app/security/auth_context.py:78` enables header trust through `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST`.
+- `backend/app/main.py:50-52` allows credentials and explicitly allows `Authorization`, `X-User-Id`, and `X-User-Role` CORS headers.
+- Sampled business read routes do not use `Depends(get_auth_context)`:
+  - `backend/app/api/routes/dashboard.py:13` `/api/dashboard/core_metrics`
+  - `backend/app/api/routes/dashboard.py:26` `/api/dashboard/daily-changes`
+  - `backend/app/api/routes/external_data.py:25` `/api/external-data/catalog`
+  - `backend/app/api/routes/external_data.py:58` `/api/external-data/series/{series_id}/data`
+  - `backend/app/api/routes/executive.py:57` `/ui/home/overview`
+  - `backend/app/api/routes/positions.py:21` `/api/positions/bonds`
+  - `backend/app/api/routes/positions.py:68` `/api/positions/interbank`
+  - `backend/app/api/routes/positions.py:142` `/api/positions/customer/details`
+  - `backend/app/api/routes/market_data_ncd_proxy.py:9` `/api/market-data/ncd-funding-proxy`
+  - `backend/app/api/routes/research_calendar.py:14` `/api/research-calendar/supply-auctions`
+  - `backend/app/api/routes/cube_query.py:39` `/api/cube/dimensions/{fact_table}`
+
+Impact: automated metric and page-contract tests can pass while sensitive business data remains readable through unauthenticated GET surfaces. The header-trust development path also makes production misconfiguration more consequential.
+
+Recommendation: define the intended read-access policy once, then add route-level or router-level read authorization for business/governance surfaces. Keep public liveness endpoints separate. Production startup should fail closed if header trust or anonymous business reads are enabled outside local development.
+
+### P1 - Source preview read endpoints expose governance rows/traces behind only an environment flag
+
+Evidence:
+
+- `backend/app/api/routes/source_preview.py:52`, `:61`, `:104`, `:115`, and `:133` expose source preview list, history, refresh-status, rows, and traces as GET routes.
+- These GET routes call `_require_source_preview_http_enabled()` but do not accept `auth: Depends(get_auth_context)` and do not call `ensure_user_allowed`.
+- The write/refresh path at `backend/app/api/routes/source_preview.py:79-88` does use `Depends(get_auth_context)` and `ensure_user_allowed`.
+
+Impact: when `MOSS_SOURCE_PREVIEW_HTTP_ENABLED` is set, source families, sample rows, ingest batches, and trace evidence can be exposed without the same permission boundary used by refresh. This is governance/data-lineage sensitive even when it is read-only.
+
+Recommendation: require read permission for source preview list/history/status/rows/traces or restrict the entire read surface to local/admin-only contexts. Preserve the existing environment flag as an additional kill switch, not the only control.
+
+### P1 - Formal calculation boundary drift remains in `bond_analytics_service`
+
+Evidence:
+
+- `backend/app/services/bond_analytics_service.py:2732` defines `_parse_dv01_shocks`.
+- `backend/app/services/bond_analytics_service.py:2746` defines `_expand_parallel_shocks`.
+- `backend/app/services/bond_analytics_service.py:2753` defines `_face_weighted_modified_duration`.
+- `backend/app/services/bond_analytics_service.py:2769` defines `_total_abs_dv01`.
+- `backend/app/services/bond_analytics_service.py:2773` defines `_dv01_share`.
+- `backend/app/services/bond_analytics_service.py:2780` defines `_build_dv01_tenor_buckets`.
+- `backend/app/services/bond_analytics_service.py:360` defines `_build_action_attribution_pnl_by_key`, and `backend/app/services/bond_analytics_service.py:3532` defines `get_action_attribution`.
+
+Impact: the project contract says formal finance calculations should live under `backend/app/core_finance/`, while services should orchestrate repositories, schemas, and metadata. Keeping DV01/duration/bucket/action-attribution calculations in the service layer raises the risk of duplicate or drifting financial logic.
+
+Recommendation: open a bounded follow-up to migrate these helpers behind `core_finance` functions with regression tests before and after. Until then, treat this as an architectural watch item rather than a release blocker only if the current DV01/action-attribution results are explicitly accepted as legacy service-bound logic.
+
 ### P2 - Broad backend lint debt remains high
 
 Evidence from the first pass:
@@ -217,6 +272,22 @@ Impact: no evidence of a real leaked production secret in this pass, but default
 
 Recommendation: ensure deployment docs and startup validation reject default credentials outside local/dev mode.
 
+### P2 - Test governance lacks explicit coverage gates
+
+Evidence:
+
+- `.github/workflows/ci.yml:33` runs `python scripts/backend_release_suite.py --governance-audit-output governance-lineage-audit.json`, not a coverage-measured pytest job.
+- `.github/workflows/ci.yml:68` runs `npx vitest run`, `.github/workflows/ci.yml:71` runs `npm run debt:audit`, and `.github/workflows/ci.yml:74` runs `npm run build`.
+- `.github/workflows/ci.yml:112` runs `npx eslint .` as a separate lint job.
+- `pytest.ini:1-15` defines test roots and ignore globs, but no `--cov` or coverage threshold.
+- `frontend/package.json:15` maps `test` to `vitest run`; no coverage command or threshold is present in the sampled scripts.
+
+Positive counter-evidence: the current targeted and full test suites are broad and green, including `3645 passed, 6 skipped` for the backend suite and `1619` frontend tests passed in the recorded full frontend run.
+
+Impact: CI proves many regressions are covered, but it does not quantify whether a changed business page or service has enough test coverage. This matters most for page-level metric correctness, stale/fallback paths, and formal/candidate metadata boundaries.
+
+Recommendation: add a non-blocking coverage report first, then promote focused coverage gates for high-risk business display paths. Avoid one huge global threshold until generated/legacy surfaces are separated.
+
 ### P2 - Candidate metric metadata overstates formal-use readiness on sampled surfaces
 
 Evidence from the 2026-06-03 candidate-metric follow-up:
@@ -239,16 +310,16 @@ Evidence from the 2026-06-03 candidate-metric follow-up:
   - After the 2026-06-03 Bond Dashboard headline fix, `get_bond_dashboard_headline_kpis(date(2026, 3, 31))` returns `basis=analytical`, `formal_use_allowed=false`, `quality_flag=warning`, `date_basis=bond_dashboard_report_date`, `tables_used=["fact_formal_bond_analytics_daily"]`, report-date metadata, and source fact row counts.
   - After the 2026-06-03 Positions list-count fix, `bonds_list_envelope(report_date="2026-01-10", ...)` and `interbank_list_envelope(report_date="2026-01-10", ...)` return `basis=analytical`, `formal_use_allowed=false`, `quality_flag=warning`, `date_basis=positions_snapshot_report_date`, explicit report-date metadata, snapshot source tables, applied filters, and evidence-row counts from the list totals.
   - After the 2026-06-03 Cashflow Projection fix, `get_cashflow_projection(date(2026, 1, 1))` returns `basis=analytical`, `formal_use_allowed=false`, `quality_flag=warning`, `date_basis=cashflow_projection_report_date`, `source_surface=cashflow`, report-date metadata, formal balance source tables, applied filters, and evidence-row counts from the source rows used by the payload.
-  - `get_credit_spread_migration(date(2026, 3, 31))`: `basis=formal`, `formal_use_allowed=true`, `result_kind=bond_analytics.credit_spread_migration`, `source_surface=bond_analytics`.
+  - After the 2026-06-03 Concentration Monitor fix, `get_credit_spread_migration(date(2026, 3, 31))` returns `basis=analytical`, `formal_use_allowed=false`, `quality_flag=warning`, `date_basis=bond_analytics_report_date`, `source_surface=bond_analytics`, report-date metadata, formal bond-analytics source table evidence, applied spread-scenario filters, and evidence-row counts from the fact rows used by the payload. Existing curve fallback metadata (`vendor_stale` / `vendor_unavailable`) is preserved.
   - Control sample: `adb_envelope_for_dates("2026-03-01", "2026-03-31")` and `adb_monthly_envelope(2026)` correctly return `basis=analytical` and `formal_use_allowed=false` while using formal tables as inputs. This is the cleaner pattern for candidate/analytical page semantics.
 - Local MCP fallback lineage evidence found zero records for `positions.bonds.list`, `cashflow_projection.overview`, `bond_analytics.credit_spread_migration`, `MTR-CFP-001`, and `MTR-CON-001`, so the remaining formal-use metadata is not backed by page/metric lineage closure in the current governance streams. `bond_dashboard.headline_kpis` still lacks dictionary-level lineage closure, so its new analytical metadata should remain until a full promotion package exists.
 - Frontend evidence already shows user-facing boundary copy for two sampled surfaces:
   - `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` renders `bond-dashboard-headline-candidate-boundary`.
   - `frontend/src/features/positions/components/PositionsView.tsx` renders `positions-list-candidate-boundary`.
 
-Impact: users and downstream consumers can still receive a formal-use signal from sampled unresolved APIs while the dictionary/page contract says the displayed metric is candidate or page-contract-pending. The Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, and Cashflow Projection endpoint risks are now mitigated at the API metadata boundary, but those fields still remain candidate display metrics until dictionary-level approval, golden samples, and lineage closure exist. For Concentration Monitor, the page contract itself is still pending, so the formal-use flag is stronger than the current governance state supports.
+Impact: the sampled candidate/page-contract-pending API metadata no longer sends a formal-use approval signal, reducing the risk that users or downstream consumers treat these page fields as approved formal metrics. The fields still remain candidate display metrics until dictionary-level approval, golden samples, and lineage closure exist.
 
-Recommendation: keep the new Ledger, Bond Dashboard headline, Positions, and Cashflow Projection regression tests as the baseline, then add equivalent page-contract-pending endpoint tests for Concentration Monitor. These tests should assert outward metadata cannot imply full formal metric approval unless the metric dictionary rows, page contract, golden sample, and lineage evidence are upgraded together. Prefer an `analytical`, `ledger`, or candidate-specific basis for page-level candidate summaries, or add separate metadata fields that distinguish "formal source table used" from "this page metric is formal-use approved."
+Recommendation: keep the new Ledger, Bond Dashboard headline, Positions, Cashflow Projection, and Concentration Monitor regression tests as the baseline. Future promotion must update the metric dictionary rows, page contracts, golden samples, lineage records, and tests together before any of these page-level candidate fields can return `formal_use_allowed=true`.
 
 ### Resolved - `PAGE-RISK-001` risk tensor is now page-bundle seeded
 
@@ -335,6 +406,12 @@ Recommendation: keep the bundle workflow as the entry point for future page audi
 
 ## Positive Evidence
 
+- Second-pass front-end review checks:
+  - `frontend/src/test/StockAnalysisPage.test.tsx` exists and contains active `/stock-analysis` coverage for layout, boundary summary, stale banner, decision panel, agent bridge, backtest, sector, risk, and closed-loop states. The page still remains `temporary-exception` in `docs/live_route_maturity.md`, but the earlier "no same-page test" risk is not present in the current worktree.
+  - `frontend/src/features/team-performance/TeamPerformancePage.tsx:485-486` now states that `汇兑损益及衍生` is only a pending split reference, not a direct attribution.
+  - `frontend/src/test/TeamPerformancePage.test.tsx:534`, `:540`, and `:574` assert the Q1 boundary copy.
+  - `frontend/src/mocks/productCategoryPnl.test.ts:63` locks the `derivatives` mock row as the aggregate business-net-income reference with `category_name="汇兑损益及衍生"`.
+  - Frontend unsafe-rendering scan found no `dangerouslySetInnerHTML`, `innerHTML=`, `eval()`, `new Function()`, `srcDoc`, or `DOMParser` hits in `frontend/src`.
 - `codex mcp list` confirms `gitnexus`, `moss-data-catalog`, `moss-data-quality`, `moss-lineage-evidence`, and `moss-metric-contracts` are registered and enabled.
 - `python -m pytest tests/test_project_mcp_servers.py -q`: latest focused MCP continuation run passed with `57 passed`.
 - Local MCP fallback evidence:
@@ -492,29 +569,35 @@ Recommendation: keep the bundle workflow as the entry point for future page audi
 - Cashflow Projection and Concentration Monitor candidate-metadata follow-up:
   - Contract evidence: `docs/metric_dictionary.md` keeps `MTR-CFP-001` through `MTR-CFP-004` bound to `PAGE-CONTRACT-PENDING:/cashflow-projection`, `bound_sample_id=none`, and `pending_confirmation=true`; it keeps `MTR-CON-001` through `MTR-CON-004` bound to `PAGE-CONTRACT-PENDING:/concentration-monitor`, `bound_sample_id=none`, and `pending_confirmation=true`.
   - 2026-06-03 Cashflow Projection metadata fix: `/api/cashflow-projection` now returns `basis=analytical`, `formal_use_allowed=false`, `quality_flag=warning`, `date_basis=cashflow_projection_report_date`, explicit requested/resolved/as_of report-date metadata, `source_surface=cashflow`, `tables_used=["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"]`, applied filters, and evidence-row counts from the source rows used by the payload. The frontend mock client now mirrors the same candidate metadata.
-  - Runtime evidence: direct service output for `get_credit_spread_migration(date(2026, 3, 31))` returns `basis=formal`, `formal_use_allowed=true`, `result_kind=bond_analytics.credit_spread_migration`, and result fields including `concentration_by_issuer`, `concentration_by_industry`, `concentration_by_rating`, and `concentration_by_tenor`.
+  - 2026-06-03 Concentration Monitor metadata fix: `/api/bond-analytics/credit-spread-migration` now returns `basis=analytical`, `formal_use_allowed=false`, `quality_flag=warning`, `date_basis=bond_analytics_report_date`, explicit requested/resolved/as_of report-date metadata, `source_surface=bond_analytics`, `tables_used=["fact_formal_bond_analytics_daily"]`, applied spread-scenario filters, and evidence-row counts from the source rows used by the payload. The frontend mock client now mirrors the same candidate metadata.
   - Local MCP fallback evidence: `search_contract_docs` finds the pending candidate dictionary rows, but `find_lineage_records` returns zero records for `cashflow_projection.overview`, `bond_analytics.credit_spread_migration`, `MTR-CFP-001`, and `MTR-CON-001`.
   - Fresh Cashflow checks: `python -m pytest tests/test_cashflow_projection.py tests/test_result_meta_source_surface_followup.py tests/test_cashflow_projection_numeric_migration.py tests/test_wave5_service_explicit_numeric.py -q` passed with `28 passed`; `npm run test -- src/test/ApiClientCompositionBoundary.test.ts src/test/CashflowProjectionPage.test.tsx src/features/cashflow-projection/adapters/cashflowProjectionAdapter.test.ts src/features/cashflow-projection/pages/cashflowProjectionPageModel.test.ts` passed with `64 passed`; `python -m ruff check backend/app/services/cashflow_projection_service.py tests/test_cashflow_projection.py tests/test_result_meta_source_surface_followup.py` passed; `npm run debt:audit` passed.
-  - Current residual evidence note: Concentration Monitor may use formal source tables internally, but its page-level metrics are still pending confirmation. It needs either metadata weakening or a full contract/sample/lineage upgrade before the API can safely imply page-metric formal-use approval.
+  - Fresh Concentration checks: `python -m pytest tests/test_bond_analytics_service.py::test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentration tests/test_bond_analytics_curve_effects.py::test_credit_spread_migration_marks_result_meta_stale_when_curve_fallback_used tests/test_bond_analytics_curve_effects.py::test_credit_spread_migration_marks_result_meta_unavailable_when_curves_missing tests/test_bond_analytics_api.py::test_bond_analytics_home_supplement_routes_log_api_perf -q` passed with `4 passed`; `npm run test -- src/test/ApiClientCompositionBoundary.test.ts src/test/BondAnalyticsClient.test.ts src/test/ConcentrationMonitorPage.test.tsx src/test/CreditSpreadView.test.tsx src/test/RiskOverviewPage.test.tsx` passed with `58 passed`; `python -m ruff check backend/app/services/bond_analytics_service.py tests/test_bond_analytics_service.py tests/test_bond_analytics_api.py` passed; `npm run debt:audit` passed.
+  - Current residual evidence note: Cashflow Projection and Concentration Monitor may use formal source tables internally, but their page-level metrics are still pending confirmation. They need a full contract/sample/lineage upgrade before the API can safely imply page-metric formal-use approval.
 - Candidate metadata follow-up verification:
   - `python -m pytest tests/test_project_mcp_servers.py tests/test_ledger_pnl_service.py tests/test_bond_dashboard_api_contract.py tests/test_positions_api_contract.py tests/test_result_meta_source_surface_followup.py tests/test_bond_analytics_api.py tests/test_adb_analysis_api.py -q`
   - Result after the Ledger metadata fix: `114 passed in 93.84s (0:01:33)`.
-  - This verifies the current contract/service behavior, the Ledger metadata weakening, and the control analytical ADB boundary. The additional Bond Dashboard headline, Positions, and Cashflow checks above close those endpoints' outward metadata mismatches; Concentration Monitor remains open.
+  - This verifies the current contract/service behavior, the Ledger metadata weakening, and the control analytical ADB boundary. The additional Bond Dashboard headline, Positions, Cashflow, and Concentration checks above close the sampled candidate/page-contract-pending outward metadata mismatches.
 
 ## Evidence Gaps
 
+- This pass did not dynamically prove unauthenticated route exploitability with a running backend. The code-level evidence is enough to classify the authorization boundary as high-risk, but endpoint-level runtime validation should be part of the fix pass.
+- Python dependency security was not fully audited with a locked Python environment. Frontend production dependency audit had no reported prod vulnerabilities in the delegated scan, but Python CVE coverage remains incomplete.
 - Direct `moss-*` MCP tools were not exposed in the current Codex App deferred tool surface. `tool_search` exposed Playwright/GitHub/Canva/Node tools, but not `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, `moss-data-quality`, or `gitnexus` callable tools. This continuation used the local JSON-RPC MCP process as a read-only fallback and records that distinction.
 - `PAGE-RISK-001` / `risk-tensor` now has sampled contract/catalog/data-quality evidence, a seeded MCP page trace bundle, and a focused page evidence check, but it still lacks a direct `PAGE-RISK-001` lineage hit.
 - Page-level MCP bundle coverage is 26 of 26 page-contract IDs. This coverage is first-pass traceability only; it does not prove every page's data lineage, date semantics, browser state, or golden-sample coverage.
-- Candidate/page-contract-pending metadata is not consistently separated from formal source-table usage. Ledger PnL summary/detail, Bond Dashboard headline, Positions list counts, and Cashflow Projection are now weakened away from formal-use approval, but the sampled endpoint for Concentration Monitor still returns `basis=formal` / `formal_use_allowed=true` even where dictionary/page-contract state remains candidate or pending.
+- Sampled candidate/page-contract-pending metadata is now separated from formal source-table usage for Ledger PnL summary/detail, Bond Dashboard headline, Positions list counts, Cashflow Projection, and Concentration Monitor. These fields remain candidate/pending and should not be promoted without dictionary, page-contract, golden-sample, and lineage closure.
 - No full data-catalog/date lineage review was completed for every metric page.
 - Browser axe now completes for the four covered smoke pages, but broader page coverage is not complete.
 
 ## Recommended Next Pass
 
-1. Resolve candidate metric metadata semantics for Concentration Monitor: either weaken outward page-level metadata, or promote the affected metrics only with updated dictionary rows, page contracts, golden samples, lineage records, and tests. Use the Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, and Cashflow Projection fixes as the regression pattern.
-2. Add a direct `PAGE-RISK-001` lineage record or an explicit approved mapping from `PAGE-RISK-001` to the existing `risk_tensor` / `fact_formal_risk_tensor_daily` lineage records.
-3. Use the 26/26 page trace bundles as the routing map for the next audit pass: data-catalog/date-lineage review by page, starting with the highest-risk governed metric pages and known mixed-source surfaces.
-4. Decide whether the broad backend Ruff backlog is a release blocker or a separately tracked cleanup stream.
-5. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and governed metric pages.
-6. Keep the updated a11y smoke in the release gate, and add page-specific ready selectors as new browser smoke pages are covered.
+1. Fix or explicitly scope the read authorization boundary: business metric, position, external-data, executive, research calendar, and cube metadata reads need a deliberate public/internal/admin policy, plus startup guardrails for header-trust auth.
+2. Lock down `source_preview` GET surfaces so read/list/history/status/rows/traces require permission or local/admin-only access, while preserving the environment kill switch.
+3. Create a bounded architecture remediation for `bond_analytics_service` calculation drift: migrate DV01/duration/bucket/action-attribution helpers behind `core_finance` or document a temporary exception with tests.
+4. Audit the next highest-risk governed metric pages for data-catalog/date-lineage gaps using the 26/26 page trace bundles as the routing map, starting with pages that mix formal source tables with candidate or tooling display fields.
+5. Add a direct `PAGE-RISK-001` lineage record or an explicit approved mapping from `PAGE-RISK-001` to the existing `risk_tensor` / `fact_formal_risk_tensor_daily` lineage records.
+6. Decide whether the broad backend Ruff backlog is a release blocker or a separately tracked cleanup stream.
+7. Add coverage reporting first, then focused coverage gates for high-risk business display paths.
+8. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and governed metric pages.
+9. Keep the updated a11y smoke in the release gate, and add page-specific ready selectors as new browser smoke pages are covered.

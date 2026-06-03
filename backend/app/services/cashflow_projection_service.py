@@ -13,14 +13,17 @@ from backend.app.repositories.cashflow_projection_repo import CashflowProjection
 from backend.app.schemas.cashflow_projection import CashflowProjectionResponse
 from backend.app.services.explicit_numeric import numeric_json
 from backend.app.services.formal_result_runtime import (
+    build_analytical_result_meta,
     build_formal_result_envelope,
-    build_formal_result_meta,
 )
 
 Q8 = Decimal("0.00000000")
 CACHE_VERSION = "cv_cashflow_projection_read_v1"
 RULE_VERSION = "rv_cashflow_projection_read_v1"
 EMPTY_SOURCE_VERSION = "sv_cashflow_projection_empty"
+DATE_BASIS = "cashflow_projection_report_date"
+ZQTZ_FORMAL_TABLE = "fact_formal_zqtz_balance_daily"
+TYW_FORMAL_TABLE = "fact_formal_tyw_balance_daily"
 TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
 
 
@@ -52,7 +55,7 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         horizon_months=24,
     )
 
-    meta = build_formal_result_meta(
+    meta = build_analytical_result_meta(
         trace_id=_trace_id(),
         result_kind="cashflow_projection.overview",
         cache_version=CACHE_VERSION,
@@ -64,6 +67,17 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
             [*_collect_values(zqtz_rows, "rule_version"), *_collect_values(tyw_rows, "rule_version")],
             empty_value=RULE_VERSION,
         ),
+        requested_report_date=report_date_text,
+        resolved_report_date=report_date_text,
+        as_of_date=report_date_text,
+        date_basis=DATE_BASIS,
+        filters_applied={
+            "report_date": report_date_text,
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+        tables_used=[ZQTZ_FORMAL_TABLE, TYW_FORMAL_TABLE],
+        evidence_rows=len(zqtz_rows) + len(tyw_rows),
         source_surface="cashflow",
     )
 

@@ -1223,8 +1223,15 @@ describe("ApiClient composition boundary", () => {
     await expect(client.getCashflowProjection("2026-03-31")).resolves.toMatchObject({
       result_meta: {
         result_kind: "cashflow_projection.overview",
-        basis: "formal",
-        formal_use_allowed: true,
+        basis: "analytical",
+        formal_use_allowed: false,
+        quality_flag: "warning",
+        requested_report_date: "2026-03-31",
+        resolved_report_date: "2026-03-31",
+        as_of_date: "2026-03-31",
+        date_basis: "cashflow_projection_report_date",
+        tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+        evidence_rows: 0,
       },
       result: {
         report_date: "2026-03-31",
@@ -1237,6 +1244,36 @@ describe("ApiClient composition boundary", () => {
         monthly_buckets: [],
         top_maturing_assets_12m: [],
         warnings: [],
+      },
+    });
+  });
+
+  it("keeps credit-spread migration mock envelope at candidate analytical boundary", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    await expect(
+      client.getBondAnalyticsCreditSpreadMigration("2026-03-31", {
+        spreadScenarios: "10,25",
+      }),
+    ).resolves.toMatchObject({
+      result_meta: {
+        result_kind: "bond_analytics.credit_spread_migration",
+        basis: "analytical",
+        formal_use_allowed: false,
+        quality_flag: "warning",
+        requested_report_date: "2026-03-31",
+        resolved_report_date: "2026-03-31",
+        as_of_date: "2026-03-31",
+        date_basis: "bond_analytics_report_date",
+        filters_applied: {
+          report_date: "2026-03-31",
+          spread_scenarios: "10,25",
+        },
+        tables_used: ["fact_formal_bond_analytics_daily"],
+        evidence_rows: 0,
+      },
+      result: {
+        report_date: "2026-03-31",
       },
     });
   });

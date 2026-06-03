@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -826,8 +826,22 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
     )
 
     payload = service_mod.get_credit_spread_migration(date(2026, 3, 31), "10,25")
+    meta = payload["result_meta"]
     result = payload["result"]
 
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["quality_flag"] == "warning"
+    assert meta["scenario_flag"] is False
+    assert meta["result_kind"] == "bond_analytics.credit_spread_migration"
+    assert meta["source_surface"] == "bond_analytics"
+    assert meta["requested_report_date"] == "2026-03-31"
+    assert meta["resolved_report_date"] == "2026-03-31"
+    assert meta["as_of_date"] == "2026-03-31"
+    assert meta["date_basis"] == "bond_analytics_report_date"
+    assert meta["filters_applied"] == {"report_date": "2026-03-31", "spread_scenarios": "10,25"}
+    assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    assert meta["evidence_rows"] == 3
     assert result["credit_bond_count"] == 2
     assert _numeric_raw(result["credit_market_value"]) == Decimal("330")
     assert _numeric_raw(result["credit_weight"]).quantize(Decimal("0.00000001")) == Decimal("0.76923077")
