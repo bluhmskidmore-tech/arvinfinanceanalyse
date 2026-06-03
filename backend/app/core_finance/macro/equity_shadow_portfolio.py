@@ -76,7 +76,11 @@ PORTFOLIOS = (
 )
 
 
-def compute_equity_shadow_portfolio_report(duckdb_path: str | Path) -> dict[str, object]:
+def compute_equity_shadow_portfolio_report(
+    duckdb_path: str | Path,
+    *,
+    latest_factor_snapshot: pd.DataFrame | None = None,
+) -> dict[str, object]:
     path = Path(duckdb_path)
     if not path.exists():
         return _unavailable_report(["DUCKDB_NOT_FOUND"])
@@ -97,7 +101,11 @@ def compute_equity_shadow_portfolio_report(duckdb_path: str | Path) -> dict[str,
             return _insufficient_report(factor_dates, ["FACTOR_HISTORY_TOO_SHORT"])
 
         periods = list(zip(factor_dates[:-1], factor_dates[1:], strict=True))
-        factors_by_date = {sample_date: _load_factor_snapshot(conn, sample_date) for sample_date in factor_dates}
+        factors_by_date = _factor_snapshots_by_date(
+            conn,
+            factor_dates,
+            latest_factor_snapshot=latest_factor_snapshot,
+        )
         returns_by_period = _period_returns_by_period(conn, periods, factors_by_date)
         benchmark = _benchmark_result(periods, returns_by_period)
         portfolio_payloads: list[dict[str, object]] = []
@@ -201,18 +209,81 @@ def _factor_dates(conn: duckdb.DuckDBPyConnection) -> list[str]:
     ]
 
 
+def _factor_snapshots_by_date(
+    conn: duckdb.DuckDBPyConnection,
+    factor_dates: list[str],
+    *,
+    latest_factor_snapshot: pd.DataFrame | None,
+) -> dict[str, pd.DataFrame]:
+    preloaded_date = _preloaded_factor_snapshot_date(latest_factor_snapshot)
+    preloaded = _clean_preloaded_factor_snapshot(latest_factor_snapshot) if preloaded_date else None
+    dates_to_load = [
+        sample_date
+        for sample_date in factor_dates
+        if not (preloaded_date == sample_date and preloaded is not None)
+    ]
+    loaded = _load_factor_snapshots(conn, dates_to_load)
+    factors_by_date: dict[str, pd.DataFrame] = {}
+    for sample_date in factor_dates:
+        if preloaded_date == sample_date and preloaded is not None:
+            factors_by_date[sample_date] = preloaded
+        else:
+            factors_by_date[sample_date] = loaded.get(sample_date, _empty_factor_snapshot_frame())
+    return factors_by_date
+
+
+def _preloaded_factor_snapshot_date(frame: pd.DataFrame | None) -> str | None:
+    if not isinstance(frame, pd.DataFrame):
+        return None
+    text = str(frame.attrs.get("factor_as_of_date") or "").strip()
+    return text[:10] or None
+
+
+def _clean_preloaded_factor_snapshot(frame: pd.DataFrame | None) -> pd.DataFrame | None:
+    if not isinstance(frame, pd.DataFrame):
+        return None
+    source = frame.reset_index() if "stock_code" not in frame.columns and frame.index.name == "stock_code" else frame.copy()
+    required_columns = ["stock_code", *FACTOR_INPUT_COLUMNS]
+    if any(column not in source.columns for column in required_columns):
+        return None
+    return _clean_factor_snapshot_frame(source.loc[:, required_columns])
+
+
 def _load_factor_snapshot(conn: duckdb.DuckDBPyConnection, as_of_date: str) -> pd.DataFrame:
+    return _load_factor_snapshots(conn, [as_of_date]).get(as_of_date, _empty_factor_snapshot_frame())
+
+
+def _load_factor_snapshots(
+    conn: duckdb.DuckDBPyConnection,
+    as_of_dates: list[str],
+) -> dict[str, pd.DataFrame]:
+    if not as_of_dates:
+        return {}
     columns = ["stock_code", *FACTOR_INPUT_COLUMNS]
     frame = conn.execute(
         f"""
-        select {", ".join(columns)}
+        select as_of_date, {", ".join(columns)}
         from choice_stock_factor_snapshot
-        where as_of_date = ?
+        where as_of_date = any(?)
+        order by as_of_date asc, stock_code asc
         """,
-        [as_of_date],
+        [as_of_dates],
     ).df()
     if frame.empty:
-        return pd.DataFrame(columns=columns).set_index("stock_code")
+        return {as_of_date: _empty_factor_snapshot_frame() for as_of_date in as_of_dates}
+    frame["as_of_date"] = frame["as_of_date"].astype(str).str.slice(0, 10)
+    result: dict[str, pd.DataFrame] = {}
+    for as_of_date, group in frame.groupby("as_of_date", sort=False):
+        result[str(as_of_date)] = _clean_factor_snapshot_frame(group.drop(columns=["as_of_date"]))
+    for as_of_date in as_of_dates:
+        result.setdefault(as_of_date, _empty_factor_snapshot_frame())
+    return result
+
+
+def _clean_factor_snapshot_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return _empty_factor_snapshot_frame()
+    frame = frame.copy()
     frame["stock_name"] = ""
     frame = frame.set_index("stock_code")
     numeric_columns = list(REQUIRED_FACTOR_INPUTS)
@@ -221,6 +292,10 @@ def _load_factor_snapshot(conn: duckdb.DuckDBPyConnection, as_of_date: str) -> p
     frame = frame.dropna(subset=FACTOR_INPUT_COLUMNS)
     frame = frame[frame["industry"] != ""]
     return _filter_factor_screen_universe(frame)
+
+
+def _empty_factor_snapshot_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=["stock_code", *FACTOR_INPUT_COLUMNS]).set_index("stock_code")
 
 
 def _period_returns_by_period(

@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.core_finance.macro import equity_shadow_portfolio as shadow_portfolio_module
 from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
@@ -166,6 +167,74 @@ def test_shadow_portfolio_reuses_period_returns_per_period(
 
     assert report["status"] == "complete"
     assert query_counts["daily_observation"] == report["completed_periods"]
+
+
+def test_shadow_portfolio_batches_factor_snapshot_history_loads(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_shadow_report_db(duckdb_path)
+    real_connect = duckdb.connect
+    query_counts = {"factor_snapshot_history": 0}
+
+    class CountingConnection:
+        def __init__(self, inner: duckdb.DuckDBPyConnection) -> None:
+            self._inner = inner
+
+        def execute(self, query: str, parameters: object | None = None) -> duckdb.DuckDBPyConnection:
+            normalized = " ".join(query.casefold().split())
+            if "select stock_code" in normalized and "from choice_stock_factor_snapshot" in normalized:
+                query_counts["factor_snapshot_history"] += 1
+            if parameters is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, parameters)
+
+        def close(self) -> None:
+            self._inner.close()
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._inner, name)
+
+    def counting_connect(*args: object, **kwargs: object) -> CountingConnection:
+        return CountingConnection(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(duckdb, "connect", counting_connect)
+
+    report = compute_equity_shadow_portfolio_report(duckdb_path)
+
+    assert report["status"] == "complete"
+    assert query_counts["factor_snapshot_history"] == 1
+
+
+def test_shadow_portfolio_reuses_preloaded_latest_factor_snapshot_without_changing_report(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_shadow_report_db(duckdb_path)
+    expected = compute_equity_shadow_portfolio_report(duckdb_path)
+    latest_snapshot = macro_toolkit_route._load_equity_strategy_factor_snapshot(duckdb_path, "2026-05-03")
+    assert latest_snapshot is not None
+    loaded_factor_dates: list[str] = []
+    real_load_factor_snapshot = shadow_portfolio_module._load_factor_snapshot
+
+    def counting_load_factor_snapshot(
+        conn: duckdb.DuckDBPyConnection,
+        as_of_date: str,
+    ) -> pd.DataFrame:
+        loaded_factor_dates.append(as_of_date)
+        return real_load_factor_snapshot(conn, as_of_date)
+
+    monkeypatch.setattr(shadow_portfolio_module, "_load_factor_snapshot", counting_load_factor_snapshot)
+
+    report = compute_equity_shadow_portfolio_report(
+        duckdb_path,
+        latest_factor_snapshot=latest_snapshot,
+    )
+
+    assert report == expected
+    assert "2026-05-03" not in loaded_factor_dates
 
 
 def test_shadow_ranked_candidate_pool_matches_full_selection() -> None:

@@ -7,6 +7,7 @@ import py_compile
 import sys
 import time
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import duckdb
@@ -1468,6 +1469,86 @@ def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_pay
     assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
     assert payload["result"]["choice_stock_refresh"]["daily_observation"]["latest_trade_date"] == "2026-04-30"
     assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
+
+
+def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shadow(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    dates = pd.date_range("2026-01-01", periods=90, freq="D")
+    prices = pd.DataFrame(
+        {
+            "000001.SZ": [10.0 + idx * 0.03 for idx in range(len(dates))],
+            "000002.SZ": [12.0 + idx * 0.02 for idx in range(len(dates))],
+        },
+        index=dates,
+    )
+    observations = macro_toolkit_route._sample_strategy_observations(prices)
+    financials = pd.DataFrame(
+        {
+            "stock_code": ["000001.SZ", "000002.SZ"],
+            "pe": [8.0, 18.0],
+            "pb": [0.8, 2.2],
+            "ps": [1.0, 3.0],
+            "roe": [0.22, 0.12],
+            "gross_margin": [0.45, 0.30],
+            "three_month_return": [0.18, 0.08],
+            "twelve_month_return": [0.42, 0.10],
+            "volatility": [0.16, 0.25],
+            "dividend_yield": [0.06, 0.03],
+            "industry": ["technology", "consumer"],
+        }
+    ).set_index("stock_code")
+    financials.attrs["factor_as_of_date"] = "2026-04-30"
+    price_context = {
+        "prices": prices,
+        "observations": observations,
+        "financials": financials,
+        "as_of_date": "2026-04-30",
+        "tables_used": ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+        "source_versions": ["sv_stock"],
+        "vendor_versions": ["vv_stock"],
+    }
+    context_loads = 0
+    shadow_calls: list[pd.DataFrame | None] = []
+
+    def fake_load_price_context(duckdb_path_arg: object) -> dict[str, object]:
+        nonlocal context_loads
+        assert Path(duckdb_path_arg) == duckdb_path
+        context_loads += 1
+        return price_context
+
+    def fake_shadow_report(
+        duckdb_path_arg: object,
+        *,
+        latest_factor_snapshot: pd.DataFrame | None = None,
+    ) -> dict[str, object]:
+        assert Path(duckdb_path_arg) == duckdb_path
+        shadow_calls.append(latest_factor_snapshot)
+        return {"status": "complete", "tables_used": ["choice_stock_factor_snapshot"]}
+
+    monkeypatch.setattr(macro_toolkit_route, "_load_equity_strategy_price_context", fake_load_price_context)
+    monkeypatch.setattr(macro_toolkit_route, "compute_equity_shadow_portfolio_report", fake_shadow_report)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": "2026-04-30"}},
+    )
+
+    try:
+        payload = macro_toolkit_route._build_macro_toolkit_strategy_summaries()
+    finally:
+        get_settings.cache_clear()
+
+    assert context_loads == 1
+    assert len(shadow_calls) == 1
+    assert shadow_calls[0] is financials
+    assert payload["result"]["strategy_summaries"][0]["status"] == "complete"
+    assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
 
 
 def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:

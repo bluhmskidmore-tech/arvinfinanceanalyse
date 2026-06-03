@@ -8,9 +8,6 @@ from typing import Annotated
 
 import duckdb
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-
 from backend.app.api.response_cache import (
     market_home_macro_analysis_cache_key,
     market_home_response_cache,
@@ -62,6 +59,8 @@ from backend.app.services import macro_adversarial_signal_service, macro_toolkit
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS, run_commodity_daily_ingest
 from backend.app.tasks.macro_backfill import backfill_macro_series
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/ui/macro/toolkit", tags=["macro-toolkit"])
 
@@ -413,8 +412,11 @@ def macro_toolkit_strategy_summaries() -> dict[str, object]:
 
 def _build_macro_toolkit_strategy_summaries() -> dict[str, object]:
     settings = get_settings()
-    strategies = _equity_strategy_summaries(settings.duckdb_path)
-    shadow_portfolio_report = compute_equity_shadow_portfolio_report(settings.duckdb_path)
+    strategies, price_context = _equity_strategy_summaries_with_context(settings.duckdb_path)
+    shadow_portfolio_report = compute_equity_shadow_portfolio_report(
+        settings.duckdb_path,
+        latest_factor_snapshot=_latest_factor_snapshot_from_price_context(price_context),
+    )
     return _envelope(
         "macro_toolkit.analysis.strategy_summaries",
         {
@@ -1344,11 +1346,36 @@ _EQUITY_PRICE_MIN_OBSERVATIONS = 80
 _EQUITY_PRICE_MAX_STOCKS = 500
 _A_SHARE_RISK_LOOKBACK_DAYS = 35
 _A_SHARE_RISK_MAX_STOCKS = 8000
+_EQUITY_STRATEGY_PRICE_CONTEXT_UNSET = object()
 
 
-def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[dict[str, object]]:
+def _equity_strategy_summaries_with_context(
+    duckdb_path: str | Path | None = None,
+) -> tuple[list[dict[str, object]], dict[str, object] | None]:
     try:
         price_context = _load_equity_strategy_price_context(duckdb_path)
+        return _equity_strategy_summaries(duckdb_path, price_context=price_context), price_context
+    except Exception as exc:  # pragma: no cover - displayed as unavailable strategy evidence
+        return [_unavailable_equity_strategy_summary(exc)], None
+
+
+def _latest_factor_snapshot_from_price_context(price_context: dict[str, object] | None) -> pd.DataFrame | None:
+    if not isinstance(price_context, dict):
+        return None
+    financials = price_context.get("financials")
+    if isinstance(financials, pd.DataFrame) and not financials.empty:
+        return financials
+    return None
+
+
+def _equity_strategy_summaries(
+    duckdb_path: str | Path | None = None,
+    *,
+    price_context: object = _EQUITY_STRATEGY_PRICE_CONTEXT_UNSET,
+) -> list[dict[str, object]]:
+    try:
+        if price_context is _EQUITY_STRATEGY_PRICE_CONTEXT_UNSET:
+            price_context = _load_equity_strategy_price_context(duckdb_path)
         if price_context is not None:
             return _real_equity_strategy_summaries(price_context)
         prices = generate_random_prices(num_stocks=4, num_days=180, seed=20260506)
@@ -1434,19 +1461,21 @@ def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[di
             ),
         ]
     except Exception as exc:  # pragma: no cover - displayed as unavailable strategy evidence
-        return [
-            {
-                "key": "equity_strategies",
-                "label": "A股策略模块",
-                "group": "A股策略",
-                "status": "unavailable",
-                "tone": "missing",
-                "primary_metric": None,
-                "evidence": [],
-                "warnings": [f"{type(exc).__name__}: {exc}"],
-                "result": {"data_status": "unavailable"},
-            }
-        ]
+        return [_unavailable_equity_strategy_summary(exc)]
+
+
+def _unavailable_equity_strategy_summary(exc: Exception) -> dict[str, object]:
+    return {
+        "key": "equity_strategies",
+        "label": "A股策略模块",
+        "group": "A股策略",
+        "status": "unavailable",
+        "tone": "missing",
+        "primary_metric": None,
+        "evidence": [],
+        "warnings": [f"{type(exc).__name__}: {exc}"],
+        "result": {"data_status": "unavailable"},
+    }
 
 
 def _a_share_stampede_risk(duckdb_path: str | Path | None) -> dict[str, object]:
