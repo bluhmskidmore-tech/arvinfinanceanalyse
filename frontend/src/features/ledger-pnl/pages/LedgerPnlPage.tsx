@@ -455,6 +455,7 @@ function firstMetaMismatch(
 function buildDetailResidualAccountRows(props: {
   byAccount: LedgerPnlSummaryByAccount[];
   detailRows: LedgerPnlDataItem[];
+  comparabilityReason: string | null;
 }) {
   const detailByAccount = new Map<string, { yuan: number; hasValue: boolean; accountName: string }>();
   for (const row of props.detailRows) {
@@ -478,6 +479,7 @@ function buildDetailResidualAccountRows(props: {
     detailYuan: number;
     diff: number | null;
     judgment: string;
+    comparabilityReason: string | null;
   }> = props.byAccount.map((row) => {
     summaryAccountCodes.add(row.account_code);
     const summaryYuan = ledgerMoneyYuan(row.total_pnl);
@@ -490,8 +492,11 @@ function buildDetailResidualAccountRows(props: {
       summaryYuan,
       detailYuan,
       diff,
+      comparabilityReason: props.comparabilityReason,
       judgment:
-        diff === null
+        props.comparabilityReason
+          ? "可比性待核"
+          : diff === null
           ? "待校验"
           : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
             ? "已闭合"
@@ -512,8 +517,11 @@ function buildDetailResidualAccountRows(props: {
       summaryYuan: 0,
       detailYuan: detail.yuan,
       diff,
+      comparabilityReason: props.comparabilityReason,
       judgment:
-        Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+        props.comparabilityReason
+          ? "可比性待核"
+          : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
           ? "已闭合"
           : `汇总缺失 ${formatYuanAsYi(Math.abs(diff))}`,
     });
@@ -579,7 +587,7 @@ function buildLedgerExplainabilityModel(props: {
   const currencyYuan = sumLedgerMoney(props.byCurrency, (row) => row.total_pnl);
   const accountYuan = sumLedgerMoney(props.byAccount, (row) => row.total_pnl);
   const detailYuan = sumLedgerMoney(props.detailRows, (row) => row.monthly_pnl);
-  const currencyComparabilityReason = firstMetaMismatch(props.summaryMeta, props.detailMeta);
+  const summaryDetailComparabilityReason = firstMetaMismatch(props.summaryMeta, props.detailMeta);
   const checks = [
     { label: "币种合计", diff: differenceYuan(totalYuan, currencyYuan) },
     { label: "科目汇总", diff: differenceYuan(totalYuan, accountYuan) },
@@ -623,11 +631,12 @@ function buildLedgerExplainabilityModel(props: {
     currencyResidualRows: buildCurrencyResidualRows({
       byCurrency: props.byCurrency,
       detailRows: props.detailRows,
-      comparabilityReason: currencyComparabilityReason,
+      comparabilityReason: summaryDetailComparabilityReason,
     }),
     detailResidualAccountRows: buildDetailResidualAccountRows({
       byAccount: props.byAccount,
       detailRows: props.detailRows,
+      comparabilityReason: summaryDetailComparabilityReason,
     }),
     exposureIntensityRows: buildDetailExposureIntensityRows(props.detailRows),
     residualYuan,
@@ -783,6 +792,7 @@ function LedgerExplainabilityPanel(props: {
                     <th>明细合计金额</th>
                     <th>差异金额</th>
                     <th>诊断判断</th>
+                    <th>口径证据</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -795,6 +805,7 @@ function LedgerExplainabilityPanel(props: {
                       <td>{formatYuanAsYi(row.detailYuan)}</td>
                       <td>{formatYuanAsYi(row.diff)}</td>
                       <td>{row.judgment}</td>
+                      <td>{row.comparabilityReason ?? "当前切片可比"}</td>
                     </tr>
                   ))}
                 </tbody>
