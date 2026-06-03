@@ -8,6 +8,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from functools import lru_cache
 from pathlib import Path
 
 import duckdb
@@ -268,11 +269,15 @@ def choice_stock_refresh_overview(
     permission: dict[str, object] | None = None,
     reference_date: str | None = None,
 ) -> dict[str, object]:
+    daily_observation, factor_snapshot = _choice_stock_materialization_statuses(
+        duckdb_path,
+        reference_date=reference_date,
+    )
     return {
         "permission": permission or build_choice_stock_refresh_permission_payload(),
         "refresh": choice_stock_refresh_status(governance_path),
-        "daily_observation": _choice_stock_daily_observation_status(duckdb_path, reference_date=reference_date),
-        "factor_snapshot": _choice_stock_factor_snapshot_status(duckdb_path, reference_date=reference_date),
+        "daily_observation": daily_observation,
+        "factor_snapshot": factor_snapshot,
         "default_factor_max_stock_count": None,
     }
 
@@ -525,16 +530,82 @@ def _choice_stock_daily_observation_status(
     *,
     reference_date: str | None = None,
 ) -> dict[str, object]:
+    daily_observation, _ = _choice_stock_materialization_statuses(
+        duckdb_path,
+        reference_date=reference_date,
+    )
+    return daily_observation
+
+
+def _choice_stock_materialization_statuses(
+    duckdb_path: str | Path,
+    *,
+    reference_date: str | None = None,
+) -> tuple[dict[str, object], dict[str, object]]:
+    daily_observation, factor_snapshot = _choice_stock_materialization_base_statuses(duckdb_path)
+    return (
+        _choice_stock_daily_observation_status_with_freshness(
+            daily_observation,
+            reference_date=reference_date,
+        ),
+        _choice_stock_factor_snapshot_status_with_freshness(
+            factor_snapshot,
+            reference_date=reference_date,
+        ),
+    )
+
+
+def _choice_stock_materialization_base_statuses(
+    duckdb_path: str | Path,
+) -> tuple[dict[str, object], dict[str, object]]:
     path = Path(duckdb_path)
     if not path.exists():
-        return _choice_stock_table_status("missing_database", reference_date=reference_date)
+        return (
+            _choice_stock_base_table_status("missing_database"),
+            _choice_stock_base_table_status("missing_database"),
+        )
     try:
-        conn = duckdb.connect(str(path), read_only=True)
+        stat = path.stat()
+    except OSError:
+        return (
+            _choice_stock_base_table_status("unreadable_database"),
+            _choice_stock_base_table_status("unreadable_database"),
+        )
+    return _choice_stock_materialization_base_statuses_cache(
+        str(path.resolve()),
+        stat.st_mtime_ns,
+        stat.st_size,
+    )
+
+
+@lru_cache(maxsize=8)
+def _choice_stock_materialization_base_statuses_cache(
+    duckdb_path: str,
+    _mtime_ns: int,
+    _size: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_database", reference_date=reference_date)
+        return (
+            _choice_stock_base_table_status("unreadable_database"),
+            _choice_stock_base_table_status("unreadable_database"),
+        )
+    try:
+        return (
+            _choice_stock_daily_observation_base_status_from_conn(conn),
+            _choice_stock_factor_snapshot_base_status_from_conn(conn),
+        )
+    finally:
+        conn.close()
+
+
+def _choice_stock_daily_observation_base_status_from_conn(
+    conn: duckdb.DuckDBPyConnection,
+) -> dict[str, object]:
     try:
         if not _duckdb_table_exists(conn, "choice_stock_daily_observation"):
-            return _choice_stock_table_status("missing_table", reference_date=reference_date)
+            return _choice_stock_base_table_status("missing_table")
         row = conn.execute(
             """
             select
@@ -546,9 +617,7 @@ def _choice_stock_daily_observation_status(
             """
         ).fetchone()
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_table", reference_date=reference_date)
-    finally:
-        conn.close()
+        return _choice_stock_base_table_status("unreadable_table")
     row_count = _int_or_zero(row[0] if row else 0)
     latest_trade_date = str(row[3])[:10] if row and row[3] is not None else None
     return {
@@ -558,7 +627,6 @@ def _choice_stock_daily_observation_status(
         "stock_count": _int_or_zero(row[1] if row else 0),
         "trade_date_count": _int_or_zero(row[2] if row else 0),
         "latest_trade_date": latest_trade_date,
-        **_choice_stock_table_freshness(latest_trade_date, reference_date),
     }
 
 
@@ -567,16 +635,19 @@ def _choice_stock_factor_snapshot_status(
     *,
     reference_date: str | None = None,
 ) -> dict[str, object]:
-    path = Path(duckdb_path)
-    if not path.exists():
-        return _choice_stock_table_status("missing_database", reference_date=reference_date)
-    try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _choice_stock_table_status("unreadable_database", reference_date=reference_date)
+    _, factor_snapshot = _choice_stock_materialization_statuses(
+        duckdb_path,
+        reference_date=reference_date,
+    )
+    return factor_snapshot
+
+
+def _choice_stock_factor_snapshot_base_status_from_conn(
+    conn: duckdb.DuckDBPyConnection,
+) -> dict[str, object]:
     try:
         if not _duckdb_table_exists(conn, "choice_stock_factor_snapshot"):
-            return _choice_stock_table_status("missing_table", reference_date=reference_date)
+            return _choice_stock_base_table_status("missing_table")
         row = conn.execute(
             """
             select
@@ -587,9 +658,7 @@ def _choice_stock_factor_snapshot_status(
             """
         ).fetchone()
     except duckdb.Error:
-        return _choice_stock_table_status("unreadable_table", reference_date=reference_date)
-    finally:
-        conn.close()
+        return _choice_stock_base_table_status("unreadable_table")
     row_count = _int_or_zero(row[0] if row else 0)
     as_of_date = str(row[2])[:10] if row and row[2] is not None else None
     return {
@@ -598,16 +667,45 @@ def _choice_stock_factor_snapshot_status(
         "row_count": row_count,
         "stock_count": _int_or_zero(row[1] if row else 0),
         "as_of_date": as_of_date,
+    }
+
+
+def _choice_stock_daily_observation_status_with_freshness(
+    status: dict[str, object],
+    *,
+    reference_date: str | None = None,
+) -> dict[str, object]:
+    latest_trade_date = str(status.get("latest_trade_date") or "")[:10] or None
+    return {
+        **status,
+        **_choice_stock_table_freshness(latest_trade_date, reference_date),
+    }
+
+
+def _choice_stock_factor_snapshot_status_with_freshness(
+    status: dict[str, object],
+    *,
+    reference_date: str | None = None,
+) -> dict[str, object]:
+    as_of_date = str(status.get("as_of_date") or "")[:10] or None
+    return {
+        **status,
         **_choice_stock_table_freshness(as_of_date, reference_date),
     }
 
 
-def _choice_stock_table_status(status: str, *, reference_date: str | None = None) -> dict[str, object]:
+def _choice_stock_base_table_status(status: str) -> dict[str, object]:
     return {
         "materialized": False,
         "status": status,
         "row_count": 0,
         "stock_count": 0,
+    }
+
+
+def _choice_stock_table_status(status: str, *, reference_date: str | None = None) -> dict[str, object]:
+    return {
+        **_choice_stock_base_table_status(status),
         **_choice_stock_table_freshness(None, reference_date),
     }
 
