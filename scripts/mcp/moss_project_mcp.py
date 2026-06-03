@@ -13,6 +13,9 @@ PROTOCOL_VERSION = "2024-11-05"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DUCKDB_PATH = REPO_ROOT / "data" / "moss.duckdb"
 DEFAULT_GOVERNANCE_DIR = REPO_ROOT / "data" / "governance"
+PAGE_LINEAGE_QUERY_ALIASES = {
+    "page-risk-001": ["risk_tensor", "fact_formal_risk_tensor_daily", "/api/risk/tensor"],
+}
 
 
 class McpError(Exception):
@@ -358,6 +361,7 @@ class LineageEvidenceProvider(McpProvider):
             query = str(arguments.get("query") or "").strip()
             if not query:
                 raise McpError(-32602, "query is required.")
+            query_terms = lineage_query_terms(query)
             requested_streams = arguments.get("streams")
             if isinstance(requested_streams, list) and requested_streams:
                 stream_names = [str(stream) for stream in requested_streams]
@@ -365,12 +369,27 @@ class LineageEvidenceProvider(McpProvider):
                 stream_names = list(self._streams)
             max_results = int(arguments.get("max_results") or 40)
             records = []
+            matched_queries = []
+            seen_records = set()
             for stream in stream_names:
                 path = self._stream_path(stream)
-                records.extend(find_jsonl_records(path, stream=stream, query=query, max_results=max_results))
+                for query_term in query_terms:
+                    matches = find_jsonl_records(path, stream=stream, query=query_term, max_results=max_results)
+                    if matches and query_term not in matched_queries:
+                        matched_queries.append(query_term)
+                    for match in matches:
+                        record_key = (match["stream"], match["line"])
+                        if record_key in seen_records:
+                            continue
+                        seen_records.add(record_key)
+                        records.append(match)
+                        if len(records) >= max_results:
+                            break
+                    if len(records) >= max_results:
+                        break
                 if len(records) >= max_results:
                     break
-            payload = {"query": query, "records": records[:max_results]}
+            payload = {"query": query, "matched_queries": matched_queries, "records": records[:max_results]}
             return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
         return super().call_tool(name, arguments)
 
@@ -673,7 +692,90 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Treat missing standalone as_of_date as an explicit contract gap, not an assumption.",
         ],
     }
-    return {alias.casefold(): product_category_bundle for alias in product_category_bundle["aliases"]}
+    risk_tensor_bundle = {
+        "page_slug": "risk-tensor",
+        "page_id": "PAGE-RISK-001",
+        "page_name": "Risk Tensor",
+        "aliases": [
+            "risk-tensor",
+            "/risk-tensor",
+            "risk_tensor",
+            "PAGE-RISK-001",
+            "/api/risk/tensor",
+        ],
+        "frontend_route": "/risk-tensor",
+        "primary_api": "/api/risk/tensor",
+        "supporting_apis": [
+            "/api/risk/tensor/dates",
+        ],
+        "contract_docs": [
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+            "docs/golden_sample_catalog.md",
+            "docs/calc_rules.md",
+        ],
+        "truth_chain": [
+            "docs/page_contracts.md PAGE-RISK-001",
+            "docs/metric_dictionary.md MTR-RSK-001 / MTR-RSK-001R / MTR-RSK-021-023",
+            "backend/app/schema_registry/duckdb/04_risk_tensor.sql fact_formal_risk_tensor_daily",
+            "backend/app/tasks/risk_tensor_materialize.py materialize_risk_tensor_facts",
+            "backend/app/services/risk_tensor_service.py risk_tensor_envelope",
+            "RiskTensorPayload",
+            "/api/risk/tensor",
+            "frontend/src/features/risk-tensor/RiskTensorPage.tsx",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/risk_tensor.py",
+            "backend/app/services/risk_tensor_service.py",
+            "backend/app/repositories/risk_tensor_repo.py",
+            "backend/app/schemas/risk_tensor.py",
+            "backend/app/core_finance/risk_tensor.py",
+            "backend/app/core_finance/risk_tensor_regulatory_scope.py",
+            "backend/app/tasks/risk_tensor_materialize.py",
+            "backend/app/schema_registry/duckdb/04_risk_tensor.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/executiveClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/risk-tensor/RiskTensorPage.tsx",
+            "frontend/src/features/risk-tensor/RiskTensorPage.css",
+        ],
+        "test_touchpoints": [
+            "tests/test_risk_tensor_api.py",
+            "tests/test_risk_tensor_service.py",
+            "tests/test_risk_tensor_repo.py",
+            "tests/test_risk_tensor_core.py",
+            "tests/test_risk_tensor_materialize.py",
+            "tests/test_risk_tensor_numeric_migration.py",
+            "tests/test_risk_tensor_liquidity.py",
+            "frontend/src/test/RiskTensorPage.test.tsx",
+            "tests/test_golden_samples_capture_ready.py",
+        ],
+        "golden_samples": [
+            "tests/golden_samples/GS-RISK-A",
+            "tests/golden_samples/GS-RISK-WARN-B",
+        ],
+        "verification_focus": [
+            "Trace /api/risk/tensor result_meta through getRiskTensor, RiskTensorPage, and the quality/detail surfaces before changing display logic.",
+            "Check report_date, source_version, upstream_source_version, liability_source_version, rule_version, cache_version, and trace_id visibility.",
+            "Check units and null-vs-zero semantics for DV01, regulatory_dv01, KRD, CS01, convexity, HHI, liquidity gaps, and duration-scope fields.",
+            "Keep warning quality visible; latest data can be formal while still requiring user-visible warning context.",
+        ],
+        "guardrails": [
+            "Do not recompute KRD, DV01, CS01, convexity, liquidity gaps, or issuer concentration in the frontend.",
+            "Do not use /ui/risk/overview as formal PAGE-RISK-001 evidence; it is a separate overview surface.",
+            "Do not backfill regulatory_dv01 from portfolio_dv01 or hide missing regulatory scope.",
+            "Keep warning quality and warnings visible, including tenor remaps, unsupported tenor exclusions, and stale/fallback report-date blocks.",
+            "Do not synthesize maturity dates for no-maturity rows; preserve duration denominator exclusions and disclose excluded market value/count.",
+            "DV01 totals remain row-DV01 sourced even when duration denominator excludes rows.",
+        ],
+    }
+    bundles = [product_category_bundle, risk_tensor_bundle]
+    return {
+        alias.casefold(): bundle
+        for bundle in bundles
+        for alias in bundle["aliases"]
+    }
 
 
 def page_trace_bundle(bundles: dict[str, dict[str, Any]], page_slug: str) -> dict[str, Any]:
@@ -727,6 +829,11 @@ def search_files(paths: Any, *, query: str, max_results: int) -> list[dict[str, 
                 if len(matches) >= max_results:
                     return matches
     return matches
+
+
+def lineage_query_terms(query: str) -> list[str]:
+    aliases = PAGE_LINEAGE_QUERY_ALIASES.get(query.casefold(), [])
+    return list(dict.fromkeys([query, *aliases]))
 
 
 def stream_status(path: Path) -> dict[str, Any]:

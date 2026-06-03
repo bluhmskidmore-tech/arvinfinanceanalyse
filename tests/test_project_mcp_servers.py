@@ -329,6 +329,36 @@ def test_metric_contracts_mcp_exposes_product_category_page_trace_bundle() -> No
         server.close()
 
 
+def test_metric_contracts_mcp_exposes_risk_tensor_page_trace_bundle() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in ("risk-tensor", "/risk-tensor", "risk_tensor", "PAGE-RISK-001", "/api/risk/tensor"):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "risk-tensor"
+
+        assert payload["page_id"] == "PAGE-RISK-001"
+        assert payload["frontend_route"] == "/risk-tensor"
+        assert payload["primary_api"] == "/api/risk/tensor"
+        assert "/api/risk/tensor/dates" in payload["supporting_apis"]
+        assert any("fact_formal_risk_tensor_daily" in item for item in payload["truth_chain"])
+        assert any("RiskTensorPayload" in item for item in payload["truth_chain"])
+        assert "backend/app/services/risk_tensor_service.py" in payload["backend_touchpoints"]
+        assert "frontend/src/features/risk-tensor/RiskTensorPage.tsx" in payload["frontend_touchpoints"]
+        assert "tests/test_risk_tensor_api.py" in payload["test_touchpoints"]
+        assert "tests/golden_samples/GS-RISK-A" in payload["golden_samples"]
+        assert "tests/golden_samples/GS-RISK-WARN-B" in payload["golden_samples"]
+        assert any("warning quality" in guardrail for guardrail in payload["guardrails"])
+    finally:
+        server.close()
+
+
 def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_pages() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -351,10 +381,10 @@ def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_
 
         unknown_slug = server.request_error(
             "tools/call",
-            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "risk-tensor"}},
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "unknown-page"}},
         )
         assert unknown_slug["code"] == -32602
-        assert "Unknown page_slug: risk-tensor" in unknown_slug["message"]
+        assert "Unknown page_slug: unknown-page" in unknown_slug["message"]
         assert "product-category-pnl" in unknown_slug["message"]
     finally:
         server.close()
@@ -383,6 +413,43 @@ def test_lineage_evidence_mcp_reads_governance_stream_status(tmp_path: Path) -> 
         )
         found_payload = json.loads(found["content"][0]["text"])
         assert found_payload["records"][0]["stream"] == "cache_manifest"
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_maps_page_risk_id_to_risk_tensor_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "agent_audit.jsonl").write_text(
+        json.dumps(
+            {
+                "result_kind": "risk_tensor",
+                "table": "fact_formal_risk_tensor_daily",
+                "route": "/api/risk/tensor",
+                "report_date": "2026-04-30",
+            },
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {
+                "name": "find_lineage_records",
+                "arguments": {"query": "PAGE-RISK-001", "streams": ["agent_audit"], "max_results": 5},
+            },
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+        assert found_payload["query"] == "PAGE-RISK-001"
+        assert found_payload["matched_queries"] == ["risk_tensor", "fact_formal_risk_tensor_daily", "/api/risk/tensor"]
+        assert found_payload["records"][0]["stream"] == "agent_audit"
+        assert found_payload["records"][0]["record"]["result_kind"] == "risk_tensor"
     finally:
         server.close()
 
