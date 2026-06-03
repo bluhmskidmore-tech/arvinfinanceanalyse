@@ -998,9 +998,12 @@ function buildAgentRequestBody(
 }
 
 function shouldScrollComposerInputIntoView(input: HTMLTextAreaElement) {
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const visualViewport = window.visualViewport;
+  const viewportTop = visualViewport?.offsetTop ?? 0;
+  const viewportHeight = visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
+  const viewportBottom = viewportTop + viewportHeight;
   const rect = input.getBoundingClientRect();
-  return rect.top < 0 || rect.bottom > viewportHeight;
+  return rect.top < viewportTop || rect.bottom > viewportBottom;
 }
 
 function buildFinancialWorkflowRequestBody(

@@ -3039,10 +3039,11 @@ select {
 
 .agent-composer-dock {
   position: sticky;
-  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   z-index: 4;
   margin-top: -8px;
   padding-top: 8px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   background: linear-gradient(
     180deg,
     rgba(251, 252, 254, 0),

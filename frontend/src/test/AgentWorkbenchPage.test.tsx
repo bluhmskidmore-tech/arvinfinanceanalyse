@@ -2508,6 +2508,19 @@ describe("AgentWorkbenchPage", () => {
       scrollTargets.push(this);
       scrollOptions.push(options);
     });
+    const originalInnerHeight = window.innerHeight;
+    const originalVisualViewport = window.visualViewport;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 900,
+    });
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: {
+        offsetTop: 0,
+        height: 720,
+      },
+    });
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -2600,14 +2613,14 @@ describe("AgentWorkbenchPage", () => {
       Object.defineProperty(input, "getBoundingClientRect", {
         configurable: true,
         value: () => ({
-          top: 960,
-          bottom: 1040,
+          top: 760,
+          bottom: 840,
           left: 24,
           right: 360,
           width: 336,
           height: 80,
           x: 24,
-          y: 960,
+          y: 760,
           toJSON: () => ({}),
         }),
       });
@@ -2623,6 +2636,14 @@ describe("AgentWorkbenchPage", () => {
       expect(followUpOptions).not.toBeVisible();
     } finally {
       scrollIntoViewSpy.restore();
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalInnerHeight,
+      });
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: originalVisualViewport,
+      });
     }
   });
 

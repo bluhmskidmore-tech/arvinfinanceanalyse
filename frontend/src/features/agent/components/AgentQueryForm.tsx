@@ -58,9 +58,12 @@ function assignTextAreaRef(ref: Ref<HTMLTextAreaElement> | undefined, element: H
 }
 
 function shouldScrollTextareaIntoView(textarea: HTMLTextAreaElement) {
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const visualViewport = window.visualViewport;
+  const viewportTop = visualViewport?.offsetTop ?? 0;
+  const viewportHeight = visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
+  const viewportBottom = viewportTop + viewportHeight;
   const rect = textarea.getBoundingClientRect();
-  return rect.top < 0 || rect.bottom > viewportHeight;
+  return rect.top < viewportTop || rect.bottom > viewportBottom;
 }
 
 const primaryQuickExampleCount = 2;

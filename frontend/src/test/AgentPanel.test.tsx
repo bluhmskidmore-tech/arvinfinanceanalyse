@@ -181,6 +181,19 @@ describe("AgentPanel", () => {
       scrollTargets.push(this);
       scrollOptions.push(options);
     });
+    const originalInnerHeight = window.innerHeight;
+    const originalVisualViewport = window.visualViewport;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 900,
+    });
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: {
+        offsetTop: 0,
+        height: 720,
+      },
+    });
 
     try {
       renderAgentPanel();
@@ -189,14 +202,14 @@ describe("AgentPanel", () => {
       Object.defineProperty(input, "getBoundingClientRect", {
         configurable: true,
         value: () => ({
-          top: 960,
-          bottom: 1040,
+          top: 760,
+          bottom: 840,
           left: 24,
           right: 360,
           width: 336,
           height: 80,
           x: 24,
-          y: 960,
+          y: 760,
           toJSON: () => ({}),
         }),
       });
@@ -209,6 +222,14 @@ describe("AgentPanel", () => {
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
     } finally {
       scrollIntoViewSpy.restore();
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalInnerHeight,
+      });
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: originalVisualViewport,
+      });
     }
   });
 
