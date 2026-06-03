@@ -1582,6 +1582,11 @@ export function EmbeddedAgentCopilot({
     }
   }
 
+  function clearComposerQueryFromButton() {
+    clearComposerQuery();
+    setComposerAssistHint("已清空输入 · 可以重新输入");
+  }
+
   const queuedQuery = queuedQueries[0] ?? "";
   const latestConversationTurnIsUnresolved = Boolean(
     latestConversationTurn &&
@@ -3378,6 +3383,7 @@ export function EmbeddedAgentCopilot({
           query={query}
           composerHint={composerAssistHint}
           onQueryChange={updateComposerQuery}
+          onClearQuery={clearComposerQueryFromButton}
           onSubmit={handleSubmit}
           onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
           onStop={isEmbedded ? undefined : stopActiveAgentTurn}
@@ -3553,6 +3559,7 @@ export function EmbeddedAgentCopilot({
             query={query}
             composerHint={composerAssistHint}
             onQueryChange={updateComposerQuery}
+            onClearQuery={clearComposerQueryFromButton}
             onSubmit={handleSubmit}
             onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
             onStop={isEmbedded ? undefined : stopActiveAgentTurn}

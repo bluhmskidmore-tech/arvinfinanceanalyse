@@ -23,6 +23,7 @@ type AgentQueryFormProps = {
   query: string;
   composerHint?: string | null;
   onQueryChange: (value: string) => void;
+  onClearQuery?: () => void;
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
   onQueueSubmit?: () => void;
   onStop?: () => void;
@@ -92,6 +93,7 @@ export function AgentQueryForm({
   query,
   composerHint,
   onQueryChange,
+  onClearQuery,
   onSubmit,
   onQueueSubmit,
   onStop,
@@ -201,7 +203,11 @@ export function AgentQueryForm({
               type="button"
               className="agent-chat-composer__clear"
               onClick={() => {
-                onQueryChange("");
+                if (onClearQuery) {
+                  onClearQuery();
+                } else {
+                  onQueryChange("");
+                }
                 focusTextarea();
               }}
             >

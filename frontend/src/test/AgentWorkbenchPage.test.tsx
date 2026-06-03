@@ -3784,6 +3784,7 @@ describe("AgentWorkbenchPage", () => {
 
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);
+      expect(screen.getByText("已清空输入 · 可以重新输入")).toBeInTheDocument();
       expect(scrollTargets).not.toContain(input);
       expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
       expect(fetchMock).not.toHaveBeenCalled();
