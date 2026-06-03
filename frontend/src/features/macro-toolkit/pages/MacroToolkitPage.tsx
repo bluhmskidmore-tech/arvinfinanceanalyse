@@ -101,6 +101,16 @@ type CommodityRefreshOptions = {
   products?: string[];
   suggestedSelection?: string[];
 };
+type CommodityShortfallChange = {
+  field: string;
+  label: string;
+  before: string;
+  after: string;
+};
+type CommodityShortfallEstimate = CommodityShortfallChange & {
+  estimatedRows: number;
+  canFill: boolean;
+};
 
 const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
 
@@ -344,6 +354,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [commodityRefreshRun, setCommodityRefreshRun] = useState<MacroToolkitCommodityFuturesRefreshRun | null>(null);
   const [commoditySuggestedSelection, setCommoditySuggestedSelection] = useState<string[]>([]);
   const [commodityEvidenceReloadMessage, setCommodityEvidenceReloadMessage] = useState<string | null>(null);
+  const [commodityShortfallChanges, setCommodityShortfallChanges] = useState<CommodityShortfallChange[]>([]);
+  const [commodityShortfallEstimates, setCommodityShortfallEstimates] = useState<CommodityShortfallEstimate[]>([]);
   const [isRefreshingCommodity, setIsRefreshingCommodity] = useState(false);
   const [selectedCommodityProducts, setSelectedCommodityProducts] = useState<string[]>([
     ...DEFAULT_MACRO_COMMODITY_PRODUCTS,
@@ -494,6 +506,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const runtimeSections = analysis?.runtime_status?.deferred_sections ?? [];
   const hasonStrategy = analysis?.hason_strategy ?? null;
   const showFullAnalysisActionInRuntime = isCoreAnalysis && runtimeSections.length > 0;
+  const commodityRefreshActionLabel = formatCommodityRefreshActionLabel(commodityShortfallEstimates);
 
   useEffect(() => {
     if (fullAnalysisEnvelope || analysisQuery.data?.result.runtime_status?.analysis_scope !== "core") {
@@ -524,10 +537,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         staleTime: MACRO_TOOLKIT_READ_STALE_MS,
       });
       setFullAnalysisEnvelope(response);
-      return true;
+      return response;
     } catch (error) {
       setFullAnalysisError(formatQueryError(error));
-      return false;
+      return null;
     } finally {
       setIsLoadingFullAnalysis(false);
     }
@@ -652,6 +665,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
+      setCommodityShortfallChanges([]);
+      setCommodityShortfallEstimates([]);
       return;
     }
     if (options?.products && !sameCommodityProducts(selectedCommodityProducts, options.products)) {
@@ -662,6 +677,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
+      setCommodityShortfallChanges([]);
+      setCommodityShortfallEstimates([]);
       return;
     }
     setIsRefreshingCommodity(true);
@@ -670,7 +687,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     setCommodityRefreshRun(null);
     setCommoditySuggestedSelection(options?.suggestedSelection ?? []);
     setCommodityEvidenceReloadMessage(null);
+    setCommodityShortfallChanges([]);
+    setCommodityShortfallEstimates([]);
     const shouldReloadFullAnalysis = !dryRun && !isCoreAnalysis;
+    const shortfallsBeforeRefresh = crisisCommodityShortItemsFromResult(crisisScoreResult);
     try {
       const response = await client.refreshCommodityFutures({
         endDate: analysis?.as_of_date ?? undefined,
@@ -681,6 +701,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshRun(refresh);
       setCommodityRefreshResult(formatCommodityRefreshResult(refresh));
       if (dryRun) {
+        setCommodityShortfallEstimates(formatCommodityShortfallEstimates(shortfallsBeforeRefresh, refresh));
         return;
       }
       await clearFullAnalysisCache();
@@ -688,6 +709,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       if (shouldReloadFullAnalysis) {
         setCommodityEvidenceReloadMessage("正在重新读取完整分析证据");
         const reloaded = await loadFullAnalysis({ force: true });
+        const shortfallsAfterRefresh = crisisCommodityShortItemsFromEnvelope(reloaded);
+        setCommodityShortfallChanges(
+          formatCommodityShortfallChanges(shortfallsBeforeRefresh, shortfallsAfterRefresh),
+        );
         setCommodityEvidenceReloadMessage(
           reloaded ? "完整分析证据已重新读取" : "完整分析证据重新读取失败，请重新完整分析",
         );
@@ -696,6 +721,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshError(formatCommodityFuturesRefreshError(error));
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
+      setCommodityShortfallChanges([]);
+      setCommodityShortfallEstimates([]);
     } finally {
       setIsRefreshingCommodity(false);
     }
@@ -704,6 +731,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     analysisQuery,
     clearFullAnalysisCache,
     client,
+    crisisScoreResult,
     isCoreAnalysis,
     isCommodityRefreshAllowed,
     loadFullAnalysis,
@@ -1186,6 +1214,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 setCommodityRefreshError(null);
                 setCommodityRefreshRun(null);
                 setCommodityEvidenceReloadMessage(null);
+                setCommodityShortfallChanges([]);
+                setCommodityShortfallEstimates([]);
               }}
               onPreviewCommodityRefreshProducts={(products) => {
                 void refreshCommodityFutures({ dryRun: true, products, suggestedSelection: products });
@@ -1568,6 +1598,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                     setCommodityRefreshError(null);
                     setCommodityRefreshRun(null);
                     setCommodityEvidenceReloadMessage(null);
+                    setCommodityShortfallChanges([]);
+                    setCommodityShortfallEstimates([]);
                   }}
                 >
                   {MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => (
@@ -1611,9 +1643,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   icon={<ReloadOutlined />}
                   loading={isRefreshingCommodity}
                   disabled={commodityRefreshDisabled}
+                  aria-label={commodityRefreshActionLabel}
                   onClick={() => void refreshCommodityFutures({ dryRun: false })}
                 >
-                  刷新商品期货
+                  {commodityRefreshActionLabel}
                 </Button>
                 {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
                 {commodityEvidenceReloadMessage ? (
@@ -1621,6 +1654,22 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                     type={commodityEvidenceReloadMessage.includes("失败") ? "error" : "success"}
                     showIcon
                     message={commodityEvidenceReloadMessage}
+                  />
+                ) : null}
+                {commodityShortfallChanges.length ? (
+                  <Alert
+                    type="success"
+                    showIcon
+                    message="Crisis Score 样本缺口变化"
+                    description={formatCommodityShortfallChangeList(commodityShortfallChanges)}
+                  />
+                ) : null}
+                {commodityShortfallEstimates.length ? (
+                  <Alert
+                    type={commodityShortfallEstimates.every((item) => item.canFill) ? "success" : "warning"}
+                    showIcon
+                    message="Crisis Score 样本预估"
+                    description={formatCommodityShortfallEstimateList(commodityShortfallEstimates)}
                   />
                 ) : null}
                 {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
@@ -1802,6 +1851,8 @@ type CommodityRefreshProductRow = {
   productName: string;
   seriesId: string;
   status: "estimated" | "written" | "missing";
+  estimatedRows: number | null;
+  rowCount: number | null;
   rowCountLabel: string;
   latestDate: string;
   latestValue: number | null;
@@ -2966,6 +3017,111 @@ function formatCommodityShadowShortfallList(summary: CrisisCommodityCandidateSum
   return `样本不足：${items.join("；")}`;
 }
 
+function crisisCommodityShortItemsFromResult(
+  result: MacroToolkitCapabilityResult | null | undefined,
+): CrisisCommodityShadowShortItem[] {
+  if (!result) {
+    return [];
+  }
+  const coverage = normalizeCommodityCoverage(
+    (result as { commodity_coverage?: unknown }).commodity_coverage ?? result.result.commodity_coverage,
+  );
+  return coverage?.candidate_summary?.shadow_evaluation_short_items ?? [];
+}
+
+function crisisCommodityShortItemsFromEnvelope(
+  envelope: ApiEnvelope<MacroToolkitAnalysisPayload> | null | undefined,
+): CrisisCommodityShadowShortItem[] {
+  const result = envelope?.result.capability_results.find((item) => item.key === "crisis_score_cn") ?? null;
+  return crisisCommodityShortItemsFromResult(result);
+}
+
+function formatCommodityShortfallChanges(
+  beforeItems: CrisisCommodityShadowShortItem[],
+  afterItems: CrisisCommodityShadowShortItem[],
+): CommodityShortfallChange[] {
+  const afterByField = new Map(afterItems.map((item) => [item.field, item]));
+  return beforeItems
+    .map((before) => {
+      if (before.sample_count == null || before.minimum_sample_count == null) {
+        return null;
+      }
+      const after = afterByField.get(before.field);
+      const afterSample = after?.sample_count ?? before.minimum_sample_count;
+      const afterMinimum = after?.minimum_sample_count ?? before.minimum_sample_count;
+      return {
+        field: before.field,
+        label: before.label || before.field,
+        before: `${before.sample_count}/${before.minimum_sample_count}`,
+        after: `${afterSample}/${afterMinimum}`,
+      };
+    })
+    .filter((item): item is CommodityShortfallChange => item !== null);
+}
+
+function formatCommodityShortfallChangeList(changes: CommodityShortfallChange[]) {
+  return changes.map((item) => `${item.label} ${item.before} -> ${item.after}`).join("；");
+}
+
+function formatCommodityShortfallEstimates(
+  beforeItems: CrisisCommodityShadowShortItem[],
+  refresh: MacroToolkitCommodityFuturesRefreshRun,
+): CommodityShortfallEstimate[] {
+  const rowsByProduct = new Map(
+    normalizeCommodityRefreshRows(refresh).map((row) => [row.productCode, row.estimatedRows ?? row.rowCount ?? 0]),
+  );
+  return beforeItems
+    .map((item) => {
+      if (item.sample_count == null || item.minimum_sample_count == null) {
+        return null;
+      }
+      const product = MACRO_COMMODITY_FIELD_TO_PRODUCT[item.field];
+      const estimatedRows = product ? rowsByProduct.get(product) ?? 0 : 0;
+      const afterSample = Math.min(item.minimum_sample_count, item.sample_count + estimatedRows);
+      return {
+        field: item.field,
+        label: item.label || item.field,
+        before: `${item.sample_count}/${item.minimum_sample_count}`,
+        after: `${afterSample}/${item.minimum_sample_count}`,
+        estimatedRows,
+        canFill: afterSample >= item.minimum_sample_count,
+      };
+    })
+    .filter((item): item is CommodityShortfallEstimate => item !== null && item.estimatedRows > 0);
+}
+
+function formatCommodityShortfallEstimateList(estimates: CommodityShortfallEstimate[]) {
+  const canFillAll = estimates.every((item) => item.canFill);
+  const prefix = canFillAll
+    ? "预计可补齐最低样本，建议刷新商品期货"
+    : "预计仍有样本缺口，刷新后仍不会闭环";
+  const items = estimates.map((item) => {
+    const remainingGap = item.canFill ? 0 : commodityShortfallRemainingGap(item.after);
+    const conclusion = item.canFill
+      ? `可补齐至 ${item.after}`
+      : `预计到 ${item.after}${remainingGap == null ? "" : `，还差 ${remainingGap}`}`;
+    return `${item.label} ${item.before}，预计 +${item.estimatedRows}，${conclusion}`;
+  });
+  return `${prefix}：${items.join("；")}`;
+}
+
+function formatCommodityRefreshActionLabel(estimates: CommodityShortfallEstimate[]) {
+  if (!estimates.length) {
+    return "刷新商品期货";
+  }
+  return estimates.every((item) => item.canFill)
+    ? "刷新商品期货：刷新并重算证据"
+    : "刷新商品期货：仍有缺口，谨慎刷新";
+}
+
+function commodityShortfallRemainingGap(sampleText: string) {
+  const match = /^(\d+)\/(\d+)$/.exec(sampleText);
+  if (!match) {
+    return null;
+  }
+  return Math.max(0, Number(match[2]) - Number(match[1]));
+}
+
 function commodityShadowRefreshProducts(summary: CrisisCommodityCandidateSummary) {
   return summary.shadow_evaluation_short_items
     .map((item) => MACRO_COMMODITY_FIELD_TO_PRODUCT[item.field])
@@ -3038,13 +3194,15 @@ function normalizeCommodityRefreshRows(refresh: MacroToolkitCommodityFuturesRefr
   const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
   const table = refresh.table ?? "fact_commodity_futures_daily";
   return (refresh.products ?? []).filter(isRecord).map((item, index) => {
-    const productCode = commodityRefreshProductCode(item.product_code, index);
+    const rawProductCode = commodityRefreshProductCode(item.product_code, index);
+    const rawSeriesId = commodityRefreshString(item.series_id);
+    const productCode = normalizeCommodityRefreshProductCode(rawProductCode, rawSeriesId);
     const option = MACRO_COMMODITY_PRODUCT_OPTIONS.find((candidate) => candidate.value === productCode);
     const productName = commodityRefreshString(item.name_zh) || option?.label || productCode;
     const estimatedRows = commodityRefreshNumber(item.estimated_rows);
     const writtenRows = commodityRefreshNumber(item.row_count);
     const rowCount = isDryRun ? estimatedRows ?? writtenRows : writtenRows ?? estimatedRows;
-    const seriesId = commodityRefreshString(item.series_id) || commodityRefreshSeriesId(productCode);
+    const seriesId = rawSeriesId || commodityRefreshSeriesId(productCode);
     const latestDate = commodityRefreshString(item.latest_date) || (isDryRun ? refresh.end_date ?? "待刷新" : refresh.end_date ?? "缺失");
     const latestValue = commodityRefreshNumber(item.latest_value);
     const status = commodityRefreshProductStatus({ isDryRun, rowCount });
@@ -3054,6 +3212,8 @@ function normalizeCommodityRefreshRows(refresh: MacroToolkitCommodityFuturesRefr
       productName,
       seriesId,
       status,
+      estimatedRows,
+      rowCount,
       rowCountLabel: rowCount == null ? "缺失" : `${isDryRun ? "预计 " : ""}${rowCount} 行`,
       latestDate,
       latestValue,
@@ -3071,6 +3231,31 @@ function commodityRefreshProductCode(value: unknown, index: number) {
   }
   const normalized = code.toUpperCase();
   return normalized === NANHUA_CRISIS_ALIAS ? NANHUA_COMMODITY_PRODUCT_CODE : normalized;
+}
+
+function normalizeCommodityRefreshProductCode(productCode: string, seriesId: string | null) {
+  const candidates = [productCode, seriesId ?? ""].map((item) => item.trim().toUpperCase()).filter(Boolean);
+  for (const candidate of candidates) {
+    if (candidate === NANHUA_CRISIS_ALIAS || candidate === NANHUA_SYSTEM_SERIES_ID) {
+      return NANHUA_COMMODITY_PRODUCT_CODE;
+    }
+    if (candidate === "CA.COPPER") {
+      return "CU";
+    }
+    if (candidate === "CA.ALUMINUM") {
+      return "AL";
+    }
+    if (candidate.startsWith("COMMODITY.")) {
+      const code = candidate.slice("COMMODITY.".length);
+      if (MACRO_COMMODITY_PRODUCT_OPTIONS.some((option) => option.value === code)) {
+        return code;
+      }
+    }
+    if (MACRO_COMMODITY_PRODUCT_OPTIONS.some((option) => option.value === candidate)) {
+      return candidate;
+    }
+  }
+  return productCode;
 }
 
 function commodityRefreshString(value: unknown) {

@@ -867,6 +867,16 @@ describe("MacroToolkitPage", () => {
             result.result.input_evidence && typeof result.result.input_evidence === "object"
               ? result.result.input_evidence
               : {};
+          const rawCommodityCoverage =
+            result.result.commodity_coverage && typeof result.result.commodity_coverage === "object"
+              ? result.result.commodity_coverage
+              : {};
+          const rawCandidateSummary =
+            "candidate_summary" in rawCommodityCoverage &&
+            rawCommodityCoverage.candidate_summary &&
+            typeof rawCommodityCoverage.candidate_summary === "object"
+              ? rawCommodityCoverage.candidate_summary
+              : {};
           return {
             ...result,
             input_evidence: result.input_evidence
@@ -884,6 +894,17 @@ describe("MacroToolkitPage", () => {
                 inputs: updatedInputs ?? result.input_evidence?.inputs ?? [],
                 latest_dates: ["2026-06-01"],
                 sources: ["tushare"],
+              },
+              commodity_coverage: {
+                ...rawCommodityCoverage,
+                candidate_summary: {
+                  ...rawCandidateSummary,
+                  shadow_evaluation_short_count: 0,
+                  shadow_evaluation_ready_count: 6,
+                  shadow_evaluation_short_items: [],
+                  shadow_evaluation_status_counts: { review_ready: 6 },
+                  shadow_evaluation_next_step: "样本已补齐；进入人工复核和权重审批。",
+                },
               },
             },
           };
@@ -924,12 +945,22 @@ describe("MacroToolkitPage", () => {
     const commodityPanel = await screen.findByLabelText("商品期货刷新");
     expect(commodityPanel).toHaveTextContent("已按 Crisis Score 建议选择：RB / I / AL / AU");
     expect(commodityPanel).toHaveTextContent("商品期货预估完成：4 个品种，88 行");
+    expect(commodityPanel).toHaveTextContent("Crisis Score 样本预估");
+    expect(commodityPanel).toHaveTextContent("预计可补齐最低样本");
+    expect(commodityPanel).toHaveTextContent("建议刷新商品期货");
+    expect(commodityPanel).toHaveTextContent("Rebar futures 17/20，预计 +22，可补齐至 20/20");
+    expect(commodityPanel).toHaveTextContent("Iron ore futures 17/20，预计 +22，可补齐至 20/20");
+    expect(commodityPanel).toHaveTextContent("Aluminum futures 17/20，预计 +22，可补齐至 20/20");
+    expect(commodityPanel).toHaveTextContent("Gold futures 17/20，预计 +22，可补齐至 20/20");
+    expect(
+      within(commodityPanel).getByRole("button", { name: "刷新商品期货：刷新并重算证据" }),
+    ).toBeEnabled();
     expect(within(commodityPanel).getByRole("checkbox", { name: /螺纹钢/ })).toBeChecked();
     expect(within(commodityPanel).getByRole("checkbox", { name: /^铁矿石/ })).toBeChecked();
     expect(within(commodityPanel).getByRole("checkbox", { name: /铝/ })).toBeChecked();
     expect(within(commodityPanel).getByRole("checkbox", { name: /黄金/ })).toBeChecked();
 
-    await user.click(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ }));
+    await user.click(within(commodityPanel).getByRole("button", { name: "刷新商品期货：刷新并重算证据" }));
 
     expect(refreshCalls[1]).toEqual({
       endDate: "2026-04-30",
@@ -938,8 +969,60 @@ describe("MacroToolkitPage", () => {
     });
     expect(commodityPanel).toHaveTextContent("商品期货刷新完成：4 个品种，88 行");
     expect(commodityPanel).toHaveTextContent("完整分析证据已重新读取");
+    expect(commodityPanel).toHaveTextContent("Crisis Score 样本缺口变化");
+    expect(commodityPanel).toHaveTextContent("Rebar futures 17/20 -> 20/20");
+    expect(commodityPanel).toHaveTextContent("Iron ore futures 17/20 -> 20/20");
+    expect(commodityPanel).toHaveTextContent("Aluminum futures 17/20 -> 20/20");
+    expect(commodityPanel).toHaveTextContent("Gold futures 17/20 -> 20/20");
     await waitFor(() => expect(crisisEvidence).toHaveTextContent("2026-06-01"));
     expect(crisisEvidence).toHaveTextContent("3187.42");
+  });
+
+  it("shows remaining Crisis Score sample gaps when the commodity preview is still short", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => analysisEnvelope,
+      refreshCommodityFutures: async (options) => {
+        const response = await baseClient.refreshCommodityFutures(options);
+        if (!options?.dryRun) {
+          return response;
+        }
+        return {
+          ...response,
+          result: {
+            ...response.result,
+            refresh: {
+              ...response.result.refresh,
+              estimated_total_rows: 4,
+              estimated_trading_days: 1,
+              products: response.result.refresh.products?.map((product) => ({
+                ...product,
+                estimated_rows: 1,
+              })),
+            },
+          },
+        };
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    await user.click(within(crisisEvidence).getByRole("button", { name: "按建议预估" }));
+
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    expect(commodityPanel).toHaveTextContent("商品期货预估完成：4 个品种，4 行");
+    expect(commodityPanel).toHaveTextContent("Crisis Score 样本预估");
+    expect(commodityPanel).toHaveTextContent("预计仍有样本缺口");
+    expect(commodityPanel).toHaveTextContent("刷新后仍不会闭环");
+    expect(commodityPanel).toHaveTextContent("Rebar futures 17/20，预计 +1，预计到 18/20，还差 2");
+    expect(commodityPanel).toHaveTextContent("Iron ore futures 17/20，预计 +1，预计到 18/20，还差 2");
+    expect(
+      within(commodityPanel).getByRole("button", { name: "刷新商品期货：仍有缺口，谨慎刷新" }),
+    ).toBeEnabled();
   });
 
   it("previews selected commodity futures before refreshing full evidence", async () => {
