@@ -8,12 +8,17 @@ import duckdb
 import pytest
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
 
 REPORT_DATE = date(2026, 4, 10)
+MACRO_BOND_LINKAGE_READ_HEADERS = {
+    "X-User-Id": "macro-bond-linkage-read-user",
+    "X-User-Role": "viewer",
+}
 
 
 def _core_module():
@@ -23,14 +28,38 @@ def _core_module():
     )
 
 
-def _route_client() -> TestClient:
+def _configure_macro_bond_linkage_scope_store(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "macro-bond-linkage-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    return repo_mod.UserScopeRepository(auth_dsn)
+
+
+def _route_client(tmp_path, monkeypatch, *, grant_read: bool = True) -> TestClient:
+    repo = _configure_macro_bond_linkage_scope_store(tmp_path, monkeypatch)
+    if grant_read:
+        repo.grant_scope(
+            user_id="*",
+            role=None,
+            resource="macro_bond_linkage",
+            action="read",
+        )
     route_module = load_module(
         "backend.app.api.routes.macro_bond_linkage",
         "backend/app/api/routes/macro_bond_linkage.py",
     )
     app = FastAPI()
     app.include_router(route_module.router)
-    return TestClient(app)
+    client = TestClient(app)
+    client.headers.update(MACRO_BOND_LINKAGE_READ_HEADERS)
+    return client
 
 
 def _service_module():
@@ -766,13 +795,37 @@ def test_target_identity_parsing_preserves_multiword_family():
     assert mod._split_target_identity("treasury") == ("treasury", None)
 
 
+def test_macro_bond_linkage_read_requires_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.macro_bond_linkage",
+        "backend/app/api/routes/macro_bond_linkage.py",
+    )
+    _configure_macro_bond_linkage_scope_store(tmp_path, monkeypatch)
+
+    def _unexpected_service_call(_report_date: date) -> dict[str, object]:
+        raise AssertionError("Macro-bond linkage service should not run without macro_bond_linkage/read.")
+
+    monkeypatch.setattr(route_module, "get_macro_bond_linkage", _unexpected_service_call)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+        headers=MACRO_BOND_LINKAGE_READ_HEADERS,
+    )
+
+    assert response.status_code == 403, response.text
+
+
 def test_api_returns_envelope(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "macro-bond-linkage.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    client = _route_client()
+    client = _route_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
@@ -829,7 +882,7 @@ def test_api_uses_latest_prior_risk_tensor_when_target_date_is_missing(tmp_path,
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()
@@ -850,7 +903,7 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    client = _route_client()
+    client = _route_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
@@ -891,7 +944,7 @@ def test_api_exposes_investment_research_additive_fields(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()
@@ -912,7 +965,7 @@ def test_macro_bond_linkage_marks_missing_equity_axes_as_pending_signal(tmp_path
     monkeypatch.setenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "1")
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()["result"]
@@ -949,7 +1002,7 @@ def test_macro_bond_linkage_emits_supported_research_views(tmp_path, monkeypatch
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    payload = _route_client().get(
+    payload = _route_client(tmp_path, monkeypatch).get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
     ).json()["result"]
@@ -1408,7 +1461,7 @@ def test_api_returns_warning_when_macro_history_is_insufficient(tmp_path, monkey
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
-    client = _route_client()
+    client = _route_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/macro-bond-linkage/analysis",
         params={"report_date": REPORT_DATE.isoformat()},
