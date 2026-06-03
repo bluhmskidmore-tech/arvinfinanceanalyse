@@ -1455,6 +1455,11 @@ export function EmbeddedAgentCopilot({
   }
 
   function focusComposerInput() {
+    conversationRef.current
+      ?.querySelectorAll<HTMLDetailsElement>(".agent-follow-up-chips__details")
+      .forEach((details) => {
+        details.open = false;
+      });
     const input = composerInputRef.current;
     if (!input) {
       return;
@@ -2575,11 +2580,22 @@ export function EmbeddedAgentCopilot({
     }, 1800);
   }
 
-  function applyFollowUpChip(question: string, sourceElement?: HTMLElement) {
-    const followUpDetails = sourceElement?.closest(".agent-follow-up-chips__details");
+  function closeFollowUpDetails(sourceElement?: HTMLElement) {
+    const followUpDetails =
+      sourceElement?.closest(".agent-follow-up-chips__details") ??
+      sourceElement?.closest(".agent-follow-up-chips")?.querySelector(".agent-follow-up-chips__details");
     if (followUpDetails instanceof HTMLDetailsElement) {
       followUpDetails.open = false;
     }
+  }
+
+  function focusComposerFromFollowUp(sourceElement: HTMLElement) {
+    closeFollowUpDetails(sourceElement);
+    focusComposerInput();
+  }
+
+  function applyFollowUpChip(question: string, sourceElement?: HTMLElement) {
+    closeFollowUpDetails(sourceElement);
     replaceComposerQuery(question);
   }
 
@@ -2809,7 +2825,7 @@ export function EmbeddedAgentCopilot({
                 <button
                   type="button"
                   className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
-                  onClick={focusComposerInput}
+                  onClick={(event) => focusComposerFromFollowUp(event.currentTarget)}
                   disabled={loading}
                 >
                   继续输入

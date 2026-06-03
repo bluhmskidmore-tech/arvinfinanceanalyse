@@ -1314,6 +1314,12 @@ describe("stockAnalysisPageModel", () => {
                 signal_kinds: ["stock_candidate", "theme_breakout"],
               },
               {
+                trade_date: "2026-05-09",
+                status: "unsupported",
+                reason_code: "missing_required_source_table",
+                signal_kinds: ["stock_candidate"],
+              },
+              {
                 trade_date: "2026-05-08",
                 status: "pending",
                 reason_code: "forward_returns_pending",
@@ -1342,7 +1348,9 @@ describe("stockAnalysisPageModel", () => {
     });
     expect(replayItem?.detail).toContain("暂无可用于判断的完成回放日");
     expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
+    expect(replayItem?.detail).toContain("2026-05-09 必需源表缺失");
     expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
+    expect(replayItem?.detail).not.toContain("missing required source table");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {

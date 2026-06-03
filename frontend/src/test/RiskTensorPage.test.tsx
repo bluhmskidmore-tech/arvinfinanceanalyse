@@ -455,8 +455,11 @@ describe("RiskTensorPage", () => {
     const drill = await screen.findByTestId("risk-tensor-tenor-drill");
     const fiveYear = within(drill).getByRole("button", { name: "5Y" });
     const oneYear = within(drill).getByRole("button", { name: "1Y" });
-    expect(fiveYear).toHaveAttribute("aria-pressed", "true");
-    expect(oneYear).toHaveAttribute("aria-pressed", "false");
+
+    await waitFor(() => {
+      expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+      expect(oneYear).toHaveAttribute("aria-pressed", "false");
+    });
 
     await user.click(oneYear);
 
@@ -766,17 +769,27 @@ describe("RiskTensorPage", () => {
       const base = createApiClient({ mode: "mock" });
       const getRiskTensorDates = vi.fn(async () => ({
         result_meta: buildMeta("risk.tensor.dates", `tr_tensor_${qualityFlag}_review_dates`),
-        result: { report_dates: ["2026-02-28"] },
+        result: {
+          report_dates: ["2026-02-28"],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage is stale",
+            },
+          ],
+        },
       }));
       const getRiskTensor = vi.fn(async (reportDate: string) => ({
         result_meta: {
           ...buildMeta("risk.tensor", `tr_tensor_${qualityFlag}_review_${reportDate}`),
+          fallback_mode: "latest_snapshot" as const,
+          fallback_date: "2026-02-27",
           quality_flag: qualityFlag as ResultMeta["quality_flag"],
         },
         result: {
           ...tensorResult(reportDate),
           quality_flag: qualityFlag,
-          warnings: [],
+          warnings: ["估值曲线 vendor stale"],
         },
       }));
 
@@ -792,6 +805,9 @@ describe("RiskTensorPage", () => {
 
       expect(reviewAction).toHaveTextContent("结论需复核");
       expect(reviewAction).toHaveTextContent(qualityLabel);
+      expect(reviewAction).toHaveTextContent("fallback_date 2026-02-27");
+      expect(reviewAction).toHaveTextContent("1 个陈旧日期已拦截");
+      expect(reviewAction).toHaveTextContent("估值曲线 vendor stale");
 
       await user.click(reviewAction);
 

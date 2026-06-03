@@ -2592,6 +2592,7 @@ function localizeReplayReasonCode(reasonCode: string | null | undefined): string
   const normalized = (reasonCode ?? "").trim().toLowerCase();
   const labels: Record<string, string> = {
     missing_daily_limit_flags: "涨跌停标记缺失",
+    missing_required_source_table: "必需源表缺失",
     forward_returns_pending: "远期收益待成熟",
     proxy_theme_only: "仅代理题材",
     real_theme_inputs_unconfirmed: "真实题材输入待确认",

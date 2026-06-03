@@ -2477,6 +2477,20 @@ describe("AgentWorkbenchPage", () => {
       await user.click(screen.getByRole("button", { name: "复制回答" }));
       screen.getByRole("button", { name: "已复制" }).focus();
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "已复制" }));
+      const moreFollowUps = screen.getByText("更多追问");
+      const followUpDetails = moreFollowUps.closest("details");
+      expect(followUpDetails).not.toBeNull();
+      if (!followUpDetails) {
+        throw new Error("Expected follow-up details to exist");
+      }
+      const followUpOptions = followUpDetails.querySelector(".agent-follow-up-chips__options");
+      expect(followUpOptions).not.toBeNull();
+      if (!followUpOptions) {
+        throw new Error("Expected follow-up options to exist");
+      }
+      fireEvent.click(moreFollowUps);
+      expect(followUpDetails).toHaveAttribute("open");
+      expect(followUpOptions).toBeVisible();
 
       scrollTargets.length = 0;
       scrollOptions.length = 0;
@@ -2487,6 +2501,8 @@ describe("AgentWorkbenchPage", () => {
       expect(document.activeElement).toBe(input);
       expect(scrollTargets).toContain(input);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
+      expect(followUpDetails).not.toHaveAttribute("open");
+      expect(followUpOptions).not.toBeVisible();
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }

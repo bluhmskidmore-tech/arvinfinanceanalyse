@@ -664,6 +664,13 @@ export default function RiskTensorPage() {
       ].join(" / ")
     : "";
   const conclusionNeedsQualityReview = result?.quality_flag === "stale" || result?.quality_flag === "error";
+  const qualityReviewReasons = [
+    tensorMeta?.fallback_date ? `fallback_date ${tensorMeta.fallback_date}` : null,
+    blockedReportDates.length > 0 ? blockedReportDateSummary : null,
+    result?.warnings[0] ?? null,
+  ].filter((item): item is string => Boolean(item));
+  const qualityReviewReasonSummary =
+    qualityReviewReasons.length > 0 ? qualityReviewReasons.join("；") : "查看质量证据";
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
@@ -945,7 +952,7 @@ export default function RiskTensorPage() {
                     data-testid="risk-tensor-quality-review-action"
                     onClick={handleQualityDetailJump}
                   >
-                    结论需复核：数据状态为{qualityFlagLabel(result.quality_flag)}，查看质量证据
+                    结论需复核：数据状态为{qualityFlagLabel(result.quality_flag)}；原因：{qualityReviewReasonSummary}
                   </button>
                 ) : null}
                 {result.warnings.length > 0 ? (
