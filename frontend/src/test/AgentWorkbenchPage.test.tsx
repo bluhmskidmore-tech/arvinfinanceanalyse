@@ -138,6 +138,23 @@ function queryQueuedFollowUpStatus() {
   return screen.queryByRole("status", { name: "待发送的下一句" });
 }
 
+function getAgentTurnStatus() {
+  const status = screen.getAllByRole("status", { name: "agent-turn-status" }).at(-1);
+  if (!status) {
+    throw new Error("Expected at least one agent turn status");
+  }
+  return status;
+}
+
+async function findAgentTurnStatus() {
+  const statuses = await screen.findAllByRole("status", { name: "agent-turn-status" });
+  const status = statuses.at(-1);
+  if (!status) {
+    throw new Error("Expected at least one agent turn status");
+  }
+  return status;
+}
+
 function buildWorkflowExecutionResult() {
   return {
     answer:
@@ -423,7 +440,7 @@ describe("AgentWorkbenchPage", () => {
   it("announces runtime status changes without expanding technical details", () => {
     render(<AgentWorkbenchPage />);
 
-    const runtimeStatus = screen.getByLabelText("agent-runtime-status");
+    const runtimeStatus = screen.getByRole("status", { name: "agent-runtime-status" });
     expect(runtimeStatus).toHaveAttribute("aria-live", "polite");
     expect(runtimeStatus).toHaveAttribute("aria-atomic", "true");
   });
@@ -556,8 +573,8 @@ describe("AgentWorkbenchPage", () => {
     });
     expect(await screen.findByText("Workflow Execution Steps")).toBeInTheDocument();
     expect(screen.getByText("Mapped Intent Results")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Workflow 执行完成");
-    expect(screen.getByRole("status")).not.toHaveTextContent("Hermes 托管任务完成");
+    expect(getAgentTurnStatus()).toHaveTextContent("Workflow 执行完成");
+    expect(getAgentTurnStatus()).not.toHaveTextContent("Hermes 托管任务完成");
     expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo");
   });
 
@@ -570,7 +587,7 @@ describe("AgentWorkbenchPage", () => {
     openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
 
-    const status = await screen.findByRole("status");
+    const status = await findAgentTurnStatus();
     expect(status).toHaveTextContent("Workflow 执行进行中");
     expect(status).toHaveTextContent("准备本地 workflow");
     expect(status).toHaveTextContent("本地 workflow 正在准备，本页会直接显示结果。");
@@ -609,7 +626,7 @@ describe("AgentWorkbenchPage", () => {
       "/api/agent/query",
       expect.objectContaining({ method: "POST" }),
     );
-    expect(screen.getByRole("status")).toHaveTextContent("本地查询完成");
+    expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("sync");
   });
@@ -636,7 +653,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("已捕获上下文")).toBeInTheDocument();
     expect(screen.getByText("组合概览")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
-    expect(screen.getByRole("status")).toHaveTextContent("本地查询完成");
+    expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
     const resultDetails = screen.getByLabelText("assistant-result-details");
     expect(resultDetails).toHaveClass("agent-result-side");
     expect(resultDetails).toHaveTextContent("回答依据");
@@ -1384,8 +1401,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: /查看所选流程/ }));
 
     await screen.findByText("本地同步查询正在准备，本页会直接显示结果。");
-    const status = screen.getAllByRole("status").at(-1);
-    expect(status).toBeDefined();
+    const status = getAgentTurnStatus();
     expect(status).toHaveTextContent("本地查询进行中");
     expect(status).toHaveTextContent("准备本地查询");
     expect(status).toHaveTextContent("本地同步查询正在准备，本页会直接显示结果。");
@@ -2113,8 +2129,8 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("Hermes 托管任务完成。")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("agent_run:test");
-    expect(screen.getByRole("status")).toHaveTextContent("已完成");
+    expect(getAgentTurnStatus()).toHaveTextContent("agent_run:test");
+    expect(getAgentTurnStatus()).toHaveTextContent("已完成");
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("gpt-5.5");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -2180,7 +2196,7 @@ describe("AgentWorkbenchPage", () => {
     fireEvent.click(screen.getByText("运行细节"));
     expect(runtimeDetails).toHaveAttribute("open");
     expect(progress).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("Hermes 正在分析");
+    expect(getAgentTurnStatus()).toHaveTextContent("Hermes 正在分析");
 
     await act(async () => {
       resolveCompletedRun(
@@ -4724,7 +4740,7 @@ describe("AgentWorkbenchPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    const waitStatus = screen.getByRole("status");
+    const waitStatus = getAgentTurnStatus();
     expect(waitStatus).toHaveTextContent("已收到问题");
 
     const runtimeDetails = screen.getByText("运行细节").closest("details");
@@ -5027,7 +5043,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("Dexter managed run complete.")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Dexter 托管任务完成");
+    expect(getAgentTurnStatus()).toHaveTextContent("Dexter 托管任务完成");
     const runtimeStatus = screen.getByLabelText("agent-runtime-status");
     expect(runtimeStatus).toHaveTextContent("Dexter");
     expect(runtimeStatus).toHaveTextContent("bridge");

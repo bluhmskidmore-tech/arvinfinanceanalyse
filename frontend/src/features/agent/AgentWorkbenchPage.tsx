@@ -3236,6 +3236,7 @@ export function EmbeddedAgentCopilot({
 
       <div
         className="agent-runtime-strip"
+        role="status"
         aria-label="agent-runtime-status"
         aria-live="polite"
         aria-atomic="true"
@@ -3391,7 +3392,12 @@ export function EmbeddedAgentCopilot({
                   <div className="agent-message__speaker">智能体</div>
                   <div className="agent-message__body">
                     {isLatestLoadingTurn || turn.agentRun ? (
-                      <div className="agent-wait-status" role="status" aria-live="polite">
+                      <div
+                        className="agent-wait-status"
+                        role="status"
+                        aria-label="agent-turn-status"
+                        aria-live="polite"
+                      >
                         <div className="agent-wait-status__copy">
                           {showThinkingPlaceholder ? (
                             <div className="agent-thinking">
