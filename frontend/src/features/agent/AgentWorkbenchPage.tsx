@@ -1781,11 +1781,12 @@ export function EmbeddedAgentCopilot({
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setRestoringRunId("");
-          setRestoreErrorRunId(latestRunId);
-          clearLatestAgentRunId();
+        if (cancelled || !isCurrentConversationSession(restoreSession)) {
+          return;
         }
+        setRestoringRunId("");
+        setRestoreErrorRunId(latestRunId);
+        clearLatestAgentRunId();
       });
     return () => {
       cancelled = true;
@@ -2270,11 +2271,17 @@ export function EmbeddedAgentCopilot({
     const turn = createAgentConversationTurn(question, context, "ordinary");
     setAgentWaitSeconds(0);
     resetConversationSession();
+    invalidateActiveRequest();
+    if (shouldPersistConversation) {
+      clearLatestAgentRunId();
+    }
     if (isEmbedded) {
       setPageContextChangeNotice(false);
     }
     setRestoringRunId("");
     setRestoreErrorRunId("");
+    setAgentRun(null);
+    setResult(null);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
     clearComposerQuery();
     shouldFocusComposerRef.current = true;

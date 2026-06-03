@@ -4646,6 +4646,12 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("status", { name: "agent-run-restore-status" })).toHaveTextContent(
       "agent_run:restore-pending-fresh-question",
     );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/runs/agent_run%3Arestore-pending-fresh-question",
+        expect.objectContaining({ method: "GET" }),
+      ),
+    );
 
     await user.type(screen.getByLabelText("agent-question-input"), "fresh question while restore pending");
     await user.click(screen.getByRole("button", { name: "发送" }));
