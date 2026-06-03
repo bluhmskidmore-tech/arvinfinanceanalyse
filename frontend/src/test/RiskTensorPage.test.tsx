@@ -938,6 +938,115 @@ describe("RiskTensorPage", () => {
     expect(tracePriority).toHaveTextContent("filters_applied report_date=2026-02-28；desk=FI");
   });
 
+  it("jumps from quality evidence scope to result metadata panel", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_meta_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_meta_jump_${reportDate}`),
+          evidence_rows: 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: "2026-02-28",
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
+      const metadataJump = within(tracePriority).getByRole("button", { name: "定位元数据" });
+
+      await user.click(metadataJump);
+
+      expect(scrollTargets).toContain(metaPanel);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("copies quality evidence scope for audit review", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_meta_copy_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_meta_copy_${reportDate}`),
+          evidence_rows: 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: "2026-02-28",
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+      const copyEvidence = within(tracePriority).getByRole("button", { name: "复制证据" });
+
+      await user.click(copyEvidence);
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("source_version sv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_tensor_test"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("evidence_rows 128"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("tables_used risk_tensor_daily / bond_position_snapshot"),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("filters_applied report_date=2026-02-28；desk=FI"),
+      );
+      expect(tracePriority).toHaveTextContent("已复制证据摘要");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("explicitly marks missing backend evidence fields in quality evidence", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

@@ -484,6 +484,7 @@ export default function RiskTensorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
   const [selectedTenor, setSelectedTenor] = useState<string>("");
+  const [qualityEvidenceCopyStatus, setQualityEvidenceCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -617,6 +618,11 @@ export default function RiskTensorPage() {
 
   const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? dominantTenorRow ?? tenorRows[0];
   const tensorMeta = envelope?.result_meta;
+
+  useEffect(() => {
+    setQualityEvidenceCopyStatus("idle");
+  }, [tensorMeta?.trace_id]);
+
   const fallbackStatus = fallbackModeLabel(tensorMeta?.fallback_mode);
   const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
   const metadataTablesUsed = tensorMeta?.tables_used?.filter(Boolean).join(" / ") ?? "";
@@ -683,6 +689,23 @@ export default function RiskTensorPage() {
   const qualityTraceMetadataDetail = `evidence_rows ${
     typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
   }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
+  const qualityTraceCopyText = [
+    "风险张量质量证据",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    `fallback ${qualityTraceFallbackDetail}`,
+    `陈旧日期 ${qualityTraceBlockedDetail}`,
+    `warning ${qualityTraceWarningDetail}`,
+    `证据范围 ${qualityTraceMetadataDetail}`,
+  ].join("\n");
+  const qualityEvidenceCopyMessage =
+    qualityEvidenceCopyStatus === "copied"
+      ? "已复制证据摘要"
+      : qualityEvidenceCopyStatus === "failed"
+        ? "复制失败，请手动选择证据"
+        : "";
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
@@ -723,6 +746,17 @@ export default function RiskTensorPage() {
       behavior: "smooth",
       block: "center",
     });
+  };
+
+  const handleCopyQualityEvidence = () => {
+    if (!navigator.clipboard?.writeText) {
+      setQualityEvidenceCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(qualityTraceCopyText)
+      .then(() => setQualityEvidenceCopyStatus("copied"))
+      .catch(() => setQualityEvidenceCopyStatus("failed"));
   };
 
   const handleKrdChartClick = (params: KrdChartClickParams) => {
@@ -1561,6 +1595,27 @@ export default function RiskTensorPage() {
                   <li>
                     <span>证据范围</span>
                     <p>{qualityTraceMetadataDetail}</p>
+                    <div className="risk-tensor-quality-detail__trace-actions">
+                      <button
+                        type="button"
+                        className="risk-tensor-quality-detail__trace-action"
+                        onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+                      >
+                        定位元数据
+                      </button>
+                      <button
+                        type="button"
+                        className="risk-tensor-quality-detail__trace-action"
+                        onClick={handleCopyQualityEvidence}
+                      >
+                        复制证据
+                      </button>
+                    </div>
+                    {qualityEvidenceCopyMessage ? (
+                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                        {qualityEvidenceCopyMessage}
+                      </small>
+                    ) : null}
                   </li>
                 </ol>
               </div>

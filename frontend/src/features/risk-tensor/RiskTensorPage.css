@@ -229,6 +229,43 @@
   margin: 1px 0 0;
 }
 
+.risk-tensor-quality-detail__trace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.risk-tensor-quality-detail__trace-action {
+  padding: 4px 9px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 6px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-600);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.risk-tensor-quality-detail__trace-action:hover {
+  border-color: var(--moss-color-warning-300);
+  background: var(--moss-color-card-bg);
+}
+
+.risk-tensor-quality-detail__trace-action:focus-visible {
+  outline: 2px solid var(--moss-color-warning-600);
+  outline-offset: 2px;
+}
+
+.risk-tensor-quality-detail__trace-feedback {
+  display: block;
+  margin-top: 5px;
+  color: var(--moss-color-success-600);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .risk-tensor-quality-detail__blocked {
   display: grid;
   gap: 3px;
