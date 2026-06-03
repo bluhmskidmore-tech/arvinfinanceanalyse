@@ -9,7 +9,7 @@ type AgentSuggestedActionsPanelProps = {
   actions: AgentSuggestedAction[];
   formatValue: (value: unknown) => string;
   activePayload: Record<string, unknown> | null;
-  onActionClick: (action: AgentSuggestedAction) => void;
+  onActionClick: (action: AgentSuggestedAction, sourceElement: HTMLElement) => void;
 };
 
 export function AgentSuggestedActionsPanel({
@@ -44,7 +44,7 @@ export function AgentSuggestedActionsPanel({
             className="agent-suggested-actions__button"
             onClick={(event) => {
               closeSecondaryActionsDrawer(event.currentTarget);
-              onActionClick(action);
+              onActionClick(action, event.currentTarget);
             }}
           >
             {action.label}

@@ -3466,6 +3466,9 @@ describe("AgentWorkbenchPage", () => {
 
     expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+    await waitFor(() => {
+      expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    });
   });
 
   it("clears a typed composer draft without sending", async () => {
