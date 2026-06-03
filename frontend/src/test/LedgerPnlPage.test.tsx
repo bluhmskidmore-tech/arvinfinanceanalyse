@@ -593,6 +593,87 @@ describe("LedgerPnlPage", () => {
     expect(detailTable).toHaveTextContent("1.00 亿元");
   });
 
+  it("prioritizes missing reconciliation evidence before known residual entry points", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlSummary = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.summary"),
+      result: {
+        report_date: "2026-05-31",
+        source_version: "sv_ledger_test",
+        ledger_monthly_pnl_core: money("10000000000.00"),
+        ledger_monthly_pnl_all: money("10000000000.00"),
+        ledger_total_assets: money("0.00"),
+        ledger_total_liabilities: money("0.00"),
+        ledger_net_assets: money("0.00"),
+        by_currency: [{ currency: "CNY", total_pnl: money("9900000000.00") }],
+        by_account: [],
+      },
+    }));
+    const getLedgerPnlData = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.data"),
+      result: {
+        report_date: "2026-05-31",
+        summary: {
+          total_pnl_cnx: money("0.00"),
+          total_pnl_cny: money("10000000000.00"),
+          total_pnl: money("10000000000.00"),
+          count: 1,
+        },
+        items: [
+          {
+            account_code: "601101",
+            account_name: "贷款利息收入",
+            currency: "CNY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("10000000000.00"),
+            daily_avg_balance: money("0.00"),
+            days_in_period: 31,
+          },
+        ],
+      },
+    }));
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary,
+        getLedgerPnlData,
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-05-31", undefined);
+      expect(getLedgerPnlData).toHaveBeenCalledWith("2026-05-31", undefined);
+    });
+
+    const panel = await screen.findByTestId("ledger-pnl-explainability-panel");
+    const evidenceKpi = Array.from(panel.querySelectorAll(".ledger-pnl-analysis__kpi")).find((node) =>
+      node.textContent?.startsWith("补证入口"),
+    );
+    if (!evidenceKpi) {
+      throw new Error("missing evidence KPI");
+    }
+    expect(panel).toHaveTextContent("最大卡点币种合计差异 1.00 亿元");
+    expect(panel).toHaveTextContent("科目层待校验");
+    expect(evidenceKpi).toHaveTextContent("补总账与对账口径数据");
+    expect(evidenceKpi).not.toHaveTextContent("补币种汇总或确认币种口径");
+  });
+
   it("surfaces empty ledger summary and detail tables instead of leaving blank bodies", async () => {
     const base = createApiClient({ mode: "mock" });
 

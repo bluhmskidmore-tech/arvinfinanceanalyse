@@ -304,6 +304,16 @@ function buildLedgerResidualDiagnosticRows(props: {
   });
 }
 
+function evidenceEntryRank(row: ReturnType<typeof buildLedgerResidualDiagnosticRows>[number]) {
+  if (row.comparabilityReason) {
+    return 2;
+  }
+  if (row.diff === null) {
+    return 1;
+  }
+  return 0;
+}
+
 function buildCurrencyResidualRows(props: {
   byCurrency: LedgerPnlSummaryByCurrency[];
   detailRows: LedgerPnlDataItem[];
@@ -638,7 +648,11 @@ function buildLedgerExplainabilityModel(props: {
   const evidenceEntryPoint =
     residualDiagnosticRows
       .filter((row) => row.diff === null || Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN)
-      .sort((left, right) => Math.abs(right.diff ?? 0) - Math.abs(left.diff ?? 0))[0]?.evidence ?? "暂无补证入口";
+      .sort(
+        (left, right) =>
+          evidenceEntryRank(right) - evidenceEntryRank(left) ||
+          Math.abs(right.diff ?? 0) - Math.abs(left.diff ?? 0),
+      )[0]?.evidence ?? "暂无补证入口";
   const residualYuan =
     largestResidualCheck && (hasMaterialGap || !hasPendingCheck) ? largestResidualCheck.diff : null;
   const largestResidualStatus = largestResidualCheck
