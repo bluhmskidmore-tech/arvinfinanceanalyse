@@ -51,11 +51,19 @@ import "./StockAnalysisPage.css";
 
 const { Text } = Typography;
 
+const STOCK_ERROR_MESSAGES: Record<string, string> = {
+  "confluence unavailable": "联动观察服务暂不可用，请稍后重试。",
+  "strategy unavailable": "策略服务暂不可用，请稍后重试。",
+};
+
 function errorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return localizeStockErrorMessage(message);
+}
+
+function localizeStockErrorMessage(message: string) {
+  const normalized = message.trim().toLowerCase().replace(/\s+/g, " ");
+  return STOCK_ERROR_MESSAGES[normalized] ?? message;
 }
 
 function statusLabel(status: string) {

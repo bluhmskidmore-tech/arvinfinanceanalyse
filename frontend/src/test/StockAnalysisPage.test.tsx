@@ -1761,13 +1761,14 @@ describe("StockAnalysisPage", () => {
     });
   });
 
-  it("shows strategy API failure state", async () => {
+  it("shows localized strategy API failure state", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ strategyError: new Error("strategy unavailable") }),
     });
 
     expect(await screen.findByText("股票分析结果加载失败。")).toBeInTheDocument();
-    expect(screen.getByText("strategy unavailable")).toBeInTheDocument();
+    expect(screen.getByText("策略服务暂不可用，请稍后重试。")).toBeInTheDocument();
+    expect(screen.queryByText("strategy unavailable")).not.toBeInTheDocument();
   });
 
   it("keeps the page usable when signal confluence fails", async () => {
