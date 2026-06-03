@@ -2813,6 +2813,11 @@ export function EmbeddedAgentCopilot({
     focusComposerInput();
   }
 
+  function focusComposerFromEmptyResult() {
+    setComposerAssistHint("可以调整问题 · Enter 发送");
+    focusComposerInput();
+  }
+
   function applyFollowUpChip(question: string, sourceElement?: HTMLElement) {
     closeFollowUpDetails(sourceElement);
     replaceComposerQuery(question);
@@ -3130,7 +3135,7 @@ export function EmbeddedAgentCopilot({
               <button
                 type="button"
                 className="agent-callout__action"
-                onClick={focusComposerInput}
+                onClick={focusComposerFromEmptyResult}
                 disabled={loading}
               >
                 继续输入

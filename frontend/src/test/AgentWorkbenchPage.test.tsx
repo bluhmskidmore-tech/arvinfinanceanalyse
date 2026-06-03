@@ -5259,6 +5259,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("tr_empty")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "继续输入" }));
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(screen.getByText("可以调整问题 · Enter 发送")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重新生成" }));
     expect(await screen.findByText("empty fallback regenerated answer")).toBeInTheDocument();
   });
