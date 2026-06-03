@@ -799,7 +799,8 @@ export default function RiskTensorPage() {
     `fallback_date:${tensorMeta?.fallback_date ?? "missing"}`,
   ].join("|");
   const qualityWarningStateKey = `warning:${qualityTraceWarningDetail}`;
-  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityWarningStateKey}`;
+  const qualityBlockedDateStateKey = `blocked:${qualityTraceBlockedDetail}`;
+  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}`;
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");
