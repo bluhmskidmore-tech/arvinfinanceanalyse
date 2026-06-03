@@ -250,49 +250,71 @@ function buildDetailResidualAccountRows(props: {
   byAccount: LedgerPnlSummaryByAccount[];
   detailRows: LedgerPnlDataItem[];
 }) {
-  const detailByAccount = new Map<string, { yuan: number; hasValue: boolean }>();
+  const detailByAccount = new Map<string, { yuan: number; hasValue: boolean; accountName: string }>();
   for (const row of props.detailRows) {
     const key = row.account_code;
     const yuan = ledgerMoneyYuan(row.monthly_pnl);
     if (!key || yuan === null) {
       continue;
     }
-    const current = detailByAccount.get(key) ?? { yuan: 0, hasValue: false };
+    const current = detailByAccount.get(key) ?? { yuan: 0, hasValue: false, accountName: row.account_name };
     current.yuan += yuan;
     current.hasValue = true;
+    current.accountName ||= row.account_name;
     detailByAccount.set(key, current);
   }
 
-  return props.byAccount
-    .map((row) => {
-      const summaryYuan = ledgerMoneyYuan(row.total_pnl);
-      const detail = detailByAccount.get(row.account_code);
-      const detailYuan = detail?.hasValue ? detail.yuan : 0;
-      const diff = summaryYuan === null ? null : summaryYuan - detailYuan;
-      return {
-        accountCode: row.account_code,
-        accountName: row.account_name,
-        summaryYuan,
-        detailYuan,
-        diff,
-        judgment:
-          diff === null
-            ? "待校验"
-            : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
-              ? "已闭合"
-              : diff > 0
-                ? `缺明细 ${formatYuanAsYi(diff)}`
-                : `明细多 ${formatYuanAsYi(Math.abs(diff))}`,
-      };
-    })
-    .filter((row): row is {
-      accountCode: string;
-      accountName: string;
-      summaryYuan: number | null;
-      detailYuan: number;
-      diff: number | null;
-      judgment: string;
-    } => row.diff === null || Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN)
+  const summaryAccountCodes = new Set<string>();
+  const rows: Array<{
+    accountCode: string;
+    accountName: string;
+    summaryYuan: number | null;
+    detailYuan: number;
+    diff: number | null;
+    judgment: string;
+  }> = props.byAccount.map((row) => {
+    summaryAccountCodes.add(row.account_code);
+    const summaryYuan = ledgerMoneyYuan(row.total_pnl);
+    const detail = detailByAccount.get(row.account_code);
+    const detailYuan = detail?.hasValue ? detail.yuan : 0;
+    const diff = summaryYuan === null ? null : summaryYuan - detailYuan;
+    return {
+      accountCode: row.account_code,
+      accountName: row.account_name,
+      summaryYuan,
+      detailYuan,
+      diff,
+      judgment:
+        diff === null
+          ? "待校验"
+          : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+            ? "已闭合"
+            : diff > 0
+              ? `缺明细 ${formatYuanAsYi(diff)}`
+              : `明细多 ${formatYuanAsYi(Math.abs(diff))}`,
+    };
+  });
+
+  for (const [accountCode, detail] of detailByAccount) {
+    if (summaryAccountCodes.has(accountCode)) {
+      continue;
+    }
+    const diff = -detail.yuan;
+    rows.push({
+      accountCode,
+      accountName: detail.accountName,
+      summaryYuan: 0,
+      detailYuan: detail.yuan,
+      diff,
+      judgment:
+        Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+          ? "已闭合"
+          : `汇总缺失 ${formatYuanAsYi(Math.abs(diff))}`,
+    });
+  }
+
+  return rows
+    .filter((row) => row.diff === null || Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN)
     .sort((left, right) => Math.abs(right.diff ?? 0) - Math.abs(left.diff ?? 0))
     .slice(0, 5);
 }
