@@ -30,6 +30,7 @@ from backend.app.core_finance.macro.a_share_stampede_risk import (
     compute_a_share_stampede_risk,
     load_a_share_stampede_risk_config,
 )
+from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
 from backend.app.core_finance.macro.equity_strategies import REQUIRED_FACTOR_INPUTS
 from backend.app.core_finance.macro.helpers import (
     build_curve_history,
@@ -419,6 +420,31 @@ def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -
         {
             "refresh": status,
             "choice_stock_refresh": _choice_stock_refresh_overview(settings.duckdb_path, settings.governance_path),
+        },
+    )
+
+
+@router.get("/analysis/strategy-summaries")
+def macro_toolkit_strategy_summaries() -> dict[str, object]:
+    return _build_macro_toolkit_strategy_summaries()
+
+
+def _build_macro_toolkit_strategy_summaries() -> dict[str, object]:
+    settings = get_settings()
+    strategies, price_context = _equity_strategy_summaries_with_context(settings.duckdb_path)
+    shadow_portfolio_report = compute_equity_shadow_portfolio_report(
+        settings.duckdb_path,
+        latest_factor_snapshot=_latest_factor_snapshot_from_price_context(price_context),
+    )
+    return _envelope(
+        "macro_toolkit.analysis.strategy_summaries",
+        {
+            "strategy_summaries": strategies,
+            "shadow_portfolio_report": shadow_portfolio_report,
+            "choice_stock_refresh": _choice_stock_refresh_overview(
+                settings.duckdb_path,
+                settings.governance_path,
+            ),
         },
     )
 
@@ -1008,11 +1034,36 @@ _EQUITY_PRICE_MIN_OBSERVATIONS = 80
 _EQUITY_PRICE_MAX_STOCKS = 500
 _A_SHARE_RISK_LOOKBACK_DAYS = 35
 _A_SHARE_RISK_MAX_STOCKS = 8000
+_EQUITY_STRATEGY_PRICE_CONTEXT_UNSET = object()
 
 
-def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[dict[str, object]]:
+def _equity_strategy_summaries_with_context(
+    duckdb_path: str | Path | None = None,
+) -> tuple[list[dict[str, object]], dict[str, object] | None]:
     try:
         price_context = _load_equity_strategy_price_context(duckdb_path)
+        return _equity_strategy_summaries(duckdb_path, price_context=price_context), price_context
+    except Exception as exc:  # pragma: no cover - displayed as unavailable strategy evidence
+        return [_unavailable_equity_strategy_summary(exc)], None
+
+
+def _latest_factor_snapshot_from_price_context(price_context: dict[str, object] | None) -> pd.DataFrame | None:
+    if not isinstance(price_context, dict):
+        return None
+    financials = price_context.get("financials")
+    if isinstance(financials, pd.DataFrame) and not financials.empty:
+        return financials
+    return None
+
+
+def _equity_strategy_summaries(
+    duckdb_path: str | Path | None = None,
+    *,
+    price_context: object = _EQUITY_STRATEGY_PRICE_CONTEXT_UNSET,
+) -> list[dict[str, object]]:
+    try:
+        if price_context is _EQUITY_STRATEGY_PRICE_CONTEXT_UNSET:
+            price_context = _load_equity_strategy_price_context(duckdb_path)
         if price_context is not None:
             return _real_equity_strategy_summaries(price_context)
         prices = generate_random_prices(num_stocks=4, num_days=180, seed=20260506)
@@ -1111,6 +1162,20 @@ def _equity_strategy_summaries(duckdb_path: str | Path | None = None) -> list[di
                 "result": {"data_status": "unavailable"},
             }
         ]
+
+
+def _unavailable_equity_strategy_summary(exc: Exception) -> dict[str, object]:
+    return {
+        "key": "equity_strategies",
+        "label": "Equity strategies",
+        "group": "Equity strategies",
+        "status": "unavailable",
+        "tone": "missing",
+        "primary_metric": None,
+        "evidence": [],
+        "warnings": [f"{type(exc).__name__}: {exc}"],
+        "result": {"data_status": "unavailable"},
+    }
 
 
 def _a_share_stampede_risk(duckdb_path: str | Path | None) -> dict[str, object]:
@@ -1573,7 +1638,7 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=_EQUITY_PRICE_LOOKBACK_DAYS)
-        rows = conn.execute(
+        frame = conn.execute(
             f"""
             with latest_sample as (
               select stock_code
@@ -1620,30 +1685,14 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
             order by daily.try_cast_date asc, daily.stock_code asc
             """,
             [latest_trade_date, start_date, latest_trade_date],
-        ).fetchall()
+        ).df()
     except duckdb.Error:
         return None
     finally:
         conn.close()
 
-    if not rows:
+    if frame.empty:
         return None
-    frame = pd.DataFrame(
-        rows,
-        columns=[
-            "trade_date",
-            "stock_code",
-            "close_value",
-            "amount",
-            "pctchange",
-            "turn",
-            "amplitude",
-            "highlimit",
-            "lowlimit",
-            "source_version",
-            "vendor_version",
-        ],
-    )
     prices = (
         frame.pivot_table(index="trade_date", columns="stock_code", values="close_value", aggfunc="last")
         .sort_index()
@@ -2968,6 +3017,11 @@ def _envelope(
         tables_used.append("choice_stock_daily_observation")
     if _strategy_summaries_use_stock_factor_snapshot(result):
         tables_used.append("choice_stock_factor_snapshot")
+    shadow_report = result.get("shadow_portfolio_report")
+    if isinstance(shadow_report, dict):
+        report_tables = shadow_report.get("tables_used")
+        if isinstance(report_tables, list):
+            tables_used.extend(str(table) for table in report_tables)
     if "choice_stock_refresh" in result:
         tables_used.extend(["choice_stock_daily_observation", "choice_stock_factor_snapshot"])
     a_share_risk = result.get("a_share_risk")
