@@ -11,8 +11,11 @@ import { shellTokens } from "../../../theme/tokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
   LedgerMoneyValue,
+  LedgerPnlDataItem,
   LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlFormalFinancialIndicatorMetric,
+  LedgerPnlSummaryByAccount,
+  LedgerPnlSummaryByCurrency,
   QdbGlMonthlyAnalysisSheet,
 } from "../../../api/contracts";
 import "./LedgerPnlPage.css";
@@ -52,6 +55,7 @@ const tableWrapStyle = {
 } as const;
 
 const LEDGER_TABLE_ROW_LIMIT = 200;
+const LEDGER_RECONCILIATION_TOLERANCE_YUAN = 0.5;
 
 const ledgerTableStateCellStyle = {
   padding: designTokens.space[4],
@@ -73,9 +77,22 @@ function formatMoney(value: LedgerMoneyValue | null | undefined) {
   return Number.isFinite(yuan) ? `${(yuan / 100_000_000).toFixed(2)} 亿元` : "--";
 }
 
-function ledgerMoneyAbsYuan(value: LedgerMoneyValue | null | undefined) {
+function ledgerMoneyYuan(value: LedgerMoneyValue | null | undefined) {
   const yuan = Number(String(value?.yuan ?? "").trim());
-  return Number.isFinite(yuan) ? Math.abs(yuan) : -1;
+  return Number.isFinite(yuan) ? yuan : null;
+}
+
+function formatYuanAsYi(yuan: number | null | undefined) {
+  return Number.isFinite(yuan) ? `${((yuan ?? 0) / 100_000_000).toFixed(2)} 亿元` : "--";
+}
+
+function formatPercent(value: number | null | undefined) {
+  return Number.isFinite(value) ? `${(value ?? 0).toFixed(2)}%` : "--";
+}
+
+function ledgerMoneyAbsYuan(value: LedgerMoneyValue | null | undefined) {
+  const yuan = ledgerMoneyYuan(value);
+  return yuan === null ? -1 : Math.abs(yuan);
 }
 
 function sortLedgerRowsByAbsYuan<T>(
@@ -114,6 +131,207 @@ function LedgerTableTruncationRow(props: { colSpan: number; label: string; total
       colSpan={props.colSpan}
       message={`${props.label}已按金额绝对值展示前 ${LEDGER_TABLE_ROW_LIMIT} 条 / 总计 ${props.total} 条`}
     />
+  );
+}
+
+function sumLedgerMoney<T>(rows: T[], selectMoney: (row: T) => LedgerMoneyValue | null | undefined) {
+  let total = 0;
+  let hasValue = false;
+  for (const row of rows) {
+    const yuan = ledgerMoneyYuan(selectMoney(row));
+    if (yuan !== null) {
+      total += yuan;
+      hasValue = true;
+    }
+  }
+  return hasValue ? total : null;
+}
+
+function differenceYuan(source: number | null, target: number | null) {
+  return source === null || target === null ? null : source - target;
+}
+
+function reconciliationStatus(diff: number | null) {
+  if (diff === null) {
+    return "无法校验";
+  }
+  return Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN ? "一致" : `差异 ${formatYuanAsYi(diff)}`;
+}
+
+function classifyLedgerDriver(row: Pick<LedgerPnlSummaryByAccount, "account_code" | "account_name">) {
+  const text = `${row.account_code} ${row.account_name}`.toLowerCase();
+  if (text.includes("掉期") || text.includes("套期") || text.includes("衍生")) {
+    return "衍生品/套保";
+  }
+  if (text.includes("公允价值") || text.includes("估值") || text.includes("价值变动")) {
+    return "估值变动";
+  }
+  if (text.includes("结售汇") || text.includes("外汇") || text.includes("汇兑") || text.includes("远期")) {
+    return "外汇/结售汇";
+  }
+  if (text.includes("利息") || text.includes("贷款") || text.includes("存款") || text.includes("存单")) {
+    return "利息收支";
+  }
+  return "其他总账科目";
+}
+
+function buildLedgerDriverRows(rows: LedgerPnlSummaryByAccount[]) {
+  const buckets = new Map<string, { label: string; yuan: number; count: number; topAccount: string; topAbsYuan: number }>();
+  for (const row of rows) {
+    const yuan = ledgerMoneyYuan(row.total_pnl);
+    if (yuan === null) {
+      continue;
+    }
+    const label = classifyLedgerDriver(row);
+    const bucket = buckets.get(label) ?? { label, yuan: 0, count: 0, topAccount: "", topAbsYuan: -1 };
+    bucket.yuan += yuan;
+    bucket.count += 1;
+    if (Math.abs(yuan) > bucket.topAbsYuan) {
+      bucket.topAccount = `${row.account_code} ${row.account_name}`;
+      bucket.topAbsYuan = Math.abs(yuan);
+    }
+    buckets.set(label, bucket);
+  }
+  return Array.from(buckets.values()).sort((left, right) => Math.abs(right.yuan) - Math.abs(left.yuan));
+}
+
+function buildLedgerExplainabilityModel(props: {
+  totalPnl: LedgerMoneyValue | null | undefined;
+  byCurrency: LedgerPnlSummaryByCurrency[];
+  byAccount: LedgerPnlSummaryByAccount[];
+  detailRows: LedgerPnlDataItem[];
+  formalUseAllowed: boolean | undefined;
+  sourceContractStatus: string | undefined;
+}) {
+  const totalYuan = ledgerMoneyYuan(props.totalPnl);
+  const currencyYuan = sumLedgerMoney(props.byCurrency, (row) => row.total_pnl);
+  const accountYuan = sumLedgerMoney(props.byAccount, (row) => row.total_pnl);
+  const detailYuan = sumLedgerMoney(props.detailRows, (row) => row.monthly_pnl);
+  const checks = [
+    { label: "币种合计", diff: differenceYuan(totalYuan, currencyYuan) },
+    { label: "科目汇总", diff: differenceYuan(totalYuan, accountYuan) },
+    { label: "明细", diff: differenceYuan(totalYuan, detailYuan) },
+  ];
+  const largestResidualCheck =
+    checks
+      .filter((check): check is { label: string; diff: number } => check.diff !== null)
+      .sort((left, right) => Math.abs(right.diff) - Math.abs(left.diff))[0] ?? null;
+  const residualYuan = largestResidualCheck?.diff ?? null;
+  const absTotalYuan = totalYuan === null ? null : Math.abs(totalYuan);
+  const absResidualYuan = residualYuan === null ? null : Math.abs(residualYuan);
+  const explanationCoveragePct =
+    absTotalYuan === null || absResidualYuan === null
+      ? null
+      : absTotalYuan < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+        ? absResidualYuan < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+          ? 100
+          : 0
+        : Math.max(0, Math.min(100, (1 - absResidualYuan / absTotalYuan) * 100));
+  const hasMaterialGap = checks.some(
+    (check) => check.diff !== null && Math.abs(check.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN,
+  );
+  const hasUnknownCheck = checks.some((check) => check.diff === null);
+
+  return {
+    totalYuan,
+    checks,
+    verdict: hasMaterialGap ? "解释链未闭合" : hasUnknownCheck ? "解释链待校验" : "解释链闭合",
+    explanationCoveragePct,
+    bottleneck: largestResidualCheck
+      ? `${largestResidualCheck.label}${reconciliationStatus(largestResidualCheck.diff)}`
+      : "暂无可校验卡点",
+    driverRows: buildLedgerDriverRows(props.byAccount),
+    residualYuan,
+    formalBoundary:
+      props.formalUseAllowed === true
+        ? "正式口径已放行"
+        : props.sourceContractStatus === "missing_contract"
+          ? "正式财务指标未接入"
+          : "正式口径待确认",
+  };
+}
+
+function LedgerExplainabilityPanel(props: {
+  model: ReturnType<typeof buildLedgerExplainabilityModel>;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  return (
+    <section data-testid="ledger-pnl-explainability-panel" className="ledger-pnl-analysis">
+      <div className="ledger-pnl-analysis__header">
+        <div>
+          <h2 className="ledger-pnl-analysis__title">损益解释模型</h2>
+          <div className="ledger-pnl-analysis__subtitle">
+            分析口径：先校验总账闭环，再按科目名称做经济驱动归类；不替代正式财务指标。
+          </div>
+        </div>
+        <span className="ledger-pnl-analysis__month">{props.model.formalBoundary}</span>
+      </div>
+
+      {props.isLoading ? (
+        <div className="ledger-pnl-analysis__empty">损益解释模型读取中</div>
+      ) : props.isError ? (
+        <div className="ledger-pnl-analysis__empty">损益解释模型读取失败</div>
+      ) : (
+        <>
+          <div className="ledger-pnl-analysis__kpis">
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">结论等级</div>
+              <div className="ledger-pnl-analysis__kpi-value">{props.model.verdict}</div>
+            </div>
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">解释覆盖率</div>
+              <div className="ledger-pnl-analysis__kpi-value">
+                {formatPercent(props.model.explanationCoveragePct)}
+              </div>
+            </div>
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">最大卡点</div>
+              <div className="ledger-pnl-analysis__kpi-value">{props.model.bottleneck}</div>
+            </div>
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">总账全量损益</div>
+              <div className="ledger-pnl-analysis__kpi-value">{formatYuanAsYi(props.model.totalYuan)}</div>
+            </div>
+            {props.model.checks.map((check) => (
+              <div key={check.label} className="ledger-pnl-analysis__kpi">
+                <div className="ledger-pnl-analysis__kpi-label">{check.label}</div>
+                <div className="ledger-pnl-analysis__kpi-value">
+                  {check.label}{reconciliationStatus(check.diff)}
+                </div>
+              </div>
+            ))}
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">未解释残差</div>
+              <div className="ledger-pnl-analysis__kpi-value">
+                未解释残差 {formatYuanAsYi(props.model.residualYuan)}
+              </div>
+            </div>
+          </div>
+
+          <div className="ledger-pnl-analysis__tables">
+            {props.model.driverRows.length > 0 ? (
+              props.model.driverRows.map((row) => (
+                <article key={row.label} className="ledger-pnl-analysis__status-row ledger-pnl-analysis__status-row--analytical">
+                  <div className="ledger-pnl-analysis__status-main">
+                    <span className="ledger-pnl-analysis__status-name">{row.label}</span>
+                    <span className="ledger-pnl-analysis__status-badge">{row.count} 科目</span>
+                  </div>
+                  <div className="ledger-pnl-analysis__status-value">{formatYuanAsYi(row.yuan)}</div>
+                  <div className="ledger-pnl-analysis__status-source">{row.topAccount}</div>
+                </article>
+              ))
+            ) : (
+              <div className="ledger-pnl-analysis__empty">暂无可归类的科目驱动数据</div>
+            )}
+          </div>
+
+          <div className="ledger-pnl-analysis__source-contract-note">
+            {props.model.formalBoundary}；本区仅用于解释总账分析链路，正式口径待确认前不得把候选解释写作正式财务结论。
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -584,6 +802,25 @@ export default function LedgerPnlPage() {
 
   const monthlyAnalysisWorkbook = monthlyAnalysisWorkbookQuery.data?.result;
   const formalIndicatorSourceContract = formalIndicatorSourceContractQuery.data?.result;
+  const ledgerExplainabilityModel = useMemo(
+    () =>
+      buildLedgerExplainabilityModel({
+        totalPnl: summary?.ledger_monthly_pnl_all,
+        byCurrency: summary?.by_currency ?? [],
+        byAccount: accountSummaryRows,
+        detailRows,
+        formalUseAllowed: formalIndicatorSourceContract?.formal_use_allowed,
+        sourceContractStatus: formalIndicatorSourceContract?.sample_status,
+      }),
+    [
+      accountSummaryRows,
+      detailRows,
+      formalIndicatorSourceContract?.formal_use_allowed,
+      formalIndicatorSourceContract?.sample_status,
+      summary?.by_currency,
+      summary?.ledger_monthly_pnl_all,
+    ],
+  );
   const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
   const financialIndicatorStatusSheet = findAnalysisSheet(
     monthlyAnalysisWorkbook?.sheets,
@@ -1001,6 +1238,12 @@ export default function LedgerPnlPage() {
           </div>
         ))}
       </div>
+
+      <LedgerExplainabilityPanel
+        model={ledgerExplainabilityModel}
+        isLoading={summaryQuery.isLoading || dataQuery.isLoading || formalIndicatorSourceContractQuery.isLoading}
+        isError={summaryQuery.isError || dataQuery.isError || formalIndicatorSourceContractQuery.isError}
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
         <div data-testid="ledger-pnl-currency-summary-table" style={tableWrapStyle}>
