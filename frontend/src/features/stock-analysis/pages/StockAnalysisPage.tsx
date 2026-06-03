@@ -149,7 +149,7 @@ function supplyQualityLabel(value: string | null | undefined) {
     error: "异常",
     pending: "待确认",
   };
-  return labels[normalized] ?? value ?? "待确认";
+  return labels[normalized] ?? "质量待确认";
 }
 
 function supplyVendorLabel(value: string | null | undefined) {
@@ -160,7 +160,7 @@ function supplyVendorLabel(value: string | null | undefined) {
     error: "异常",
     pending: "待确认",
   };
-  return labels[normalized] ?? value ?? "待确认";
+  return labels[normalized] ?? "通道待确认";
 }
 
 function supplyFallbackLabel(value: string | null | undefined) {
@@ -171,7 +171,7 @@ function supplyFallbackLabel(value: string | null | undefined) {
     cache: "缓存回退",
     mock: "模拟回退",
   };
-  return labels[normalized] ?? `回退 ${value}`;
+  return labels[normalized] ?? "回退待确认";
 }
 
 function supplyBasisLabel(value: string | null | undefined) {
@@ -272,13 +272,6 @@ function statusIconClass(tone?: string): string {
   if (tone === "warning") return `${base} border-warning-200 bg-warning-50 text-warning-700`;
   if (tone === "negative") return `${base} border-danger-200 bg-danger-50 text-danger-700`;
   return `${base} border-primary-200 bg-primary-50 text-primary-700`;
-}
-
-function toneDotClass(tone?: string): string {
-  if (tone === "positive") return "bg-success-600";
-  if (tone === "warning") return "bg-warning-600";
-  if (tone === "negative") return "bg-danger-600";
-  return "bg-neutral-400";
 }
 
 function toneTextClass(tone?: string): string {
@@ -659,6 +652,16 @@ function buildSectorStrengthOption({
 }
 function riskStatusLabel(status: "triggered" | "watch") {
   return status === "triggered" ? "触发复核" : "观察中";
+}
+
+type ClosedLoopRailKey = "entry_gate" | "adversarial_gate" | "risk_exit" | "replay" | "lineage";
+
+function closedLoopRailIcon(key: ClosedLoopRailKey) {
+  if (key === "entry_gate") return <LineChartOutlined />;
+  if (key === "adversarial_gate") return <ThunderboltOutlined />;
+  if (key === "risk_exit") return <FireOutlined />;
+  if (key === "replay") return <BarChartOutlined />;
+  return <DatabaseOutlined />;
 }
 
 function riskExitBlockedSummary(reason: string | null | undefined) {
@@ -4463,20 +4466,40 @@ export default function StockAnalysisPage() {
 
                         <div className="stock-analysis-page__rail-metric-grid" aria-label="首屏决策指标">
                           <div data-tone={closedLoopSummary.referenceRating.tone}>
-                            <span>闭环</span>
-                            <strong>{closedLoopSummary.referenceRating.label}</strong>
+                            <span className="stock-analysis-page__rail-stat-icon" aria-hidden="true">
+                              <SafetyCertificateOutlined />
+                            </span>
+                            <span>
+                              <span>闭环</span>
+                              <strong>{closedLoopSummary.referenceRating.label}</strong>
+                            </span>
                           </div>
                           <div data-tone={railRiskTone}>
-                            <span>风险</span>
-                            <strong style={tabularNumStyle}>{riskTriggeredCount} 触发</strong>
+                            <span className="stock-analysis-page__rail-stat-icon" aria-hidden="true">
+                              <FireOutlined />
+                            </span>
+                            <span>
+                              <span>风险</span>
+                              <strong style={tabularNumStyle}>{riskTriggeredCount} 触发</strong>
+                            </span>
                           </div>
                           <div data-tone={boundaryRailIssueCount > 0 ? "warning" : "positive"}>
-                            <span>边界</span>
-                            <strong style={tabularNumStyle}>{boundaryRailIssueCount}</strong>
+                            <span className="stock-analysis-page__rail-stat-icon" aria-hidden="true">
+                              <DatabaseOutlined />
+                            </span>
+                            <span>
+                              <span>边界</span>
+                              <strong style={tabularNumStyle}>{boundaryRailIssueCount}</strong>
+                            </span>
                           </div>
                           <div data-tone={reviewQueue.length > 0 ? "positive" : "warning"}>
-                            <span>复核</span>
-                            <strong style={tabularNumStyle}>{reviewQueue.length}</strong>
+                            <span className="stock-analysis-page__rail-stat-icon" aria-hidden="true">
+                              <StockOutlined />
+                            </span>
+                            <span>
+                              <span>复核</span>
+                              <strong style={tabularNumStyle}>{reviewQueue.length}</strong>
+                            </span>
                           </div>
                         </div>
 
@@ -4485,7 +4508,11 @@ export default function StockAnalysisPage() {
                           <span>{railNextActionLabel}</span>
                         </p>
 
-                        <ul className="stock-analysis-page__rail-check-list" aria-label="闭环检查项">
+                        <ul
+                          className="stock-analysis-page__rail-check-list"
+                          aria-label="闭环检查项"
+                          data-testid="stock-analysis-rail-check-matrix"
+                        >
                           {closedLoopSummary.items.map((item) => (
                             <li
                               key={item.key}
@@ -4497,7 +4524,9 @@ export default function StockAnalysisPage() {
                             >
                               <div className="stock-analysis-page__rail-check-main">
                                 <span>
-                                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${toneDotClass(item.tone)}`} />
+                                  <span className="stock-analysis-page__rail-check-icon" aria-hidden="true">
+                                    {closedLoopRailIcon(item.key)}
+                                  </span>
                                   <span>{item.label}</span>
                                 </span>
                                 <strong className={toneTextClass(item.tone)}>
@@ -4542,13 +4571,41 @@ export default function StockAnalysisPage() {
                           </p>
                         </div>
                       </div>
+                      <div
+                        className="stock-analysis-page__rail-risk-strip"
+                        aria-label="风险退出统计"
+                        data-testid="stock-analysis-risk-strip"
+                      >
+                        <div data-tone={riskTriggeredCount > 0 ? "negative" : "positive"}>
+                          <FireOutlined aria-hidden="true" />
+                          <span>触发</span>
+                          <strong style={tabularNumStyle}>{riskTriggeredCount}</strong>
+                        </div>
+                        <div data-tone={riskWatchCount > 0 ? "warning" : "positive"}>
+                          <LineChartOutlined aria-hidden="true" />
+                          <span>观察</span>
+                          <strong style={tabularNumStyle}>{riskWatchCount}</strong>
+                        </div>
+                        <div data-tone={riskExitUnsupported ? "warning" : "positive"}>
+                          <DatabaseOutlined aria-hidden="true" />
+                          <span>供数</span>
+                          <strong>{riskExitUnsupported ? "待补" : "接通"}</strong>
+                        </div>
+                      </div>
                       {confluenceQuery.isError ? (
-                        <p className="text-xs text-warning-700">联动观察暂不可用。</p>
+                        <p className="text-xs font-semibold text-neutral-600">联动观察暂不可用。</p>
                       ) : null}
                       {riskExitUnsupported ? (
                         <div className="stock-analysis-page__rail-warning">
-                          <strong>风险退出观察暂不可用。</strong>
-                          <p className="m-0">{riskExitBlockedSummary(riskExitUnsupported.reason)}</p>
+                          <div className="stock-analysis-page__rail-warning-head">
+                            <span aria-hidden="true">
+                              <DatabaseOutlined />
+                            </span>
+                            <span>
+                              <strong>风险退出观察暂不可用。</strong>
+                              <p className="m-0">{riskExitBlockedSummary(riskExitUnsupported.reason)}</p>
+                            </span>
+                          </div>
                           {riskExitUnsupported.reason ? (
                             <Collapse
                               ghost
@@ -4676,13 +4733,19 @@ export default function StockAnalysisPage() {
                         ))}
                       </div>
                       {boundarySummary ? (
-                        <p
+                        <div
                           className="stock-analysis-page__boundary-summary"
                           data-testid="stock-analysis-boundary-summary"
                         >
-                          <strong>{boundarySummary.summaryLabel}</strong>
-                          <span>{boundarySummary.detailLabel}</span>
-                        </p>
+                          <span data-tone={boundarySummary.boundaryCount > 0 ? "warning" : "positive"}>
+                            <small>边界</small>
+                            <strong>{boundarySummary.summaryLabel}</strong>
+                          </span>
+                          <span data-tone={boundarySummary.boundaryCount > 0 ? "warning" : "positive"}>
+                            <small>拆分</small>
+                            <strong>{boundarySummary.detailLabel}</strong>
+                          </span>
+                        </div>
                       ) : null}
                       <Button
                         type="link"

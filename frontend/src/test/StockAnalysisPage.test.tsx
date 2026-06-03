@@ -1365,6 +1365,28 @@ describe("StockAnalysisPage", () => {
     expect(queue).toHaveTextContent("复核 K 线");
   });
 
+  it("keeps unknown supply quality and vendor statuses off the first screen", async () => {
+    const unknownSupplyMeta = {
+      quality_flag: "quality_vendor_unknown",
+      vendor_status: "vendor_paused",
+      fallback_mode: "external_vendor_snapshot",
+    } as Record<string, unknown> as Partial<ApiEnvelope<LivermoreStrategyPayload>["result_meta"]>;
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        metaOverrides: unknownSupplyMeta,
+      }),
+    });
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("质量待确认");
+    expect(decisionPanel).toHaveTextContent("通道待确认");
+    expect(decisionPanel).toHaveTextContent("回退待确认");
+    expect(decisionPanel).not.toHaveTextContent("quality_vendor_unknown");
+    expect(decisionPanel).not.toHaveTextContent("vendor_paused");
+    expect(decisionPanel).not.toHaveTextContent("external_vendor_snapshot");
+  });
+
   it("does not show a requested date as the backend supply data date when no data date is resolved", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
@@ -1990,6 +2012,7 @@ describe("StockAnalysisPage", () => {
     expect(summary).toHaveTextContent("观察中");
     expect(summary).toHaveTextContent("回放证据");
     expect(summary).toHaveTextContent("已接通");
+    expect(screen.getByTestId("stock-analysis-rail-check-matrix")).toBeInTheDocument();
     expect(summary).not.toHaveTextContent("2 条快照 / 覆盖 1 个当前候选");
     await userEvent.click(within(screen.getByTestId("stock-analysis-replay-status")).getByText("明细"));
     expect(summary).toHaveTextContent("2 条快照 / 覆盖 1 个当前候选");
@@ -2494,6 +2517,10 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     const section = await screen.findByTestId("stock-analysis-risk-section");
+    const riskStrip = within(section).getByTestId("stock-analysis-risk-strip");
+    expect(riskStrip).toHaveTextContent("触发");
+    expect(riskStrip).toHaveTextContent("观察");
+    expect(riskStrip).toHaveTextContent("供数");
     expect(section).toHaveTextContent("1 触发");
     expect(section).toHaveTextContent("1 观察");
     expect(section).toHaveTextContent("收 9.10");
