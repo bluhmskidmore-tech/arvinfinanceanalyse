@@ -839,6 +839,68 @@ describe("MacroToolkitPage", () => {
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2));
   });
 
+  it("shows the Nanhua business alias when the Crisis Score input uses the system series id", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const envelopeWithSystemNanhuaSeries = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        capability_results: analysisEnvelope.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const systemInputs = result.input_evidence?.inputs.map((input) =>
+            input.field === "nanhua"
+              ? {
+                  ...input,
+                  aliases: [],
+                  series_id: "NHCI.NH",
+                  source: "fact_commodity_futures_daily",
+                }
+              : input,
+          );
+          const rawInputEvidence =
+            result.result.input_evidence && typeof result.result.input_evidence === "object"
+              ? result.result.input_evidence
+              : {};
+          return {
+            ...result,
+            input_evidence: result.input_evidence
+              ? {
+                  ...result.input_evidence,
+                  inputs: systemInputs ?? result.input_evidence.inputs,
+                  sources: ["fact_commodity_futures_daily"],
+                }
+              : result.input_evidence,
+            result: {
+              ...result.result,
+              input_evidence: {
+                ...rawInputEvidence,
+                inputs: systemInputs ?? result.input_evidence?.inputs ?? [],
+                sources: ["fact_commodity_futures_daily"],
+              },
+            },
+          };
+        }),
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => envelopeWithSystemNanhuaSeries,
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const commodityInputTile = within(crisisEvidence).getByText("商品期货输入").closest(".macro-toolkit-metric");
+    expect(commodityInputTile).toHaveTextContent("Nanhua commodity index");
+    expect(commodityInputTile).toHaveTextContent("NH0100.NHF");
+    expect(commodityInputTile).toHaveTextContent("NHCI.NH");
+    expect(commodityInputTile.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NH0100.NHF"));
+    expect(commodityInputTile.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NHCI.NH"));
+  });
+
   it("previews Crisis Score suggested commodity futures from the evidence panel", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });

@@ -1536,6 +1536,12 @@ describe("stockAnalysisPageModel", () => {
                 reason_code: "forward_returns_pending",
                 signal_kinds: ["stock_candidate", "theme_breakout"],
               },
+              {
+                trade_date: "2026-05-10",
+                status: "unsupported",
+                reason_code: "external_vendor_replay_paused" as ConfluenceReplayStatus["blocked_dates"][number]["reason_code"],
+                signal_kinds: ["theme_breakout"],
+              },
             ],
             completed_zero_signal_dates: [],
           }),
@@ -1561,9 +1567,12 @@ describe("stockAnalysisPageModel", () => {
     expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
     expect(replayItem?.detail).toContain("2026-05-09 源表缺失");
     expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
+    expect(replayItem?.detail).toContain("2026-05-10 原因待确认");
     expect(replayItem?.detail).not.toContain("missing required source table");
     expect(replayItem?.detail).not.toContain("source table");
     expect(replayItem?.detail).not.toContain("source_table_choice_stock_intraday_movement_event_missing");
+    expect(replayItem?.detail).not.toContain("external_vendor_replay_paused");
+    expect(replayItem?.detail).not.toContain("external vendor replay paused");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
