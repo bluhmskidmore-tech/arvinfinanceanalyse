@@ -4360,10 +4360,23 @@ describe("AgentWorkbenchPage", () => {
     expect(lineageActionDetails).not.toHaveAttribute("open");
     expect(screen.getByText(/inspect_lineage/)).not.toBeVisible();
 
+    const primaryActionDetails = screen.getByText(/inspect_drill/).closest("details");
+    expect(primaryActionDetails).not.toBeNull();
+    const primaryActionSummary = primaryActionDetails?.querySelector("summary");
+    expect(primaryActionSummary).not.toBeNull();
+    if (!primaryActionSummary) {
+      throw new Error("Expected primary action details summary to exist");
+    }
+    fireEvent.click(primaryActionSummary);
+    expect(primaryActionDetails).toHaveAttribute("open");
     await user.click(screen.getByRole("button", { name: "继续下钻期限桶" }));
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue(
       "请基于当前 evidence 继续下钻：继续下钻期限桶",
     );
+    expect(firstSidePanelDetails).not.toHaveAttribute("open");
+    expect(firstSidePanelBody).not.toBeVisible();
+    expect(primaryActionDetails).not.toHaveAttribute("open");
+    expect(screen.getByText(/inspect_drill/)).not.toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("已选择的参数")).not.toBeInTheDocument();
 

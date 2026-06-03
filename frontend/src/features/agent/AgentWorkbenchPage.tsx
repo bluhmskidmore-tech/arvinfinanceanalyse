@@ -1455,10 +1455,16 @@ export function EmbeddedAgentCopilot({
   }
 
   const closeResultInteractionDetails = useCallback((sourceElement?: HTMLElement) => {
-    const detailsRoot = sourceElement?.closest(".agent-result-main") ?? conversationRef.current;
+    const detailsRoot = sourceElement?.closest(".agent-result-shell") ?? conversationRef.current;
     detailsRoot
       ?.querySelectorAll<HTMLDetailsElement>(
-        ".agent-follow-up-chips__details, .agent-suggested-actions__more, .agent-result-side-drawer",
+        [
+          ".agent-follow-up-chips__details",
+          ".agent-suggested-actions__more",
+          ".agent-suggested-actions__details",
+          ".agent-side-panel__details",
+          ".agent-result-side-drawer",
+        ].join(", "),
       )
       .forEach((details) => {
         details.open = false;
@@ -2536,8 +2542,9 @@ export function EmbeddedAgentCopilot({
     unpinRepoPath(path);
   }
 
-  function handleSuggestedAction(turnId: string, action: AgentSuggestedAction) {
+  function handleSuggestedAction(turnId: string, action: AgentSuggestedAction, sourceElement?: HTMLElement) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
+      closeResultInteractionDetails(sourceElement);
       replaceComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       return;
     }
@@ -2849,7 +2856,7 @@ export function EmbeddedAgentCopilot({
                 actions={turnResult.suggested_actions}
                 formatValue={formatMetaValue}
                 activePayload={turn.activeSuggestedActionPayload}
-                onActionClick={(action) => handleSuggestedAction(turn.id, action)}
+                onActionClick={(action, sourceElement) => handleSuggestedAction(turn.id, action, sourceElement)}
               />
 
               <div className="agent-follow-up-chips" aria-label="assistant-follow-up-suggestions">
