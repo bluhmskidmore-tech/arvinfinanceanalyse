@@ -8,8 +8,11 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_balance_analysis_api import _configure_and_materialize
 from tests.test_balance_analysis_materialize_flow import _patch_skip_fx_refresh
@@ -31,6 +34,30 @@ POSITION_LIABILITY = "\u8d1f\u503a"
 INTEREST_FIXED = "\u56fa\u5b9a"
 MONTH_LABEL_JAN = "2025\u5e741\u6708"
 MONTH_LABEL_FEB = "2025\u5e742\u6708"
+ADB_READ_HEADERS = {"X-User-Id": "adb-read-user", "X-User-Role": "viewer"}
+
+
+def _configure_adb_scope_store(tmp_path: Path, monkeypatch):
+    sqlite_path = tmp_path / "adb-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    return repo_mod.UserScopeRepository(auth_dsn)
+
+
+def _seed_adb_read_scope(tmp_path: Path, monkeypatch, *, user_id: str = "*") -> None:
+    _configure_adb_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="adb_analysis",
+        action="read",
+    )
 
 
 def test_assign_zqtz_bond_categories_reuses_duplicate_asset_classifications(monkeypatch) -> None:
@@ -272,7 +299,46 @@ def _materialize_balance_analysis(
         )
 
 
+@pytest.mark.parametrize(
+    "path,params",
+    [
+        ("/api/analysis/adb", {"start_date": "2025-06-02", "end_date": "2025-06-03"}),
+        ("/api/analysis/adb-comparison", {"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5}),
+        ("/api/analysis/adb/comparison", {"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5}),
+        ("/api/analysis/adb/monthly", {"year": 2025}),
+        ("/api/analysis/adb/coverage", {"start_date": "2025-06-02", "end_date": "2025-06-03"}),
+    ],
+)
+def test_adb_read_surfaces_require_explicit_read_scope(
+    path: str,
+    params: dict[str, object],
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    route_mod = load_module(
+        "backend.app.api.routes.adb_analysis",
+        "backend/app/api/routes/adb_analysis.py",
+    )
+    _configure_adb_scope_store(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "missing.duckdb"))
+
+    def _unexpected_service_call(*_args, **_kwargs):
+        raise AssertionError("ADB read service should not run without adb_analysis/read.")
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_envelope_for_dates", _unexpected_service_call)
+    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_comparison_envelope", _unexpected_service_call)
+    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_monthly_envelope", _unexpected_service_call)
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get(path, params=params, headers=ADB_READ_HEADERS)
+
+    assert response.status_code == 403, response.text
+
+
 def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb.duckdb"
     governance_dir = tmp_path / "governance"
     conn = duckdb.connect(str(db_path))
@@ -389,7 +455,8 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "accounting_basis_daily_avg_trend" not in monthly_payload
 
 
-def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
+def test_adb_comparison_returns_500_on_service_error(tmp_path: Path, monkeypatch) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     main_mod = load_module("backend.app.main", "backend/app/main.py")
     route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
     client = TestClient(main_mod.app)
@@ -409,6 +476,7 @@ def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
 
 
 def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path, monkeypatch) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb-rates.duckdb"
     governance_dir = tmp_path / "governance"
     conn = duckdb.connect(str(db_path))
@@ -453,6 +521,7 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb-monthly-rates.duckdb"
     governance_dir = tmp_path / "governance"
     conn = duckdb.connect(str(db_path))
@@ -552,6 +621,7 @@ def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
 
 
 def test_adb_comparison_returns_analytical_envelope(tmp_path: Path, monkeypatch) -> None:
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb-envelope.duckdb"
     governance_dir = tmp_path / "governance"
     conn = duckdb.connect(str(db_path))
@@ -593,6 +663,7 @@ def test_adb_comparison_returns_analytical_envelope(tmp_path: Path, monkeypatch)
 
 def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Path, monkeypatch) -> None:
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute("drop table zqtz_bond_daily_snapshot")
@@ -621,6 +692,7 @@ def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Pat
 
 def test_adb_comparison_ignores_snapshot_when_formal_tables_missing(tmp_path: Path, monkeypatch) -> None:
     """ADB 不读 snapshot：无 formal 表时仅有快照行也不会出数（须物化 formal）。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb_snapshot_fallback.duckdb"
     governance_dir = tmp_path / "governance_snap"
     governance_dir.mkdir()
@@ -673,6 +745,7 @@ def test_adb_comparison_denominator_uses_calendar_span(
     monkeypatch,
 ) -> None:
     """宽日历区间、仅部分日期有 formal 余额：分母为日历区间天数，样本补齐后日均与 formal CNY 一致。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb_distinct_days.duckdb"
     governance_dir = tmp_path / "governance_adb_dd"
     report_dates = ["2025-01-01", "2025-01-03", "2025-01-05", "2025-01-07", "2025-01-09"]
@@ -713,6 +786,7 @@ def test_adb_comparison_denominator_uses_calendar_span(
 
 def test_adb_comparison_liab_spot_locf_when_end_date_has_no_row(tmp_path: Path, monkeypatch) -> None:
     """区间末日无快照时，负债分类期末时点用最近观测日结转（LOCF），避免 spot=0 而日均>0 的伪偏离。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb_locf_liab.duckdb"
     governance_dir = tmp_path / "gov_locf_liab"
     repo_product = "\u5356\u51fa\u56de\u8d2d\u8bc1\u5238"
@@ -753,6 +827,7 @@ def test_adb_comparison_liab_spot_locf_when_end_date_has_no_row(tmp_path: Path, 
 
 def test_adb_comparison_liability_falls_back_past_blank_sub_type(tmp_path: Path, monkeypatch) -> None:
     """发行类负债 sub_type 为空时，分类回退 bond_type，不整包挤进「其它」。"""
+    _seed_adb_read_scope(tmp_path, monkeypatch)
     db_path = tmp_path / "adb_liab_fallback.duckdb"
     governance_dir = tmp_path / "gov_liab_fb"
     conn = duckdb.connect(str(db_path))
