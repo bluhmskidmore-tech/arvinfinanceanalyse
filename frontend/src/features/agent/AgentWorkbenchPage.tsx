@@ -2732,6 +2732,11 @@ export function EmbeddedAgentCopilot({
     setComposerAssistHint("已取消固定 GitNexus 仓库 · 可继续提问");
   }
 
+  function pinRememberedRepo(path: string) {
+    pinRepoPath(path);
+    setComposerAssistHint("已固定 GitNexus 仓库 · 可继续提问");
+  }
+
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction, sourceElement?: HTMLElement) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
       closeResultInteractionDetails(sourceElement);
@@ -3582,7 +3587,7 @@ export function EmbeddedAgentCopilot({
           onApplyRecentRepoPath={applyRecentRepoPath}
           onMovePinnedRepoPath={movePinnedRepoPath}
           onUnpinRepo={unpinRepo}
-          onPinRepoPath={pinRepoPath}
+          onPinRepoPath={pinRememberedRepo}
         />
       ) : null}
     </section>

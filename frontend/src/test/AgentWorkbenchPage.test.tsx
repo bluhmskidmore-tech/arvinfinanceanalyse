@@ -1136,6 +1136,7 @@ describe("AgentWorkbenchPage", () => {
     );
     expect(screen.queryByRole("button", { name: "固定仓库 F:\\PIN-ME" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消固定 F:\\PIN-ME" })).toBeInTheDocument();
+    expect(screen.getByText("已固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "取消固定 F:\\PIN-ME" }));
 
