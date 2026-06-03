@@ -1268,6 +1268,20 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再读取流程")).toBeInTheDocument();
   });
 
+  it("cues retry after GitNexus process loading fails", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse({}, 500));
+
+    render(<AgentWorkbenchPage />);
+
+    openGitNexusTools();
+    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    expect(screen.getByText("读取 GitNexus 流程失败 · 可修改仓库路径后重试")).toBeInTheDocument();
+  });
+
   it("loads process selector options from GitNexus processes response", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(

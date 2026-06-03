@@ -2623,6 +2623,7 @@ export function EmbeddedAgentCopilot({
           kind: "request",
           message: buildErrorMessage(requestError),
         });
+        setComposerAssistHint("读取 GitNexus 流程失败 · 可修改仓库路径后重试");
       }
     } finally {
       if (processStateRequestVersionRef.current === activeRequestVersion) {
