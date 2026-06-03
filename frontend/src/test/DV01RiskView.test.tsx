@@ -715,6 +715,23 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("验收说明");
     expect(panel).toHaveTextContent("下一步动作");
     expect(panel).toHaveTextContent("limit_effective_date");
+    expect(panel).toHaveTextContent("业务验收清单");
+    expect(panel).toHaveTextContent("填写业务文件");
+    expect(panel).toHaveTextContent("不要导入 sample_do_not_import.csv");
+    expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31_sample_do_not_import.csv");
+    expect(panel).toHaveTextContent("业务批准后再填写正式限额字段");
+    expect(panel).toHaveTextContent("补齐分类 AC、TPL、all");
+    expect(panel).toHaveTextContent("accounting_class 只允许 AC、OCI、TPL、all");
+    expect(panel).toHaveTextContent("补齐字段 limit_dv01");
+    expect(panel).toHaveTextContent("limit_dv01、warning_dv01、hedge_target_dv01 必须大于 0");
+    expect(panel).toHaveTextContent("阈值顺序 hedge_target_dv01 <= warning_dv01 <= limit_dv01");
+    expect(panel).toHaveTextContent("limit_effective_date 使用 ISO 日期");
+    expect(panel).toHaveTextContent("先执行 dry-run");
+    expect(panel).toHaveTextContent("期望 status=validated");
+    expect(panel).toHaveTextContent("import_readiness_status=ready_for_import");
+    expect(panel).toHaveTextContent("validation_errors 为空");
+    expect(panel).toHaveTextContent("records_written=0");
+    expect(panel).toHaveTextContent("复核 limit_utilization_preview.summary.highest_severity_status");
     expect(panel).toHaveTextContent("missing_business_fields_by_class");
     expect(panel).toHaveTextContent("AC: limit_dv01");
     expect(panel).toHaveTextContent("review_package_command");
@@ -723,6 +740,8 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("业务填写文件");
     expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31.csv");
     expect(panel).toHaveTextContent("--dry-run");
+    expect(panel).toHaveTextContent("check_status_command");
+    expect(panel).toHaveTextContent("--check-status");
   });
 
   it("renders fallback business review commands for legacy DV01 limit status payloads", async () => {
@@ -772,6 +791,8 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("业务填写文件");
     expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31.csv");
     expect(panel).toHaveTextContent("--dry-run");
+    expect(panel).toHaveTextContent("check_status_command");
+    expect(panel).toHaveTextContent("--check-status");
   });
 
   it("renders DV01 formal limit acceptance as ready when all classes are configured", async () => {

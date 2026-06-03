@@ -772,9 +772,64 @@ function fallbackLimitConfigDryRunCommand(
   ].join(" ");
 }
 
+function fallbackLimitConfigCheckStatusCommand(
+  data: DV01LimitConfigStatusPayload | null,
+): string {
+  const reportDate = data?.report_date?.trim();
+  if (!reportDate) return "";
+  return [
+    "python -m backend.app.tasks.bond_dv01_limit_config_import",
+    "--check-status",
+    `--report-date ${reportDate}`,
+  ].join(" ");
+}
+
 function limitConfigBusinessCsvPath(dryRunCommand: string): string {
   const match = dryRunCommand.match(/--config-path\s+(.+?)\s+--report-date\b/);
   return match?.[1]?.trim() ?? "";
+}
+
+function limitConfigSampleDoNotImportPath(businessCsvPath: string): string {
+  return businessCsvPath.replace(/\.csv$/i, "_sample_do_not_import.csv");
+}
+
+function limitConfigAcceptanceChecklistLines(args: {
+  data: DV01LimitConfigStatusPayload | null;
+  acceptanceStatus: "ready" | "blocked" | undefined;
+  businessCsvPath: string;
+  dryRunCommand: string;
+}): string[] {
+  const { data, acceptanceStatus, businessCsvPath, dryRunCommand } = args;
+  if (!data || acceptanceStatus !== "blocked") return [];
+  const lines = [];
+  if (businessCsvPath) {
+    lines.push(`填写业务文件 ${businessCsvPath}`);
+    lines.push(`不要导入 sample_do_not_import.csv：${limitConfigSampleDoNotImportPath(businessCsvPath)}`);
+  }
+  lines.push("业务批准后再填写正式限额字段");
+  if ((data.missing_accounting_classes ?? []).length > 0) {
+    lines.push(`补齐分类 ${joinDisplayList(data.missing_accounting_classes)}`);
+  }
+  lines.push("accounting_class 只允许 AC、OCI、TPL、all");
+  const missingFields = Array.from(
+    new Set(Object.values(data.missing_business_fields_by_class ?? {}).flat()),
+  );
+  const businessFields = missingFields.length > 0 ? missingFields : data.required_fields;
+  if ((businessFields ?? []).length > 0) {
+    lines.push(`补齐字段 ${joinDisplayList(businessFields)}`);
+  }
+  lines.push("limit_dv01、warning_dv01、hedge_target_dv01 必须大于 0");
+  lines.push("阈值顺序 hedge_target_dv01 <= warning_dv01 <= limit_dv01");
+  lines.push("limit_effective_date 使用 ISO 日期");
+  if (dryRunCommand) {
+    lines.push("先执行 dry-run，通过后再导入正式配置");
+    lines.push("期望 status=validated");
+    lines.push("期望 import_readiness_status=ready_for_import");
+    lines.push("期望 validation_errors 为空");
+    lines.push("期望 records_written=0");
+    lines.push("复核 limit_utilization_preview.summary.highest_severity_status");
+  }
+  return lines;
 }
 
 function shouldShowLimitConfigOperatorCommands(
@@ -833,7 +888,14 @@ function DV01LimitConfigStatusPanel({
   const reviewPackageCommand =
     data?.review_package_command || fallbackLimitConfigReviewPackageCommand(data);
   const dryRunCommand = data?.dry_run_command || fallbackLimitConfigDryRunCommand(data);
+  const checkStatusCommand = fallbackLimitConfigCheckStatusCommand(data);
   const businessCsvPath = limitConfigBusinessCsvPath(dryRunCommand);
+  const acceptanceChecklistLines = limitConfigAcceptanceChecklistLines({
+    data,
+    acceptanceStatus,
+    businessCsvPath,
+    dryRunCommand,
+  });
   const hasOperatorCommands = shouldShowLimitConfigOperatorCommands(data, acceptanceStatus);
 
   return (
@@ -903,6 +965,16 @@ function DV01LimitConfigStatusPanel({
           <div className={styles.reconciliationMeta}>
             必填字段 {joinDisplayList(data.required_fields)}
           </div>
+          {acceptanceChecklistLines.length > 0 ? (
+            <div className={styles.operatorBlock} data-testid="dv01-limit-config-acceptance-checklist">
+              <div className={styles.operatorLabel}>业务验收清单</div>
+              {acceptanceChecklistLines.map((line) => (
+                <div key={line} className={styles.operatorText}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : null}
           {missingFieldLines.length > 0 ? (
             <div className={styles.operatorBlock} data-testid="dv01-limit-config-missing-fields">
               <div className={styles.operatorLabel}>missing_business_fields_by_class</div>
@@ -931,6 +1003,12 @@ function DV01LimitConfigStatusPanel({
                 <>
                   <div className={styles.operatorLabel}>dry_run_command</div>
                   <code className={styles.commandText}>{dryRunCommand}</code>
+                </>
+              ) : null}
+              {checkStatusCommand ? (
+                <>
+                  <div className={styles.operatorLabel}>check_status_command</div>
+                  <code className={styles.commandText}>{checkStatusCommand}</code>
                 </>
               ) : null}
             </div>

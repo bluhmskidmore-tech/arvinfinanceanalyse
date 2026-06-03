@@ -420,6 +420,33 @@ describe("BondAnalyticsView", () => {
     });
   });
 
+  it("opens the detail drilldown when the homepage DV01 risk action is clicked", async () => {
+    const user = userEvent.setup();
+
+    renderBondAnalyticsView();
+
+    expect(
+      await screen.findByTestId("bond-analysis-detail-drilldown", {}, {
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+      }),
+    ).not.toHaveAttribute("open");
+
+    await user.click(
+      await screen.findByTestId("bond-analysis-home-open-dv01-risk", {}, {
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-analysis-detail-drilldown")).toHaveAttribute("open");
+      expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
+        "data-module-key",
+        "dv01-risk",
+      );
+    });
+    expect(await screen.findByTestId("dv01-risk-view")).toBeInTheDocument();
+  });
+
   it("loads the default bond-analysis landing date from backend dates instead of client-generated month ends", async () => {
     const fetchSequence: string[] = [];
     vi.stubGlobal(
