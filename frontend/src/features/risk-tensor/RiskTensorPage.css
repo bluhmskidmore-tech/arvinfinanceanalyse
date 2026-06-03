@@ -185,6 +185,50 @@
   font-weight: 700;
 }
 
+.risk-tensor-quality-detail__evidence strong {
+  flex-basis: 100%;
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+}
+
+.risk-tensor-quality-detail__trace {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+}
+
+.risk-tensor-quality-detail__trace > strong {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+}
+
+.risk-tensor-quality-detail__trace ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.risk-tensor-quality-detail__trace li {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.risk-tensor-quality-detail__trace li span {
+  display: block;
+  color: var(--moss-color-warning-600);
+  font-weight: 750;
+}
+
+.risk-tensor-quality-detail__trace li p {
+  margin: 1px 0 0;
+}
+
 .risk-tensor-quality-detail__blocked {
   display: grid;
   gap: 3px;

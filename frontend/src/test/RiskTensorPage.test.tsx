@@ -504,7 +504,9 @@ describe("RiskTensorPage", () => {
       const oneYear = within(drill).getByRole("button", { name: "1Y" });
 
       expect(primaryBucketAction).toHaveTextContent("5Y");
-      expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+      await waitFor(() => {
+        expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+      });
 
       await user.click(oneYear);
 
@@ -802,12 +804,24 @@ describe("RiskTensorPage", () => {
       const brief = await screen.findByTestId("risk-tensor-brief");
       const reviewAction = within(brief).getByTestId("risk-tensor-quality-review-action");
       const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
 
       expect(reviewAction).toHaveTextContent("结论需复核");
       expect(reviewAction).toHaveTextContent(qualityLabel);
       expect(reviewAction).toHaveTextContent("fallback_date 2026-02-27");
       expect(reviewAction).toHaveTextContent("1 个陈旧日期已拦截");
       expect(reviewAction).toHaveTextContent("估值曲线 vendor stale");
+      expect(tracePriority).toHaveTextContent("证据优先级");
+      expect(tracePriority).toHaveTextContent("source/rule");
+      expect(tracePriority).toHaveTextContent("sv_tensor_test");
+      expect(tracePriority).toHaveTextContent("rv_tensor_test");
+      expect(tracePriority).toHaveTextContent("fallback");
+      expect(tracePriority).toHaveTextContent("latest snapshot fallback");
+      expect(tracePriority).toHaveTextContent("fallback_date 2026-02-27");
+      expect(tracePriority).toHaveTextContent("陈旧日期");
+      expect(tracePriority).toHaveTextContent("risk tensor source lineage is stale");
+      expect(tracePriority).toHaveTextContent("warning");
+      expect(tracePriority).toHaveTextContent("估值曲线 vendor stale");
 
       await user.click(reviewAction);
 
@@ -911,12 +925,17 @@ describe("RiskTensorPage", () => {
     });
 
     const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+    const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
 
     expect(qualityDetail).toHaveTextContent("evidence_rows 128");
     expect(qualityDetail).toHaveTextContent("risk_tensor_daily");
     expect(qualityDetail).toHaveTextContent("bond_position_snapshot");
     expect(qualityDetail).toHaveTextContent("report_date=2026-02-28");
     expect(qualityDetail).toHaveTextContent("desk=FI");
+    expect(tracePriority).toHaveTextContent("证据范围");
+    expect(tracePriority).toHaveTextContent("evidence_rows 128");
+    expect(tracePriority).toHaveTextContent("tables_used risk_tensor_daily / bond_position_snapshot");
+    expect(tracePriority).toHaveTextContent("filters_applied report_date=2026-02-28；desk=FI");
   });
 
   it("explicitly marks missing backend evidence fields in quality evidence", async () => {
@@ -937,10 +956,15 @@ describe("RiskTensorPage", () => {
     });
 
     const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+    const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
 
     expect(qualityDetail).toHaveTextContent("evidence_rows 未提供");
     expect(qualityDetail).toHaveTextContent("tables_used 未提供");
     expect(qualityDetail).toHaveTextContent("filters_applied 未提供");
+    expect(tracePriority).toHaveTextContent("证据范围");
+    expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
+    expect(tracePriority).toHaveTextContent("tables_used 未提供");
+    expect(tracePriority).toHaveTextContent("filters_applied 未提供");
   });
 
   it("surfaces issuer concentration detail from backend fields", async () => {

@@ -671,6 +671,18 @@ export default function RiskTensorPage() {
   ].filter((item): item is string => Boolean(item));
   const qualityReviewReasonSummary =
     qualityReviewReasons.length > 0 ? qualityReviewReasons.join("；") : "查看质量证据";
+  const qualityTraceFallbackDetail = tensorMeta?.fallback_date
+    ? `${fallbackStatus}；fallback_date ${tensorMeta.fallback_date}`
+    : fallbackStatus;
+  const qualityTraceBlockedDetail = highlightedBlockedReportDate
+    ? `${blockedReportDateSummary}；${highlightedBlockedReportDate.report_date}${
+        highlightedBlockedReportDate.reason ? ` ${highlightedBlockedReportDate.reason}` : ""
+      }`
+    : blockedReportDateSummary;
+  const qualityTraceWarningDetail = result?.warnings[0] ?? "无预警";
+  const qualityTraceMetadataDetail = `evidence_rows ${
+    typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
+  }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
@@ -1515,6 +1527,7 @@ export default function RiskTensorPage() {
                         : result.quality_flag}
               </div>
               <div className="risk-tensor-quality-detail__evidence" data-testid="risk-tensor-quality-evidence">
+                <strong>证据范围</strong>
                 <span>来源 {compactVersion(tensorMeta?.source_version)}</span>
                 <span>规则 {compactVersion(tensorMeta?.rule_version)}</span>
                 <span>{fallbackStatus}</span>
@@ -1523,6 +1536,33 @@ export default function RiskTensorPage() {
                 <span>evidence_rows {typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"}</span>
                 <span>tables_used {metadataTablesUsed || "未提供"}</span>
                 <span>filters_applied {metadataFiltersApplied || "未提供"}</span>
+              </div>
+              <div className="risk-tensor-quality-detail__trace" data-testid="risk-tensor-quality-trace-priority">
+                <strong>证据优先级</strong>
+                <ol>
+                  <li>
+                    <span>source/rule</span>
+                    <p>
+                      来源 {compactVersion(tensorMeta?.source_version)}；规则 {compactVersion(tensorMeta?.rule_version)}
+                    </p>
+                  </li>
+                  <li>
+                    <span>fallback</span>
+                    <p>{qualityTraceFallbackDetail}</p>
+                  </li>
+                  <li>
+                    <span>陈旧日期</span>
+                    <p>{qualityTraceBlockedDetail}</p>
+                  </li>
+                  <li>
+                    <span>warning</span>
+                    <p>{qualityTraceWarningDetail}</p>
+                  </li>
+                  <li>
+                    <span>证据范围</span>
+                    <p>{qualityTraceMetadataDetail}</p>
+                  </li>
+                </ol>
               </div>
               {highlightedBlockedReportDate ? (
                 <div className="risk-tensor-quality-detail__blocked" data-testid="risk-tensor-quality-blocked-date">
