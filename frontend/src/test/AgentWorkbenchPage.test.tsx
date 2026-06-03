@@ -1485,6 +1485,7 @@ describe("AgentWorkbenchPage", () => {
       );
       expect(matched).toBe(true);
     });
+    expect(screen.getByText("已查看 GitNexus 流程 · 可继续追问")).toBeInTheDocument();
   });
 
   it("cues retry after viewing a selected GitNexus process fails", async () => {
