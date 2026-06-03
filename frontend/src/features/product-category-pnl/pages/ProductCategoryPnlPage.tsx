@@ -1099,6 +1099,12 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                       </b>
                       <small>{props.scenarioExplanation.bridgeConclusionLabel}</small>
                     </div>
+                    <div className="product-category-financial-analysis__review-actions">
+                      <span className="product-category-financial-analysis__scenario-kicker">复核动作</span>
+                      {props.scenarioExplanation.reviewActionItems.map((item) => (
+                        <small key={item}>{item}</small>
+                      ))}
+                    </div>
                     <div className="product-category-financial-analysis__explanation-grid">
                       <span>{props.scenarioExplanation.sideLabel}</span>
                       <span>基线 {props.scenarioExplanation.baselineNetIncomeLabel}</span>

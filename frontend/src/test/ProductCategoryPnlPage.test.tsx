@@ -420,8 +420,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(explanation).toHaveTextContent("情景压力");
     expect(explanation).toHaveTextContent("正式归因合计");
     expect(explanation).toHaveTextContent("复核动作");
-    expect(explanation).toHaveTextContent("先复核情景 FTP 假设");
     expect(explanation).toHaveTextContent("核对正式归因期间口径");
+    expect(explanation).toHaveTextContent("重点追踪 FTP因素");
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {

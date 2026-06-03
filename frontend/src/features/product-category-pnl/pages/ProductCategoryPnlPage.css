@@ -858,6 +858,34 @@
   line-height: 1.55;
 }
 
+.product-category-financial-analysis__review-actions {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.product-category-financial-analysis__review-actions small {
+  position: relative;
+  padding-left: 14px;
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.product-category-financial-analysis__review-actions small::before {
+  position: absolute;
+  top: 0.65em;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--moss-color-primary-500);
+  content: "";
+}
+
 .product-category-financial-analysis__explanation-grid,
 .product-category-financial-analysis__driver-list {
   display: flex;
