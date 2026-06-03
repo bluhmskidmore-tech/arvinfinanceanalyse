@@ -2027,11 +2027,49 @@ export function buildMarketStateCard(
     warnings,
     conditions: gate.conditions.map((condition) => ({
       key: condition.key,
-      label: condition.label,
+      label: localizeMarketConditionLabel(condition.label),
       status: condition.status,
-      evidence: condition.evidence,
+      evidence: localizeMarketConditionEvidence(condition.evidence),
     })),
   };
+}
+
+function localizeMarketConditionLabel(label: string): string {
+  const value = label.trim();
+  const normalized = value.toLowerCase().replace(/\s+/g, " ");
+  const exactLabels: Record<string, string> = {
+    "csi300 close > ma60": "沪深300收盘价 > MA60",
+    "csi300 ma20 > ma60": "沪深300 MA20 > MA60",
+    "5-day breadth > 0": "5日市场宽度 > 0",
+    "limit-up seal/break quality positive": "涨停封板/破板质量为正",
+  };
+  if (exactLabels[normalized]) {
+    return exactLabels[normalized];
+  }
+  return value.replace(/\bCSI300\b/g, "沪深300").replace(/\bclose\b/gi, "收盘价");
+}
+
+function localizeMarketConditionEvidence(evidence: string): string {
+  const value = evidence.trim();
+  const normalized = value.toLowerCase().replace(/\s+/g, " ");
+  const exactEvidence: Record<string, string> = {
+    "close is above ma60.": "收盘价高于 MA60。",
+    "close is below ma60.": "收盘价低于 MA60。",
+    "ma20 is above ma60.": "MA20 高于 MA60。",
+    "breadth inputs are not landed for the phase 1 slice.": "5日市场宽度输入尚未落地，当前阶段不可用。",
+    "limit-up quality inputs are not landed for the phase 1 slice.": "涨停质量输入尚未落地，当前阶段不可用。",
+  };
+  if (exactEvidence[normalized]) {
+    return exactEvidence[normalized];
+  }
+  return value
+    .replace(/\b(MA\d+)\s+is\s+above\b/gi, "$1 高于")
+    .replace(/\b(MA\d+)\s+is\s+below\b/gi, "$1 低于")
+    .replace(/\bclose\s+is\s+above\b/gi, "收盘价高于")
+    .replace(/\bclose\s+is\s+below\b/gi, "收盘价低于")
+    .replace(/\babove\b/gi, "高于")
+    .replace(/\bbelow\b/gi, "低于")
+    .replace(/\.$/, "。");
 }
 
 export function buildSectorRows(payload: LivermoreStrategyPayload): StockSectorRow[] {

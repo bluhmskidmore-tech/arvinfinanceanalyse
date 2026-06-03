@@ -61,6 +61,27 @@ const strategyPayload: LivermoreStrategyPayload = {
         evidence: "Close is above MA60.",
         source_series_id: "CA.CSI300",
       },
+      {
+        key: "csi300_ma20_gt_ma60",
+        label: "CSI300 MA20 > MA60",
+        status: "pass",
+        evidence: "MA20 is above MA60.",
+        source_series_id: "CA.CSI300",
+      },
+      {
+        key: "breadth_5d_positive",
+        label: "5-day breadth > 0",
+        status: "missing",
+        evidence: "Breadth inputs are not landed for the Phase 1 slice.",
+        source_series_id: null,
+      },
+      {
+        key: "limit_up_quality_positive",
+        label: "Limit-up seal/break quality positive",
+        status: "missing",
+        evidence: "Limit-up quality inputs are not landed for the Phase 1 slice.",
+        source_series_id: null,
+      },
     ],
   },
   rule_readiness: [
@@ -254,6 +275,30 @@ describe("stockAnalysisPageModel", () => {
     expect(card.passedLabel).toBe("2 / 4 条件通过");
     expect(card.warnings.join(" ")).toContain("市场宽度输入不可用");
     expect(card.warnings.join(" ")).toContain("5日市场宽度输入未落地");
+    expect(card.conditions[0]).toMatchObject({
+      label: "沪深300收盘价 > MA60",
+      evidence: "收盘价高于 MA60。",
+    });
+    expect(`${card.conditions[0].label} ${card.conditions[0].evidence}`).not.toContain("CSI300 close");
+    expect(card.conditions[0].evidence).not.toContain("Close is above");
+    expect(card.conditions[1]).toMatchObject({
+      label: "沪深300 MA20 > MA60",
+      evidence: "MA20 高于 MA60。",
+    });
+    expect(card.conditions[2]).toMatchObject({
+      label: "5日市场宽度 > 0",
+      evidence: "5日市场宽度输入尚未落地，当前阶段不可用。",
+    });
+    expect(card.conditions[3]).toMatchObject({
+      label: "涨停封板/破板质量为正",
+      evidence: "涨停质量输入尚未落地，当前阶段不可用。",
+    });
+    const conditionText = card.conditions.map((condition) => `${condition.label} ${condition.evidence}`).join(" ");
+    expect(conditionText).not.toContain("MA20 is above");
+    expect(conditionText).not.toContain("5-day breadth");
+    expect(conditionText).not.toContain("Breadth inputs");
+    expect(conditionText).not.toContain("Limit-up");
+    expect(conditionText).not.toContain("Phase 1 slice");
     expect(sectors[0].sectorName).toBe("AI");
     expect(sectors[0].pctChange).toBe("4.80%");
   });
