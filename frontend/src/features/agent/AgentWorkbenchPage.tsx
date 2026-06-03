@@ -2767,6 +2767,7 @@ export function EmbeddedAgentCopilot({
   function applyFollowUpChip(question: string, sourceElement?: HTMLElement) {
     closeFollowUpDetails(sourceElement);
     replaceComposerQuery(question);
+    setComposerAssistHint("已填入追问 · Enter 发送");
   }
 
   function editAgentQuestion(turn: AgentConversationTurn) {

@@ -2520,6 +2520,7 @@ describe("AgentWorkbenchPage", () => {
     expect(document.activeElement).toBe(input);
     expect(input).toHaveProperty("selectionStart", input.value.length);
     expect(input).toHaveProperty("selectionEnd", input.value.length);
+    expect(screen.getByText("已填入追问 · Enter 发送")).toBeInTheDocument();
     expect(followUpDetails).not.toHaveAttribute("open");
     expect(followUpOptions).not.toBeVisible();
   });
