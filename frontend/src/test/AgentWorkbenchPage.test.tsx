@@ -1257,6 +1257,17 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
+  it("cues the repo path requirement when loading GitNexus processes without a repo", async () => {
+    const user = userEvent.setup();
+    render(<AgentWorkbenchPage />);
+
+    openGitNexusTools();
+    await user.clear(screen.getByLabelText("repo-path-input"));
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
+
+    expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再读取流程")).toBeInTheDocument();
+  });
+
   it("loads process selector options from GitNexus processes response", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
