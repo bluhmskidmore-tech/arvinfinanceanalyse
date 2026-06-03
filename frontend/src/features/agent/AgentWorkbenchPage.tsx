@@ -2731,6 +2731,7 @@ export function EmbeddedAgentCopilot({
     if (action.type === "inspect_drill" || action.type === "refine_query") {
       closeResultInteractionDetails(sourceElement);
       replaceComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
+      setComposerAssistHint("已填入建议追问 · Enter 发送");
       return;
     }
     const intent = getExecutableSuggestedIntent(action);

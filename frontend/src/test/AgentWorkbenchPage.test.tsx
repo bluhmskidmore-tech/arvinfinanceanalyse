@@ -3691,6 +3691,7 @@ describe("AgentWorkbenchPage", () => {
     expect(input).toHaveValue("请基于当前 evidence 继续下钻：继续下钻期限桶");
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     expect(input).toHaveFocus();
+    expect(screen.getByText("已填入建议追问 · Enter 发送")).toBeInTheDocument();
   });
 
   it("restores an unsent composer draft after remount", async () => {
