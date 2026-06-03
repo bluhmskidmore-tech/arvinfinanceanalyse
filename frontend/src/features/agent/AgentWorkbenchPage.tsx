@@ -2759,20 +2759,28 @@ export function EmbeddedAgentCopilot({
         message: "请先输入 GitNexus 仓库路径。",
       });
       setComposerAssistHint("请先输入 GitNexus 仓库路径 · 再固定仓库");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
       return;
     }
     pinRepoPath(normalized);
     setComposerAssistHint("已固定 GitNexus 仓库 · 可继续提问");
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
   }
 
   function unpinRepo(path: string) {
     unpinRepoPath(path);
     setComposerAssistHint("已取消固定 GitNexus 仓库 · 可继续提问");
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
   }
 
   function pinRememberedRepo(path: string) {
     pinRepoPath(path);
     setComposerAssistHint("已固定 GitNexus 仓库 · 可继续提问");
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
   }
 
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction, sourceElement?: HTMLElement) {

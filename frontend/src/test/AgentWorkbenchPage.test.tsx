@@ -1120,6 +1120,7 @@ describe("AgentWorkbenchPage", () => {
       "F:\\PINNED-MOSS",
     ]);
     expect(screen.getByText("已固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("cues the repo path requirement when pinning an empty GitNexus repo", async () => {
@@ -1131,6 +1132,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "固定当前仓库" }));
 
     expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再固定仓库")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("unpins a pinned repo without removing recent repos", async () => {
@@ -1152,6 +1154,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: "F:\\MOSS-SYSTEM-V1" })).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toEqual([]);
     expect(screen.getByText("已取消固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("renders pinned repos even without recent repos and supports pinned ordering", async () => {
@@ -1216,10 +1219,12 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "固定仓库 F:\\PIN-ME" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消固定 F:\\PIN-ME" })).toBeInTheDocument();
     expect(screen.getByText("已固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
 
     await user.click(screen.getByRole("button", { name: "取消固定 F:\\PIN-ME" }));
 
     expect(screen.getByRole("button", { name: "固定仓库 F:\\PIN-ME" })).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("does not auto-load GitNexus processes when repo_path changes", async () => {
