@@ -103,7 +103,7 @@ export function AgentQueryForm({
   const hasQuery = query.trim().length > 0;
   const submitHint = loading
     ? onQueueSubmit
-      ? "Enter 发送下一句 · Shift+Enter 换行"
+      ? "回答中 · Enter 排队下一句 · Shift+Enter 换行"
       : "正在回答 · Shift+Enter 换行"
     : "Enter 发送 · Shift+Enter 换行";
   const visibleComposerHint = composerHint ?? submitHint;

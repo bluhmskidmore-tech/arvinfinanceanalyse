@@ -3363,7 +3363,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "enter queue first turn");
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("enter queue first turn")).toBeInTheDocument();
-    expect(screen.getByText("Enter 发送下一句 · Shift+Enter 换行")).toBeInTheDocument();
+    expect(screen.getByText("回答中 · Enter 排队下一句 · Shift+Enter 换行")).toBeInTheDocument();
 
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     await user.type(input, "enter queued second turn");
