@@ -1721,7 +1721,7 @@ export function EmbeddedAgentCopilot({
   }, [hasConversation]);
 
   useEffect(() => {
-    if (!hasConversation || !shouldFocusComposerRef.current) {
+    if (!shouldFocusComposerRef.current) {
       return;
     }
     shouldFocusComposerRef.current = false;
@@ -2649,6 +2649,9 @@ export function EmbeddedAgentCopilot({
         kind: "request",
         message: "请先从流程列表选择一个流程。",
       });
+      setComposerAssistHint("请先选择 GitNexus 流程 · 再查看");
+      shouldFocusComposerRef.current = true;
+      focusComposerInput();
       return;
     }
     const question = `请给我看 GitNexus process/${selectedProcess}`;

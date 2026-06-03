@@ -1333,6 +1333,20 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再读取流程")).toBeInTheDocument();
   });
 
+  it("cues the process selection requirement when viewing without a selected GitNexus process", async () => {
+    const user = userEvent.setup();
+    render(<AgentWorkbenchPage />);
+
+    openGitNexusTools();
+    openProcessTools();
+    await user.click(screen.getByRole("button", { name: "查看所选流程" }));
+
+    expect(screen.getByText("请先从流程列表选择一个流程。")).toBeInTheDocument();
+    expect(screen.getByText("请先选择 GitNexus 流程 · 再查看")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("cues retry after GitNexus process loading fails", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(buildJsonResponse({}, 500));

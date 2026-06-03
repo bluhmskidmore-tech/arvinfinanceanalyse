@@ -333,7 +333,7 @@ export function AgentQueryForm({
                   type="button"
                   className="agent-chat-composer__secondary-action"
                   onClick={onViewSelectedProcess}
-                  disabled={!selectedProcess || loading}
+                  disabled={loading}
                 >
                   查看所选流程
                 </button>
