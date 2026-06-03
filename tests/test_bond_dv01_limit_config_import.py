@@ -304,3 +304,69 @@ def test_import_bond_dv01_limit_config_cli_builds_reference_baseline_without_lim
     assert rows_by_class["all"]["hedge_target_dv01"] == ""
     assert GovernanceRepository(base_dir=tmp_path / "governance").read_all(STREAM) == []
     get_settings.cache_clear()
+
+
+def test_import_bond_dv01_limit_config_cli_writes_reference_baseline_csv(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    output_path = tmp_path / "dv01_reference_baseline.csv"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.execute(
+        """
+        create table fact_formal_bond_analytics_daily (
+            report_date varchar,
+            accounting_class varchar,
+            face_value decimal(24, 8),
+            market_value decimal(24, 8),
+            modified_duration decimal(18, 8),
+            dv01 decimal(24, 8)
+        )
+        """
+    )
+    conn.executemany(
+        "insert into fact_formal_bond_analytics_daily values (?, ?, ?, ?, ?, ?)",
+        [
+            ("2026-05-31", "TPL", "1000", "980", "2", "20"),
+            ("2026-05-31", "other", "500", "480", "3", "15"),
+        ],
+    )
+    conn.close()
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _run_import_cli(
+        ["--reference-baseline-csv", str(output_path), "--report-date", "2026-05-31"],
+        monkeypatch,
+    )
+
+    with output_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+
+    assert payload["status"] == "reference_baseline_csv_written"
+    assert payload["output_path"] == str(output_path)
+    assert payload["report_date"] == "2026-05-31"
+    assert payload["business_limit_fields_blank"] is True
+    assert reader.fieldnames == [
+        "accounting_class",
+        "current_position_count",
+        "current_face_value",
+        "current_market_value",
+        "current_total_dv01",
+        "current_face_weighted_modified_duration",
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+    ]
+    rows_by_class = {row["accounting_class"]: row for row in rows}
+    assert rows_by_class["TPL"]["current_total_dv01"] == "20.00000000"
+    assert rows_by_class["all"]["current_total_dv01"] == "35.00000000"
+    assert rows_by_class["all"]["limit_dv01"] == ""
+    assert rows_by_class["all"]["warning_dv01"] == ""
+    assert rows_by_class["all"]["hedge_target_dv01"] == ""
+    assert GovernanceRepository(base_dir=tmp_path / "governance").read_all(STREAM) == []
+    get_settings.cache_clear()

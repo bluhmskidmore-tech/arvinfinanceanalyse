@@ -31,6 +31,12 @@ To export the current holding DV01 reference baseline for business review:
 python -m backend.app.tasks.bond_dv01_limit_config_import --reference-baseline --report-date 2026-03-31
 ```
 
+To write the same reference baseline as a fillable CSV:
+
+```powershell
+python -m backend.app.tasks.bond_dv01_limit_config_import --reference-baseline-csv path\to\bond_dv01_limit_config_review.csv --report-date 2026-03-31
+```
+
 Expected result:
 
 - `status` is `reference_baseline_built`

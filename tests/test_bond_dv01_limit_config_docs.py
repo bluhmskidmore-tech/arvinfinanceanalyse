@@ -36,6 +36,7 @@ def test_bond_dv01_limit_config_runbook_documents_acceptance_flow():
     assert "docs/templates/bond_dv01_limit_config_template.csv" in runbook
     assert "backend.app.tasks.bond_dv01_limit_config_import" in runbook
     assert "--reference-baseline" in runbook
+    assert "--reference-baseline-csv" in runbook
     assert "business_limit_fields_blank" in runbook
     assert "--write-template" in runbook
     assert "--check-status" in runbook

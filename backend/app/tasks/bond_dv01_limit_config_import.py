@@ -118,6 +118,61 @@ def _build_bond_dv01_limit_config_reference_baseline(
     }
 
 
+def _write_bond_dv01_limit_config_reference_baseline_csv(
+    output_path: str,
+    *,
+    report_date: str | date | None = None,
+) -> dict[str, object]:
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = _build_bond_dv01_limit_config_reference_baseline(report_date=report_date)
+    fieldnames = [
+        "accounting_class",
+        "current_position_count",
+        "current_face_value",
+        "current_market_value",
+        "current_total_dv01",
+        "current_face_weighted_modified_duration",
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+    ]
+    with target.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in payload["rows"]:
+            writer.writerow(
+                {
+                    "accounting_class": row["accounting_class"],
+                    "current_position_count": row["position_count"],
+                    "current_face_value": row["face_value"],
+                    "current_market_value": row["market_value"],
+                    "current_total_dv01": row["current_total_dv01"],
+                    "current_face_weighted_modified_duration": row["face_weighted_modified_duration"],
+                    "limit_dv01": "",
+                    "warning_dv01": "",
+                    "hedge_target_dv01": "",
+                    "limit_source": "",
+                    "limit_source_version": "",
+                    "limit_rule_version": "",
+                    "limit_effective_date": "",
+                }
+            )
+    return {
+        "status": "reference_baseline_csv_written",
+        "output_path": str(target),
+        "report_date": payload["report_date"],
+        "source_table": payload["source_table"],
+        "business_limit_fields_blank": True,
+        "unmapped_accounting_classes": payload["unmapped_accounting_classes"],
+        "required_accounting_classes": payload["required_accounting_classes"],
+    }
+
+
 def _import_bond_dv01_limit_config(
     *,
     config_path: str,
@@ -517,6 +572,7 @@ def main() -> None:
     parser.add_argument("--write-template")
     parser.add_argument("--check-status", action="store_true")
     parser.add_argument("--reference-baseline", action="store_true")
+    parser.add_argument("--reference-baseline-csv")
     args = parser.parse_args()
 
     if args.write_template:
@@ -525,6 +581,14 @@ def main() -> None:
     if args.reference_baseline:
         _emit_json_payload(
             _build_bond_dv01_limit_config_reference_baseline(
+                report_date=args.report_date,
+            )
+        )
+        return
+    if args.reference_baseline_csv:
+        _emit_json_payload(
+            _write_bond_dv01_limit_config_reference_baseline_csv(
+                args.reference_baseline_csv,
                 report_date=args.report_date,
             )
         )
@@ -538,7 +602,7 @@ def main() -> None:
         )
         return
     if not args.config_path:
-        parser.error("--config-path is required unless --write-template, --check-status, or --reference-baseline is provided")
+        parser.error("--config-path is required unless --write-template, --check-status, --reference-baseline, or --reference-baseline-csv is provided")
 
     payload = import_bond_dv01_limit_config.fn(
         config_path=args.config_path,
