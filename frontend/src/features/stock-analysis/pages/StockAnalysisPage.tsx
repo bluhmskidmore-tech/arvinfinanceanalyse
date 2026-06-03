@@ -932,7 +932,7 @@ function buildBackendSupplyOverview(
   const watchCount = risk?.watch_items?.length ?? 0;
 
   return {
-    asOfLabel: payload.as_of_date ?? payload.requested_as_of_date ?? "日期待补",
+    asOfLabel: payload.as_of_date ?? "日期待补",
     requestedAsOfLabel: payload.requested_as_of_date ?? "默认",
     gateLabel: `门控 ${localizeMarketDataStatus(gate.state)}`,
     exposureLabel: `暴露 ${formatSupplyPercent(gate.exposure)}`,
@@ -1935,7 +1935,6 @@ export default function StockAnalysisPage() {
   const pickerDisplay =
     asOfOverride != null && asOfOverride.trim() !== "" ? dayjs(asOfOverride) : headerDateValue;
 
-  const effectiveAsOf = strategyPayload?.as_of_date ?? asOfOverride ?? null;
   const analyticsAsOf = strategyPayload?.as_of_date ?? null;
   const stockDetailAsOfDate = analyticsAsOf ?? undefined;
   const currentMarketState = strategyPayload?.market_gate.state ?? null;
@@ -2327,7 +2326,7 @@ export default function StockAnalysisPage() {
               </span>
               <span className="stock-analysis-page__toolbar-pill">
                 <ClockCircleOutlined aria-hidden="true" />
-                观察日 {decisionSummary?.asOfLabel ?? effectiveAsOf ?? "默认"}
+                观察日 {backendSupplyOverview?.asOfLabel ?? analyticsAsOf ?? "日期待补"}
               </span>
               <span
                 className="stock-analysis-page__toolbar-pill"

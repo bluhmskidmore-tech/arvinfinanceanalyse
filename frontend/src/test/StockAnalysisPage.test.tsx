@@ -1349,6 +1349,45 @@ describe("StockAnalysisPage", () => {
     expect(queue).toHaveTextContent("复核 K 线");
   });
 
+  it("does not show a requested date as the backend supply data date when no data date is resolved", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          as_of_date: null,
+          requested_as_of_date: "2026-05-08",
+        }),
+      }),
+    });
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    const dataDateTile = within(decisionPanel).getByTitle(/数据日期/);
+    const requestedDateTile = within(decisionPanel).getByTitle(/请求日期/);
+
+    expect(dataDateTile).toHaveTextContent("日期待补");
+    expect(dataDateTile).not.toHaveTextContent("2026-05-08");
+    expect(requestedDateTile).toHaveTextContent("2026-05-08");
+  });
+
+  it("does not show a requested date as the toolbar observation date when no data date is resolved", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          as_of_date: null,
+          requested_as_of_date: "2026-05-08",
+        }),
+      }),
+    });
+
+    const page = await screen.findByTestId("stock-analysis-page");
+    const toolbar = page.querySelector(".stock-analysis-page__toolbar-info");
+
+    await waitFor(() => expect(toolbar).not.toHaveTextContent("默认"));
+
+    expect(toolbar).toHaveTextContent("观察日");
+    expect(toolbar).toHaveTextContent("日期待补");
+    expect(toolbar).not.toHaveTextContent("2026-05-08");
+  });
+
   it("renders first-screen theme leaders and analytics tabs", async () => {
     const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {
