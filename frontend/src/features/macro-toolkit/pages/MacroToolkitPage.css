@@ -1169,6 +1169,108 @@
   align-items: center;
 }
 
+.macro-toolkit-crisis-shadow-decision {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-left: 3px solid var(--moss-color-info-600);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-info-soft);
+}
+
+.macro-toolkit-crisis-shadow-decision__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.macro-toolkit-crisis-shadow-decision__head > div:first-child,
+.macro-toolkit-crisis-shadow-decision__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.macro-toolkit-crisis-shadow-decision__head span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.macro-toolkit-crisis-shadow-decision__head strong {
+  color: var(--moss-color-text-primary);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.macro-toolkit-crisis-shadow-decision__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-crisis-shadow-decision__item {
+  padding: 9px 10px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.macro-toolkit-crisis-shadow-decision__item strong {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-crisis-shadow-decision__item small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-crisis-promotion-rule-pack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--macro-toolkit-border-soft);
+}
+
+.macro-toolkit-crisis-promotion-rule-pack__head,
+.macro-toolkit-crisis-promotion-rule-pack__head > div:first-child,
+.macro-toolkit-crisis-promotion-rule-pack__grid {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.macro-toolkit-crisis-promotion-rule-pack__head span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.macro-toolkit-crisis-promotion-rule-pack__head strong {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.macro-toolkit-crisis-promotion-rule-pack small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .macro-toolkit-crisis-gap-list {
   display: grid;
   gap: 10px;
