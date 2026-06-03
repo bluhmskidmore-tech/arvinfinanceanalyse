@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -394,6 +394,183 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("等待正式财务指标契约");
     expect(panel).not.toHaveTextContent("正式财务指标契约已读取");
     expect(getLedgerPnlFormalFinancialIndicators).not.toHaveBeenCalled();
+  });
+
+  it("keeps missing ledger money values visibly unavailable instead of rendering zero", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const missingMoney = null as unknown as LedgerMoneyValue;
+    const undefinedMoney = undefined as unknown as LedgerMoneyValue;
+    const blankMoney = { yuan: "", yi: "" } as LedgerMoneyValue;
+    const invalidMoney = { yuan: "not-a-number", yi: "" } as LedgerMoneyValue;
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.summary"),
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: missingMoney,
+            ledger_monthly_pnl_all: undefinedMoney,
+            ledger_total_assets: blankMoney,
+            ledger_total_liabilities: invalidMoney,
+            ledger_net_assets: money("500000000.00"),
+            by_currency: [{ currency: "CNX", total_pnl: missingMoney }],
+            by_account: [
+              {
+                account_code: "514",
+                account_name: "interest income",
+                total_pnl: undefinedMoney,
+                count: 1,
+              },
+            ],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.data"),
+          result: {
+            report_date: "2026-05-31",
+            summary: {
+              total_pnl_cnx: missingMoney,
+              total_pnl_cny: undefinedMoney,
+              total_pnl: blankMoney,
+              count: 1,
+            },
+            items: [
+              {
+                account_code: "514",
+                account_name: "interest income",
+                currency: "CNX",
+                beginning_balance: missingMoney,
+                ending_balance: blankMoney,
+                monthly_pnl: money("100000000.00"),
+                daily_avg_balance: invalidMoney,
+                days_in_period: 31,
+              },
+            ],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    const cards = await screen.findByTestId("ledger-pnl-summary-cards");
+    await waitFor(() => {
+      expect(cards).toHaveTextContent("5.00 亿元");
+    });
+    expect(within(cards).getAllByText("--")).toHaveLength(4);
+    expect(within(cards).queryByText("0.00 亿元")).not.toBeInTheDocument();
+
+    const detailTable = await screen.findByTestId("ledger-pnl-detail-table");
+    expect(within(detailTable).getAllByText("--")).toHaveLength(3);
+    expect(detailTable).toHaveTextContent("1.00 亿元");
+  });
+
+  it("surfaces empty ledger summary and detail tables instead of leaving blank bodies", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.summary"),
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("0.00"),
+            ledger_monthly_pnl_all: money("0.00"),
+            ledger_total_assets: money("0.00"),
+            ledger_total_liabilities: money("0.00"),
+            ledger_net_assets: money("0.00"),
+            by_currency: [],
+            by_account: [],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.data"),
+          result: {
+            report_date: "2026-05-31",
+            summary: {
+              total_pnl_cnx: money("0.00"),
+              total_pnl_cny: money("0.00"),
+              total_pnl: money("0.00"),
+              count: 0,
+            },
+            items: [],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ledger-pnl-summary-cards")).toHaveTextContent("0.00 亿元");
+    });
+
+    expect(screen.getByTestId("ledger-pnl-currency-summary-table")).toHaveTextContent("暂无币种汇总数据");
+    expect(screen.getByTestId("ledger-pnl-account-summary-table")).toHaveTextContent("暂无科目汇总数据");
+    expect(screen.getByTestId("ledger-pnl-detail-table")).toHaveTextContent("暂无科目明细数据");
+  });
+
+  it("surfaces ledger summary and detail loading failures in the table bodies", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => {
+          throw new Error("summary unavailable");
+        }),
+        getLedgerPnlData: vi.fn(async () => {
+          throw new Error("detail unavailable");
+        }),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    expect(await screen.findByText("币种汇总读取失败")).toBeInTheDocument();
+    expect(screen.getByTestId("ledger-pnl-account-summary-table")).toHaveTextContent("科目汇总读取失败");
+    expect(screen.getByTestId("ledger-pnl-detail-table")).toHaveTextContent("科目明细读取失败");
   });
 
   it("renders all ledger money fields in yi units", async () => {

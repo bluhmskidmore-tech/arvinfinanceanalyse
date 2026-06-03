@@ -1034,6 +1034,7 @@ describe("RiskTensorPage", () => {
       await user.click(copyEvidence);
 
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("复核状态 待复核"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("source_version sv_tensor_test"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_tensor_test"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("evidence_rows 128"));
@@ -1043,6 +1044,10 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("filters_applied report_date=2026-02-28；desk=FI"),
       );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("证据字段复核"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("evidence_rows 已提供"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("tables_used 已提供"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("filters_applied 已提供"));
       expect(tracePriority).toHaveTextContent("已复制证据摘要");
       expect(tracePriority).toHaveTextContent("复核状态：证据已复制，待业务确认");
     } finally {
@@ -1085,6 +1090,7 @@ describe("RiskTensorPage", () => {
     expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
     expect(tracePriority).toHaveTextContent("tables_used 未提供");
     expect(tracePriority).toHaveTextContent("filters_applied 未提供");
+    expect(tracePriority).toHaveTextContent("复核状态：证据不完整，待补证");
   });
 
   it("surfaces issuer concentration detail from backend fields", async () => {

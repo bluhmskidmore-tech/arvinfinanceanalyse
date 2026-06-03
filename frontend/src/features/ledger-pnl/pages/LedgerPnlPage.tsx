@@ -51,12 +51,34 @@ const tableWrapStyle = {
   overflow: "auto",
 } as const;
 
+const ledgerTableStateCellStyle = {
+  padding: designTokens.space[4],
+  color: designTokens.color.neutral[500],
+  fontSize: designTokens.fontSize[13],
+  textAlign: "center",
+} as const;
+
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
-  if (value?.yi) {
-    return `${value.yi} 亿元`;
+  const yi = String(value?.yi ?? "").trim();
+  if (yi) {
+    return `${yi} 亿元`;
   }
-  const yuan = Number(value?.yuan);
-  return `${Number.isFinite(yuan) ? (yuan / 100_000_000).toFixed(2) : "0.00"} 亿元`;
+  const yuanRaw = String(value?.yuan ?? "").trim();
+  if (!yuanRaw) {
+    return "--";
+  }
+  const yuan = Number(yuanRaw);
+  return Number.isFinite(yuan) ? `${(yuan / 100_000_000).toFixed(2)} 亿元` : "--";
+}
+
+function LedgerTableStateRow(props: { colSpan: number; message: string }) {
+  return (
+    <tr>
+      <td colSpan={props.colSpan} style={ledgerTableStateCellStyle}>
+        {props.message}
+      </td>
+    </tr>
+  );
 }
 
 function reportDateToMonth(reportDate: string) {
@@ -910,7 +932,7 @@ export default function LedgerPnlPage() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
-        <div style={tableWrapStyle}>
+        <div data-testid="ledger-pnl-currency-summary-table" style={tableWrapStyle}>
           <div
             style={{
               padding: designTokens.space[4],
@@ -928,17 +950,25 @@ export default function LedgerPnlPage() {
               </tr>
             </thead>
             <tbody>
-              {(summary?.by_currency ?? []).map((item) => (
-                <tr key={item.currency} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                  <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
-                </tr>
-              ))}
+              {summaryQuery.isLoading ? (
+                <LedgerTableStateRow colSpan={2} message="币种汇总读取中" />
+              ) : summaryQuery.isError ? (
+                <LedgerTableStateRow colSpan={2} message="币种汇总读取失败" />
+              ) : (summary?.by_currency ?? []).length > 0 ? (
+                (summary?.by_currency ?? []).map((item) => (
+                  <tr key={item.currency} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                    <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                  </tr>
+                ))
+              ) : (
+                <LedgerTableStateRow colSpan={2} message="暂无币种汇总数据" />
+              )}
             </tbody>
           </table>
         </div>
 
-        <div style={tableWrapStyle}>
+        <div data-testid="ledger-pnl-account-summary-table" style={tableWrapStyle}>
           <div
             style={{
               padding: designTokens.space[4],
@@ -957,18 +987,26 @@ export default function LedgerPnlPage() {
               </tr>
             </thead>
             <tbody>
-              {(summary?.by_account ?? []).map((item) => (
-                <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                  <td style={{ padding: designTokens.space[3] }}>
-                    <div>{item.account_code}</div>
-                    <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
-                      {item.account_name}
-                    </div>
-                  </td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
-                </tr>
-              ))}
+              {summaryQuery.isLoading ? (
+                <LedgerTableStateRow colSpan={3} message="科目汇总读取中" />
+              ) : summaryQuery.isError ? (
+                <LedgerTableStateRow colSpan={3} message="科目汇总读取失败" />
+              ) : (summary?.by_account ?? []).length > 0 ? (
+                (summary?.by_account ?? []).map((item) => (
+                  <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                    <td style={{ padding: designTokens.space[3] }}>
+                      <div>{item.account_code}</div>
+                      <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
+                        {item.account_name}
+                      </div>
+                    </td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
+                  </tr>
+                ))
+              ) : (
+                <LedgerTableStateRow colSpan={3} message="暂无科目汇总数据" />
+              )}
             </tbody>
           </table>
         </div>
@@ -998,18 +1036,26 @@ export default function LedgerPnlPage() {
             </tr>
           </thead>
           <tbody>
-            {(data?.items ?? []).map((item) => (
-              <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
-                <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
-                <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
-                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
-                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
-                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
-                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
-                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
-              </tr>
-            ))}
+            {dataQuery.isLoading ? (
+              <LedgerTableStateRow colSpan={8} message="科目明细读取中" />
+            ) : dataQuery.isError ? (
+              <LedgerTableStateRow colSpan={8} message="科目明细读取失败" />
+            ) : (data?.items ?? []).length > 0 ? (
+              (data?.items ?? []).map((item) => (
+                <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                  <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
+                  <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
+                  <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
+                </tr>
+              ))
+            ) : (
+              <LedgerTableStateRow colSpan={8} message="暂无科目明细数据" />
+            )}
           </tbody>
         </table>
       </div>

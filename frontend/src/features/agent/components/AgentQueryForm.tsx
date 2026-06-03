@@ -57,6 +57,12 @@ function assignTextAreaRef(ref: Ref<HTMLTextAreaElement> | undefined, element: H
   (ref as MutableRefObject<HTMLTextAreaElement | null>).current = element;
 }
 
+function shouldScrollTextareaIntoView(textarea: HTMLTextAreaElement) {
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const rect = textarea.getBoundingClientRect();
+  return rect.top < 0 || rect.bottom > viewportHeight;
+}
+
 const primaryQuickExampleCount = 2;
 
 export function AgentQueryForm({
@@ -125,7 +131,7 @@ export function AgentQueryForm({
     }
     textarea.focus();
     const scrollIntoView = textarea.scrollIntoView;
-    if (typeof scrollIntoView === "function") {
+    if (typeof scrollIntoView === "function" && shouldScrollTextareaIntoView(textarea)) {
       scrollIntoView.call(textarea, { behavior: "smooth", block: "nearest" });
     }
   }

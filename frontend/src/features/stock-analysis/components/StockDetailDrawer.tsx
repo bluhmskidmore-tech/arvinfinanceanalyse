@@ -256,6 +256,9 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
 
   const factor = detailQuery.data?.result?.factor;
   const meta = detailQuery.data?.result_meta;
+  const resolvedAsOfDate = detailQuery.data?.result?.as_of_date ?? asOfDate ?? "—";
+  const requestedAsOfDate = detailQuery.data?.result?.requested_as_of_date ?? asOfDate ?? null;
+  const showRequestedAsOfDate = requestedAsOfDate != null && requestedAsOfDate !== resolvedAsOfDate;
 
   return (
     <Drawer
@@ -288,7 +291,8 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                 </Text>
               ) : null}
               <div className="stock-detail-drawer__meta-line">
-                <Text type="secondary">截至日 {asOfDate ?? detailQuery.data?.result?.as_of_date ?? "—"}</Text>
+                <Text type="secondary">截至日 {resolvedAsOfDate}</Text>
+                {showRequestedAsOfDate ? <Text type="secondary">请求日期 {requestedAsOfDate}</Text> : null}
               </div>
               {reviewContext ? (
                 <div className="stock-detail-drawer__review-context" data-testid="stock-detail-review-context">

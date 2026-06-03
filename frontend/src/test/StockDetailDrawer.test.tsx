@@ -23,6 +23,7 @@ vi.mock("../components/charts/BaseChart", () => ({
 function buildStockDetailEnvelope(
   overrides: {
     factor?: Partial<NonNullable<LivermoreStockDetailPayload["factor"]>>;
+    payload?: Partial<Pick<LivermoreStockDetailPayload, "requested_as_of_date" | "as_of_date">>;
     meta?: {
       source_version?: string;
       rule_version?: string;
@@ -37,8 +38,8 @@ function buildStockDetailEnvelope(
       basis: "analytical",
       state: "ok",
       stock_code: "000001.SZ",
-      requested_as_of_date: "2026-04-29",
-      as_of_date: "2026-04-29",
+      requested_as_of_date: overrides.payload?.requested_as_of_date ?? "2026-04-29",
+      as_of_date: overrides.payload?.as_of_date ?? "2026-04-29",
       lookback: 60,
       candles: [
         {
@@ -125,6 +126,44 @@ describe("StockDetailDrawer", () => {
       }),
     );
     expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("按股票代码匹配");
+  });
+
+  it("shows the resolved data date separately when a requested date falls back", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const detailSpy = vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        payload: {
+          requested_as_of_date: "2026-05-08",
+          as_of_date: "2026-04-29",
+        },
+      }),
+    );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-05-08" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    await waitFor(() =>
+      expect(detailSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        asOfDate: "2026-05-08",
+        lookback: 60,
+      }),
+    );
+    await screen.findByTestId("stock-detail-footer-meta");
+    expect(screen.getByText("截至日 2026-04-29")).toBeInTheDocument();
+    expect(screen.getByText("请求日期 2026-05-08")).toBeInTheDocument();
+    expect(screen.queryByText("截至日 2026-05-08")).not.toBeInTheDocument();
   });
 
   it("localizes stock detail footer governance statuses", async () => {

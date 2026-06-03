@@ -1962,7 +1962,7 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
         if latest_trade_date is None:
             return None
         start_date = latest_trade_date - timedelta(days=_EQUITY_PRICE_LOOKBACK_DAYS)
-        rows = conn.execute(
+        frame = conn.execute(
             f"""
             with latest_sample as (
               select stock_code
@@ -2009,30 +2009,14 @@ def _load_equity_strategy_price_context(duckdb_path: str | Path | None) -> dict[
             order by daily.try_cast_date asc, daily.stock_code asc
             """,
             [latest_trade_date, start_date, latest_trade_date],
-        ).fetchall()
+        ).df()
     except duckdb.Error:
         return None
     finally:
         conn.close()
 
-    if not rows:
+    if frame.empty:
         return None
-    frame = pd.DataFrame(
-        rows,
-        columns=[
-            "trade_date",
-            "stock_code",
-            "close_value",
-            "amount",
-            "pctchange",
-            "turn",
-            "amplitude",
-            "highlimit",
-            "lowlimit",
-            "source_version",
-            "vendor_version",
-        ],
-    )
     prices = (
         frame.pivot_table(index="trade_date", columns="stock_code", values="close_value", aggfunc="last")
         .sort_index()

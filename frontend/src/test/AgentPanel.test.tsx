@@ -62,6 +62,31 @@ function renderAgentPanel() {
   );
 }
 
+type ScrollIntoViewArg = boolean | ScrollIntoViewOptions;
+
+function mockScrollIntoView(implementation: (this: HTMLElement, options?: ScrollIntoViewArg) => void) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  if (!originalDescriptor || typeof originalDescriptor.value !== "function") {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: () => undefined,
+    });
+  }
+
+  const spy = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(implementation);
+  return {
+    restore() {
+      spy.mockRestore();
+      if (originalDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalDescriptor);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    },
+  };
+}
+
 describe("AgentPanel", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -152,8 +177,7 @@ describe("AgentPanel", () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
     const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement, options?: ScrollIntoViewArg) {
       scrollTargets.push(this);
       scrollOptions.push(options);
     });
@@ -162,15 +186,29 @@ describe("AgentPanel", () => {
       renderAgentPanel();
 
       const input = screen.getByLabelText("agent-question-input");
+      Object.defineProperty(input, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 960,
+          bottom: 1040,
+          left: 24,
+          right: 360,
+          width: 336,
+          height: 80,
+          x: 24,
+          y: 960,
+          toJSON: () => ({}),
+        }),
+      });
       await user.type(input, "draft to clear in place");
       await user.click(screen.getByRole("button", { name: "清空输入" }));
 
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);
-      expect(scrollTargets).toContain(input);
+      expect(scrollTargets.some((target) => target.getAttribute("aria-label") === "agent-question-input")).toBe(true);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      scrollIntoViewSpy.restore();
     }
   });
 

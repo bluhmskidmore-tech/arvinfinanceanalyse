@@ -397,6 +397,66 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "/pnl",
         ),
         (
+            "executive-overview",
+            "/dashboard",
+            "/ui/home/overview",
+            "executive.overview",
+            "backend/app/services/executive_service.py",
+            "frontend/src/features/executive-dashboard/components/OverviewSection.tsx",
+            "tests/test_executive_dashboard_endpoints.py",
+            "tests/golden_samples/GS-EXEC-OVERVIEW-A",
+            "analytical overlay",
+            "PAGE-EXEC-OVERVIEW-001",
+        ),
+        (
+            "executive-pnl-attribution",
+            "/dashboard",
+            "/ui/pnl/attribution",
+            "executive.pnl-attribution",
+            "backend/app/services/executive_service.py",
+            "frontend/src/features/executive-dashboard/components/PnlAttributionSection.tsx",
+            "tests/test_executive_dashboard_endpoints.py",
+            "tests/golden_samples/GS-EXEC-PNL-ATTR-A",
+            "analytical overlay",
+            "PAGE-EXEC-PNL-ATTR-001",
+        ),
+        (
+            "pnl-attribution",
+            "/pnl-attribution",
+            "/api/pnl-attribution/volume-rate",
+            "VolumeRateAttributionPayload",
+            "backend/app/services/pnl_attribution_service.py",
+            "frontend/src/features/pnl-attribution/pages/PnlAttributionPage.tsx",
+            "tests/test_pnl_attribution_workbench_contract.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "formal PnL overview",
+            "/pnl-attribution",
+        ),
+        (
+            "operations-analysis",
+            "/operations-analysis",
+            "/ui/pnl/product-category",
+            "GAP-OPS-MACRO-FX",
+            "backend/app/services/product_category_pnl_service.py",
+            "frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx",
+            "frontend/src/test/OperationsAnalysisPage.test.tsx",
+            "tests/golden_samples/GS-PROD-CAT-PNL-A",
+            "temporary-exception",
+            "PAGE-OPS-001",
+        ),
+        (
+            "balance-movement-analysis",
+            "/balance-movement-analysis",
+            "/ui/balance-movement-analysis",
+            "AccountingAssetMovementPayload",
+            "backend/app/services/accounting_asset_movement_service.py",
+            "frontend/src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx",
+            "tests/test_accounting_asset_movement_api.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "formal balance truth",
+            "PAGE-BAL-MOVE-001",
+        ),
+        (
             "liability-analytics",
             "/liability-analytics",
             "/api/risk/buckets",
@@ -529,6 +589,180 @@ def test_formal_pnl_trace_bundle_preserves_formal_total_boundaries() -> None:
         assert any("formal PnL truth" in item for item in payload["guardrails"])
         assert any("standardized total" in item for item in payload["guardrails"])
         assert any("executive analytical overlay" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_executive_overview_trace_bundle_preserves_analytical_overlay_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "executive-overview",
+            "/ui/home/overview",
+            "PAGE-EXEC-OVERVIEW-001",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "executive-overview"
+
+        assert payload["page_id"] == "PAGE-EXEC-OVERVIEW-001"
+        assert payload["primary_api"] == "/ui/home/overview"
+        assert "tests/golden_samples/GS-EXEC-OVERVIEW-A" in payload["golden_samples"]
+        assert any("MTR-EXEC-001" in item for item in payload["truth_chain"])
+        assert any("MTR-EXEC-004" in item for item in payload["truth_chain"])
+        assert any("executive.overview" in item for item in payload["truth_chain"])
+        assert any("caliber_label" in item for item in payload["truth_chain"])
+        assert any("analytical overlay" in item for item in payload["guardrails"])
+        assert any("formal source-of-truth" in item for item in payload["guardrails"])
+        assert any("silent downgrade" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_executive_pnl_attribution_trace_bundle_preserves_overlay_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "executive-pnl-attribution",
+            "/ui/pnl/attribution",
+            "PAGE-EXEC-PNL-ATTR-001",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "executive-pnl-attribution"
+
+        assert payload["page_id"] == "PAGE-EXEC-PNL-ATTR-001"
+        assert payload["primary_api"] == "/ui/pnl/attribution"
+        assert "tests/golden_samples/GS-EXEC-PNL-ATTR-A" in payload["golden_samples"]
+        assert any("MTR-EXEC-101" in item for item in payload["truth_chain"])
+        assert any("MTR-EXEC-106" in item for item in payload["truth_chain"])
+        assert any("executive.pnl-attribution" in item for item in payload["truth_chain"])
+        assert any("analytical overlay" in item for item in payload["guardrails"])
+        assert any("formal bridge" in item for item in payload["guardrails"])
+        assert any("formal PnL truth" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_pnl_attribution_workbench_trace_bundle_preserves_workbench_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "pnl-attribution",
+            "/pnl-attribution",
+            "PAGE-PNL-ATTR-WB-001",
+            "/api/pnl-attribution/volume-rate",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "pnl-attribution"
+
+        assert payload["page_id"] == "PAGE-PNL-ATTR-WB-001"
+        assert payload["primary_api"] == "/api/pnl-attribution/volume-rate"
+        assert "/api/pnl-attribution/tpl-market" in payload["supporting_apis"]
+        assert "/api/pnl-attribution/composition" in payload["supporting_apis"]
+        assert "/api/pnl-attribution/advanced/summary" in payload["supporting_apis"]
+        assert "/api/pnl-attribution/campisi/four-effects" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("MTR-PAT-001" in item for item in payload["truth_chain"])
+        assert any("MTR-PAT-304" in item for item in payload["truth_chain"])
+        assert any("VolumeRateAttributionPayload" in item for item in payload["truth_chain"])
+        assert any("Campisi" in item for item in payload["truth_chain"])
+        assert any("formal PnL overview" in item for item in payload["guardrails"])
+        assert any("executive analytical overlay" in item for item in payload["guardrails"])
+        assert any("front" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_operations_analysis_trace_bundle_preserves_mixed_source_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "operations-analysis",
+            "/operations-analysis",
+            "PAGE-OPS-001",
+            "/ui/pnl/product-category",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "operations-analysis"
+
+        assert payload["page_id"] == "PAGE-OPS-001"
+        assert payload["primary_api"] == "/ui/pnl/product-category"
+        assert "/ui/pnl/product-category/dates" in payload["supporting_apis"]
+        assert "/ui/balance-analysis/overview" in payload["supporting_apis"]
+        assert "/ui/preview/source-foundation" in payload["supporting_apis"]
+        assert "/ui/macro/choice-series/latest" in payload["supporting_apis"]
+        assert "/ui/market-data/fx/formal-status" in payload["supporting_apis"]
+        assert "/ui/news/choice-events/latest" in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-PROD-CAT-PNL-A" in payload["golden_samples"]
+        assert "tests/golden_samples/GS-BAL-OVERVIEW-A" in payload["golden_samples"]
+        assert any("MTR-PCP-001" in item for item in payload["truth_chain"])
+        assert any("MTR-PCP-003" in item for item in payload["truth_chain"])
+        assert any("GAP-OPS-MACRO-FX" in item for item in payload["truth_chain"])
+        assert any("supplemental topic-entry" in item for item in payload["guardrails"])
+        assert any("temporary-exception" in item for item in payload["guardrails"])
+        assert any("MTR-OPS" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_balance_movement_trace_bundle_preserves_movement_explanation_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "balance-movement-analysis",
+            "/balance-movement-analysis",
+            "PAGE-BAL-MOVE-001",
+            "/ui/balance-movement-analysis",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "balance-movement-analysis"
+
+        assert payload["page_id"] == "PAGE-BAL-MOVE-001"
+        assert payload["primary_api"] == "/ui/balance-movement-analysis"
+        assert "/ui/balance-movement-analysis/dates" in payload["supporting_apis"]
+        assert "/ui/balance-movement-analysis/refresh" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("MTR-BMV-001" in item for item in payload["truth_chain"])
+        assert any("MTR-BMV-004" in item for item in payload["truth_chain"])
+        assert any("AccountingAssetMovementPayload" in item for item in payload["truth_chain"])
+        assert any("rv_accounting_asset_movement_v2" in item for item in payload["truth_chain"])
+        assert any("formal balance truth" in item for item in payload["guardrails"])
+        assert any("selected report dates" in item for item in payload["guardrails"])
+        assert any("demo rows" in item for item in payload["guardrails"])
     finally:
         server.close()
 

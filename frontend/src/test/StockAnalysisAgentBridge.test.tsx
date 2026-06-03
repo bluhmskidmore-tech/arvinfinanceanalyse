@@ -56,6 +56,19 @@ describe("buildStockAnalysisAgentPageContext", () => {
     ]);
   });
 
+  it("keeps requested date separate from the resolved data date", () => {
+    const ctx = buildStockAnalysisAgentPageContext({
+      asOfDate: "2026-04-29",
+      requestedAsOfDate: "2026-05-08",
+      sectorFilterSectorCode: null,
+      sectorView: "score",
+      detailSelection: null,
+    });
+
+    expect(ctx.current_filters.as_of_date).toBe("2026-04-29");
+    expect(ctx.current_filters.requested_as_of_date).toBe("2026-05-08");
+  });
+
   it("omits stock_name when absent", () => {
     const ctx = buildStockAnalysisAgentPageContext({
       asOfDate: "2026-04-30",

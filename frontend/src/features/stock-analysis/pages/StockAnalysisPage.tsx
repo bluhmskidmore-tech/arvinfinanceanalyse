@@ -1935,9 +1935,8 @@ export default function StockAnalysisPage() {
   const pickerDisplay =
     asOfOverride != null && asOfOverride.trim() !== "" ? dayjs(asOfOverride) : headerDateValue;
 
-  const stockDetailAsOfDate = asOfOverride ?? strategyPayload?.as_of_date ?? undefined;
-
-  const effectiveAsOf = asOfOverride ?? strategyPayload?.as_of_date ?? null;
+  const effectiveAsOf = strategyPayload?.as_of_date ?? asOfOverride ?? null;
+  const stockDetailAsOfDate = effectiveAsOf ?? undefined;
   const currentMarketState = strategyPayload?.market_gate.state ?? null;
   const strategyScoreQuery = useQuery({
     queryKey: [
@@ -2290,13 +2289,22 @@ export default function StockAnalysisPage() {
   const stockAnalysisAgentPageContext = useMemo(
     () =>
       buildStockAnalysisAgentPageContext({
-        asOfDate: effectiveAsOf,
+        asOfDate: strategyPayload?.as_of_date ?? null,
+        requestedAsOfDate: strategyPayload?.requested_as_of_date ?? asOfOverride ?? null,
         sectorFilterSectorCode,
         sectorFilterLabel: selectedSectorLabel,
         sectorView,
         detailSelection,
       }),
-    [detailSelection, effectiveAsOf, sectorFilterSectorCode, sectorView, selectedSectorLabel],
+    [
+      asOfOverride,
+      detailSelection,
+      sectorFilterSectorCode,
+      sectorView,
+      selectedSectorLabel,
+      strategyPayload?.as_of_date,
+      strategyPayload?.requested_as_of_date,
+    ],
   );
 
   return (

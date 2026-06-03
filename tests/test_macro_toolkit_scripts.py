@@ -1551,6 +1551,77 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
     assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
 
 
+def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    dates = pd.date_range("2026-01-01", periods=90, freq="D")
+    price_rows = pd.DataFrame(
+        [
+            {
+                "trade_date": trade_date.date(),
+                "stock_code": stock_code,
+                "close_value": 10.0 + row_no * 0.1 + stock_no,
+                "amount": 1000.0 + stock_no,
+                "pctchange": 0.1,
+                "turn": 1.0,
+                "amplitude": 2.0,
+                "highlimit": 20.0,
+                "lowlimit": 5.0,
+                "source_version": "sv_stock",
+                "vendor_version": "vv_stock",
+            }
+            for row_no, trade_date in enumerate(dates)
+            for stock_no, stock_code in enumerate(("000001.SZ", "000002.SZ"), start=1)
+        ]
+    )
+    price_query_used_df = False
+
+    class FakeResult:
+        def __init__(self, *, row: tuple[object, ...] | None = None, rows: list[tuple[object, ...]] | None = None, frame: pd.DataFrame | None = None) -> None:
+            self._row = row
+            self._rows = rows or []
+            self._frame = frame
+
+        def fetchone(self) -> tuple[object, ...] | None:
+            return self._row
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            if self._frame is not None:
+                raise AssertionError("price rows should be loaded through DuckDB .df(), not fetchall()")
+            return self._rows
+
+        def df(self) -> pd.DataFrame:
+            nonlocal price_query_used_df
+            price_query_used_df = True
+            if self._frame is None:
+                raise AssertionError("unexpected df() call")
+            return self._frame.copy()
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            if normalized == "show tables":
+                return FakeResult(rows=[("choice_stock_daily_observation",)])
+            if "max(try_cast(trade_date as date))" in normalized:
+                return FakeResult(row=(dates[-1].date(),))
+            if "latest_sample" in normalized and "choice_stock_daily_observation" in normalized:
+                return FakeResult(frame=price_rows)
+            raise AssertionError(f"unexpected query: {query}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(macro_toolkit_route.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(macro_toolkit_route, "_load_equity_strategy_factor_snapshot", lambda *_args, **_kwargs: None)
+
+    context = macro_toolkit_route._load_equity_strategy_price_context(duckdb_path)
+
+    assert context is not None
+    assert price_query_used_df is True
+    assert context["prices"].shape == (90, 2)
+    assert len(context["observations"]) == len(price_rows)
+
+
 def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)

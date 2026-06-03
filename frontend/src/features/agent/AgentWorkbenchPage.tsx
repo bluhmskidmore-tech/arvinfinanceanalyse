@@ -996,6 +996,12 @@ function buildAgentRequestBody(
   };
 }
 
+function shouldScrollComposerInputIntoView(input: HTMLTextAreaElement) {
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const rect = input.getBoundingClientRect();
+  return rect.top < 0 || rect.bottom > viewportHeight;
+}
+
 function buildFinancialWorkflowRequestBody(
   workflow: FinancialWorkflowShortcut,
   pageContext?: AgentPageContext,
@@ -1479,7 +1485,7 @@ export function EmbeddedAgentCopilot({
     }
     input.focus();
     const scrollIntoView = input.scrollIntoView;
-    if (typeof scrollIntoView === "function") {
+    if (typeof scrollIntoView === "function" && shouldScrollComposerInputIntoView(input)) {
       scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
     }
   }, [closeResultInteractionDetails]);

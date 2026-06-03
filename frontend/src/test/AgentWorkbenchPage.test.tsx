@@ -61,6 +61,31 @@ function mockNarrowAgentViewport() {
   );
 }
 
+type ScrollIntoViewArg = boolean | ScrollIntoViewOptions;
+
+function mockScrollIntoView(implementation: (this: HTMLElement, options?: ScrollIntoViewArg) => void) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  if (!originalDescriptor || typeof originalDescriptor.value !== "function") {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: () => undefined,
+    });
+  }
+
+  const spy = vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(implementation);
+  return {
+    restore() {
+      spy.mockRestore();
+      if (originalDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalDescriptor);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    },
+  };
+}
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -620,8 +645,7 @@ describe("AgentWorkbenchPage", () => {
   it("keeps result evidence collapsed behind a compact drawer on narrow screens", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement) {
       scrollTargets.push(this);
     });
     mockNarrowAgentViewport();
@@ -669,7 +693,7 @@ describe("AgentWorkbenchPage", () => {
         scrollTargets.filter((target) => target.dataset.testid === "agent-conversation-bottom"),
       ).toHaveLength(1);
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      scrollIntoViewSpy.restore();
     }
   });
 
@@ -2478,8 +2502,7 @@ describe("AgentWorkbenchPage", () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
     const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement, options?: ScrollIntoViewArg) {
       scrollTargets.push(this);
       scrollOptions.push(options);
     });
@@ -2571,9 +2594,23 @@ describe("AgentWorkbenchPage", () => {
 
       scrollTargets.length = 0;
       scrollOptions.length = 0;
+      const input = screen.getByLabelText("agent-question-input");
+      Object.defineProperty(input, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 960,
+          bottom: 1040,
+          left: 24,
+          right: 360,
+          width: 336,
+          height: 80,
+          x: 24,
+          y: 960,
+          toJSON: () => ({}),
+        }),
+      });
       await user.click(screen.getByRole("button", { name: "继续输入" }));
 
-      const input = screen.getByLabelText("agent-question-input");
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);
       expect(scrollTargets).toContain(input);
@@ -2583,7 +2620,7 @@ describe("AgentWorkbenchPage", () => {
       expect(followUpDetails).not.toHaveAttribute("open");
       expect(followUpOptions).not.toBeVisible();
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      scrollIntoViewSpy.restore();
     }
   });
 
@@ -3130,9 +3167,13 @@ describe("AgentWorkbenchPage", () => {
   it("keeps a queued follow-up draft anchored to the composer while the active answer is running", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+    const originalInnerHeight = window.innerHeight;
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement) {
       scrollTargets.push(this);
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 800,
     });
     fetchMock.mockReturnValueOnce(new Promise(() => undefined));
 
@@ -3145,14 +3186,32 @@ describe("AgentWorkbenchPage", () => {
       scrollTargets.length = 0;
 
       const input = screen.getByLabelText("agent-question-input");
+      Object.defineProperty(input, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top: 1200,
+          bottom: 1260,
+          left: 24,
+          right: 360,
+          width: 336,
+          height: 60,
+          x: 24,
+          y: 1200,
+          toJSON: () => ({}),
+        }),
+      });
       await user.type(input, "scroll queued second turn");
       await user.click(screen.getByRole("button", { name: "发送下一句" }));
 
       expect(getQueuedFollowUpStatus()).toHaveTextContent("scroll queued second turn");
-      expect(scrollTargets).toContain(input);
+      expect(scrollTargets.some((target) => target.getAttribute("aria-label") === "agent-question-input")).toBe(true);
       expect(scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom")).toBe(false);
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      scrollIntoViewSpy.restore();
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalInnerHeight,
+      });
     }
   });
 
@@ -3473,18 +3532,43 @@ describe("AgentWorkbenchPage", () => {
 
   it("clears a typed composer draft without sending", async () => {
     const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
     render(<AgentWorkbenchPage />);
 
     const input = screen.getByLabelText("agent-question-input");
-    await user.type(input, "draft to clear");
-    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to clear");
+    Object.defineProperty(input, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        top: 120,
+        bottom: 180,
+        left: 24,
+        right: 360,
+        width: 336,
+        height: 60,
+        x: 24,
+        y: 120,
+        toJSON: () => ({}),
+      }),
+    });
 
-    await user.click(screen.getByRole("button", { name: "清空输入" }));
+    try {
+      await user.type(input, "draft to clear");
+      expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to clear");
+      scrollTargets.length = 0;
 
-    expect(input).toHaveValue("");
-    expect(document.activeElement).toBe(input);
-    expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+      await user.click(screen.getByRole("button", { name: "清空输入" }));
+
+      expect(input).toHaveValue("");
+      expect(document.activeElement).toBe(input);
+      expect(scrollTargets).not.toContain(input);
+      expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      scrollIntoViewSpy.restore();
+    }
   });
 
   it("does not let a pending restore repopulate a cleared conversation", async () => {
@@ -3757,8 +3841,7 @@ describe("AgentWorkbenchPage", () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
     const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement, options?: ScrollIntoViewArg) {
       scrollTargets.push(this);
       scrollOptions.push(options);
     });
@@ -3784,7 +3867,7 @@ describe("AgentWorkbenchPage", () => {
       expect(bottomScrollIndex).toBeGreaterThanOrEqual(0);
       expect(scrollOptions[bottomScrollIndex]).toMatchObject({ behavior: "smooth", block: "end" });
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      scrollIntoViewSpy.restore();
     }
   });
 

@@ -2477,6 +2477,69 @@ describe("StockAnalysisPage", () => {
     expect(submitted?.page_context?.selected_rows ?? []).toEqual([]);
   });
 
+  it("uses the resolved data date in Agent page_context when a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = vi.spyOn(client, "getLivermoreStrategy").mockImplementation(async (options) =>
+      buildMockApiEnvelope(
+        "market_data.livermore",
+        buildStrategyPayload(
+          options?.asOfDate
+            ? {
+                as_of_date: "2026-04-29",
+                requested_as_of_date: options.asOfDate,
+              }
+            : undefined,
+        ),
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_test",
+          vendor_version: "vv_livermore_test",
+          rule_version: "rv_livermore_market_gate_v1",
+          fallback_mode: options?.asOfDate ? "latest_snapshot" : "none",
+        },
+      ),
+    );
+    const fetchMock = vi.fn().mockResolvedValueOnce(buildJsonResponse(buildStockAgentResult()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await screen.findByTestId("stock-analysis-decision-panel");
+    const picker = screen.getByTestId("stock-analysis-as-of-picker");
+    const pickerInput = picker instanceof HTMLInputElement ? picker : picker.querySelector("input");
+    expect(pickerInput).toBeInstanceOf(HTMLInputElement);
+    await user.clear(pickerInput as HTMLInputElement);
+    await user.type(pickerInput as HTMLInputElement, "2026-05-08");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(strategySpy).toHaveBeenCalledWith({ asOfDate: "2026-05-08" }));
+    const decisionPanel = screen.getByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("数据日期");
+    expect(decisionPanel).toHaveTextContent("2026-04-29");
+    expect(decisionPanel).toHaveTextContent("请求日期");
+    expect(decisionPanel).toHaveTextContent("2026-05-08");
+
+    await user.click(screen.getByTestId("stock-analysis-agent-open"));
+    await waitFor(() => {
+      const contextSummary = screen.getByText((content, element) => {
+        return element?.classList.contains("agent-page-context__code") === true && content.includes("2026-04-29");
+      });
+      expect(contextSummary).toHaveTextContent('"as_of_date":"2026-04-29"');
+      expect(contextSummary).toHaveTextContent('"requested_as_of_date":"2026-05-08"');
+    });
+    await user.type(screen.getByTestId("agent-panel-question"), "please judge fallback date");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    const submitted = JSON.parse(String((options as RequestInit | undefined)?.body));
+    expect(submitted?.page_context?.current_filters?.as_of_date).toBe("2026-04-29");
+    expect(submitted?.page_context?.current_filters?.requested_as_of_date).toBe("2026-05-08");
+    expect(submitted?.page_context?.current_filters?.as_of_date).not.toBe("2026-05-08");
+  });
+
   it("reflects sector filter and drawer selection in Agent page_context", async () => {
     const user = userEvent.setup();
     const client = stockClient();

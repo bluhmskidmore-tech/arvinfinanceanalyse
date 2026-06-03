@@ -4,8 +4,10 @@ import type { StockSectorViewKind } from "./stockAnalysisPageModel";
 export const STOCK_ANALYSIS_AGENT_CONTEXT_NOTE = "stock-analysis workbench observation context";
 
 export type BuildStockAnalysisAgentPageContextInput = {
-  /** 当前快照日：取自日期覆盖或策略返回的 as_of_date */
+  /** 当前快照日：取自策略返回的实际 as_of_date。 */
   asOfDate?: string | null;
+  /** 用户请求的日期；仅用于说明 fallback，不作为实际数据日。 */
+  requestedAsOfDate?: string | null;
   sectorFilterSectorCode: string | null;
   sectorFilterLabel?: string | null;
   sectorView: StockSectorViewKind;
@@ -38,6 +40,13 @@ export function buildStockAnalysisAgentPageContext(
   };
   if (input.asOfDate != null && String(input.asOfDate).trim() !== "") {
     current_filters.as_of_date = input.asOfDate;
+  }
+  if (
+    input.requestedAsOfDate != null &&
+    String(input.requestedAsOfDate).trim() !== "" &&
+    input.requestedAsOfDate !== input.asOfDate
+  ) {
+    current_filters.requested_as_of_date = input.requestedAsOfDate;
   }
 
   const selected_rows: Array<Record<string, unknown>> = [];

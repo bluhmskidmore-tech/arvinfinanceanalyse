@@ -706,9 +706,19 @@ export default function RiskTensorPage() {
       status: metadataFiltersApplied ? "已提供" : "未提供",
     },
   ];
+  const hasMissingQualityEvidence = qualityEvidenceReviewItems.some((item) => item.status === "未提供");
+  const qualityReviewStateLabel =
+    qualityEvidenceCopyStatus === "copied"
+      ? "证据已复制，待业务确认"
+      : qualityEvidenceCopyStatus === "failed"
+        ? "复制失败，需手动选择证据"
+        : hasMissingQualityEvidence
+          ? "证据不完整，待补证"
+          : "待复核";
   const qualityTraceCopyText = [
     "风险张量质量证据",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `复核状态 ${qualityReviewStateLabel}`,
     `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
     `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
@@ -716,6 +726,8 @@ export default function RiskTensorPage() {
     `陈旧日期 ${qualityTraceBlockedDetail}`,
     `warning ${qualityTraceWarningDetail}`,
     `证据范围 ${qualityTraceMetadataDetail}`,
+    "证据字段复核",
+    ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
   ].join("\n");
   const qualityEvidenceCopyMessage =
     qualityEvidenceCopyStatus === "copied"
@@ -723,12 +735,6 @@ export default function RiskTensorPage() {
       : qualityEvidenceCopyStatus === "failed"
         ? "复制失败，请手动选择证据"
         : "";
-  const qualityReviewStateLabel =
-    qualityEvidenceCopyStatus === "copied"
-      ? "证据已复制，待业务确认"
-      : qualityEvidenceCopyStatus === "failed"
-        ? "复制失败，需手动选择证据"
-        : "待复核";
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
