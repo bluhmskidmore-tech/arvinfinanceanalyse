@@ -19,7 +19,7 @@ def test_fastapi_application_exposes_live_and_ready_health_routes():
 
 def test_ready_endpoint_returns_200_and_check_payload(monkeypatch: pytest.MonkeyPatch):
     health_module = load_module(
-        "backend.app.api.routes.health_contract",
+        "backend.app.api.routes.health",
         "backend/app/api/routes/health.py",
     )
 

@@ -2676,7 +2676,7 @@ export default function StockAnalysisPage() {
                               <div>
                                 <span>缺口</span>
                                 <strong>{backendSupplyOverview.dataGapValueLabel}</strong>
-                                <small title={primaryDataGap.evidence}>
+                                <small title={localizeStockBackendText(primaryDataGap.evidence, primaryDataGap.input_family)}>
                                   {dataGapFamilyLabel(primaryDataGap.input_family)}
                                 </small>
                               </div>

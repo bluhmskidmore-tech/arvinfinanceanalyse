@@ -274,14 +274,15 @@ def classify_low_crowding_market_regime(
     observations: pd.DataFrame | None = None,
 ) -> dict[str, float | int | str | None]:
     price_frame = _clean_price_frame(prices)
+    clean_observations = _clean_observation_frame(observations) if observations is not None and not observations.empty else None
     market_index = price_frame.div(price_frame.iloc[0]).mean(axis=1) * 100.0
     latest_index = float(market_index.iloc[-1])
     ma_fast = float(market_index.rolling(20, min_periods=min(5, len(market_index))).mean().iloc[-1])
     ma_slow = float(market_index.rolling(60, min_periods=min(10, len(market_index))).mean().iloc[-1])
     idx_ret_20d = _window_return(market_index, 20)
-    amount_change_20 = _market_amount_change_20(observations)
-    breadth_score = _latest_breadth_score(price_frame, observations)
-    limit_down_count, sample_count = _latest_limit_down_count(observations)
+    amount_change_20 = _market_amount_change_20_from_clean(clean_observations)
+    breadth_score = _latest_breadth_score_from_clean(price_frame, clean_observations)
+    limit_down_count, sample_count = _latest_limit_down_count_from_clean(clean_observations)
 
     if amount_change_20 <= -0.30 and idx_ret_20d < 0:
         regime = "liquidity_shock"
@@ -552,9 +553,14 @@ def _clean_observation_frame(observations: pd.DataFrame) -> pd.DataFrame:
 
 def _latest_breadth_score(prices: pd.DataFrame, observations: pd.DataFrame | None) -> float:
     if observations is not None and not observations.empty and "pctchange" in observations.columns:
-        obs = _clean_observation_frame(observations)
-        latest_date = obs["trade_date"].max()
-        latest = obs[obs["trade_date"] == latest_date]
+        return _latest_breadth_score_from_clean(prices, _clean_observation_frame(observations))
+    return _latest_breadth_score_from_clean(prices, None)
+
+
+def _latest_breadth_score_from_clean(prices: pd.DataFrame, observations: pd.DataFrame | None) -> float:
+    if observations is not None and not observations.empty and "pctchange" in observations.columns:
+        latest_date = observations["trade_date"].max()
+        latest = observations[observations["trade_date"] == latest_date]
         pctchange = pd.to_numeric(latest["pctchange"], errors="coerce").dropna()
         if not pctchange.empty:
             up_count = int((pctchange > 0).sum())
@@ -571,8 +577,13 @@ def _latest_breadth_score(prices: pd.DataFrame, observations: pd.DataFrame | Non
 def _market_amount_change_20(observations: pd.DataFrame | None) -> float:
     if observations is None or observations.empty or "amount" not in observations.columns:
         return 0.0
-    obs = _clean_observation_frame(observations)
-    daily_amount = obs.groupby("trade_date")["amount"].sum(min_count=1).dropna().sort_index()
+    return _market_amount_change_20_from_clean(_clean_observation_frame(observations))
+
+
+def _market_amount_change_20_from_clean(observations: pd.DataFrame | None) -> float:
+    if observations is None or observations.empty or "amount" not in observations.columns:
+        return 0.0
+    daily_amount = observations.groupby("trade_date")["amount"].sum(min_count=1).dropna().sort_index()
     if daily_amount.empty:
         return 0.0
     baseline = daily_amount.tail(20).mean()
@@ -584,9 +595,14 @@ def _market_amount_change_20(observations: pd.DataFrame | None) -> float:
 def _latest_limit_down_count(observations: pd.DataFrame | None) -> tuple[int, int]:
     if observations is None or observations.empty:
         return 0, 0
-    obs = _clean_observation_frame(observations)
-    latest_date = obs["trade_date"].max()
-    latest = obs[obs["trade_date"] == latest_date]
+    return _latest_limit_down_count_from_clean(_clean_observation_frame(observations))
+
+
+def _latest_limit_down_count_from_clean(observations: pd.DataFrame | None) -> tuple[int, int]:
+    if observations is None or observations.empty:
+        return 0, 0
+    latest_date = observations["trade_date"].max()
+    latest = observations[observations["trade_date"] == latest_date]
     lowlimit = pd.to_numeric(latest["lowlimit"], errors="coerce")
     close = pd.to_numeric(latest["close_value"], errors="coerce")
     is_limit_down = lowlimit.notna() & close.notna() & (close <= lowlimit * 1.001)

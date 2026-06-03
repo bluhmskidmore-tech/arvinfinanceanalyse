@@ -88,6 +88,28 @@ DISPLAY_ONLY_FILE_LINE_PREFIXES = {
     "features/workbench/dashboard-home/sections/BottomGridSection.tsx": (
         "<th>",
     ),
+    "features/workbench/module-home/moduleHomeConfig.ts": (
+        "briefingTitles: ",
+        "description: ",
+        '"',
+    ),
+    "features/workbench/module-home/moduleHomeModel.ts": (
+        "label: ",
+        "source: ",
+        "key: ",
+        "title: ",
+        "detail: ",
+        "evidence: ",
+        "value: ",
+        "? `",
+        "//",
+        "const RISK_KRD_FIELDS:",
+        "{ key: ",
+        "for (const field of RISK_KRD_FIELDS)",
+        "pushRiskTensorDetailRow(",
+        '"',
+        "tensor.",
+    ),
 }
 
 DISPLAY_COPY_SNIPPETS = (
@@ -134,7 +156,7 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
         for prefix in DISPLAY_ONLY_FILE_LINE_PREFIXES.get(rel, ()):
             text = "\n".join(
                 ""
-                if "DV01" in line and line.strip().startswith(prefix)
+                if any(token in line for token in FORBIDDEN_TOKENS) and line.strip().startswith(prefix)
                 else line
                 for line in text.splitlines()
             )

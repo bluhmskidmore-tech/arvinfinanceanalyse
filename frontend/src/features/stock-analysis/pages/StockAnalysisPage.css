@@ -973,6 +973,16 @@
   min-width: 0;
 }
 
+@media (max-width: 1279px) {
+  [data-testid="stock-analysis-first-screen-rail"] {
+    order: 4;
+  }
+
+  [data-testid="stock-analysis-stock-selection"] {
+    order: 5;
+  }
+}
+
 .stock-analysis-page__dh-card {
   background: var(--sa-dh-card);
   border: 1px solid var(--sa-dh-line-soft);

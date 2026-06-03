@@ -2295,6 +2295,14 @@ describe("StockAnalysisPage", () => {
       expect.stringContaining("livermore_position_snapshot"),
     );
     expect(supplyRow).toHaveTextContent("缺口");
+    expect(within(supplyRow).getByText("持仓风险")).toHaveAttribute(
+      "title",
+      "持仓快照缺失，暂无可执行风险退出样本。",
+    );
+    expect(within(supplyRow).getByText("持仓风险")).not.toHaveAttribute(
+      "title",
+      expect.stringContaining("Position snapshot"),
+    );
     expect(supplyRow).not.toHaveTextContent(/阻断阻断|缺口缺口/);
   });
 

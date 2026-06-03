@@ -1950,7 +1950,10 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
 ) -> None:
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
+    from backend.app.services import macro_adversarial_signal_service
 
+    output_dir = tmp_path / "macro_output"
+    output_dir.mkdir()
     settings = SimpleNamespace(
         duckdb_path=tmp_path / "moss.duckdb",
         choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
@@ -2013,6 +2016,7 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
     monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {"catalog_status": "ready"})
     monkeypatch.setattr(route_module, "livermore_strategy_envelope", lambda **_kwargs: livermore_envelope)
     monkeypatch.setattr(route_module, "get_macro_environment_context", lambda _report_date: macro_envelope)
+    monkeypatch.setattr(macro_adversarial_signal_service, "OUTPUT_DIR", output_dir)
 
     response = client.get(
         "/ui/market-data/livermore/signal-confluence",

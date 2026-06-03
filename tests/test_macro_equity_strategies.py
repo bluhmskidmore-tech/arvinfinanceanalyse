@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+from backend.app.core_finance.macro import equity_strategies as equity_strategies_module
 from backend.app.core_finance.macro.equity_strategies import (
     classify_low_crowding_market_regime,
     compute_factors,
@@ -348,6 +349,38 @@ def test_low_crowding_regime_uses_observation_breadth_and_limit_down() -> None:
     assert regime["regime"] == "crowded_quant"
     assert regime["limit_down_count"] == 5
     assert regime["breadth_score"] == -1.0
+
+
+def test_low_crowding_regime_reuses_cleaned_observations(monkeypatch) -> None:
+    prices = pd.DataFrame(
+        {
+            "a": [10.0] * 60 + [9.0],
+            "b": [10.0] * 60 + [9.0],
+            "c": [10.0] * 60 + [9.0],
+            "d": [10.0] * 60 + [9.0],
+            "e": [10.0] * 60 + [9.0],
+        },
+        index=pd.date_range("2026-01-01", periods=61, freq="D"),
+    )
+    observations = _low_crowding_observations(
+        {column: prices[column].tolist() for column in prices.columns},
+        pctchange={column: -10.0 for column in prices.columns},
+        lowlimit={column: 9.0 for column in prices.columns},
+    )
+    clean_calls = 0
+    original_clean = equity_strategies_module._clean_observation_frame
+
+    def counted_clean(frame: pd.DataFrame) -> pd.DataFrame:
+        nonlocal clean_calls
+        clean_calls += 1
+        return original_clean(frame)
+
+    monkeypatch.setattr(equity_strategies_module, "_clean_observation_frame", counted_clean)
+
+    regime = classify_low_crowding_market_regime(prices, observations)
+
+    assert regime["regime"] == "crowded_quant"
+    assert clean_calls == 1
 
 
 def test_low_crowding_multifactor_selection_combines_factor_and_crowding_scores() -> None:

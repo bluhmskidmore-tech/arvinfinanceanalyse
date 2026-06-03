@@ -184,7 +184,7 @@ def test_completed_ingest_reports_series_id_when_product_has_no_rows(tmp_path, m
         _ = kwargs
         return [], "none"
 
-    monkeypatch.setattr("backend.app.tasks.commodity_daily_ingest._fetch_product_rows", fetch_no_rows)
+    monkeypatch.setitem(run_commodity_daily_ingest.__globals__, "_fetch_product_rows", fetch_no_rows)
 
     payload = run_commodity_daily_ingest(
         start_date="2024-01-01",
