@@ -3477,6 +3477,7 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("");
     expect(document.activeElement).toBe(input);
+    expect(screen.getByText("已取消排队草稿 · 可以继续输入")).toBeInTheDocument();
 
     await act(async () => {
       resolveFirstRun(

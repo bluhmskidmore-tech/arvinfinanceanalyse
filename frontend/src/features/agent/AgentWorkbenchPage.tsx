@@ -1599,6 +1599,7 @@ export function EmbeddedAgentCopilot({
 
   function cancelQueuedQuery() {
     setQueuedQueries((currentQueries) => currentQueries.slice(1));
+    setComposerAssistHint("已取消排队草稿 · 可以继续输入");
     focusComposerInput();
   }
 
