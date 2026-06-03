@@ -372,6 +372,30 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "bridge warnings",
             "/pnl-bridge",
         ),
+        (
+            "balance-analysis",
+            "/balance-analysis",
+            "/ui/balance-analysis/overview",
+            "balance_analysis_overview_envelope",
+            "backend/app/services/balance_analysis_service.py",
+            "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx",
+            "tests/test_balance_analysis_api.py",
+            "tests/golden_samples/GS-BAL-OVERVIEW-A",
+            "formal balance truth",
+            "/balance-analysis",
+        ),
+        (
+            "pnl",
+            "/pnl",
+            "/api/pnl/overview",
+            "pnl_overview_envelope",
+            "backend/app/services/pnl_service.py",
+            "frontend/src/features/pnl/PnlPage.tsx",
+            "tests/test_pnl_api_contract.py",
+            "tests/golden_samples/GS-PNL-OVERVIEW-A",
+            "formal PnL truth",
+            "/pnl",
+        ),
     ],
 )
 def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
@@ -421,6 +445,75 @@ def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
         )
         alias_payload = json.loads(alias_result["content"][0]["text"])
         assert alias_payload["page_slug"] == page_slug
+    finally:
+        server.close()
+
+
+def test_formal_pnl_trace_bundle_preserves_formal_total_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in ("pnl", "/pnl", "PAGE-PNL-001", "/api/pnl/overview"):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "pnl"
+
+        assert payload["page_id"] == "PAGE-PNL-001"
+        assert payload["primary_api"] == "/api/pnl/overview"
+        assert "/api/pnl/dates" in payload["supporting_apis"]
+        assert "/api/pnl/data" in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-PNL-OVERVIEW-A" in payload["golden_samples"]
+        assert "tests/golden_samples/GS-PNL-DATA-A" in payload["golden_samples"]
+        assert any("MTR-PNL-001" in item for item in payload["truth_chain"])
+        assert any("MTR-PNL-104" in item for item in payload["truth_chain"])
+        assert any("pnl_overview_envelope" in item for item in payload["truth_chain"])
+        assert any("PnlDataPayload" in item for item in payload["truth_chain"])
+        assert any("formal PnL truth" in item for item in payload["guardrails"])
+        assert any("standardized total" in item for item in payload["guardrails"])
+        assert any("executive analytical overlay" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_balance_analysis_trace_bundle_preserves_formal_workbook_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "balance-analysis",
+            "/balance-analysis",
+            "PAGE-BALANCE-001",
+            "/ui/balance-analysis/overview",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "balance-analysis"
+
+        assert payload["page_id"] == "PAGE-BALANCE-001"
+        assert payload["primary_api"] == "/ui/balance-analysis/overview"
+        assert "/ui/balance-analysis/dates" in payload["supporting_apis"]
+        assert "/ui/balance-analysis" in payload["supporting_apis"]
+        assert "/ui/balance-analysis/workbook" in payload["supporting_apis"]
+        assert "/ui/balance-analysis/summary" in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-BAL-OVERVIEW-A" in payload["golden_samples"]
+        assert "tests/golden_samples/GS-BAL-WORKBOOK-A" in payload["golden_samples"]
+        assert any("MTR-BAL-001" in item for item in payload["truth_chain"])
+        assert any("MTR-BAL-203" in item for item in payload["truth_chain"])
+        assert any("balance_analysis_overview_envelope" in item for item in payload["truth_chain"])
+        assert any("BalanceAnalysisWorkbookPayload" in item for item in payload["truth_chain"])
+        assert any("advanced_attribution" in item for item in payload["guardrails"])
+        assert any("formal balance truth" in item for item in payload["guardrails"])
+        assert any("frontend" in item for item in payload["guardrails"])
     finally:
         server.close()
 
