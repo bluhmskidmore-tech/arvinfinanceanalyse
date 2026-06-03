@@ -20,6 +20,14 @@ from backend.app.tasks.balance_analysis_materialize import CACHE_KEY, RULE_VERSI
 from tests.helpers import load_module
 
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
+MACRO_VENDOR_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
+MACRO_VENDOR_READ_PATHS = {
+    "/ui/preview/macro-foundation",
+    "/ui/macro/choice-series/latest",
+    "/ui/market-data/fx/formal-status",
+    "/ui/market-data/fx/analytical",
+}
+MACRO_TOOLKIT_READ_HEADERS = {"X-User-Id": "macro-toolkit-read-user", "X-User-Role": "viewer"}
 
 
 def _required_result_meta_keys() -> frozenset[str]:
@@ -224,6 +232,44 @@ def _grant_livermore_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     )
 
 
+def _grant_macro_vendor_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "macro-vendor-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_vendor",
+        action="read",
+    )
+
+
+def _grant_macro_toolkit_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "macro-toolkit-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+
+
 @pytest.mark.parametrize(
     "path,params",
     [
@@ -256,6 +302,10 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
         _grant_balance_movement_read_scope(tmp_path, monkeypatch)
     if path == "/ui/market-data/livermore":
         _grant_livermore_read_scope(tmp_path, monkeypatch)
+    if path in MACRO_VENDOR_READ_PATHS:
+        _grant_macro_vendor_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/macro/toolkit/adversarial-signal":
+        _grant_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
@@ -268,7 +318,17 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
             sys.modules.pop(mod, None)
 
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
-    response = client.get(path, params=params or None)
+    response = client.get(
+        path,
+        params=params or None,
+        headers=(
+            MACRO_VENDOR_READ_HEADERS
+            if path in MACRO_VENDOR_READ_PATHS
+            else MACRO_TOOLKIT_READ_HEADERS
+            if path == "/ui/macro/toolkit/adversarial-signal"
+            else None
+        ),
+    )
     assert response.status_code == 200, f"{path} -> {response.status_code} {response.text}"
     meta = _assert_json_envelope(response.json(), path=path)
     _assert_basis_consistency(meta, path=path)
@@ -311,12 +371,20 @@ def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
 ):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    if path in {"/ui/home/contribution", "/ui/home/alerts", "/ui/risk/overview"}:
+        _grant_executive_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     sys.modules.pop("backend.app.main", None)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
     params = {"limit": 1, "offset": 0} if path.endswith(("/rows", "/traces")) else None
-    response = client.get(path, params=params)
+    response = client.get(
+        path,
+        params=params,
+        headers=EXECUTIVE_READ_HEADERS
+        if path in {"/ui/home/contribution", "/ui/home/alerts", "/ui/risk/overview"}
+        else None,
+    )
     assert response.status_code == 503, path
     body = response.json()
     assert "result_meta" not in body, path
@@ -325,6 +393,7 @@ def test_excluded_ui_surfaces_fail_closed_without_governed_result_meta(
 
 
 def test_macro_vendor_surfaces_emit_governed_envelopes(tmp_path, monkeypatch):
+    _grant_macro_vendor_read_scope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -337,7 +406,7 @@ def test_macro_vendor_surfaces_emit_governed_envelopes(tmp_path, monkeypatch):
         "/ui/market-data/fx/formal-status",
         "/ui/market-data/fx/analytical",
     ):
-        response = client.get(path)
+        response = client.get(path, headers=MACRO_VENDOR_READ_HEADERS)
         assert response.status_code == 200, path
         meta = _assert_json_envelope(response.json(), path=path)
         _assert_basis_consistency(meta, path=path)

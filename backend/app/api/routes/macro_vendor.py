@@ -34,11 +34,26 @@ CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
 CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 
 
+def _ensure_macro_vendor_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="macro_vendor",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 # ── Formal market-data endpoints (Phase 1 promotion) ───────────────
 
 @router.get("/ui/market-data/rates")
-def market_data_rates() -> dict[str, object]:
+def market_data_rates(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
     """Formal-basis rates for the market-data page (stable series only)."""
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return market_home_response_cache.get_or_build(
         market_home_rates_cache_key(settings.duckdb_path),
@@ -50,8 +65,9 @@ def market_data_rates() -> dict[str, object]:
 
 
 @router.get("/ui/market-data/catalog")
-def market_data_catalog() -> dict[str, object]:
+def market_data_catalog(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
     """Formal-basis macro catalog for the market-data page."""
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return market_home_response_cache.get_or_build(
         market_home_catalog_cache_key(settings.duckdb_path),
@@ -62,13 +78,18 @@ def market_data_catalog() -> dict[str, object]:
 # ── Analytical / preview endpoints (unlocked from 503) ─────────────
 
 @router.get("/ui/preview/macro-foundation")
-def macro_foundation() -> dict[str, object]:
+def macro_foundation(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return macro_vendor_envelope(settings.duckdb_path)
 
 
 @router.get("/ui/macro/choice-series/latest")
-def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict[str, object]:
+def choice_series_latest(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    category: ChoiceMacroRefreshTier | None = None,
+) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return market_home_response_cache.get_or_build(
         market_home_choice_latest_cache_key(settings.duckdb_path, category),
@@ -77,13 +98,15 @@ def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict
 
 
 @router.get("/ui/market-data/fx/formal-status")
-def fx_formal_status() -> dict[str, object]:
+def fx_formal_status(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return fx_formal_status_envelope(settings.duckdb_path)
 
 
 @router.get("/ui/market-data/fx/analytical")
-def fx_analytical() -> dict[str, object]:
+def fx_analytical(auth: Annotated[AuthContext, Depends(get_auth_context)]) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     return fx_analytical_envelope(settings.duckdb_path)
 
@@ -145,8 +168,10 @@ def _merge_choice_and_public_refresh_payloads(
 
 @router.get("/ui/macro/choice-series/refresh-status")
 def choice_series_refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     run_id: str = Query(default=""),
 ) -> dict[str, object]:
+    _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
     records = [
         record

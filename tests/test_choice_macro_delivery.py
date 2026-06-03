@@ -10,7 +10,29 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+MACRO_VENDOR_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
+
+
+def _seed_macro_vendor_read_scope(tmp_path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "macro-vendor-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_vendor",
+        action="read",
+    )
 
 
 def _choice_series_json() -> str:
@@ -651,9 +673,10 @@ def test_choice_macro_latest_api_returns_real_fact_rows(tmp_path, monkeypatch):
         governance_dir=str(tmp_path / "governance"),
     )
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -725,9 +748,10 @@ def test_choice_macro_latest_api_aggregates_vendor_lineage_across_distinct_batch
     finally:
         conn.close()
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -770,9 +794,10 @@ def test_choice_macro_latest_api_returns_warning_quality_flag_when_duckdb_has_no
     finally:
         conn.close()
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -1985,9 +2010,10 @@ def test_public_cross_asset_tushare_stock_rows_reach_latest_api_with_lineage(tmp
     assert refresh_payload["series_count"] == 4
     assert refresh_payload["row_count"] == 6
 
+    _seed_macro_vendor_read_scope(tmp_path, monkeypatch)
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
-    response = client.get("/ui/macro/choice-series/latest")
+    response = client.get("/ui/macro/choice-series/latest", headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
