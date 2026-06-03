@@ -2994,6 +2994,8 @@ export function EmbeddedAgentCopilot({
                   {copyStatus ? (
                     <span
                       aria-label="复制状态"
+                      aria-live="polite"
+                      aria-atomic="true"
                       role="status"
                       className={`agent-copy-feedback agent-copy-feedback--${copyStatus}`}
                     >

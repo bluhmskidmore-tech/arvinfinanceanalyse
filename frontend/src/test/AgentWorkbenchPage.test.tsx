@@ -2317,6 +2317,8 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("已复制")).toBeInTheDocument();
     const copyStatus = await screen.findByRole("status", { name: "复制状态" });
     expect(copyStatus).toHaveTextContent("回答已复制");
+    expect(copyStatus).toHaveAttribute("aria-live", "polite");
+    expect(copyStatus).toHaveAttribute("aria-atomic", "true");
     expect(copyStatus).toBeVisible();
     expect(copyStatus).toHaveClass("agent-copy-feedback");
     const toolbar = copyStatus.closest(".agent-result-toolbar");
