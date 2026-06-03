@@ -3206,6 +3206,7 @@ describe("AgentWorkbenchPage", () => {
     expect(queuedPreview).toHaveTextContent("multi queue second turn");
     expect(queuedPreview).toHaveTextContent("multi queue third turn");
     expect(queuedPreview).toHaveTextContent("2 句待发送");
+    expect(screen.getByText("2 句已排队 · 还可以继续输入")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("multi queue third turn");
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
 

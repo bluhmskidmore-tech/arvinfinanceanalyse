@@ -2309,9 +2309,12 @@ export function EmbeddedAgentCopilot({
     if (!nextQueuedQuery) {
       return;
     }
+    const nextQueuedCount = queuedQueries.length + 1;
     setQueuedQueries((currentQueries) => [...currentQueries, nextQueuedQuery]);
     clearComposerQuery();
-    setComposerAssistHint("下一句已排队 · 还可以继续输入");
+    setComposerAssistHint(
+      nextQueuedCount > 1 ? `${nextQueuedCount} 句已排队 · 还可以继续输入` : "下一句已排队 · 还可以继续输入",
+    );
     shouldFocusComposerRef.current = true;
     focusComposerInput();
   }
