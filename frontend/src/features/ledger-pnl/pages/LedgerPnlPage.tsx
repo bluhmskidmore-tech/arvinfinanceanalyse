@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -51,6 +51,8 @@ const tableWrapStyle = {
   overflow: "auto",
 } as const;
 
+const LEDGER_TABLE_ROW_LIMIT = 200;
+
 const ledgerTableStateCellStyle = {
   padding: designTokens.space[4],
   color: designTokens.color.neutral[500],
@@ -71,6 +73,28 @@ function formatMoney(value: LedgerMoneyValue | null | undefined) {
   return Number.isFinite(yuan) ? `${(yuan / 100_000_000).toFixed(2)} 亿元` : "--";
 }
 
+function ledgerMoneyAbsYuan(value: LedgerMoneyValue | null | undefined) {
+  const yuan = Number(String(value?.yuan ?? "").trim());
+  return Number.isFinite(yuan) ? Math.abs(yuan) : -1;
+}
+
+function sortLedgerRowsByAbsYuan<T>(
+  rows: T[],
+  selectMoney: (row: T) => LedgerMoneyValue | null | undefined,
+) {
+  if (rows.length <= LEDGER_TABLE_ROW_LIMIT) {
+    return rows;
+  }
+  return rows
+    .map((row, index) => ({
+      row,
+      index,
+      absYuan: ledgerMoneyAbsYuan(selectMoney(row)),
+    }))
+    .sort((left, right) => right.absYuan - left.absYuan || left.index - right.index)
+    .map((item) => item.row);
+}
+
 function LedgerTableStateRow(props: { colSpan: number; message: string }) {
   return (
     <tr>
@@ -78,6 +102,18 @@ function LedgerTableStateRow(props: { colSpan: number; message: string }) {
         {props.message}
       </td>
     </tr>
+  );
+}
+
+function LedgerTableTruncationRow(props: { colSpan: number; label: string; total: number }) {
+  if (props.total <= LEDGER_TABLE_ROW_LIMIT) {
+    return null;
+  }
+  return (
+    <LedgerTableStateRow
+      colSpan={props.colSpan}
+      message={`${props.label}已按金额绝对值展示前 ${LEDGER_TABLE_ROW_LIMIT} 条 / 总计 ${props.total} 条`}
+    />
   );
 }
 
@@ -446,11 +482,12 @@ function AnalysisTable(props: {
 
 export default function LedgerPnlPage() {
   const client = useApiClient();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const reportDateFromQuery = searchParams.get("report_date")?.trim() ?? "";
   const currencyFromQuery = searchParams.get("currency")?.trim() ?? "";
-  const [selectedReportDate, setSelectedReportDate] = useState("");
-  const [currency, setCurrency] = useState("ALL");
+  const [selectedReportDate, setSelectedReportDate] = useState(reportDateFromQuery);
+  const [currency, setCurrency] = useState(currencyFromQuery || "ALL");
+  const lastSyncedReportDateFromQueryRef = useRef(reportDateFromQuery);
 
   const datesQuery = useQuery({
     queryKey: ["ledger-pnl", "dates", client.mode],
@@ -461,12 +498,16 @@ export default function LedgerPnlPage() {
   const reportDates = useMemo(() => datesQuery.data?.result.dates ?? [], [datesQuery.data?.result.dates]);
 
   useEffect(() => {
-    const firstDate = reportDates[0];
-    if (!firstDate) {
+    if (reportDateFromQuery) {
+      if (lastSyncedReportDateFromQueryRef.current !== reportDateFromQuery) {
+        lastSyncedReportDateFromQueryRef.current = reportDateFromQuery;
+        setSelectedReportDate((current) => (current === reportDateFromQuery ? current : reportDateFromQuery));
+      }
       return;
     }
-    if (reportDateFromQuery && reportDates.includes(reportDateFromQuery)) {
-      setSelectedReportDate((current) => (current === reportDateFromQuery ? current : reportDateFromQuery));
+    lastSyncedReportDateFromQueryRef.current = "";
+    const firstDate = reportDates[0];
+    if (!firstDate) {
       return;
     }
     if (!selectedReportDate || !reportDates.includes(selectedReportDate)) {
@@ -498,8 +539,31 @@ export default function LedgerPnlPage() {
 
   const summary = summaryQuery.data?.result;
   const data = dataQuery.data?.result;
+  const accountSummaryRows = useMemo(() => summary?.by_account ?? [], [summary?.by_account]);
+  const visibleAccountSummaryRows = useMemo(
+    () =>
+      sortLedgerRowsByAbsYuan(accountSummaryRows, (item) => item.total_pnl).slice(
+        0,
+        LEDGER_TABLE_ROW_LIMIT,
+      ),
+    [accountSummaryRows],
+  );
+  const detailRows = useMemo(() => data?.items ?? [], [data?.items]);
+  const visibleDetailRows = useMemo(
+    () =>
+      sortLedgerRowsByAbsYuan(detailRows, (item) => item.monthly_pnl).slice(
+        0,
+        LEDGER_TABLE_ROW_LIMIT,
+      ),
+    [detailRows],
+  );
   const monthlyAnalysisMonths = monthlyAnalysisDatesQuery.data?.result.report_months ?? [];
   const requestedAnalysisMonth = reportDateToMonth(selectedReportDate) || reportDateToMonth(reportDateFromQuery);
+  const selectedReportDateMissingFromDates =
+    Boolean(selectedReportDate) &&
+    !datesQuery.isLoading &&
+    reportDates.length > 0 &&
+    !reportDates.includes(selectedReportDate);
   const hasMatchingAnalysisMonth =
     Boolean(requestedAnalysisMonth) && monthlyAnalysisMonths.includes(requestedAnalysisMonth);
   const selectedAnalysisMonth = hasMatchingAnalysisMonth ? requestedAnalysisMonth : "";
@@ -572,6 +636,12 @@ export default function LedgerPnlPage() {
 
   const currencyOptions = useMemo(() => {
     const seen = new Set(["ALL"]);
+    if (currencyFromQuery) {
+      seen.add(currencyFromQuery);
+    }
+    if (currency !== "ALL") {
+      seen.add(currency);
+    }
     for (const item of summary?.by_currency ?? []) {
       if (item.currency) {
         seen.add(item.currency);
@@ -583,17 +653,14 @@ export default function LedgerPnlPage() {
       }
     }
     return Array.from(seen);
-  }, [data?.items, summary?.by_currency]);
+  }, [currency, currencyFromQuery, data?.items, summary?.by_currency]);
 
   useEffect(() => {
     if (!currencyFromQuery) {
       return;
     }
-    if (!currencyOptions.includes(currencyFromQuery)) {
-      return;
-    }
     setCurrency((current) => (current === currencyFromQuery ? current : currencyFromQuery));
-  }, [currencyFromQuery, currencyOptions]);
+  }, [currencyFromQuery]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -608,15 +675,11 @@ export default function LedgerPnlPage() {
       nextParams.delete("currency");
     }
 
-    if (typeof window === "undefined") {
-      return;
+    const nextSearch = nextParams.toString();
+    if (nextSearch !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
     }
-    if (nextParams.toString() !== window.location.search.replace(/^\?/, "")) {
-      const nextUrl = new URL(window.location.href);
-      nextUrl.search = nextParams.toString();
-      window.history.replaceState({}, "", nextUrl);
-    }
-  }, [currency, searchParams, selectedReportDate]);
+  }, [currency, searchParams, selectedReportDate, setSearchParams]);
 
   return (
     <section data-testid="ledger-pnl-page">
@@ -664,13 +727,21 @@ export default function LedgerPnlPage() {
               border: `1px solid ${designTokens.color.neutral[200]}`,
             }}
           >
-            {reportDates.length === 0 ? <option value="">暂无可选报告日</option> : null}
+            {selectedReportDate && !reportDates.includes(selectedReportDate) ? (
+              <option value={selectedReportDate}>{selectedReportDate}</option>
+            ) : null}
+            {reportDates.length === 0 && !selectedReportDate ? <option value="">暂无可选报告日</option> : null}
             {reportDates.map((reportDate) => (
               <option key={reportDate} value={reportDate}>
                 {reportDate}
               </option>
             ))}
           </select>
+          {selectedReportDateMissingFromDates ? (
+            <div className="ledger-pnl-analysis__empty" style={{ padding: "6px 0 0" }}>
+              当前报告日不在可选列表中，仍按查询日期读取总账数据
+            </div>
+          ) : null}
         </label>
         <label>
           <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>币种</span>
@@ -991,19 +1062,26 @@ export default function LedgerPnlPage() {
                 <LedgerTableStateRow colSpan={3} message="科目汇总读取中" />
               ) : summaryQuery.isError ? (
                 <LedgerTableStateRow colSpan={3} message="科目汇总读取失败" />
-              ) : (summary?.by_account ?? []).length > 0 ? (
-                (summary?.by_account ?? []).map((item) => (
-                  <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                    <td style={{ padding: designTokens.space[3] }}>
-                      <div>{item.account_code}</div>
-                      <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
-                        {item.account_name}
-                      </div>
-                    </td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
-                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
-                  </tr>
-                ))
+              ) : accountSummaryRows.length > 0 ? (
+                <>
+                  {visibleAccountSummaryRows.map((item) => (
+                    <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                      <td style={{ padding: designTokens.space[3] }}>
+                        <div>{item.account_code}</div>
+                        <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
+                          {item.account_name}
+                        </div>
+                      </td>
+                      <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                      <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
+                    </tr>
+                  ))}
+                  <LedgerTableTruncationRow
+                    colSpan={3}
+                    label="科目汇总"
+                    total={accountSummaryRows.length}
+                  />
+                </>
               ) : (
                 <LedgerTableStateRow colSpan={3} message="暂无科目汇总数据" />
               )}
@@ -1040,19 +1118,22 @@ export default function LedgerPnlPage() {
               <LedgerTableStateRow colSpan={8} message="科目明细读取中" />
             ) : dataQuery.isError ? (
               <LedgerTableStateRow colSpan={8} message="科目明细读取失败" />
-            ) : (data?.items ?? []).length > 0 ? (
-              (data?.items ?? []).map((item) => (
-                <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
-                  <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
-                  <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
-                  <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
-                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
-                </tr>
-              ))
+            ) : detailRows.length > 0 ? (
+              <>
+                {visibleDetailRows.map((item) => (
+                  <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                    <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
+                    <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
+                    <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
+                    <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
+                  </tr>
+                ))}
+                <LedgerTableTruncationRow colSpan={8} label="科目明细" total={detailRows.length} />
+              </>
             ) : (
               <LedgerTableStateRow colSpan={8} message="暂无科目明细数据" />
             )}

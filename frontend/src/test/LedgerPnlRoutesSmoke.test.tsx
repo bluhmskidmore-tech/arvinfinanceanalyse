@@ -214,7 +214,7 @@ describe("ledger-pnl routed page smoke", () => {
 
   it("syncs current filters back into the URL", async () => {
     const user = userEvent.setup();
-    renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());
+    const router = renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());
 
     await waitFor(() => {
       expect(screen.getByLabelText("ledger-pnl-report-date")).toHaveValue("2025-12-31");
@@ -224,7 +224,7 @@ describe("ledger-pnl routed page smoke", () => {
     await user.selectOptions(screen.getByLabelText("ledger-pnl-currency"), "CNX");
 
     await waitFor(() => {
-      expect(window.location.search).toBe("?report_date=2025-11-30&currency=CNX");
+      expect(router.state.location.search).toBe("?report_date=2025-11-30&currency=CNX");
     });
   });
 });
