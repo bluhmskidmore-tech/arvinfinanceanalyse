@@ -2243,6 +2243,8 @@ export function EmbeddedAgentCopilot({
     }
     if (restoredQueryToComposer) {
       setComposerAssistHint("已恢复到输入框 · 可编辑后重新发送");
+    } else if (query.trim()) {
+      setComposerAssistHint("已停止回答 · 可继续发送当前输入");
     }
     if (shouldPersistConversation) {
       clearLatestAgentRunId();

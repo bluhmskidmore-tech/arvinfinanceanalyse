@@ -4398,6 +4398,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "composer stop this answer");
     await user.click(screen.getByTestId("agent-panel-submit"));
     expect(await screen.findByText("composer stop this answer")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("agent-question-input"), "draft after stop");
 
     const composerAction = screen.getByTestId("agent-panel-submit");
     expect(composerAction).toHaveTextContent("停止");
@@ -4405,7 +4406,8 @@ describe("AgentWorkbenchPage", () => {
     await user.click(composerAction);
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-question-input")).not.toBeDisabled();
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("draft after stop");
+    expect(screen.getByText("已停止回答 · 可继续发送当前输入")).toBeInTheDocument();
 
     await act(async () => {
       resolveCreateRun(
