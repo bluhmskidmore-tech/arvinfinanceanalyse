@@ -1620,6 +1620,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON }));
 
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue("请给我看 GitNexus processes");
+    expect(screen.getByText("已填入快捷问题 · Enter 发送")).toBeInTheDocument();
   });
 
   it("keeps compact quick examples available after a conversation starts", async () => {
@@ -1664,6 +1665,7 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("解释当前页面的主要结论和风险点");
     expect(input).toHaveFocus();
+    expect(screen.getByText("已填入快捷问题 · Enter 发送")).toBeInTheDocument();
   });
 
   it("loads remembered repo_path from localStorage", () => {

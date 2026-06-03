@@ -2669,6 +2669,7 @@ export function EmbeddedAgentCopilot({
 
   function applyQuickExample(nextQuery: string) {
     replaceComposerQuery(nextQuery);
+    setComposerAssistHint("已填入快捷问题 · Enter 发送");
   }
 
   function replaceComposerQuery(nextQuery: string) {
