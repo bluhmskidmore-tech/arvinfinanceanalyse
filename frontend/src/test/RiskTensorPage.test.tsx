@@ -1025,6 +1025,8 @@ describe("RiskTensorPage", () => {
       const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
       const copyEvidence = within(tracePriority).getByRole("button", { name: "复制证据" });
 
+      expect(tracePriority).toHaveTextContent("复核状态：待复核");
+
       await user.click(copyEvidence);
 
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
@@ -1038,6 +1040,7 @@ describe("RiskTensorPage", () => {
         expect.stringContaining("filters_applied report_date=2026-02-28；desk=FI"),
       );
       expect(tracePriority).toHaveTextContent("已复制证据摘要");
+      expect(tracePriority).toHaveTextContent("复核状态：证据已复制，待业务确认");
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);

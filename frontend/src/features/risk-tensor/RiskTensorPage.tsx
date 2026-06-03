@@ -706,6 +706,12 @@ export default function RiskTensorPage() {
       : qualityEvidenceCopyStatus === "failed"
         ? "复制失败，请手动选择证据"
         : "";
+  const qualityReviewStateLabel =
+    qualityEvidenceCopyStatus === "copied"
+      ? "证据已复制，待业务确认"
+      : qualityEvidenceCopyStatus === "failed"
+        ? "复制失败，需手动选择证据"
+        : "待复核";
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
@@ -1573,6 +1579,9 @@ export default function RiskTensorPage() {
               </div>
               <div className="risk-tensor-quality-detail__trace" data-testid="risk-tensor-quality-trace-priority">
                 <strong>证据优先级</strong>
+                <div className="risk-tensor-quality-detail__review-state" aria-live="polite">
+                  复核状态：{qualityReviewStateLabel}
+                </div>
                 <ol>
                   <li>
                     <span>source/rule</span>
