@@ -2224,11 +2224,17 @@ export function EmbeddedAgentCopilot({
     setAgentRun(null);
     setResult(null);
     setError(null);
+    let restoredQueryToComposer = false;
     if (queuedQuery.trim()) {
       updateComposerQuery(queuedQuery);
       clearQueuedQueries();
+      restoredQueryToComposer = true;
     } else if (!query.trim()) {
       updateComposerQuery(latestConversationTurn.question);
+      restoredQueryToComposer = true;
+    }
+    if (restoredQueryToComposer) {
+      setComposerAssistHint("已恢复到输入框 · 可编辑后重新发送");
     }
     if (shouldPersistConversation) {
       clearLatestAgentRunId();

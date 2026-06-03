@@ -3451,6 +3451,7 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("queued stop second turn");
     expect(document.activeElement).toBe(input);
+    expect(screen.getByText("已恢复到输入框 · 可编辑后重新发送")).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
 
@@ -4181,6 +4182,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("stop this pending answer");
+    expect(screen.getByText("已恢复到输入框 · 可编辑后重新发送")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "编辑这句" }));
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("stop this pending answer");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
