@@ -127,6 +127,30 @@
   outline-offset: 2px;
 }
 
+.risk-tensor-brief__review-button {
+  justify-self: start;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--moss-color-danger-200);
+  border-radius: 6px;
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-danger-600);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.risk-tensor-brief__review-button:hover {
+  background: var(--moss-color-danger-50);
+}
+
+.risk-tensor-brief__review-button:focus-visible {
+  outline: 2px solid var(--moss-color-danger-600);
+  outline-offset: 2px;
+}
+
 .risk-tensor-brief__badges {
   display: flex;
   flex-wrap: wrap;

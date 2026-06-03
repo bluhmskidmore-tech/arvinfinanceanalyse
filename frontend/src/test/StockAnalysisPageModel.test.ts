@@ -1449,7 +1449,8 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 未支持 1");
     expect(summary.topMessages.join(" ")).toContain("市场宽度输入不可用");
     expect(summary.topMessages.join(" ")).toContain("5日市场宽度输入未落地");
-    expect(summary.topMessages.join(" ")).toContain("position snapshot 未落地");
+    expect(summary.topMessages.join(" ")).toContain("持仓快照未落地");
+    expect(summary.topMessages.join(" ")).not.toContain("position snapshot");
   });
 
   it("builds current sector filter status for review queue stitching", () => {

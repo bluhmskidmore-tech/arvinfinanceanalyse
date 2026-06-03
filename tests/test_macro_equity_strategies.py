@@ -161,6 +161,31 @@ def test_industry_neutralize_factors_preserves_peer_group_semantics() -> None:
     assert neutralized.loc[["flat_1", "flat_2"]].eq(0.0).all().all()
 
 
+def test_industry_neutralize_factors_uses_group_std_without_extra_squared_pass(monkeypatch) -> None:
+    factors = pd.DataFrame(
+        {
+            "value": [1.0, 3.0, 10.0],
+            "quality": [2.0, 4.0, 20.0],
+            "momentum": [3.0, 5.0, 30.0],
+            "low_vol": [4.0, 6.0, 40.0],
+            "dividend": [5.0, 7.0, 50.0],
+        },
+        index=["a", "b", "single"],
+    )
+    industries = pd.Series(["tech", "tech", "solo"], index=factors.index)
+
+    def fail_pow(*args: object, **kwargs: object) -> pd.DataFrame:
+        raise AssertionError("industry neutralization should use grouped standard deviation directly")
+
+    monkeypatch.setattr(pd.DataFrame, "pow", fail_pow)
+
+    neutralized = _industry_neutralize_factors(factors, industries)
+
+    assert neutralized.loc["a", "value"] == -1.0
+    assert neutralized.loc["b", "value"] == 1.0
+    assert neutralized.loc["single"].to_dict() == factors.loc["single"].to_dict()
+
+
 def test_multi_factor_selection_ranks_and_filters_industry() -> None:
     financials = pd.DataFrame(
         {

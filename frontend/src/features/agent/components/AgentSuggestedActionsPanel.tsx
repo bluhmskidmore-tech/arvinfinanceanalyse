@@ -28,6 +28,13 @@ export function AgentSuggestedActionsPanel({
     return null;
   }
 
+  function closeSecondaryActionsDrawer(sourceElement: HTMLElement) {
+    const secondaryActionsDrawer = sourceElement.closest(".agent-suggested-actions__more");
+    if (secondaryActionsDrawer instanceof HTMLDetailsElement) {
+      secondaryActionsDrawer.open = false;
+    }
+  }
+
   function renderActionItem(action: AgentSuggestedAction, index: number) {
     return (
       <article className="agent-suggested-actions__item" key={`${action.type}-${action.label}-${index}`}>
@@ -35,7 +42,10 @@ export function AgentSuggestedActionsPanel({
           <button
             type="button"
             className="agent-suggested-actions__button"
-            onClick={() => onActionClick(action)}
+            onClick={(event) => {
+              closeSecondaryActionsDrawer(event.currentTarget);
+              onActionClick(action);
+            }}
           >
             {action.label}
           </button>

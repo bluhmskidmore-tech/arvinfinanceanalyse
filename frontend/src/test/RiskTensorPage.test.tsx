@@ -738,8 +738,62 @@ describe("RiskTensorPage", () => {
       const brief = await screen.findByTestId("risk-tensor-brief");
       const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
       const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      expect(within(brief).queryByTestId("risk-tensor-quality-review-action")).not.toBeInTheDocument();
 
       await user.click(dataStatusAction);
+
+      expect(scrollTargets).toContain(qualityDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it.each([
+    ["stale", "陈旧"],
+    ["error", "错误"],
+  ])("flags %s first-screen conclusions for quality review", async (qualityFlag, qualityLabel) => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", `tr_tensor_${qualityFlag}_review_dates`),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_${qualityFlag}_review_${reportDate}`),
+          quality_flag: qualityFlag as ResultMeta["quality_flag"],
+        },
+        result: {
+          ...tensorResult(reportDate),
+          quality_flag: qualityFlag,
+          warnings: [],
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const reviewAction = within(brief).getByTestId("risk-tensor-quality-review-action");
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+      expect(reviewAction).toHaveTextContent("结论需复核");
+      expect(reviewAction).toHaveTextContent(qualityLabel);
+
+      await user.click(reviewAction);
 
       expect(scrollTargets).toContain(qualityDetail);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });

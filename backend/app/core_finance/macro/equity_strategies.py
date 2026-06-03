@@ -521,8 +521,7 @@ def _industry_neutralize_factors(factors: pd.DataFrame, industries: pd.Series) -
     grouped = clean.groupby(industry_labels, sort=False)
     counts = grouped.transform("count")
     means = grouped.transform("mean")
-    squared_means = clean.pow(2).groupby(industry_labels, sort=False).transform("mean")
-    stds = np.sqrt((squared_means - means.pow(2)).clip(lower=0.0))
+    stds = grouped.transform("std", ddof=0)
     zscores = ((clean - means) / stds.replace(0.0, np.nan)).fillna(0.0)
     out.loc[:, FACTOR_COLUMNS] = zscores.where(counts >= 2, clean)
     return out

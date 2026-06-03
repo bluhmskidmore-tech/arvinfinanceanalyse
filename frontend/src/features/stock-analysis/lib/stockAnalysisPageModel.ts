@@ -756,6 +756,9 @@ export function localizeStockBackendText(
   if (lower.includes("factor_snapshot") && lower.includes("无数据")) {
     return "因子快照无数据。";
   }
+  if (lower.includes("position snapshot") && lower.includes("not landed")) {
+    return "持仓快照未落地。";
+  }
   if (
     lower.includes("livermore_position_snapshot") ||
     (lower.includes("position snapshot") && (lower.includes("active a-share") || lower.includes("missing")))

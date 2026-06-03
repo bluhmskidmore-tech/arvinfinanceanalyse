@@ -663,6 +663,7 @@ export default function RiskTensorPage() {
         `质量标记：${qualityFlagLabel(result.quality_flag)}`,
       ].join(" / ")
     : "";
+  const conclusionNeedsQualityReview = result?.quality_flag === "stale" || result?.quality_flag === "error";
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
@@ -937,6 +938,16 @@ export default function RiskTensorPage() {
                     result.dv01_controls?.operating_judgement ??
                     "暂无可比上期，当前仅展示截面风险读数。"}
                 </p>
+                {conclusionNeedsQualityReview ? (
+                  <button
+                    type="button"
+                    className="risk-tensor-brief__review-button"
+                    data-testid="risk-tensor-quality-review-action"
+                    onClick={handleQualityDetailJump}
+                  >
+                    结论需复核：数据状态为{qualityFlagLabel(result.quality_flag)}，查看质量证据
+                  </button>
+                ) : null}
                 {result.warnings.length > 0 ? (
                   <ul aria-label="risk tensor warnings">
                     {result.warnings.slice(0, 2).map((warning, index) => (
