@@ -21,6 +21,14 @@ import type {
 } from "../../../api/contracts";
 import type { ConsensusSummary } from "./buildConsensusSummary";
 
+type NormalizedConfluenceReplayBlockedDate = Omit<ConfluenceReplayBlockedDate, "reason_code"> & {
+  reason_code: string;
+};
+
+type NormalizedConfluenceReplayStatus = Omit<ConfluenceReplayStatus, "blocked_dates"> & {
+  blocked_dates: NormalizedConfluenceReplayBlockedDate[];
+};
+
 export type StockMarketConditionRow = {
   key: string;
   label: string;
@@ -687,7 +695,7 @@ export function localizeStockDataFamily(inputFamily: string | null | undefined):
     macro_score: "宏观分",
     price_spread: "价差",
   };
-  return labels[normalized] ?? value.replace(/[_-]+/g, " ");
+  return labels[normalized] ?? "输入待确认";
 }
 
 function localizeDataGapStatus(status: string | null | undefined): string {
@@ -699,12 +707,25 @@ function localizeDataGapStatus(status: string | null | undefined): string {
     partial: "部分",
     blocked: "阻断",
   };
-  return labels[normalized] ?? (status || "待补");
+  return labels[normalized] ?? (normalized ? "状态待确认" : "待补");
 }
 
 function localizeDiagnosticScope(inputFamily: string | null | undefined): string {
   const familyLabel = localizeStockDataFamily(inputFamily);
   return familyLabel === "待补" ? "策略诊断" : `${familyLabel}诊断`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function scrubUnknownBackendFamily(value: string, inputFamily: string | null | undefined, familyLabel: string): string {
+  const rawFamily = inputFamily?.trim();
+  if (!rawFamily || familyLabel !== "输入待确认") return value;
+  const spacedFamily = rawFamily.replace(/[_-]+/g, " ");
+  return value
+    .replace(new RegExp(escapeRegExp(rawFamily), "gi"), familyLabel)
+    .replace(new RegExp(escapeRegExp(spacedFamily), "gi"), familyLabel);
 }
 
 export function localizeStockBackendText(
@@ -715,6 +736,7 @@ export function localizeStockBackendText(
   if (!value) return "说明待补";
   const lower = value.toLowerCase();
   const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
+  const displayValue = scrubUnknownBackendFamily(value, inputFamily, familyLabel);
   const availableSample = value.match(/\b(T\+\d+)\s+available\s+(\d+)\s*\/\s*(\d+)/i);
   const matureSnapshotSample = value.match(/\b(T\+\d+)\s+matured?\s+snapshots?\s+(\d+)\s*\/\s*(\d+)/i);
   const optimizationSample = value.match(/\b(T\+\d+)\s+sample\s+(\d+)/i);
@@ -780,7 +802,9 @@ export function localizeStockBackendText(
   if (lower.includes("pending")) {
     const pendingLabel =
       lower.includes("t+5") || lower.includes("return") || lower.includes("收益") ? "待成熟" : "待确认";
-    return value.replace(/最新\s*pending\s*日期/gi, `最新${pendingLabel}日期`).replace(/\bpending\b/gi, pendingLabel);
+    return displayValue
+      .replace(/最新\s*pending\s*日期/gi, `最新${pendingLabel}日期`)
+      .replace(/\bpending\b/gi, pendingLabel);
   }
   if (lower.includes("theme breakout execution is paused") && lower.includes("overheat")) {
     return "市场过热门控下暂停题材观察；历史回放显示该桶拖累。";
@@ -791,7 +815,7 @@ export function localizeStockBackendText(
   if (lower.includes("sector_rank is available")) {
     return "板块强弱已接入。";
   }
-  return value
+  return displayValue
     .replace(/\bbreadth\b/gi, familyLabel || "市场宽度")
     .replace(/\bmarket gate\b/gi, "市场门控")
     .replace(/\binput family\b/gi, "输入")
@@ -1619,8 +1643,8 @@ export function buildStockAnalysisEventMonitorRows(
       key: `data_gap:${gap.input_family}:${gap.status}`,
       source: "data_gap",
       level: gap.status === "stale" ? "warning" : "error",
-      event: gap.status,
-      impact: gap.input_family,
+      event: localizeDataGapStatus(gap.status),
+      impact: localizeStockDataFamily(gap.input_family),
       detail: localizeStockBackendText(gap.evidence, gap.input_family),
     });
   }
@@ -2651,7 +2675,7 @@ function localizeReplayReasonCode(reasonCode: string | null | undefined): string
   };
   if (!normalized) return "原因待补";
   if (normalized.includes("source_table") && normalized.includes("missing")) return "源表缺失";
-  return labels[normalized] ?? reasonCode!.replace(/_/g, " ");
+  return labels[normalized] ?? "原因待确认";
 }
 
 function normalizeClosedLoopStatus(value: unknown, defaultValue: string): string {
@@ -2662,7 +2686,7 @@ function normalizeClosedLoopStatus(value: unknown, defaultValue: string): string
   return windowStatus?.window_status ?? defaultValue;
 }
 
-function replayStatusWindow(value: unknown): ConfluenceReplayStatus | null {
+function replayStatusWindow(value: unknown): NormalizedConfluenceReplayStatus | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -2716,7 +2740,7 @@ function stringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
-function blockedReplayDates(value: unknown): ConfluenceReplayBlockedDate[] {
+function blockedReplayDates(value: unknown): NormalizedConfluenceReplayBlockedDate[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -2730,7 +2754,7 @@ function blockedReplayDates(value: unknown): ConfluenceReplayBlockedDate[] {
       reason_code?: unknown;
       signal_kinds?: unknown;
     };
-    if (typeof row.trade_date !== "string" || !isBlockedReplayReasonCode(row.reason_code)) {
+    if (typeof row.trade_date !== "string" || typeof row.reason_code !== "string") {
       return [];
     }
     return [
@@ -2744,21 +2768,9 @@ function blockedReplayDates(value: unknown): ConfluenceReplayBlockedDate[] {
   });
 }
 
-function isBlockedReplayReasonCode(value: unknown): value is ConfluenceReplayBlockedDate["reason_code"] {
-  const normalized = typeof value === "string" ? value.toLowerCase() : "";
-  return (
-    value === "missing_daily_limit_flags" ||
-    value === "missing_required_source_table" ||
-    value === "forward_returns_pending" ||
-    value === "real_theme_inputs_unconfirmed" ||
-    value === "proxy_theme_only" ||
-    (normalized.includes("source_table") && normalized.includes("missing"))
-  );
-}
-
 function normalizeBlockedReplayDateStatus(
   value: unknown,
-  reasonCode: ConfluenceReplayBlockedDate["reason_code"],
+  reasonCode: string,
 ): ConfluenceReplayBlockedDate["status"] {
   if (value === "pending" || value === "unsupported" || value === "proxy_only") {
     return value;

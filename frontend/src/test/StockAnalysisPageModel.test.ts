@@ -1715,6 +1715,45 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.topMessages.join(" ")).not.toContain("position snapshot");
   });
 
+  it("keeps unknown data gap statuses out of the boundary summary", () => {
+    const summary = buildDataBoundarySummary(
+      {
+        ...strategyPayload,
+        data_gaps: [
+          {
+            input_family: "breadth",
+            status: "vendor_sync_delayed",
+            evidence: "外部通道同步延迟。",
+          },
+        ],
+      } as unknown as LivermoreStrategyPayload,
+      { quality_flag: "ok", vendor_status: "ok" },
+    );
+
+    expect(summary.topMessages.join(" ")).toContain("市场宽度 状态待确认");
+    expect(summary.topMessages.join(" ")).not.toContain("vendor_sync_delayed");
+  });
+
+  it("keeps unknown data families out of the boundary summary", () => {
+    const summary = buildDataBoundarySummary(
+      {
+        ...strategyPayload,
+        data_gaps: [
+          {
+            input_family: "external_vendor_factor_feed",
+            status: "missing",
+            evidence: "external_vendor_factor_feed 未落地。",
+          },
+        ],
+      } as unknown as LivermoreStrategyPayload,
+      { quality_flag: "ok", vendor_status: "ok" },
+    );
+
+    expect(summary.topMessages.join(" ")).toContain("输入待确认 缺数据：输入待确认 未落地");
+    expect(summary.topMessages.join(" ")).not.toContain("external_vendor_factor_feed");
+    expect(summary.topMessages.join(" ")).not.toContain("external vendor factor feed");
+  });
+
   it("builds current sector filter status for review queue stitching", () => {
     const filtered = buildSectorFilterSummary(strategyPayload, "801001");
     const unfiltered = buildSectorFilterSummary(strategyPayload, null);
@@ -1764,15 +1803,22 @@ describe("stockAnalysisPageModel", () => {
   });
 
   it("builds evidence status and event monitor rows with explicit pending boundaries", () => {
-    const payload: LivermoreStrategyPayload = {
+    const payload = {
       ...strategyPayload,
+      data_gaps: [
+        {
+          input_family: "external_vendor_factor_feed",
+          status: "vendor_sync_delayed",
+          evidence: "外部因子通道同步延迟。",
+        },
+      ],
       unsupported_outputs: [
         {
           key: "theme_breakout",
           reason: "concept membership table pending",
         },
       ],
-    };
+    } as unknown as LivermoreStrategyPayload;
     const evidence = buildStockAnalysisEvidenceStatus(payload, {
       quality_flag: "warning",
       vendor_status: "vendor_stale",
@@ -1805,6 +1851,11 @@ describe("stockAnalysisPageModel", () => {
       tone: "warning",
     });
     expect(evidence.find((item) => item.key === "exceptions")?.detail).toContain("诊断 1 / 缺口 1 / 未支持 1");
+    expect(events.find((event) => event.source === "data_gap")).toMatchObject({
+      event: "状态待确认",
+      impact: "输入待确认",
+      detail: "外部因子通道同步延迟。",
+    });
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1828,6 +1879,10 @@ describe("stockAnalysisPageModel", () => {
       ]),
     );
     expect(events.map((event) => event.event).join(" ")).not.toContain("theme_breakout");
+    expect(events.map((event) => `${event.event} ${event.impact}`).join(" ")).not.toContain("vendor_sync_delayed");
+    expect(events.map((event) => `${event.event} ${event.impact}`).join(" ")).not.toContain(
+      "external_vendor_factor_feed",
+    );
     expect(events.map((event) => event.detail).join(" ")).not.toContain("concept membership table pending");
     expect(events.map((event) => event.detail).join(" ")).not.toContain("Signal confluence diagnostic pending detail");
   });
