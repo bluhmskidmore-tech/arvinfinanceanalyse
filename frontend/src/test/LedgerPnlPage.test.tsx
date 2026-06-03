@@ -2059,6 +2059,12 @@ describe("LedgerPnlPage", () => {
 
   it("surfaces exposure-time implied annualized intensity for detail rows", async () => {
     const base = createApiClient({ mode: "mock" });
+    const detailMeta: ResultMeta = {
+      ...buildLedgerMeta("ledger_pnl.data"),
+      resolved_report_date: "2026-05-31",
+      as_of_date: "2026-05-31",
+      date_basis: "ledger_report_date",
+    };
     const getLedgerPnlSummary = vi.fn(async () => ({
       result_meta: buildMeta("ledger_pnl.summary"),
       result: {
@@ -2076,7 +2082,7 @@ describe("LedgerPnlPage", () => {
       },
     }));
     const getLedgerPnlData = vi.fn(async () => ({
-      result_meta: buildMeta("ledger_pnl.data"),
+      result_meta: detailMeta,
       result: {
         report_date: "2026-05-31",
         summary: {
@@ -2145,6 +2151,9 @@ describe("LedgerPnlPage", () => {
     expect(table).toHaveTextContent("规模时间强度候选");
     expect(table).toHaveTextContent("明细派生候选");
     expect(table).toHaveTextContent("不是正式收益率或财务指标");
+    expect(table).toHaveTextContent(
+      "明细切片证据：resolved_report_date=2026-05-31，as_of_date=2026-05-31，date_basis=ledger_report_date",
+    );
     expect(table).toHaveTextContent("日均规模");
     expect(table).toHaveTextContent("天数");
     expect(table).toHaveTextContent("候选年化强度");

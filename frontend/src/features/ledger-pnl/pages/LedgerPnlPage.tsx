@@ -464,6 +464,13 @@ function firstMetaMismatch(
     : null;
 }
 
+function detailSliceEvidence(meta: ResultMeta | null | undefined) {
+  const resolvedReportDate = metaString(meta?.resolved_report_date) ?? "缺失";
+  const asOfDate = metaString(meta?.as_of_date) ?? "缺失";
+  const dateBasis = metaString(meta?.date_basis) ?? "缺失";
+  return `明细切片证据：resolved_report_date=${resolvedReportDate}，as_of_date=${asOfDate}，date_basis=${dateBasis}`;
+}
+
 function buildDetailResidualAccountRows(props: {
   byAccount: LedgerPnlSummaryByAccount[];
   detailRows: LedgerPnlDataItem[];
@@ -664,6 +671,7 @@ function buildLedgerExplainabilityModel(props: {
       comparabilityReason: summaryDetailComparabilityReason,
     }),
     exposureIntensityRows: buildDetailExposureIntensityRows(props.detailRows),
+    exposureIntensityEvidence: detailSliceEvidence(props.detailMeta),
     residualYuan,
     formalBoundary:
       props.formalUseAllowed === true
@@ -886,6 +894,7 @@ function LedgerExplainabilityPanel(props: {
             <div className="ledger-pnl-analysis__source-contract-note">
               明细派生候选：按月损益 / (|日均规模| × 天数 / 365) 计算，仅用于定位异常解释线索，不是正式收益率或财务指标。
             </div>
+            <div className="ledger-pnl-analysis__source-contract-note">{props.model.exposureIntensityEvidence}</div>
             {props.model.exposureIntensityRows.length > 0 ? (
               <table className="ledger-pnl-analysis__residual-table">
                 <thead>
