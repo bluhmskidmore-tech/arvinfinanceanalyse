@@ -17,6 +17,7 @@ import type {
   LedgerPnlSummaryByAccount,
   LedgerPnlSummaryByCurrency,
   QdbGlMonthlyAnalysisSheet,
+  ResultMeta,
 } from "../../../api/contracts";
 import "./LedgerPnlPage.css";
 
@@ -290,6 +291,7 @@ function buildLedgerResidualDiagnosticRows(props: {
 function buildCurrencyResidualRows(props: {
   byCurrency: LedgerPnlSummaryByCurrency[];
   detailRows: LedgerPnlDataItem[];
+  comparabilityReason: string | null;
 }) {
   const detailByCurrency = new Map<string, { yuan: number; grossYuan: number; hasValue: boolean }>();
   for (const row of props.detailRows) {
@@ -314,6 +316,7 @@ function buildCurrencyResidualRows(props: {
     diff: number | null;
     isDetailOnly: boolean;
     judgment: string;
+    comparabilityReason: string | null;
   }> = props.byCurrency.map((row) => {
     summaryCurrencies.add(row.currency);
     const summaryYuan = ledgerMoneyYuan(row.total_pnl);
@@ -327,8 +330,11 @@ function buildCurrencyResidualRows(props: {
       detailGrossYuan: detail?.hasValue ? detail.grossYuan : 0,
       diff,
       isDetailOnly: false,
+      comparabilityReason: props.comparabilityReason,
       judgment:
-        diff === null
+        props.comparabilityReason
+          ? "可比性待核"
+          : diff === null
           ? "待校验"
           : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
             ? "已闭合"
@@ -350,8 +356,11 @@ function buildCurrencyResidualRows(props: {
       detailGrossYuan: detail.grossYuan,
       diff,
       isDetailOnly: true,
+      comparabilityReason: props.comparabilityReason,
       judgment:
-        Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+        props.comparabilityReason
+          ? "可比性待核"
+          : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
           ? `疑似汇总缺失毛活动 ${formatYuanAsYi(detail.grossYuan)}`
           : `疑似汇总缺失 ${formatYuanAsYi(Math.abs(diff))}`,
     });
@@ -370,6 +379,77 @@ function buildCurrencyResidualRows(props: {
       return rightRank - leftRank;
     })
     .slice(0, 5);
+}
+
+function metaString(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+function filterMetaString(meta: ResultMeta | null | undefined, key: string) {
+  return metaString(meta?.filters_applied?.[key]);
+}
+
+function firstMetaMismatch(
+  summaryMeta: ResultMeta | null | undefined,
+  detailMeta: ResultMeta | null | undefined,
+) {
+  const checks = [
+    {
+      label: "resolved_report_date",
+      summary: metaString(summaryMeta?.resolved_report_date),
+      detail: metaString(detailMeta?.resolved_report_date),
+    },
+    {
+      label: "as_of_date",
+      summary: metaString(summaryMeta?.as_of_date),
+      detail: metaString(detailMeta?.as_of_date),
+    },
+    {
+      label: "date_basis",
+      summary: metaString(summaryMeta?.date_basis),
+      detail: metaString(detailMeta?.date_basis),
+    },
+    {
+      label: "source_version",
+      summary: metaString(summaryMeta?.source_version),
+      detail: metaString(detailMeta?.source_version),
+    },
+    {
+      label: "rule_version",
+      summary: metaString(summaryMeta?.rule_version),
+      detail: metaString(detailMeta?.rule_version),
+    },
+    {
+      label: "cache_version",
+      summary: metaString(summaryMeta?.cache_version),
+      detail: metaString(detailMeta?.cache_version),
+    },
+    {
+      label: "filters_applied.report_date",
+      summary: filterMetaString(summaryMeta, "report_date"),
+      detail: filterMetaString(detailMeta, "report_date"),
+    },
+    {
+      label: "filters_applied.currency",
+      summary: filterMetaString(summaryMeta, "currency"),
+      detail: filterMetaString(detailMeta, "currency"),
+    },
+  ];
+
+  const mismatch = checks.find((check) => check.summary !== check.detail && (check.summary || check.detail));
+  return mismatch
+    ? `汇总 ${mismatch.label}=${mismatch.summary ?? "缺失"}，明细 ${mismatch.label}=${mismatch.detail ?? "缺失"}`
+    : null;
 }
 
 function buildDetailResidualAccountRows(props: {
@@ -490,6 +570,8 @@ function buildLedgerExplainabilityModel(props: {
   byCurrency: LedgerPnlSummaryByCurrency[];
   byAccount: LedgerPnlSummaryByAccount[];
   detailRows: LedgerPnlDataItem[];
+  summaryMeta: ResultMeta | null | undefined;
+  detailMeta: ResultMeta | null | undefined;
   formalUseAllowed: boolean | undefined;
   sourceContractStatus: string | undefined;
 }) {
@@ -497,6 +579,7 @@ function buildLedgerExplainabilityModel(props: {
   const currencyYuan = sumLedgerMoney(props.byCurrency, (row) => row.total_pnl);
   const accountYuan = sumLedgerMoney(props.byAccount, (row) => row.total_pnl);
   const detailYuan = sumLedgerMoney(props.detailRows, (row) => row.monthly_pnl);
+  const currencyComparabilityReason = firstMetaMismatch(props.summaryMeta, props.detailMeta);
   const checks = [
     { label: "币种合计", diff: differenceYuan(totalYuan, currencyYuan) },
     { label: "科目汇总", diff: differenceYuan(totalYuan, accountYuan) },
@@ -540,6 +623,7 @@ function buildLedgerExplainabilityModel(props: {
     currencyResidualRows: buildCurrencyResidualRows({
       byCurrency: props.byCurrency,
       detailRows: props.detailRows,
+      comparabilityReason: currencyComparabilityReason,
     }),
     detailResidualAccountRows: buildDetailResidualAccountRows({
       byAccount: props.byAccount,
@@ -663,6 +747,7 @@ function LedgerExplainabilityPanel(props: {
                     <th>明细毛活动</th>
                     <th>差异金额</th>
                     <th>诊断判断</th>
+                    <th>口径证据</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -674,6 +759,7 @@ function LedgerExplainabilityPanel(props: {
                       <td>{formatYuanAsYi(row.detailGrossYuan)}</td>
                       <td>{formatYuanAsYi(row.diff)}</td>
                       <td>{row.judgment}</td>
+                      <td>{row.comparabilityReason ?? "当前切片可比"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1291,6 +1377,8 @@ export default function LedgerPnlPage() {
         byCurrency: summary?.by_currency ?? [],
         byAccount: accountSummaryRows,
         detailRows,
+        summaryMeta: summaryQuery.data?.result_meta,
+        detailMeta: dataQuery.data?.result_meta,
         formalUseAllowed: formalIndicatorSourceContract?.formal_use_allowed,
         sourceContractStatus: formalIndicatorSourceContract?.sample_status,
       }),
@@ -1299,8 +1387,10 @@ export default function LedgerPnlPage() {
       detailRows,
       formalIndicatorSourceContract?.formal_use_allowed,
       formalIndicatorSourceContract?.sample_status,
+      dataQuery.data?.result_meta,
       summary?.by_currency,
       summary?.ledger_monthly_pnl_all,
+      summaryQuery.data?.result_meta,
     ],
   );
   const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
