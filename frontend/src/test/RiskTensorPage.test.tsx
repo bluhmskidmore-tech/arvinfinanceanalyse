@@ -1975,6 +1975,8 @@ describe("RiskTensorPage", () => {
     expect(errorContext).toHaveTextContent("风险报告日已被新鲜度校验拦截");
     expect(errorContext).toHaveTextContent("2026-02-27");
     expect(errorContext).toHaveTextContent("risk tensor source lineage is stale");
+    expect(errorContext).toHaveTextContent("trace_id tr_tensor_dates_with_selected_blocked");
+    expect(errorContext).toHaveTextContent("主读面未读取");
     expect(getRiskTensor).not.toHaveBeenCalled();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
       "tr_tensor_dates_with_selected_blocked",
