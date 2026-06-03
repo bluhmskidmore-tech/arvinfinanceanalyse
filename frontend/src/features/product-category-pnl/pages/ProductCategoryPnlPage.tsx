@@ -52,6 +52,8 @@ import {
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
   type ProductCategoryScenarioSensitivitySurface,
+  type ProductCategoryScenarioExplanation,
+  selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
@@ -957,10 +959,13 @@ function ProductCategoryOperatingContributionList(props: {
 
 function ProductCategoryFinancialAnalysisPanel(props: {
   scenarioSensitivity: ProductCategoryScenarioSensitivitySurface;
+  scenarioExplanation: ProductCategoryScenarioExplanation | null;
+  selectedScenarioReviewCategoryId: string | null;
   scenarioSensitivityRequested: boolean;
   scenarioSensitivityLoading: boolean;
   scenarioSensitivityError: boolean;
   onLoadScenarioSensitivity: () => void;
+  onSelectScenarioReview: (categoryId: string) => void;
   waterfall: ProductCategoryAttributionWaterfallSurface;
   decisionFocus: ProductCategoryDecisionFocusSurface;
 }) {
@@ -1063,16 +1068,50 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                   ) : (
                     <div className="product-category-financial-analysis__review-list">
                       {props.scenarioSensitivity.pressureSummary.reviewRows.map((row) => (
-                        <div className="product-category-financial-analysis__review-row" key={row.categoryLabel}>
+                        <button
+                          aria-pressed={props.selectedScenarioReviewCategoryId === row.categoryId}
+                          className="product-category-financial-analysis__review-row"
+                          key={row.categoryId}
+                          onClick={() => props.onSelectScenarioReview(row.categoryId)}
+                          type="button"
+                        >
                           <span>{row.priorityLabel}</span>
                           <strong>{row.categoryLabel}</strong>
                           <small>{row.sideLabel} · {row.triggerRateLabel} · {row.actionLabel}</small>
                           <b className={`is-${row.tone}`}>{row.deltaLabel}</b>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
                 </div>
+                {props.scenarioExplanation ? (
+                  <div
+                    className="product-category-financial-analysis__explanation"
+                    data-testid="product-category-scenario-explanation"
+                  >
+                    <div className="product-category-financial-analysis__scenario-kicker">复核解释包</div>
+                    <strong>{props.scenarioExplanation.categoryLabel}</strong>
+                    <p>{props.scenarioExplanation.summaryLabel}</p>
+                    <div className="product-category-financial-analysis__explanation-grid">
+                      <span>{props.scenarioExplanation.sideLabel}</span>
+                      <span>基线 {props.scenarioExplanation.baselineNetIncomeLabel}</span>
+                      <span>{props.scenarioExplanation.triggerRateLabel} {props.scenarioExplanation.scenarioNetIncomeLabel}</span>
+                      <span>{props.scenarioExplanation.scenarioDeltaLabel}</span>
+                    </div>
+                    {props.scenarioExplanation.driverRows.length === 0 ? (
+                      <small>{props.scenarioExplanation.emptyCopy ?? "当前正式归因未返回可排序的驱动项。"}</small>
+                    ) : (
+                      <div className="product-category-financial-analysis__driver-list">
+                        <span>正式归因</span>
+                        {props.scenarioExplanation.driverRows.map((row) => (
+                          <b className={`is-${row.tone}`} key={row.key}>
+                            {row.label} {row.valueLabel}
+                          </b>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <div className="product-category-financial-analysis__table-wrap">
                 <table className="product-category-financial-analysis__table">
@@ -1461,6 +1500,7 @@ export default function ProductCategoryPnlPage() {
   const [lastRefreshRunId, setLastRefreshRunId] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
   const [scenarioSensitivityRequested, setScenarioSensitivityRequested] = useState(false);
+  const [selectedScenarioReviewCategoryId, setSelectedScenarioReviewCategoryId] = useState<string | null>(null);
   const [loadedTrendDiagnosticsKey, setLoadedTrendDiagnosticsKey] = useState("");
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
@@ -1613,15 +1653,37 @@ export default function ProductCategoryPnlPage() {
       }),
     [attributionQuery.data?.result, displayedGrandTotal, rowsToRender],
   );
+  const scenarioSensitivityPayloads = useMemo(
+    () => scenarioSensitivityQueries.flatMap((query) => (query.data?.result ? [query.data.result] : [])),
+    [scenarioSensitivityQueries],
+  );
   const scenarioSensitivitySurface = useMemo(
     () =>
       selectProductCategoryScenarioSensitivitySurface({
         baseline,
-        scenarios: scenarioSensitivityQueries.flatMap((query) =>
-          query.data?.result ? [query.data.result] : [],
-        ),
+        scenarios: scenarioSensitivityPayloads,
       }),
-    [baseline, scenarioSensitivityQueries],
+    [baseline, scenarioSensitivityPayloads],
+  );
+  const scenarioReviewRows = scenarioSensitivitySurface.pressureSummary.reviewRows;
+  const selectedScenarioExplanationCategoryId =
+    scenarioReviewRows.find((row) => row.categoryId === selectedScenarioReviewCategoryId)?.categoryId ??
+    scenarioReviewRows[0]?.categoryId ??
+    null;
+  const scenarioExplanation = useMemo(
+    () =>
+      selectProductCategoryScenarioExplanation({
+        categoryId: selectedScenarioExplanationCategoryId,
+        baseline,
+        scenarios: scenarioSensitivityPayloads,
+        attribution: attributionQuery.data?.result,
+      }),
+    [
+      attributionQuery.data?.result,
+      baseline,
+      scenarioSensitivityPayloads,
+      selectedScenarioExplanationCategoryId,
+    ],
   );
   const attributionWaterfallSurface = useMemo(
     () => selectProductCategoryAttributionWaterfallSurface(attributionQuery.data?.result),
@@ -2771,6 +2833,8 @@ export default function ProductCategoryPnlPage() {
       {!baselineQuery.isError ? (
         <ProductCategoryFinancialAnalysisPanel
           scenarioSensitivity={scenarioSensitivitySurface}
+          scenarioExplanation={scenarioExplanation}
+          selectedScenarioReviewCategoryId={selectedScenarioExplanationCategoryId}
           scenarioSensitivityRequested={scenarioSensitivityRequested}
           scenarioSensitivityLoading={scenarioSensitivityQueries.some((query) => query.isLoading)}
           scenarioSensitivityError={scenarioSensitivityQueries.some((query) => query.isError)}
@@ -2780,6 +2844,7 @@ export default function ProductCategoryPnlPage() {
               scenarioSensitivityQueries.forEach((query) => void query.refetch());
             }
           }}
+          onSelectScenarioReview={setSelectedScenarioReviewCategoryId}
           waterfall={attributionWaterfallSurface}
           decisionFocus={decisionFocusSurface}
         />

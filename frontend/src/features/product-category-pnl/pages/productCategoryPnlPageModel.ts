@@ -372,6 +372,7 @@ export type ProductCategoryScenarioSideOffset = {
 
 export type ProductCategoryScenarioReviewRow = {
   priorityLabel: string;
+  categoryId: string;
   categoryLabel: string;
   sideLabel: string;
   triggerRateLabel: string;
@@ -385,6 +386,30 @@ export type ProductCategoryScenarioPressureSummary = {
   breakeven: ProductCategoryScenarioBreakeven;
   sideOffset: ProductCategoryScenarioSideOffset;
   reviewRows: ProductCategoryScenarioReviewRow[];
+};
+
+export type ProductCategoryScenarioExplanationDriverRow = {
+  key: keyof Pick<
+    ProductCategoryAttributionRow["effects"],
+    "ftp_effect" | "scale_effect" | "rate_effect" | "unexplained_effect"
+  >;
+  label: string;
+  value: number | null;
+  valueLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioExplanation = {
+  categoryId: string;
+  categoryLabel: string;
+  sideLabel: string;
+  triggerRateLabel: string;
+  scenarioDeltaLabel: string;
+  baselineNetIncomeLabel: string;
+  scenarioNetIncomeLabel: string;
+  summaryLabel: string;
+  driverRows: ProductCategoryScenarioExplanationDriverRow[];
+  emptyCopy: string | null;
 };
 
 export type ProductCategoryScenarioSensitivitySurface = {
@@ -1407,6 +1432,7 @@ function selectProductCategoryScenarioReviewRows(input: {
   const reviewByCategory = new Map<
     string,
     {
+      categoryId: string;
       categoryLabel: string;
       sideLabel: string;
       triggerRateLabel: string;
@@ -1424,6 +1450,7 @@ function selectProductCategoryScenarioReviewRows(input: {
       const existing = reviewByCategory.get(row.category_id);
       if (!existing || Math.abs(delta) > Math.abs(existing.delta)) {
         reviewByCategory.set(row.category_id, {
+          categoryId: row.category_id,
           categoryLabel: row.category_name || row.category_id,
           sideLabel: productCategoryScenarioSideLabel(row.side),
           triggerRateLabel,
@@ -1439,6 +1466,7 @@ function selectProductCategoryScenarioReviewRows(input: {
       const tone = productCategoryDeltaTone(row.delta);
       return {
         priorityLabel: `复核 ${index + 1}`,
+        categoryId: row.categoryId,
         categoryLabel: row.categoryLabel,
         sideLabel: row.sideLabel,
         triggerRateLabel: row.triggerRateLabel,
@@ -1463,6 +1491,114 @@ function selectProductCategoryScenarioPressureSummary(input: {
       baselineRowsById: input.baselineRowsById,
       scenarios: input.scenarios,
     }),
+  };
+}
+
+const PRODUCT_CATEGORY_SCENARIO_EXPLANATION_DRIVERS = [
+  ["ftp_effect", "FTP因素"],
+  ["scale_effect", "规模因素"],
+  ["rate_effect", "利率因素"],
+  ["unexplained_effect", "未解释"],
+] as const;
+
+function scenarioExplanationDriverRows(
+  attributionRow: ProductCategoryAttributionRow | undefined,
+): ProductCategoryScenarioExplanationDriverRow[] {
+  if (!attributionRow) {
+    return [];
+  }
+  return PRODUCT_CATEGORY_SCENARIO_EXPLANATION_DRIVERS.map(([key, label]) => {
+    const value = yiNumber(attributionRow.effects[key]);
+    return {
+      key,
+      label,
+      value,
+      valueLabel: formatSignedProductCategoryYi(value),
+      tone: productCategoryDeltaTone(value),
+    };
+  }).sort((left, right) => Math.abs(right.value ?? 0) - Math.abs(left.value ?? 0));
+}
+
+function dominantScenarioExplanationDriver(
+  rows: ProductCategoryScenarioExplanationDriverRow[],
+): ProductCategoryScenarioExplanationDriverRow | undefined {
+  return rows.find((row) => row.value !== null && row.value !== 0);
+}
+
+export function selectProductCategoryScenarioExplanation(input: {
+  categoryId: string | null | undefined;
+  baseline?: ProductCategoryPnlPayload | null;
+  scenarios: ProductCategoryPnlPayload[];
+  attribution?: ProductCategoryAttributionPayload | null;
+}): ProductCategoryScenarioExplanation | null {
+  if (!input.categoryId || !input.baseline) {
+    return null;
+  }
+  const baselineRow = findProductCategoryRow(input.baseline.rows, input.categoryId);
+  if (!baselineRow) {
+    return {
+      categoryId: input.categoryId,
+      categoryLabel: input.categoryId,
+      sideLabel: "-",
+      triggerRateLabel: "-",
+      scenarioDeltaLabel: "-",
+      baselineNetIncomeLabel: "-",
+      scenarioNetIncomeLabel: "-",
+      summaryLabel: "当前正式基线未返回该产品行，无法形成行级情景解释。",
+      driverRows: [],
+      emptyCopy: "当前正式基线未返回该产品行，无法形成行级情景解释。",
+    };
+  }
+  const baselineNetIncome = yiNumber(baselineRow.business_net_income);
+  const scenarioMoves = input.scenarios
+    .map((scenario) => {
+      const scenarioRow = findProductCategoryRow(scenario.rows, input.categoryId as string);
+      if (!scenarioRow) {
+        return null;
+      }
+      const delta = productCategoryRowDeltaYi(new Map([[baselineRow.category_id, baselineRow]]), scenarioRow);
+      const scenarioNetIncome = yiNumber(scenarioRow.business_net_income);
+      const scenarioRate = decimalNumber(scenario.scenario_rate_pct);
+      if (delta === null || scenarioNetIncome === null || scenarioRate === null) {
+        return null;
+      }
+      return {
+        row: scenarioRow,
+        delta,
+        scenarioNetIncome,
+        rateLabel: `${scenarioRate.toFixed(2)}%`,
+      };
+    })
+    .filter((move): move is {
+      row: ProductCategoryPnlRow;
+      delta: number;
+      scenarioNetIncome: number;
+      rateLabel: string;
+    } => move !== null)
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
+  const topMove = scenarioMoves[0];
+  const attributionRow = input.attribution?.rows.find((row) => row.category_id === input.categoryId);
+  const driverRows = scenarioExplanationDriverRows(attributionRow);
+  const dominantDriver = dominantScenarioExplanationDriver(driverRows);
+  const scenarioDeltaLabel = formatSignedProductCategoryYi(topMove?.delta ?? null);
+  const triggerRateLabel = topMove?.rateLabel ?? "-";
+  const baselineNetIncomeLabel = productCategoryYiNumberLabel(baselineNetIncome);
+  const scenarioNetIncomeLabel = productCategoryYiNumberLabel(topMove?.scenarioNetIncome ?? null);
+  const driverCopy = dominantDriver
+    ? `正式归因显示主导因素为 ${dominantDriver.label} ${dominantDriver.valueLabel} 亿元。`
+    : "当前正式归因未返回可排序的驱动项。";
+  const summaryLabel = `${baselineRow.category_name || baselineRow.category_id}在 ${triggerRateLabel} 情景较正式基线 ${scenarioDeltaLabel} 亿元；${driverCopy}`;
+  return {
+    categoryId: baselineRow.category_id,
+    categoryLabel: baselineRow.category_name || baselineRow.category_id,
+    sideLabel: productCategoryScenarioSideLabel(baselineRow.side),
+    triggerRateLabel,
+    scenarioDeltaLabel,
+    baselineNetIncomeLabel,
+    scenarioNetIncomeLabel,
+    summaryLabel,
+    driverRows,
+    emptyCopy: topMove ? null : "当前情景矩阵未返回该产品行的可比较结果。",
   };
 }
 

@@ -235,11 +235,6 @@ function useDeferredSectionSeen<TElement extends HTMLElement>(
   return { ref, seen };
 }
 
-const tabularNumStyle: CSSProperties = {
-  fontVariantNumeric: "tabular-nums",
-  fontFamily: "var(--moss-font-mono)",
-};
-
 /** 首屏卡片与标题 — 对齐 dashboard-home 终端视觉 */
 const SA_FIRST_CARD = "stock-analysis-page__dh-card stock-analysis-page__dh-panel bg-white";
 const SA_FIRST_HERO = "stock-analysis-page__dh-card stock-analysis-page__dh-hero bg-white";
@@ -790,8 +785,9 @@ function cycleInputLabel(input: string | null | undefined) {
     fund_flow: "资金流",
     northbound_flow: "北向资金",
     earnings_revision: "业绩修正",
+    external_vendor_cycle_feed: "输入待确认",
   };
-  return labels[normalized] ?? input.replace(/[_-]+/g, " ");
+  return labels[normalized] ?? "输入待确认";
 }
 
 function compactCycleInputs(inputs: string[]) {
@@ -877,6 +873,7 @@ function cycleEvidenceLabel(text: string | null | undefined) {
   const value = text?.trim();
   if (!value) return "证据待补";
   const lower = value.toLowerCase();
+  if (lower.includes("external_vendor") || lower.includes("external vendor")) return "证据待确认";
   if (lower.includes("market gate") && lower.includes("pmi") && lower.includes("credit impulse")) {
     return "市场门控已接入；PMI 与信用脉冲待补。";
   }
@@ -893,7 +890,7 @@ function cycleEvidenceLabel(text: string | null | undefined) {
   if (lower.includes("risk-exit evidence") || lower.includes("sizing") || lower.includes("liquidity controls")) {
     return "风险退出证据已接入；仓位、成本与流动性回放待补。";
   }
-  if (lower.includes("not landed") || lower.includes("missing")) return "输入未完全落地。";
+  if (lower.includes("not landed") || lower.includes("missing")) return "证据待确认。";
   if (lower.includes("available")) return "证据已接入。";
   return value.replace(/_/g, " ");
 }
@@ -2281,6 +2278,55 @@ export default function StockAnalysisPage() {
     });
   }, [gateState, themeBreakoutUnsupported?.reason, strategyPriorityRows]);
 
+  const deepZoneAuditRows = useMemo(
+    () => [
+      {
+        key: "supply",
+        icon: <DatabaseOutlined aria-hidden="true" />,
+        label: "供数",
+        value: cycleRotationPanelSummary?.badgeLabel ?? themeBreakoutPanelSummary?.badgeLabel ?? "待确认",
+        tone: cycleRotationPanelSummary?.tone ?? themeBreakoutPanelSummary?.tone ?? "neutral",
+      },
+      {
+        key: "replay",
+        icon: <BarChartOutlined aria-hidden="true" />,
+        label: "回放",
+        value: strategyBacktestPanelSummary.badgeLabel ?? strategyBacktestDateRangeLabel,
+        tone: strategyBacktestPanelSummary.tone ?? "neutral",
+      },
+      {
+        key: "review",
+        icon: <StockOutlined aria-hidden="true" />,
+        label: "候选",
+        value: `${consensusSummary.items.length} / ${reviewQueue.length}`,
+        tone: consensusReviewPanelSummary.tone ?? marketPriorityPanelSummary.tone ?? "neutral",
+      },
+      {
+        key: "events",
+        icon: <FireOutlined aria-hidden="true" />,
+        label: "事件",
+        value: eventsMonitoringPanelSummary.badgeLabel ?? `${eventMonitorRows.length}`,
+        tone: eventsMonitoringPanelSummary.tone ?? "neutral",
+      },
+    ],
+    [
+      consensusReviewPanelSummary.tone,
+      consensusSummary.items.length,
+      cycleRotationPanelSummary?.badgeLabel,
+      cycleRotationPanelSummary?.tone,
+      eventMonitorRows.length,
+      eventsMonitoringPanelSummary.badgeLabel,
+      eventsMonitoringPanelSummary.tone,
+      marketPriorityPanelSummary.tone,
+      reviewQueue.length,
+      strategyBacktestDateRangeLabel,
+      strategyBacktestPanelSummary.badgeLabel,
+      strategyBacktestPanelSummary.tone,
+      themeBreakoutPanelSummary?.badgeLabel,
+      themeBreakoutPanelSummary?.tone,
+    ],
+  );
+
   const sectorSeriesExpanded = sectorSeriesCollapseKeys.includes("sector-rank-series-multi");
 
   const sectorRankSeriesQuery = useQuery({
@@ -2810,7 +2856,7 @@ export default function StockAnalysisPage() {
                         >
                           <StatusIcon>{DECISION_GRID_ICONS[0]}</StatusIcon>
                           <span className="text-xs text-neutral-500">数据日期</span>
-                          <strong className="col-start-2 text-sm" style={tabularNumStyle}>
+                          <strong className="stock-analysis-page__tabular col-start-2 text-sm">
                             {backendSupplyOverview?.asOfLabel ?? decisionSummary.asOfLabel}
                           </strong>
                         </div>
@@ -4811,7 +4857,7 @@ export default function StockAnalysisPage() {
                             </span>
                             <div>
                               <small>{item.label}</small>
-                              <strong style={tabularNumStyle}>{item.statusLabel}</strong>
+                              <strong className="stock-analysis-page__tabular">{item.statusLabel}</strong>
                             </div>
                           </div>
                         ))}
@@ -4916,15 +4962,29 @@ export default function StockAnalysisPage() {
             <AnalysisGrid columns={2} className="stock-analysis-page__workspace">
               <div className="stock-analysis-page__deep-zone" data-testid="stock-analysis-deep-zone">
                 <div className="stock-analysis-page__deep-zone-head">
-                  <h2 className="m-0 text-base font-extrabold text-[color:var(--sa-dh-blue-deep)]">供数闭环</h2>
-                  <p
-                    className="stock-analysis-page__deep-zone-gate-summary"
-                    data-testid="stock-analysis-deep-zone-gate-summary"
-                    data-tone={deepAnalysisGateSummary.tone}
-                  >
-                    {deepAnalysisGateSummary.line}
-                  </p>
-                  <p className="m-0 text-xs text-neutral-500">供数状态 · 回测复核 · 风险边界</p>
+                  <div className="stock-analysis-page__deep-zone-title">
+                    <h2>供数闭环</h2>
+                    <p
+                      className="stock-analysis-page__deep-zone-gate-summary"
+                      data-testid="stock-analysis-deep-zone-gate-summary"
+                      data-tone={deepAnalysisGateSummary.tone}
+                    >
+                      {deepAnalysisGateSummary.line}
+                    </p>
+                  </div>
+                  <div className="stock-analysis-page__deep-zone-audit-strip" data-testid="stock-analysis-deep-zone-audit-strip">
+                    {deepZoneAuditRows.map((row) => (
+                      <div
+                        key={row.key}
+                        className="stock-analysis-page__deep-zone-audit-item"
+                        data-tone={row.tone}
+                      >
+                        <span className="stock-analysis-page__deep-zone-audit-icon">{row.icon}</span>
+                        <span className="stock-analysis-page__deep-zone-audit-label">{row.label}</span>
+                        <strong>{row.value}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               <div className="stock-analysis-strategy-card-grid">
               {cycleRotationFramework ? (

@@ -1659,6 +1659,35 @@ describe("StockAnalysisPage", () => {
     expect(framework).not.toHaveTextContent("调仓");
   });
 
+  it("renders unknown cycle rotation inputs as pending boundaries instead of raw backend codes", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: {
+            ...buildCycleRotationFramework(),
+            layers: [
+              {
+                key: "macro_direction",
+                title: "Macro direction",
+                weight: 0.3,
+                status: "missing_inputs",
+                evidence: "external_vendor_cycle_feed is not landed.",
+                available_inputs: ["market_gate"],
+                missing_inputs: ["external_vendor_cycle_feed"],
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+    expect(framework).toHaveTextContent("输入待确认");
+    expect(framework).toHaveTextContent("证据待确认");
+    expect(framework).not.toHaveTextContent("external_vendor_cycle_feed");
+    expect(framework).not.toHaveTextContent("external vendor cycle feed");
+  });
+
   it("renders theme breakout radar as observation-only proxy evidence", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
