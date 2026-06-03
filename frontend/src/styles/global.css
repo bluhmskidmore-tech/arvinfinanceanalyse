@@ -2719,6 +2719,26 @@ select {
   gap: 8px;
 }
 
+.agent-chat-composer__quick-row--compact {
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.agent-chat-composer__quick-row--compact::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-chat-composer__quick-row--compact .agent-chat-composer__quick-button {
+  flex: 0 0 auto;
+  max-width: min(240px, 72vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-chat-composer__quick-button,
 .agent-chat-composer__tool-button,
 .agent-chat-composer__secondary-action {

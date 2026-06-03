@@ -1579,6 +1579,50 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue("请给我看 GitNexus processes");
   });
 
+  it("keeps compact quick examples available after a conversation starts", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(fetchMock, {
+      answer: "对话已经开始，可以继续轻点追问。",
+      cards: [],
+      evidence: {
+        tables_used: ["hermes_cli"],
+        filters_applied: {
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+        },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_compact_quick_examples",
+        basis: "formal",
+        result_kind: "agent.hermes",
+      },
+      next_drill: [],
+      suggested_actions: [],
+    });
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "compact quick examples first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("对话已经开始，可以继续轻点追问。")).toBeInTheDocument();
+
+    const quickExamples = screen.getByLabelText("常用问题");
+    const quickExampleButton = within(quickExamples).getByRole("button", {
+      name: "解释当前页面的主要结论和风险点",
+    });
+    expect(quickExampleButton).toBeVisible();
+
+    await user.click(quickExampleButton);
+
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("解释当前页面的主要结论和风险点");
+    expect(input).toHaveFocus();
+  });
+
   it("loads remembered repo_path from localStorage", () => {
     window.localStorage.setItem(
       RECENT_REPO_PATHS_KEY,
@@ -2464,7 +2508,24 @@ describe("AgentWorkbenchPage", () => {
         result_kind: "agent.hermes",
       },
       next_drill: [],
-      suggested_actions: [],
+      suggested_actions: [
+        {
+          type: "inspect_lineage",
+          label: "查看主线索",
+          payload: {
+            trace_id: "tr_continue_input",
+          },
+          requires_confirmation: true,
+        },
+        {
+          type: "inspect_lineage",
+          label: "查看次级线索",
+          payload: {
+            trace_id: "tr_continue_input_secondary",
+          },
+          requires_confirmation: true,
+        },
+      ],
     });
 
     try {
@@ -2477,6 +2538,14 @@ describe("AgentWorkbenchPage", () => {
       await user.click(screen.getByRole("button", { name: "复制回答" }));
       screen.getByRole("button", { name: "已复制" }).focus();
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "已复制" }));
+      const moreSuggestedActions = screen.getByText("更多建议 · 1 项").closest("details");
+      expect(moreSuggestedActions).not.toBeNull();
+      if (!moreSuggestedActions) {
+        throw new Error("Expected secondary suggested actions drawer to exist");
+      }
+      fireEvent.click(screen.getByText("更多建议 · 1 项"));
+      expect(moreSuggestedActions).toHaveAttribute("open");
+
       const moreFollowUps = screen.getByText("更多追问");
       const followUpDetails = moreFollowUps.closest("details");
       expect(followUpDetails).not.toBeNull();
@@ -2501,6 +2570,7 @@ describe("AgentWorkbenchPage", () => {
       expect(document.activeElement).toBe(input);
       expect(scrollTargets).toContain(input);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
+      expect(moreSuggestedActions).not.toHaveAttribute("open");
       expect(followUpDetails).not.toHaveAttribute("open");
       expect(followUpOptions).not.toBeVisible();
     } finally {
@@ -2959,6 +3029,67 @@ describe("AgentWorkbenchPage", () => {
         },
       },
     });
+  });
+
+  it("keeps the docked composer action slot stable while a follow-up is running", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "stable action slot first answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_stable_action_slot_first",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:stable-action-slot-first",
+    );
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    function getDockActionSlot() {
+      const dock = document.querySelector(".agent-composer-dock");
+      expect(dock).not.toBeNull();
+      const actionSlot = dock?.querySelector(".agent-chat-composer__actions");
+      expect(actionSlot).not.toBeNull();
+      if (!(actionSlot instanceof HTMLElement)) {
+        throw new Error("Expected docked composer action slot to exist");
+      }
+      return actionSlot;
+    }
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "stable action first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("stable action slot first answer")).toBeInTheDocument();
+
+    const idleActionSlot = getDockActionSlot();
+    expect(idleActionSlot).not.toHaveClass("agent-chat-composer__actions--running");
+    expect(within(idleActionSlot).getByTestId("agent-panel-submit")).toHaveTextContent("发送");
+
+    await user.type(screen.getByLabelText("agent-question-input"), "stable action second turn");
+    await user.click(within(idleActionSlot).getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("stable action second turn")).toBeInTheDocument();
+
+    const runningActionSlot = getDockActionSlot();
+    expect(runningActionSlot).toHaveClass("agent-chat-composer__actions--running");
+    expect(within(runningActionSlot).getByRole("button", { name: "发送下一句" })).toBeDisabled();
+    expect(within(runningActionSlot).getByTestId("agent-panel-submit")).toHaveTextContent("停止");
   });
 
   it("queues a typed follow-up with Enter while the current answer is still running", async () => {

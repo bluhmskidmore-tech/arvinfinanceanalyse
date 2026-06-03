@@ -1,4 +1,4 @@
-﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { CheckOutlined, CloseOutlined, CopyOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { runPollingTask, type PollingTaskPayload } from "../../app/jobs/polling";
@@ -1454,12 +1454,17 @@ export function EmbeddedAgentCopilot({
     );
   }
 
-  function focusComposerInput() {
-    conversationRef.current
-      ?.querySelectorAll<HTMLDetailsElement>(".agent-follow-up-chips__details")
+  const closeResultInteractionDetails = useCallback((sourceElement?: HTMLElement) => {
+    const detailsRoot = sourceElement?.closest(".agent-result-main") ?? conversationRef.current;
+    detailsRoot
+      ?.querySelectorAll<HTMLDetailsElement>(".agent-follow-up-chips__details, .agent-suggested-actions__more")
       .forEach((details) => {
         details.open = false;
       });
+  }, []);
+
+  const focusComposerInput = useCallback(() => {
+    closeResultInteractionDetails();
     const input = composerInputRef.current;
     if (!input) {
       return;
@@ -1469,7 +1474,7 @@ export function EmbeddedAgentCopilot({
     if (typeof scrollIntoView === "function") {
       scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
     }
-  }
+  }, [closeResultInteractionDetails]);
 
   function scrollConversationToBottom() {
     const bottom = conversationBottomRef.current;
@@ -1518,7 +1523,7 @@ export function EmbeddedAgentCopilot({
     }
     shouldFocusRestoredDraftRef.current = false;
     focusComposerInput();
-  }, []);
+  }, [focusComposerInput]);
 
   useEffect(() => {
     const nextDefaultQuestion = defaultQuestion.trim();
@@ -1534,7 +1539,7 @@ export function EmbeddedAgentCopilot({
     lastAppliedDefaultQuestionRef.current = nextDefaultQuestion;
     setQuery(nextDefaultQuestion);
     focusComposerInput();
-  }, [defaultQuestion, query, shouldPersistConversation]);
+  }, [defaultQuestion, focusComposerInput, query, shouldPersistConversation]);
 
   useEffect(() => {
     if (!shouldPersistConversation) {
@@ -1590,6 +1595,7 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = false;
     focusComposerInput();
   }, [
+    focusComposerInput,
     hasConversation,
     loading,
     latestConversationTurn?.id,
@@ -2581,12 +2587,7 @@ export function EmbeddedAgentCopilot({
   }
 
   function closeFollowUpDetails(sourceElement?: HTMLElement) {
-    const followUpDetails =
-      sourceElement?.closest(".agent-follow-up-chips__details") ??
-      sourceElement?.closest(".agent-follow-up-chips")?.querySelector(".agent-follow-up-chips__details");
-    if (followUpDetails instanceof HTMLDetailsElement) {
-      followUpDetails.open = false;
-    }
+    closeResultInteractionDetails(sourceElement);
   }
 
   function focusComposerFromFollowUp(sourceElement: HTMLElement) {

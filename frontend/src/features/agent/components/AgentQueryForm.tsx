@@ -95,6 +95,28 @@ export function AgentQueryForm({
       ? "Enter 发送下一句 · Shift+Enter 换行"
       : "正在回答 · Shift+Enter 换行"
     : "Enter 发送 · Shift+Enter 换行";
+  const quickExampleRow =
+    primaryQuickExamples.length > 0 ? (
+      <div
+        className={
+          compact
+            ? "agent-chat-composer__quick-row agent-chat-composer__quick-row--compact"
+            : "agent-chat-composer__quick-row"
+        }
+        aria-label="常用问题"
+      >
+        {primaryQuickExamples.map((example) => (
+          <button
+            key={example}
+            type="button"
+            className="agent-chat-composer__quick-button"
+            onClick={() => onQuickExample(example)}
+          >
+            {formatQuickExampleLabel(example)}
+          </button>
+        ))}
+      </div>
+    ) : null;
 
   function focusTextarea() {
     const textarea = textareaRef.current;
@@ -132,20 +154,10 @@ export function AgentQueryForm({
             <div className="agent-chat-composer__hint">{submitHint}</div>
           </div>
 
-          <div className="agent-chat-composer__quick-row" aria-label="常用问题">
-            {primaryQuickExamples.map((example) => (
-              <button
-                key={example}
-                type="button"
-                className="agent-chat-composer__quick-button"
-                onClick={() => onQuickExample(example)}
-              >
-                {formatQuickExampleLabel(example)}
-              </button>
-            ))}
-          </div>
+          {quickExampleRow}
         </>
       ) : null}
+      {compact ? quickExampleRow : null}
 
       <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
         <div className="agent-chat-composer__input-wrap">
