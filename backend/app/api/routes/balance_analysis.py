@@ -48,8 +48,25 @@ def _require_balance_analysis_report_date_qs(report_date: str) -> str:
     return candidate
 
 
+def _ensure_balance_analysis_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="balance_analysis",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/dates")
-def dates() -> dict[str, object]:
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -65,10 +82,12 @@ def dates() -> dict[str, object]:
 
 @router.get("")
 def detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -89,10 +108,12 @@ def detail(
 
 @router.get("/overview")
 def overview(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -113,12 +134,14 @@ def overview(
 
 @router.get("/summary")
 def summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -141,10 +164,12 @@ def summary(
 
 @router.get("/summary-by-basis")
 def summary_by_basis(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -165,6 +190,7 @@ def summary_by_basis(
 
 @router.get("/advanced-attribution")
 def advanced_attribution(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Report date (YYYY-MM-DD) for the not_ready attribution contract."),
     scenario_name: str | None = Query(
         None,
@@ -181,6 +207,7 @@ def advanced_attribution(
 ) -> dict[str, object]:
     """Analytical/scenario advanced attribution contract; never part of the governed workbook tables."""
     normalized = _require_balance_analysis_report_date_qs(report_date)
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     return advanced_attribution_bundle_envelope(
         report_date=normalized,
@@ -194,10 +221,12 @@ def advanced_attribution(
 
 @router.get("/workbook")
 def workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -229,10 +258,12 @@ def current_user(
 
 @router.get("/decision-items")
 def decision_items(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         return timed_api_call(
@@ -283,10 +314,12 @@ def update_decision_status(
 
 @router.get("/summary/export")
 def export_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> Response:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         filename, content = export_balance_analysis_summary_csv(
@@ -309,10 +342,12 @@ def export_summary(
 
 @router.get("/workbook/export")
 def export_workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> Response:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         filename, content = export_balance_analysis_workbook_xlsx(
@@ -363,7 +398,11 @@ def refresh(
 
 
 @router.get("/refresh-status")
-def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
+def refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
         service_mod = importlib.import_module("backend.app.services.balance_analysis_service")

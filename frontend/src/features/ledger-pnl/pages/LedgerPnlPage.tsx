@@ -628,6 +628,17 @@ function buildLedgerExplainabilityModel(props: {
   );
   const hasPendingCheck = checks.some((check) => check.diff === null || check.comparabilityReason);
   const hasUnknownCheck = checks.some((check) => check.diff === null);
+  const residualDiagnosticRows = buildLedgerResidualDiagnosticRows({
+    totalYuan,
+    currencyYuan,
+    accountYuan,
+    detailYuan,
+    detailComparabilityReason: summaryDetailComparabilityReason,
+  });
+  const evidenceEntryPoint =
+    residualDiagnosticRows
+      .filter((row) => row.diff === null || Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN)
+      .sort((left, right) => Math.abs(right.diff ?? 0) - Math.abs(left.diff ?? 0))[0]?.evidence ?? "暂无补证入口";
   const residualYuan =
     largestResidualCheck && (hasMaterialGap || !hasPendingCheck) ? largestResidualCheck.diff : null;
   const largestResidualStatus = largestResidualCheck
@@ -662,14 +673,9 @@ function buildLedgerExplainabilityModel(props: {
         : "当前切片可比",
     explanationCoveragePct,
     bottleneck,
+    evidenceEntryPoint,
     driverRows: buildLedgerDriverRows(props.byAccount),
-    residualDiagnosticRows: buildLedgerResidualDiagnosticRows({
-      totalYuan,
-      currencyYuan,
-      accountYuan,
-      detailYuan,
-      detailComparabilityReason: summaryDetailComparabilityReason,
-    }),
+    residualDiagnosticRows,
     currencyResidualRows: buildCurrencyResidualRows({
       byCurrency: props.byCurrency,
       detailRows: props.detailRows,
@@ -733,6 +739,10 @@ function LedgerExplainabilityPanel(props: {
             <div className="ledger-pnl-analysis__kpi">
               <div className="ledger-pnl-analysis__kpi-label">最大卡点</div>
               <div className="ledger-pnl-analysis__kpi-value">{props.model.bottleneck}</div>
+            </div>
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">补证入口</div>
+              <div className="ledger-pnl-analysis__kpi-value">{props.model.evidenceEntryPoint}</div>
             </div>
             <div className="ledger-pnl-analysis__kpi">
               <div className="ledger-pnl-analysis__kpi-label">总账全量损益</div>

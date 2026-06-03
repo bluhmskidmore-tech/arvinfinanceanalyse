@@ -444,7 +444,7 @@ select {
   border-radius: 20px;
   border: 1px solid var(--moss-shell-rail-border);
   box-shadow: var(--moss-shadow-rail);
-  background: var(--moss-shell-rail-bg);
+  background: #06182d;
 }
 
 .workbench-shell-rail.workbench-shell-rail--minimal {

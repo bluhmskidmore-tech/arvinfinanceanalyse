@@ -533,6 +533,7 @@
   display: grid;
   align-content: start;
   gap: var(--moss-space-3);
+  height: fit-content;
   min-width: 0;
   padding: var(--moss-space-3);
   border: 1px solid var(--moss-color-neutral-200);
@@ -607,6 +608,92 @@
 .product-category-financial-analysis__table th {
   background: #ffffff;
   color: var(--moss-color-neutral-600);
+  font-weight: 800;
+}
+
+.product-category-financial-analysis__scenario-brief {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.72fr);
+  gap: var(--moss-space-3);
+}
+
+.product-category-financial-analysis__scenario-summary,
+.product-category-financial-analysis__scenario-risks {
+  display: grid;
+  align-content: start;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.product-category-financial-analysis__scenario-summary p {
+  margin: 0;
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.product-category-financial-analysis__scenario-kicker {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.product-category-financial-analysis__insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.product-category-financial-analysis__insight-card {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-financial-analysis__insight-card span,
+.product-category-financial-analysis__insight-card small,
+.product-category-financial-analysis__risk-row span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+}
+
+.product-category-financial-analysis__insight-card b {
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.product-category-financial-analysis__risk-list {
+  display: grid;
+  gap: var(--moss-space-2);
+}
+
+.product-category-financial-analysis__risk-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--moss-space-2);
+  align-items: center;
+  padding: 9px 10px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-financial-analysis__risk-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.product-category-financial-analysis__risk-row strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
   font-weight: 800;
 }
 

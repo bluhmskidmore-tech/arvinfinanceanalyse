@@ -25,6 +25,20 @@ Required fields:
 
 Do not put placeholder numeric limits in the template. Fill only real approved values.
 
+To export the current holding DV01 reference baseline for business review:
+
+```powershell
+python -m backend.app.tasks.bond_dv01_limit_config_import --reference-baseline --report-date 2026-03-31
+```
+
+Expected result:
+
+- `status` is `reference_baseline_built`
+- rows show current face value, market value, face-weighted modified duration, and DV01 by `AC`, `OCI`, `TPL`, and `all`
+- `business_limit_fields_blank` is `true`
+- `limit_dv01`, `warning_dv01`, and `hedge_target_dv01` remain blank; business approval must still provide the formal limits
+- `unmapped_accounting_classes` lists current formal rows outside direct `AC / OCI / TPL` mapping, if any
+
 To generate a fresh blank template from the backend import contract:
 
 ```powershell

@@ -422,6 +422,46 @@ describe("productCategoryPnlPageModel", () => {
         tone: "negative",
       }),
     ]);
+    expect(surface.insightCards).toEqual([
+      expect.objectContaining({
+        key: "best_case",
+        label: "最佳情景",
+        valueLabel: "1.50% / 5.30",
+        detailLabel: "较基线 +0.50 亿元",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        key: "worst_case",
+        label: "最差情景",
+        valueLabel: "2.00% / 3.90",
+        detailLabel: "较基线 -0.90 亿元",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        key: "range",
+        label: "情景区间",
+        valueLabel: "1.40",
+        detailLabel: "5.30 - 3.90 亿元",
+        tone: "neutral",
+      }),
+      expect.objectContaining({
+        key: "ftp_slope",
+        label: "FTP 斜率",
+        valueLabel: "-0.03",
+        detailLabel: "每 1bp 约影响净营收",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.riskRows).toEqual([
+      expect.objectContaining({
+        categoryLabel: "AC债券投资",
+        worstRateLabel: "2.00%",
+        worstDeltaLabel: "-0.80",
+        occurrenceLabel: "2 个情景触发最大变动",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.analysisCopy).toBe("FTP 上行时全表净营收承压，最差情景较基线 -0.90 亿元。");
     expect(surface.emptyCopy).toBeNull();
   });
 

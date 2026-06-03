@@ -7,6 +7,8 @@ import sys
 from contextlib import redirect_stdout
 from datetime import date
 
+import duckdb
+
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services.bond_analytics_service import (
@@ -249,4 +251,56 @@ def test_import_bond_dv01_limit_config_cli_can_check_current_status(tmp_path, mo
     assert payload["report_date"] == REPORT_DATE
     assert payload["limit_config_status"]["result"]["acceptance_status"] == "ready"
     assert payload["limit_config_status"]["result"]["missing_accounting_classes"] == []
+    get_settings.cache_clear()
+
+
+def test_import_bond_dv01_limit_config_cli_builds_reference_baseline_without_limits(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.execute(
+        """
+        create table fact_formal_bond_analytics_daily (
+            report_date varchar,
+            accounting_class varchar,
+            face_value decimal(24, 8),
+            market_value decimal(24, 8),
+            modified_duration decimal(18, 8),
+            dv01 decimal(24, 8)
+        )
+        """
+    )
+    conn.executemany(
+        "insert into fact_formal_bond_analytics_daily values (?, ?, ?, ?, ?, ?)",
+        [
+            ("2026-04-30", "OCI", "900", "910", "1.5", "9"),
+            ("2026-05-31", "TPL", "1000", "980", "2", "20"),
+            ("2026-05-31", "TPL", "2000", "2010", "4", "80"),
+            ("2026-05-31", "other", "500", "480", "3", "15"),
+        ],
+    )
+    conn.close()
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _run_import_cli(["--reference-baseline"], monkeypatch)
+    rows_by_class = {row["accounting_class"]: row for row in payload["rows"]}
+
+    assert payload["status"] == "reference_baseline_built"
+    assert payload["report_date"] == "2026-05-31"
+    assert payload["source_table"] == "fact_formal_bond_analytics_daily"
+    assert payload["business_limit_fields_blank"] is True
+    assert payload["unmapped_accounting_classes"] == ["other"]
+    assert payload["required_accounting_classes"] == ["AC", "OCI", "TPL", "all"]
+    assert rows_by_class["AC"]["position_count"] == 0
+    assert rows_by_class["OCI"]["current_total_dv01"] == "0"
+    assert rows_by_class["TPL"]["position_count"] == 2
+    assert rows_by_class["TPL"]["current_total_dv01"] == "100.00000000"
+    assert rows_by_class["TPL"]["face_weighted_modified_duration"] == "3.33333333"
+    assert rows_by_class["all"]["position_count"] == 3
+    assert rows_by_class["all"]["current_total_dv01"] == "115.00000000"
+    assert rows_by_class["all"]["limit_dv01"] == ""
+    assert rows_by_class["all"]["warning_dv01"] == ""
+    assert rows_by_class["all"]["hedge_target_dv01"] == ""
+    assert GovernanceRepository(base_dir=tmp_path / "governance").read_all(STREAM) == []
     get_settings.cache_clear()

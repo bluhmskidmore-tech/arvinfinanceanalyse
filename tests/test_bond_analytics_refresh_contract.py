@@ -28,7 +28,14 @@ def _configure_bond_analytics_api_env(tmp_path, monkeypatch) -> object:
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}")
     get_settings.cache_clear()
-    UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn).grant_scope(
+    scope_repo = UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn)
+    scope_repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="read",
+    )
+    scope_repo.grant_scope(
         user_id="*",
         role=None,
         resource="bond_analytics",

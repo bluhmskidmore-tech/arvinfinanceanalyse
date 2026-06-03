@@ -1292,6 +1292,7 @@ describe("AgentWorkbenchPage", () => {
         "AuditFlow",
       ]);
     });
+    expect(screen.getByText("已读取 GitNexus 流程 · 可选择流程查看")).toBeInTheDocument();
   });
 
   it("submits selected process_name when viewing a chosen process", async () => {

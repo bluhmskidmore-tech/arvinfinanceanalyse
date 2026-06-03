@@ -2318,7 +2318,19 @@ describe("StockAnalysisPage", () => {
 
   it("connects the boundary summary to the full diagnostics drawer", async () => {
     const user = userEvent.setup();
-    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          data_gaps: [
+            {
+              input_family: "external_vendor_factor_feed",
+              status: "vendor_sync_delayed",
+              evidence: "external_vendor_factor_feed 未落地。",
+            },
+          ],
+        } as unknown as Partial<LivermoreStrategyPayload>),
+      }),
+    });
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     expect(decisionPanel).toHaveTextContent("边界");
@@ -2344,8 +2356,10 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByText("信息 / Info")).not.toBeInTheDocument();
     expect(screen.getAllByText("市场宽度输入不可用。").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("数据缺口")).toBeInTheDocument();
-    expect(screen.getAllByText(/市场宽度/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/输入待确认\s+状态待确认/)).toBeInTheDocument();
     expect(screen.queryAllByText(/breadth/)).toHaveLength(0);
+    expect(screen.queryByText(/vendor_sync_delayed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/external_vendor_factor_feed/)).not.toBeInTheDocument();
     expect(screen.getByText("可用输出")).toBeInTheDocument();
     expect(screen.getByText("阻断输出")).toBeInTheDocument();
     expect(screen.queryByText("data_gaps")).not.toBeInTheDocument();

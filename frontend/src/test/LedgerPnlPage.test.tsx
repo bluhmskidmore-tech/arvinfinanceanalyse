@@ -1542,6 +1542,8 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("80.00%");
     expect(panel).toHaveTextContent("最大卡点");
     expect(panel).toHaveTextContent("明细差异 20.00 亿元");
+    expect(panel).toHaveTextContent("补证入口");
+    expect(panel).toHaveTextContent("补明细或确认过滤口径");
     expect(panel).toHaveTextContent("币种合计一致");
     expect(panel).toHaveTextContent("科目汇总差异 10.00 亿元");
     expect(panel).toHaveTextContent("未解释残差 20.00 亿元");

@@ -212,6 +212,9 @@ Evidence from the second-pass security review:
 - Remediated in this continuation: `backend/app/api/routes/cashflow_projection.py` now requires `cashflow_projection/read` on the cashflow projection read surface.
 - Remediated in this continuation: `backend/app/api/routes/ledger_pnl.py` now requires `ledger_pnl/read` on dates, data, summary, and formal financial indicator source-contract reads.
 - Remediated in this continuation: `backend/app/api/routes/pnl.py` now requires `pnl/read` on formal PnL, bridge, overview, V1 detail, by-business read models, adjustment audit list, yearly summary, and import-status reads.
+- Remediated in this continuation: `backend/app/api/routes/pnl_attribution.py` now requires `pnl_attribution/read` on the workbench's basic and advanced attribution reads.
+- Remediated in this continuation: `backend/app/api/routes/balance_analysis.py` now requires `balance_analysis/read` on business reads, exports, advanced attribution, decision-item reads, and refresh-status reads; `/current-user` remains an auth-context echo endpoint.
+- Remediated in this continuation: `backend/app/api/routes/bond_analytics.py` now requires `bond_analytics/read` on analytical/formal bond analytics GET routes and refresh-status reads, while refresh remains `bond_analytics/refresh`.
 
 Impact: automated metric and page-contract tests can pass while sensitive business data remains readable through unauthenticated GET surfaces. The header-trust development path also makes production misconfiguration more consequential.
 
@@ -326,6 +329,64 @@ Verification:
 - `git diff --check -- backend/app/api/routes/pnl.py tests/test_pnl_api_contract.py`: passed.
 
 Residual risk: this closes the PnL HTTP read surfaces covered by `tests/test_pnl_api_contract.py`, but it does not prove every PnL-adjacent frontend or executive overlay route has been inventoried; those remain part of the broader P1 route inventory.
+
+### P1 remediated - PnL Attribution workbench read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/pnl_attribution.py` now checks `pnl_attribution/read` before returning `/api/pnl-attribution/volume-rate`, `/tpl-market`, `/composition`, `/summary`, `/advanced/carry-rolldown`, `/advanced/spread`, `/advanced/krd`, `/advanced/summary`, and `/advanced/campisi`.
+- `tests/test_pnl_attribution_api_contract.py` verifies all twelve listed route/parameter combinations return 403 without an explicit read grant.
+- Existing PnL Attribution API contract tests seed `pnl_attribution/read` before asserting the empty-DuckDB formal attribution envelopes and volume-rate DTO shape.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_pnl_attribution_api_contract.py::test_pnl_attribution_read_surfaces_require_explicit_read_scope -q` failed because `/api/pnl-attribution/volume-rate` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_pnl_attribution_api_contract.py::test_pnl_attribution_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_pnl_attribution_api_contract.py -q`: `3 passed`.
+- `python -m ruff check backend/app/api/routes/pnl_attribution.py tests/test_pnl_attribution_api_contract.py`: passed.
+- `git diff --check -- backend/app/api/routes/pnl_attribution.py tests/test_pnl_attribution_api_contract.py`: passed.
+
+Residual risk: this closes the PnL Attribution workbench read surface, but the separate executive PnL attribution overlay and other PnL-adjacent routes remain governed by their own route scopes and inventory evidence.
+
+### P1 remediated - Balance Analysis read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/balance_analysis.py` now checks `balance_analysis/read` before returning dates, detail, overview, summary, summary-by-basis, advanced attribution, workbook, decision-items, summary export, workbook export, and refresh-status reads.
+- `/ui/balance-analysis/current-user` remains an auth-context echo endpoint and was not reclassified as business data.
+- Existing mutation boundaries remain separate: decision status updates still require `balance_analysis.decision_status/write`, and refresh still requires `balance_analysis/refresh`.
+- `tests/test_balance_analysis_api.py` verifies eleven business/read/export/status GET surfaces return 403 without an explicit read grant. Existing API, decision-status, export, refresh-status, and advanced-attribution tests now seed only `balance_analysis/read` where they intentionally exercise read surfaces.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_balance_analysis_api.py::test_balance_analysis_read_surfaces_require_explicit_read_scope -q` failed because `/ui/balance-analysis/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_balance_analysis_api.py::test_balance_analysis_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_balance_analysis_api.py -q`: `28 passed`.
+- `python -m pytest tests/test_advanced_attribution_contract.py tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result -q`: `20 passed`.
+- `python -m ruff check backend/app/api/routes/balance_analysis.py tests/test_balance_analysis_api.py tests/test_advanced_attribution_contract.py tests/test_result_meta_on_all_ui_endpoints.py`: passed.
+- `git diff --check -- backend/app/api/routes/balance_analysis.py tests/test_balance_analysis_api.py tests/test_advanced_attribution_contract.py tests/test_result_meta_on_all_ui_endpoints.py`: passed.
+
+Residual risk: this closes the Balance Analysis HTTP read surfaces covered here, but it does not prove every balance-analysis-adjacent, workbook-derived, or module-home route has been inventoried.
+
+### P1 remediated - Bond Analytics read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/bond_analytics.py` now checks `bond_analytics/read` before returning dates, return decomposition, benchmark excess, KRD curve risk, DV01 risk/reconciliation/movement/action-plan/limit-config status, credit-spread migration, yield-curve term structure, portfolio headlines, top holdings, position changes, action attribution, accounting-class audit, and refresh-status reads.
+- Existing refresh POST behavior remains under `bond_analytics/refresh`.
+- `tests/test_bond_analytics_api.py` verifies seventeen Bond Analytics GET route/parameter combinations return 403 without an explicit read grant. Existing API tests seed `bond_analytics/read` before asserting envelope shape, DV01 numeric payloads, home supplement perf logging, and refresh-status follow-up reads.
+- `tests/test_bond_analytics_refresh_contract.py` seeds `bond_analytics/read` for refresh-status contract tests while preserving `bond_analytics/refresh` for POST refresh behavior.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_bond_analytics_api.py::test_bond_analytics_read_surfaces_require_explicit_read_scope -q` failed because `/api/bond-analytics/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_bond_analytics_api.py::test_bond_analytics_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_bond_analytics_api.py -q`: `14 passed`.
+- `python -m pytest tests/test_bond_analytics_refresh_contract.py -q`: `8 passed`.
+- `python -m ruff check backend/app/api/routes/bond_analytics.py tests/test_bond_analytics_api.py tests/test_bond_analytics_refresh_contract.py`: passed.
+- `git diff --check -- backend/app/api/routes/bond_analytics.py tests/test_bond_analytics_api.py tests/test_bond_analytics_refresh_contract.py`: passed.
+
+Residual risk: this closes the sampled Bond Analytics HTTP read surfaces, but it does not address the separate P1/P2 formal-calculation boundary drift in `bond_analytics_service`.
 
 ### P1 partially remediated - Positions read endpoints require read permission
 

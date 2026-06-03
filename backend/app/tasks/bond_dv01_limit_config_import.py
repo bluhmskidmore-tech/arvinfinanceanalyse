@@ -11,6 +11,8 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+import duckdb
+
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services.bond_analytics_service import (
@@ -68,6 +70,51 @@ def _check_bond_dv01_limit_config_status(
         "governance_dir": str(governance_path),
         "report_date": status_report_date.isoformat(),
         "limit_config_status": _current_status_payload(governance_path, status_report_date),
+    }
+
+
+def _build_bond_dv01_limit_config_reference_baseline(
+    *,
+    duckdb_path: str | None = None,
+    report_date: str | date | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    db_path = Path(duckdb_path or settings.duckdb_path)
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        table_exists = conn.execute(
+            """
+            select count(*)
+            from information_schema.tables
+            where table_name = 'fact_formal_bond_analytics_daily'
+            """
+        ).fetchone()[0]
+        if not table_exists:
+            resolved_report_date = _resolve_status_report_date(report_date, [])
+            baseline = {}
+            unmapped: list[str] = []
+        else:
+            resolved_report_date = _resolve_reference_report_date(conn, report_date)
+            baseline = _reference_baseline_by_class(conn, resolved_report_date)
+            unmapped = _reference_unmapped_classes(conn, resolved_report_date)
+    finally:
+        conn.close()
+
+    rows = [
+        _reference_baseline_row(accounting_class, baseline.get(accounting_class, {}))
+        for accounting_class in ("AC", "OCI", "TPL")
+    ]
+    rows.append(_reference_baseline_row("all", baseline.get("all", {})))
+    return {
+        "status": "reference_baseline_built",
+        "source_table": "fact_formal_bond_analytics_daily",
+        "duckdb_path": str(db_path),
+        "report_date": resolved_report_date.isoformat(),
+        "business_limit_fields_blank": True,
+        "note": "Reference only; business-approved DV01 limits must still be filled manually.",
+        "required_accounting_classes": list(DV01_LIMIT_CONFIG_CLASSES),
+        "unmapped_accounting_classes": unmapped,
+        "rows": rows,
     }
 
 
@@ -278,6 +325,105 @@ def _current_status_payload(governance_path: Path, report_date: date) -> dict[st
         return get_dv01_limit_config_status(report_date)
 
 
+def _resolve_reference_report_date(conn: duckdb.DuckDBPyConnection, report_date: str | date | None) -> date:
+    if isinstance(report_date, date):
+        return report_date
+    if report_date:
+        return date.fromisoformat(str(report_date))
+    row = conn.execute("select max(cast(report_date as date)) from fact_formal_bond_analytics_daily").fetchone()
+    if row is None or row[0] is None:
+        return date.today()
+    return row[0]
+
+
+def _reference_baseline_by_class(conn: duckdb.DuckDBPyConnection, report_date: date) -> dict[str, dict[str, object]]:
+    rows = conn.execute(
+        """
+        select
+            case
+                when accounting_class in ('AC', 'OCI', 'TPL') then accounting_class
+                else 'all'
+            end as accounting_class,
+            count(*) as position_count,
+            coalesce(sum(face_value), 0) as face_value,
+            coalesce(sum(market_value), 0) as market_value,
+            coalesce(sum(dv01), 0) as current_total_dv01,
+            case
+                when coalesce(sum(face_value), 0) > 0
+                then coalesce(sum(face_value * modified_duration), 0) / sum(face_value)
+                else 0
+            end as face_weighted_modified_duration
+        from fact_formal_bond_analytics_daily
+        where cast(report_date as date) = ?
+        group by 1
+        """,
+        [report_date],
+    ).fetchall()
+    result = {str(row[0]): _reference_baseline_payload(row) for row in rows}
+    direct_total = conn.execute(
+        """
+        select
+            count(*) as position_count,
+            coalesce(sum(face_value), 0) as face_value,
+            coalesce(sum(market_value), 0) as market_value,
+            coalesce(sum(dv01), 0) as current_total_dv01,
+            case
+                when coalesce(sum(face_value), 0) > 0
+                then coalesce(sum(face_value * modified_duration), 0) / sum(face_value)
+                else 0
+            end as face_weighted_modified_duration
+        from fact_formal_bond_analytics_daily
+        where cast(report_date as date) = ?
+        """,
+        [report_date],
+    ).fetchone()
+    if direct_total is not None:
+        result["all"] = _reference_baseline_payload(("all", *direct_total))
+    return result
+
+
+def _reference_unmapped_classes(conn: duckdb.DuckDBPyConnection, report_date: date) -> list[str]:
+    rows = conn.execute(
+        """
+        select distinct accounting_class
+        from fact_formal_bond_analytics_daily
+        where cast(report_date as date) = ?
+          and (accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null)
+        order by accounting_class
+        """,
+        [report_date],
+    ).fetchall()
+    return [str(row[0] or "null") for row in rows]
+
+
+def _reference_baseline_payload(row: tuple[object, ...]) -> dict[str, object]:
+    return {
+        "position_count": int(row[1] or 0),
+        "face_value": _decimal_output(row[2]),
+        "market_value": _decimal_output(row[3]),
+        "current_total_dv01": _decimal_output(row[4]),
+        "face_weighted_modified_duration": _decimal_output(row[5]),
+    }
+
+
+def _reference_baseline_row(accounting_class: str, baseline: dict[str, object]) -> dict[str, object]:
+    return {
+        "accounting_class": accounting_class,
+        "position_count": int(baseline.get("position_count") or 0),
+        "face_value": str(baseline.get("face_value") or "0"),
+        "market_value": str(baseline.get("market_value") or "0"),
+        "current_total_dv01": str(baseline.get("current_total_dv01") or "0"),
+        "face_weighted_modified_duration": str(baseline.get("face_weighted_modified_duration") or "0"),
+        "limit_dv01": "",
+        "warning_dv01": "",
+        "hedge_target_dv01": "",
+        "limit_source": "",
+        "limit_source_version": "",
+        "limit_rule_version": "",
+        "limit_effective_date": "",
+    }
+
+
 @contextmanager
 def _temporary_governance_path(governance_path: Path) -> Iterator[None]:
     previous = os.environ.get("MOSS_GOVERNANCE_PATH")
@@ -347,6 +493,15 @@ def _decimal_text(value: object) -> str:
     return format(parsed, "f")
 
 
+def _decimal_output(value: object) -> str:
+    if value is None:
+        return "0"
+    try:
+        return format(Decimal(str(value)).quantize(Decimal("0.00000001")), "f")
+    except (InvalidOperation, ValueError):
+        return "0"
+
+
 import_bond_dv01_limit_config = register_actor_once(
     "import_bond_dv01_limit_config",
     _import_bond_dv01_limit_config,
@@ -361,10 +516,18 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--write-template")
     parser.add_argument("--check-status", action="store_true")
+    parser.add_argument("--reference-baseline", action="store_true")
     args = parser.parse_args()
 
     if args.write_template:
         _emit_json_payload(_write_bond_dv01_limit_config_template(args.write_template))
+        return
+    if args.reference_baseline:
+        _emit_json_payload(
+            _build_bond_dv01_limit_config_reference_baseline(
+                report_date=args.report_date,
+            )
+        )
         return
     if args.check_status:
         _emit_json_payload(
@@ -375,7 +538,7 @@ def main() -> None:
         )
         return
     if not args.config_path:
-        parser.error("--config-path is required unless --write-template or --check-status is provided")
+        parser.error("--config-path is required unless --write-template, --check-status, or --reference-baseline is provided")
 
     payload = import_bond_dv01_limit_config.fn(
         config_path=args.config_path,

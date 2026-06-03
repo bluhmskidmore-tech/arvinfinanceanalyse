@@ -8,6 +8,7 @@ from pathlib import Path
 
 import duckdb
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -40,6 +41,7 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     _seed_snapshot_and_fx_tables(str(duckdb_path))
     task_mod = load_module(
         "backend.app.tasks.balance_analysis_materialize",
@@ -54,6 +56,23 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, task_mod
 
 
+def _seed_balance_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "auth-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+
+
 def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: str | None = None) -> None:
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
@@ -63,6 +82,12 @@ def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: s
         "backend/app/repositories/user_scope_repo.py",
     )
     repo = repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
     repo.grant_scope(
         user_id=user_id,
         role=role,
@@ -80,7 +105,14 @@ def _seed_balance_refresh_scope(tmp_path, monkeypatch, *, user_id: str = "*") ->
         "backend.app.repositories.user_scope_repo",
         "backend/app/repositories/user_scope_repo.py",
     )
-    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+    repo = repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+    repo.grant_scope(
         user_id=user_id,
         role=None,
         resource="balance_analysis",
@@ -266,6 +298,74 @@ def _remove_completed_balance_analysis_build_runs(governance_dir: Path) -> None:
     )
 
 
+def test_balance_analysis_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    for name in (
+        "balance_analysis_dates_envelope",
+        "balance_analysis_detail_envelope",
+        "balance_analysis_overview_envelope",
+        "balance_analysis_summary_envelope",
+        "balance_analysis_basis_breakdown_envelope",
+        "advanced_attribution_bundle_envelope",
+        "balance_analysis_workbook_envelope",
+        "balance_analysis_decision_items_envelope",
+    ):
+        monkeypatch.setattr(
+            route_mod,
+            name,
+            lambda **_kwargs: {"result_meta": {"result_kind": "balance-analysis.stub"}, "result": {}},
+        )
+    monkeypatch.setattr(
+        route_mod,
+        "export_balance_analysis_summary_csv",
+        lambda **_kwargs: ("summary.csv", "stub"),
+    )
+    monkeypatch.setattr(
+        route_mod,
+        "export_balance_analysis_workbook_xlsx",
+        lambda **_kwargs: ("workbook.xlsx", b"stub"),
+    )
+
+    class FakeBalanceAnalysisService:
+        @staticmethod
+        def balance_analysis_refresh_status(_settings, *, run_id: str):
+            return {"status": "queued", "run_id": run_id}
+
+    monkeypatch.setattr(route_mod.importlib, "import_module", lambda _name: FakeBalanceAnalysisService)
+    sqlite_path = tmp_path / "balance-analysis-read-denied.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    cases = [
+        ("/ui/balance-analysis/dates", {}),
+        ("/ui/balance-analysis", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/overview", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/summary", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/summary-by-basis", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/advanced-attribution", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/workbook", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/decision-items", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/summary/export", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/workbook/export", {"report_date": "2025-12-31"}),
+        ("/ui/balance-analysis/refresh-status", {"run_id": "balance-run"}),
+    ]
+
+    for path, params in cases:
+        response = client.get(
+            path,
+            params=params,
+            headers={"X-User-Id": "balance-read-user", "X-User-Role": "viewer"},
+        )
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
 def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
@@ -412,7 +512,6 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     )
     assert workbook_response.status_code == 200
     workbook_payload = workbook_response.json()
-    table_map = {table["key"]: table for table in workbook_payload["result"]["tables"]}
     operational_map = {
         section["key"]: section for section in workbook_payload["result"]["operational_sections"]
     }
@@ -658,6 +757,16 @@ def test_balance_analysis_decision_status_update_returns_403_without_scope(tmp_p
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
 
     client = TestClient(
         load_module("backend.app.main", "backend/app/main.py").app,
@@ -696,10 +805,6 @@ def test_balance_analysis_decision_status_update_returns_503_when_scope_store_is
     monkeypatch,
 ):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
-    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
-    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
-    get_settings.cache_clear()
-
     client = TestClient(
         load_module("backend.app.main", "backend/app/main.py").app,
         raise_server_exceptions=False,
@@ -713,6 +818,10 @@ def test_balance_analysis_decision_status_update_returns_503_when_scope_store_is
         },
     )
     decision_key = list_response.json()["result"]["rows"][0]["decision_key"]
+
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    get_settings.cache_clear()
 
     response = client.post(
         "/ui/balance-analysis/decision-items/status",
@@ -1606,6 +1715,7 @@ def test_balance_analysis_refresh_status_returns_503_when_status_backend_fails(
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     service_mod = load_module(

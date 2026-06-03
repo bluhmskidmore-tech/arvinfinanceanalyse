@@ -1092,9 +1092,46 @@ describe("MacroToolkitPage", () => {
         }),
       },
     };
+    const envelopeAfterSourceBackfill = {
+      ...envelopeWithActionableGaps,
+      result: {
+        ...envelopeWithActionableGaps.result,
+        capability_results: envelopeWithActionableGaps.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const nextMissingWarnings = ["NANHUA_MISSING"];
+          const nextInputs = requireInputEvidenceInputs(result).filter((input) => input.field !== "ncd_3m");
+          const rawInputEvidence =
+            result.result.input_evidence && typeof result.result.input_evidence === "object"
+              ? result.result.input_evidence
+              : {};
+          return {
+            ...result,
+            warnings: nextMissingWarnings,
+            input_evidence: result.input_evidence
+              ? {
+                  ...result.input_evidence,
+                  inputs: nextInputs,
+                  missing_inputs: nextMissingWarnings,
+                }
+              : result.input_evidence,
+            result: {
+              ...result.result,
+              input_evidence: {
+                ...rawInputEvidence,
+                inputs: nextInputs,
+                missing_inputs: nextMissingWarnings,
+              },
+            },
+          };
+        }),
+      },
+    };
     const client = {
       ...baseClient,
-      getMacroToolkitAnalysis: async () => envelopeWithActionableGaps,
+      getMacroToolkitAnalysis: async () =>
+        sourceBackfillCalls.length ? envelopeAfterSourceBackfill : envelopeWithActionableGaps,
       refreshCommodityFutures: async (options) => {
         refreshCalls.push(options);
         return baseClient.refreshCommodityFutures(options);
@@ -1143,7 +1180,10 @@ describe("MacroToolkitPage", () => {
         },
       ]),
     );
-    await waitFor(() => expect(gapList).toHaveTextContent("来源补齐完成：M0041813 新增 42 行"));
+    await waitFor(() => expect(gapList).not.toHaveTextContent("NCD_3M_MISSING"));
+    expect(gapList).toHaveTextContent("NANHUA_MISSING");
+    const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
+    expect(repairFeedback).toHaveTextContent("已补齐，完整分析已重读");
   });
 
   it("previews Crisis Score suggested commodity futures from the evidence panel", async () => {

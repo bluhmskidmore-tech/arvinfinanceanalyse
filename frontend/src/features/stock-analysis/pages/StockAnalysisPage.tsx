@@ -137,7 +137,7 @@ function statusLabel(status: string) {
     ok: "正常",
     warning: "需复核",
   };
-  return labels[status] ?? status;
+  return labels[status] ?? "状态待确认";
 }
 
 function supplyQualityLabel(value: string | null | undefined) {

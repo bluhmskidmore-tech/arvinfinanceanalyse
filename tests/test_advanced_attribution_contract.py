@@ -2,8 +2,27 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.advanced_attribution_service import ADVANCED_ATTRIBUTION_RESULT_KIND
 from tests.helpers import load_module
+
+
+def _seed_balance_read_scope(tmp_path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "balance-analysis-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
 
 
 def test_advanced_attribution_rejects_invalid_report_date_with_422():
@@ -25,7 +44,8 @@ def test_advanced_attribution_rejects_invalid_report_date_with_422():
         assert detail is not None
 
 
-def test_advanced_attribution_accepts_stripped_valid_report_date():
+def test_advanced_attribution_accepts_stripped_valid_report_date(tmp_path, monkeypatch):
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
         "/ui/balance-analysis/advanced-attribution",
@@ -35,7 +55,8 @@ def test_advanced_attribution_accepts_stripped_valid_report_date():
     assert response.json()["result"]["report_date"] == "2025-12-31"
 
 
-def test_advanced_attribution_endpoint_returns_analytical_partial_contract_when_upstreams_exist():
+def test_advanced_attribution_endpoint_returns_analytical_partial_contract_when_upstreams_exist(tmp_path, monkeypatch):
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
         "/ui/balance-analysis/advanced-attribution",
@@ -64,7 +85,8 @@ def test_advanced_attribution_endpoint_returns_analytical_partial_contract_when_
     assert "attribution" not in result
 
 
-def test_advanced_attribution_endpoint_switches_to_scenario_contract_when_explicit_shocks_are_given():
+def test_advanced_attribution_endpoint_switches_to_scenario_contract_when_explicit_shocks_are_given(tmp_path, monkeypatch):
+    _seed_balance_read_scope(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
         "/ui/balance-analysis/advanced-attribution",
@@ -189,6 +211,7 @@ def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
+    _seed_balance_read_scope(tmp_path, monkeypatch)
 
     from tests.test_balance_analysis_workbook_contract import _seed_workbook_snapshot_and_fx_tables
 

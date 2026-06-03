@@ -153,6 +153,23 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
     )
 
 
+def _grant_balance_analysis_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "balance-analysis-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+
+
 @pytest.mark.parametrize(
     "path,params",
     [
@@ -178,6 +195,7 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
     if path == "/ui/balance-analysis/dates":
         _seed_balance_analysis_dates_contract_surface(tmp_path)
+        _grant_balance_analysis_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:

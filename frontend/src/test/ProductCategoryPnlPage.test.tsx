@@ -397,6 +397,9 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("总净营收");
     });
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("情景解读");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("关键变动行排行");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("每 1bp");
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {

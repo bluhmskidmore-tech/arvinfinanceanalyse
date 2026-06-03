@@ -292,21 +292,47 @@ export type ProductCategoryOperatingAnalysisSurface = {
 
 export type ProductCategoryScenarioSensitivityRow = {
   rate: string;
+  ratePct: number;
   rateLabel: string;
+  assetDelta: number | null;
   assetNetIncomeLabel: string;
   assetDeltaLabel: string;
+  liabilityDelta: number | null;
   liabilityNetIncomeLabel: string;
   liabilityDeltaLabel: string;
+  grandNetIncome: number | null;
+  grandDelta: number | null;
   grandNetIncomeLabel: string;
   grandDeltaLabel: string;
   topMoverCategoryLabel: string;
+  topMoverDelta: number | null;
   topMoverDeltaLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioInsightCard = {
+  key: "best_case" | "worst_case" | "range" | "ftp_slope";
+  label: string;
+  valueLabel: string;
+  detailLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioRiskRow = {
+  categoryLabel: string;
+  worstRateLabel: string;
+  worstDelta: number | null;
+  worstDeltaLabel: string;
+  occurrenceLabel: string;
   tone: "positive" | "negative" | "neutral";
 };
 
 export type ProductCategoryScenarioSensitivitySurface = {
   baselineGrandTotalLabel: string | null;
   rows: ProductCategoryScenarioSensitivityRow[];
+  insightCards: ProductCategoryScenarioInsightCard[];
+  riskRows: ProductCategoryScenarioRiskRow[];
+  analysisCopy: string | null;
   emptyCopy: string | null;
 };
 
@@ -935,6 +961,129 @@ function productCategoryDeltaTone(value: number | null): "positive" | "negative"
   return value > 0 ? "positive" : "negative";
 }
 
+function productCategoryScenarioAnalysisCopy(
+  worst: ProductCategoryScenarioSensitivityRow | undefined,
+  best: ProductCategoryScenarioSensitivityRow | undefined,
+): string | null {
+  if (!worst || !best || worst.grandDelta === null || best.grandDelta === null) {
+    return null;
+  }
+  if (worst.grandDelta < 0) {
+    return `FTP 上行时全表净营收承压，最差情景较基线 ${worst.grandDeltaLabel} 亿元。`;
+  }
+  if (best.grandDelta > 0) {
+    return `四档 FTP 情景均未低于基线，最佳情景较基线 ${best.grandDeltaLabel} 亿元。`;
+  }
+  return "四档 FTP 情景围绕基线窄幅波动，建议结合产品行变动继续复核。";
+}
+
+type ProductCategoryComparableScenarioRow = ProductCategoryScenarioSensitivityRow & {
+  grandNetIncome: number;
+  grandDelta: number;
+};
+
+function hasComparableScenarioGrandTotal(
+  row: ProductCategoryScenarioSensitivityRow,
+): row is ProductCategoryComparableScenarioRow {
+  return row.grandNetIncome !== null && row.grandDelta !== null;
+}
+
+function selectProductCategoryScenarioInsightCards(
+  rows: ProductCategoryScenarioSensitivityRow[],
+): ProductCategoryScenarioInsightCard[] {
+  const comparableRows = rows.filter(hasComparableScenarioGrandTotal);
+  if (comparableRows.length === 0) {
+    return [];
+  }
+  const sortedByGrand = [...comparableRows].sort((left, right) => right.grandNetIncome - left.grandNetIncome);
+  const best = sortedByGrand[0];
+  const worst = sortedByGrand[sortedByGrand.length - 1];
+  const cards: ProductCategoryScenarioInsightCard[] = [
+    {
+      key: "best_case",
+      label: "最佳情景",
+      valueLabel: `${best.rateLabel} / ${best.grandNetIncomeLabel}`,
+      detailLabel: `较基线 ${best.grandDeltaLabel} 亿元`,
+      tone: productCategoryDeltaTone(best.grandDelta),
+    },
+    {
+      key: "worst_case",
+      label: "最差情景",
+      valueLabel: `${worst.rateLabel} / ${worst.grandNetIncomeLabel}`,
+      detailLabel: `较基线 ${worst.grandDeltaLabel} 亿元`,
+      tone: productCategoryDeltaTone(worst.grandDelta),
+    },
+  ];
+  const range = Number((best.grandNetIncome - worst.grandNetIncome).toFixed(2));
+  cards.push({
+    key: "range",
+    label: "情景区间",
+    valueLabel: productCategoryYiNumberLabel(range),
+    detailLabel: `${best.grandNetIncomeLabel} - ${worst.grandNetIncomeLabel} 亿元`,
+    tone: "neutral",
+  });
+  const rateSpanBp = (worst.ratePct - best.ratePct) * 100;
+  const slope = rateSpanBp === 0 ? null : Number(((worst.grandNetIncome - best.grandNetIncome) / rateSpanBp).toFixed(2));
+  cards.push({
+    key: "ftp_slope",
+    label: "FTP 斜率",
+    valueLabel: productCategoryYiNumberLabel(slope),
+    detailLabel: "每 1bp 约影响净营收",
+    tone: productCategoryDeltaTone(slope),
+  });
+  return cards;
+}
+
+function selectProductCategoryScenarioRiskRows(
+  rows: ProductCategoryScenarioSensitivityRow[],
+): ProductCategoryScenarioRiskRow[] {
+  const byCategory = new Map<
+    string,
+    {
+      categoryLabel: string;
+      count: number;
+      worstRateLabel: string;
+      worstDelta: number | null;
+    }
+  >();
+  for (const row of rows) {
+    if (row.topMoverCategoryLabel === "-" || row.topMoverDelta === null) {
+      continue;
+    }
+    const current = byCategory.get(row.topMoverCategoryLabel);
+    if (!current) {
+      byCategory.set(row.topMoverCategoryLabel, {
+        categoryLabel: row.topMoverCategoryLabel,
+        count: 1,
+        worstRateLabel: row.rateLabel,
+        worstDelta: row.topMoverDelta,
+      });
+      continue;
+    }
+    current.count += 1;
+    if (current.worstDelta === null || Math.abs(row.topMoverDelta) > Math.abs(current.worstDelta)) {
+      current.worstRateLabel = row.rateLabel;
+      current.worstDelta = row.topMoverDelta;
+    }
+  }
+  return [...byCategory.values()]
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return Math.abs(right.worstDelta ?? 0) - Math.abs(left.worstDelta ?? 0);
+    })
+    .slice(0, 3)
+    .map((row) => ({
+      categoryLabel: row.categoryLabel,
+      worstRateLabel: row.worstRateLabel,
+      worstDelta: row.worstDelta,
+      worstDeltaLabel: formatSignedProductCategoryYi(row.worstDelta),
+      occurrenceLabel: `${row.count} 个情景触发最大变动`,
+      tone: productCategoryDeltaTone(row.worstDelta),
+    }));
+}
+
 export function selectProductCategoryScenarioSensitivitySurface(input: {
   baseline?: ProductCategoryPnlPayload | null;
   scenarios: ProductCategoryPnlPayload[];
@@ -945,6 +1094,9 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
         ? formatProductCategoryValue(input.baseline.grand_total.business_net_income)
         : null,
       rows: [],
+      insightCards: [],
+      riskRows: [],
+      analysisCopy: null,
       emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
     };
   }
@@ -952,12 +1104,13 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
   const baselineAssetTotal = yiNumber(input.baseline.asset_total.business_net_income);
   const baselineLiabilityTotal = yiNumber(input.baseline.liability_total.business_net_income);
   const baselineGrandTotal = yiNumber(input.baseline.grand_total.business_net_income);
-  const rows = input.scenarios
+  const rows: ProductCategoryScenarioSensitivityRow[] = input.scenarios
     .map((scenario) => {
       const scenarioRate = scenario.scenario_rate_pct;
       if (scenarioRate === null || scenarioRate === undefined) {
         return null;
       }
+      const ratePct = Number(scenarioRate);
       const assetValue = yiNumber(scenario.asset_total.business_net_income);
       const liabilityValue = yiNumber(scenario.liability_total.business_net_income);
       const grandValue = yiNumber(scenario.grand_total.business_net_income);
@@ -982,25 +1135,40 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
         .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
       return {
         rate: String(scenarioRate),
-        rateLabel: `${Number(scenarioRate).toFixed(2)}%`,
+        ratePct,
+        rateLabel: `${ratePct.toFixed(2)}%`,
+        assetDelta,
         assetNetIncomeLabel: productCategoryYiNumberLabel(assetValue),
         assetDeltaLabel: formatSignedProductCategoryYi(assetDelta),
+        liabilityDelta,
         liabilityNetIncomeLabel: productCategoryYiNumberLabel(
           liabilityValue === null ? null : Math.abs(liabilityValue),
         ),
         liabilityDeltaLabel: formatSignedProductCategoryYi(liabilityDelta),
+        grandNetIncome: grandValue,
+        grandDelta,
         grandNetIncomeLabel: productCategoryYiNumberLabel(grandValue),
         grandDeltaLabel: formatSignedProductCategoryYi(grandDelta),
         topMoverCategoryLabel: topMover?.row.category_name || topMover?.row.category_id || "-",
+        topMoverDelta: topMover?.delta ?? null,
         topMoverDeltaLabel: formatSignedProductCategoryYi(topMover?.delta ?? null),
         tone: productCategoryDeltaTone(grandDelta),
       };
     })
     .filter((row): row is ProductCategoryScenarioSensitivityRow => row !== null)
     .sort((left, right) => Number(left.rate) - Number(right.rate));
+  const comparableRows = rows.filter(hasComparableScenarioGrandTotal);
+  const sortedByGrand = [...comparableRows].sort(
+    (left, right) => right.grandNetIncome - left.grandNetIncome,
+  );
+  const best = sortedByGrand[0];
+  const worst = sortedByGrand[sortedByGrand.length - 1];
   return {
     baselineGrandTotalLabel: formatProductCategoryValue(input.baseline.grand_total.business_net_income),
     rows,
+    insightCards: selectProductCategoryScenarioInsightCards(rows),
+    riskRows: selectProductCategoryScenarioRiskRows(rows),
+    analysisCopy: productCategoryScenarioAnalysisCopy(worst, best),
     emptyCopy: rows.length === 0 ? "当前尚未返回可比较的 FTP 情景结果。" : null,
   };
 }

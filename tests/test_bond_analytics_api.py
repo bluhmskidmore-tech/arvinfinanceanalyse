@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport
 
@@ -18,6 +20,7 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
@@ -25,6 +28,7 @@ from tests.test_bond_analytics_materialize_flow import (
 )
 
 REPORT_DATE = "2026-03-31"
+BOND_ANALYTICS_READ_HEADERS = {"X-User-Id": "bond-analytics-read-user", "X-User-Role": "viewer"}
 
 
 def _perf_records(caplog, endpoint: str):
@@ -95,12 +99,61 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
 ]
 
 
+_BOND_ANALYTICS_READ_CASES: list[tuple[str, dict[str, str]]] = [
+    *_BOND_ANALYTICS_CASES,
+    (
+        "/api/bond-analytics/dv01-action-plan",
+        {
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+            "top_n": "20",
+            "limit_dv01": "1000",
+            "warning_dv01": "800",
+        },
+    ),
+    (
+        "/api/bond-analytics/dv01-limit-config-status",
+        {"report_date": REPORT_DATE},
+    ),
+    (
+        "/api/bond-analytics/position-changes",
+        {"report_date": REPORT_DATE, "top_n": "5"},
+    ),
+    (
+        "/api/bond-analytics/refresh-status",
+        {"run_id": "bond-analytics-run"},
+    ),
+]
+
+
 def _setup_route_scope_store(tmp_path, monkeypatch) -> UserScopeRepository:
     sqlite_path = tmp_path / "auth-scope-contract.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
-    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
-    return UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    _grant_bond_analytics_read_scope(repo)
+    return repo
+
+
+def _grant_bond_analytics_read_scope(repo: UserScopeRepository, *, user_id: str = "*") -> None:
+    repo.grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="bond_analytics",
+        action="read",
+    )
+
+
+@pytest.fixture(autouse=True)
+def seed_bond_analytics_read_scope(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "bond-analytics-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _grant_bond_analytics_read_scope(UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}"))
+    yield
+    get_settings.cache_clear()
 
 
 def _assert_envelope(payload: dict[str, Any]) -> None:
@@ -142,6 +195,52 @@ def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
     assert len(paths) == len(set(paths)) == 13
+
+
+def test_bond_analytics_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.bond_analytics",
+        "backend/app/api/routes/bond_analytics.py",
+    )
+    for name in (
+        "bond_analytics_dates_envelope",
+        "get_return_decomposition",
+        "get_benchmark_excess",
+        "get_krd_curve_risk",
+        "get_dv01_risk",
+        "get_dv01_reconciliation",
+        "get_dv01_movement",
+        "get_dv01_action_plan",
+        "get_dv01_limit_config_status",
+        "get_credit_spread_migration",
+        "get_yield_curve_term_structure",
+        "get_portfolio_headlines",
+        "get_top_holdings",
+        "get_position_changes",
+        "get_action_attribution",
+        "get_accounting_class_audit",
+    ):
+        monkeypatch.setattr(
+            route_module,
+            name,
+            lambda *_args, **_kwargs: {"result_meta": {"result_kind": "bond_analytics.stub"}, "result": {}},
+        )
+    monkeypatch.setattr(
+        route_module,
+        "bond_analytics_refresh_status",
+        lambda _settings, *, run_id: {"status": "queued", "run_id": run_id},
+    )
+    sqlite_path = tmp_path / "bond-analytics-read-denied.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path, params in _BOND_ANALYTICS_READ_CASES:
+        response = client.get(path, params=params, headers=BOND_ANALYTICS_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):

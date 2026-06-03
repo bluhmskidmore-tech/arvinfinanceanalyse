@@ -798,9 +798,16 @@ export default function RiskTensorPage() {
     `fallback_mode:${tensorMeta?.fallback_mode ?? "missing"}`,
     `fallback_date:${tensorMeta?.fallback_date ?? "missing"}`,
   ].join("|");
+  const qualityIssuanceStateKey = [
+    `basis:${tensorMeta?.basis ?? "missing"}`,
+    `cache_version:${tensorMeta?.cache_version ?? "missing"}`,
+    `generated_at:${tensorMeta?.generated_at ?? "missing"}`,
+  ].join("|");
   const qualityWarningStateKey = `warning:${qualityTraceWarningDetail}`;
   const qualityBlockedDateStateKey = `blocked:${qualityTraceBlockedDetail}`;
-  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}`;
+  const qualityFlagStateKey = `quality_flag:${result?.quality_flag ?? tensorMeta?.quality_flag ?? "missing"}`;
+  const qualityResultKindStateKey = `result_kind:${tensorMeta?.result_kind ?? "missing"}`;
+  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityIssuanceStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}|${qualityFlagStateKey}|${qualityResultKindStateKey}`;
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");

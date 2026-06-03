@@ -111,6 +111,13 @@ type CommodityShortfallEstimate = CommodityShortfallChange & {
   estimatedRows: number;
   canFill: boolean;
 };
+type CrisisGapRepairFeedback = {
+  groupKey: CrisisGapGroupKey;
+  groupLabel: string;
+  status: "pending" | "resolved" | "partial" | "failed";
+  message: string;
+  detail: string;
+};
 
 const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
 
@@ -348,6 +355,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [isRefreshingChoiceStock, setIsRefreshingChoiceStock] = useState(false);
   const [sourceBackfillResult, setSourceBackfillResult] = useState<string | null>(null);
   const [sourceBackfillError, setSourceBackfillError] = useState<string | null>(null);
+  const [crisisGapRepairFeedback, setCrisisGapRepairFeedback] = useState<CrisisGapRepairFeedback | null>(null);
   const [refreshingSourceAlias, setRefreshingSourceAlias] = useState<string | null>(null);
   const [commodityRefreshResult, setCommodityRefreshResult] = useState<string | null>(null);
   const [commodityRefreshError, setCommodityRefreshError] = useState<string | null>(null);
@@ -393,6 +401,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const clearFullAnalysisCache = useCallback(async () => {
     setFullAnalysisEnvelope(null);
     setFullAnalysisError(null);
+    setCrisisGapRepairFeedback(null);
     await queryClient.cancelQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
     queryClient.removeQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
   }, [queryClient]);

@@ -1006,30 +1006,65 @@ function ProductCategoryFinancialAnalysisPanel(props: {
           ) : props.scenarioSensitivity.emptyCopy ? (
             <div className="product-category-financial-analysis__empty">{props.scenarioSensitivity.emptyCopy}</div>
           ) : (
-            <div className="product-category-financial-analysis__table-wrap">
-              <table className="product-category-financial-analysis__table">
-                <thead>
-                  <tr>
-                    <th>FTP</th>
-                    <th>资产端</th>
-                    <th>负债端</th>
-                    <th>总净营收</th>
-                    <th>最大变动行</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {props.scenarioSensitivity.rows.map((row) => (
-                    <tr key={row.rate}>
-                      <td>{row.rateLabel}</td>
-                      <td>{row.assetNetIncomeLabel} / {row.assetDeltaLabel}</td>
-                      <td>{row.liabilityNetIncomeLabel} / {row.liabilityDeltaLabel}</td>
-                      <td className={`is-${row.tone}`}>{row.grandNetIncomeLabel} / {row.grandDeltaLabel}</td>
-                      <td>{row.topMoverCategoryLabel} {row.topMoverDeltaLabel}</td>
+            <>
+              <div className="product-category-financial-analysis__table-wrap">
+                <table className="product-category-financial-analysis__table">
+                  <thead>
+                    <tr>
+                      <th>FTP</th>
+                      <th>资产端</th>
+                      <th>负债端</th>
+                      <th>总净营收</th>
+                      <th>最大变动行</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {props.scenarioSensitivity.rows.map((row) => (
+                      <tr key={row.rate}>
+                        <td>{row.rateLabel}</td>
+                        <td>{row.assetNetIncomeLabel} / {row.assetDeltaLabel}</td>
+                        <td>{row.liabilityNetIncomeLabel} / {row.liabilityDeltaLabel}</td>
+                        <td className={`is-${row.tone}`}>{row.grandNetIncomeLabel} / {row.grandDeltaLabel}</td>
+                        <td>{row.topMoverCategoryLabel} {row.topMoverDeltaLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="product-category-financial-analysis__scenario-brief">
+                <div className="product-category-financial-analysis__scenario-summary">
+                  <div className="product-category-financial-analysis__scenario-kicker">情景解读</div>
+                  <p>{props.scenarioSensitivity.analysisCopy ?? "四档 FTP 情景已加载，可结合下方区间和变动行继续复核。"}</p>
+                  <div className="product-category-financial-analysis__insight-grid">
+                    {props.scenarioSensitivity.insightCards.map((card) => (
+                      <div className="product-category-financial-analysis__insight-card" key={card.key}>
+                        <span>{card.label}</span>
+                        <b className={`is-${card.tone}`}>{card.valueLabel}</b>
+                        <small>{card.detailLabel}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="product-category-financial-analysis__scenario-risks">
+                  <div className="product-category-financial-analysis__scenario-kicker">关键变动行排行</div>
+                  {props.scenarioSensitivity.riskRows.length === 0 ? (
+                    <div className="product-category-financial-analysis__empty">暂无可排序的最大变动产品行。</div>
+                  ) : (
+                    <div className="product-category-financial-analysis__risk-list">
+                      {props.scenarioSensitivity.riskRows.map((row) => (
+                        <div className="product-category-financial-analysis__risk-row" key={row.categoryLabel}>
+                          <div>
+                            <strong>{row.categoryLabel}</strong>
+                            <span>{row.occurrenceLabel} · 最弱 FTP {row.worstRateLabel}</span>
+                          </div>
+                          <b className={`is-${row.tone}`}>{row.worstDeltaLabel}</b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </article>
         <article
