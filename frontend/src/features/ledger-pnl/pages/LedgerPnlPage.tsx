@@ -287,6 +287,91 @@ function buildLedgerResidualDiagnosticRows(props: {
   });
 }
 
+function buildCurrencyResidualRows(props: {
+  byCurrency: LedgerPnlSummaryByCurrency[];
+  detailRows: LedgerPnlDataItem[];
+}) {
+  const detailByCurrency = new Map<string, { yuan: number; grossYuan: number; hasValue: boolean }>();
+  for (const row of props.detailRows) {
+    const key = row.currency;
+    const yuan = ledgerMoneyYuan(row.monthly_pnl);
+    if (!key || yuan === null) {
+      continue;
+    }
+    const current = detailByCurrency.get(key) ?? { yuan: 0, grossYuan: 0, hasValue: false };
+    current.yuan += yuan;
+    current.grossYuan += Math.abs(yuan);
+    current.hasValue = true;
+    detailByCurrency.set(key, current);
+  }
+
+  const summaryCurrencies = new Set<string>();
+  const rows: Array<{
+    currency: string;
+    summaryYuan: number | null;
+    detailYuan: number;
+    detailGrossYuan: number;
+    diff: number | null;
+    isDetailOnly: boolean;
+    judgment: string;
+  }> = props.byCurrency.map((row) => {
+    summaryCurrencies.add(row.currency);
+    const summaryYuan = ledgerMoneyYuan(row.total_pnl);
+    const detail = detailByCurrency.get(row.currency);
+    const detailYuan = detail?.hasValue ? detail.yuan : 0;
+    const diff = summaryYuan === null ? null : summaryYuan - detailYuan;
+    return {
+      currency: row.currency,
+      summaryYuan,
+      detailYuan,
+      detailGrossYuan: detail?.hasValue ? detail.grossYuan : 0,
+      diff,
+      isDetailOnly: false,
+      judgment:
+        diff === null
+          ? "待校验"
+          : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+            ? "已闭合"
+            : diff > 0
+              ? `疑似缺明细 ${formatYuanAsYi(diff)}`
+              : `疑似明细多 ${formatYuanAsYi(Math.abs(diff))}`,
+    };
+  });
+
+  for (const [currency, detail] of detailByCurrency) {
+    if (summaryCurrencies.has(currency)) {
+      continue;
+    }
+    const diff = -detail.yuan;
+    rows.push({
+      currency,
+      summaryYuan: 0,
+      detailYuan: detail.yuan,
+      detailGrossYuan: detail.grossYuan,
+      diff,
+      isDetailOnly: true,
+      judgment:
+        Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+          ? `疑似汇总缺失毛活动 ${formatYuanAsYi(detail.grossYuan)}`
+          : `疑似汇总缺失 ${formatYuanAsYi(Math.abs(diff))}`,
+    });
+  }
+
+  return rows
+    .filter(
+      (row) =>
+        row.diff === null ||
+        Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN ||
+        (row.isDetailOnly && row.detailGrossYuan >= LEDGER_RECONCILIATION_TOLERANCE_YUAN),
+    )
+    .sort((left, right) => {
+      const leftRank = Math.max(Math.abs(left.diff ?? 0), left.isDetailOnly ? left.detailGrossYuan : 0);
+      const rightRank = Math.max(Math.abs(right.diff ?? 0), right.isDetailOnly ? right.detailGrossYuan : 0);
+      return rightRank - leftRank;
+    })
+    .slice(0, 5);
+}
+
 function buildDetailResidualAccountRows(props: {
   byAccount: LedgerPnlSummaryByAccount[];
   detailRows: LedgerPnlDataItem[];
@@ -452,6 +537,10 @@ function buildLedgerExplainabilityModel(props: {
       accountYuan,
       detailYuan,
     }),
+    currencyResidualRows: buildCurrencyResidualRows({
+      byCurrency: props.byCurrency,
+      detailRows: props.detailRows,
+    }),
     detailResidualAccountRows: buildDetailResidualAccountRows({
       byAccount: props.byAccount,
       detailRows: props.detailRows,
@@ -554,6 +643,44 @@ function LedgerExplainabilityPanel(props: {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div
+            data-testid="ledger-pnl-currency-residual-table"
+            className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
+          >
+            <div className="ledger-pnl-analysis__table-title">币种残差候选</div>
+            <div className="ledger-pnl-analysis__source-contract-note">
+              当前仅按本页总账汇总与明细切片的币种代码和元金额派生；币种映射、折算规则或报告日期不一致时，差异只能作为待核线索。
+            </div>
+            {props.model.currencyResidualRows.length > 0 ? (
+              <table className="ledger-pnl-analysis__residual-table">
+                <thead>
+                  <tr>
+                    <th>币种</th>
+                    <th>币种汇总金额</th>
+                    <th>明细币种金额</th>
+                    <th>明细毛活动</th>
+                    <th>差异金额</th>
+                    <th>诊断判断</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.model.currencyResidualRows.map((row) => (
+                    <tr key={row.currency}>
+                      <td>{row.currency}</td>
+                      <td>{formatYuanAsYi(row.summaryYuan)}</td>
+                      <td>{formatYuanAsYi(row.detailYuan)}</td>
+                      <td>{formatYuanAsYi(row.detailGrossYuan)}</td>
+                      <td>{formatYuanAsYi(row.diff)}</td>
+                      <td>{row.judgment}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="ledger-pnl-analysis__empty">暂无币种级明细残差候选</div>
+            )}
           </div>
 
           <div

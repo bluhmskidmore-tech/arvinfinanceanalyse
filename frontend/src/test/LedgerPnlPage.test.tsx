@@ -1861,6 +1861,200 @@ describe("LedgerPnlPage", () => {
     expect(table).not.toHaveTextContent("602101 存款利息支出");
   });
 
+  it("identifies currency-level residual candidates before raw currency tables", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlSummary = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.summary"),
+      result: {
+        report_date: "2026-05-31",
+        source_version: "sv_ledger_test",
+        ledger_monthly_pnl_core: money("1500000000.00"),
+        ledger_monthly_pnl_all: money("1500000000.00"),
+        ledger_total_assets: money("0.00"),
+        ledger_total_liabilities: money("0.00"),
+        ledger_net_assets: money("0.00"),
+        by_currency: [
+          { currency: "CNY", total_pnl: money("1000000000.00") },
+          { currency: "CNX", total_pnl: money("500000000.00") },
+        ],
+        by_account: [
+          { account_code: "601101", account_name: "贷款利息收入", total_pnl: money("1500000000.00"), count: 1 },
+        ],
+      },
+    }));
+    const getLedgerPnlData = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.data"),
+      result: {
+        report_date: "2026-05-31",
+        summary: {
+          total_pnl_cnx: money("0.00"),
+          total_pnl_cny: money("1000000000.00"),
+          total_pnl: money("1000000000.00"),
+          count: 1,
+        },
+        items: [
+          {
+            account_code: "601101",
+            account_name: "贷款利息收入",
+            currency: "CNY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("1000000000.00"),
+            daily_avg_balance: money("0.00"),
+            days_in_period: 31,
+          },
+        ],
+      },
+    }));
+
+    const { container } = renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary,
+        getLedgerPnlData,
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            formal_use_allowed: false,
+          },
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-05-31", undefined);
+      expect(getLedgerPnlData).toHaveBeenCalledWith("2026-05-31", undefined);
+    });
+
+    const table = await screen.findByTestId("ledger-pnl-currency-residual-table");
+    expect(table).toHaveTextContent("币种残差候选");
+    expect(table).toHaveTextContent("币种汇总金额");
+    expect(table).toHaveTextContent("明细币种金额");
+    expect(table).toHaveTextContent("CNX");
+    expect(table).toHaveTextContent("5.00 亿元");
+    expect(table).toHaveTextContent("0.00 亿元");
+    expect(table).toHaveTextContent("疑似缺明细 5.00 亿元");
+
+    const rawTable = container.querySelector("[data-testid='ledger-pnl-currency-summary-table']");
+    expect(rawTable).not.toBeNull();
+    expect(
+      table.compareDocumentPosition(rawTable as Element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps detail-only currency candidates visible when offsetting rows net to zero", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlSummary = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.summary"),
+      result: {
+        report_date: "2026-05-31",
+        source_version: "sv_ledger_test",
+        ledger_monthly_pnl_core: money("1000000000.00"),
+        ledger_monthly_pnl_all: money("1000000000.00"),
+        ledger_total_assets: money("0.00"),
+        ledger_total_liabilities: money("0.00"),
+        ledger_net_assets: money("0.00"),
+        by_currency: [{ currency: "CNY", total_pnl: money("1000000000.00") }],
+        by_account: [
+          { account_code: "601101", account_name: "贷款利息收入", total_pnl: money("1000000000.00"), count: 1 },
+        ],
+      },
+    }));
+    const getLedgerPnlData = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.data"),
+      result: {
+        report_date: "2026-05-31",
+        summary: {
+          total_pnl_cnx: money("0.00"),
+          total_pnl_cny: money("1000000000.00"),
+          total_pnl: money("1000000000.00"),
+          count: 3,
+        },
+        items: [
+          {
+            account_code: "601101",
+            account_name: "贷款利息收入",
+            currency: "CNY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("1000000000.00"),
+            daily_avg_balance: money("0.00"),
+            days_in_period: 31,
+          },
+          {
+            account_code: "609901",
+            account_name: "未汇总外币收入",
+            currency: "JPY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("600000000.00"),
+            daily_avg_balance: money("0.00"),
+            days_in_period: 31,
+          },
+          {
+            account_code: "609902",
+            account_name: "未汇总外币支出",
+            currency: "JPY",
+            beginning_balance: money("0.00"),
+            ending_balance: money("0.00"),
+            monthly_pnl: money("-600000000.00"),
+            daily_avg_balance: money("0.00"),
+            days_in_period: 31,
+          },
+        ],
+      },
+    }));
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary,
+        getLedgerPnlData,
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            formal_use_allowed: false,
+          },
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-05-31", undefined);
+      expect(getLedgerPnlData).toHaveBeenCalledWith("2026-05-31", undefined);
+    });
+
+    const table = await screen.findByTestId("ledger-pnl-currency-residual-table");
+    expect(table).toHaveTextContent("JPY");
+    expect(table).toHaveTextContent("明细毛活动");
+    expect(table).toHaveTextContent("12.00 亿元");
+    expect(table).toHaveTextContent("疑似汇总缺失毛活动 12.00 亿元");
+  });
+
   it("does not fall back to an unrelated monthly analysis workbook", async () => {
     const base = createApiClient({ mode: "mock" });
     const getLedgerPnlDates = vi.fn(async () => ({
