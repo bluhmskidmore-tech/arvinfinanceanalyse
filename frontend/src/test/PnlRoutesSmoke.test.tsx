@@ -791,6 +791,10 @@ describe("pnl routed pages smoke", () => {
     await waitFor(() => {
       expect(screen.getByText("分析截止日")).toBeInTheDocument();
       expect(screen.getAllByText("结果元信息 / 证据").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("分析路径");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("可分析");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("Top 贡献");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("FTP 可分析");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
@@ -861,6 +865,10 @@ describe("pnl routed pages smoke", () => {
     fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "formal" } });
     await waitFor(() => {
       expect(client.getPnlByBusiness).toHaveBeenCalledWith("2025-11-30");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("对账证据");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("不与月报/YTD 混加");
     });
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
     expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");

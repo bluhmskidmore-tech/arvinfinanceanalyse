@@ -393,6 +393,59 @@ describe("pnlByBusinessPageModel", () => {
     expect(emptyModel.stateSurfaces).toEqual([]);
   });
 
+  it("keeps monthly top contribution separate from the largest drag row", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "monthly",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      monthlyResult: {
+        year: 2026,
+        as_of_date: "2026-04-30",
+        source_tables: ["monthly"],
+        months: [
+          monthlyBucket({
+            summary: {
+              ...monthlyBucket().summary,
+              total_pnl: "7000000",
+              ftp_net_pnl: "5000000",
+            },
+            items: [
+              {
+                ...monthlyBucket().items[0]!,
+                row_key: "asset_zqtz_month_gain",
+                business_type: "monthly_gain",
+                total_pnl: "7000000",
+                proportion: "0.7",
+              },
+              {
+                ...monthlyBucket().items[0]!,
+                row_key: "asset_zqtz_month_drag",
+                business_type: "monthly_drag",
+                total_pnl: "-1000000",
+                proportion: "-0.1",
+              },
+            ],
+          }),
+        ],
+      },
+      monthlyMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "可分析",
+      topContributionLabel: "monthly_gain",
+      topContributionDisplay: "700 万元",
+      topDragLabel: "monthly_drag",
+      topDragDisplay: "-100 万元",
+      ftpAvailable: true,
+    });
+  });
+
   it("surfaces mock mode and monthly hero conclusion without changing KPI values", () => {
     const monthlyModel = buildPnlByBusinessPageModel({
       viewMode: "monthly",
@@ -420,5 +473,154 @@ describe("pnlByBusinessPageModel", () => {
       variant: "mock",
     });
     expect(monthlyModel.summaryCards[0]?.value).toBe("-250 万元");
+  });
+
+  it("builds analysis insight from parent YTD rows and marks missing ADB", () => {
+    const payload = ytdPayload({
+      items: [
+        ...ytdPayload().items,
+        {
+          row_key: "asset_zqtz_parent_loss",
+          sort_order: 4,
+          business_type: "拖累业务",
+          interest_income: "-500000",
+          fair_value_change: "0",
+          capital_gain: "0",
+          manual_adjustment: "0",
+          total_pnl: "-500000",
+          current_balance: "10000000",
+          balance_yield_pct: null,
+          source_kind: "zqtz",
+          source_note: "父级",
+          proportion: "-0.1",
+          assets_count: 1,
+        },
+      ],
+    });
+
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      manualAdjustmentCount: 2,
+      adbAvgByBusinessType: new Map([["债券投资", 100_000_000]]),
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: payload,
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "缺日均",
+      topContributionLabel: "非底层投资资产",
+      topDragLabel: "拖累业务",
+      topShareLabel: "非底层投资资产",
+      manualAdjustmentCount: 2,
+      missingAdbCount: 2,
+      ftpAvailable: false,
+      formalUntracedCount: 0,
+    });
+    expect(model.insight.totalPnlDisplay).toBe("500 万元");
+  });
+
+  it("does not mark YTD ADB missing when parent rows resolve from rollup children", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      adbAvgByBusinessType: new Map([
+        ["债券投资", 100_000_000],
+        ["信托计划", 25_000_000],
+        ["证券业资管计划", 75_000_000],
+      ]),
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: ytdPayload(),
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "可分析",
+      missingAdbCount: 0,
+      ftpAvailable: true,
+    });
+  });
+
+  it("does not block YTD FTP analysis on zero-activity parent rows without ADB", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      adbAvgByBusinessType: new Map([
+        ["债券投资", 100_000_000],
+        ["信托计划", 25_000_000],
+        ["证券业资管计划", 75_000_000],
+      ]),
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: ytdPayload({
+        items: [
+          ...ytdPayload().items,
+          {
+            row_key: "asset_zqtz_parent_zero",
+            sort_order: 4,
+            business_type: "央行票据",
+            interest_income: "0",
+            fair_value_change: "0",
+            capital_gain: "0",
+            manual_adjustment: "0",
+            total_pnl: "0",
+            current_balance: "0",
+            balance_yield_pct: null,
+            source_kind: "zqtz",
+            source_note: "父级",
+            proportion: "0",
+            assets_count: 0,
+          },
+        ],
+      }),
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "可分析",
+      missingAdbCount: 0,
+      ftpAvailable: true,
+    });
+  });
+
+  it("surfaces formal reconciliation insight without promoting it to YTD analysis", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "formal",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      formalResult: formalPayload(),
+      formalMeta: meta({ quality_flag: "warning" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "预警/降级",
+      topContributionLabel: "业务 B",
+      topDragLabel: "无拖累",
+      topShareLabel: "仅对账",
+      ftpAvailable: false,
+      missingAdbCount: 0,
+      formalUntracedCount: 1,
+    });
+    expect(model.insight.nextStep).toContain("对账证据");
   });
 });

@@ -34,6 +34,7 @@ import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
 import {
   VIEW_MODE_SUBTITLES,
   buildPnlByBusinessPageModel,
+  type PnlByBusinessInsightModel,
   formatAnalysisYieldPct,
   formatAvgBalanceYi,
   formatAvgBalanceYiMetric,
@@ -56,6 +57,58 @@ function pnlKpiToneClassName(
     return "pnl-by-business-kpi-metric--negative";
   }
   return "";
+}
+
+function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightModel }) {
+  const confidenceClass =
+    insight.confidenceLabel === "可分析"
+      ? "pnl-by-business-insight-strip__confidence--ready"
+      : insight.confidenceLabel === "预警/降级"
+        ? "pnl-by-business-insight-strip__confidence--warning"
+        : "pnl-by-business-insight-strip__confidence--limited";
+
+  return (
+    <section className="pnl-by-business-insight-strip" data-testid="pnl-by-business-insight-strip">
+      <div className="pnl-by-business-insight-strip__header">
+        <span className={`pnl-by-business-insight-strip__confidence ${confidenceClass}`}>
+          {insight.confidenceLabel}
+        </span>
+        <strong>分析路径</strong>
+        <span>{insight.nextStep}</span>
+      </div>
+      <div className="pnl-by-business-insight-strip__grid">
+        <div>
+          <small>合计损益</small>
+          <strong>{insight.totalPnlDisplay}</strong>
+        </div>
+        <div>
+          <small>Top 贡献</small>
+          <strong>{insight.topContributionLabel}</strong>
+          <span>{insight.topContributionDisplay}</span>
+        </div>
+        <div>
+          <small>Bottom 拖累</small>
+          <strong>{insight.topDragLabel}</strong>
+          <span>{insight.topDragDisplay}</span>
+        </div>
+        <div>
+          <small>占比/对账</small>
+          <strong>{insight.topShareLabel}</strong>
+          <span>{insight.topShareDisplay}</span>
+        </div>
+        <div>
+          <small>FTP / 日均</small>
+          <strong>{insight.ftpAvailable ? "FTP 可分析" : `${insight.missingAdbCount} 项缺日均`}</strong>
+          <span>{insight.manualAdjustmentCount} 条手工调整</span>
+        </div>
+        <div>
+          <small>formal 对账</small>
+          <strong>{insight.formalUntracedCount} 条未追溯</strong>
+          <span>不与月报/YTD 混加</span>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function numeric(raw: string | number | null | undefined): number | null {
@@ -1345,6 +1398,7 @@ export default function PnlByBusinessPage() {
         ytdMeta: businessQuery.data?.result_meta,
         formalResult,
         formalMeta: formalBusinessQuery.data?.result_meta,
+        adbAvgByBusinessType,
       }),
     [
       viewMode,
@@ -1360,6 +1414,7 @@ export default function PnlByBusinessPage() {
       formalBusinessQuery.isLoading,
       formalBusinessQuery.isError,
       formalBusinessQuery.data?.result_meta,
+      adbAvgByBusinessType,
       ytdResult,
       formalResult,
     ],
@@ -1651,6 +1706,8 @@ export default function PnlByBusinessPage() {
         ytdMeta: businessQuery.data?.result_meta,
         formalResult,
         formalMeta: formalBusinessQuery.data?.result_meta,
+        adbAvgByBusinessType,
+        manualAdjustmentCount: currentAdjustments.length,
       }),
     [
       viewMode,
@@ -1670,6 +1727,8 @@ export default function PnlByBusinessPage() {
       formalBusinessQuery.isLoading,
       formalBusinessQuery.isError,
       formalBusinessQuery.data?.result_meta,
+      adbAvgByBusinessType,
+      currentAdjustments.length,
       ytdResult,
       formalResult,
     ],
@@ -1682,6 +1741,7 @@ export default function PnlByBusinessPage() {
     empty,
     statusStrip,
     summaryCards,
+    insight,
     hero,
     stateSurfaces,
   } = completePageModel;
@@ -1938,18 +1998,7 @@ export default function PnlByBusinessPage() {
             ))}
           </KpiBand>
 
-          {evidenceMetaSections.length > 0 ? (
-            <EvidencePanel
-              heading="数据来源、口径与血缘"
-              testId="pnl-by-business-evidence-panel"
-              className="pnl-by-business-evidence-panel"
-            >
-              <FormalResultMetaPanel
-                testId="pnl-by-business-result-meta-panel"
-                sections={evidenceMetaSections}
-              />
-            </EvidencePanel>
-          ) : null}
+          <PnlByBusinessInsightStrip insight={insight} />
 
           <AnalysisGrid columns={1} testId="pnl-by-business-analysis-grid" className="pnl-by-business-analysis-grid">
             {viewMode === "monthly" ? (
@@ -1974,6 +2023,11 @@ export default function PnlByBusinessPage() {
             </>
           ) : viewMode === "ytd" ? (
             <>
+              <DriverOverviewPanel
+                rows={ytdRows}
+                adbAvgByBusinessType={adbAvgByBusinessType}
+                ytdCalendarDays={ytdCalendarDays}
+              />
               <PageSectionLead
                 eyebrow="Business Type"
                 title={`${selectedYear} 年累计明细`}
@@ -2045,11 +2099,6 @@ export default function PnlByBusinessPage() {
                 }
                 isError={negativeFtpInstrumentQuery.isError}
               />
-              <DriverOverviewPanel
-                rows={ytdRows}
-                adbAvgByBusinessType={adbAvgByBusinessType}
-                ytdCalendarDays={ytdCalendarDays}
-              />
               <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-analysis-panel">
                 <div className="pnl-by-business-analysis-heading">
                   <div>
@@ -2119,14 +2168,27 @@ export default function PnlByBusinessPage() {
           ) : (
             <>
               <PageSectionLead
-                eyebrow="Business Type"
+                eyebrow="Reconciliation"
                 title={`${selectedReportDate} primary 对账明细`}
-                description="与 GET /api/pnl/by-business 一致：来自 fact_formal_pnl_fi / fact_nonstd_pnl_bridge 与 fact_formal_zqtz_balance_daily 的 join 聚合。这里按 primary 分类展示，用于源数据追溯；月报和累计按 ZQTZ 管理披露分类展示，二者不要混加。"
+                description="这是对账证据，不是业务贡献主分析；与 GET /api/pnl/by-business 一致，来自 fact_formal_pnl_fi / fact_nonstd_pnl_bridge 与 fact_formal_zqtz_balance_daily 的 join 聚合。这里按 primary 分类展示，用于源数据追溯；月报和累计按 ZQTZ 管理披露分类展示，二者不要混加。"
               />
               <FormalBusinessRowsTable rows={formalRows} />
             </>
           )}
           </AnalysisGrid>
+
+          {evidenceMetaSections.length > 0 ? (
+            <EvidencePanel
+              heading="数据来源、口径与血缘"
+              testId="pnl-by-business-evidence-panel"
+              className="pnl-by-business-evidence-panel"
+            >
+              <FormalResultMetaPanel
+                testId="pnl-by-business-result-meta-panel"
+                sections={evidenceMetaSections}
+              />
+            </EvidencePanel>
+          ) : null}
         </section>
       </AsyncSection>
       </PageV2Shell>

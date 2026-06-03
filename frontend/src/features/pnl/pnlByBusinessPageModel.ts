@@ -11,6 +11,7 @@ import type {
   PnlByBusinessYtdPayload,
   ResultMeta,
 } from "../../api/contracts";
+import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
 export type PnlByBusinessViewMode = "monthly" | "ytd" | "formal";
 
@@ -77,6 +78,24 @@ export type PnlSummaryCard = Pick<
   "label" | "value" | "detail" | "tone" | "valueVariant"
 >;
 
+export type PnlByBusinessInsightConfidence = "可分析" | "缺日均" | "仅对账" | "预警/降级";
+
+export type PnlByBusinessInsightModel = {
+  confidenceLabel: PnlByBusinessInsightConfidence;
+  totalPnlDisplay: string;
+  topContributionLabel: string;
+  topContributionDisplay: string;
+  topDragLabel: string;
+  topDragDisplay: string;
+  topShareLabel: string;
+  topShareDisplay: string;
+  ftpAvailable: boolean;
+  missingAdbCount: number;
+  manualAdjustmentCount: number;
+  formalUntracedCount: number;
+  nextStep: string;
+};
+
 export type PnlDataStatusStripModel = {
   viewModeLabel: string;
   dataStatus: string;
@@ -111,6 +130,8 @@ type BuildPnlByBusinessPageModelInput = {
   ytdMeta?: ResultMeta;
   formalResult?: PnlByBusinessPayload;
   formalMeta?: ResultMeta;
+  adbAvgByBusinessType?: Map<string, number>;
+  manualAdjustmentCount?: number;
 };
 
 export type PnlByBusinessPageModel = PnlByBusinessSelectionModel & {
@@ -128,6 +149,7 @@ export type PnlByBusinessPageModel = PnlByBusinessSelectionModel & {
   activeDataStatus: string;
   statusStrip: PnlDataStatusStripModel;
   summaryCards: PnlSummaryCard[];
+  insight: PnlByBusinessInsightModel;
   hero: PnlHeroModel;
   stateSurfaces: PnlStateSurfaceItem[];
 };
@@ -238,6 +260,19 @@ export function pickTopMonthlyBusinessRow(rows: PnlByBusinessMonthlyItem[]): Pnl
   }, undefined);
 }
 
+function pickTopNegativeMonthlyBusinessRow(rows: PnlByBusinessMonthlyItem[]): PnlByBusinessMonthlyItem | undefined {
+  return rows.reduce<PnlByBusinessMonthlyItem | undefined>((current, row) => {
+    const value = numeric(row.total_pnl) ?? 0;
+    if (value >= 0) {
+      return current;
+    }
+    if (!current) {
+      return row;
+    }
+    return value < (numeric(current.total_pnl) ?? 0) ? row : current;
+  }, undefined);
+}
+
 function pickTopFormalRow(rows: PnlByBusinessRow[]): PnlByBusinessRow | undefined {
   return rows.reduce<PnlByBusinessRow | undefined>((current, row) => {
     if (!current) {
@@ -247,6 +282,66 @@ function pickTopFormalRow(rows: PnlByBusinessRow[]): PnlByBusinessRow | undefine
       ? row
       : current;
   }, undefined);
+}
+
+function pickTopPositiveYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
+  return rows.reduce<PnlByBusinessYtdItem | undefined>((current, row) => {
+    const value = numeric(row.total_pnl) ?? 0;
+    if (value <= 0) {
+      return current;
+    }
+    if (!current) {
+      return row;
+    }
+    return value > (numeric(current.total_pnl) ?? 0) ? row : current;
+  }, undefined);
+}
+
+function pickTopNegativeYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
+  return rows.reduce<PnlByBusinessYtdItem | undefined>((current, row) => {
+    const value = numeric(row.total_pnl) ?? 0;
+    if (value >= 0) {
+      return current;
+    }
+    if (!current) {
+      return row;
+    }
+    return value < (numeric(current.total_pnl) ?? 0) ? row : current;
+  }, undefined);
+}
+
+function pickTopShareYtdRow(rows: PnlByBusinessYtdItem[]): PnlByBusinessYtdItem | undefined {
+  return rows.reduce<PnlByBusinessYtdItem | undefined>((current, row) => {
+    const value = Math.abs(numeric(row.proportion) ?? 0);
+    if (!current) {
+      return row;
+    }
+    return value > Math.abs(numeric(current.proportion) ?? 0) ? row : current;
+  }, undefined);
+}
+
+function hasAnalysisWarning(meta: ResultMeta | undefined): boolean {
+  return (
+    meta?.quality_flag === "warning" ||
+    meta?.quality_flag === "error" ||
+    meta?.quality_flag === "stale" ||
+    meta?.quality_flag === "missing" ||
+    meta?.fallback_mode === "latest_snapshot" ||
+    meta?.vendor_status === "vendor_stale" ||
+    meta?.vendor_status === "vendor_unavailable"
+  );
+}
+
+function hasYtdBusinessActivity(row: PnlByBusinessYtdItem): boolean {
+  return (
+    row.assets_count > 0 ||
+    (numeric(row.current_balance) ?? 0) !== 0 ||
+    (numeric(row.total_pnl) ?? 0) !== 0 ||
+    (numeric(row.interest_income) ?? 0) !== 0 ||
+    (numeric(row.fair_value_change) ?? 0) !== 0 ||
+    (numeric(row.capital_gain) ?? 0) !== 0 ||
+    (numeric(row.manual_adjustment) ?? 0) !== 0
+  );
 }
 
 export function formatPnlQualityStatus(
@@ -590,6 +685,97 @@ function buildFormalSummaryCards(input: {
   ];
 }
 
+function buildPnlByBusinessInsight(input: {
+  viewMode: PnlByBusinessViewMode;
+  activeResultMeta?: ResultMeta;
+  ytdResult?: PnlByBusinessYtdPayload;
+  parentYtdRows: PnlByBusinessYtdItem[];
+  topFormalRow?: PnlByBusinessRow;
+  formalResult?: PnlByBusinessPayload;
+  activeMonthlyBucket?: PnlByBusinessMonthlyBucket;
+  topMonthlyRow?: PnlByBusinessMonthlyItem;
+  topMonthlyDragRow?: PnlByBusinessMonthlyItem;
+  adbAvgByBusinessType?: Map<string, number>;
+  manualAdjustmentCount?: number;
+}): PnlByBusinessInsightModel {
+  const isWarning = hasAnalysisWarning(input.activeResultMeta);
+
+  if (input.viewMode === "formal") {
+    const topFormalValue = input.topFormalRow?.total_pnl;
+    return {
+      confidenceLabel: isWarning ? "预警/降级" : "仅对账",
+      totalPnlDisplay: formatYuanAsWanUnit(input.formalResult?.summary.total_pnl),
+      topContributionLabel: input.topFormalRow?.business_type_primary ?? "暂无明细",
+      topContributionDisplay: formatYuanAsWanUnit(topFormalValue),
+      topDragLabel: (numeric(topFormalValue) ?? 0) < 0 ? (input.topFormalRow?.business_type_primary ?? "暂无明细") : "无拖累",
+      topDragDisplay: (numeric(topFormalValue) ?? 0) < 0 ? formatYuanAsWanUnit(topFormalValue) : "-",
+      topShareLabel: "仅对账",
+      topShareDisplay: "不与月报/YTD 混加",
+      ftpAvailable: false,
+      missingAdbCount: 0,
+      manualAdjustmentCount: 0,
+      formalUntracedCount: input.formalResult?.summary.untraced_pnl_row_count ?? 0,
+      nextStep: "用于对账证据和未追溯行排查，不作为业务贡献主分析。",
+    };
+  }
+
+  if (input.viewMode === "monthly") {
+    const total = input.activeMonthlyBucket?.summary.total_pnl;
+    return {
+      confidenceLabel: isWarning ? "预警/降级" : "可分析",
+      totalPnlDisplay: formatYuanAsWanUnit(total),
+      topContributionLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
+      topContributionDisplay: formatYuanAsWanUnit(input.topMonthlyRow?.total_pnl),
+      topDragLabel: input.topMonthlyDragRow?.business_type ?? "无拖累",
+      topDragDisplay: input.topMonthlyDragRow ? formatYuanAsWanUnit(input.topMonthlyDragRow.total_pnl) : "-",
+      topShareLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
+      topShareDisplay: formatRatioPct(input.topMonthlyRow?.proportion),
+      ftpAvailable: numeric(input.activeMonthlyBucket?.summary.ftp_net_pnl) !== null,
+      missingAdbCount: 0,
+      manualAdjustmentCount: 0,
+      formalUntracedCount: 0,
+      nextStep: "先看当月贡献，再切到年累计核对趋势与 FTP 后收益。",
+    };
+  }
+
+  const topContribution = pickTopPositiveYtdRow(input.parentYtdRows);
+  const topDrag = pickTopNegativeYtdRow(input.parentYtdRows);
+  const topShare = pickTopShareYtdRow(input.parentYtdRows);
+  const missingAdbCount = input.parentYtdRows.filter((row) => {
+    if (!hasYtdBusinessActivity(row)) {
+      return false;
+    }
+    const adb = input.adbAvgByBusinessType
+      ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType)
+      : undefined;
+    return adb === undefined || adb <= 0;
+  }).length;
+  const ftpAvailable = missingAdbCount === 0 && input.parentYtdRows.length > 0;
+  const confidenceLabel: PnlByBusinessInsightConfidence = isWarning
+    ? "预警/降级"
+    : ftpAvailable
+      ? "可分析"
+      : "缺日均";
+
+  return {
+    confidenceLabel,
+    totalPnlDisplay: formatYuanAsWanUnit(input.ytdResult?.total_pnl),
+    topContributionLabel: topContribution?.business_type ?? "暂无正贡献",
+    topContributionDisplay: formatYuanAsWanUnit(topContribution?.total_pnl),
+    topDragLabel: topDrag?.business_type ?? "无拖累",
+    topDragDisplay: topDrag ? formatYuanAsWanUnit(topDrag.total_pnl) : "-",
+    topShareLabel: topShare?.business_type ?? "暂无占比",
+    topShareDisplay: formatRatioPct(topShare?.proportion),
+    ftpAvailable,
+    missingAdbCount,
+    manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
+    formalUntracedCount: 0,
+    nextStep: ftpAvailable
+      ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
+      : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",
+  };
+}
+
 export function buildPnlByBusinessPageModel(
   input: BuildPnlByBusinessPageModelInput,
 ): PnlByBusinessPageModel {
@@ -603,6 +789,7 @@ export function buildPnlByBusinessPageModel(
     monthlyBusinessMonths[0];
   const parentMonthlyItems = activeMonthlyBucket?.items.filter(isParentZqtzBusinessRow) ?? [];
   const topMonthlyRow = pickTopMonthlyBusinessRow(parentMonthlyItems);
+  const topMonthlyDragRow = pickTopNegativeMonthlyBusinessRow(parentMonthlyItems);
   const formalRows = input.formalResult?.rows ?? [];
   const topFormalRow = pickTopFormalRow(formalRows);
   const topYtdRow = selection.defaultBusinessRow;
@@ -679,6 +866,19 @@ export function buildPnlByBusinessPageModel(
       selectedReportDate: input.selectedReportDate,
     }),
     summaryCards,
+    insight: buildPnlByBusinessInsight({
+      viewMode: input.viewMode,
+      activeResultMeta,
+      ytdResult: input.ytdResult,
+      parentYtdRows: selection.parentYtdRows,
+      topFormalRow,
+      formalResult: input.formalResult,
+      activeMonthlyBucket,
+      topMonthlyRow,
+      topMonthlyDragRow,
+      adbAvgByBusinessType: input.adbAvgByBusinessType,
+      manualAdjustmentCount: input.manualAdjustmentCount,
+    }),
     hero: buildHeroConclusion({
       viewMode: input.viewMode,
       selectedReportDate: input.selectedReportDate,

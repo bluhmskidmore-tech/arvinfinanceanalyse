@@ -335,6 +335,92 @@
   font-size: 13px;
 }
 
+.pnl-by-business-insight-strip {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-insight-strip__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.pnl-by-business-insight-strip__header strong {
+  color: var(--moss-color-neutral-900);
+  font-weight: 800;
+}
+
+.pnl-by-business-insight-strip__confidence {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pnl-by-business-insight-strip__confidence--ready {
+  border-color: var(--moss-color-success-200);
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-700);
+}
+
+.pnl-by-business-insight-strip__confidence--limited {
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800);
+}
+
+.pnl-by-business-insight-strip__confidence--warning {
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-700);
+}
+
+.pnl-by-business-insight-strip__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pnl-by-business-insight-strip__grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-insight-strip__grid small,
+.pnl-by-business-insight-strip__grid span {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-insight-strip__grid strong {
+  overflow: hidden;
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pnl-by-business-driver-grid,
 .pnl-by-business-analysis-kpis {
   display: grid;
@@ -668,6 +754,10 @@
 
   .pnl-by-business-data-status-strip__grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pnl-by-business-insight-strip__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .pnl-by-business-adjustment-actions {
