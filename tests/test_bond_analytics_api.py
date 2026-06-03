@@ -400,11 +400,15 @@ def test_bond_analytics_dv01_limit_config_status_returns_formal_envelope(tmp_pat
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_limit_config_status"
     result = payload["result"]
     assert result["overall_status"] == "incomplete"
+    assert result["acceptance_status"] == "blocked"
     assert result["config_stream"] == "bond_dv01_limit_config"
     assert result["required_accounting_classes"] == ["AC", "OCI", "TPL", "all"]
     assert "limit_effective_date" in result["required_fields"]
+    assert result["configured_accounting_classes"] == ["OCI"]
     assert result["missing_accounting_classes"] == ["AC", "TPL", "all"]
     assert result["invalid_accounting_classes"] == []
+    assert "AC, TPL, all" in result["acceptance_message"]
+    assert "bond_dv01_limit_config" in result["next_action"]
     rows_by_class = {row["accounting_class"]: row for row in result["rows"]}
     assert rows_by_class["OCI"]["status"] == "ready"
     assert rows_by_class["OCI"]["limit_dv01"]["unit"] == "dv01"

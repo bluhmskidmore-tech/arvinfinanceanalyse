@@ -653,9 +653,13 @@ export type DV01LimitConfigStatusRow = {
 export type DV01LimitConfigStatusPayload = {
   report_date: string;
   overall_status: "ready" | "incomplete";
+  acceptance_status: "ready" | "blocked";
+  acceptance_message: string;
+  next_action: string;
   config_stream: string;
   required_accounting_classes: string[];
   required_fields: string[];
+  configured_accounting_classes: string[];
   missing_accounting_classes: string[];
   invalid_accounting_classes: string[];
   configured_count: number;

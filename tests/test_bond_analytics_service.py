@@ -1025,6 +1025,10 @@ def test_bond_analytics_dv01_limit_config_status_reports_ready_missing_and_inval
     assert "limit_source_version" in result["required_fields"]
     assert result["missing_accounting_classes"] == ["AC", "all"]
     assert result["invalid_accounting_classes"] == ["TPL"]
+    assert "AC, all" in result["acceptance_message"]
+    assert "TPL" in result["acceptance_message"]
+    assert "bond_dv01_limit_config" in result["next_action"]
+    assert "limit_dv01" in result["next_action"]
     assert rows_by_class["OCI"]["status"] == "ready"
     assert _numeric_raw(rows_by_class["OCI"]["limit_dv01"]) == Decimal("1200")
     assert rows_by_class["OCI"]["limit_source"] == "risk_committee_minutes"
@@ -1032,6 +1036,84 @@ def test_bond_analytics_dv01_limit_config_status_reports_ready_missing_and_inval
     assert rows_by_class["TPL"]["status"] == "invalid"
     assert "limit_dv01" in rows_by_class["TPL"]["message"]
     assert result["warnings"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_limit_config_status_acceptance_requires_direct_class_configs(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    repo = GovernanceRepository(base_dir=governance_dir)
+    for accounting_class in ["AC", "OCI", "TPL", "all"]:
+        repo.append(
+            "bond_dv01_limit_config",
+            {
+                "report_date": "2026-03-31",
+                "accounting_class": accounting_class,
+                "limit_dv01": "1200",
+                "warning_dv01": "1000",
+                "hedge_target_dv01": "1000",
+                "limit_source": "risk_committee_minutes",
+                "limit_source_version": f"risk_minutes_2026_03_{accounting_class}",
+                "limit_rule_version": "rv_dv01_limit_policy_v1",
+                "limit_effective_date": "2026-03-01",
+            },
+        )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_limit_config_status(date(2026, 3, 31))
+    result = payload["result"]
+
+    assert result["overall_status"] == "ready"
+    assert result["acceptance_status"] == "ready"
+    assert result["configured_accounting_classes"] == ["AC", "OCI", "TPL", "all"]
+    assert result["missing_accounting_classes"] == []
+    assert result["invalid_accounting_classes"] == []
+    assert result["acceptance_message"] == "正式 DV01 限额配置验收通过。"
+    assert result["next_action"] == "无需补充配置；动作计划将按正式限额口径计算。"
+    assert result["warnings"] == []
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_limit_config_status_does_not_accept_all_as_class_coverage(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    GovernanceRepository(base_dir=governance_dir).append(
+        "bond_dv01_limit_config",
+        {
+            "report_date": "2026-03-31",
+            "accounting_class": "all",
+            "limit_dv01": "1200",
+            "warning_dv01": "1000",
+            "hedge_target_dv01": "1000",
+            "limit_source": "risk_committee_minutes",
+            "limit_source_version": "risk_minutes_2026_03",
+            "limit_rule_version": "rv_dv01_limit_policy_v1",
+            "limit_effective_date": "2026-03-01",
+        },
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_limit_config_status(date(2026, 3, 31))
+    result = payload["result"]
+    rows_by_class = {row["accounting_class"]: row for row in result["rows"]}
+
+    assert rows_by_class["all"]["status"] == "ready"
+    assert rows_by_class["AC"]["status"] == "missing"
+    assert rows_by_class["OCI"]["status"] == "missing"
+    assert rows_by_class["TPL"]["status"] == "missing"
+    assert result["acceptance_status"] == "blocked"
+    assert result["configured_accounting_classes"] == ["all"]
+    assert result["missing_accounting_classes"] == ["AC", "OCI", "TPL"]
+    assert "AC, OCI, TPL" in result["acceptance_message"]
+    assert "bond_dv01_limit_config" in result["next_action"]
     get_settings.cache_clear()
 
 

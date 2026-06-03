@@ -1176,9 +1176,13 @@ class DV01LimitConfigStatusResponse(BaseModel):
 
     report_date: date
     overall_status: Literal["ready", "incomplete"]
+    acceptance_status: Literal["ready", "blocked"]
+    acceptance_message: str
+    next_action: str
     config_stream: str
     required_accounting_classes: list[str] = Field(default_factory=list)
     required_fields: list[str] = Field(default_factory=list)
+    configured_accounting_classes: list[str] = Field(default_factory=list)
     missing_accounting_classes: list[str] = Field(default_factory=list)
     invalid_accounting_classes: list[str] = Field(default_factory=list)
     configured_count: int

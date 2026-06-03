@@ -380,6 +380,10 @@ function limitConfigStatusPayload(
   return {
     report_date: "2026-03-31",
     overall_status: "incomplete",
+    acceptance_status: "blocked",
+    acceptance_message: "正式 DV01 限额配置验收未通过；待补分类：AC, TPL, all。",
+    next_action:
+      "请在 bond_dv01_limit_config 治理流补齐 AC, TPL, all 的 accounting_class、limit_dv01、warning_dv01、hedge_target_dv01、limit_source、limit_source_version、limit_rule_version、limit_effective_date。",
     configured_count: 1,
     missing_count: 3,
     invalid_count: 0,
@@ -395,6 +399,7 @@ function limitConfigStatusPayload(
       "limit_rule_version",
       "limit_effective_date",
     ],
+    configured_accounting_classes: ["OCI"],
     missing_accounting_classes: ["AC", "TPL", "all"],
     invalid_accounting_classes: [],
     rows: [
@@ -671,7 +676,58 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("AC、TPL、all");
     expect(panel).toHaveTextContent("必填字段");
     expect(panel).toHaveTextContent("limit_dv01");
+    expect(panel).toHaveTextContent("验收结论");
+    expect(panel).toHaveTextContent("未通过");
+    expect(panel).toHaveTextContent("已接入分类");
+    expect(panel).toHaveTextContent("验收说明");
+    expect(panel).toHaveTextContent("下一步动作");
     expect(panel).toHaveTextContent("limit_effective_date");
+  });
+
+  it("renders DV01 formal limit acceptance as ready when all classes are configured", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const getDv01LimitConfigStatus = vi.fn(async () => ({
+      result_meta: limitConfigStatusMeta(),
+      result: limitConfigStatusPayload({
+        overall_status: "ready",
+        acceptance_status: "ready",
+        acceptance_message: "正式 DV01 限额配置验收通过。",
+        next_action: "无需补充配置；动作计划将按正式限额口径计算。",
+        configured_count: 4,
+        missing_count: 0,
+        invalid_count: 0,
+        configured_accounting_classes: ["AC", "OCI", "TPL", "all"],
+        missing_accounting_classes: [],
+        invalid_accounting_classes: [],
+        warnings: [],
+        rows: ["AC", "OCI", "TPL", "all"].map((accountingClass) => ({
+          accounting_class: accountingClass,
+          status: "ready" as const,
+          limit_dv01: dv01(1_200_000),
+          warning_dv01: dv01(1_000_000),
+          hedge_target_dv01: dv01(1_000_000),
+          limit_source: "risk_committee_minutes",
+          limit_source_version: `risk_minutes_2026_03_${accountingClass}`,
+          limit_rule_version: "rv_dv01_limit_policy_v1",
+          limit_effective_date: "2026-03-01",
+          message: "已接入正式 DV01 限额。",
+        })),
+      }),
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, undefined, getDv01LimitConfigStatus);
+
+    const panel = await screen.findByTestId("dv01-limit-config-status-panel");
+    expect(panel).toHaveTextContent("验收结论");
+    expect(panel).toHaveTextContent("已通过");
+    expect(panel).toHaveTextContent("验收说明");
+    expect(panel).toHaveTextContent("无需补充配置");
+    expect(panel).toHaveTextContent("待补分类");
+    expect(panel).toHaveTextContent("无");
+    expect(panel).toHaveTextContent("AC、OCI、TPL、all");
   });
 
   it("renders formal DV01 limit source version and effective date", async () => {

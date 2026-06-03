@@ -2382,8 +2382,13 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
     configured_count = sum(1 for row in rows if row.status == "ready")
     missing_count = sum(1 for row in rows if row.status == "missing")
     invalid_count = sum(1 for row in rows if row.status == "invalid")
+    configured_accounting_classes = [row.accounting_class for row in rows if row.status == "ready"]
     missing_accounting_classes = [row.accounting_class for row in rows if row.status == "missing"]
     invalid_accounting_classes = [row.accounting_class for row in rows if row.status == "invalid"]
+    acceptance_message, next_action = _dv01_limit_config_acceptance_guidance(
+        missing_accounting_classes=missing_accounting_classes,
+        invalid_accounting_classes=invalid_accounting_classes,
+    )
     warnings: list[str] = []
     if missing_count:
         warnings.append("部分会计分类未配置正式 DV01 限额。")
@@ -2393,9 +2398,13 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
         {
             "report_date": report_date,
             "overall_status": "ready" if configured_count == len(DV01_LIMIT_CONFIG_CLASSES) else "incomplete",
+            "acceptance_status": "ready" if configured_count == len(DV01_LIMIT_CONFIG_CLASSES) else "blocked",
+            "acceptance_message": acceptance_message,
+            "next_action": next_action,
             "config_stream": DV01_LIMIT_CONFIG_STREAM,
             "required_accounting_classes": list(DV01_LIMIT_CONFIG_CLASSES),
             "required_fields": list(DV01_LIMIT_CONFIG_REQUIRED_FIELDS),
+            "configured_accounting_classes": configured_accounting_classes,
             "missing_accounting_classes": missing_accounting_classes,
             "invalid_accounting_classes": invalid_accounting_classes,
             "configured_count": configured_count,
@@ -2416,6 +2425,29 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
     )
 
 
+def _dv01_limit_config_acceptance_guidance(
+    *,
+    missing_accounting_classes: list[str],
+    invalid_accounting_classes: list[str],
+) -> tuple[str, str]:
+    if not missing_accounting_classes and not invalid_accounting_classes:
+        return (
+            "正式 DV01 限额配置验收通过。",
+            "无需补充配置；动作计划将按正式限额口径计算。",
+        )
+    details: list[str] = []
+    if missing_accounting_classes:
+        details.append(f"待补分类：{', '.join(missing_accounting_classes)}")
+    if invalid_accounting_classes:
+        details.append(f"无效分类：{', '.join(invalid_accounting_classes)}")
+    fields = "、".join(DV01_LIMIT_CONFIG_REQUIRED_FIELDS)
+    classes = ", ".join(missing_accounting_classes + invalid_accounting_classes)
+    return (
+        f"正式 DV01 限额配置验收未通过；{'；'.join(details)}。",
+        f"请在 {DV01_LIMIT_CONFIG_STREAM} 治理流补齐 {classes} 的 {fields}。",
+    )
+
+
 def _build_dv01_limit_config_status_row(
     report_date: date,
     accounting_class: str,
@@ -2423,6 +2455,7 @@ def _build_dv01_limit_config_status_row(
     candidate = _resolve_dv01_limit_config_candidate(
         report_date=report_date,
         accounting_class=accounting_class,
+        allow_all_fallback=False,
     )
     if candidate is None:
         return _dv01_limit_config_status_row(
@@ -2501,6 +2534,7 @@ def _resolve_dv01_limit_config_candidate(
     *,
     report_date: date,
     accounting_class: str,
+    allow_all_fallback: bool = True,
 ) -> tuple[_DV01LimitConfig | None, str] | None:
     try:
         records = GovernanceRepository(base_dir=get_settings().governance_path).read_all(
@@ -2515,7 +2549,8 @@ def _resolve_dv01_limit_config_candidate(
         if not isinstance(record, dict):
             continue
         record_class = _normalize_limit_config_accounting_class(record.get("accounting_class"))
-        if record_class not in {accounting_class, "all"}:
+        allowed_classes = {accounting_class, "all"} if allow_all_fallback else {accounting_class}
+        if record_class not in allowed_classes:
             continue
         effective_date = _parse_limit_effective_date(record)
         if effective_date is None or effective_date > report_date:

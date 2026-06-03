@@ -628,6 +628,11 @@ export function createDemoBondAnalyticsClient(
         {
           report_date: reportDate,
           overall_status: "incomplete",
+          acceptance_status: "blocked",
+          acceptance_message:
+            "正式 DV01 限额配置验收未通过；待补分类：AC, OCI, TPL, all。",
+          next_action:
+            "请在 bond_dv01_limit_config 治理流补齐 AC, OCI, TPL, all 的 accounting_class、limit_dv01、warning_dv01、hedge_target_dv01、limit_source、limit_source_version、limit_rule_version、limit_effective_date。",
           config_stream: "bond_dv01_limit_config",
           required_accounting_classes: ["AC", "OCI", "TPL", "all"],
           required_fields: [
@@ -640,6 +645,7 @@ export function createDemoBondAnalyticsClient(
             "limit_rule_version",
             "limit_effective_date",
           ],
+          configured_accounting_classes: [],
           missing_accounting_classes: ["AC", "OCI", "TPL", "all"],
           invalid_accounting_classes: [],
           configured_count: 0,

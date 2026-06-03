@@ -645,6 +645,12 @@ function limitConfigStatusLabel(value: string | null | undefined): string {
   return value || "—";
 }
 
+function limitConfigAcceptanceLabel(value: string | null | undefined): string {
+  if (value === "ready") return "已通过";
+  if (value === "blocked") return "未通过";
+  return value || "—";
+}
+
 function numericKey(value: Numeric | null | undefined): string {
   if (!value) return "na";
   return `${value.raw}-${value.unit}-${value.display}`;
@@ -767,7 +773,9 @@ function DV01LimitConfigStatusPanel({
             />
           ) : null}
           <div className={styles.movementSummaryGrid}>
+            <KpiCard label="验收结论" value={limitConfigAcceptanceLabel(data.acceptance_status)} />
             <KpiCard label="正式配置流" value={nullableText(data.config_stream)} />
+            <KpiCard label="已接入分类" value={joinDisplayList(data.configured_accounting_classes)} />
             <KpiCard label="待补分类" value={joinDisplayList(data.missing_accounting_classes)} />
             <KpiCard label="无效分类" value={joinDisplayList(data.invalid_accounting_classes)} />
             <KpiCard label="会计分类" value={selectedRow.accounting_class} />
@@ -779,6 +787,12 @@ function DV01LimitConfigStatusPanel({
             <KpiCard label="来源版本" value={nullableText(selectedRow.limit_source_version)} />
             <KpiCard label="规则版本" value={nullableText(selectedRow.limit_rule_version)} />
             <KpiCard label="生效日" value={limitEffectiveDateLabel(selectedRow.limit_effective_date)} />
+          </div>
+          <div className={styles.reconciliationMeta}>
+            验收说明 {nullableText(data.acceptance_message)}
+          </div>
+          <div className={styles.reconciliationMeta}>
+            下一步动作 {nullableText(data.next_action)}
           </div>
           <div className={styles.reconciliationMeta}>
             必填字段 {joinDisplayList(data.required_fields)}
