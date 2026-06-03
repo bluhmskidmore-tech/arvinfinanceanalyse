@@ -1457,7 +1457,9 @@ export function EmbeddedAgentCopilot({
   const closeResultInteractionDetails = useCallback((sourceElement?: HTMLElement) => {
     const detailsRoot = sourceElement?.closest(".agent-result-main") ?? conversationRef.current;
     detailsRoot
-      ?.querySelectorAll<HTMLDetailsElement>(".agent-follow-up-chips__details, .agent-suggested-actions__more")
+      ?.querySelectorAll<HTMLDetailsElement>(
+        ".agent-follow-up-chips__details, .agent-suggested-actions__more, .agent-result-side-drawer",
+      )
       .forEach((details) => {
         details.open = false;
       });
@@ -1580,13 +1582,6 @@ export function EmbeddedAgentCopilot({
     latestConversationTurn?.result,
     latestConversationTurn?.error,
   ]);
-
-  useEffect(() => {
-    if (!hasConversation || !queuedQuery.trim()) {
-      return;
-    }
-    scrollConversationToBottom();
-  }, [hasConversation, queuedQuery]);
 
   useEffect(() => {
     if (!hasConversation || !shouldFocusComposerRef.current) {
@@ -2697,6 +2692,41 @@ export function EmbeddedAgentCopilot({
     );
   }
 
+  function renderQueuedDraft() {
+    if (!queuedQuery) {
+      return null;
+    }
+
+    return (
+      <div
+        className="agent-queued-draft"
+        role="status"
+        aria-live="polite"
+        aria-label="待发送的下一句"
+      >
+        <div className="agent-queued-draft__copy">
+          <span className="agent-queued-draft__label">下一句</span>
+          <span className="agent-queued-draft__text">{queuedQuery}</span>
+          <span className="agent-queued-draft__hint">当前回答完成后发送</span>
+        </div>
+        <div className="agent-queued-draft__actions">
+          <button
+            type="button"
+            className="agent-queued-draft__action"
+            onClick={restoreQueuedQueryToComposer}
+          >
+            <EditOutlined aria-hidden="true" />
+            <span>编辑草稿</span>
+          </button>
+          <button type="button" className="agent-queued-draft__action" onClick={cancelQueuedQuery}>
+            <CloseOutlined aria-hidden="true" />
+            <span>取消草稿</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   function renderAgentResultSide(turnResult: AgentQueryResult, resultMetaEntries: Array<[string, unknown]>) {
     const hasEvidence = hasEvidenceContent(turnResult.evidence);
     const detailSectionCount = (hasEvidence ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
@@ -3206,37 +3236,6 @@ export function EmbeddedAgentCopilot({
               </div>
             );
           })}
-          {queuedQuery ? (
-            <div
-              className="agent-turn agent-turn--queued"
-              role="status"
-              aria-live="polite"
-              aria-label="待发送的下一句"
-            >
-              <div className="agent-message agent-message--user">
-                <div className="agent-message__speaker">我</div>
-                <div className="agent-user-bubble agent-user-bubble--queued">
-                  <div className="agent-user-bubble__context">下一句</div>
-                  <div className="agent-message__body">{queuedQuery}</div>
-                  <div className="agent-user-bubble__hint">当前回答完成后发送</div>
-                  <div className="agent-user-bubble__actions">
-                    <button
-                      type="button"
-                      className="agent-user-bubble__edit"
-                      onClick={restoreQueuedQueryToComposer}
-                    >
-                      <EditOutlined aria-hidden="true" />
-                      <span>编辑草稿</span>
-                    </button>
-                    <button type="button" className="agent-user-bubble__edit" onClick={cancelQueuedQuery}>
-                      <CloseOutlined aria-hidden="true" />
-                      <span>取消草稿</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
           <div
             ref={conversationBottomRef}
             className="agent-conversation__bottom"
@@ -3264,6 +3263,7 @@ export function EmbeddedAgentCopilot({
 
       {hasConversation ? (
         <div className="agent-composer-dock">
+          {renderQueuedDraft()}
           <AgentQueryForm
             compact
             showAdvancedTools={!isEmbedded}

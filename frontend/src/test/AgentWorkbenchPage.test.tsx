@@ -2488,6 +2488,7 @@ describe("AgentWorkbenchPage", () => {
       configurable: true,
       value: { writeText },
     });
+    mockNarrowAgentViewport();
     mockManagedRunResult(fetchMock, {
       answer: "回答完成，可以继续追问。",
       cards: [],
@@ -2534,6 +2535,13 @@ describe("AgentWorkbenchPage", () => {
       await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "duration risk follow-up check");
       await user.click(screen.getByRole("button", { name: "发送" }));
       expect(await screen.findByText("回答完成，可以继续追问。")).toBeInTheDocument();
+      const resultDrawer = screen.getByText("依据与运行信息 · 2 项").closest("details");
+      expect(resultDrawer).not.toBeNull();
+      if (!resultDrawer) {
+        throw new Error("Expected compact result details drawer to exist");
+      }
+      fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
+      expect(resultDrawer).toHaveAttribute("open");
 
       await user.click(screen.getByRole("button", { name: "复制回答" }));
       screen.getByRole("button", { name: "已复制" }).focus();
@@ -2570,6 +2578,7 @@ describe("AgentWorkbenchPage", () => {
       expect(document.activeElement).toBe(input);
       expect(scrollTargets).toContain(input);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
+      expect(resultDrawer).not.toHaveAttribute("open");
       expect(moreSuggestedActions).not.toHaveAttribute("open");
       expect(followUpDetails).not.toHaveAttribute("open");
       expect(followUpOptions).not.toBeVisible();
@@ -2959,8 +2968,11 @@ describe("AgentWorkbenchPage", () => {
     expect(queuedPreview).toHaveTextContent("queued second turn");
     expect(screen.queryByText("已排队：queued second turn")).not.toBeInTheDocument();
     expect(screen.queryByText("当前回答完成后自动发送。")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("下一句");
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("queued second turn");
+    const composerDock = document.querySelector(".agent-composer-dock");
+    expect(composerDock).not.toBeNull();
+    expect(composerDock).toContainElement(queuedPreview);
+    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("下一句");
+    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "编辑草稿" }));
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
@@ -3115,7 +3127,7 @@ describe("AgentWorkbenchPage", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
 
-  it("scrolls a queued follow-up preview into view while the active answer is running", async () => {
+  it("keeps a queued follow-up draft anchored to the composer while the active answer is running", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
@@ -3132,15 +3144,13 @@ describe("AgentWorkbenchPage", () => {
       expect(await screen.findByText("scroll queued first turn")).toBeInTheDocument();
       scrollTargets.length = 0;
 
-      await user.type(screen.getByLabelText("agent-question-input"), "scroll queued second turn");
+      const input = screen.getByLabelText("agent-question-input");
+      await user.type(input, "scroll queued second turn");
       await user.click(screen.getByRole("button", { name: "发送下一句" }));
 
       expect(getQueuedFollowUpStatus()).toHaveTextContent("scroll queued second turn");
-      await waitFor(() => {
-        expect(
-          scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom"),
-        ).toBe(true);
-      });
+      expect(scrollTargets).toContain(input);
+      expect(scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom")).toBe(false);
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
