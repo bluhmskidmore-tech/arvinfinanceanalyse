@@ -739,6 +739,8 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("同日相关 0.00");
     expect(crisisEvidence).toHaveTextContent("危机期命中率 55.0%");
     expect(crisisEvidence).toHaveTextContent("先补齐样本不足品种的历史数据");
+    expect(crisisEvidence).toHaveTextContent("样本不足：Rebar futures 17/20，还差 3");
+    expect(crisisEvidence).toHaveTextContent("最低样本 20");
     expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
   });
 

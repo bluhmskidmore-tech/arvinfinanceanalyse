@@ -2214,6 +2214,7 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
         "shadow_evaluation_ready_count": 6,
         "shadow_evaluation_short_count": 0,
         "shadow_evaluation_status_counts": {"review_ready": 6},
+        "shadow_evaluation_short_items": [],
         "shadow_evaluation_next_step": "6 个商品候选可进入人工复核；进入公式前仍需历史回测、相关性检验、权重审批和版本记录。",
         "formula_change_required": True,
         "approval_required": True,
@@ -2221,6 +2222,151 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     }
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["component_count"] == 5
+
+
+def test_macro_toolkit_analysis_surfaces_actionable_commodity_shadow_shortfalls(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    _seed_crisis_score_history(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        commodity_rows: list[tuple[object, ...]] = []
+        short_start = date(2026, 3, 24)
+        for offset in range(18):
+            trade_date = (short_start + pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
+            commodity_rows.extend(
+                [
+                    (
+                        trade_date,
+                        "RB",
+                        "RB2605.SHF",
+                        "SHF",
+                        None,
+                        None,
+                        None,
+                        3500 + offset * 2.5,
+                        None,
+                        1000,
+                        2000,
+                        "sv_tushare_fut_daily_rb",
+                        "vv_tushare_fut_daily_RB_SHF_20260410",
+                        "rv_commodity_daily_v1",
+                    ),
+                    (
+                        trade_date,
+                        "I",
+                        "I2605.DCE",
+                        "DCE",
+                        None,
+                        None,
+                        None,
+                        760 + offset * 0.8,
+                        None,
+                        1000,
+                        2000,
+                        "sv_tushare_fut_daily_i",
+                        "vv_tushare_fut_daily_I_DCE_20260410",
+                        "rv_commodity_daily_v1",
+                    ),
+                ]
+            )
+        ready_specs = {
+            "CU": ("CU2605.SHF", "SHF", 78000.0, 25.0),
+            "AL": ("AL2605.SHF", "SHF", 18800.0, 8.0),
+            "SC": ("SC2605.INE", "INE", 560.0, 0.5),
+            "AU": ("AU2605.SHF", "SHF", 510.0, 0.3),
+        }
+        ready_start = date(2026, 2, 1)
+        for offset in range(70):
+            trade_date = (ready_start + pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
+            for product_code, (contract_code, exchange, base_value, daily_step) in ready_specs.items():
+                commodity_rows.append(
+                    (
+                        trade_date,
+                        product_code,
+                        contract_code,
+                        exchange,
+                        None,
+                        None,
+                        None,
+                        base_value + offset * daily_step,
+                        None,
+                        1000,
+                        2000,
+                        f"sv_tushare_fut_daily_{product_code.lower()}",
+                        f"vv_tushare_fut_daily_{product_code}_{exchange}_20260410",
+                        "rv_commodity_daily_v1",
+                    )
+                )
+        conn.executemany(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            commodity_rows,
+        )
+    finally:
+        conn.close()
+
+    crisis = macro_toolkit_route._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
+
+    coverage = crisis["commodity_coverage"]
+    items = {item["field"]: item for item in coverage["items"]}
+    rebar_shadow = items["rebar"]["shadow_evaluation"]
+    assert rebar_shadow["status"] == "history_short"
+    assert rebar_shadow["sample_count"] == 17
+    assert rebar_shadow["minimum_sample_count"] == 20
+    assert rebar_shadow["sample_gap"] == 3
+    assert items["copper"]["shadow_evaluation"]["status"] == "review_ready"
+    assert coverage["candidate_summary"]["shadow_evaluation_ready_count"] == 4
+    assert coverage["candidate_summary"]["shadow_evaluation_short_count"] == 2
+    assert coverage["candidate_summary"]["shadow_evaluation_status_counts"] == {
+        "history_short": 2,
+        "review_ready": 4,
+    }
+    assert coverage["candidate_summary"]["shadow_evaluation_short_items"] == [
+        {
+            "field": "rebar",
+            "label": "Rebar futures",
+            "sample_count": 17,
+            "minimum_sample_count": 20,
+            "sample_gap": 3,
+            "latest_date": "2026-04-10",
+        },
+        {
+            "field": "iron_ore",
+            "label": "Iron ore futures",
+            "sample_count": 17,
+            "minimum_sample_count": 20,
+            "sample_gap": 3,
+            "latest_date": "2026-04-10",
+        },
+    ]
 
 
 def test_macro_toolkit_analysis_uses_landed_stock_factor_snapshot_for_multi_factor(tmp_path, monkeypatch) -> None:

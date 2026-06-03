@@ -1965,6 +1965,11 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
                   {commodityCoverage.candidate_summary.shadow_evaluation_next_step}
                 </small>
               ) : null}
+              {commodityCoverage.candidate_summary.shadow_evaluation_short_items.length ? (
+                <small className="macro-toolkit-crisis-coverage-note">
+                  {formatCommodityShadowShortfallList(commodityCoverage.candidate_summary)}
+                </small>
+              ) : null}
             </>
           ) : null}
           <div className="macro-toolkit-crisis-input-grid">
@@ -2591,16 +2596,28 @@ type CrisisCommodityCandidateSummary = {
   shadow_evaluation_ready_count: number;
   shadow_evaluation_short_count: number;
   shadow_evaluation_status_counts: Record<string, number>;
+  shadow_evaluation_short_items: CrisisCommodityShadowShortItem[];
   shadow_evaluation_next_step: string;
   formula_change_required: boolean;
   approval_required: boolean;
   next_step: string;
 };
 
+type CrisisCommodityShadowShortItem = {
+  field: string;
+  label: string;
+  sample_count: number | null;
+  minimum_sample_count: number | null;
+  sample_gap: number | null;
+  latest_date: string | null;
+};
+
 type CrisisCommodityShadowEvaluation = {
   status: string;
   label: string;
   sample_count: number | null;
+  minimum_sample_count: number | null;
+  sample_gap: number | null;
   window_start: string | null;
   window_end: string | null;
   target: string;
@@ -2672,11 +2689,28 @@ function normalizeCommodityCandidateSummary(value: unknown): CrisisCommodityCand
     shadow_evaluation_short_count:
       typeof value.shadow_evaluation_short_count === "number" ? value.shadow_evaluation_short_count : 0,
     shadow_evaluation_status_counts: normalizeNumberRecord(value.shadow_evaluation_status_counts),
+    shadow_evaluation_short_items: Array.isArray(value.shadow_evaluation_short_items)
+      ? value.shadow_evaluation_short_items.map(normalizeCommodityShadowShortItem).filter((item) => item !== null)
+      : [],
     shadow_evaluation_next_step:
       typeof value.shadow_evaluation_next_step === "string" ? value.shadow_evaluation_next_step : "",
     formula_change_required: value.formula_change_required === true,
     approval_required: value.approval_required === true,
     next_step: typeof value.next_step === "string" ? value.next_step : "",
+  };
+}
+
+function normalizeCommodityShadowShortItem(value: unknown): CrisisCommodityShadowShortItem | null {
+  if (!isRecord(value) || typeof value.field !== "string") {
+    return null;
+  }
+  return {
+    field: value.field,
+    label: typeof value.label === "string" ? value.label : value.field,
+    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
+    minimum_sample_count: typeof value.minimum_sample_count === "number" ? value.minimum_sample_count : null,
+    sample_gap: typeof value.sample_gap === "number" ? value.sample_gap : null,
+    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
   };
 }
 
@@ -2735,6 +2769,8 @@ function normalizeCommodityShadowEvaluation(value: unknown): CrisisCommodityShad
     status: typeof value.status === "string" ? value.status : "unknown",
     label: typeof value.label === "string" ? value.label : "影子评估待确认",
     sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
+    minimum_sample_count: typeof value.minimum_sample_count === "number" ? value.minimum_sample_count : null,
+    sample_gap: typeof value.sample_gap === "number" ? value.sample_gap : null,
     window_start: typeof value.window_start === "string" ? value.window_start : null,
     window_end: typeof value.window_end === "string" ? value.window_end : null,
     target: typeof value.target === "string" ? value.target : "crisis_score",
@@ -2799,11 +2835,31 @@ function formatCommodityShadowSummary(coverage: CrisisCommodityCoverage) {
 }
 
 function formatCommodityShadowDetail(evaluation: CrisisCommodityShadowEvaluation) {
-  return [
+  const parts = [
     `样本 ${evaluation.sample_count ?? "缺失"}`,
     `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
     `危机期命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
-  ].join(" · ");
+  ];
+  if (evaluation.status === "history_short" && typeof evaluation.minimum_sample_count === "number") {
+    parts.push(`最低样本 ${evaluation.minimum_sample_count}`);
+  }
+  if (evaluation.status === "history_short" && typeof evaluation.sample_gap === "number") {
+    parts.push(`还差 ${evaluation.sample_gap}`);
+  }
+  return parts.join(" · ");
+}
+
+function formatCommodityShadowShortfallList(summary: CrisisCommodityCandidateSummary) {
+  const items = summary.shadow_evaluation_short_items.map((item) => {
+    const sampleText =
+      typeof item.sample_count === "number" && typeof item.minimum_sample_count === "number"
+        ? `${item.sample_count}/${item.minimum_sample_count}`
+        : "样本缺失";
+    const gapText = typeof item.sample_gap === "number" ? `还差 ${item.sample_gap}` : "缺口待确认";
+    const dateText = item.latest_date ? `，最新 ${item.latest_date}` : "";
+    return `${item.label || item.field} ${sampleText}，${gapText}${dateText}`;
+  });
+  return `样本不足：${items.join("；")}`;
 }
 
 function formatSignedDecimal(value: number | null | undefined) {

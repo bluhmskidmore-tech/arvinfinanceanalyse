@@ -1419,6 +1419,7 @@ _CRISIS_COMMODITY_COVERAGE_INPUTS = (
     {"field": "crude_oil", "label": "Crude oil futures", "aliases": ("SC0", "SC0.INE")},
     {"field": "gold", "label": "Gold futures", "aliases": ("AU0", "AU0.SHF")},
 )
+_CRISIS_COMMODITY_SHADOW_MIN_SAMPLES = 20
 
 _CAPABILITY_INPUT_REQUIREMENTS = {
     "monetary_policy_stance": (
@@ -2684,6 +2685,21 @@ def _crisis_commodity_candidate_summary(items: list[dict[str, object]]) -> dict[
     ]
     shadow_ready_count = shadow_statuses.count("review_ready")
     shadow_short_count = shadow_statuses.count("history_short")
+    shadow_short_items = [
+        {
+            "field": str(item.get("field") or ""),
+            "label": str(item.get("label") or item.get("field") or ""),
+            "sample_count": int(shadow.get("sample_count") or 0),
+            "minimum_sample_count": int(
+                shadow.get("minimum_sample_count") or _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES
+            ),
+            "sample_gap": int(shadow.get("sample_gap") or 0),
+            "latest_date": item.get("latest_date"),
+        }
+        for item in items
+        if isinstance(shadow := item.get("shadow_evaluation"), dict)
+        and shadow.get("status") == "history_short"
+    ]
     return {
         "shadow_review_ready_count": statuses.count("shadow_review_ready"),
         "needs_current_data_count": statuses.count("needs_current_data"),
@@ -2695,6 +2711,7 @@ def _crisis_commodity_candidate_summary(items: list[dict[str, object]]) -> dict[
             for status in sorted(set(shadow_statuses))
             if status
         },
+        "shadow_evaluation_short_items": shadow_short_items,
         "shadow_evaluation_next_step": _crisis_commodity_shadow_next_step(
             ready_count=shadow_ready_count,
             short_count=shadow_short_count,
@@ -2717,7 +2734,10 @@ def _crisis_commodity_shadow_next_step(*, ready_count: int, short_count: int) ->
 
 
 def _crisis_score_history(series_data: dict[str, list[tuple[date, float]]], report_date: date) -> pd.DataFrame:
-    from backend.app.core_finance.macro.crisis_score import compute_crisis_score, compute_crisis_indicators  # noqa: PLC0415
+    from backend.app.core_finance.macro.crisis_score import (  # noqa: PLC0415
+        compute_crisis_indicators,
+        compute_crisis_score,
+    )
 
     indicators = compute_crisis_indicators(series_data)
     indicators = indicators[indicators.index.date <= report_date]
@@ -2732,10 +2752,13 @@ def _crisis_score_history(series_data: dict[str, list[tuple[date, float]]], repo
 
 def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.DataFrame) -> dict[str, object]:
     if frame.empty or crisis_history.empty or "crisis_score" not in crisis_history.columns:
+        sample_count = 0
         return {
             "status": "history_short",
             "label": "影子评估样本不足",
-            "sample_count": 0,
+            "sample_count": sample_count,
+            "minimum_sample_count": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
+            "sample_gap": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES - sample_count,
             "target": "crisis_score",
             "candidate_metric": "daily_return",
             "summary": "商品候选缺少足够历史样本，暂不能评估相关性。",
@@ -2744,13 +2767,16 @@ def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.
 
     points = _frame_to_crisis_points(frame)
     if len(points) < 3:
+        sample_count = len(points)
         return {
             "status": "history_short",
             "label": "影子评估样本不足",
-            "sample_count": len(points),
+            "sample_count": sample_count,
+            "minimum_sample_count": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
+            "sample_gap": max(0, _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES - sample_count),
             "target": "crisis_score",
             "candidate_metric": "daily_return",
-            "summary": f"商品候选仅 {len(points)} 个历史点，暂不能评估相关性。",
+            "summary": f"商品候选仅 {sample_count} 个历史点，暂不能评估相关性。",
             "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
         }
 
@@ -2763,14 +2789,17 @@ def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.
         },
         axis=1,
     ).dropna()
-    if len(aligned) < 20:
+    if len(aligned) < _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES:
+        sample_count = int(len(aligned))
         return {
             "status": "history_short",
             "label": "影子评估样本不足",
-            "sample_count": int(len(aligned)),
+            "sample_count": sample_count,
+            "minimum_sample_count": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES,
+            "sample_gap": _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES - sample_count,
             "target": "crisis_score",
             "candidate_metric": "daily_return",
-            "summary": f"商品候选与 Crisis Score 仅 {len(aligned)} 个重叠样本，暂不能评估相关性。",
+            "summary": f"商品候选与 Crisis Score 仅 {sample_count} 个重叠样本，暂不能评估相关性。",
             "next_step": "先补齐商品期货历史数据，再做历史回测、相关性检验和权重审批。",
         }
 
