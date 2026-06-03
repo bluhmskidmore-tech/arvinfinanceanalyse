@@ -4630,9 +4630,12 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
-  it("shows a restore failure status when reconnecting to the latest run fails", async () => {
+  it("clears restore failure status after the next successful question", async () => {
+    const user = userEvent.setup();
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-failed");
-    fetchMock.mockResolvedValueOnce(buildJsonResponse({ detail: "missing run" }, 500));
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse({ detail: "missing run" }, 500))
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("fresh answer after restore failure")));
 
     render(<AgentWorkbenchPage />);
 
@@ -4640,6 +4643,12 @@ describe("AgentWorkbenchPage", () => {
     expect(restoreError).toHaveTextContent("agent_run:restore-failed");
     expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
     expect(screen.getByLabelText("agent-question-input")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "fresh question after restore failure");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("fresh answer after restore failure")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "agent-run-restore-error" })).not.toBeInTheDocument();
   });
 
   it("shows elapsed managed-runtime wait status while the agent request is still running", async () => {

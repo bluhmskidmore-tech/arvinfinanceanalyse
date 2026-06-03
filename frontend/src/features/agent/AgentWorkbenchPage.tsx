@@ -2272,6 +2272,7 @@ export function EmbeddedAgentCopilot({
     if (isEmbedded) {
       setPageContextChangeNotice(false);
     }
+    setRestoreErrorRunId("");
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
     clearComposerQuery();
     shouldFocusComposerRef.current = true;
