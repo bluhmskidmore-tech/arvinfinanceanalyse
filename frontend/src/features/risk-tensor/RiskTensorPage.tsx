@@ -1061,7 +1061,8 @@ export default function RiskTensorPage() {
           <strong>风险报告日已被新鲜度校验拦截</strong>
           <span>
             报告日 {selectedBlockedReportDate.report_date}；原因{" "}
-            {selectedBlockedReportDate.reason || "后端未返回原因"}。页面不会读取该日期风险张量，请切换到可用报告日。
+            {selectedBlockedReportDate.reason || "后端未返回原因"}。trace_id{" "}
+            {datesQuery.data?.result_meta.trace_id ?? "未提供"}。主读面未读取；请切换到可用报告日。
           </span>
         </div>
       ) : tensorQuery.isError ? (

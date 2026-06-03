@@ -4571,6 +4571,18 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("shows a restore failure status when reconnecting to the latest run fails", async () => {
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-failed");
+    fetchMock.mockResolvedValueOnce(buildJsonResponse({ detail: "missing run" }, 500));
+
+    render(<AgentWorkbenchPage />);
+
+    const restoreError = await screen.findByRole("status", { name: "agent-run-restore-error" });
+    expect(restoreError).toHaveTextContent("agent_run:restore-failed");
+    expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
+    expect(screen.getByLabelText("agent-question-input")).toBeInTheDocument();
+  });
+
   it("shows elapsed managed-runtime wait status while the agent request is still running", async () => {
     vi.useFakeTimers();
     fetchMock.mockReturnValue(new Promise(() => undefined));
