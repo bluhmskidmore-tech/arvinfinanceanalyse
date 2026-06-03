@@ -25,6 +25,7 @@ import {
   parseDisplayNumber,
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
+import "./RiskOverviewPage.css";
 
 const summaryGridStyle = {
   display: "grid",
@@ -305,7 +306,7 @@ export default function RiskOverviewPage() {
           }}
         >
           主指标来自正式风险张量接口{" "}
-          <code style={{ fontSize: 13 }}>/api/risk/tensor</code>
+          <code className="risk-overview-api-code">/api/risk/tensor</code>
           （与「风险张量」页同一主链）。下方债券分析物化结果为下钻与补充视图，不在浏览器端做金融重算。
         </p>
       </div>
@@ -410,28 +411,14 @@ export default function RiskOverviewPage() {
                 />
               </div>
 
-              <h2
-                style={{
-                  margin: "24px 0 12px",
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: designTokens.color.neutral[900],
-                }}
-              >
+              <h2 className="risk-overview-section-title">
                 KRD 分桶（估值 DV01）
               </h2>
               {krdChartOption ? (
                 <ReactECharts option={krdChartOption} style={{ height: 320 }} />
               ) : null}
 
-              <h2
-                style={{
-                  margin: "24px 0 12px",
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: designTokens.color.neutral[900],
-                }}
-              >
+              <h2 className="risk-overview-section-title">
                 集中度
               </h2>
               <div style={summaryGridStyle}>
@@ -456,14 +443,7 @@ export default function RiskOverviewPage() {
                 />
               </div>
 
-              <h2
-                style={{
-                  margin: "24px 0 12px",
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: designTokens.color.neutral[900],
-                }}
-              >
+              <h2 className="risk-overview-section-title">
                 流动性缺口（市值）
               </h2>
               <div style={summaryGridStyle}>
@@ -547,8 +527,8 @@ export default function RiskOverviewPage() {
       <div style={drillDownIntroStyle}>
         <strong style={{ color: designTokens.color.neutral[900] }}>债券分析下钻与补充</strong>
         ：以下接口来自{" "}
-        <code style={{ fontSize: 12 }}>/api/bond-analytics/krd-curve-risk</code> 与{" "}
-        <code style={{ fontSize: 12 }}>/api/bond-analytics/credit-spread-migration</code>
+        <code className="risk-overview-api-code risk-overview-api-code--compact">/api/bond-analytics/krd-curve-risk</code> 与{" "}
+        <code className="risk-overview-api-code risk-overview-api-code--compact">/api/bond-analytics/credit-spread-migration</code>
         ，用于曲线/KRD 明细与信用利差迁移等物化视角，与主链风险张量并存时可对照阅读。
       </div>
 

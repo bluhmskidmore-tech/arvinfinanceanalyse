@@ -1,0 +1,14 @@
+.risk-overview-api-code {
+  font-size: 13px;
+}
+
+.risk-overview-api-code--compact {
+  font-size: 12px;
+}
+
+.risk-overview-section-title {
+  margin: 24px 0 12px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 600;
+}
