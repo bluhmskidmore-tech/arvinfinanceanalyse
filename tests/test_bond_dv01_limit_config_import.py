@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
-import os
-import subprocess
 import sys
+from contextlib import redirect_stdout
 from datetime import date
-from pathlib import Path
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.services.bond_analytics_service import (
+    DV01_LIMIT_CONFIG_CLASSES,
+    DV01_LIMIT_CONFIG_REQUIRED_FIELDS,
+)
 from tests.helpers import load_module
 
 
@@ -35,6 +39,15 @@ def _load_import_task():
         "backend.app.tasks.bond_dv01_limit_config_import",
         "backend/app/tasks/bond_dv01_limit_config_import.py",
     )
+
+
+def _run_import_cli(args: list[str], monkeypatch) -> dict[str, object]:
+    task_mod = _load_import_task()
+    monkeypatch.setattr(sys, "argv", ["bond_dv01_limit_config_import", *args])
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+        task_mod.main()
+    return json.loads(stdout.getvalue())
 
 
 def test_import_bond_dv01_limit_config_rejects_missing_classes_without_writing(tmp_path, monkeypatch):
@@ -125,7 +138,7 @@ def test_import_bond_dv01_limit_config_validates_csv_without_writing_in_dry_run(
     get_settings.cache_clear()
 
 
-def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path):
+def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     config_path = tmp_path / "dv01_limits.csv"
     rows = [_valid_record(accounting_class) for accounting_class in ["AC", "OCI", "TPL", "all"]]
@@ -134,13 +147,12 @@ def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path):
         "\n".join([",".join(header), *[",".join(row[column] for column in header) for row in rows]]),
         encoding="utf-8",
     )
-    env = {**os.environ, "MOSS_ENVIRONMENT": "test", "MOSS_GOVERNANCE_PATH": str(governance_dir)}
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
 
-    dry_run = subprocess.run(
+    dry_run_payload = _run_import_cli(
         [
-            sys.executable,
-            "-m",
-            "backend.app.tasks.bond_dv01_limit_config_import",
             "--config-path",
             str(config_path),
             "--governance-dir",
@@ -149,24 +161,16 @@ def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path):
             REPORT_DATE,
             "--dry-run",
         ],
-        check=True,
-        cwd=Path(__file__).resolve().parents[1],
-        env=env,
-        capture_output=True,
-        text=True,
+        monkeypatch,
     )
-    dry_run_payload = json.loads(dry_run.stdout)
 
     assert dry_run_payload["status"] == "validated"
     assert dry_run_payload["records_written"] == 0
     assert dry_run_payload["validation_errors"] == []
     assert GovernanceRepository(base_dir=governance_dir).read_all(STREAM) == []
 
-    imported = subprocess.run(
+    imported_payload = _run_import_cli(
         [
-            sys.executable,
-            "-m",
-            "backend.app.tasks.bond_dv01_limit_config_import",
             "--config-path",
             str(config_path),
             "--governance-dir",
@@ -174,13 +178,8 @@ def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path):
             "--report-date",
             REPORT_DATE,
         ],
-        check=True,
-        cwd=Path(__file__).resolve().parents[1],
-        env=env,
-        capture_output=True,
-        text=True,
+        monkeypatch,
     )
-    imported_payload = json.loads(imported.stdout)
     status_result = imported_payload["limit_config_status"]["result"]
 
     assert imported_payload["status"] == "imported"
@@ -189,3 +188,65 @@ def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path):
     assert status_result["acceptance_status"] == "ready"
     assert status_result["missing_accounting_classes"] == []
     assert len(GovernanceRepository(base_dir=governance_dir).read_all(STREAM)) == 4
+    get_settings.cache_clear()
+
+
+def test_import_bond_dv01_limit_config_cli_can_write_blank_template(tmp_path, monkeypatch):
+    template_path = tmp_path / "blank_dv01_limits.csv"
+    payload = _run_import_cli(["--write-template", str(template_path)], monkeypatch)
+
+    with template_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+
+    assert payload["status"] == "template_written"
+    assert payload["template_path"] == str(template_path)
+    assert reader.fieldnames == list(DV01_LIMIT_CONFIG_REQUIRED_FIELDS)
+    assert [row["accounting_class"] for row in rows] == list(DV01_LIMIT_CONFIG_CLASSES)
+    for row in rows:
+        assert row["limit_dv01"] == ""
+        assert row["warning_dv01"] == ""
+        assert row["hedge_target_dv01"] == ""
+
+
+def test_import_bond_dv01_limit_config_cli_can_check_current_status(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    config_path = tmp_path / "dv01_limits.csv"
+    rows = [_valid_record(accounting_class) for accounting_class in ["AC", "OCI", "TPL", "all"]]
+    header = list(rows[0])
+    config_path.write_text(
+        "\n".join([",".join(header), *[",".join(row[column] for column in header) for row in rows]]),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "test")
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _run_import_cli(
+        [
+            "--config-path",
+            str(config_path),
+            "--governance-dir",
+            str(governance_dir),
+            "--report-date",
+            REPORT_DATE,
+        ],
+        monkeypatch,
+    )
+
+    payload = _run_import_cli(
+        [
+            "--check-status",
+            "--governance-dir",
+            str(governance_dir),
+            "--report-date",
+            REPORT_DATE,
+        ],
+        monkeypatch,
+    )
+
+    assert payload["status"] == "status_checked"
+    assert payload["governance_dir"] == str(governance_dir)
+    assert payload["report_date"] == REPORT_DATE
+    assert payload["limit_config_status"]["result"]["acceptance_status"] == "ready"
+    assert payload["limit_config_status"]["result"]["missing_accounting_classes"] == []
+    get_settings.cache_clear()

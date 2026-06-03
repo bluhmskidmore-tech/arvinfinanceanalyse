@@ -27,6 +27,50 @@ def _emit_json_payload(payload: dict[str, object]) -> None:
     print(rendered, file=sys.stdout)
 
 
+def _write_bond_dv01_limit_config_template(template_path: str) -> dict[str, object]:
+    target = Path(template_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(DV01_LIMIT_CONFIG_REQUIRED_FIELDS))
+        writer.writeheader()
+        for accounting_class in DV01_LIMIT_CONFIG_CLASSES:
+            writer.writerow(
+                {
+                    "accounting_class": accounting_class,
+                    "limit_dv01": "",
+                    "warning_dv01": "",
+                    "hedge_target_dv01": "",
+                    "limit_source": "",
+                    "limit_source_version": "",
+                    "limit_rule_version": "",
+                    "limit_effective_date": "",
+                }
+            )
+    return {
+        "status": "template_written",
+        "template_path": str(target),
+        "required_accounting_classes": list(DV01_LIMIT_CONFIG_CLASSES),
+        "required_fields": list(DV01_LIMIT_CONFIG_REQUIRED_FIELDS),
+    }
+
+
+def _check_bond_dv01_limit_config_status(
+    *,
+    governance_dir: str | None = None,
+    report_date: str | date | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    governance_path = Path(governance_dir or settings.governance_path)
+    status_report_date = _resolve_status_report_date(report_date, [])
+    return {
+        "status": "status_checked",
+        "config_stream": DV01_LIMIT_CONFIG_STREAM,
+        "governance_dir": str(governance_path),
+        "report_date": status_report_date.isoformat(),
+        "limit_config_status": _current_status_payload(governance_path, status_report_date),
+    }
+
+
 def _import_bond_dv01_limit_config(
     *,
     config_path: str,
@@ -311,11 +355,27 @@ import_bond_dv01_limit_config = register_actor_once(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Import formal DV01 limit config into the governance stream.")
-    parser.add_argument("--config-path", required=True)
+    parser.add_argument("--config-path")
     parser.add_argument("--governance-dir")
     parser.add_argument("--report-date")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--write-template")
+    parser.add_argument("--check-status", action="store_true")
     args = parser.parse_args()
+
+    if args.write_template:
+        _emit_json_payload(_write_bond_dv01_limit_config_template(args.write_template))
+        return
+    if args.check_status:
+        _emit_json_payload(
+            _check_bond_dv01_limit_config_status(
+                governance_dir=args.governance_dir,
+                report_date=args.report_date,
+            )
+        )
+        return
+    if not args.config_path:
+        parser.error("--config-path is required unless --write-template or --check-status is provided")
 
     payload = import_bond_dv01_limit_config.fn(
         config_path=args.config_path,

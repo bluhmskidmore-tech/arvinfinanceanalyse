@@ -35,8 +35,10 @@ def test_bond_dv01_limit_config_runbook_documents_acceptance_flow():
 
     assert "docs/templates/bond_dv01_limit_config_template.csv" in runbook
     assert "backend.app.tasks.bond_dv01_limit_config_import" in runbook
+    assert "--write-template" in runbook
+    assert "--check-status" in runbook
     assert "--dry-run" in runbook
     assert "/api/bond-analytics/dv01-limit-config-status" in runbook
     assert "acceptance_status" in runbook
     assert "AC / OCI / TPL / all" in runbook
-    assert "all 不能替代 AC / OCI / TPL" in runbook
+    assert "it cannot replace the direct `AC / OCI / TPL` rows for acceptance" in runbook

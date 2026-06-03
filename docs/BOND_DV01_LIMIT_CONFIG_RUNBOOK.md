@@ -10,7 +10,7 @@ The system does not invent AC, OCI, TPL, or all DV01 limits. Risk, investment co
 
 Use `docs/templates/bond_dv01_limit_config_template.csv`.
 
-Required accounting classes are `AC / OCI / TPL / all`. The `all` row is a portfolio-wide configuration row; `all 不能替代 AC / OCI / TPL` for acceptance.
+Required accounting classes are `AC / OCI / TPL / all`. The `all` row is a portfolio-wide configuration row; it cannot replace the direct `AC / OCI / TPL` rows for acceptance.
 
 Required fields:
 
@@ -24,6 +24,18 @@ Required fields:
 - `limit_effective_date`: ISO date, for example `2026-03-01`
 
 Do not put placeholder numeric limits in the template. Fill only real approved values.
+
+To generate a fresh blank template from the backend import contract:
+
+```powershell
+python -m backend.app.tasks.bond_dv01_limit_config_import --write-template path\to\bond_dv01_limit_config.csv
+```
+
+Expected result:
+
+- `status` is `template_written`
+- the generated CSV contains only `AC`, `OCI`, `TPL`, and `all`
+- numeric limit fields are blank until business fills approved values
 
 ## Dry Run
 
@@ -62,6 +74,12 @@ Check the backend status endpoint:
 
 ```text
 /api/bond-analytics/dv01-limit-config-status?report_date=2026-03-31
+```
+
+Or check the same status from the import CLI:
+
+```powershell
+python -m backend.app.tasks.bond_dv01_limit_config_import --check-status --report-date 2026-03-31
 ```
 
 The DV01 Risk tab is accepted only when:
