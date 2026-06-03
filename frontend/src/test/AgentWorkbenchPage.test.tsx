@@ -1169,6 +1169,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "F:\\BETA" }));
     expect(screen.getByLabelText("repo-path-input")).toHaveValue("F:\\BETA");
     expect(screen.getByText("已切换 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
 
     await user.click(screen.getByRole("button", { name: "上移固定仓库 F:\\GAMMA" }));
 

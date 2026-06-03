@@ -2745,6 +2745,8 @@ export function EmbeddedAgentCopilot({
   function applyRecentRepoPath(nextRepoPath: string) {
     setRepoPath(nextRepoPath);
     setComposerAssistHint("已切换 GitNexus 仓库 · 可继续提问");
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
   }
 
   function pinCurrentRepo() {
