@@ -936,6 +936,12 @@ export default function RiskTensorPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  const handlePayloadChecklistJump = () => {
+    document
+      .querySelector<HTMLElement>('[data-testid="risk-tensor-quality-payload-checklist"]')
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   const handleSectionJump = (targetTestId: string) => {
     document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`)?.scrollIntoView({
       behavior: "smooth",
@@ -1386,6 +1392,43 @@ export default function RiskTensorPage() {
                   后端主读返回了缺失或不可解析字段；页面只保留后端原始展示/占位，不会在前端补算正式指标，请结合下方
                   result_meta 与质量证据复核。
                 </p>
+                <button
+                  type="button"
+                  className="risk-tensor-brief__link-button"
+                  data-testid="risk-tensor-payload-quality-review-action"
+                  onClick={handlePayloadChecklistJump}
+                >
+                  查看字段复核与补证请求
+                </button>
+                <button
+                  type="button"
+                  className="risk-tensor-brief__link-button"
+                  data-testid="risk-tensor-payload-quality-meta-action"
+                  onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+                >
+                  查看 result_meta
+                </button>
+                <button
+                  type="button"
+                  className="risk-tensor-brief__link-button"
+                  onClick={handleCopyPayloadQualityRequest}
+                >
+                  复制字段补证请求
+                </button>
+                {payloadQualityRequestCopyMessage ? (
+                  <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                    {payloadQualityRequestCopyMessage}
+                  </small>
+                ) : null}
+                {payloadQualityRequestCopyStatus === "failed" ? (
+                  <pre
+                    className="risk-tensor-quality-detail__manual-copy"
+                    data-testid="risk-tensor-payload-quality-warning-manual-copy"
+                    tabIndex={0}
+                  >
+                    {payloadQualityRequestCopyText}
+                  </pre>
+                ) : null}
               </div>
             ) : null}
 
