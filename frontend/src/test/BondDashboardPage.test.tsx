@@ -19,16 +19,17 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 function resultMeta(resultKind: string): ResultMeta {
+  const isBondHeadline = resultKind === "bond_dashboard.headline_kpis";
   return {
     trace_id: `tr_${resultKind}`,
-    basis: "formal",
+    basis: isBondHeadline ? "analytical" : "formal",
     result_kind: resultKind,
-    formal_use_allowed: true,
+    formal_use_allowed: !isBondHeadline,
     source_version: "sv",
     vendor_version: "vv",
     rule_version: "rv",
     cache_version: "cv",
-    quality_flag: "ok",
+    quality_flag: isBondHeadline ? "warning" : "ok",
     vendor_status: "ok",
     fallback_mode: "none",
     scenario_flag: false,

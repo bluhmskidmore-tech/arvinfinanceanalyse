@@ -118,7 +118,7 @@ tests/golden_samples/
 
 | sample_id | surface | status | 说明 |
 | --- | --- | --- | --- |
-| `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | 冻结 bond-dashboard 首屏 headline DTO 真值、环比字段与空态行为；**不**自动批准 `GAP-BOND-DASH-HL` 的字典级 `MTR-*` 绑定 |
+| `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | 冻结 bond-dashboard 首屏 headline DTO 真值、环比字段、空态行为与 candidate metadata；**不**自动批准 `GAP-BOND-DASH-HL` 的字典级 `MTR-*` 绑定 |
 
 ## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
 

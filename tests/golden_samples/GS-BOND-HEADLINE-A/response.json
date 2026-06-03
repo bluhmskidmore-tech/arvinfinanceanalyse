@@ -1,21 +1,30 @@
 {
   "result_meta": {
     "trace_id": "tr_bfc8e06208b8",
-    "basis": "formal",
+    "basis": "analytical",
     "result_kind": "bond_dashboard.headline_kpis",
-    "formal_use_allowed": true,
+    "formal_use_allowed": false,
     "source_version": "sv",
     "vendor_version": "vv_none",
     "rule_version": "rv_bond_analytics_formal_materialize_v1",
     "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
-    "quality_flag": "ok",
+    "quality_flag": "warning",
     "vendor_status": "ok",
     "fallback_mode": "none",
+    "requested_report_date": "2026-03-31",
+    "resolved_report_date": "2026-03-31",
     "scenario_flag": false,
+    "as_of_date": "2026-03-31",
+    "date_basis": "bond_dashboard_report_date",
+    "fallback_date": null,
     "generated_at": "2026-05-10T14:57:44.914593Z",
-    "filters_applied": {},
-    "tables_used": [],
-    "evidence_rows": null,
+    "filters_applied": {
+      "report_date": "2026-03-31"
+    },
+    "tables_used": [
+      "fact_formal_bond_analytics_daily"
+    ],
+    "evidence_rows": 3,
     "next_drill": [],
     "source_surface": "bond_analytics"
   },

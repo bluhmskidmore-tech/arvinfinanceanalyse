@@ -28,6 +28,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_envelope_from_lineage,
     build_formal_result_meta_from_lineage,
+    build_result_envelope,
 )
 
 # Mirrors `FormalComputeModuleDescriptor` for bond_analytics materialize (avoid importing tasks module).
@@ -178,6 +179,8 @@ def get_bond_dashboard_headline_kpis(report_date: date) -> dict[str, object]:
     raw = _repo().fetch_dashboard_headline_kpis(rd, prev_report_date=prior)
     cur_row = raw["current"]
     prev_row = raw["previous"]
+    fact_rows = _repo().fetch_bond_analytics_rows(report_date=rd)
+    lineage = _facts_lineage(rd, fact_rows)
     payload = {
         "report_date": rd,
         "prev_report_date": prior,
@@ -185,8 +188,23 @@ def get_bond_dashboard_headline_kpis(report_date: date) -> dict[str, object]:
         "prev_kpis": _kpi_block_from_row(prev_row) if prev_row is not None else None,
     }
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.headline_kpis", report_date=rd),
+        build_result_envelope(
+            basis="analytical",
+            trace_id=_trace_id(),
+            result_kind="bond_dashboard.headline_kpis",
+            cache_version=str(lineage["cache_version"]),
+            source_version=str(lineage["source_version"]),
+            rule_version=str(lineage["rule_version"]),
+            vendor_version=str(lineage.get("vendor_version") or "vv_none"),
+            quality_flag="warning",
+            source_surface="bond_analytics",
+            requested_report_date=rd,
+            resolved_report_date=rd,
+            as_of_date=rd,
+            date_basis="bond_dashboard_report_date",
+            filters_applied={"report_date": rd},
+            tables_used=["fact_formal_bond_analytics_daily"],
+            evidence_rows=len(fact_rows),
             result_payload=_typed_payload(BondDashboardHeadlinePayload, payload),
         )
     )

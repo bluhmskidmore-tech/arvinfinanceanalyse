@@ -766,7 +766,7 @@ export function createDemoBondDashboardClient(
               bond_count: 415,
             },
           },
-          { basis: "formal", formal_use_allowed: true },
+          { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
         ),
         data_source: "bond_analytics_facts",
       };

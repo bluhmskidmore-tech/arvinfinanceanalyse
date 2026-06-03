@@ -13,18 +13,25 @@
 - HTTP status is `200`.
 - The top-level envelope contains `result_meta`, `result`, and `data_source`.
 - `data_source == "bond_analytics_facts"`.
-- `result_meta.basis == "formal"`.
+- `result_meta.basis == "analytical"`.
 - `result_meta.result_kind == "bond_dashboard.headline_kpis"`.
-- `result_meta.formal_use_allowed == true`.
+- `result_meta.formal_use_allowed == false`.
 - `result_meta.source_version == "sv"`.
 - `result_meta.vendor_version == "vv_none"`.
 - `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v1"`.
 - `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"`.
-- `result_meta.quality_flag == "ok"`.
+- `result_meta.quality_flag == "warning"`.
 - `result_meta.vendor_status == "ok"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.scenario_flag == false`.
 - `result_meta.source_surface == "bond_analytics"`.
+- `result_meta.requested_report_date == "2026-03-31"`.
+- `result_meta.resolved_report_date == "2026-03-31"`.
+- `result_meta.as_of_date == "2026-03-31"`.
+- `result_meta.date_basis == "bond_dashboard_report_date"`.
+- `result_meta.filters_applied == {"report_date": "2026-03-31"}`.
+- `result_meta.tables_used == ["fact_formal_bond_analytics_daily"]`.
+- `result_meta.evidence_rows == 3`.
 - `result.report_date == "2026-03-31"`.
 - `result.prev_report_date == "2026-03-30"`.
 - `result.kpis` and `result.prev_kpis` both exist and expose the same headline key set.
@@ -61,7 +68,7 @@
 
 ## Null And Empty Behavior
 
-- On an empty DuckDB, the route still returns HTTP `200` with a formal envelope.
+- On an empty DuckDB, the route still returns HTTP `200` with an analytical/candidate envelope.
 - Empty-state `result.report_date` echoes the requested report date.
 - Empty-state `result.kpis` remains present, with zero-valued `Numeric.raw` fields and `bond_count == 0`.
 - Empty-state `result.prev_report_date == null`.
@@ -71,6 +78,7 @@
 
 - This sample freezes the current page-level DTO for `GET /api/bond-dashboard/headline-kpis`.
 - It does not approve new `MTR-*` bindings for bond headline or risk fields.
+- It intentionally exposes the page-level headline as analytical/candidate metadata even though the source rows come from `fact_formal_bond_analytics_daily`.
 - Cross-page equivalence with balance-analysis totals or risk-tensor metrics remains a separate contract decision.
 
 ## Reconciliation

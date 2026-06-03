@@ -111,16 +111,40 @@ def _assert_numeric(value: Any, *, unit: str, raw: Decimal | str | int | None = 
         assert Decimal(str(value["raw"])) == Decimal(str(raw))
 
 
-def _assert_formal_envelope(payload: dict[str, Any]) -> None:
+def _assert_result_envelope(
+    payload: dict[str, Any],
+    *,
+    basis: str = "formal",
+    formal_use_allowed: bool = True,
+) -> None:
     assert "result_meta" in payload
     assert "result" in payload
     assert payload.get("data_source") == "bond_analytics_facts"
     meta = payload["result_meta"]
-    assert meta.get("basis") == "formal"
-    assert meta.get("formal_use_allowed") is True
+    assert meta.get("basis") == basis
+    assert meta.get("formal_use_allowed") is formal_use_allowed
     for key in ("trace_id", "source_version", "rule_version", "result_kind"):
         assert key in meta, f"result_meta missing {key!r}"
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
+
+
+def _assert_formal_envelope(payload: dict[str, Any]) -> None:
+    _assert_result_envelope(payload)
+
+
+def _assert_bond_dashboard_headline_candidate_envelope(payload: dict[str, Any]) -> None:
+    _assert_result_envelope(payload, basis="analytical", formal_use_allowed=False)
+    meta = payload["result_meta"]
+    assert meta["result_kind"] == "bond_dashboard.headline_kpis"
+    assert meta["source_surface"] == "bond_analytics"
+    assert meta["quality_flag"] == "warning"
+    assert meta["scenario_flag"] is False
+    assert meta["requested_report_date"] == REPORT_DATE
+    assert meta["resolved_report_date"] == REPORT_DATE
+    assert meta["as_of_date"] == REPORT_DATE
+    assert meta["date_basis"] == "bond_dashboard_report_date"
+    assert meta["filters_applied"] == {"report_date": REPORT_DATE}
+    assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
 
 
 def _check_all_on_empty_db() -> None:
@@ -131,7 +155,10 @@ def _check_all_on_empty_db() -> None:
             f"{path} {params} -> {response.status_code}: {response.text}"
         )
         payload = response.json()
-        _assert_formal_envelope(payload)
+        if path.endswith("/headline-kpis"):
+            _assert_bond_dashboard_headline_candidate_envelope(payload)
+        else:
+            _assert_formal_envelope(payload)
         result = payload["result"]
         if path.endswith("/dates"):
             assert result.get("report_dates") == []
@@ -296,6 +323,36 @@ def test_bond_dashboard_headline_logs_api_perf(tmp_path, monkeypatch, caplog) ->
     get_settings.cache_clear()
 
 
+def test_bond_dashboard_headline_kpis_metadata_preserves_candidate_boundary(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "headline-candidate.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get(
+        "/api/bond-dashboard/headline-kpis",
+        params={"report_date": REPORT_DATE},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    meta = payload["result_meta"]
+    assert meta["result_kind"] == "bond_dashboard.headline_kpis"
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is False
+    assert meta["source_surface"] == "bond_analytics"
+    assert meta["requested_report_date"] == REPORT_DATE
+    assert meta["resolved_report_date"] == REPORT_DATE
+    assert meta["as_of_date"] == REPORT_DATE
+    assert meta["date_basis"] == "bond_dashboard_report_date"
+    assert meta["filters_applied"] == {"report_date": REPORT_DATE}
+    assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    assert meta["evidence_rows"] == 0
+    get_settings.cache_clear()
+
+
 def test_bond_dashboard_headline_kpis_shape_with_seeded_facts(tmp_path, monkeypatch) -> None:
     from decimal import Decimal
 
@@ -360,7 +417,7 @@ def test_bond_dashboard_headline_kpis_shape_with_seeded_facts(tmp_path, monkeypa
     response = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": d2})
     assert response.status_code == 200
     payload = response.json()
-    _assert_formal_envelope(payload)
+    _assert_bond_dashboard_headline_candidate_envelope(payload)
     res = payload["result"]
     assert res["prev_report_date"] == d1
     assert res["kpis"]["bond_count"] == 1
