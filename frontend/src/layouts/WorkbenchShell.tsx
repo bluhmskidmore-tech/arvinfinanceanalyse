@@ -538,7 +538,7 @@ export function WorkbenchShell() {
           <nav
             aria-label="主工作台"
             data-testid="workbench-group-nav"
-            style={{ display: "grid", gap: 4 }}
+            className="workbench-group-nav-shell"
           >
             {primaryWorkbenchNavigationGroups.map((group) => {
               const active = group.key === currentGroup.key;
@@ -551,37 +551,27 @@ export function WorkbenchShell() {
                   style={groupButtonStyle(active)}
                 >
                   <span
+                    className="workbench-shell-group-icon"
                     style={{
-                      display: "grid",
-                      placeItems: "center",
-                      width: 18,
-                      height: 18,
-                      borderRadius: 999,
                       border: active ? `1px solid ${shellTokens.railIconBorderActive}` : "none",
                       color: active ? shellTokens.railIconFgActive : shellTokens.railIconFgIdle,
-                      fontSize: 10,
                       background: active ? shellTokens.railSurfaceTint : "transparent",
                     }}
                   >
                     {iconMap[group.icon]}
                   </span>
                   <span
+                    className="workbench-shell-group-label"
                     style={{
-                      flex: 1,
-                      minWidth: 0,
                       fontWeight: active ? 700 : 600,
-                      fontSize: 13,
-                      letterSpacing: "-0.01em",
                     }}
                   >
                     {group.label}
                   </span>
                   <span
+                    className="workbench-shell-group-count"
                     style={{
                       color: active ? shellTokens.railCountFgActive : shellTokens.railCountFgIdle,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: "0.06em",
                     }}
                   >
                     {String(group.sections.length).padStart(2, "0")}
@@ -641,12 +631,7 @@ export function WorkbenchShell() {
 
         {!isBondAnalysisMinimalShell && secondaryWorkbenchNavigation.length > 0 ? (
           <section
-            style={{
-              display: "grid",
-              gap: 6,
-              paddingTop: 8,
-              borderTop: `1px solid ${shellTokens.railBorder}`,
-            }}
+            className="workbench-shell-rail-section workbench-shell-rail-section--gap-6"
           >
             <span className="workbench-shell-section-label workbench-shell-section-label--rail">
               规划入口
@@ -668,9 +653,9 @@ export function WorkbenchShell() {
                     border: "none",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{item.label}</span>
+                  <div className="workbench-shell-secondary-row">
+                    <span className="workbench-shell-secondary-icon">{iconMap[item.icon]}</span>
+                    <span className="workbench-shell-secondary-label">{item.label}</span>
                     <span
                       style={{
                         ...sectionBadgeStyle(item),
@@ -691,12 +676,7 @@ export function WorkbenchShell() {
 
         <section
           data-testid="workbench-support-nav"
-          style={{
-            display: "grid",
-            gap: 4,
-            paddingTop: 8,
-            borderTop: `1px solid ${shellTokens.railBorder}`,
-          }}
+          className="workbench-shell-rail-section"
         >
           <span className="workbench-shell-section-label workbench-shell-section-label--rail">
             支持入口
@@ -711,8 +691,8 @@ export function WorkbenchShell() {
                 data-active={active ? "true" : "false"}
                 style={supportLinkStyle(active)}
               >
-                <span style={{ fontSize: 11 }}>{item.icon}</span>
-                <span style={{ flex: 1 }}>{item.label}</span>
+                <span className="workbench-shell-support-icon">{item.icon}</span>
+                <span className="workbench-shell-support-label">{item.label}</span>
               </NavLink>
             );
           })}

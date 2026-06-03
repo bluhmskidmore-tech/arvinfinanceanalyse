@@ -211,6 +211,7 @@ Evidence from the second-pass security review:
 - Remediated in this continuation: `backend/app/api/routes/bond_dashboard.py` now requires `bond_dashboard/read` on dates, headline, structure, distribution, comparison, spread, maturity, industry, risk, and business-type reads.
 - Remediated in this continuation: `backend/app/api/routes/cashflow_projection.py` now requires `cashflow_projection/read` on the cashflow projection read surface.
 - Remediated in this continuation: `backend/app/api/routes/ledger_pnl.py` now requires `ledger_pnl/read` on dates, data, summary, and formal financial indicator source-contract reads.
+- Remediated in this continuation: `backend/app/api/routes/pnl.py` now requires `pnl/read` on formal PnL, bridge, overview, V1 detail, by-business read models, adjustment audit list, yearly summary, and import-status reads.
 
 Impact: automated metric and page-contract tests can pass while sensitive business data remains readable through unauthenticated GET surfaces. The header-trust development path also makes production misconfiguration more consequential.
 
@@ -307,6 +308,24 @@ Verification:
 - `python -m ruff check backend/app/api/routes/ledger_pnl.py tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`: passed.
 
 Residual risk: this closes the Ledger PnL HTTP read surface, but it does not promote `MTR-LPN-*` candidate metrics or replace the separate lineage/golden-sample closure gaps recorded under candidate metric metadata.
+
+### P1 remediated - PnL read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/pnl.py` now checks `pnl/read` before returning formal PnL dates/data, bridge, overview, V1 detail, by-business, by-business YTD, by-business monthly, by-business analysis, manual-adjustment audit list, yearly summary, and `/api/data/import_status/pnl`.
+- Existing mutation boundaries remain separate: manual-adjustment POST routes still use `pnl_by_business.adjustment/write`, and refresh still uses `formal_pnl/refresh`.
+- `tests/test_pnl_api_contract.py` verifies the twelve PnL GET surfaces return 403 without an explicit `pnl/read` grant, while the existing PnL contract suite seeds `pnl/read` before asserting formal data, bridge, by-business, manual-adjustment audit, import-status, and refresh follow-up reads.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_pnl_api_contract.py::test_pnl_read_surfaces_require_explicit_read_scope -q` failed because `/api/pnl/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_pnl_api_contract.py::test_pnl_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_pnl_api_contract.py -q`: `73 passed`.
+- `python -m ruff check backend/app/api/routes/pnl.py tests/test_pnl_api_contract.py`: passed.
+- `git diff --check -- backend/app/api/routes/pnl.py tests/test_pnl_api_contract.py`: passed.
+
+Residual risk: this closes the PnL HTTP read surfaces covered by `tests/test_pnl_api_contract.py`, but it does not prove every PnL-adjacent frontend or executive overlay route has been inventoried; those remain part of the broader P1 route inventory.
 
 ### P1 partially remediated - Positions read endpoints require read permission
 

@@ -512,6 +512,52 @@ select {
   gap: 4px;
 }
 
+.workbench-shell-group-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.workbench-shell-group-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.workbench-shell-group-count {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.workbench-shell-secondary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-shell-secondary-icon {
+  font-size: 12px;
+}
+
+.workbench-shell-secondary-label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workbench-shell-support-icon {
+  font-size: 11px;
+}
+
+.workbench-shell-support-label {
+  flex: 1;
+}
+
 .workbench-terminal-bar {
   display: grid;
   gap: 10px;

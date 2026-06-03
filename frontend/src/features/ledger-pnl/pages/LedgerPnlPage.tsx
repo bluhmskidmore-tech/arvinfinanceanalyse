@@ -720,7 +720,7 @@ function LedgerExplainabilityPanel(props: {
               <div key={check.label} className="ledger-pnl-analysis__kpi">
                 <div className="ledger-pnl-analysis__kpi-label">{check.label}</div>
                 <div className="ledger-pnl-analysis__kpi-value">
-                  {check.comparabilityReason ? `${check.label}可比性待核` : `${check.label}${reconciliationStatus(check.diff)}`}
+                  {check.comparabilityReason ? "可比性待核" : `${check.label}${reconciliationStatus(check.diff)}`}
                 </div>
               </div>
             ))}

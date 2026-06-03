@@ -1766,7 +1766,8 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("解释覆盖率90.00%");
     expect(panel).toHaveTextContent("最大卡点币种合计差异 10.00 亿元");
     expect(panel).toHaveTextContent("未解释残差 10.00 亿元");
-    expect(panel).toHaveTextContent("明细明细可比性待核");
+    expect(panel).toHaveTextContent("明细可比性待核");
+    expect(panel).not.toHaveTextContent("明细明细可比性待核");
     expect(panel).toHaveTextContent("汇总 resolved_report_date=2026-05-31，明细 resolved_report_date=缺失");
     expect(panel).not.toHaveTextContent("最大卡点明细差异 5.00 亿元");
   });
