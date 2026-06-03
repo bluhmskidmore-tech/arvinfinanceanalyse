@@ -760,7 +760,85 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Treat the aggregate homepage as analytical/mixed-source; its executive golden samples cover sub-surfaces, not a full-page formal sample.",
         ],
     }
-    bundles = [product_category_bundle, dashboard_home_bundle]
+    risk_tensor_bundle = {
+        "page_slug": "risk-tensor",
+        "page_id": "PAGE-RISK-001",
+        "page_name": "Risk Tensor",
+        "aliases": [
+            "risk-tensor",
+            "/risk-tensor",
+            "risk_tensor",
+            "PAGE-RISK-001",
+            "/api/risk/tensor",
+        ],
+        "frontend_route": "/risk-tensor",
+        "primary_api": "/api/risk/tensor",
+        "supporting_apis": [
+            "/api/risk/tensor/dates",
+        ],
+        "contract_docs": [
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+            "docs/golden_sample_catalog.md",
+            "docs/calc_rules.md",
+        ],
+        "truth_chain": [
+            "docs/page_contracts.md PAGE-RISK-001",
+            "docs/metric_dictionary.md MTR-RSK-001 / MTR-RSK-001R / MTR-RSK-021-023",
+            "backend/app/schema_registry/duckdb/04_risk_tensor.sql fact_formal_risk_tensor_daily",
+            "backend/app/tasks/risk_tensor_materialize.py materialize_risk_tensor_facts",
+            "backend/app/services/risk_tensor_service.py risk_tensor_envelope",
+            "RiskTensorPayload",
+            "/api/risk/tensor",
+            "frontend/src/features/risk-tensor/RiskTensorPage.tsx",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/risk_tensor.py",
+            "backend/app/services/risk_tensor_service.py",
+            "backend/app/repositories/risk_tensor_repo.py",
+            "backend/app/schemas/risk_tensor.py",
+            "backend/app/core_finance/risk_tensor.py",
+            "backend/app/core_finance/risk_tensor_regulatory_scope.py",
+            "backend/app/tasks/risk_tensor_materialize.py",
+            "backend/app/schema_registry/duckdb/04_risk_tensor.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/executiveClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/risk-tensor/RiskTensorPage.tsx",
+            "frontend/src/features/risk-tensor/RiskTensorPage.css",
+        ],
+        "test_touchpoints": [
+            "tests/test_risk_tensor_api.py",
+            "tests/test_risk_tensor_service.py",
+            "tests/test_risk_tensor_repo.py",
+            "tests/test_risk_tensor_core.py",
+            "tests/test_risk_tensor_materialize.py",
+            "tests/test_risk_tensor_numeric_migration.py",
+            "tests/test_risk_tensor_liquidity.py",
+            "frontend/src/test/RiskTensorPage.test.tsx",
+            "tests/test_golden_samples_capture_ready.py",
+        ],
+        "golden_samples": [
+            "tests/golden_samples/GS-RISK-A",
+            "tests/golden_samples/GS-RISK-WARN-B",
+        ],
+        "verification_focus": [
+            "Trace /api/risk/tensor result_meta through getRiskTensor, RiskTensorPage, and the quality/detail surfaces before changing display logic.",
+            "Check report_date, source_version, upstream_source_version, liability_source_version, rule_version, cache_version, and trace_id visibility.",
+            "Check units and null-vs-zero semantics for DV01, regulatory_dv01, KRD, CS01, convexity, HHI, liquidity gaps, and duration-scope fields.",
+            "Keep warning quality visible; latest data can be formal while still requiring user-visible warning context.",
+        ],
+        "guardrails": [
+            "Do not recompute KRD, DV01, CS01, convexity, liquidity gaps, or issuer concentration in the frontend.",
+            "Do not use /ui/risk/overview as formal PAGE-RISK-001 evidence; it is a separate overview surface.",
+            "Do not backfill regulatory_dv01 from portfolio_dv01 or hide missing regulatory scope.",
+            "Keep warning quality and warnings visible, including tenor remaps, unsupported tenor exclusions, and stale/fallback report-date blocks.",
+            "Do not synthesize maturity dates for no-maturity rows; preserve duration denominator exclusions and disclose excluded market value/count.",
+            "DV01 totals remain row-DV01 sourced even when duration denominator excludes rows.",
+        ],
+    }
+    bundles = [product_category_bundle, dashboard_home_bundle, risk_tensor_bundle]
     return {
         alias.casefold(): bundle
         for bundle in bundles

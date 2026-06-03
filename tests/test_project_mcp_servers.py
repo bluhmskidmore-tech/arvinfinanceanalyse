@@ -348,6 +348,18 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "formal metric truth",
             "/dashboard",
         ),
+        (
+            "risk-tensor",
+            "/risk-tensor",
+            "/api/risk/tensor",
+            "RiskTensorPayload",
+            "backend/app/services/risk_tensor_service.py",
+            "frontend/src/features/risk-tensor/RiskTensorPage.tsx",
+            "tests/test_risk_tensor_api.py",
+            "tests/golden_samples/GS-RISK-A",
+            "warning quality",
+            "/risk-tensor",
+        ),
     ],
 )
 def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
@@ -426,6 +438,34 @@ def test_dashboard_home_trace_bundle_preserves_mixed_source_boundaries() -> None
         server.close()
 
 
+def test_risk_tensor_trace_bundle_preserves_formal_warning_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in ("risk-tensor", "/risk-tensor", "PAGE-RISK-001"):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "risk-tensor"
+
+        assert payload["page_id"] == "PAGE-RISK-001"
+        assert payload["primary_api"] == "/api/risk/tensor"
+        assert "/api/risk/tensor/dates" in payload["supporting_apis"]
+        assert "/ui/risk/overview" not in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-RISK-A" in payload["golden_samples"]
+        assert "tests/golden_samples/GS-RISK-WARN-B" in payload["golden_samples"]
+        assert any("MTR-RSK-001" in item for item in payload["truth_chain"])
+        assert any("fact_formal_risk_tensor_daily" in item for item in payload["truth_chain"])
+        assert any("warning quality" in item for item in payload["guardrails"])
+        assert any("duration denominator" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
 def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_pages() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -448,12 +488,13 @@ def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_
 
         unknown_slug = server.request_error(
             "tools/call",
-            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "risk-tensor"}},
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "unknown-page"}},
         )
         assert unknown_slug["code"] == -32602
-        assert "Unknown page_slug: risk-tensor" in unknown_slug["message"]
+        assert "Unknown page_slug: unknown-page" in unknown_slug["message"]
         assert "dashboard-home" in unknown_slug["message"]
         assert "product-category-pnl" in unknown_slug["message"]
+        assert "risk-tensor" in unknown_slug["message"]
     finally:
         server.close()
 
