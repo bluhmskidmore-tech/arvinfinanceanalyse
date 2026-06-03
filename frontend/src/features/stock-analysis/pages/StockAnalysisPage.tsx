@@ -973,13 +973,6 @@ const sectorViewTabs: { key: StockSectorViewKind; label: string }[] = [
   { key: "amplitude", label: "波动振幅" },
 ];
 
-const patternRank: Record<string, number> = {
-  突破: 0,
-  回踩: 1,
-  缩量盘整: 2,
-  待补: 3,
-};
-
 type SectorSortKey =
   | "rank"
   | "sectorCode"
@@ -1498,8 +1491,7 @@ export default function StockAnalysisPage() {
   }, [sectorRowsFull, sectorSort]);
 
   const reviewQueue = useMemo(() => {
-    const queue = strategyPayload ? buildCandidateReviewQueue(strategyPayload) : [];
-    return [...queue].sort((a, b) => (patternRank[a.pattern] ?? 99) - (patternRank[b.pattern] ?? 99));
+    return strategyPayload ? buildCandidateReviewQueue(strategyPayload) : [];
   }, [strategyPayload]);
 
   const gateState = strategyPayload?.market_gate.state;

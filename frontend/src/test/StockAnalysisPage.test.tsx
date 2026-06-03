@@ -2079,6 +2079,52 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByRole("button", { name: "全部行业" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("keeps the review queue ordered by candidate rank instead of pattern label", async () => {
+    const strategy = buildStrategyPayload();
+    const rankedByBackend = strategy.stock_candidates?.items ?? [];
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: {
+          ...strategy,
+          stock_candidates: {
+            ...strategy.stock_candidates!,
+            items: [
+              {
+                ...rankedByBackend[1],
+                rank: 1,
+                stock_code: "000101.SZ",
+                stock_name: "Rank One Consolidation",
+                close: 10,
+                breakout_level: 10,
+                abnormal_turnover: 1,
+                gap_norm: 0.01,
+              },
+              {
+                ...rankedByBackend[0],
+                rank: 2,
+                stock_code: "000202.SZ",
+                stock_name: "Rank Two Breakout",
+                close: 10.08,
+                breakout_level: 10,
+                abnormal_turnover: 1.3,
+                gap_norm: 0.08,
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    const queue = await screen.findByTestId("stock-analysis-review-queue");
+    const cards = Array.from(queue.querySelectorAll("article[data-testid^='stock-candidate-']")).map((node) =>
+      node.getAttribute("data-testid"),
+    );
+    expect(cards).toEqual(["stock-candidate-000101.SZ", "stock-candidate-000202.SZ"]);
+    expect(screen.getByTestId("stock-analysis-review-queue-ranking-chart")).toHaveTextContent(
+      "#1 Rank One Consolidation",
+    );
+  });
+
   it("shows an empty review queue state when a sector bar has no candidates", async () => {
     const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {
