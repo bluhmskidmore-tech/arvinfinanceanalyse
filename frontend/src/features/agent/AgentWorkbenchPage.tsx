@@ -2343,9 +2343,13 @@ export function EmbeddedAgentCopilot({
     shouldFocusComposerRef.current = true;
     setLoading(true);
     setError(null);
+    setComposerAssistHint("正在发送排队问题 · 可继续输入下一句");
     try {
       await executeOrdinaryConversation(question, turn.id, context);
     } finally {
+      setComposerAssistHint((currentHint) =>
+        currentHint === "正在发送排队问题 · 可继续输入下一句" ? null : currentHint,
+      );
       setLoading(false);
     }
   }

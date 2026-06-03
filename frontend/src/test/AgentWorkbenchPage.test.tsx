@@ -3214,6 +3214,79 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
+  it("cues queued follow-up dispatch after the active answer completes", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRun!: (value: Response) => void;
+    const firstRunResponse = new Promise<Response>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    fetchMock
+      .mockReturnValueOnce(firstRunResponse)
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:queued-pending-second",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "queued pending first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("queued pending first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued pending second turn");
+    await user.click(screen.getByRole("button", { name: "发送下一句" }));
+    expect(screen.getByText("下一句已排队 · 还可以继续输入")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirstRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "queued pending first answer",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_queued_pending_first",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:queued-pending-first",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("queued pending second turn")).toBeInTheDocument();
+    expect(await screen.findByText("正在发送排队问题 · 可继续输入下一句")).toBeInTheDocument();
+    expect(screen.queryByText("下一句已排队 · 还可以继续输入")).not.toBeInTheDocument();
+    expect(screen.queryByText("queued pending second answer")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
+    });
+  });
+
   it("sends multiple queued follow-ups one by one after the active answer completes", async () => {
     const user = userEvent.setup();
     let resolveFirstRun!: (value: Response) => void;
