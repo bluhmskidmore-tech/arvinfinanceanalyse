@@ -396,6 +396,18 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "formal PnL truth",
             "/pnl",
         ),
+        (
+            "liability-analytics",
+            "/liability-analytics",
+            "/api/risk/buckets",
+            "liability_analytics.risk_buckets",
+            "backend/app/services/liability_analytics_service.py",
+            "frontend/src/features/liability-analytics/pages/LiabilityAnalyticsPage.tsx",
+            "tests/test_liability_analytics_api.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "mixed-source",
+            "/liability-analytics",
+        ),
     ],
 )
 def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
@@ -431,8 +443,12 @@ def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
         assert backend_touchpoint in payload["backend_touchpoints"]
         assert frontend_touchpoint in payload["frontend_touchpoints"]
         assert test_touchpoint in payload["test_touchpoints"]
-        assert golden_sample in payload["golden_samples"]
-        assert all(str(sample).startswith("tests/golden_samples/") for sample in payload["golden_samples"])
+        if golden_sample == "NO_DEDICATED_GOLDEN_SAMPLE":
+            assert payload["golden_samples"] == []
+            assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        else:
+            assert golden_sample in payload["golden_samples"]
+            assert all(str(sample).startswith("tests/golden_samples/") for sample in payload["golden_samples"])
         assert payload["contract_docs"]
         assert payload["supporting_apis"]
         assert payload["verification_focus"]
@@ -445,6 +461,43 @@ def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
         )
         alias_payload = json.loads(alias_result["content"][0]["text"])
         assert alias_payload["page_slug"] == page_slug
+    finally:
+        server.close()
+
+
+def test_liability_analytics_trace_bundle_preserves_mixed_source_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "liability-analytics",
+            "/liability-analytics",
+            "PAGE-LIAB-ANALYTICS-001",
+            "/api/risk/buckets",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "liability-analytics"
+
+        assert payload["page_id"] == "PAGE-LIAB-ANALYTICS-001"
+        assert payload["primary_api"] == "/api/risk/buckets"
+        assert "/api/analysis/yield_metrics" in payload["supporting_apis"]
+        assert "/api/analysis/liabilities/counterparty" in payload["supporting_apis"]
+        assert "/api/liabilities/monthly" in payload["supporting_apis"]
+        assert "/ui/liability/business-context" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("MTR-LIAB-001" in item for item in payload["truth_chain"])
+        assert any("MTR-LIAB-007" in item for item in payload["truth_chain"])
+        assert any("liability_analytics.risk_buckets" in item for item in payload["truth_chain"])
+        assert any("liability_analytics_compat" in item for item in payload["truth_chain"])
+        assert any("mixed-source" in item for item in payload["guardrails"])
+        assert any("compatibility" in item for item in payload["guardrails"])
+        assert any("formal balance" in item for item in payload["guardrails"])
     finally:
         server.close()
 
