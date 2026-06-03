@@ -941,6 +941,81 @@ function ProductCategoryOperatingContributionList(props: {
   );
 }
 
+function ProductCategoryScenarioExplanationCard(props: {
+  explanation: ProductCategoryScenarioExplanation;
+  actionStatuses: Record<string, ScenarioReviewActionStatus>;
+  onSetActionStatus: (
+    categoryId: string,
+    actionIndex: number,
+    status: ScenarioReviewActionStatus,
+  ) => void;
+}) {
+  const explanation = props.explanation;
+
+  return (
+    <div
+      className="product-category-financial-analysis__explanation"
+      data-testid="product-category-scenario-explanation"
+    >
+      <div className="product-category-financial-analysis__scenario-kicker">复核解释包</div>
+      <strong>{explanation.categoryLabel}</strong>
+      <p>{explanation.summaryLabel}</p>
+      <div className="product-category-financial-analysis__bridge">
+        <span className="product-category-financial-analysis__scenario-kicker">口径桥</span>
+        <b className={`is-${explanation.bridgeTone}`}>{explanation.bridgeLabel}</b>
+        <small>{explanation.bridgeConclusionLabel}</small>
+      </div>
+      <div className="product-category-financial-analysis__review-actions">
+        <span className="product-category-financial-analysis__scenario-kicker">复核动作</span>
+        {explanation.reviewActionItems.map((item, index) => {
+          const categoryId = explanation.categoryId;
+          const actionStatusKey = `${categoryId}:${index}`;
+          const currentStatus = props.actionStatuses[actionStatusKey] ?? "pending";
+          return (
+            <div
+              className="product-category-financial-analysis__review-action-item"
+              key={actionStatusKey}
+            >
+              <small>{item}</small>
+              <div className="product-category-financial-analysis__review-status-group">
+                {SCENARIO_REVIEW_ACTION_STATUS_OPTIONS.map(([status, label]) => (
+                  <button
+                    aria-pressed={currentStatus === status}
+                    className={`product-category-financial-analysis__review-status-button is-${status}`}
+                    key={status}
+                    onClick={() => props.onSetActionStatus(categoryId, index, status)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="product-category-financial-analysis__explanation-grid">
+        <span>{explanation.sideLabel}</span>
+        <span>基线 {explanation.baselineNetIncomeLabel}</span>
+        <span>{explanation.triggerRateLabel} {explanation.scenarioNetIncomeLabel}</span>
+        <span>{explanation.scenarioDeltaLabel}</span>
+      </div>
+      {explanation.driverRows.length === 0 ? (
+        <small>{explanation.emptyCopy ?? "当前正式归因未返回可排序的驱动项。"}</small>
+      ) : (
+        <div className="product-category-financial-analysis__driver-list">
+          <span>正式归因</span>
+          {explanation.driverRows.map((row) => (
+            <b className={`is-${row.tone}`} key={row.key}>
+              {row.label} {row.valueLabel}
+            </b>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductCategoryFinancialAnalysisPanel(props: {
   scenarioSensitivity: ProductCategoryScenarioSensitivitySurface;
   scenarioExplanation: ProductCategoryScenarioExplanation | null;
@@ -1077,73 +1152,11 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                   )}
                 </div>
                 {scenarioExplanation ? (
-                  <div
-                    className="product-category-financial-analysis__explanation"
-                    data-testid="product-category-scenario-explanation"
-                  >
-                    <div className="product-category-financial-analysis__scenario-kicker">复核解释包</div>
-                    <strong>{scenarioExplanation.categoryLabel}</strong>
-                    <p>{scenarioExplanation.summaryLabel}</p>
-                    <div className="product-category-financial-analysis__bridge">
-                      <span className="product-category-financial-analysis__scenario-kicker">口径桥</span>
-                      <b className={`is-${scenarioExplanation.bridgeTone}`}>
-                        {scenarioExplanation.bridgeLabel}
-                      </b>
-                      <small>{scenarioExplanation.bridgeConclusionLabel}</small>
-                    </div>
-                    <div className="product-category-financial-analysis__review-actions">
-                      <span className="product-category-financial-analysis__scenario-kicker">复核动作</span>
-                      {scenarioExplanation.reviewActionItems.map((item, index) => {
-                        const categoryId = scenarioExplanation.categoryId;
-                        const actionStatusKey = `${categoryId}:${index}`;
-                        const currentStatus =
-                          props.scenarioReviewActionStatuses[actionStatusKey] ?? "pending";
-                        return (
-                          <div
-                            className="product-category-financial-analysis__review-action-item"
-                            key={actionStatusKey}
-                          >
-                            <small>{item}</small>
-                            <div className="product-category-financial-analysis__review-status-group">
-                              {SCENARIO_REVIEW_ACTION_STATUS_OPTIONS.map(([status, label]) => {
-                                return (
-                                  <button
-                                    aria-pressed={currentStatus === status}
-                                    className={`product-category-financial-analysis__review-status-button is-${status}`}
-                                    key={status}
-                                    onClick={() =>
-                                      props.onSetScenarioReviewActionStatus(categoryId, index, status)
-                                    }
-                                    type="button"
-                                  >
-                                    {label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="product-category-financial-analysis__explanation-grid">
-                      <span>{scenarioExplanation.sideLabel}</span>
-                      <span>基线 {scenarioExplanation.baselineNetIncomeLabel}</span>
-                      <span>{scenarioExplanation.triggerRateLabel} {scenarioExplanation.scenarioNetIncomeLabel}</span>
-                      <span>{scenarioExplanation.scenarioDeltaLabel}</span>
-                    </div>
-                    {scenarioExplanation.driverRows.length === 0 ? (
-                      <small>{scenarioExplanation.emptyCopy ?? "当前正式归因未返回可排序的驱动项。"}</small>
-                    ) : (
-                      <div className="product-category-financial-analysis__driver-list">
-                        <span>正式归因</span>
-                        {scenarioExplanation.driverRows.map((row) => (
-                          <b className={`is-${row.tone}`} key={row.key}>
-                            {row.label} {row.valueLabel}
-                          </b>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <ProductCategoryScenarioExplanationCard
+                    actionStatuses={props.scenarioReviewActionStatuses}
+                    explanation={scenarioExplanation}
+                    onSetActionStatus={props.onSetScenarioReviewActionStatus}
+                  />
                 ) : null}
               </div>
               <div className="product-category-financial-analysis__table-wrap">
@@ -2266,18 +2279,11 @@ export default function ProductCategoryPnlPage() {
     baseline && !baselineQuery.isError ? (
       <div
         data-testid="product-category-summary"
-        style={{
-          display: "flex",
-          gap: 12,
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-          color: designTokens.color.neutral[600],
-          fontSize: 13,
-        }}
+        className="product-category-summary"
       >
         <span>当前场景：{currentSceneRate}%</span>
         <span>基准场景：{baselineRate}%</span>
-        <span style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+        <span className="product-category-summary__total">
           合计：{formatProductCategoryValue(displayedGrandTotal?.business_net_income)}
         </span>
       </div>
@@ -2342,33 +2348,23 @@ export default function ProductCategoryPnlPage() {
         conclusion={
           <p
             data-testid="product-category-boundary-copy"
-            style={{ margin: 0, color: designTokens.color.neutral[600], fontSize: 12, lineHeight: 1.6 }}
+            className="product-category-contract-hero__boundary-copy"
           >
             系统层经营口径：正式基线来自正式读模型；情景预览仅在显式应用后生效。
           </p>
         }
         actions={
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div className="product-category-contract-hero__actions">
             <span
               data-testid="product-category-role-badge"
-              style={{
-                ...chipTypography,
-                background: designTokens.color.primary[50],
-                color: designTokens.color.primary[600],
-              }}
+              className="product-category-contract-hero__chip product-category-contract-hero__chip--role"
             >
               系统层
             </span>
             <span
-              style={{
-                ...chipTypography,
-                background:
-                  client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
-                color:
-                  client.mode === "real"
-                    ? displayTokens.apiMode.realForeground
-                    : displayTokens.apiMode.mockForeground,
-              }}
+              className={`product-category-contract-hero__chip product-category-contract-hero__chip--${
+                client.mode === "real" ? "real" : "mock"
+              }`}
             >
               {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
             </span>
@@ -2389,14 +2385,7 @@ export default function ProductCategoryPnlPage() {
                   setAdjustmentDraft(buildAdjustmentDraft(selectedDate));
                 }
               }}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 12,
-                border: `1px solid ${designTokens.color.neutral[900]}`,
-                background: designTokens.color.neutral[50],
-                color: designTokens.color.neutral[900],
-                fontWeight: 600,
-              }}
+              className="product-category-contract-hero__button"
             >
               + 手工录入
             </button>
@@ -2405,41 +2394,31 @@ export default function ProductCategoryPnlPage() {
               data-testid="product-category-refresh-button"
               onClick={() => void handleRefresh()}
               disabled={isRefreshing}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 12,
-                border: `1px solid ${designTokens.color.neutral[900]}`,
-                background: designTokens.color.neutral[50],
-                color: designTokens.color.neutral[900],
-                fontWeight: 600,
-                cursor: isRefreshing ? "progress" : "pointer",
-                opacity: isRefreshing ? 0.7 : 1,
-              }}
+              className="product-category-contract-hero__button"
             >
               {isRefreshing ? "刷新中..." : "刷新损益数据"}
             </button>
           </div>
         }
-        style={pageHeaderStyle}
       >
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        <div className="product-category-contract-hero__status-stack">
           {isRefreshing ? (
-            <p data-testid="product-category-refresh-status" style={{ margin: 0 }}>
+            <p data-testid="product-category-refresh-status" className="product-category-contract-hero__status-line">
               {formatProductCategoryRefreshStatusLine(refreshPollSnapshot)}
             </p>
           ) : null}
           {lastRefreshRunId ? (
-            <p style={{ margin: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+            <p className="product-category-contract-hero__status-note">
               最近刷新任务：{lastRefreshRunId}
             </p>
           ) : null}
           {lastAdjustmentId ? (
-            <p style={{ margin: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
+            <p className="product-category-contract-hero__status-note">
               最近录入调整：{lastAdjustmentId}
             </p>
           ) : null}
           {refreshError ? (
-            <p style={{ margin: 0, color: designTokens.color.danger[700], fontSize: 12 }}>{refreshError}</p>
+            <p className="product-category-contract-hero__status-error">{refreshError}</p>
           ) : null}
         </div>
       </PageDecisionHero>
