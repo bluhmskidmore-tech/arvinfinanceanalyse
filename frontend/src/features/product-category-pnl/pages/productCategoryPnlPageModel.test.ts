@@ -38,6 +38,7 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
+  selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
@@ -523,6 +524,7 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.pressureSummary.reviewRows).toEqual([
       expect.objectContaining({
         priorityLabel: "复核 1",
+        categoryId: "bond_ac",
         categoryLabel: "AC债券投资",
         sideLabel: "资产端",
         triggerRateLabel: "2.00%",
@@ -532,6 +534,7 @@ describe("productCategoryPnlPageModel", () => {
       }),
       expect.objectContaining({
         priorityLabel: "复核 2",
+        categoryId: "repo_assets",
         categoryLabel: "买入返售",
         sideLabel: "资产端",
         triggerRateLabel: "1.50%",
@@ -558,6 +561,113 @@ describe("productCategoryPnlPageModel", () => {
     ]);
     expect(surface.analysisCopy).toBe("FTP 上行时全表净营收承压，最差情景较基线 -0.90 亿元。");
     expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a selected scenario review explanation from scenario rows and matching attribution evidence", () => {
+    const baseline = {
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          business_net_income: yi(5),
+        }),
+        row({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          business_net_income: yi(-0.5),
+        }),
+      ],
+      asset_total: row({ category_id: "asset_total", business_net_income: yi(6), is_total: true }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        business_net_income: yi(-1.2),
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", business_net_income: yi(4.8), is_total: true }),
+    } satisfies ProductCategoryPnlPayload;
+    const scenarios: ProductCategoryPnlPayload[] = [
+      {
+        ...baseline,
+        scenario_rate_pct: "1.50",
+        rows: [
+          row({ category_id: "bond_ac", category_name: "AC债券投资", business_net_income: yi(5.4) }),
+          row({ category_id: "repo_assets", category_name: "买入返售", business_net_income: yi(-0.3) }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(6.4), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.1),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(5.3), is_total: true }),
+      },
+      {
+        ...baseline,
+        scenario_rate_pct: "2.00",
+        rows: [
+          row({ category_id: "bond_ac", category_name: "AC债券投资", business_net_income: yi(4.2) }),
+          row({ category_id: "repo_assets", category_name: "买入返售", business_net_income: yi(-0.6) }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(5.3), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.4),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(3.9), is_total: true }),
+      },
+    ];
+    const attribution = attributionPayload({
+      rows: [
+        attributionRow({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          effects: {
+            delta_business_net_income: yi(-0.9),
+            scale_effect: yi(-0.15),
+            rate_effect: yi(0.2),
+            ftp_effect: yi(-0.55),
+            unexplained_effect: yi(-0.25),
+            closure_error: yi(0.01),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryScenarioSensitivitySurface({ baseline, scenarios });
+    const explanation = selectProductCategoryScenarioExplanation({
+      categoryId: surface.pressureSummary.reviewRows[0]?.categoryId,
+      baseline,
+      scenarios,
+      attribution,
+    });
+
+    expect(explanation).toEqual(
+      expect.objectContaining({
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        triggerRateLabel: "2.00%",
+        scenarioDeltaLabel: "-0.80",
+        baselineNetIncomeLabel: "5.00",
+        scenarioNetIncomeLabel: "4.20",
+        summaryLabel: "AC债券投资在 2.00% 情景较正式基线 -0.80 亿元；正式归因显示主导因素为 FTP因素 -0.55 亿元。",
+        emptyCopy: null,
+      }),
+    );
+    expect(explanation?.driverRows).toEqual([
+      expect.objectContaining({ label: "FTP因素", valueLabel: "-0.55", tone: "negative" }),
+      expect.objectContaining({ label: "未解释", valueLabel: "-0.25", tone: "negative" }),
+      expect.objectContaining({ label: "利率因素", valueLabel: "+0.20", tone: "positive" }),
+      expect.objectContaining({ label: "规模因素", valueLabel: "-0.15", tone: "negative" }),
+    ]);
   });
 
   it("builds a governed attribution waterfall from the grand total attribution row", () => {
