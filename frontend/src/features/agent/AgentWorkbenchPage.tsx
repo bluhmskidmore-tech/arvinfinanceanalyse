@@ -2795,6 +2795,7 @@ export function EmbeddedAgentCopilot({
     }
 
     replaceComposerQuery(turn.question);
+    setComposerAssistHint("已放回输入框 · 改完按 Enter 发送");
   }
 
   function canEditAgentQuestion(turn: AgentConversationTurn, isLatestLoadingTurn: boolean) {
