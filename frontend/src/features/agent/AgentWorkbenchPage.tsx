@@ -2723,10 +2723,12 @@ export function EmbeddedAgentCopilot({
       return;
     }
     pinRepoPath(normalized);
+    setComposerAssistHint("已固定 GitNexus 仓库 · 可继续提问");
   }
 
   function unpinRepo(path: string) {
     unpinRepoPath(path);
+    setComposerAssistHint("已取消固定 GitNexus 仓库 · 可继续提问");
   }
 
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction, sourceElement?: HTMLElement) {

@@ -1054,6 +1054,7 @@ describe("AgentWorkbenchPage", () => {
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toEqual([
       "F:\\PINNED-MOSS",
     ]);
+    expect(screen.getByText("已固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
   });
 
   it("unpins a pinned repo without removing recent repos", async () => {
@@ -1074,6 +1075,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByRole("button", { name: "取消固定 F:\\MOSS-SYSTEM-V1" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "F:\\MOSS-SYSTEM-V1" })).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toEqual([]);
+    expect(screen.getByText("已取消固定 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
   });
 
   it("renders pinned repos even without recent repos and supports pinned ordering", async () => {
