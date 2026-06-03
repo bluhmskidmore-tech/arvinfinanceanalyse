@@ -10,16 +10,16 @@ const baseline = {
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
   apiClientMockOccurrences: 55,
   dashboardStyleFiles: {},
-  totalTsxStyleProps: 3308,
+  totalTsxStyleProps: 2714,
   maxPageStyleProps: {
-    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,
-    "frontend/src/features/market-data/pages/MarketDataPage.tsx": 130,
-    "frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx": 91,
-    "frontend/src/layouts/WorkbenchShell.tsx": 123,
-    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 104,
-    "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 103,
-    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 88,
-    "frontend/src/features/risk-overview/RiskOverviewPage.tsx": 81,
+    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 51,
+    "frontend/src/features/market-data/pages/MarketDataPage.tsx": 39,
+    "frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx": 40,
+    "frontend/src/layouts/WorkbenchShell.tsx": 99,
+    "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 43,
+    "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 47,
+    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 58,
+    "frontend/src/features/risk-overview/RiskOverviewPage.tsx": 39,
   },
 };
 
