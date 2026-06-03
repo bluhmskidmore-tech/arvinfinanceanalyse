@@ -16,17 +16,27 @@ import { formatRawAsNumeric } from "../utils/format";
 
 const resultMeta: ResultMeta = {
   trace_id: "test_credit_spread_cache_shape",
-  basis: "formal",
+  basis: "analytical",
   result_kind: "bond_analytics.credit_spread_migration",
-  formal_use_allowed: true,
+  formal_use_allowed: false,
   source_version: "sv_test",
   vendor_version: "vv_test",
   rule_version: "rv_test",
   cache_version: "cv_test",
-  quality_flag: "ok",
+  quality_flag: "warning",
   vendor_status: "ok",
   fallback_mode: "none",
   scenario_flag: false,
+  requested_report_date: "2026-03-31",
+  resolved_report_date: "2026-03-31",
+  as_of_date: "2026-03-31",
+  date_basis: "bond_analytics_report_date",
+  tables_used: ["fact_formal_bond_analytics_daily"],
+  filters_applied: {
+    report_date: "2026-03-31",
+    spread_scenarios: "10,25,50",
+  },
+  evidence_rows: 10,
   generated_at: "2026-04-12T10:00:00Z",
 };
 
@@ -138,10 +148,48 @@ describe("ConcentrationMonitorPage", () => {
     expect(cached).toMatchObject({
       result_meta: expect.objectContaining({
         result_kind: "bond_analytics.credit_spread_migration",
+        basis: "analytical",
+        formal_use_allowed: false,
+        quality_flag: "warning",
       }),
       result: expect.objectContaining({
         report_date: "2026-03-31",
       }),
     });
+  });
+
+  it("surfaces candidate metric contract status and source evidence", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: { ...resultMeta, result_kind: "bond_analytics.dates" },
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async (reportDate: string) =>
+        creditSpreadEnvelope(reportDate),
+      ),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    renderConcentrationMonitor(client, queryClient);
+
+    const contractPanel = await waitFor(() => {
+      const panel = document.querySelector('[data-testid="concentration-monitor-contract-status"]');
+      expect(panel).not.toBeNull();
+      return panel as HTMLElement;
+    });
+
+    expect(contractPanel).toHaveTextContent("候选指标");
+    expect(contractPanel).toHaveTextContent("PAGE-CONTRACT-PENDING:/concentration-monitor");
+    expect(contractPanel).toHaveTextContent("正式可用: 否");
+    expect(contractPanel).toHaveTextContent("口径 analytical");
+    expect(contractPanel).toHaveTextContent("质量 warning");
+    expect(contractPanel).toHaveTextContent("bond_analytics.credit_spread_migration");
+    expect(contractPanel).toHaveTextContent("bond_analytics_report_date");
+    expect(contractPanel).toHaveTextContent("fact_formal_bond_analytics_daily");
+    expect(contractPanel).toHaveTextContent("证据行 10");
   });
 });

@@ -63,6 +63,24 @@ const panelTitleStyle = {
   color: designTokens.color.neutral[900],
 } as const;
 
+const contractStatusStyle = {
+  margin: "0 0 16px",
+  padding: 14,
+  borderRadius: designTokens.radius.md,
+  border: `1px solid ${designTokens.color.warning[200]}`,
+  background: designTokens.color.warning[50],
+  color: designTokens.color.neutral[800],
+} as const;
+
+const contractStatusGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "8px 16px",
+  marginTop: 10,
+  fontSize: 12,
+  lineHeight: 1.6,
+} as const;
+
 function displayStr(value: string | Numeric | undefined) {
   if (value === undefined || value === "") {
     return "—";
@@ -209,6 +227,7 @@ export default function ConcentrationMonitorPage() {
   });
 
   const credit = creditQuery.data?.result;
+  const creditMeta = creditQuery.data?.result_meta;
   const issuer = credit?.concentration_by_issuer;
   const maxSingleWeight = parseRatio(issuer?.top_items?.[0]?.weight);
   const top5 = parseRatio(issuer?.top5_concentration);
@@ -338,6 +357,23 @@ export default function ConcentrationMonitorPage() {
       >
         {credit ? (
           <>
+            {creditMeta ? (
+              <div data-testid="concentration-monitor-contract-status" style={contractStatusStyle}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  候选指标 · PAGE-CONTRACT-PENDING:/concentration-monitor
+                </div>
+                <div style={contractStatusGridStyle}>
+                  <span>正式可用: {creditMeta.formal_use_allowed ? "是" : "否"}</span>
+                  <span>口径 {creditMeta.basis}</span>
+                  <span>质量 {creditMeta.quality_flag}</span>
+                  <span>结果类型 {creditMeta.result_kind}</span>
+                  <span>日期基准 {creditMeta.date_basis ?? "—"}</span>
+                  <span>使用表 {creditMeta.tables_used?.join(", ") || "—"}</span>
+                  <span>证据行 {creditMeta.evidence_rows ?? "—"}</span>
+                </div>
+              </div>
+            ) : null}
+
             <div data-testid="concentration-monitor-kpi-grid" style={summaryGridStyle}>
               <KpiCard
                 title="发行人 HHI 指数"
