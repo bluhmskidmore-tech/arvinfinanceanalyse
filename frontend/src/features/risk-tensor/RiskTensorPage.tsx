@@ -300,8 +300,8 @@ function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | string | undefine
   if (mode === "none") {
     return "未降级";
   }
-  if (mode === "latest") {
-    return "latest fallback";
+  if (mode === "latest" || mode === "latest_snapshot") {
+    return "latest snapshot fallback";
   }
   if (mode === "mock") {
     return "mock fallback";
@@ -595,6 +595,8 @@ export default function RiskTensorPage() {
 
   const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? dominantTenorRow ?? tenorRows[0];
   const tensorMeta = envelope?.result_meta;
+  const fallbackStatus = fallbackModeLabel(tensorMeta?.fallback_mode);
+  const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
   const primaryTenor = dominantTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
   const primaryTenorValue = dominantTenorRow
     ? yuanAsWanWithUnit(dominantTenorRow.value)
@@ -933,8 +935,8 @@ export default function RiskTensorPage() {
                 <div className="risk-tensor-brief__badges" aria-label="risk tensor data status">
                   <span>报告日 {result.report_date}</span>
                   <span>{tensorMeta?.basis ?? "formal"} 口径</span>
-                  <span>{fallbackModeLabel(tensorMeta?.fallback_mode)}</span>
-                  <span>{blockedReportDates.length} 个陈旧日期已拦截</span>
+                  <span>{fallbackStatus}</span>
+                  <span>{blockedReportDateSummary}</span>
                 </div>
               </div>
 
@@ -1009,7 +1011,8 @@ export default function RiskTensorPage() {
                   <span>数据状态</span>
                   <strong>{qualityFlagLabel(result.quality_flag)}</strong>
                   <span className="risk-tensor-brief__tile-detail">
-                    来源 {compactVersion(tensorMeta?.source_version)}；规则 {compactVersion(tensorMeta?.rule_version)}。
+                    来源 {compactVersion(tensorMeta?.source_version)}；规则 {compactVersion(tensorMeta?.rule_version)}；
+                    {fallbackStatus}；{blockedReportDateSummary}。
                   </span>
                 </button>
                 {actionTileCanJump ? (
@@ -1469,6 +1472,19 @@ export default function RiskTensorPage() {
                         ? "陈旧"
                         : result.quality_flag}
               </div>
+              <div className="risk-tensor-quality-detail__evidence" data-testid="risk-tensor-quality-evidence">
+                <span>来源 {compactVersion(tensorMeta?.source_version)}</span>
+                <span>规则 {compactVersion(tensorMeta?.rule_version)}</span>
+                <span>{fallbackStatus}</span>
+                {tensorMeta?.fallback_date ? <span>fallback_date {tensorMeta.fallback_date}</span> : null}
+                <span>{blockedReportDateSummary}</span>
+              </div>
+              {highlightedBlockedReportDate ? (
+                <div className="risk-tensor-quality-detail__blocked" data-testid="risk-tensor-quality-blocked-date">
+                  <strong>{highlightedBlockedReportDate.report_date}</strong>
+                  <span>{highlightedBlockedReportDate.reason}</span>
+                </div>
+              ) : null}
               {result.warnings.length === 0 ? (
                 <div style={{ color: "#5c6b82" }}>无预警。</div>
               ) : (

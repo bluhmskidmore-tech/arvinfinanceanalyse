@@ -1373,11 +1373,27 @@ describe("stockAnalysisPageModel", () => {
 
   it("surfaces data boundary notes and missing evidence", () => {
     const notes = buildDataBoundaryNotes(strategyPayload);
+    const blockedNotes = buildDataBoundaryNotes({
+      ...strategyPayload,
+      supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+      unsupported_outputs: [
+        {
+          key: "risk_exit",
+          reason: "livermore_position_snapshot has no ACTIVE A-share rows.",
+        },
+      ],
+    });
 
     expect(notes.join(" ")).toContain("basis: analytical");
-    expect(notes.join(" ")).toContain("breadth missing");
+    expect(notes.join(" ")).toContain("预警 [LIVERMORE_BREADTH_MISSING]: 市场宽度输入不可用。");
+    expect(notes.join(" ")).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
     expect(notes.join(" ")).toContain("LIVERMORE_BREADTH_MISSING");
     expect(notes.join(" ")).toContain("rv_livermore_sector_rank_provisional_v1");
+    expect(notes.join(" ")).not.toContain("Breadth inputs are unavailable.");
+    expect(notes.join(" ")).not.toContain("breadth missing");
+    expect(blockedNotes.join(" ")).toContain("风险退出 阻断：持仓快照缺失，暂无可执行风险退出样本。");
+    expect(blockedNotes.join(" ")).not.toContain("risk_exit unsupported");
+    expect(blockedNotes.join(" ")).not.toContain("livermore_position_snapshot");
   });
 
   it("builds daily judgment strip with sector poles", () => {

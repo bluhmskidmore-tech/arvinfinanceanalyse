@@ -96,13 +96,20 @@ def compute_equity_shadow_portfolio_report(duckdb_path: str | Path) -> dict[str,
         if len(factor_dates) < 2:
             return _insufficient_report(factor_dates, ["FACTOR_HISTORY_TOO_SHORT"])
 
-        periods = list(zip(factor_dates[:-1], factor_dates[1:]))
+        periods = list(zip(factor_dates[:-1], factor_dates[1:], strict=True))
         factors_by_date = {sample_date: _load_factor_snapshot(conn, sample_date) for sample_date in factor_dates}
-        benchmark = _benchmark_result(conn, periods, factors_by_date)
+        returns_by_period = _period_returns_by_period(conn, periods, factors_by_date)
+        benchmark = _benchmark_result(periods, returns_by_period)
         portfolio_payloads: list[dict[str, object]] = []
         period_payloads: list[dict[str, object]] = []
         for spec in PORTFOLIOS:
-            portfolio, rows = _portfolio_result(conn, periods, factors_by_date, benchmark["period_returns"], spec)
+            portfolio, rows = _portfolio_result(
+                periods,
+                factors_by_date,
+                returns_by_period,
+                benchmark["period_returns"],
+                spec,
+            )
             portfolio_payloads.append(portfolio)
             period_payloads.extend(rows)
         latest_date = factor_dates[-1]
@@ -216,18 +223,28 @@ def _load_factor_snapshot(conn: duckdb.DuckDBPyConnection, as_of_date: str) -> p
     return _filter_factor_screen_universe(frame)
 
 
-def _benchmark_result(
+def _period_returns_by_period(
     conn: duckdb.DuckDBPyConnection,
     periods: list[tuple[str, str]],
     factors_by_date: dict[str, pd.DataFrame],
+) -> dict[tuple[str, str], pd.Series]:
+    returns_by_period: dict[tuple[str, str], pd.Series] = {}
+    for start_date, end_date in periods:
+        universe = factors_by_date[start_date]
+        returns_by_period[(start_date, end_date)] = _simple_returns(conn, start_date, end_date, list(universe.index))
+    return returns_by_period
+
+
+def _benchmark_result(
+    periods: list[tuple[str, str]],
+    returns_by_period: dict[tuple[str, str], pd.Series],
 ) -> dict[str, object]:
     nav = 1.0
     max_nav = 1.0
     max_drawdown = 0.0
     period_returns: dict[tuple[str, str], float] = {}
     for start_date, end_date in periods:
-        universe = factors_by_date[start_date]
-        returns = _simple_returns(conn, start_date, end_date, list(universe.index))
+        returns = returns_by_period.get((start_date, end_date), pd.Series(dtype="float64"))
         period_return = float(returns.mean()) if not returns.empty else 0.0
         period_returns[(start_date, end_date)] = period_return
         nav *= 1.0 + period_return
@@ -245,9 +262,9 @@ def _benchmark_result(
 
 
 def _portfolio_result(
-    conn: duckdb.DuckDBPyConnection,
     periods: list[tuple[str, str]],
     factors_by_date: dict[str, pd.DataFrame],
+    returns_by_period: dict[tuple[str, str], pd.Series],
     benchmark_returns: dict[tuple[str, str], float],
     spec: PortfolioSpec,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
@@ -269,7 +286,7 @@ def _portfolio_result(
         ranked = _ranked_frame(_apply_constraints(universe, spec), spec.weights)
         selected = _select_with_caps(ranked, previous_codes=previous_codes, turnover_cap=spec.turnover_cap)
         selected_codes = list(selected.index)
-        gross_return = _selection_return(conn, start_date, end_date, selected_codes)
+        gross_return = _selection_return(returns_by_period, start_date, end_date, selected_codes)
         benchmark_return = benchmark_returns.get((start_date, end_date), 0.0)
         new_weights = _equal_weights(selected_codes)
         period_costs: list[dict[str, object]] = []
@@ -425,13 +442,27 @@ def _add_candidate(
 
 
 def _selection_return(
-    conn: duckdb.DuckDBPyConnection,
+    returns_by_period: dict[tuple[str, str], pd.Series],
     start_date: str,
     end_date: str,
     stock_codes: list[str],
 ) -> float:
-    returns = _simple_returns(conn, start_date, end_date, stock_codes)
+    returns = _returns_for_codes(returns_by_period, start_date, end_date, stock_codes)
     return float(returns.mean()) if not returns.empty else 0.0
+
+
+def _returns_for_codes(
+    returns_by_period: dict[tuple[str, str], pd.Series],
+    start_date: str,
+    end_date: str,
+    stock_codes: list[str],
+) -> pd.Series:
+    if not stock_codes:
+        return pd.Series(dtype="float64")
+    returns = returns_by_period.get((start_date, end_date))
+    if returns is None or returns.empty:
+        return pd.Series(dtype="float64")
+    return returns.reindex(stock_codes).dropna()
 
 
 def _simple_returns(

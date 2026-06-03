@@ -619,37 +619,52 @@ describe("AgentWorkbenchPage", () => {
 
   it("keeps result evidence collapsed behind a compact drawer on narrow screens", async () => {
     const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
     mockNarrowAgentViewport();
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()));
 
-    render(
-      <AgentWorkbenchPage
-        pageContext={{
-          page_id: "dashboard",
-          current_filters: { report_date: "2026-03-31" },
-          selected_rows: [{ portfolio_id: "core" }],
-        }}
-      />,
-    );
+    try {
+      render(
+        <AgentWorkbenchPage
+          pageContext={{
+            page_id: "dashboard",
+            current_filters: { report_date: "2026-03-31" },
+            selected_rows: [{ portfolio_id: "core" }],
+          }}
+        />,
+      );
 
-    await user.type(screen.getByLabelText("agent-question-input"), "帮我判断今天的主要风险");
-    await user.click(screen.getByRole("button", { name: "发送" }));
+      await user.type(screen.getByLabelText("agent-question-input"), "帮我判断今天的主要风险");
+      await user.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
-    const resultDrawer = screen.getByText("依据与运行信息 · 2 项").closest("details");
-    expect(resultDrawer).not.toBeNull();
-    if (!resultDrawer) {
-      throw new Error("Expected compact result details drawer to exist");
+      expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+      const resultDrawer = screen.getByText("依据与运行信息 · 2 项").closest("details");
+      expect(resultDrawer).not.toBeNull();
+      if (!resultDrawer) {
+        throw new Error("Expected compact result details drawer to exist");
+      }
+      const resultDetails = screen.getByLabelText("assistant-result-details");
+      expect(resultDrawer).not.toHaveAttribute("open");
+      expect(resultDetails).not.toBeVisible();
+
+      scrollTargets.length = 0;
+      fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
+      expect(resultDrawer).toHaveAttribute("open");
+      expect(resultDetails).toBeVisible();
+      expect(resultDetails).toHaveTextContent("回答依据");
+      expect(resultDetails).toHaveTextContent("运行信息");
+      await waitFor(() => {
+        expect(
+          scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom"),
+        ).toBe(true);
+      });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
-    const resultDetails = screen.getByLabelText("assistant-result-details");
-    expect(resultDrawer).not.toHaveAttribute("open");
-    expect(resultDetails).not.toBeVisible();
-
-    fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
-    expect(resultDrawer).toHaveAttribute("open");
-    expect(resultDetails).toBeVisible();
-    expect(resultDetails).toHaveTextContent("回答依据");
-    expect(resultDetails).toHaveTextContent("运行信息");
   });
 
   it("executes an analysis-chat suggested governed intent in the same conversation", async () => {

@@ -1961,7 +1961,8 @@ export function buildDecisionSummary(
 export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): string[] {
   const notes = [`basis: ${payload.basis}`, `strategy: ${payload.strategy_name}`];
   for (const diag of payload.diagnostics) {
-    notes.push(`${diag.severity} [${diag.code}]: ${diag.message}`);
+    const severityLabel = diag.severity === "error" ? "错误" : diag.severity === "warning" ? "预警" : "信息";
+    notes.push(`${severityLabel} [${diag.code}]: ${localizeStockBackendText(diag.message, diag.input_family)}`);
   }
   if (payload.as_of_date) {
     notes.push(`as_of_date: ${payload.as_of_date}`);
@@ -1979,12 +1980,17 @@ export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): strin
     notes.push(`risk_exit formula: ${payload.risk_exit.formula_version}`);
   }
   for (const gap of payload.data_gaps) {
-    notes.push(`${gap.input_family} ${gap.status}: ${gap.evidence}`);
+    notes.push(
+      `${localizeStockDataFamily(gap.input_family)} ${localizeDataGapStatus(gap.status)}：${localizeStockBackendText(
+        gap.evidence,
+        gap.input_family,
+      )}`,
+    );
   }
   for (const output of payload.unsupported_outputs) {
-    notes.push(`${output.key} unsupported: ${output.reason}`);
+    notes.push(`${localizeStockDataFamily(output.key)} 阻断：${localizeStockBackendText(output.reason, output.key)}`);
   }
-  notes.push(`supported_outputs: ${payload.supported_outputs.join(", ") || "none"}`);
+  notes.push(`supported_outputs: ${payload.supported_outputs.map(localizeStockDataFamily).join("、") || "无"}`);
   return notes;
 }
 

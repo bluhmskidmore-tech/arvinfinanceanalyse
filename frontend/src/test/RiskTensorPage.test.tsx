@@ -748,6 +748,73 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("connects first-screen fallback status to quality evidence", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_fallback_status_dates"),
+        result: {
+          report_dates: ["2026-02-28"],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage is stale",
+            },
+          ],
+        },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_fallback_status_${reportDate}`),
+          fallback_mode: "latest_snapshot" as const,
+          fallback_date: "2026-02-27",
+          source_version: "sv_tensor_fallback",
+          rule_version: "rv_tensor_fallback",
+        },
+        result: {
+          ...tensorResult(reportDate),
+          quality_flag: "stale",
+          warnings: [],
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+      expect(dataStatusAction).toHaveTextContent("latest snapshot fallback");
+      expect(dataStatusAction).toHaveTextContent("1 个陈旧日期已拦截");
+      expect(qualityDetail).toHaveTextContent("latest snapshot fallback");
+      expect(qualityDetail).toHaveTextContent("fallback_date 2026-02-27");
+      expect(qualityDetail).toHaveTextContent("sv_tensor_fallback");
+      expect(qualityDetail).toHaveTextContent("rv_tensor_fallback");
+      expect(qualityDetail).toHaveTextContent("2026-02-27");
+      expect(qualityDetail).toHaveTextContent("risk tensor source lineage is stale");
+
+      await user.click(dataStatusAction);
+
+      expect(scrollTargets).toContain(qualityDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("surfaces issuer concentration detail from backend fields", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

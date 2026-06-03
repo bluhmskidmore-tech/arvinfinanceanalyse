@@ -129,6 +129,43 @@ def test_macro_toolkit_strategy_endpoint_exposes_unavailable_shadow_portfolio_re
     assert report["portfolios"] == []
 
 
+def test_shadow_portfolio_reuses_period_returns_per_period(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_shadow_report_db(duckdb_path)
+    real_connect = duckdb.connect
+    query_counts = {"daily_observation": 0}
+
+    class CountingConnection:
+        def __init__(self, inner: duckdb.DuckDBPyConnection) -> None:
+            self._inner = inner
+
+        def execute(self, query: str, parameters: object | None = None) -> duckdb.DuckDBPyConnection:
+            if "choice_stock_daily_observation" in query:
+                query_counts["daily_observation"] += 1
+            if parameters is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, parameters)
+
+        def close(self) -> None:
+            self._inner.close()
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._inner, name)
+
+    def counting_connect(*args: object, **kwargs: object) -> CountingConnection:
+        return CountingConnection(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(duckdb, "connect", counting_connect)
+
+    report = compute_equity_shadow_portfolio_report(duckdb_path)
+
+    assert report["status"] == "complete"
+    assert query_counts["daily_observation"] == report["completed_periods"]
+
+
 def _seed_shadow_report_db(path: Path) -> None:
     conn = duckdb.connect(str(path), read_only=False)
     try:

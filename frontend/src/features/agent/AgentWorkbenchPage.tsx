@@ -1466,6 +1466,14 @@ export function EmbeddedAgentCopilot({
     }
   }
 
+  function scrollConversationToBottom() {
+    const bottom = conversationBottomRef.current;
+    const scrollIntoView = bottom?.scrollIntoView;
+    if (typeof scrollIntoView === "function") {
+      scrollIntoView.call(bottom, { behavior: "smooth", block: "end" });
+    }
+  }
+
   function updateComposerQuery(nextQuery: string) {
     setQuery(nextQuery);
     if (shouldPersistConversation) {
@@ -1554,10 +1562,7 @@ export function EmbeddedAgentCopilot({
     if (!hasConversation) {
       return;
     }
-    const scrollIntoView = conversationBottomRef.current?.scrollIntoView;
-    if (typeof scrollIntoView === "function") {
-      scrollIntoView.call(conversationBottomRef.current, { behavior: "smooth", block: "end" });
-    }
+    scrollConversationToBottom();
   }, [
     hasConversation,
     latestConversationTurn?.id,
@@ -1570,10 +1575,7 @@ export function EmbeddedAgentCopilot({
     if (!hasConversation || !queuedQuery.trim()) {
       return;
     }
-    const scrollIntoView = conversationBottomRef.current?.scrollIntoView;
-    if (typeof scrollIntoView === "function") {
-      scrollIntoView.call(conversationBottomRef.current, { behavior: "smooth", block: "end" });
-    }
+    scrollConversationToBottom();
   }, [hasConversation, queuedQuery]);
 
   useEffect(() => {
@@ -2699,8 +2701,21 @@ export function EmbeddedAgentCopilot({
     }
 
     return (
-      <details className="agent-result-side-drawer">
-        <summary>依据与运行信息 · {detailSectionCount} 项</summary>
+      <details
+        className="agent-result-side-drawer"
+        onToggle={(event) => {
+          if (event.currentTarget.open) {
+            scrollConversationToBottom();
+          }
+        }}
+      >
+        <summary
+          onClick={() => {
+            window.setTimeout(scrollConversationToBottom, 0);
+          }}
+        >
+          依据与运行信息 · {detailSectionCount} 项
+        </summary>
         {resultSide}
       </details>
     );
