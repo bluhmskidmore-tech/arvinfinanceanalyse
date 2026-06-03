@@ -1247,7 +1247,7 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-review-queue-ranking-chart")).toHaveTextContent("队列排序");
 
     const user = userEvent.setup();
-    await user.click(screen.getByText("供数明细与闭环"));
+    await user.click(screen.getByTestId("stock-analysis-supply-details-toggle"));
 
     const sectorMiniChart = await screen.findByTestId("stock-analysis-sector-mini-chart");
     const reviewMiniChart = await screen.findByTestId("stock-analysis-review-mini-chart");
@@ -1337,7 +1337,7 @@ describe("StockAnalysisPage", () => {
     expect(supplyStatus).not.toHaveTextContent("partial");
     expect(supplyStatus).not.toHaveTextContent("breadth");
 
-    await userEvent.click(screen.getByText("供数明细与闭环"));
+    await userEvent.click(screen.getByTestId("stock-analysis-supply-details-toggle"));
     const reviewMiniChartOption = JSON.parse(
       within(screen.getByTestId("stock-analysis-review-mini-chart"))
         .getByTestId("stock-analysis-echarts-stub")
@@ -1461,7 +1461,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const themeLeaders = await screen.findByTestId("stock-analysis-theme-leaders-first-screen");
-    expect(themeLeaders).toHaveTextContent("题材突破 Leader 股");
+    expect(themeLeaders).toHaveTextContent("题材突破领涨股");
     expect(screen.getByTestId("theme-leader-first-row-688001.SH")).toHaveTextContent("Alpha Semiconductor");
 
     const sectorHeavyweights = await screen.findByTestId("stock-analysis-sector-heavyweights-first-screen");
@@ -2026,7 +2026,7 @@ describe("StockAnalysisPage", () => {
     });
     expect(verdict).toHaveTextContent("闭环阻断，先复核约束项");
     expect(verdict).not.toHaveTextContent("保持仅观察输出");
-    expect(decisionPanel).toHaveTextContent("供数明细与闭环");
+    expect(decisionPanel).toHaveTextContent("供数闭环");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 温和");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("闭环阻断，先复核约束项");
@@ -2063,7 +2063,7 @@ describe("StockAnalysisPage", () => {
     expect(verdict).not.toHaveTextContent("先补齐宏观反拥挤");
     await userEvent.click(within(verdict).getByText("依据明细"));
     expect(verdict).toHaveTextContent("先补齐宏观反拥挤");
-    expect(decisionPanel).toHaveTextContent("供数明细与闭环");
+    expect(decisionPanel).toHaveTextContent("供数闭环");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).toHaveTextContent("门控 温和");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("今日市场状态");
     expect(within(decisionPanel).getByRole("heading", { level: 1 })).not.toHaveTextContent("证据不足，不形成有效观察结论");
@@ -2311,7 +2311,7 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("无候选行业");
     expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("无候选");
     expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("该行业暂无线索");
-    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("行业筛选");
+    expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("筛选");
     expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("0 候选");
     expect(screen.queryByTestId("stock-analysis-review-queue-ranking-chart")).not.toBeInTheDocument();
   });
@@ -2374,6 +2374,8 @@ describe("StockAnalysisPage", () => {
     expect(section).toHaveTextContent("中");
     expect(section).toHaveTextContent("高");
     expect(section).toHaveTextContent("市场宽度");
+    expect(section).toHaveTextContent("市场宽度诊断");
+    expect(section).not.toHaveTextContent("LIVERMORE_BREADTH_MISSING");
     expect(section).not.toHaveTextContent("data_gap");
     expect(section).not.toHaveTextContent("concept membership table pending");
     expect(section).not.toHaveTextContent("risk_exit");
@@ -2506,7 +2508,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(await screen.findByText("供数明细与闭环"));
+    await user.click(await screen.findByTestId("stock-analysis-supply-details-toggle"));
 
     const details = await screen.findByTestId("stock-analysis-decision-panel");
     const supplyRow = within(details).getByLabelText("供数首屏摘要");

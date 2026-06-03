@@ -432,7 +432,7 @@ const stockChartPalette = {
 const miniBarChartStyle: CSSProperties = { height: 54, width: "100%" };
 const miniStackChartStyle: CSSProperties = { height: 40, width: "100%" };
 const reviewQueueChartStyle: CSSProperties = { height: 74, width: "100%" };
-const sectorStrengthChartStyle: CSSProperties = { height: 190, width: "100%" };
+const sectorStrengthChartStyle: CSSProperties = { height: 258, width: "100%" };
 
 type CompactChartRow = {
   key: string;
@@ -697,6 +697,7 @@ function eventNameLabel(row: { source: string; event: string; impact: string }) 
   if (row.source === "unsupported") return compactText(row.event, 20);
   if (row.source === "risk_exit") return compactText(row.event, 18);
   if (row.source === "signal_confluence") return "联动诊断";
+  if (row.source === "diagnostic") return `${eventImpactLabel(row)}诊断`;
   return compactText(row.event.replace(/_/g, " "), 20);
 }
 
@@ -1601,7 +1602,7 @@ export default function StockAnalysisPage() {
     ? `首位 ${selectedSectorLeadCandidate.stockName} · 距观察 ${selectedSectorLeadCandidate.distanceToBreakoutPct}`
     : sectorFilterSectorCode
       ? "该行业暂无线索"
-      : "点击左侧板块收敛队列";
+      : "按板块收敛";
 
   const reviewQueueChartRows = useMemo<CompactChartRow[]>(
     () => {
@@ -2552,10 +2553,10 @@ export default function StockAnalysisPage() {
                     </div>
 
                     <details className="stock-analysis-page__dh-details">
-                      <summary>
+                      <summary data-testid="stock-analysis-supply-details-toggle">
                         <span className="flex items-center gap-2">
                           <span className="text-[color:var(--sa-dh-blue)] group-open:rotate-90">▸</span>
-                          供数明细与闭环
+                          供数闭环
                         </span>
                         {closedLoopSummary ? (
                           <strong className="stock-analysis-page__dh-pill">
@@ -3403,7 +3404,7 @@ export default function StockAnalysisPage() {
 
                     <div className="stock-analysis-page__observation-preview-grid">
                       <div className="stock-analysis-page__observation-preview-panel">
-                        <h3>多因子 Top {factorPreviewItems.length || 0}</h3>
+                        <h3>多因子前 {factorPreviewItems.length || 0}</h3>
                         {!factorScreenPayload ? (
                           <CompactStatusTile
                             icon={<DatabaseOutlined />}
@@ -3470,7 +3471,7 @@ export default function StockAnalysisPage() {
                       </div>
 
                       <div className="stock-analysis-page__observation-preview-panel">
-                        <h3>超跌反弹 {meanReversionMarketActive ? "Top" : ""}</h3>
+                        <h3>超跌反弹{meanReversionMarketActive ? "前列" : ""}</h3>
                         {!meanReversionMarketActive ? (
                           <CompactStatusTile
                             icon={<FireOutlined />}
@@ -3562,13 +3563,13 @@ export default function StockAnalysisPage() {
                     <div className={SA_SECTION_HEAD}>
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>题材突变</p>
-                        <h2 className={SA_CARD_TITLE}>题材突破 Leader 股</h2>
+                        <h2 className={SA_CARD_TITLE}>题材突破领涨股</h2>
                         <div className="stock-analysis-page__lower-signal-strip" aria-label="题材突破状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <FireOutlined aria-hidden="true" /> 题材 {themeBreakoutCards.length}
                           </span>
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
-                            <StockOutlined aria-hidden="true" /> Leader {themeLeaderPreviewItems.length}
+                            <StockOutlined aria-hidden="true" /> 领涨 {themeLeaderPreviewItems.length}
                           </span>
                         </div>
                       </div>
@@ -3583,11 +3584,11 @@ export default function StockAnalysisPage() {
                       <CompactStatusTile
                         icon={<FireOutlined />}
                         label="题材"
-                        value={themeBreakoutUnsupported ? "待补" : "0 Leader"}
+                        value={themeBreakoutUnsupported ? "待补" : "0 领涨"}
                         detail={themeBreakoutBlockerLabel ?? undefined}
                         tone={themeBreakoutUnsupported ? "warning" : "neutral"}
                         testId="stock-analysis-theme-leader-empty"
-                        title={themeBreakoutBlockerText ?? "当前无题材突破 Leader"}
+                        title={themeBreakoutBlockerText ?? "当前无题材突破领涨股"}
                       />
                     ) : (
                       <div className="stock-analysis-page__table-wrap">
@@ -3595,7 +3596,7 @@ export default function StockAnalysisPage() {
                           <thead>
                             <tr>
                               <th scope="col">题材</th>
-                              <th scope="col">Leader</th>
+                              <th scope="col">领涨股</th>
                               <th scope="col">涨跌</th>
                               <th scope="col">换手</th>
                               <th scope="col">收盘强度</th>
@@ -3630,7 +3631,7 @@ export default function StockAnalysisPage() {
                                 <td className="stock-analysis-page__table-number">{row.pctChange}</td>
                                 <td className="stock-analysis-page__table-number">{row.turn}</td>
                                 <td className="stock-analysis-page__table-number">{row.closeStrength}</td>
-                                <td>{row.tags.join(" / ") || "Review"}</td>
+                                <td>{row.tags.join(" / ") || "复核"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -3650,7 +3651,7 @@ export default function StockAnalysisPage() {
                         <h2 className={SA_CARD_TITLE}>各板块权重股表现</h2>
                         <div className="stock-analysis-page__lower-signal-strip" aria-label="权重股样本状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
-                            <BarChartOutlined aria-hidden="true" /> Top {sectorHeavyweightPreview?.sectorLimit ?? 0}
+                            <BarChartOutlined aria-hidden="true" /> 前 {sectorHeavyweightPreview?.sectorLimit ?? 0}
                           </span>
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <StockOutlined aria-hidden="true" /> 样本{" "}
@@ -3662,7 +3663,7 @@ export default function StockAnalysisPage() {
                         {sectorHeavyweightPreview
                           ? sectorHeavyweightPreview.sectorsWithSamples > 0
                             ? `${sectorHeavyweightPreview.sectorsWithSamples}/${sectorHeavyweightPreview.sectorLimit} 板块 · ${sectorHeavyweightPreview.totalSampleCount} 只样本`
-                            : `Top ${sectorHeavyweightPreview.sectorLimit} 板块 · 观察池未覆盖`
+                            : `前 ${sectorHeavyweightPreview.sectorLimit} 板块 · 观察池未覆盖`
                           : "板块待补"}
                       </span>
                     </div>
@@ -3678,7 +3679,7 @@ export default function StockAnalysisPage() {
                     ) : sectorHeavyweightRows.length === 0 ? (
                       <CompactStatusTile
                         icon={<StockOutlined />}
-                        label={`Top ${sectorHeavyweightPreview.sectorLimit}`}
+                        label={`前 ${sectorHeavyweightPreview.sectorLimit}`}
                         value="0 命中"
                         testId="stock-analysis-sector-heavyweight-empty"
                       />
@@ -4060,7 +4061,7 @@ export default function StockAnalysisPage() {
 
                     <div className="stock-analysis-page__sector-rank-grid" data-testid="stock-analysis-sector-bars">
                       <div className="stock-analysis-page__sector-rank-col stock-analysis-page__sector-rank-col--top">
-                        <h3>强势 Top 5</h3>
+                        <h3>强势前 5</h3>
                         <div className="grid gap-1.5">
                           {topBars.map((row) => (
                             <button
@@ -4102,7 +4103,7 @@ export default function StockAnalysisPage() {
                         </div>
                       </div>
                       <div className="stock-analysis-page__sector-rank-col stock-analysis-page__sector-rank-col--bottom">
-                        <h3>弱势 Bottom 5</h3>
+                        <h3>弱势后 5</h3>
                         <div className="grid gap-1.5">
                           {bottomBars.map((row) => (
                             <button
@@ -4149,10 +4150,10 @@ export default function StockAnalysisPage() {
                       aria-label="板块筛选状态"
                     >
                       <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1">
-                        <ClockCircleOutlined aria-hidden="true" /> 单日截面
+                        <ClockCircleOutlined aria-hidden="true" /> 截面
                       </span>
                       <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1">
-                        <BarChartOutlined aria-hidden="true" /> 行业筛选
+                        <BarChartOutlined aria-hidden="true" /> 筛选
                       </span>
                     </div>
 
@@ -5124,7 +5125,7 @@ export default function StockAnalysisPage() {
                                       {leader.closeStrength}
                                     </small>
                                   </span>
-                                  <em>{leader.tags.join(" / ") || "Review"}</em>
+                                  <em>{leader.tags.join(" / ") || "复核"}</em>
                                 </li>
                               ))}
                             </ul>

@@ -702,6 +702,11 @@ function localizeDataGapStatus(status: string | null | undefined): string {
   return labels[normalized] ?? (status || "待补");
 }
 
+function localizeDiagnosticScope(inputFamily: string | null | undefined): string {
+  const familyLabel = localizeStockDataFamily(inputFamily);
+  return familyLabel === "待补" ? "策略诊断" : `${familyLabel}诊断`;
+}
+
 export function localizeStockBackendText(
   text: string | null | undefined,
   inputFamily?: string | null,
@@ -1804,6 +1809,7 @@ export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): Stoc
 }
 
 const themeEvidenceInputLabels: Record<string, string> = {
+  choice_stock_intraday_movement_event: "盘中异动",
   concept_membership: "概念成分",
   intraday_movement: "盘中异动",
 };
@@ -1811,6 +1817,7 @@ const themeEvidenceInputLabels: Record<string, string> = {
 const themeEvidenceStatusLabels: Record<string, string> = {
   catalog_unconfirmed: "目录待确认",
   table_missing: "数据表缺失",
+  source_table_missing: "源表缺失",
   landed_no_rows: "已接入无行",
   matched_rows: "已匹配",
 };
@@ -1969,7 +1976,12 @@ export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): strin
   const notes = [`口径：${localizeBasisLabel(payload.basis)}`, `策略：${payload.strategy_name || "待补"}`];
   for (const diag of payload.diagnostics) {
     const severityLabel = diag.severity === "error" ? "错误" : diag.severity === "warning" ? "预警" : "信息";
-    notes.push(`${severityLabel} [${diag.code}]: ${localizeStockBackendText(diag.message, diag.input_family)}`);
+    notes.push(
+      `${severityLabel} ${localizeDiagnosticScope(diag.input_family)}：${localizeStockBackendText(
+        diag.message,
+        diag.input_family,
+      )}`,
+    );
   }
   if (payload.as_of_date) {
     notes.push(`数据日期：${payload.as_of_date}`);
@@ -2638,6 +2650,7 @@ function localizeReplayReasonCode(reasonCode: string | null | undefined): string
     real_theme_inputs_unconfirmed: "真实题材输入待确认",
   };
   if (!normalized) return "原因待补";
+  if (normalized.includes("source_table") && normalized.includes("missing")) return "源表缺失";
   return labels[normalized] ?? reasonCode!.replace(/_/g, " ");
 }
 
@@ -2732,12 +2745,14 @@ function blockedReplayDates(value: unknown): ConfluenceReplayBlockedDate[] {
 }
 
 function isBlockedReplayReasonCode(value: unknown): value is ConfluenceReplayBlockedDate["reason_code"] {
+  const normalized = typeof value === "string" ? value.toLowerCase() : "";
   return (
     value === "missing_daily_limit_flags" ||
     value === "missing_required_source_table" ||
     value === "forward_returns_pending" ||
     value === "real_theme_inputs_unconfirmed" ||
-    value === "proxy_theme_only"
+    value === "proxy_theme_only" ||
+    (normalized.includes("source_table") && normalized.includes("missing"))
   );
 }
 
@@ -2976,7 +2991,7 @@ export function localizeThemeSourceKind(sourceKind: string | undefined, isProxyD
   if (!normalized) {
     return isProxyDefault ? "代理观察" : "概念库";
   }
-  return normalized.replace(/_/g, " ");
+  return "来源待确认";
 }
 
 export function localizeMarketDataStatus(status: string | null | undefined): string {
@@ -2989,6 +3004,7 @@ export function localizeMarketDataStatus(status: string | null | undefined): str
     WARM: "温和",
     HOT: "偏热",
     OVERHEAT: "过热",
+    UNKNOWN: "状态待确认",
   };
   return labels[normalized] ?? status ?? "状态待补";
 }

@@ -40,6 +40,8 @@ import {
   buildMarketPriorityPanelSummary,
   buildStrategyBacktestPanelSummary,
   buildStrategyOptimizationPanelSummary,
+  localizeMarketDataStatus,
+  localizeThemeSourceKind,
   localizeStockBackendText,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
@@ -628,6 +630,9 @@ describe("stockAnalysisPageModel", () => {
     expect(empty.detail).toContain("多因子池 30 只");
 
     expect(localizeImplementationStage("verification_pending")).toBe("证据待齐");
+    expect(localizeMarketDataStatus("unknown")).toBe("状态待确认");
+    expect(localizeMarketDataStatus("unknown")).not.toBe("unknown");
+    expect(localizeThemeSourceKind("choice_stock_intraday_movement_event", false)).toBe("来源待确认");
   });
 
   it("keeps the decision summary honest when candidates are unavailable", () => {
@@ -995,6 +1000,42 @@ describe("stockAnalysisPageModel", () => {
     expect(rows[1].detail).toContain("盘中异动");
     expect(rows[1].detail).toContain("数据表缺失");
     expect(rows.map((row) => row.detail).join(" ")).not.toContain("buy");
+  });
+
+  it("localizes theme evidence fallback labels before exposing source-table diagnostics", () => {
+    const rows = buildThemeEvidenceStateRows({
+      ...strategyPayload,
+      theme_breakout: {
+        as_of_date: "2026-05-08",
+        formula_version: "rv_livermore_theme_breakout_proxy_v1",
+        is_proxy: true,
+        theme_count: 0,
+        evidence_state: {
+          inputs: [
+            {
+              input_family: "choice_stock_intraday_movement_event",
+              status: "source_table_missing",
+              table: "choice_stock_intraday_movement_event",
+              row_count: 0,
+              matched_row_count: 0,
+              message: "source_table choice_stock_intraday_movement_event is missing.",
+            },
+          ],
+        },
+        items: [],
+      },
+    });
+
+    expect(rows[0]).toMatchObject({
+      label: "盘中异动",
+      statusLabel: "源表缺失",
+      detail: "盘中异动：源表缺失",
+    });
+    expect(`${rows[0].label} ${rows[0].statusLabel} ${rows[0].detail}`).not.toContain(
+      "choice_stock_intraday_movement_event",
+    );
+    expect(`${rows[0].label} ${rows[0].statusLabel} ${rows[0].detail}`).not.toContain("source_table_missing");
+    expect(`${rows[0].label} ${rows[0].statusLabel} ${rows[0].detail}`).not.toContain("source_table");
   });
 
   it("builds theme breakout review items with failed gate codes as additive evidence", () => {
@@ -1464,7 +1505,8 @@ describe("stockAnalysisPageModel", () => {
               {
                 trade_date: "2026-05-09",
                 status: "unsupported",
-                reason_code: "missing_required_source_table",
+                reason_code:
+                  "source_table_choice_stock_intraday_movement_event_missing" as ConfluenceReplayStatus["blocked_dates"][number]["reason_code"],
                 signal_kinds: ["stock_candidate"],
               },
               {
@@ -1496,9 +1538,11 @@ describe("stockAnalysisPageModel", () => {
     });
     expect(replayItem?.detail).toContain("暂无可用于判断的完成回放日");
     expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
-    expect(replayItem?.detail).toContain("2026-05-09 必需源表缺失");
+    expect(replayItem?.detail).toContain("2026-05-09 源表缺失");
     expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
     expect(replayItem?.detail).not.toContain("missing required source table");
+    expect(replayItem?.detail).not.toContain("source table");
+    expect(replayItem?.detail).not.toContain("source_table_choice_stock_intraday_movement_event_missing");
   });
 
   it("combines risk exits and confluence exit observations without trading labels", () => {
@@ -1567,9 +1611,9 @@ describe("stockAnalysisPageModel", () => {
     expect(notes.join(" ")).toContain("数据日期：2026-04-29");
     expect(notes.join(" ")).toContain("板块强弱公式：rv_livermore_sector_rank_provisional_v1");
     expect(notes.join(" ")).toContain("可用输出：市场门控、板块强弱、趋势候选、风险退出");
-    expect(notes.join(" ")).toContain("预警 [LIVERMORE_BREADTH_MISSING]: 市场宽度输入不可用。");
+    expect(notes.join(" ")).toContain("预警 市场宽度诊断：市场宽度输入不可用。");
     expect(notes.join(" ")).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
-    expect(notes.join(" ")).toContain("LIVERMORE_BREADTH_MISSING");
+    expect(notes.join(" ")).not.toContain("LIVERMORE_BREADTH_MISSING");
     expect(notes.join(" ")).toContain("rv_livermore_sector_rank_provisional_v1");
     expect(notes.join(" ")).not.toContain("basis:");
     expect(notes.join(" ")).not.toContain("as_of_date:");
