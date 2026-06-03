@@ -785,7 +785,12 @@ export default function RiskTensorPage() {
   const payloadQualityIssues = result ? riskTensorPayloadQualityIssues(result) : [];
   const payloadQualityIssueLabels = payloadQualityIssues.map((item) => `${item.label} ${item.issue}`);
   const payloadQualityIssueSummary = payloadQualityIssueLabels.join(" / ");
-  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}`;
+  const qualityEvidenceStateKey = [
+    `evidence_rows:${typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "missing"}`,
+    `tables_used:${metadataTablesUsed || "missing"}`,
+    `filters_applied:${metadataFiltersApplied || "missing"}`,
+  ].join("|");
+  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}`;
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");
@@ -796,6 +801,7 @@ export default function RiskTensorPage() {
     setQualityEvidenceReviewRecordCopyStatus("idle");
     setQualityEvidenceRequestCopyStatus("idle");
     setPayloadQualityRequestCopyStatus("idle");
+    setCombinedQualityRequestCopyStatus("idle");
   }, [qualityStateKey]);
   const qualityEvidenceReviewItems = [
     {
