@@ -1403,6 +1403,7 @@ export function EmbeddedAgentCopilot({
   const [restoringRunId, setRestoringRunId] = useState(() =>
     shouldPersistConversation ? loadLatestAgentRunId() : "",
   );
+  const [restoreErrorRunId, setRestoreErrorRunId] = useState("");
   const [queuedQueries, setQueuedQueries] = useState<string[]>(() =>
     shouldPersistConversation ? loadQueuedQueries() : [],
   );
@@ -1749,6 +1750,7 @@ export function EmbeddedAgentCopilot({
           return;
         }
         setRestoringRunId("");
+        setRestoreErrorRunId("");
         setOrdinaryConversationMode("managed");
         setAgentRun(payload);
         setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, payload));
@@ -1765,6 +1767,7 @@ export function EmbeddedAgentCopilot({
       .catch(() => {
         if (!cancelled) {
           setRestoringRunId("");
+          setRestoreErrorRunId(latestRunId);
           clearLatestAgentRunId();
         }
       });
@@ -2636,6 +2639,7 @@ export function EmbeddedAgentCopilot({
     setAgentRun(null);
     setError(null);
     setRestoringRunId("");
+    setRestoreErrorRunId("");
     clearQueuedQueries();
     clearComposerQuery();
     if (shouldPersistConversation) {
@@ -3239,6 +3243,21 @@ export function EmbeddedAgentCopilot({
             <span>刷新后正在接回托管运行结果，恢复完成前可以继续查看本地历史。</span>
           </div>
           <code>{restoringRunId}</code>
+        </div>
+      ) : null}
+
+      {!isEmbedded && restoreErrorRunId ? (
+        <div
+          className="agent-restore-status agent-restore-status--error"
+          role="status"
+          aria-live="polite"
+          aria-label="agent-run-restore-error"
+        >
+          <div>
+            <strong>上一轮 Agent 状态暂时无法恢复</strong>
+            <span>已清除过期运行标记；你可以继续在输入框里发起新的追问。</span>
+          </div>
+          <code>{restoreErrorRunId}</code>
         </div>
       ) : null}
 

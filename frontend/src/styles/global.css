@@ -1507,6 +1507,15 @@ select {
   overflow-wrap: anywhere;
 }
 
+.agent-restore-status--error {
+  border-color: #f2c2bd;
+  background: #fff7f6;
+}
+
+.agent-restore-status--error strong {
+  color: #a33a2f;
+}
+
 .agent-page-context {
   margin-top: 8px;
   padding: 0;
