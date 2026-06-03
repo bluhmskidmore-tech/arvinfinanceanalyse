@@ -50,6 +50,15 @@ def _grant_refresh_scope(tmp_path, monkeypatch, *, user_id: str, resource: str) 
     )
 
 
+def _grant_read_scope(*, resource: str) -> None:
+    UserScopeRepository(get_settings().postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource=resource,
+        action="read",
+    )
+
+
 def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_server = _redis_server_path()
     if redis_server is None:
@@ -82,12 +91,7 @@ def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
         resource="source_preview.source_foundation",
     )
     get_settings.cache_clear()
-    UserScopeRepository(get_settings().postgres_dsn).grant_scope(
-        user_id="*",
-        role=None,
-        resource="source_preview.source_foundation",
-        action="read",
-    )
+    _grant_read_scope(resource="source_preview.source_foundation")
     _reset_source_preview_modules()
 
     redis_proc = _start_redis_server(redis_server=redis_server, port=redis_port, work_dir=redis_dir)
@@ -176,6 +180,7 @@ def test_product_category_refresh_real_worker_e2e(tmp_path, monkeypatch):
         resource="product_category_pnl",
     )
     get_settings.cache_clear()
+    _grant_read_scope(resource="product_category_pnl")
     _reset_source_preview_modules()
 
     redis_proc = _start_redis_server(redis_server=redis_server, port=redis_port, work_dir=redis_dir)
@@ -258,6 +263,7 @@ def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
         resource="balance_analysis",
     )
     get_settings.cache_clear()
+    _grant_read_scope(resource="balance_analysis")
     _reset_source_preview_modules()
 
     redis_proc = _start_redis_server(redis_server=redis_server, port=redis_port, work_dir=redis_dir)
@@ -340,6 +346,7 @@ def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
         resource="bond_analytics",
     )
     get_settings.cache_clear()
+    _grant_read_scope(resource="bond_analytics")
     _reset_source_preview_modules()
 
     redis_proc = _start_redis_server(redis_server=redis_server, port=redis_port, work_dir=redis_dir)

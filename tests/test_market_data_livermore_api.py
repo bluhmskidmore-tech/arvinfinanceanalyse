@@ -286,26 +286,160 @@ def _ensure_livermore_candidate_history_test_schema(conn: duckdb.DuckDBPyConnect
     ensure_livermore_candidate_history_schema(conn)
 
 
-def _build_client(tmp_path, monkeypatch, *, choice_stock_catalog_file=None) -> TestClient:
+def _build_client(
+    tmp_path,
+    monkeypatch,
+    *,
+    choice_stock_catalog_file=None,
+    grant_livermore_read: bool = True,
+) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
     sqlite_path = tmp_path / "auth-scope.db"
-    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", auth_dsn)
     catalog_path = choice_stock_catalog_file or tmp_path / "missing-choice-stock-catalog.json"
     monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
     get_settings.cache_clear()
     from backend.app.repositories.user_scope_repo import UserScopeRepository
 
-    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+    UserScopeRepository(auth_dsn).grant_scope(
         user_id="*",
         role=None,
         resource="market_data.livermore_position_snapshot",
         action="import",
     )
+    if grant_livermore_read:
+        UserScopeRepository(auth_dsn).grant_scope(
+            user_id="*",
+            role=None,
+            resource="market_data.livermore",
+            action="read",
+        )
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)
     return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+
+def _stub_livermore_read_services(monkeypatch) -> None:
+    from backend.app.api.routes import market_data_livermore as route_module
+
+    def stub_envelope(result_kind: str) -> dict[str, object]:
+        return {
+            "result_meta": {
+                "basis": "analytical",
+                "formal_use_allowed": False,
+                "scenario_flag": False,
+                "result_kind": result_kind,
+                "quality_flag": "ok",
+                "source_version": "sv_livermore_auth_contract",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_livermore_auth_contract",
+                "cache_version": "cv_livermore_auth_contract",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+                "evidence_rows": 0,
+                "tables_used": [],
+                "filters_applied": {},
+                "sql_executed": [],
+            },
+            "result": {"as_of_date": "2026-04-10"},
+        }
+
+    monkeypatch.setattr(route_module, "load_choice_stock_readiness", lambda _path: {})
+    monkeypatch.setattr(
+        route_module,
+        "livermore_strategy_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_macro_environment_context",
+        lambda _report_date: stub_envelope("macro.environment_context"),
+    )
+    monkeypatch.setattr(route_module, "load_macro_adversarial_signal_payload", lambda **_kwargs: ({}, {}))
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_backtest_window_summary",
+        lambda **_kwargs: {"status": "unsupported", "completed_rows": 0},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "build_livermore_signal_confluence",
+        lambda **_kwargs: {"as_of_date": "2026-04-10"},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_stock_detail_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.stock_detail"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.candidate_history"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_strategy_score_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.strategy_score"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_strategy_optimization_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.strategy_optimization"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_cycle_proxy_backtest_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.cycle_proxy_backtest"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_candidate_history_portfolio_backtest_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.candidate_history_portfolio_backtest"),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "livermore_sector_rank_series_envelope",
+        lambda **_kwargs: stub_envelope("market_data.livermore.sector_rank_series"),
+    )
+
+
+def _livermore_route_settings(tmp_path) -> SimpleNamespace:
+    auth_dsn = f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}"
+    return SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
+        postgres_dsn=auth_dsn,
+        governance_sql_dsn=auth_dsn,
+    )
+
+
+@pytest.mark.parametrize(
+    "path,params",
+    [
+        ("/ui/market-data/livermore", {}),
+        ("/ui/market-data/livermore/signal-confluence", {}),
+        ("/ui/market-data/livermore/stock-detail", {"stock_code": "000001.SZ"}),
+        ("/ui/market-data/livermore/candidate-history", {}),
+        ("/ui/market-data/livermore/strategy-score", {}),
+        ("/ui/market-data/livermore/strategy-optimization", {}),
+        ("/ui/market-data/livermore/cycle-proxy-backtest", {}),
+        ("/ui/market-data/livermore/candidate-history-portfolio-backtest", {}),
+        ("/ui/market-data/livermore/sector-rank-series", {}),
+    ],
+)
+def test_livermore_read_surfaces_require_explicit_read_scope(
+    path, params, tmp_path, monkeypatch
+) -> None:
+    client = _build_client(tmp_path, monkeypatch, grant_livermore_read=False)
+    _stub_livermore_read_services(monkeypatch)
+
+    response = client.get(path, params=params or None)
+
+    assert response.status_code == 403
 
 
 def test_livermore_signal_confluence_loader_reraises_nested_missing_dependency(monkeypatch) -> None:
@@ -1634,10 +1768,7 @@ def test_livermore_signal_confluence_api_returns_analytical_envelope_and_resolve
     from backend.app.api.routes import market_data_livermore as route_module
 
     calls: dict[str, object] = {}
-    settings = SimpleNamespace(
-        duckdb_path=tmp_path / "moss.duckdb",
-        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
-    )
+    settings = _livermore_route_settings(tmp_path)
     conn = duckdb.connect(str(settings.duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -1954,10 +2085,7 @@ def test_livermore_signal_confluence_api_uses_real_service_shape_with_macro_envi
 
     output_dir = tmp_path / "macro_output"
     output_dir.mkdir()
-    settings = SimpleNamespace(
-        duckdb_path=tmp_path / "moss.duckdb",
-        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
-    )
+    settings = _livermore_route_settings(tmp_path)
     livermore_envelope = {
         "result_meta": {
             "source_version": "sv_livermore",
@@ -2055,10 +2183,7 @@ TL,2026-04-30,short,0.35,2,crowding block,false
 """,
     )
 
-    settings = SimpleNamespace(
-        duckdb_path=tmp_path / "moss.duckdb",
-        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
-    )
+    settings = _livermore_route_settings(tmp_path)
     conn = duckdb.connect(str(settings.duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -2173,10 +2298,7 @@ def test_livermore_signal_confluence_replay_evidence_counts_all_rows_while_sampl
 
     output_dir = tmp_path / "macro_output"
     output_dir.mkdir()
-    settings = SimpleNamespace(
-        duckdb_path=tmp_path / "moss.duckdb",
-        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
-    )
+    settings = _livermore_route_settings(tmp_path)
     conn = duckdb.connect(str(settings.duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -2263,10 +2385,7 @@ def test_livermore_signal_confluence_api_keeps_core_result_meta_when_adversarial
 
     output_dir = tmp_path / "macro_output"
     output_dir.mkdir()
-    settings = SimpleNamespace(
-        duckdb_path=tmp_path / "moss.duckdb",
-        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
-    )
+    settings = _livermore_route_settings(tmp_path)
     livermore_envelope = {
         "result_meta": {
             "source_version": "sv_livermore",
@@ -2368,10 +2487,7 @@ def test_livermore_signal_confluence_api_preserves_stale_lineage(tmp_path, monke
     client = _build_client(tmp_path, monkeypatch)
     from backend.app.api.routes import market_data_livermore as route_module
 
-    settings = SimpleNamespace(
-        duckdb_path=tmp_path / "moss.duckdb",
-        choice_stock_catalog_file=tmp_path / "choice-stock-catalog.json",
-    )
+    settings = _livermore_route_settings(tmp_path)
     livermore_envelope = {
         "result_meta": {
             "source_version": "sv_livermore",

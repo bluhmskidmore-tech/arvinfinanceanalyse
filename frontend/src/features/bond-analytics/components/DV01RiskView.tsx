@@ -35,6 +35,7 @@ import { SectionLead } from "./SectionLead";
 import styles from "./DV01RiskView.module.css";
 
 const DEFAULT_SHOCK_BPS = "1,10,25,50";
+const DV01_LIMIT_REVIEW_PACKAGE_DIR = ".tmp\\bond_dv01_limit_config_review_package";
 const TOP_N_OPTIONS = [10, 20, 30, 50, 100] as const;
 
 type DV01AccountingOption = {
@@ -715,6 +716,99 @@ function selectedLimitConfigRow(
   return data.rows.find((row) => row.accounting_class.toLowerCase() === target) ?? null;
 }
 
+function missingBusinessFieldLines(data: DV01LimitConfigStatusPayload | null): string[] {
+  if (!data) return [];
+  const missingBusinessFields =
+    Object.keys(data.missing_business_fields_by_class ?? {}).length > 0
+      ? data.missing_business_fields_by_class
+      : Object.fromEntries(
+          (data.missing_accounting_classes ?? []).map((accountingClass) => [
+            accountingClass,
+            data.required_fields ?? [],
+          ]),
+        );
+  return Object.entries(missingBusinessFields ?? {}).map(
+    ([accountingClass, fields]) => `${accountingClass}: ${joinDisplayList(fields)}`,
+  );
+}
+
+function inferredLimitConfigAcceptanceStatus(
+  data: DV01LimitConfigStatusPayload | null,
+): "ready" | "blocked" | undefined {
+  if (!data) return undefined;
+  if (data.acceptance_status) return data.acceptance_status;
+  if (
+    data.overall_status === "ready" &&
+    (data.missing_count ?? 0) === 0 &&
+    (data.invalid_count ?? 0) === 0
+  ) {
+    return "ready";
+  }
+  return "blocked";
+}
+
+function fallbackLimitConfigReviewPackageCommand(
+  data: DV01LimitConfigStatusPayload | null,
+): string {
+  const reportDate = data?.report_date?.trim();
+  if (!reportDate) return "";
+  return [
+    "python -m backend.app.tasks.bond_dv01_limit_config_import",
+    `--review-package-dir ${DV01_LIMIT_REVIEW_PACKAGE_DIR}`,
+    `--report-date ${reportDate}`,
+  ].join(" ");
+}
+
+function fallbackLimitConfigDryRunCommand(
+  data: DV01LimitConfigStatusPayload | null,
+): string {
+  const reportDate = data?.report_date?.trim();
+  if (!reportDate) return "";
+  return [
+    "python -m backend.app.tasks.bond_dv01_limit_config_import",
+    `--config-path ${DV01_LIMIT_REVIEW_PACKAGE_DIR}\\bond_dv01_limit_config_review_${reportDate}.csv`,
+    `--report-date ${reportDate}`,
+    "--dry-run",
+  ].join(" ");
+}
+
+function shouldShowLimitConfigOperatorCommands(
+  data: DV01LimitConfigStatusPayload | null,
+  acceptanceStatus: "ready" | "blocked" | undefined,
+): boolean {
+  if (!data || acceptanceStatus !== "blocked") return false;
+  return Boolean(
+    data.review_package_command ||
+      data.dry_run_command ||
+      (data.missing_count ?? 0) > 0 ||
+      (data.invalid_count ?? 0) > 0 ||
+      (data.missing_accounting_classes ?? []).length > 0,
+  );
+}
+
+function limitConfigAcceptanceMessage(
+  data: DV01LimitConfigStatusPayload | null,
+  acceptanceStatus: "ready" | "blocked" | undefined,
+): string {
+  if (data?.acceptance_message?.trim()) return data.acceptance_message;
+  if (acceptanceStatus === "ready") return "正式 DV01 限额配置验收通过。";
+  if (acceptanceStatus === "blocked") {
+    return "正式 DV01 限额配置验收未通过；需补齐 AC、OCI、TPL、all 的业务限额字段。";
+  }
+  return "";
+}
+
+function limitConfigNextAction(
+  data: DV01LimitConfigStatusPayload | null,
+  acceptanceStatus: "ready" | "blocked" | undefined,
+): string {
+  if (data?.next_action?.trim()) return data.next_action;
+  if (acceptanceStatus === "blocked") {
+    return "生成 review package CSV，补齐正式限额字段后先执行 dry-run 校验，再导入正式配置。";
+  }
+  return "";
+}
+
 function DV01LimitConfigStatusPanel({
   data,
   accountingClass,
@@ -729,6 +823,12 @@ function DV01LimitConfigStatusPanel({
   error: unknown;
 }) {
   const selectedRow = selectedLimitConfigRow(data, accountingClass);
+  const missingFieldLines = missingBusinessFieldLines(data);
+  const acceptanceStatus = inferredLimitConfigAcceptanceStatus(data);
+  const reviewPackageCommand =
+    data?.review_package_command || fallbackLimitConfigReviewPackageCommand(data);
+  const dryRunCommand = data?.dry_run_command || fallbackLimitConfigDryRunCommand(data);
+  const hasOperatorCommands = shouldShowLimitConfigOperatorCommands(data, acceptanceStatus);
 
   return (
     <section className={styles.panel} data-testid="dv01-limit-config-status-panel">
@@ -773,7 +873,7 @@ function DV01LimitConfigStatusPanel({
             />
           ) : null}
           <div className={styles.movementSummaryGrid}>
-            <KpiCard label="验收结论" value={limitConfigAcceptanceLabel(data.acceptance_status)} />
+            <KpiCard label="验收结论" value={limitConfigAcceptanceLabel(acceptanceStatus)} />
             <KpiCard label="正式配置流" value={nullableText(data.config_stream)} />
             <KpiCard label="已接入分类" value={joinDisplayList(data.configured_accounting_classes)} />
             <KpiCard label="待补分类" value={joinDisplayList(data.missing_accounting_classes)} />
@@ -789,14 +889,40 @@ function DV01LimitConfigStatusPanel({
             <KpiCard label="生效日" value={limitEffectiveDateLabel(selectedRow.limit_effective_date)} />
           </div>
           <div className={styles.reconciliationMeta}>
-            验收说明 {nullableText(data.acceptance_message)}
+            验收说明 {nullableText(limitConfigAcceptanceMessage(data, acceptanceStatus))}
           </div>
           <div className={styles.reconciliationMeta}>
-            下一步动作 {nullableText(data.next_action)}
+            下一步动作 {nullableText(limitConfigNextAction(data, acceptanceStatus))}
           </div>
           <div className={styles.reconciliationMeta}>
             必填字段 {joinDisplayList(data.required_fields)}
           </div>
+          {missingFieldLines.length > 0 ? (
+            <div className={styles.operatorBlock} data-testid="dv01-limit-config-missing-fields">
+              <div className={styles.operatorLabel}>missing_business_fields_by_class</div>
+              {missingFieldLines.map((line) => (
+                <div key={line} className={styles.operatorText}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {hasOperatorCommands ? (
+            <div className={styles.operatorBlock} data-testid="dv01-limit-config-operator-commands">
+              {reviewPackageCommand ? (
+                <>
+                  <div className={styles.operatorLabel}>review_package_command</div>
+                  <code className={styles.commandText}>{reviewPackageCommand}</code>
+                </>
+              ) : null}
+              {dryRunCommand ? (
+                <>
+                  <div className={styles.operatorLabel}>dry_run_command</div>
+                  <code className={styles.commandText}>{dryRunCommand}</code>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           <div className={styles.reconciliationMeta}>{selectedRow.message}</div>
         </>
       )}

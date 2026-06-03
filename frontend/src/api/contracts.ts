@@ -662,6 +662,9 @@ export type DV01LimitConfigStatusPayload = {
   configured_accounting_classes: string[];
   missing_accounting_classes: string[];
   invalid_accounting_classes: string[];
+  missing_business_fields_by_class: Record<string, string[]>;
+  review_package_command: string;
+  dry_run_command: string;
   configured_count: number;
   missing_count: number;
   invalid_count: number;

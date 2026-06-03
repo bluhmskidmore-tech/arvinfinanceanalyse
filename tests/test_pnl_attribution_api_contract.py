@@ -27,6 +27,13 @@ _ENDPOINTS: list[tuple[str, dict[str, str | int | bool]]] = [
     ("/api/pnl-attribution/advanced/campisi", {"lookback_days": 7}),
 ]
 
+_CAMPISI_ENDPOINTS: list[tuple[str, dict[str, str | int]]] = [
+    ("/api/pnl-attribution/campisi/four-effects", {"end_date": "2026-03-31", "lookback_days": 30}),
+    ("/api/pnl-attribution/campisi/enhanced", {"end_date": "2026-03-31", "lookback_days": 30}),
+    ("/api/pnl-attribution/campisi/maturity-buckets", {"end_date": "2026-03-31", "lookback_days": 30}),
+    ("/api/pnl-attribution/campisi/decision-grade", {"end_date": "2026-03-31", "lookback_days": 30}),
+]
+
 
 def _assert_formal_envelope(payload: dict[str, Any]) -> None:
     assert "result_meta" in payload
@@ -93,6 +100,39 @@ def test_pnl_attribution_read_surfaces_require_explicit_read_scope(tmp_path, mon
     client = TestClient(app)
 
     for path, params in _ENDPOINTS:
+        response = client.get(path, params=params, headers=PNL_ATTRIBUTION_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_campisi_attribution_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.campisi_attribution",
+        "backend/app/api/routes/campisi_attribution.py",
+    )
+
+    class _StubService:
+        def campisi_four_effects_envelope(self, **_kwargs):
+            return {"result_meta": {"result_kind": "campisi.four_effects"}, "result": {}}
+
+        def campisi_enhanced_envelope(self, **_kwargs):
+            return {"result_meta": {"result_kind": "campisi.enhanced"}, "result": {}}
+
+        def campisi_maturity_bucket_envelope(self, **_kwargs):
+            return {"result_meta": {"result_kind": "campisi.maturity_buckets"}, "result": {}}
+
+        def campisi_decision_grade_envelope(self, **_kwargs):
+            return {"result_meta": {"result_kind": "campisi.decision_grade"}, "result": {}}
+
+    monkeypatch.setattr(route_module, "_svc", lambda: _StubService())
+    sqlite_path = tmp_path / "campisi-attribution-read-denied.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path, params in _CAMPISI_ENDPOINTS:
         response = client.get(path, params=params, headers=PNL_ATTRIBUTION_READ_HEADERS)
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 

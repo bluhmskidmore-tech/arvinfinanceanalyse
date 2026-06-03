@@ -39,6 +39,21 @@ Run dry-run manually before enabling the timer:
 python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run
 ```
 
+After the go-live checklist and evidence bundle are filled, run the read-only
+timer preflight before enabling the external timer:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable
+```
+
+To review both pre-enable and post-enable gates in one read-only bundle, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all
+```
+
+Do not enable the timer while this preflight returns `blocked`.
+
 Acceptance:
 
 - `status` is `dry_run`.
@@ -46,6 +61,11 @@ Acceptance:
 - Existing `error_rows` and `blank_payload_rows` are understood before refresh.
 
 ## Example Windows Task Scheduler Command
+
+Use `docs/templates/tushare_news_backup_timer_enablement_packet.md` for the
+fillable host, Python executable, log path, refresh window, and rollback fields.
+This handoff gives command shape only; the packet records the actual operations
+values.
 
 Program:
 
@@ -90,6 +110,7 @@ After the timer fires, run:
 
 ```powershell
 python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
 ```
 
 Accept the scheduled run only when:

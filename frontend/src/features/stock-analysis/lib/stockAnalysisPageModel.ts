@@ -730,6 +730,11 @@ function scrubUnknownBackendFamily(value: string, inputFamily: string | null | u
     .replace(new RegExp(escapeRegExp(spacedFamily), "gi"), familyLabel);
 }
 
+function isUnknownBackendCodeOnly(value: string, familyLabel: string): boolean {
+  if (familyLabel !== "输入待确认") return false;
+  return /^[A-Za-z][A-Za-z0-9_.:-]*$/.test(value) && /[_:.-]/.test(value);
+}
+
 export function localizeStockBackendText(
   text: string | null | undefined,
   inputFamily?: string | null,
@@ -739,6 +744,7 @@ export function localizeStockBackendText(
   const lower = value.toLowerCase();
   const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
   const displayValue = scrubUnknownBackendFamily(value, inputFamily, familyLabel);
+  if (isUnknownBackendCodeOnly(value, familyLabel)) return "说明待确认";
   const availableSample = value.match(/\b(T\+\d+)\s+available\s+(\d+)\s*\/\s*(\d+)/i);
   const matureSnapshotSample = value.match(/\b(T\+\d+)\s+matured?\s+snapshots?\s+(\d+)\s*\/\s*(\d+)/i);
   const optimizationSample = value.match(/\b(T\+\d+)\s+sample\s+(\d+)/i);

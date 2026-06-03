@@ -99,26 +99,40 @@ def pnl_attribution(
 
 
 @router.get("/risk/overview")
-def risk_overview(report_date: str | None = None) -> dict[str, object]:
+def risk_overview(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = None,
+) -> dict[str, object]:
+    _ensure_executive_read_allowed(auth)
     _raise_executive_reserved_surface("risk_overview")
 
 
 @router.get("/home/contribution")
-def contribution(report_date: str | None = None) -> dict[str, object]:
+def contribution(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = None,
+) -> dict[str, object]:
+    _ensure_executive_read_allowed(auth)
     _raise_executive_reserved_surface("contribution")
 
 
 @router.get("/home/alerts")
-def alerts(report_date: str | None = None) -> dict[str, object]:
+def alerts(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = None,
+) -> dict[str, object]:
+    _ensure_executive_read_allowed(auth)
     _raise_executive_reserved_surface("alerts")
 
 
 @router.get("/home/snapshot")
 def home_snapshot(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str | None = None,
     allow_partial: bool = False,
 ) -> dict[str, object]:
     normalized_report_date = _normalize_report_date(report_date)
+    _ensure_executive_read_allowed(auth)
     return timed_api_call(
         "/ui/home/snapshot",
         lambda: home_snapshot_envelope(
@@ -130,11 +144,13 @@ def home_snapshot(
 
 @router.get("/home/research-reports")
 def home_research_reports(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str,
     limit: int = Query(5, ge=1, le=20),
 ) -> dict[str, object]:
     normalized_report_date = _normalize_report_date(report_date)
     assert normalized_report_date is not None
+    _ensure_executive_read_allowed(auth)
     return timed_api_call(
         "/ui/home/research-reports",
         lambda: home_research_reports_envelope(
@@ -146,11 +162,13 @@ def home_research_reports(
 
 @router.get("/home/income-trend")
 def home_income_trend(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str,
     window: int = Query(7, ge=1, le=30),
 ) -> dict[str, object]:
     normalized_report_date = _normalize_report_date(report_date)
     assert normalized_report_date is not None
+    _ensure_executive_read_allowed(auth)
     return timed_api_call(
         "/ui/home/income-trend",
         lambda: home_income_trend_envelope(

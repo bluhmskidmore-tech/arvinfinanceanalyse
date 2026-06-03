@@ -214,6 +214,34 @@ def _ensure_livermore_position_import_allowed(*, settings: object, auth: AuthCon
     )
 
 
+def _ensure_livermore_read_allowed(*, settings: object, auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="market_data.livermore",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_livermore_gate_supplement_refresh_allowed(*, settings: object, auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="market_data.livermore_gate_supplement",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 def _resolve_livermore_position_csv_path(*, data_input_root: Path, csv_path: str) -> Path:
     base_root = Path(data_input_root).resolve()
     allowed_root = (base_root / "livermore").resolve()
@@ -227,7 +255,10 @@ def _resolve_livermore_position_csv_path(*, data_input_root: Path, csv_path: str
 
 
 @router.get("/livermore")
-def livermore_strategy(as_of_date: str | None = Query(None)) -> dict[str, object]:
+def livermore_strategy(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    as_of_date: str | None = Query(None),
+) -> dict[str, object]:
     if as_of_date is not None:
         try:
             date.fromisoformat(as_of_date)
@@ -235,6 +266,7 @@ def livermore_strategy(as_of_date: str | None = Query(None)) -> dict[str, object
             raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     stock_readiness = load_choice_stock_readiness(settings.choice_stock_catalog_file)
     return livermore_strategy_envelope(
         duckdb_path=str(settings.duckdb_path),
@@ -244,7 +276,10 @@ def livermore_strategy(as_of_date: str | None = Query(None)) -> dict[str, object
 
 
 @router.get("/livermore/signal-confluence")
-def livermore_signal_confluence(as_of_date: str | None = Query(None)) -> dict[str, object]:
+def livermore_signal_confluence(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    as_of_date: str | None = Query(None),
+) -> dict[str, object]:
     if as_of_date is not None:
         try:
             date.fromisoformat(as_of_date)
@@ -252,6 +287,7 @@ def livermore_signal_confluence(as_of_date: str | None = Query(None)) -> dict[st
             raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     stock_readiness = load_choice_stock_readiness(settings.choice_stock_catalog_file)
     livermore_envelope = livermore_strategy_envelope(
         duckdb_path=str(settings.duckdb_path),
@@ -444,6 +480,7 @@ def materialize_manual_position_snapshot(
 
 @router.post("/livermore/refresh-gate-supplement")
 def refresh_gate_supplement(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     as_of_date: str | None = Query(None),
     lookback_days: int = Query(default=30, ge=7, le=365),
 ) -> dict[str, object]:
@@ -456,6 +493,7 @@ def refresh_gate_supplement(
             raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
 
     settings = get_settings()
+    _ensure_livermore_gate_supplement_refresh_allowed(settings=settings, auth=auth)
     try:
         result = compute_and_materialize_gate_supplement(
             duckdb_path=str(settings.duckdb_path),
@@ -470,6 +508,7 @@ def refresh_gate_supplement(
 
 @router.get("/livermore/stock-detail")
 def livermore_stock_detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     stock_code: str = Query(..., min_length=1, max_length=16),
     as_of_date: str | None = Query(None),
     lookback: int = Query(60, ge=5, le=250),
@@ -491,6 +530,7 @@ def livermore_stock_detail(
             raise HTTPException(status_code=422, detail="Invalid as_of_date. Expected YYYY-MM-DD.") from exc
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/stock-detail",
         lambda: livermore_stock_detail_envelope(
@@ -504,6 +544,7 @@ def livermore_stock_detail(
 
 @router.get("/livermore/candidate-history")
 def livermore_candidate_history(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     stock_code: str | None = Query(default=None, max_length=16),
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
@@ -529,6 +570,7 @@ def livermore_candidate_history(
             ) from exc
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/candidate-history",
         lambda: livermore_candidate_history_envelope(
@@ -543,6 +585,7 @@ def livermore_candidate_history(
 
 @router.get("/livermore/strategy-score")
 def livermore_strategy_score(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
     current_market_state: str | None = Query(default=None, max_length=32),
@@ -567,6 +610,7 @@ def livermore_strategy_score(
         )
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/strategy-score",
         lambda: livermore_candidate_history_strategy_score_envelope(
@@ -582,6 +626,7 @@ def livermore_strategy_score(
 
 @router.get("/livermore/strategy-optimization")
 def livermore_strategy_optimization(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
     current_market_state: str | None = Query(default=None, max_length=32),
@@ -592,6 +637,7 @@ def livermore_strategy_optimization(
     _validate_livermore_primary_horizon(primary_horizon)
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/strategy-optimization",
         lambda: livermore_candidate_history_strategy_optimization_envelope(
@@ -607,12 +653,14 @@ def livermore_strategy_optimization(
 
 @router.get("/livermore/cycle-proxy-backtest")
 def livermore_cycle_proxy_backtest(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
 ) -> dict[str, object]:
     _validate_snapshot_window(snapshot_from=snapshot_from, snapshot_to=snapshot_to)
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/cycle-proxy-backtest",
         lambda: livermore_candidate_history_cycle_proxy_backtest_envelope(
@@ -625,12 +673,14 @@ def livermore_cycle_proxy_backtest(
 
 @router.get("/livermore/candidate-history-portfolio-backtest")
 def livermore_candidate_history_portfolio_backtest(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     snapshot_from: str | None = Query(default=None),
     snapshot_to: str | None = Query(default=None),
 ) -> dict[str, object]:
     _validate_snapshot_window(snapshot_from=snapshot_from, snapshot_to=snapshot_to)
 
     settings = get_settings()
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/candidate-history-portfolio-backtest",
         lambda: livermore_candidate_history_portfolio_backtest_envelope(
@@ -800,6 +850,7 @@ def _safe_int(value: object) -> int:
 
 @router.get("/livermore/sector-rank-series")
 def livermore_sector_rank_series(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     as_of_date: str | None = Query(default=None),
     window_days: int = Query(default=20, ge=2, le=60),
     sector_code: str | None = Query(default=None, max_length=32),
@@ -812,6 +863,7 @@ def livermore_sector_rank_series(
             parsed_as_of = date.fromisoformat(as_of_date.strip()[:10])
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _ensure_livermore_read_allowed(settings=settings, auth=auth)
     return timed_api_call(
         "/ui/market-data/livermore/sector-rank-series",
         lambda: livermore_sector_rank_series_envelope(

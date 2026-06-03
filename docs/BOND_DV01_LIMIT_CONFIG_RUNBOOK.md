@@ -23,6 +23,8 @@ Required fields:
 - `limit_rule_version`: rule or policy version
 - `limit_effective_date`: ISO date, for example `2026-03-01`
 
+Threshold order must satisfy `hedge_target_dv01 <= warning_dv01 <= limit_dv01`.
+
 Do not put placeholder numeric limits in the template. Fill only real approved values.
 
 To export the current holding DV01 reference baseline for business review:
@@ -37,12 +39,27 @@ To write the same reference baseline as a fillable CSV:
 python -m backend.app.tasks.bond_dv01_limit_config_import --reference-baseline-csv path\to\bond_dv01_limit_config_review.csv --report-date 2026-03-31
 ```
 
+To generate the business review package in one step:
+
+```powershell
+python -m backend.app.tasks.bond_dv01_limit_config_import --review-package-dir path\to\review-package --report-date 2026-03-31
+```
+
+Expected package result:
+
+- `status` is `review_package_written`
+- `csv_path` points to a fillable CSV with current reference DV01 and blank formal limit fields
+- `todo_path` points to the business handoff checklist
+- `missing_business_fields_by_class` lists the blank business fields that still require approval
+- no governance rows are written
+
 Expected result:
 
 - `status` is `reference_baseline_built`
 - rows show current face value, market value, face-weighted modified duration, and DV01 by `AC`, `OCI`, `TPL`, and `all`
 - `business_limit_fields_blank` is `true`
 - `limit_dv01`, `warning_dv01`, and `hedge_target_dv01` remain blank; business approval must still provide the formal limits
+- `business_review_instruction` and `validation_instruction` are operator guidance columns, not governance fields
 - `unmapped_accounting_classes` lists current formal rows outside direct `AC / OCI / TPL` mapping, if any
 
 To generate a fresh blank template from the backend import contract:
@@ -68,6 +85,15 @@ python -m backend.app.tasks.bond_dv01_limit_config_import --config-path path\to\
 Expected result:
 
 - `status` is `validated`
+- `import_readiness_status` is `ready_for_import`
+- `next_action` tells the operator to rerun without `--dry-run`
+- if `limit_utilization_preview` has breached statuses, `next_action` first tells the operator to review those rows
+- `ignored_input_fields` may list reference-only CSV columns; those columns are not written to governance
+- if approved business fields are blank, `missing_business_fields_by_class` lists the missing fields for each `AC / OCI / TPL / all` row
+- `limit_utilization_preview` shows `abs(current_total_dv01) / limit_dv01` by accounting class for the selected report date
+- `limit_utilization_preview.summary` counts rows by threshold status and shows the highest utilization class
+- `limit_utilization_preview.summary.highest_severity_status` gives the worst current status across accounting classes
+- `limit_utilization_preview.rows[].threshold_status` labels the pre-import state as `within_target`, `hedge_target_exceeded`, `warning_breached`, or `hard_limit_breached`
 - `validation_errors` is empty
 - `configured_accounting_classes` is `["AC", "OCI", "TPL", "all"]`
 - `records_written` is `0`

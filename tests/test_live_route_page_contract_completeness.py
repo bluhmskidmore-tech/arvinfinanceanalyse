@@ -71,9 +71,6 @@ TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
         "temporary-exception analytical route; `docs/page_contracts.md` only records "
         "it as a future analytical read surface note under market-data."
     ),
-    "/pnl-by-business": (
-        "temporary-exception route; business-line PnL still lacks a standalone page contract."
-    ),
 }
 
 PAGE_HEADING_RE = re.compile(r"^##\s+[\d.]+\s+(PAGE-[A-Z0-9-]+)\b", re.MULTILINE)

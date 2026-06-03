@@ -61,32 +61,6 @@ import {
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
 import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
-
-const pageHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  padding: 22,
-  borderRadius: 18,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background:
-    "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(248,251,254,0.98) 62%, rgba(232,241,251,0.72) 100%)",
-  boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-  marginBottom: 18,
-} as const;
-
-const chipTypography = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase" as const,
-} as const;
 
 const sectionLeadWrapStyle = {
   display: "grid",
@@ -116,6 +90,16 @@ const sectionDescriptionStyle = {
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
+
+type ScenarioReviewActionStatus = "pending" | "confirmed" | "issue";
+
+const SCENARIO_REVIEW_ACTION_STATUS_OPTIONS: ReadonlyArray<
+  readonly [ScenarioReviewActionStatus, string]
+> = [
+  ["pending", "待核对"],
+  ["confirmed", "已确认"],
+  ["issue", "有差异"],
+];
 
 function formatProductCategoryRefreshStatusLine(
   snapshot: { status: string; run_id?: string } | null,
@@ -961,14 +945,22 @@ function ProductCategoryFinancialAnalysisPanel(props: {
   scenarioSensitivity: ProductCategoryScenarioSensitivitySurface;
   scenarioExplanation: ProductCategoryScenarioExplanation | null;
   selectedScenarioReviewCategoryId: string | null;
+  scenarioReviewActionStatuses: Record<string, ScenarioReviewActionStatus>;
   scenarioSensitivityRequested: boolean;
   scenarioSensitivityLoading: boolean;
   scenarioSensitivityError: boolean;
   onLoadScenarioSensitivity: () => void;
   onSelectScenarioReview: (categoryId: string) => void;
+  onSetScenarioReviewActionStatus: (
+    categoryId: string,
+    actionIndex: number,
+    status: ScenarioReviewActionStatus,
+  ) => void;
   waterfall: ProductCategoryAttributionWaterfallSurface;
   decisionFocus: ProductCategoryDecisionFocusSurface;
 }) {
+  const scenarioExplanation = props.scenarioExplanation;
+
   return (
     <section className="product-category-financial-analysis" data-testid="product-category-financial-analysis">
       <div className="product-category-financial-analysis__header">
@@ -1084,39 +1076,67 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                     </div>
                   )}
                 </div>
-                {props.scenarioExplanation ? (
+                {scenarioExplanation ? (
                   <div
                     className="product-category-financial-analysis__explanation"
                     data-testid="product-category-scenario-explanation"
                   >
                     <div className="product-category-financial-analysis__scenario-kicker">复核解释包</div>
-                    <strong>{props.scenarioExplanation.categoryLabel}</strong>
-                    <p>{props.scenarioExplanation.summaryLabel}</p>
+                    <strong>{scenarioExplanation.categoryLabel}</strong>
+                    <p>{scenarioExplanation.summaryLabel}</p>
                     <div className="product-category-financial-analysis__bridge">
                       <span className="product-category-financial-analysis__scenario-kicker">口径桥</span>
-                      <b className={`is-${props.scenarioExplanation.bridgeTone}`}>
-                        {props.scenarioExplanation.bridgeLabel}
+                      <b className={`is-${scenarioExplanation.bridgeTone}`}>
+                        {scenarioExplanation.bridgeLabel}
                       </b>
-                      <small>{props.scenarioExplanation.bridgeConclusionLabel}</small>
+                      <small>{scenarioExplanation.bridgeConclusionLabel}</small>
                     </div>
                     <div className="product-category-financial-analysis__review-actions">
                       <span className="product-category-financial-analysis__scenario-kicker">复核动作</span>
-                      {props.scenarioExplanation.reviewActionItems.map((item) => (
-                        <small key={item}>{item}</small>
-                      ))}
+                      {scenarioExplanation.reviewActionItems.map((item, index) => {
+                        const categoryId = scenarioExplanation.categoryId;
+                        const actionStatusKey = `${categoryId}:${index}`;
+                        const currentStatus =
+                          props.scenarioReviewActionStatuses[actionStatusKey] ?? "pending";
+                        return (
+                          <div
+                            className="product-category-financial-analysis__review-action-item"
+                            key={actionStatusKey}
+                          >
+                            <small>{item}</small>
+                            <div className="product-category-financial-analysis__review-status-group">
+                              {SCENARIO_REVIEW_ACTION_STATUS_OPTIONS.map(([status, label]) => {
+                                return (
+                                  <button
+                                    aria-pressed={currentStatus === status}
+                                    className={`product-category-financial-analysis__review-status-button is-${status}`}
+                                    key={status}
+                                    onClick={() =>
+                                      props.onSetScenarioReviewActionStatus(categoryId, index, status)
+                                    }
+                                    type="button"
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     <div className="product-category-financial-analysis__explanation-grid">
-                      <span>{props.scenarioExplanation.sideLabel}</span>
-                      <span>基线 {props.scenarioExplanation.baselineNetIncomeLabel}</span>
-                      <span>{props.scenarioExplanation.triggerRateLabel} {props.scenarioExplanation.scenarioNetIncomeLabel}</span>
-                      <span>{props.scenarioExplanation.scenarioDeltaLabel}</span>
+                      <span>{scenarioExplanation.sideLabel}</span>
+                      <span>基线 {scenarioExplanation.baselineNetIncomeLabel}</span>
+                      <span>{scenarioExplanation.triggerRateLabel} {scenarioExplanation.scenarioNetIncomeLabel}</span>
+                      <span>{scenarioExplanation.scenarioDeltaLabel}</span>
                     </div>
-                    {props.scenarioExplanation.driverRows.length === 0 ? (
-                      <small>{props.scenarioExplanation.emptyCopy ?? "当前正式归因未返回可排序的驱动项。"}</small>
+                    {scenarioExplanation.driverRows.length === 0 ? (
+                      <small>{scenarioExplanation.emptyCopy ?? "当前正式归因未返回可排序的驱动项。"}</small>
                     ) : (
                       <div className="product-category-financial-analysis__driver-list">
                         <span>正式归因</span>
-                        {props.scenarioExplanation.driverRows.map((row) => (
+                        {scenarioExplanation.driverRows.map((row) => (
                           <b className={`is-${row.tone}`} key={row.key}>
                             {row.label} {row.valueLabel}
                           </b>
@@ -1514,6 +1534,9 @@ export default function ProductCategoryPnlPage() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [scenarioSensitivityRequested, setScenarioSensitivityRequested] = useState(false);
   const [selectedScenarioReviewCategoryId, setSelectedScenarioReviewCategoryId] = useState<string | null>(null);
+  const [scenarioReviewActionStatuses, setScenarioReviewActionStatuses] = useState<
+    Record<string, ScenarioReviewActionStatus>
+  >({});
   const [loadedTrendDiagnosticsKey, setLoadedTrendDiagnosticsKey] = useState("");
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
@@ -1697,6 +1720,15 @@ export default function ProductCategoryPnlPage() {
       scenarioSensitivityPayloads,
       selectedScenarioExplanationCategoryId,
     ],
+  );
+  const handleScenarioReviewActionStatus = useCallback(
+    (categoryId: string, actionIndex: number, status: ScenarioReviewActionStatus) => {
+      setScenarioReviewActionStatuses((current) => ({
+        ...current,
+        [`${categoryId}:${actionIndex}`]: status,
+      }));
+    },
+    [],
   );
   const attributionWaterfallSurface = useMemo(
     () => selectProductCategoryAttributionWaterfallSurface(attributionQuery.data?.result),
@@ -2848,6 +2880,7 @@ export default function ProductCategoryPnlPage() {
           scenarioSensitivity={scenarioSensitivitySurface}
           scenarioExplanation={scenarioExplanation}
           selectedScenarioReviewCategoryId={selectedScenarioExplanationCategoryId}
+          scenarioReviewActionStatuses={scenarioReviewActionStatuses}
           scenarioSensitivityRequested={scenarioSensitivityRequested}
           scenarioSensitivityLoading={scenarioSensitivityQueries.some((query) => query.isLoading)}
           scenarioSensitivityError={scenarioSensitivityQueries.some((query) => query.isError)}
@@ -2858,6 +2891,7 @@ export default function ProductCategoryPnlPage() {
             }
           }}
           onSelectScenarioReview={setSelectedScenarioReviewCategoryId}
+          onSetScenarioReviewActionStatus={handleScenarioReviewActionStatus}
           waterfall={attributionWaterfallSurface}
           decisionFocus={decisionFocusSurface}
         />

@@ -506,6 +506,17 @@ def test_bond_analytics_dv01_limit_config_status_returns_formal_envelope(tmp_pat
     assert result["configured_accounting_classes"] == ["OCI"]
     assert result["missing_accounting_classes"] == ["AC", "TPL", "all"]
     assert result["invalid_accounting_classes"] == []
+    assert result["missing_business_fields_by_class"]["AC"] == [
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+    ]
+    assert "bond_dv01_limit_config_review_2026-03-31.csv" in result["dry_run_command"]
+    assert "--review-package-dir" in result["review_package_command"]
     assert "AC, TPL, all" in result["acceptance_message"]
     assert "bond_dv01_limit_config" in result["next_action"]
     rows_by_class = {row["accounting_class"]: row for row in result["rows"]}

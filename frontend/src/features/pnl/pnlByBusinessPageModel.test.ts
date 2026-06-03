@@ -144,7 +144,7 @@ function monthlyBucket(partial: Partial<PnlByBusinessMonthlyBucket> = {}): PnlBy
   };
 }
 
-function formalPayload(): PnlByBusinessPayload {
+function formalPayload(partial: Partial<PnlByBusinessPayload> = {}): PnlByBusinessPayload {
   return {
     report_date: "2026-04-30",
     source_tables: ["formal_pnl"],
@@ -187,6 +187,7 @@ function formalPayload(): PnlByBusinessPayload {
         balance_row_count: 1,
       },
     ],
+    ...partial,
   };
 }
 
@@ -608,7 +609,46 @@ describe("pnlByBusinessPageModel", () => {
       monthlyState: { isLoading: false, isError: false },
       ytdState: { isLoading: false, isError: false },
       formalState: { isLoading: false, isError: false },
-      formalResult: formalPayload(),
+      formalResult: formalPayload({
+        summary: {
+          ...formalPayload().summary,
+          business_count: 4,
+          untraced_pnl_row_count: 5,
+        },
+        rows: [
+          ...formalPayload().rows,
+          {
+            report_date: "2026-04-30",
+            business_type_primary: "T",
+            business_type: "T",
+            currency_basis: "CNY",
+            interest_income_514: "1",
+            fair_value_change_516: "0",
+            capital_gain_517: "0",
+            manual_adjustment: "0",
+            total_pnl: "1",
+            scale_amount: "0",
+            yield_pct: null,
+            pnl_row_count: 3,
+            balance_row_count: 0,
+          },
+          {
+            report_date: "2026-04-30",
+            business_type_primary: "A",
+            business_type: "A",
+            currency_basis: "CNY",
+            interest_income_514: "1",
+            fair_value_change_516: "0",
+            capital_gain_517: "0",
+            manual_adjustment: "0",
+            total_pnl: "1",
+            scale_amount: "0",
+            yield_pct: null,
+            pnl_row_count: 2,
+            balance_row_count: 0,
+          },
+        ],
+      }),
       formalMeta: meta({ quality_flag: "warning" }),
     });
 
@@ -619,8 +659,10 @@ describe("pnlByBusinessPageModel", () => {
       topShareLabel: "仅对账",
       ftpAvailable: false,
       missingAdbCount: 0,
-      formalUntracedCount: 1,
+      formalUntracedCount: 5,
+      formalUntracedDisplay: "T 3 条 / A 2 条",
     });
     expect(model.insight.nextStep).toContain("对账证据");
+    expect(model.insight.nextStep).toContain("T 3 条 / A 2 条");
   });
 });

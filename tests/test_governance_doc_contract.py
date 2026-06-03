@@ -228,6 +228,32 @@ def test_ledger_pnl_candidate_metrics_bind_existing_page_contract_without_formal
     assert "PAGE-CONTRACT-PENDING:/ledger-pnl" not in metric_dictionary
 
 
+def test_pnl_by_business_page_contract_lands_without_metric_promotion():
+    contract = _page_contract_section(
+        "## 14.8.1 PAGE-PNL-BY-BUSINESS-001",
+        "## 14.9 PAGE-REPORTS-HOME-001",
+    )
+    maturity = _read_doc("live_route_maturity.md")
+
+    for required in (
+        "Primary front-end route: `/pnl-by-business`",
+        "GET /api/pnl/by-business-monthly",
+        "GET /api/pnl/by-business-ytd",
+        "GET /api/pnl/by-business",
+        "ZQTZ 管理披露分类",
+        "Formal primary is a reconciliation evidence view only",
+        "This page has no newly approved `MTR-*` metric binding",
+        "Product-category truth remains governed by `PAGE-PROD-CAT-PNL-001`",
+        "Ledger-account PnL truth/candidate display remains governed by `PAGE-LEDGER-PNL-001`",
+        "Current 2026-05-31 local evidence shows 148 formal FI rows untraced",
+        "T`, `A`, and `H`",
+    ):
+        assert required in contract
+
+    assert "| `/pnl-by-business` | temporary-exception | candidate | PAGE-PNL-BY-BUSINESS-001 |" in maturity
+    assert "GAP-PNL-BY-BUSINESS-PAGE" not in maturity
+
+
 def test_golden_sample_docs_match_current_sample_directories():
     golden_plan = _read_doc("golden_sample_plan.md")
     golden_catalog = _read_doc("golden_sample_catalog.md")

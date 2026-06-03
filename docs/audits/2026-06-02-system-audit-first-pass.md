@@ -388,6 +388,229 @@ Verification:
 
 Residual risk: this closes the sampled Bond Analytics HTTP read surfaces, but it does not address the separate P1/P2 formal-calculation boundary drift in `bond_analytics_service`.
 
+### P1 remediated - Liability Analytics read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/liability_analytics.py` now checks `liability_analytics/read` before returning risk buckets, yield metrics, yield-by-period, counterparty, monthly liabilities, liability business context, cockpit warnings, and contribution split reads.
+- Date and query-parameter validation semantics remain intact: invalid `report_date` and year-bound failures still return 422 before the service read path.
+- `tests/test_liability_analytics_api.py` verifies all eight Liability Analytics read surfaces return 403 without an explicit read grant. Existing liability analytics and knowledge-page tests seed only `liability_analytics/read` when intentionally exercising success paths.
+- `tests/test_pnl_api_contract.py` now grants `liability_analytics/read` for the existing formal-PnL-backed `/api/analysis/yield-by-period` rollup test, making the cross-route dependency explicit.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_liability_analytics_api.py::test_liability_analytics_read_surfaces_require_explicit_read_scope -q` failed because `/api/risk/buckets` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_liability_analytics_api.py tests/test_liability_analytics_envelope_contract.py tests/test_liability_knowledge_api.py tests/test_pnl_api_contract.py::test_yield_by_period_monthly_and_quarterly_rollups_from_formal_pnl -q`: `8 passed`.
+- `python -m ruff check backend/app/api/routes/liability_analytics.py tests/test_liability_analytics_api.py tests/test_liability_analytics_envelope_contract.py tests/test_liability_knowledge_api.py tests/test_pnl_api_contract.py`: passed.
+- `git diff --check -- backend/app/api/routes/liability_analytics.py tests/test_liability_analytics_api.py tests/test_liability_analytics_envelope_contract.py tests/test_liability_knowledge_api.py tests/test_pnl_api_contract.py`: passed.
+
+Residual risk: this closes the Liability Analytics HTTP read surfaces covered here, but it does not prove every liability-adjacent executive/home/compatibility consumer route has been inventoried or that the broader P1 read-route inventory is complete.
+
+### P1 remediated - QDB GL Monthly Analysis read and refresh endpoints require permission
+
+Evidence:
+
+- `backend/app/api/routes/qdb_gl_monthly_analysis.py` now checks `qdb_gl_monthly_analysis/read` before returning dates, workbook, workbook export, refresh-status, scenario, manual-adjustment list, and manual-adjustment export reads.
+- `POST /ui/qdb-gl-monthly-analysis/refresh` now checks `qdb_gl_monthly_analysis/refresh` before rebuilding the analytical workbook payload and writing the governance run record.
+- Existing adjustment mutation boundaries remain separate: create/edit/revoke/restore still use `qdb_gl_monthly_analysis.adjustment/write`.
+- `tests/test_qdb_gl_monthly_analysis_api.py` verifies the seven QDB GL Monthly Analysis GET route/parameter combinations return 403 without an explicit read grant. Existing API tests now seed `qdb_gl_monthly_analysis/read` for read success paths and retain the adjustment write grant only for mutation setup.
+- `tests/test_qdb_gl_monthly_analysis_api.py` also verifies refresh returns 403 without an explicit refresh grant, while the refresh success test now grants `qdb_gl_monthly_analysis/refresh` separately from read.
+- `tests/test_qdb_gl_monthly_analysis_excel_export.py` seeds `qdb_gl_monthly_analysis/read` before asserting workbook-export XLSX content and history sheets.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_qdb_gl_monthly_analysis_api.py::test_qdb_gl_monthly_analysis_read_surfaces_require_explicit_read_scope -q` failed because `/ui/qdb-gl-monthly-analysis/dates` returned 200 instead of 403.
+- Red proof before refresh production change: `python -m pytest tests/test_qdb_gl_monthly_analysis_api.py::test_qdb_gl_monthly_analysis_refresh_requires_explicit_refresh_scope -q` failed because `/ui/qdb-gl-monthly-analysis/refresh` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_qdb_gl_monthly_analysis_api.py tests/test_qdb_gl_monthly_analysis_excel_export.py -q`: `13 passed`.
+- `python -m ruff check backend/app/api/routes/qdb_gl_monthly_analysis.py tests/test_qdb_gl_monthly_analysis_api.py tests/test_qdb_gl_monthly_analysis_excel_export.py`: passed. Ruff reported only that it could not write the sandboxed `.ruff_cache`; lint itself passed.
+- `git diff --check -- backend/app/api/routes/qdb_gl_monthly_analysis.py tests/test_qdb_gl_monthly_analysis_api.py tests/test_qdb_gl_monthly_analysis_excel_export.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the QDB GL Monthly Analysis GET/read/export/status/list surfaces and refresh POST covered here, but it does not prove every QDB-adjacent frontend/client or downstream consumer route has been inventoried. The broader P1 route inventory remains open.
+
+### P1 remediated - Product Category PnL read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/product_category_pnl.py` now checks `product_category_pnl/read` before returning dates, detail, attribution, refresh-status, manual-adjustment list, and manual-adjustment export reads.
+- Existing mutation boundaries remain separate: `POST /ui/pnl/product-category/refresh` still uses `product_category_pnl/refresh`, and manual-adjustment create/edit/revoke/restore still use `product_category_pnl.adjustment/write`.
+- Query validation order remains intact for unsupported product-category `view` and attribution `compare`; those invalid parameter paths still return 422 before the read service path.
+- `tests/test_product_category_pnl_flow.py` verifies the six Product Category PnL GET route/parameter combinations return 403 without an explicit read grant. Existing product-category flow, attribution, result-meta, and worker-e2e tests now seed `product_category_pnl/read` only for intended success paths.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_product_category_pnl_flow.py::test_product_category_read_surfaces_require_explicit_read_scope -q` failed because `/ui/pnl/product-category/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_product_category_pnl_flow.py tests/test_product_category_pnl_attribution.py tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result tests/test_result_meta_on_all_ui_endpoints.py::test_product_category_scenario_request_sets_scenario_basis tests/test_write_route_auth_contract.py::test_refresh_route_requires_explicit_scope_grant[/ui/pnl/product-category/refresh] tests/test_write_route_auth_contract.py::test_product_category_refresh_returns_503_when_scope_store_unavailable -q`: `61 passed`.
+- `python -m ruff check backend/app/api/routes/product_category_pnl.py tests/test_product_category_pnl_flow.py tests/test_product_category_pnl_attribution.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_source_preview_worker_e2e.py tests/conftest.py`: passed. Ruff reported only that it could not write the sandboxed `.ruff_cache`; lint itself passed.
+- `git diff --check -- backend/app/api/routes/product_category_pnl.py tests/test_product_category_pnl_flow.py tests/test_product_category_pnl_attribution.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_source_preview_worker_e2e.py tests/conftest.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the Product Category PnL GET/read/export/status/list surfaces covered here, but the Redis-backed `test_product_category_refresh_real_worker_e2e` was not rerun in this pass. The test was updated to grant `product_category_pnl/read`, and the broader P1 route inventory remains open.
+
+### P1 remediated - Risk Tensor read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/risk_tensor.py` now checks `risk_tensor/read` before returning available risk-tensor dates and formal risk-tensor payloads.
+- Invalid `report_date` validation order remains intact: malformed dates still return 422 before the read service path.
+- `tests/test_risk_tensor_api.py` verifies both `/api/risk/tensor/dates` and `/api/risk/tensor?report_date=...` return 403 without an explicit read grant. Existing Risk Tensor API success/error-path tests now seed `risk_tensor/read` when intentionally exercising the data path.
+- Impact search found no additional backend tests directly calling the live Risk Tensor routes beyond `tests/test_risk_tensor_api.py`; frontend references are client/component mocks or static contract assertions.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_risk_tensor_api.py::test_risk_tensor_read_surfaces_require_explicit_read_scope -q` failed because `/api/risk/tensor/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_risk_tensor_api.py::test_risk_tensor_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_risk_tensor_api.py -q`: `10 passed`.
+- `python -m ruff check backend/app/api/routes/risk_tensor.py tests/test_risk_tensor_api.py`: passed. Ruff reported only that it could not write the sandboxed `.ruff_cache`; lint itself passed.
+
+Residual risk: this closes the two live Risk Tensor HTTP read surfaces covered here, but it does not add the still-missing direct `PAGE-RISK-001` lineage record and does not prove the broader P1 read-route inventory is complete.
+
+### P1 remediated - Credit Spread Analysis detail endpoint requires read permission
+
+Evidence:
+
+- `backend/app/api/routes/credit_spread_analysis.py` now checks `credit_spread_analysis/read` before returning the formal credit-spread detail payload.
+- `tests/test_credit_spread_analysis.py` verifies `/api/credit-spread-analysis/detail?report_date=...` returns 403 without an explicit read grant.
+- The existing real-data API regression now seeds `credit_spread_analysis/read` and passes the trusted test identity through its subprocess request, keeping the intended formal payload success path explicit.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_credit_spread_analysis.py::test_credit_spread_detail_requires_explicit_read_scope -q` failed because `/api/credit-spread-analysis/detail` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_credit_spread_analysis.py::test_credit_spread_detail_requires_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_credit_spread_analysis.py -q`: `6 passed`.
+
+Residual risk: this closes the single live Credit Spread Analysis detail read endpoint covered here, but it does not prove all bond-analytics-adjacent compatibility reads have been inventoried. The broader P1 read-route inventory remains open.
+
+### P1 remediated - Campisi attribution compatibility reads require PnL Attribution read permission
+
+Evidence:
+
+- `backend/app/api/routes/campisi_attribution.py` now checks `pnl_attribution/read` before returning four Campisi compatibility read payloads: four-effects, enhanced, maturity-buckets, and decision-grade.
+- The permission resource intentionally matches the main `/api/pnl-attribution/*` workbench read contract instead of introducing a new Campisi-only scope.
+- `tests/test_pnl_attribution_api_contract.py` verifies all four Campisi compatibility GET route/parameter combinations return 403 without an explicit `pnl_attribution/read` grant.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_pnl_attribution_api_contract.py::test_campisi_attribution_read_surfaces_require_explicit_read_scope -q` failed because `/api/pnl-attribution/campisi/four-effects` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_pnl_attribution_api_contract.py::test_campisi_attribution_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_pnl_attribution_api_contract.py -q`: `4 passed`.
+
+Residual risk: this closes the four Campisi compatibility GET reads covered here, but it does not prove every PnL-attribution-adjacent frontend/client route has been inventoried. The broader P1 read-route inventory remains open.
+
+### P1 remediated - Balance Movement Analysis read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/accounting_asset_movement.py` now checks `accounting_asset_movement/read` before returning available dates and detail payloads for `/ui/balance-movement-analysis`.
+- The refresh mutation boundary remains separate: `POST /ui/balance-movement-analysis/refresh` still requires `accounting_asset_movement/refresh`.
+- `tests/test_accounting_asset_movement_api.py` verifies both Balance Movement GET surfaces return 403 without an explicit read grant. Existing refresh tests continue to verify the independent refresh grant.
+- `tests/test_result_meta_on_all_ui_endpoints.py` now grants `accounting_asset_movement/read` for the existing result-meta smoke success path.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_accounting_asset_movement_api.py::test_balance_movement_read_surfaces_require_explicit_read_scope -q` failed because `/ui/balance-movement-analysis/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_accounting_asset_movement_api.py::test_balance_movement_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_accounting_asset_movement_api.py -q`: `4 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result -q`: `12 passed`.
+
+Residual risk: this closes the two Balance Movement Analysis GET reads covered here, but it does not prove every balance-movement-adjacent frontend/client route has been inventoried. The broader P1 read-route inventory remains open.
+
+### P1 remediated - Ledger read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/ledger.py` now checks `ledger.data/read` before returning ledger import history, available dates, dashboard, positions, and positions export reads.
+- The import mutation boundary remains separate: `POST /api/ledger/import` still requires `ledger.data/import`.
+- Existing query validation order remains intact: unsupported query parameters and invalid date/filter payloads still return the existing Ledger 400 error envelope before the read service path.
+- `tests/test_ledger_analytics_api.py` verifies all five Ledger GET surfaces return 403 without an explicit read grant. Existing Ledger import/analytics success helpers now grant `ledger.data/read` for intended read paths.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_ledger_analytics_api.py::test_ledger_read_surfaces_require_explicit_read_scope -q` failed because `/api/ledger/imports` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_ledger_analytics_api.py::test_ledger_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_ledger_analytics_api.py -q`: `13 passed, 1 skipped`.
+- `python -m pytest tests/test_ledger_import_flow.py::test_ledger_import_api_imports_csv_lists_batch_and_preserves_unknown_raw_json -q`: `1 passed`.
+
+Residual risk: this closes the five Ledger GET/read/export surfaces covered here, but it does not prove every Ledger-adjacent frontend/client route has been inventoried. The broader P1 read-route inventory remains open.
+
+### P1 remediated - KPI read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/kpi.py` now checks `kpi/read` before returning KPI owners, period summaries, metric lists/details, values, and report/export payloads.
+- Existing mutation boundaries remain separate: metric create/update/delete still use `kpi.metric/write|delete`, and value create/update/batch/fetch-recalc still use `kpi.value/write`.
+- `tests/test_kpi_api.py` verifies the KPI GET/read functions raise 403 without an explicit read grant, while existing write-auth tests continue to cover mutation denial before service calls.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_kpi_api.py::test_kpi_read_routes_require_explicit_read_scope -q` failed because the GET functions did not accept/enforce an auth context.
+- Green proof after production change: `python -m pytest tests/test_kpi_api.py::test_kpi_read_routes_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_kpi_api.py -q`: `9 passed`.
+
+Residual risk: this closes the KPI GET/read functions covered here, but it does not prove every KPI-adjacent frontend/client consumer has been inventoried. The broader P1 read-route inventory remains open.
+
+### P1 remediated - Executive compatibility and home reads require read permission
+
+Evidence:
+
+- `backend/app/api/routes/executive.py` already checked `executive/read` for `/ui/home/overview`, `/ui/home/summary`, and `/ui/pnl/attribution`.
+- This continuation extends the same read check to the remaining executive/home GET surfaces: `/ui/risk/overview`, `/ui/home/contribution`, `/ui/home/alerts`, `/ui/home/snapshot`, `/ui/home/research-reports`, and `/ui/home/income-trend`.
+- Reserved compatibility routes still fail closed after authorization: with `executive/read`, `/ui/risk/overview`, `/ui/home/contribution`, and `/ui/home/alerts` continue to return the existing 503 reserved boundary.
+- `tests/test_executive_dashboard_endpoints.py` verifies the six remaining GET surfaces return 403 without an explicit read grant and preserves the existing landed-vs-reserved route behavior when the read grant is present.
+- `tests/test_dashboard_home_backend_blocks.py` now grants explicit read scopes for the existing home-data and bond position-change success paths.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_executive_dashboard_endpoints.py::test_executive_remaining_read_surfaces_require_explicit_read_scope -q` failed because the reserved routes returned 503 and the home data routes returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_executive_dashboard_endpoints.py::test_executive_remaining_read_surfaces_require_explicit_read_scope -q`: `6 passed`.
+- `python -m pytest tests/test_executive_dashboard_endpoints.py -q`: `15 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result tests/test_result_meta_on_all_ui_endpoints.py::test_executive_surfaces_are_analytical_placeholder_friendly -q`: `13 passed`.
+- `python -m pytest tests/test_dashboard_home_backend_blocks.py -q`: `9 passed`.
+- `python -m ruff check backend/app/api/routes/executive.py tests/test_executive_dashboard_endpoints.py tests/test_dashboard_home_backend_blocks.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/executive.py tests/test_executive_dashboard_endpoints.py tests/test_dashboard_home_backend_blocks.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the six remaining Executive/home GET surfaces covered here, but it does not prove every executive-adjacent frontend/client consumer or future compatibility route has been inventoried. The broader P1 read-route inventory remains open.
+
+### P1 remediated - Livermore market-data reads require read permission
+
+Evidence:
+
+- `backend/app/api/routes/market_data_livermore.py` now checks `market_data.livermore/read` before returning the Livermore strategy, signal confluence, stock detail, candidate history, strategy score, strategy optimization, cycle-proxy backtest, candidate-history portfolio backtest, and sector-rank-series GET payloads.
+- The existing Livermore position-snapshot import boundary remains separate: position snapshot imports continue to require `market_data.livermore_position_snapshot/import`.
+- `tests/test_market_data_livermore_api.py` verifies all nine Livermore GET surfaces return 403 without an explicit read grant.
+- Existing Livermore API, stock-detail, sector-rank, candidate-history, and result-meta smoke success paths now grant `market_data.livermore/read` explicitly before asserting business payload/envelope behavior.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query market_data_livermore` could not run in this Codex App sandbox because npm was in `only-if-cached` mode and the `gitnexus` package was not cached. Local route/test evidence was used instead.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_market_data_livermore_api.py::test_livermore_read_surfaces_require_explicit_read_scope -q` failed because all nine Livermore GET paths returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_market_data_livermore_api.py::test_livermore_read_surfaces_require_explicit_read_scope -q`: `9 passed`.
+- `python -m pytest tests/test_market_data_livermore_api.py -q`: `43 passed`.
+- `python -m pytest tests/test_market_data_livermore_stock_detail.py -q`: `3 passed`.
+- `python -m pytest tests/test_market_data_livermore_sector_rank_series.py -q`: `8 passed`.
+- `python -m pytest tests/test_market_data_livermore_candidate_history.py::test_api_happy_and_filters tests/test_market_data_livermore_candidate_history.py::test_api_empty_table tests/test_market_data_livermore_candidate_history.py::test_api_limit_validation tests/test_market_data_livermore_candidate_history.py::test_strategy_optimization_api_happy_path_and_query_validation tests/test_market_data_livermore_candidate_history.py::test_strategy_score_api_happy_path_and_query_validation tests/test_market_data_livermore_candidate_history.py::test_cycle_proxy_backtest_api_happy_path_and_query_validation tests/test_market_data_livermore_candidate_history.py::test_candidate_history_portfolio_backtest_api_happy_path_and_query_validation -q`: `7 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result -q`: `12 passed`.
+- `python -m ruff check backend/app/api/routes/market_data_livermore.py tests/test_market_data_livermore_api.py tests/test_market_data_livermore_stock_detail.py tests/test_market_data_livermore_sector_rank_series.py tests/test_market_data_livermore_candidate_history.py tests/test_result_meta_on_all_ui_endpoints.py`: passed, with only the existing `.ruff_cache` access warning.
+- `git diff --check -- backend/app/api/routes/market_data_livermore.py tests/test_market_data_livermore_api.py tests/test_market_data_livermore_stock_detail.py tests/test_market_data_livermore_sector_rank_series.py tests/test_market_data_livermore_candidate_history.py tests/test_result_meta_on_all_ui_endpoints.py`: passed.
+
+Residual risk: this closes the nine Livermore GET/read surfaces covered here, but it does not prove every market-data-adjacent route or frontend consumer has been inventoried. The broader P1 read/write authorization inventory remains open.
+
+### P1 remediated - Livermore gate supplement refresh requires refresh permission
+
+Evidence:
+
+- `backend/app/api/routes/market_data_livermore.py` now checks `market_data.livermore_gate_supplement/refresh` before running `POST /ui/market-data/livermore/refresh-gate-supplement`.
+- The refresh boundary remains separate from the Livermore read boundary: `market_data.livermore/read` does not grant write access to `fact_livermore_gate_supplement_daily` materialization.
+- `tests/test_write_route_auth_contract.py` adds the Livermore gate-supplement refresh route to the scoped-refresh contract: no grant returns 403 without calling the patched refresh service, while an explicit refresh grant allows the call.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_write_route_auth_contract.py::test_refresh_route_requires_explicit_scope_grant -q` failed because `/ui/market-data/livermore/refresh-gate-supplement` returned 200 and called the refresh service without a scope grant.
+- Green proof after production change: `python -m pytest tests/test_write_route_auth_contract.py::test_refresh_route_requires_explicit_scope_grant -q`: `10 passed`.
+- `python -m pytest tests/test_market_data_livermore_api.py -q`: `43 passed`.
+- `python -m ruff check backend/app/api/routes/market_data_livermore.py tests/test_market_data_livermore_api.py tests/test_market_data_livermore_stock_detail.py tests/test_market_data_livermore_sector_rank_series.py tests/test_market_data_livermore_candidate_history.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_write_route_auth_contract.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/market_data_livermore.py tests/test_market_data_livermore_api.py tests/test_market_data_livermore_stock_detail.py tests/test_market_data_livermore_sector_rank_series.py tests/test_market_data_livermore_candidate_history.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_write_route_auth_contract.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the Livermore gate-supplement refresh mutation covered here, but it does not prove every market-data or Livermore-adjacent mutation has been inventoried. The broader P1 read/write authorization inventory remains open.
+
 ### P1 partially remediated - Positions read endpoints require read permission
 
 Evidence:

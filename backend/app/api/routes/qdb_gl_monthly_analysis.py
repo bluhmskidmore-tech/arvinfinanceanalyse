@@ -27,16 +27,23 @@ router = APIRouter(prefix="/ui/qdb-gl-monthly-analysis")
 
 
 @router.get("/dates")
-def dates() -> dict[str, object]:
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
     settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     return qdb_gl_monthly_analysis_dates_envelope(
         source_dir=settings.product_category_source_dir,
     )
 
 
 @router.get("/workbook")
-def workbook(report_month: str = Query(...)) -> dict[str, object]:
+def workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(...),
+) -> dict[str, object]:
     settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     try:
         return qdb_gl_monthly_analysis_workbook_envelope(
             source_dir=settings.product_category_source_dir,
@@ -50,8 +57,12 @@ def workbook(report_month: str = Query(...)) -> dict[str, object]:
 
 
 @router.get("/workbook/export")
-def export_workbook(report_month: str = Query(...)) -> Response:
+def export_workbook(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(...),
+) -> Response:
     settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     try:
         filename, content = export_qdb_gl_monthly_analysis_workbook_xlsx(
             source_dir=settings.product_category_source_dir,
@@ -80,6 +91,7 @@ def refresh(
     report_month: str = Query(...),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_refresh_allowed(auth, settings)
     try:
         return refresh_qdb_gl_monthly_analysis(
             source_dir=settings.product_category_source_dir,
@@ -93,10 +105,15 @@ def refresh(
 
 
 @router.get("/refresh-status")
-def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
+def refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(...),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     try:
         return qdb_gl_monthly_analysis_refresh_status(
-            governance_dir=get_settings().governance_path,
+            governance_dir=settings.governance_path,
             run_id=run_id,
         )
     except ValueError as exc:
@@ -107,6 +124,7 @@ def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
 
 @router.get("/scenario")
 def scenario(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_month: str = Query(...),
     scenario_name: str = Query(...),
     deviation_warn: float | None = Query(None),
@@ -123,6 +141,7 @@ def scenario(
         }.items()
         if value is not None
     }
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     try:
         return qdb_gl_monthly_analysis_scenario_envelope(
             source_dir=settings.product_category_source_dir,
@@ -151,17 +170,27 @@ def create_manual_adjustment(
 
 
 @router.get("/manual-adjustments")
-def list_manual_adjustments(report_month: str = Query(...)) -> dict[str, object]:
+def list_manual_adjustments(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(...),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     return list_qdb_gl_monthly_analysis_manual_adjustments(
-        governance_dir=get_settings().governance_path,
+        governance_dir=settings.governance_path,
         report_month=report_month,
     )
 
 
 @router.get("/manual-adjustments/export")
-def export_manual_adjustments(report_month: str = Query(...)) -> Response:
+def export_manual_adjustments(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_month: str = Query(...),
+) -> Response:
+    settings = get_settings()
+    _ensure_qdb_gl_monthly_analysis_read_allowed(auth, settings)
     filename, content = export_qdb_gl_monthly_analysis_manual_adjustments_csv(
-        governance_dir=get_settings().governance_path,
+        governance_dir=settings.governance_path,
         report_month=report_month,
     )
     return Response(
@@ -219,6 +248,34 @@ def restore_manual_adjustment(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _ensure_qdb_gl_monthly_analysis_read_allowed(auth: AuthContext, settings) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="qdb_gl_monthly_analysis",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _ensure_qdb_gl_monthly_analysis_refresh_allowed(auth: AuthContext, settings) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="qdb_gl_monthly_analysis",
+            action="refresh",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _ensure_adjustment_write_allowed(auth: AuthContext, settings) -> None:

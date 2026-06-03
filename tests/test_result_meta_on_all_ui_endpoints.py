@@ -170,6 +170,60 @@ def _grant_balance_analysis_read_scope(tmp_path: Path, monkeypatch: pytest.Monke
     )
 
 
+def _grant_product_category_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "product-category-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="product_category_pnl",
+        action="read",
+    )
+
+
+def _grant_balance_movement_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "balance-movement-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="accounting_asset_movement",
+        action="read",
+    )
+
+
+def _grant_livermore_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "livermore-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="market_data.livermore",
+        action="read",
+    )
+
+
 @pytest.mark.parametrize(
     "path,params",
     [
@@ -196,6 +250,12 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
     if path == "/ui/balance-analysis/dates":
         _seed_balance_analysis_dates_contract_surface(tmp_path)
         _grant_balance_analysis_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/pnl/product-category/dates":
+        _grant_product_category_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/balance-movement-analysis/dates":
+        _grant_balance_movement_read_scope(tmp_path, monkeypatch)
+    if path == "/ui/market-data/livermore":
+        _grant_livermore_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
@@ -344,6 +404,7 @@ def test_product_category_scenario_request_sets_scenario_basis(tmp_path, monkeyp
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.product_category_pnl")

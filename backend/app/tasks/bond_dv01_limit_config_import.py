@@ -12,7 +12,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
-
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.services.bond_analytics_service import (
@@ -140,6 +139,8 @@ def _write_bond_dv01_limit_config_reference_baseline_csv(
         "limit_source_version",
         "limit_rule_version",
         "limit_effective_date",
+        "business_review_instruction",
+        "validation_instruction",
     ]
     with target.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -160,6 +161,8 @@ def _write_bond_dv01_limit_config_reference_baseline_csv(
                     "limit_source_version": "",
                     "limit_rule_version": "",
                     "limit_effective_date": "",
+                    "business_review_instruction": "Fill approved DV01 limit fields only after business approval.",
+                    "validation_instruction": "Run the import CLI with --dry-run before importing this file.",
                 }
             )
     return {
@@ -173,6 +176,110 @@ def _write_bond_dv01_limit_config_reference_baseline_csv(
     }
 
 
+def _write_bond_dv01_limit_config_review_package(
+    package_dir: str,
+    *,
+    report_date: str | date | None = None,
+) -> dict[str, object]:
+    baseline = _build_bond_dv01_limit_config_reference_baseline(report_date=report_date)
+    resolved_report_date = str(baseline["report_date"])
+    target_dir = Path(package_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = target_dir / f"bond_dv01_limit_config_review_{resolved_report_date}.csv"
+    todo_path = target_dir / f"bond_dv01_limit_config_review_{resolved_report_date}_todo.md"
+    csv_payload = _write_bond_dv01_limit_config_reference_baseline_csv(
+        str(csv_path),
+        report_date=resolved_report_date,
+    )
+    todo_path.write_text(
+        _bond_dv01_limit_config_review_todo_text(
+            csv_path=csv_path,
+            report_date=resolved_report_date,
+            baseline_rows=baseline["rows"],
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "status": "review_package_written",
+        "review_package_dir": str(target_dir),
+        "csv_path": str(csv_path),
+        "todo_path": str(todo_path),
+        "report_date": resolved_report_date,
+        "source_table": baseline["source_table"],
+        "business_limit_fields_blank": csv_payload["business_limit_fields_blank"],
+        "required_accounting_classes": baseline["required_accounting_classes"],
+        "required_fields": list(DV01_LIMIT_CONFIG_REQUIRED_FIELDS),
+        "missing_business_fields_by_class": _blank_business_fields_by_class(),
+        "unmapped_accounting_classes": baseline["unmapped_accounting_classes"],
+    }
+
+
+def _bond_dv01_limit_config_review_todo_text(
+    *,
+    csv_path: Path,
+    report_date: str,
+    baseline_rows: object,
+) -> str:
+    rows = baseline_rows if isinstance(baseline_rows, list) else []
+    reference_lines = [
+        "| accounting_class | current_position_count | current_total_dv01 | current_face_weighted_modified_duration |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        reference_lines.append(
+            "| {accounting_class} | {position_count} | {current_total_dv01} | {duration} |".format(
+                accounting_class=row.get("accounting_class", ""),
+                position_count=row.get("position_count", 0),
+                current_total_dv01=row.get("current_total_dv01", "0"),
+                duration=row.get("face_weighted_modified_duration", "0"),
+            )
+        )
+    required_field_lines = [f"- `{field}`" for field in _business_limit_fields()]
+    return "\n".join(
+        [
+            f"# Bond DV01 Limit Config Review Todo - {report_date}",
+            "",
+            "## File to complete",
+            "",
+            f"`{csv_path}`",
+            "",
+            "Reference only; business-approved DV01 limits must still be filled manually.",
+            "",
+            "## Current reference values",
+            "",
+            *reference_lines,
+            "",
+            "## Fields business must fill for every row",
+            "",
+            *required_field_lines,
+            "",
+            "Threshold order must satisfy:",
+            "",
+            "`hedge_target_dv01 <= warning_dv01 <= limit_dv01`",
+            "",
+            "## Verification command after business fills the CSV",
+            "",
+            "```powershell",
+            (
+                "python -m backend.app.tasks.bond_dv01_limit_config_import "
+                f"--config-path {csv_path} --report-date {report_date} --dry-run"
+            ),
+            "```",
+            "",
+            "Expected before import:",
+            "",
+            "- `status` is `validated`",
+            "- `import_readiness_status` is `ready_for_import`",
+            "- `validation_errors` is empty",
+            "- `records_written` is `0`",
+            "- `limit_utilization_preview.summary.highest_severity_status` is reviewed by business",
+            "",
+        ]
+    )
+
+
 def _import_bond_dv01_limit_config(
     *,
     config_path: str,
@@ -183,6 +290,8 @@ def _import_bond_dv01_limit_config(
     settings = get_settings()
     governance_path = Path(governance_dir or settings.governance_path)
     raw_records, load_errors = _load_config_records(Path(config_path))
+    ignored_input_fields = _ignored_input_fields(raw_records)
+    missing_business_fields_by_class = _missing_business_fields_by_class(raw_records)
     normalized_records, validation_errors = _normalize_config_records(raw_records)
     validation_errors = [*load_errors, *validation_errors]
     configured_classes = _ordered_classes(record["accounting_class"] for record in normalized_records)
@@ -191,6 +300,11 @@ def _import_bond_dv01_limit_config(
         validation_errors.append(f"Missing direct DV01 limit config for classes: {', '.join(missing_classes)}")
     status_report_date = _resolve_status_report_date(report_date, normalized_records)
     status_payload = _current_status_payload(governance_path, status_report_date)
+    limit_utilization_preview = (
+        _build_limit_utilization_preview(normalized_records, report_date=status_report_date)
+        if not validation_errors
+        else _empty_limit_utilization_preview(status_report_date)
+    )
 
     if validation_errors:
         return _result_payload(
@@ -204,6 +318,9 @@ def _import_bond_dv01_limit_config(
             records_written=0,
             dry_run=dry_run,
             validation_errors=validation_errors,
+            ignored_input_fields=ignored_input_fields,
+            limit_utilization_preview=limit_utilization_preview,
+            missing_business_fields_by_class=missing_business_fields_by_class,
             status_payload=status_payload,
         )
 
@@ -219,6 +336,9 @@ def _import_bond_dv01_limit_config(
             records_written=0,
             dry_run=True,
             validation_errors=[],
+            ignored_input_fields=ignored_input_fields,
+            limit_utilization_preview=limit_utilization_preview,
+            missing_business_fields_by_class=missing_business_fields_by_class,
             status_payload=status_payload,
         )
 
@@ -240,6 +360,9 @@ def _import_bond_dv01_limit_config(
         records_written=len(records_to_write),
         dry_run=False,
         validation_errors=[],
+        ignored_input_fields=ignored_input_fields,
+        limit_utilization_preview=limit_utilization_preview,
+        missing_business_fields_by_class=missing_business_fields_by_class,
         status_payload=status_payload,
     )
 
@@ -305,10 +428,19 @@ def _normalize_config_records(records: list[dict[str, object]]) -> tuple[list[di
         elif accounting_class in seen_classes:
             row_errors.append(f"duplicate accounting_class: {accounting_class}")
 
+        limit_thresholds: dict[str, Decimal] = {}
         for field in ("limit_dv01", "warning_dv01", "hedge_target_dv01"):
             parsed = _positive_decimal(record.get(field))
             if parsed is None:
                 row_errors.append(f"{field} must be greater than 0")
+            else:
+                limit_thresholds[field] = parsed
+        if len(limit_thresholds) == 3 and not (
+            limit_thresholds["hedge_target_dv01"]
+            <= limit_thresholds["warning_dv01"]
+            <= limit_thresholds["limit_dv01"]
+        ):
+            row_errors.append("limit thresholds must satisfy hedge_target_dv01 <= warning_dv01 <= limit_dv01")
 
         effective_date = _parse_iso_date(record.get("limit_effective_date"))
         if effective_date is None:
@@ -335,6 +467,142 @@ def _normalize_config_records(records: list[dict[str, object]]) -> tuple[list[di
     return normalized, errors
 
 
+def _ignored_input_fields(records: list[dict[str, object]]) -> list[str]:
+    allowed = set(DV01_LIMIT_CONFIG_REQUIRED_FIELDS)
+    ignored_fields: set[str] = set()
+    for record in records:
+        for field in record:
+            if not isinstance(field, str):
+                ignored_fields.add("__extra_csv_values__")
+                continue
+            if field not in allowed:
+                ignored_fields.add(field)
+    return sorted(ignored_fields)
+
+
+def _missing_business_fields_by_class(records: list[dict[str, object]]) -> dict[str, list[str]]:
+    missing_by_class: dict[str, list[str]] = {}
+    for record in records:
+        accounting_class = _normalize_accounting_class(record.get("accounting_class"))
+        if accounting_class is None:
+            continue
+        missing_fields = [
+            field
+            for field in DV01_LIMIT_CONFIG_REQUIRED_FIELDS
+            if field != "accounting_class" and not _field_has_value(record.get(field))
+        ]
+        if missing_fields:
+            missing_by_class[accounting_class] = missing_fields
+    return missing_by_class
+
+
+def _business_limit_fields() -> list[str]:
+    return [field for field in DV01_LIMIT_CONFIG_REQUIRED_FIELDS if field != "accounting_class"]
+
+
+def _blank_business_fields_by_class() -> dict[str, list[str]]:
+    business_fields = _business_limit_fields()
+    return {accounting_class: list(business_fields) for accounting_class in DV01_LIMIT_CONFIG_CLASSES}
+
+
+def _empty_limit_utilization_preview(report_date: date) -> dict[str, object]:
+    return {
+        "report_date": report_date.isoformat(),
+        "source_table": "fact_formal_bond_analytics_daily",
+        "basis": "abs(current_total_dv01) / limit_dv01",
+        "summary": _limit_utilization_summary([]),
+        "rows": [],
+    }
+
+
+def _build_limit_utilization_preview(
+    records: list[dict[str, str]],
+    *,
+    report_date: date,
+) -> dict[str, object]:
+    baseline = _build_bond_dv01_limit_config_reference_baseline(report_date=report_date)
+    baseline_by_class = {str(row["accounting_class"]): row for row in baseline["rows"]}
+    records_by_class = {record["accounting_class"]: record for record in records}
+    rows: list[dict[str, str]] = []
+    for accounting_class in DV01_LIMIT_CONFIG_CLASSES:
+        record = records_by_class.get(accounting_class)
+        if record is None:
+            continue
+        current_total_dv01 = _decimal_from_text(
+            baseline_by_class.get(accounting_class, {}).get("current_total_dv01")
+        )
+        current_abs_dv01 = abs(current_total_dv01)
+        limit_dv01 = _decimal_from_text(record["limit_dv01"])
+        warning_dv01 = _decimal_from_text(record["warning_dv01"])
+        hedge_target_dv01 = _decimal_from_text(record["hedge_target_dv01"])
+        limit_utilization = current_abs_dv01 / limit_dv01 if limit_dv01 > 0 else Decimal("0")
+        rows.append(
+            {
+                "accounting_class": accounting_class,
+                "current_total_dv01": _decimal_output(current_total_dv01),
+                "limit_dv01": record["limit_dv01"],
+                "limit_utilization": _decimal_output(limit_utilization),
+                "threshold_status": _limit_threshold_status(
+                    current_abs_dv01,
+                    hedge_target_dv01=hedge_target_dv01,
+                    warning_dv01=warning_dv01,
+                    limit_dv01=limit_dv01,
+                ),
+            }
+        )
+    return {
+        "report_date": report_date.isoformat(),
+        "source_table": baseline["source_table"],
+        "basis": "abs(current_total_dv01) / limit_dv01",
+        "summary": _limit_utilization_summary(rows),
+        "rows": rows,
+    }
+
+
+def _limit_utilization_summary(rows: list[dict[str, str]]) -> dict[str, object]:
+    statuses = ["within_target", "hedge_target_exceeded", "warning_breached", "hard_limit_breached"]
+    status_counts = {status: 0 for status in statuses}
+    max_row: dict[str, str] | None = None
+    max_utilization = Decimal("0")
+    for row in rows:
+        status = row.get("threshold_status", "")
+        if status in status_counts:
+            status_counts[status] += 1
+        utilization = _decimal_from_text(row.get("limit_utilization"))
+        if max_row is None or utilization > max_utilization:
+            max_row = row
+            max_utilization = utilization
+    return {
+        "status_counts": status_counts,
+        "highest_severity_status": _highest_severity_status(status_counts),
+        "max_limit_utilization": _decimal_output(max_utilization),
+        "max_limit_utilization_accounting_class": max_row["accounting_class"] if max_row else None,
+    }
+
+
+def _highest_severity_status(status_counts: dict[str, int]) -> str:
+    for status in ("hard_limit_breached", "warning_breached", "hedge_target_exceeded", "within_target"):
+        if status_counts.get(status, 0) > 0:
+            return status
+    return "within_target"
+
+
+def _limit_threshold_status(
+    current_abs_dv01: Decimal,
+    *,
+    hedge_target_dv01: Decimal,
+    warning_dv01: Decimal,
+    limit_dv01: Decimal,
+) -> str:
+    if current_abs_dv01 >= limit_dv01:
+        return "hard_limit_breached"
+    if current_abs_dv01 >= warning_dv01:
+        return "warning_breached"
+    if current_abs_dv01 > hedge_target_dv01:
+        return "hedge_target_exceeded"
+    return "within_target"
+
+
 def _record_for_governance(record: dict[str, str], *, report_date: date) -> dict[str, object]:
     return {
         **record,
@@ -355,10 +623,22 @@ def _result_payload(
     records_written: int,
     dry_run: bool,
     validation_errors: list[str],
+    ignored_input_fields: list[str],
+    limit_utilization_preview: dict[str, object],
+    missing_business_fields_by_class: dict[str, list[str]],
     status_payload: dict[str, object],
 ) -> dict[str, object]:
     return {
         "status": status,
+        "import_readiness_status": _import_readiness_status(status, dry_run, validation_errors),
+        "next_action": _import_next_action(
+            status,
+            dry_run,
+            validation_errors,
+            missing_classes,
+            limit_utilization_preview=limit_utilization_preview,
+            missing_business_fields_by_class=missing_business_fields_by_class,
+        ),
         "config_stream": DV01_LIMIT_CONFIG_STREAM,
         "config_path": str(config_path),
         "governance_dir": str(governance_path),
@@ -371,8 +651,63 @@ def _result_payload(
         "records_written": records_written,
         "dry_run": dry_run,
         "validation_errors": validation_errors,
+        "ignored_input_fields": ignored_input_fields,
+        "missing_business_fields_by_class": missing_business_fields_by_class,
+        "limit_utilization_preview": limit_utilization_preview,
         "limit_config_status": status_payload,
     }
+
+
+def _import_readiness_status(status: str, dry_run: bool, validation_errors: list[str]) -> str:
+    if validation_errors:
+        return "not_ready"
+    if dry_run and status == "validated":
+        return "ready_for_import"
+    if status == "imported":
+        return "accepted"
+    return "not_ready"
+
+
+def _import_next_action(
+    status: str,
+    dry_run: bool,
+    validation_errors: list[str],
+    missing_classes: list[str],
+    *,
+    limit_utilization_preview: dict[str, object],
+    missing_business_fields_by_class: dict[str, list[str]],
+) -> str:
+    if validation_errors:
+        if missing_business_fields_by_class:
+            return "Fill approved DV01 limit fields listed in missing_business_fields_by_class before importing."
+        if missing_classes:
+            return f"Fill approved DV01 limit config for missing classes: {', '.join(missing_classes)}."
+        return "Fix validation errors before importing the DV01 limit config."
+    if dry_run and status == "validated":
+        review_statuses = _limit_utilization_review_statuses(limit_utilization_preview)
+        if review_statuses:
+            return (
+                f"Review {', '.join(review_statuses)} rows in limit_utilization_preview, "
+                "then run the same command without --dry-run if the approved DV01 limit config is acceptable."
+            )
+        return "Run the same command without --dry-run to import the approved DV01 limit config."
+    if status == "imported":
+        return "Refresh the DV01 Risk tab or run --check-status to confirm acceptance."
+    return "Provide a complete approved DV01 limit config file."
+
+
+def _limit_utilization_review_statuses(limit_utilization_preview: dict[str, object]) -> list[str]:
+    summary = limit_utilization_preview.get("summary")
+    if not isinstance(summary, dict):
+        return []
+    status_counts = summary.get("status_counts")
+    if not isinstance(status_counts, dict):
+        return []
+    return [
+        status
+        for status in ("hard_limit_breached", "warning_breached", "hedge_target_exceeded")
+        if int(status_counts.get(status) or 0) > 0
+    ]
 
 
 def _current_status_payload(governance_path: Path, report_date: date) -> dict[str, object]:
@@ -548,6 +883,13 @@ def _decimal_text(value: object) -> str:
     return format(parsed, "f")
 
 
+def _decimal_from_text(value: object) -> Decimal:
+    try:
+        return Decimal(str(value or "0").strip())
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+
+
 def _decimal_output(value: object) -> str:
     if value is None:
         return "0"
@@ -573,6 +915,7 @@ def main() -> None:
     parser.add_argument("--check-status", action="store_true")
     parser.add_argument("--reference-baseline", action="store_true")
     parser.add_argument("--reference-baseline-csv")
+    parser.add_argument("--review-package-dir")
     args = parser.parse_args()
 
     if args.write_template:
@@ -593,6 +936,14 @@ def main() -> None:
             )
         )
         return
+    if args.review_package_dir:
+        _emit_json_payload(
+            _write_bond_dv01_limit_config_review_package(
+                args.review_package_dir,
+                report_date=args.report_date,
+            )
+        )
+        return
     if args.check_status:
         _emit_json_payload(
             _check_bond_dv01_limit_config_status(
@@ -602,7 +953,7 @@ def main() -> None:
         )
         return
     if not args.config_path:
-        parser.error("--config-path is required unless --write-template, --check-status, --reference-baseline, or --reference-baseline-csv is provided")
+        parser.error("--config-path is required unless --write-template, --check-status, --reference-baseline, --reference-baseline-csv, or --review-package-dir is provided")
 
     payload = import_bond_dv01_limit_config.fn(
         config_path=args.config_path,

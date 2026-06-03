@@ -15,22 +15,44 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 router = APIRouter(prefix="/ui/balance-movement-analysis")
 
 
+def _ensure_accounting_asset_movement_read_allowed(auth: AuthContext, settings) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="accounting_asset_movement",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/dates")
-def dates(currency_basis: str = Query("CNX")) -> dict[str, object]:
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    currency_basis: str = Query("CNX"),
+) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_accounting_asset_movement_read_allowed(auth, settings)
     return accounting_asset_movement_dates_envelope(
-        get_settings().duckdb_path,
+        settings.duckdb_path,
         currency_basis=currency_basis,
     )
 
 
 @router.get("")
 def detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     currency_basis: str = Query("CNX"),
 ) -> dict[str, object]:
+    settings = get_settings()
+    _ensure_accounting_asset_movement_read_allowed(auth, settings)
     try:
         return accounting_asset_movement_envelope(
-            get_settings().duckdb_path,
+            settings.duckdb_path,
             report_date=report_date,
             currency_basis=currency_basis,
         )

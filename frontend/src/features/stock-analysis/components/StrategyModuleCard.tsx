@@ -40,6 +40,7 @@ export function StrategyModuleCard({
   const statusPill = badgeLabel ?? summary?.badgeLabel;
   const isLoading = summary?.loading === true;
   const overflowStats = summary && summary.stats.length > 2 ? summary.stats.slice(2) : [];
+  const toggleLabel = expanded ? "收起明细" : "查看明细";
 
   return (
     <article
@@ -52,17 +53,33 @@ export function StrategyModuleCard({
           <h3 className="stock-analysis-strategy-module-card__title">{title}</h3>
           {subtitle ? <p className="stock-analysis-strategy-module-card__subtitle">{subtitle}</p> : null}
         </div>
-        {statusPill ? (
-          <span className="stock-analysis-strategy-module-card__status-pill">{statusPill}</span>
-        ) : null}
+        <div className="stock-analysis-strategy-module-card__tools">
+          {statusPill ? (
+            <span className="stock-analysis-strategy-module-card__status-pill">{statusPill}</span>
+          ) : null}
+          {children ? (
+            <Button
+              type="default"
+              size="small"
+              className="stock-analysis-strategy-module-card__toggle"
+              data-testid={`stock-analysis-strategy-card-${id}-toggle`}
+              aria-expanded={expanded}
+              aria-label={toggleLabel}
+              title={toggleLabel}
+              onClick={onToggleExpand}
+              icon={expanded ? <UpOutlined /> : <DownOutlined />}
+            />
+          ) : null}
+        </div>
       </header>
 
       {isLoading ? (
         <div
           className="stock-analysis-strategy-module-card__loading"
           data-testid={summaryTestId ? `${summaryTestId}-loading` : undefined}
+          role="status"
+          aria-label="加载中"
         >
-          <p className="stock-analysis-strategy-module-card__loading-label">加载中…</p>
           <div className="stock-analysis-strategy-module-card__loading-skeleton" aria-hidden="true">
             <span />
             <span />
@@ -84,20 +101,6 @@ export function StrategyModuleCard({
 
       {children ? (
         <>
-          <div className="stock-analysis-strategy-module-card__actions">
-            <Button
-              type="default"
-              size="small"
-              className="stock-analysis-strategy-module-card__toggle"
-              data-testid={`stock-analysis-strategy-card-${id}-toggle`}
-              aria-expanded={expanded}
-              aria-label={expanded ? "收起明细" : "查看明细"}
-              onClick={onToggleExpand}
-              icon={expanded ? <UpOutlined /> : <DownOutlined />}
-            >
-              {expanded ? "收起明细" : "查看明细"}
-            </Button>
-          </div>
           {mountDetail ? (
             <div
               className={`stock-analysis-strategy-module-card__detail${expanded ? "" : " stock-analysis-strategy-module-card__detail--collapsed"}`}

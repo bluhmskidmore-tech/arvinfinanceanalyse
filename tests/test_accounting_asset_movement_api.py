@@ -8,6 +8,27 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 
+BALANCE_MOVEMENT_READ_HEADERS = {"X-User-Id": "movement-read-user", "X-User-Role": "viewer"}
+
+
+def _seed_balance_movement_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="accounting_asset_movement",
+        action="read",
+    )
+
+
 def _seed_balance_movement_refresh_scope(tmp_path, monkeypatch, *, user_id: str = "movement-refresh-user") -> None:
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
@@ -23,6 +44,38 @@ def _seed_balance_movement_refresh_scope(tmp_path, monkeypatch, *, user_id: str 
         resource="accounting_asset_movement",
         action="refresh",
     )
+
+
+def test_balance_movement_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_mod = load_module(
+        "backend.app.api.routes.accounting_asset_movement",
+        "backend/app/api/routes/accounting_asset_movement.py",
+    )
+    monkeypatch.setattr(
+        route_mod,
+        "accounting_asset_movement_dates_envelope",
+        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "balance.movement.dates"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_mod,
+        "accounting_asset_movement_envelope",
+        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "balance.movement.detail"}, "result": {}},
+    )
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    for path, params in (
+        ("/ui/balance-movement-analysis/dates", {}),
+        ("/ui/balance-movement-analysis", {"report_date": "2026-02-28"}),
+    ):
+        response = client.get(path, params=params or None, headers=BALANCE_MOVEMENT_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
 
 def test_balance_movement_refresh_api_returns_completed_payload_without_internal_task_fields(

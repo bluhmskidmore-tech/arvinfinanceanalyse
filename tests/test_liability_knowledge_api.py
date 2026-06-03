@@ -4,13 +4,30 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+LIABILITY_ANALYTICS_READ_HEADERS = {"X-User-Id": "liability-knowledge-read-user", "X-User-Role": "viewer"}
 
 
 def _build_client(tmp_path: Path, monkeypatch) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "liability-knowledge.duckdb"))
+    sqlite_path = tmp_path / "liability-knowledge-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="liability_analytics",
+        action="read",
+    )
     main_mod = load_module("backend.app.main", "backend/app/main.py")
-    return TestClient(main_mod.app)
+    client = TestClient(main_mod.app)
+    client.headers.update(LIABILITY_ANALYTICS_READ_HEADERS)
+    return client
 
 
 def test_liability_business_context_reads_obsidian_note_matches(

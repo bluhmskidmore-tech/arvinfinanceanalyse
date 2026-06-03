@@ -422,6 +422,19 @@ describe("ProductCategoryPnlPage", () => {
     expect(explanation).toHaveTextContent("复核动作");
     expect(explanation).toHaveTextContent("核对正式归因期间口径");
     expect(explanation).toHaveTextContent("重点追踪 FTP因素");
+    expect(within(explanation).getAllByRole("button", { name: "待核对" })).toHaveLength(3);
+
+    await user.click(within(explanation).getAllByRole("button", { name: "已确认" })[0]!);
+    expect(within(explanation).getAllByRole("button", { name: "已确认" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(within(explanation).getAllByRole("button", { name: "有差异" })[0]!);
+    expect(within(explanation).getAllByRole("button", { name: "有差异" })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {

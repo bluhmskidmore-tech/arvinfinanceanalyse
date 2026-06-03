@@ -116,6 +116,55 @@ Before enabling a recurring timer, complete
 dry-run, first-run, post-run dry-run, and homepage evidence to the operations
 ticket or log bundle.
 
+Use `docs/templates/tushare_news_backup_timer_enablement_packet.md` as the
+fillable operations packet for the timer command, host, log path, refresh
+window, first scheduled-run evidence, and rollback owner. The packet deliberately
+does not include `schtasks /Create` or `crontab` install commands.
+The current preflight handoff status is recorded in
+`docs/handoff/2026-06-03-tushare-news-backup-timer-preflight-status.md`.
+
+Then run the read-only timer preflight before creating the external timer:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable
+```
+
+To review both the pre-enable and post-enable gates in one read-only report,
+run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all
+```
+
+The `all` stage prints both reports together and does not call Tushare, write
+DuckDB, enqueue the actor, create a scheduler job, or open reserved ingest
+routes.
+
+The preflight does not call Tushare, write DuckDB, enqueue the actor, or modify
+the scheduler. It checks that evidence files exist, owner fields are filled,
+the timer enablement packet is filled, boundary rows are marked `yes` with
+evidence, homepage evidence is attached, the browser evidence JSON confirms
+landed-data read behavior with no reserved ingest write request, actual install commands
+such as `schtasks /Create` or `crontab` are absent from the packet, and the
+enablement decision is explicitly `yes`. A `pre-enable` `blocked` verdict is
+expected until operations fills the owner, timer packet, scheduler,
+write-window, rollback, and page acceptance fields. After the first scheduled
+run, use the post-enable stage to also require `Enabled by`, `Enabled at`, and
+timer evidence:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
+```
+
+Go-live evidence must no longer say `not enabled`; it must record
+`External timer enablement: enabled` and include timer evidence from the
+scheduler/job after the first scheduled run.
+Record that scheduler/job proof as `Timer evidence in go-live bundle`.
+
+When a preflight returns `blocked`, read `next_actions` in the JSON output. Each
+entry points to the document path and field group that operations must fill
+before rerunning the same preflight stage.
+
 ## Post-Refresh Validation
 
 Run dry-run again:
@@ -170,7 +219,7 @@ Use this operator script or trusted scheduling around the same actor.
 After changing this runbook or the refresh script, run:
 
 ```powershell
-python -m pytest tests/test_tushare_news_backup_refresh_script.py tests/test_tushare_news_backup_refresh_runbook.py tests/test_choice_news_routes.py::test_tushare_npr_ingest_ui_still_503_reserved tests/test_write_route_auth_contract.py tests/test_worker_bootstrap.py -q
+python -m pytest tests/test_tushare_news_backup_refresh_script.py tests/test_tushare_news_backup_refresh_runbook.py tests/test_tushare_news_backup_timer_preflight.py tests/test_choice_news_routes.py::test_tushare_npr_ingest_ui_still_503_reserved tests/test_write_route_auth_contract.py tests/test_worker_bootstrap.py -q
 ```
 
 If frontend fallback presentation changes too, also run:

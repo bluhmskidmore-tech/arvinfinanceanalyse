@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChartOutlined,
@@ -417,11 +417,6 @@ const stockChartPalette = {
   danger: "#b94743",
 };
 
-const miniBarChartStyle: CSSProperties = { height: 54, width: "100%" };
-const miniStackChartStyle: CSSProperties = { height: 40, width: "100%" };
-const reviewQueueChartStyle: CSSProperties = { height: 74, width: "100%" };
-const sectorStrengthChartStyle: CSSProperties = { height: 258, width: "100%" };
-
 type CompactChartRow = {
   key: string;
   label: string;
@@ -699,6 +694,11 @@ function eventNameLabel(row: { source: string; event: string; impact: string }) 
   return compactText(row.event.replace(/_/g, " "), 20);
 }
 
+function eventDetailLabel(row: { source: string; detail: string; impact: string }) {
+  if (row.source === "diagnostic") return localizeStockBackendText(row.detail, row.impact);
+  return row.detail;
+}
+
 function formatSupplyPercent(value: number | null | undefined, digits = 0) {
   if (value == null || !Number.isFinite(value)) return "-";
   return `${(value * 100).toFixed(digits)}%`;
@@ -827,13 +827,16 @@ function cycleRuleSummary(layers: CycleLayer[]) {
 }
 
 function cycleCadenceLabel(cadence: string | null | undefined) {
-  const normalized = (cadence ?? "").toLowerCase();
+  const value = cadence?.trim();
+  if (!value) return "节奏待补";
+  const normalized = value.toLowerCase();
+  if (normalized.includes("external_vendor") || normalized.includes("external vendor")) return "节奏待确认";
   if (normalized.includes("monthly") && normalized.includes("weekly")) {
     return "月度核心复核 · 周度跟踪";
   }
   if (normalized.includes("monthly")) return "月度复核";
   if (normalized.includes("weekly")) return "周度复核";
-  return cadence?.trim() || "节奏待补";
+  return "节奏待确认";
 }
 
 function cycleGapLabel(gap: string) {
@@ -866,7 +869,7 @@ function cycleConstraintLabel(constraint: string) {
     return percentile === "阈值" ? "拥挤度低于阈值" : `拥挤度低于 ${percentile} 分位`;
   }
   if (/hygiene\s*>\s*0/i.test(constraint)) return "数据卫生通过";
-  return constraint.replace(/_/g, " ");
+  return "约束待确认";
 }
 
 function cycleEvidenceLabel(text: string | null | undefined) {
@@ -892,7 +895,7 @@ function cycleEvidenceLabel(text: string | null | undefined) {
   }
   if (lower.includes("not landed") || lower.includes("missing")) return "证据待确认。";
   if (lower.includes("available")) return "证据已接入。";
-  return value.replace(/_/g, " ");
+  return "证据待确认";
 }
 
 function cycleBoundaryLabel(text: string | null | undefined) {
@@ -903,7 +906,7 @@ function cycleBoundaryLabel(text: string | null | undefined) {
     return "生命法庭层为量化重建口径，原始文本规则尚未完整接入。";
   }
   if (lower.includes("proxy")) return "当前为代理观察口径，需复核后使用。";
-  return value.replace(/_/g, " ");
+  return "边界待确认";
 }
 
 function buildBackendSupplyOverview(
@@ -2637,8 +2640,7 @@ export default function StockAnalysisPage() {
                           {sectorChartRows.length > 0 ? (
                             <ReactECharts
                               option={sectorMiniChartOption}
-                              className="stock-analysis-page__echart"
-                              style={miniBarChartStyle}
+                              className="stock-analysis-page__echart stock-analysis-page__echart--mini-bar"
                               opts={{ renderer: "canvas" }}
                               notMerge
                               lazyUpdate
@@ -2664,8 +2666,7 @@ export default function StockAnalysisPage() {
                           {readinessChartRows.length > 0 ? (
                             <ReactECharts
                               option={readinessMiniChartOption}
-                              className="stock-analysis-page__echart"
-                              style={miniBarChartStyle}
+                              className="stock-analysis-page__echart stock-analysis-page__echart--mini-bar"
                               opts={{ renderer: "canvas" }}
                               notMerge
                               lazyUpdate
@@ -2689,8 +2690,7 @@ export default function StockAnalysisPage() {
                           {outputChartRows.some((row) => row.value > 0) ? (
                             <ReactECharts
                               option={outputMiniChartOption}
-                              className="stock-analysis-page__echart"
-                              style={miniStackChartStyle}
+                              className="stock-analysis-page__echart stock-analysis-page__echart--mini-stack"
                               opts={{ renderer: "canvas" }}
                               notMerge
                               lazyUpdate
@@ -2731,8 +2731,7 @@ export default function StockAnalysisPage() {
                           {riskSupplyChartRows.some((row) => row.value > 0) ? (
                             <ReactECharts
                               option={riskSupplyMiniChartOption}
-                              className="stock-analysis-page__echart"
-                              style={miniStackChartStyle}
+                              className="stock-analysis-page__echart stock-analysis-page__echart--mini-stack"
                               opts={{ renderer: "canvas" }}
                               notMerge
                               lazyUpdate
@@ -2976,20 +2975,18 @@ export default function StockAnalysisPage() {
                             className="stock-analysis-page__strategy-lens-card"
                             data-tone={item.tone}
                             data-testid={`stock-analysis-strategy-lens-${item.key}`}
-                            style={
-                              item.progress == null
-                                ? undefined
-                                : ({
-                                    "--stock-strategy-lens-progress": `${Math.max(4, item.progress * 100)}%`,
-                                  } as CSSProperties)
-                            }
                             onClick={() => scrollToStockSection(item.scrollTarget)}
                           >
                             <span className="stock-analysis-page__strategy-lens-label">{item.label}</span>
                             <strong className="stock-analysis-page__strategy-lens-value">{item.value}</strong>
                             <small className="stock-analysis-page__strategy-lens-detail">{item.detail}</small>
                             {item.progress != null ? (
-                              <span className="stock-analysis-page__strategy-lens-meter" aria-hidden="true" />
+                              <progress
+                                className="stock-analysis-page__strategy-lens-meter"
+                                max={100}
+                                value={Math.max(4, item.progress * 100)}
+                                aria-label={`${item.label} 进度`}
+                              />
                             ) : null}
                           </button>
                         ))}
@@ -3119,8 +3116,7 @@ export default function StockAnalysisPage() {
                       </div>
                       <ReactECharts
                         option={reviewQueueRankingOption}
-                        className="stock-analysis-page__echart"
-                        style={reviewQueueChartStyle}
+                        className="stock-analysis-page__echart stock-analysis-page__echart--review-queue"
                         opts={{ renderer: "canvas" }}
                         notMerge
                         lazyUpdate
@@ -3757,7 +3753,7 @@ export default function StockAnalysisPage() {
                     <div className={SA_SECTION_HEAD}>
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>板块结构</p>
-                        <h2 className={SA_CARD_TITLE}>各板块权重股表现</h2>
+                        <h2 className={SA_CARD_TITLE}>权重股摘要</h2>
                         <div className="stock-analysis-page__lower-signal-strip" aria-label="权重股样本状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <BarChartOutlined aria-hidden="true" /> 前 {sectorHeavyweightPreview?.sectorLimit ?? 0}
@@ -3819,11 +3815,11 @@ export default function StockAnalysisPage() {
                                   #{sector.sectorRank} {sector.sectorName}
                                 </strong>
                                 <span>
-                                  板块 {sector.sectorPctChange} · 得分 {sector.sectorScore}
+                                  板块 {sector.sectorPctChange} · 得分 {sector.sectorScore} · 样本 {sector.stocks.length}
                                 </span>
                               </header>
                               <ul className="stock-analysis-page__sector-heavyweight-list">
-                                {sector.stocks.map((stock) => (
+                                {sector.stocks.slice(0, 1).map((stock) => (
                                   <li
                                       key={stock.stockCode}
                                       className="stock-analysis-page__sector-heavyweight-row stock-analysis-page__row--clickable"
@@ -3887,9 +3883,6 @@ export default function StockAnalysisPage() {
                             </article>
                           ))}
                         </div>
-                        <p className="stock-analysis-page__footnote">
-                          板块成分按换手排序；策略/题材条目补充时可能只显示因子分或收盘强度。
-                        </p>
                       </>
                     )}
                   </section>
@@ -3902,7 +3895,7 @@ export default function StockAnalysisPage() {
                     <div className={SA_SECTION_HEAD}>
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>深度回测</p>
-                        <h2 className={SA_CARD_TITLE}>历史共振 / 策略优先级 / 优化诊断</h2>
+                        <h2 className={SA_CARD_TITLE}>回测诊断</h2>
                         <div className="mt-2 flex flex-wrap gap-1.5" aria-label="回测诊断状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <ThunderboltOutlined aria-hidden="true" /> 共振 {consensusHitCount}
@@ -3928,13 +3921,19 @@ export default function StockAnalysisPage() {
                           key: "consensus",
                           label: "历史共振",
                           children: !consensusSummary.hasAnyStrategy ? (
-                            <p className="stock-analysis-page__empty">
-                              {consensusReviewPanelSummary?.detail ?? "策略池暂无候选。"}
-                            </p>
+                            <CompactStatusTile
+                              icon={<ThunderboltOutlined />}
+                              label="历史共振"
+                              value="0"
+                              testId="stock-analysis-consensus-first-screen-empty"
+                            />
                           ) : consensusSummary.items.length === 0 ? (
-                            <p className="stock-analysis-page__empty">
-                              {consensusReviewPanelSummary?.detail ?? "暂无共振候选。"}
-                            </p>
+                            <CompactStatusTile
+                              icon={<ThunderboltOutlined />}
+                              label="历史共振"
+                              value="0"
+                              testId="stock-analysis-consensus-first-screen-empty"
+                            />
                           ) : (
                             <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
                               {consensusSummary.items.map((row) => {
@@ -4054,7 +4053,12 @@ export default function StockAnalysisPage() {
                               </table>
                             </div>
                           ) : (
-                            <p className="stock-analysis-page__empty">当前状态样本不足。</p>
+                            <CompactStatusTile
+                              icon={<LineChartOutlined />}
+                              label="策略优先级"
+                              value="样本不足"
+                              testId="stock-analysis-priority-empty"
+                            />
                           ),
                         },
                         {
@@ -4108,7 +4112,12 @@ export default function StockAnalysisPage() {
                               </table>
                             </div>
                           ) : (
-                            <p className="stock-analysis-page__empty">暂无优化诊断结果。</p>
+                            <CompactStatusTile
+                              icon={<SafetyCertificateOutlined />}
+                              label="优化诊断"
+                              value="0"
+                              testId="stock-analysis-optimization-empty"
+                            />
                           ),
                         },
                       ]}
@@ -4181,8 +4190,7 @@ export default function StockAnalysisPage() {
                       {sectorStrengthChartRows.length > 0 ? (
                         <ReactECharts
                           option={sectorStrengthChartOption}
-                          className="min-w-0"
-                          style={sectorStrengthChartStyle}
+                          className="stock-analysis-page__echart stock-analysis-page__echart--sector-strength"
                           opts={{ renderer: "canvas" }}
                           notMerge
                           lazyUpdate
@@ -4218,12 +4226,12 @@ export default function StockAnalysisPage() {
                                 </span>
                                 <span>{row.score}</span>
                               </div>
-                              <div className="relative h-[18px] overflow-hidden rounded border border-neutral-200 bg-neutral-100">
-                                <div
-                                  className="absolute inset-y-0 left-0 bg-primary-600/20 transition-[width] duration-150 ease-out"
-                                  style={{
-                                    width: `${(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}%`,
-                                  }}
+                              <div className="stock-analysis-page__sector-rank-bar">
+                                <progress
+                                  className="stock-analysis-page__sector-rank-progress stock-analysis-page__sector-rank-progress--top"
+                                  max={100}
+                                  value={(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}
+                                  aria-hidden="true"
                                 />
                                 <div
                                   className="stock-analysis-page__sector-rank-bar-label stock-analysis-page__tabular"
@@ -4259,12 +4267,12 @@ export default function StockAnalysisPage() {
                                 </span>
                                 <span>{row.pctChange}</span>
                               </div>
-                              <div className="relative h-[18px] overflow-hidden rounded border border-neutral-200 bg-neutral-100">
-                                <div
-                                  className="absolute inset-y-0 left-0 bg-danger-600/15 transition-[width] duration-150 ease-out"
-                                  style={{
-                                    width: `${(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}%`,
-                                  }}
+                              <div className="stock-analysis-page__sector-rank-bar">
+                                <progress
+                                  className="stock-analysis-page__sector-rank-progress stock-analysis-page__sector-rank-progress--bottom"
+                                  max={100}
+                                  value={(sectorView === "score" ? row.scoreNormalized : row.metricBarNormalized) * 100}
+                                  aria-hidden="true"
                                 />
                                 <div
                                   className="stock-analysis-page__sector-rank-bar-label stock-analysis-page__tabular"
@@ -4292,7 +4300,7 @@ export default function StockAnalysisPage() {
 
                     <Collapse
                       bordered={false}
-                      style={{ marginTop: 12 }}
+                      className="stock-analysis-page__sector-collapse"
                       items={[
                         {
                           key: "sector-detail-table",
@@ -4379,12 +4387,12 @@ export default function StockAnalysisPage() {
                                       <td className="stock-analysis-page__table-number">{row.amplitude}</td>
                                       <td className="stock-analysis-page__table-number">{row.constituentCount}</td>
                                       <td className="stock-analysis-page__pct-bar-cell">
-                                        <div className="stock-analysis-page__pct-bar-visual">
-                                          <div
-                                            className="stock-analysis-page__pct-bar-fill"
-                                            style={{ width: `${row.pctChangeBar}%` }}
-                                          />
-                                        </div>
+                                        <progress
+                                          className="stock-analysis-page__pct-bar-progress"
+                                          max={100}
+                                          value={row.pctChangeBar}
+                                          aria-label={`${row.sectorName} 涨跌幅条`}
+                                        />
                                       </td>
                                     </tr>
                                   ))}
@@ -4398,7 +4406,7 @@ export default function StockAnalysisPage() {
 
                     <Collapse
                       bordered={false}
-                      style={{ marginTop: 12 }}
+                      className="stock-analysis-page__sector-collapse"
                       activeKey={sectorSeriesCollapseKeys}
                       onChange={(keys) =>
                         setSectorSeriesCollapseKeys(Array.isArray(keys) ? keys : [keys])
@@ -4991,7 +4999,7 @@ export default function StockAnalysisPage() {
                 <StrategyModuleCard
                   id="cycle-rotation"
                   title={cycleRotationFramework.display_name}
-                  subtitle="周期轮动 · 只读观察"
+                  subtitle="周期轮动"
                   badgeLabel={
                     cycleRotationPanelSummary?.badgeLabel ??
                     localizeImplementationStage(cycleRotationFramework.implementation_stage)
@@ -5210,7 +5218,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="theme-breakout"
                 title="题材突变观察"
-                subtitle="代理/概念簇 · 不生成执行结论"
+                subtitle="题材代理"
                 badgeLabel={
                   themeBreakoutPanelSummary?.badgeLabel ??
                   `${localizeThemeRadarBadge(
@@ -5347,7 +5355,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="consensus-review"
                 title="历史复核 / T+5 共振"
-                subtitle="趋势 + 多因子同选 · 超跌仅作背景"
+                subtitle="T+5 共振"
                 badgeLabel={
                   consensusReviewPanelSummary.badgeLabel ??
                   (consensusReviewPanelSummary.tone === "positive" ? "已就绪" : "待复核")
@@ -5479,7 +5487,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="market-priority"
                 title="当前市场策略优先级"
-                subtitle="近 180 天快照 · T+5 排序 · 只读复核"
+                subtitle="T+5 排序"
                 badgeLabel={
                   marketPriorityPanelSummary.badgeLabel ??
                   (strategyScorePayload?.primary_horizon === "return_1d"
@@ -5689,7 +5697,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="strategy-backtest"
                 title="策略回溯表现"
-                subtitle="近 10 日快照 · 已完成日计胜率"
+                subtitle="回溯胜率"
                 badgeLabel={strategyBacktestPanelSummary.badgeLabel ?? strategyBacktestDateRangeLabel}
                 summary={strategyBacktestPanelSummary}
                 summaryTestId="stock-analysis-strategy-backtest-panel-summary"
@@ -5789,7 +5797,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="strategy-optimization"
                 title="优化诊断"
-                subtitle="切片回测 T+5 · 复核排序建议"
+                subtitle="切片 T+5"
                 badgeLabel={
                   strategyOptimizationPanelSummary.badgeLabel ??
                   (strategyOptimizationPayload?.primary_horizon === "return_1d"
@@ -5930,7 +5938,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="observation-pools"
                 title="多策略观察池"
-                subtitle="超跌 / 多因子 / 融合 · 条件触发观察"
+                subtitle="观察池"
                 badgeLabel={observationPoolsPanelSummary.badgeLabel ?? "观察池"}
                 summary={observationPoolsPanelSummary}
                 summaryTestId="stock-analysis-observation-pools-panel-summary"
@@ -6155,7 +6163,7 @@ export default function StockAnalysisPage() {
               <StrategyModuleCard
                 id="events-monitoring"
                 title="关键事件与监控"
-                subtitle="诊断 / 缺口 / 风险触发复核队列"
+                subtitle="事件风险"
                 badgeLabel={eventsMonitoringPanelSummary.badgeLabel ?? "事件"}
                 summary={eventsMonitoringPanelSummary}
                 summaryTestId="stock-analysis-events-panel-summary"
@@ -6187,7 +6195,7 @@ export default function StockAnalysisPage() {
                             </td>
                             <td>{eventNameLabel(row)}</td>
                             <td>{eventImpactLabel(row)}</td>
-                            <td title={row.detail}>{compactText(row.detail, 26)}</td>
+                            <td title={eventDetailLabel(row)}>{compactText(eventDetailLabel(row), 26)}</td>
                           </tr>
                         ))}
                       </tbody>

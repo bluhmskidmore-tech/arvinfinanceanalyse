@@ -2375,6 +2375,9 @@ class _DV01LimitConfig:
 
 
 DV01_LIMIT_CONFIG_CLASSES = ("AC", "OCI", "TPL", "all")
+DV01_LIMIT_CONFIG_BUSINESS_FIELDS = tuple(
+    field for field in DV01_LIMIT_CONFIG_REQUIRED_FIELDS if field != "accounting_class"
+)
 
 
 def get_dv01_limit_config_status(report_date: date) -> dict:
@@ -2385,6 +2388,7 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
     configured_accounting_classes = [row.accounting_class for row in rows if row.status == "ready"]
     missing_accounting_classes = [row.accounting_class for row in rows if row.status == "missing"]
     invalid_accounting_classes = [row.accounting_class for row in rows if row.status == "invalid"]
+    needs_business_followup = bool(missing_accounting_classes or invalid_accounting_classes)
     acceptance_message, next_action = _dv01_limit_config_acceptance_guidance(
         missing_accounting_classes=missing_accounting_classes,
         invalid_accounting_classes=invalid_accounting_classes,
@@ -2407,6 +2411,15 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
             "configured_accounting_classes": configured_accounting_classes,
             "missing_accounting_classes": missing_accounting_classes,
             "invalid_accounting_classes": invalid_accounting_classes,
+            "missing_business_fields_by_class": _dv01_limit_config_missing_business_fields_by_class(
+                missing_accounting_classes
+            ),
+            "review_package_command": _dv01_limit_config_review_package_command(report_date)
+            if needs_business_followup
+            else "",
+            "dry_run_command": _dv01_limit_config_dry_run_command(report_date)
+            if needs_business_followup
+            else "",
             "configured_count": configured_count,
             "missing_count": missing_count,
             "invalid_count": invalid_count,
@@ -2422,6 +2435,29 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
         default_cache_version=CACHE_VERSION,
         source_surface="bond_analytics",
         result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def _dv01_limit_config_missing_business_fields_by_class(
+    accounting_classes: list[str],
+) -> dict[str, list[str]]:
+    return {accounting_class: list(DV01_LIMIT_CONFIG_BUSINESS_FIELDS) for accounting_class in accounting_classes}
+
+
+def _dv01_limit_config_review_package_command(report_date: date) -> str:
+    report_date_text = report_date.isoformat()
+    return (
+        "python -m backend.app.tasks.bond_dv01_limit_config_import "
+        f"--review-package-dir .tmp\\bond_dv01_limit_config_review_package --report-date {report_date_text}"
+    )
+
+
+def _dv01_limit_config_dry_run_command(report_date: date) -> str:
+    report_date_text = report_date.isoformat()
+    return (
+        "python -m backend.app.tasks.bond_dv01_limit_config_import "
+        f"--config-path .tmp\\bond_dv01_limit_config_review_package\\bond_dv01_limit_config_review_{report_date_text}.csv "
+        f"--report-date {report_date_text} --dry-run"
     )
 
 

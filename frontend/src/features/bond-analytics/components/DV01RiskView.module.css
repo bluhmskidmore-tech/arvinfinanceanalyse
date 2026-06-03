@@ -119,6 +119,38 @@
   line-height: 1.5;
 }
 
+.operatorBlock {
+  display: grid;
+  gap: 6px;
+  padding: var(--moss-space-2);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #f8fbff;
+}
+
+.operatorLabel {
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.operatorText {
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.commandText {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  color: var(--moss-color-neutral-900);
+  font-family: var(--moss-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .reconciliationControls {
   display: inline-flex;
   flex-wrap: wrap;

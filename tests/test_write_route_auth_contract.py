@@ -237,6 +237,17 @@ def _patch_product_category_refresh(monkeypatch, calls: list[str]) -> str:
     return "product-category-refresh-test"
 
 
+def _patch_livermore_gate_supplement_refresh(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.market_data_livermore as route_module
+
+    def fake_refresh(**_kwargs):
+        calls.append("called")
+        return {"status": "queued", "run_id": "livermore-gate-supplement-refresh-test"}
+
+    monkeypatch.setattr(route_module, "compute_and_materialize_gate_supplement", fake_refresh)
+    return "livermore-gate-supplement-refresh-test"
+
+
 SCOPED_REFRESH_ROUTES = [
     ("/api/data/refresh_pnl", None, "formal_pnl", _patch_formal_pnl_refresh),
     ("/api/bond-analytics/refresh?report_date=2026-01-01", None, "bond_analytics", _patch_bond_analytics_refresh),
@@ -267,6 +278,12 @@ SCOPED_REFRESH_ROUTES = [
         _patch_commodity_futures_refresh,
     ),
     ("/ui/pnl/product-category/refresh", None, "product_category_pnl", _patch_product_category_refresh),
+    (
+        "/ui/market-data/livermore/refresh-gate-supplement?as_of_date=2026-04-30",
+        None,
+        "market_data.livermore_gate_supplement",
+        _patch_livermore_gate_supplement_refresh,
+    ),
 ]
 
 

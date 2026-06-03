@@ -1498,10 +1498,12 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("theme-leader-first-row-688001.SH")).toHaveTextContent("Alpha Semiconductor");
 
     const sectorHeavyweights = await screen.findByTestId("stock-analysis-sector-heavyweights-first-screen");
-    expect(sectorHeavyweights).toHaveTextContent("各板块权重股表现");
+    expect(sectorHeavyweights).toHaveTextContent("权重股摘要");
     expect(screen.getByTestId("sector-heavyweight-row-801001-688001.SH")).toHaveTextContent("Alpha Semiconductor");
 
     const analytics = await screen.findByTestId("stock-analysis-first-screen-analytics");
+    expect(analytics).toHaveTextContent("回测诊断");
+    expect(analytics).not.toHaveTextContent("历史共振 / 策略优先级 / 优化诊断");
     expect(analytics).toHaveTextContent("历史共振");
     expect(screen.getByRole("tab", { name: "策略优先级" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "优化诊断" })).toBeInTheDocument();
@@ -1686,6 +1688,97 @@ describe("StockAnalysisPage", () => {
     expect(framework).toHaveTextContent("证据待确认");
     expect(framework).not.toHaveTextContent("external_vendor_cycle_feed");
     expect(framework).not.toHaveTextContent("external vendor cycle feed");
+  });
+
+  it("renders unknown cycle rotation cadence as a pending cadence boundary", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: {
+            ...buildCycleRotationFramework(),
+            rebalance_cadence: "external_vendor_daily_rotation",
+          },
+        }),
+      }),
+    });
+
+    const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+    expect(framework).toHaveTextContent("节奏待确认");
+    expect(framework).not.toHaveTextContent("external_vendor_daily_rotation");
+    expect(framework).not.toHaveTextContent("external vendor daily rotation");
+  });
+
+  it("renders unknown cycle rotation constraints as pending boundaries instead of raw backend codes", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: {
+            ...buildCycleRotationFramework(),
+            constraints: ["external_vendor_position_guard"],
+          },
+        }),
+      }),
+    });
+
+    const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+    expect(framework).toHaveTextContent("约束待确认");
+    expect(framework).not.toHaveTextContent("external_vendor_position_guard");
+    expect(framework).not.toHaveTextContent("external vendor position guard");
+  });
+
+  it("renders unknown cycle rotation boundary text as a pending boundary instead of raw backend codes", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: {
+            ...buildCycleRotationFramework(),
+            lifecourt_overlay: {
+              display_name: "生命法庭层",
+              observation_only: true,
+              implementation_stage: "verification_pending",
+              rebalance_cadence: "Monthly core review with weekly satellite monitoring.",
+              boundary: "external_vendor_boundary_guard",
+              available_inputs: ["market_gate"],
+              missing_inputs: [],
+              life_long_gates: [],
+            },
+          },
+        }),
+      }),
+    });
+
+    const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+    expect(framework).toHaveTextContent("边界待确认");
+    expect(framework).not.toHaveTextContent("external_vendor_boundary_guard");
+    expect(framework).not.toHaveTextContent("external vendor boundary guard");
+  });
+
+  it("renders unknown cycle rotation evidence text as pending evidence instead of raw backend codes", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: {
+            ...buildCycleRotationFramework(),
+            layers: [
+              {
+                key: "macro_direction",
+                title: "Macro direction",
+                weight: 0.3,
+                status: "missing_inputs",
+                evidence: "vendor_quality_signal_pending",
+                available_inputs: ["market_gate"],
+                missing_inputs: [],
+              },
+            ],
+          },
+        }),
+      }),
+    });
+
+    const framework = await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+    expect(framework).toHaveTextContent("证据待确认");
+    expect(framework).not.toHaveTextContent("vendor_quality_signal_pending");
+    expect(framework).not.toHaveTextContent("vendor quality signal pending");
   });
 
   it("renders theme breakout radar as observation-only proxy evidence", async () => {
@@ -2470,6 +2563,32 @@ describe("StockAnalysisPage", () => {
     expect(section).not.toHaveTextContent("missing");
   });
 
+  it("renders unknown event diagnostics as pending business copy instead of raw backend codes", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          diagnostics: [
+            {
+              severity: "warning",
+              code: "VENDOR_QUALITY_SIGNAL_PENDING",
+              message: "vendor_quality_signal_pending",
+              input_family: "external_vendor_quality_signal",
+            },
+          ],
+          data_gaps: [],
+          unsupported_outputs: [],
+        } as Partial<LivermoreStrategyPayload>),
+      }),
+    });
+
+    const section = await screen.findByTestId("stock-analysis-events-monitoring");
+    expect(section).toHaveTextContent("输入待确认诊断");
+    expect(section).toHaveTextContent("说明待确认");
+    expect(section).not.toHaveTextContent("external_vendor_quality_signal");
+    expect(section).not.toHaveTextContent("vendor_quality_signal_pending");
+    expect(section).not.toHaveTextContent("VENDOR_QUALITY_SIGNAL_PENDING");
+  });
+
   it("shows localized theme breakout blockers in the first-screen empty tile", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
@@ -3017,7 +3136,7 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => expect(panel).toHaveTextContent(/180 条/), { timeout: 3_000 });
     const trend = within(await screen.findByTestId("stock-analysis-strategy-backtest-stock_candidate"));
     expect(panel).toHaveTextContent(/策略回溯表现/);
-    expect(panel).toHaveTextContent(/已完成日计胜率/);
+    expect(panel).toHaveTextContent(/回溯胜率/);
     expect(await screen.findByTestId("stock-analysis-strategy-backtest-panel-summary")).toBeInTheDocument();
     expect(panel).toHaveTextContent(/有效样本/);
     expect(panel).toHaveTextContent(/完成日期 5/);

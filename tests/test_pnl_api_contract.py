@@ -58,6 +58,15 @@ def _grant_pnl_read_scope(repo: UserScopeRepository, *, user_id: str = "*") -> N
     )
 
 
+def _grant_liability_analytics_read_scope(repo: UserScopeRepository, *, user_id: str = "*") -> None:
+    repo.grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="liability_analytics",
+        action="read",
+    )
+
+
 @pytest.fixture(autouse=True)
 def seed_pnl_read_scope(tmp_path, monkeypatch):
     sqlite_path = tmp_path / "pnl-read-scope.db"
@@ -2302,6 +2311,9 @@ def test_pnl_yearly_summary_groups_months_by_zqtz_business_type_primary(tmp_path
 
 def test_yield_by_period_monthly_and_quarterly_rollups_from_formal_pnl(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _grant_liability_analytics_read_scope(
+        UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn)
+    )
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_pnl_by_business_rows(duckdb_path)
     _seed_pnl_by_business_month(duckdb_path)

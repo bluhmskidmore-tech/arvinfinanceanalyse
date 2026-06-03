@@ -82,6 +82,10 @@ def _allow_writes(monkeypatch, module):
     monkeypatch.setattr(module, "ensure_user_allowed", lambda **_kwargs: None)
 
 
+def _allow_reads(monkeypatch, module):
+    monkeypatch.setattr(module, "ensure_user_allowed", lambda **_kwargs: None)
+
+
 def test_fastapi_application_exposes_kpi_routes():
     module = load_module("backend.app.main", "backend/app/main.py")
     app = getattr(module, "app", None)
@@ -92,6 +96,7 @@ def test_fastapi_application_exposes_kpi_routes():
 
 def test_kpi_routes_return_read_models(monkeypatch):
     module = _load_kpi_route_module()
+    _allow_reads(monkeypatch, module)
     monkeypatch.setattr(
         module,
         "get_settings",
@@ -121,8 +126,8 @@ def test_kpi_routes_return_read_models(monkeypatch):
         },
     )
 
-    owners = module.kpi_owners(year=2026, is_active=True)
-    summary = module.kpi_values_summary(owner_id=1, year=2026, period_type="YEAR", period_value=None)
+    owners = module.kpi_owners(year=2026, is_active=True, auth=_auth(module))
+    summary = module.kpi_values_summary(owner_id=1, year=2026, period_type="YEAR", period_value=None, auth=_auth(module))
 
     assert owners["total"] == 1
     assert owners["owners"][0]["owner_name"] == "Fixed Income"
@@ -199,7 +204,7 @@ def test_kpi_batch_update_upserts_values(monkeypatch, tmp_path):
 
     assert result == {"success_count": 1, "failed_count": 0, "errors": []}
 
-    values = module.get_kpi_values(owner_id=owner_id, as_of_date="2026-03-31")
+    values = module.get_kpi_values(owner_id=owner_id, as_of_date="2026-03-31", auth=_auth(module))
     metric = values["metrics"][0]
     assert metric["actual_value"] == "55.000000"
     assert metric["progress_pct"] == "55.000000"
@@ -255,6 +260,7 @@ def test_kpi_fetch_and_recalc_scores_manual_metrics(monkeypatch, tmp_path):
 def test_kpi_report_can_render_csv(monkeypatch, tmp_path):
     module = _load_kpi_route_module()
     dsn, owner_id, metric_id, session_factory, model_module = _seed_kpi_sqlite(module, tmp_path)
+    _allow_reads(monkeypatch, module)
     monkeypatch.setattr(
         module,
         "get_settings",
@@ -284,6 +290,7 @@ def test_kpi_report_can_render_csv(monkeypatch, tmp_path):
         owner_id=owner_id,
         as_of_date="2026-03-31",
         format="csv",
+        auth=_auth(module),
     )
 
     assert isinstance(response, PlainTextResponse)
@@ -296,6 +303,7 @@ def test_kpi_report_can_render_csv(monkeypatch, tmp_path):
 
 def test_kpi_route_delegates_to_service_and_maps_exceptions(monkeypatch):
     module = _load_kpi_route_module()
+    _allow_reads(monkeypatch, module)
     monkeypatch.setattr(
         module,
         "get_settings",
@@ -310,7 +318,7 @@ def test_kpi_route_delegates_to_service_and_maps_exceptions(monkeypatch):
 
     monkeypatch.setattr(module.kpi_workbench_service, "list_metrics", fake_list_metrics)
 
-    payload = module.list_kpi_metrics(owner_id=2, year=2026, is_active=True)
+    payload = module.list_kpi_metrics(owner_id=2, year=2026, is_active=True, auth=_auth(module))
 
     assert payload == {"metrics": [{"metric_id": 7}], "total": 1}
     assert captured == {
@@ -328,7 +336,7 @@ def test_kpi_route_delegates_to_service_and_maps_exceptions(monkeypatch):
         ),
     )
     with pytest.raises(HTTPException) as not_found:
-        module.get_kpi_metric(99)
+        module.get_kpi_metric(99, auth=_auth(module))
     assert not_found.value.status_code == 404
     assert not_found.value.detail == "KPI metric 99 not found"
 
@@ -340,7 +348,7 @@ def test_kpi_route_delegates_to_service_and_maps_exceptions(monkeypatch):
         ),
     )
     with pytest.raises(HTTPException) as invalid_date:
-        module.get_kpi_values(owner_id=1, as_of_date="bad-date")
+        module.get_kpi_values(owner_id=1, as_of_date="bad-date", auth=_auth(module))
     assert invalid_date.value.status_code == 422
     assert invalid_date.value.detail == "Invalid as_of_date: bad-date"
 
@@ -352,9 +360,43 @@ def test_kpi_route_delegates_to_service_and_maps_exceptions(monkeypatch):
         ),
     )
     with pytest.raises(HTTPException) as storage_error:
-        module.get_kpi_report(year=2026)
+        module.get_kpi_report(year=2026, auth=_auth(module))
     assert storage_error.value.status_code == 503
     assert storage_error.value.detail == "database unavailable"
+
+
+def test_kpi_read_routes_require_explicit_read_scope(monkeypatch):
+    module = _load_kpi_route_module()
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(governance_sql_dsn="sqlite:///tmp/kpi.db", postgres_dsn="sqlite:///tmp/kpi.db"),
+    )
+    monkeypatch.setattr(
+        module,
+        "ensure_user_allowed",
+        lambda **_kwargs: (_ for _ in ()).throw(PermissionError("blocked")),
+    )
+    monkeypatch.setattr(module, "kpi_owners_payload", lambda **_kwargs: {"owners": [], "total": 0})
+    monkeypatch.setattr(module, "kpi_period_summary_payload", lambda **_kwargs: {"metrics": []})
+    monkeypatch.setattr(module.kpi_workbench_service, "list_metrics", lambda **_kwargs: {"metrics": []})
+    monkeypatch.setattr(module.kpi_workbench_service, "get_metric", lambda **_kwargs: {"metric_id": 1})
+    monkeypatch.setattr(module.kpi_workbench_service, "get_values", lambda **_kwargs: {"metrics": []})
+    monkeypatch.setattr(module.kpi_workbench_service, "build_report", lambda **_kwargs: {"rows": []})
+
+    calls = (
+        lambda: module.kpi_owners(auth=_auth(module)),
+        lambda: module.kpi_values_summary(owner_id=1, year=2026, period_type="YEAR", auth=_auth(module)),
+        lambda: module.list_kpi_metrics(auth=_auth(module)),
+        lambda: module.get_kpi_metric(1, auth=_auth(module)),
+        lambda: module.get_kpi_values(owner_id=1, as_of_date="2026-03-31", auth=_auth(module)),
+        lambda: module.get_kpi_report(year=2026, auth=_auth(module)),
+    )
+
+    for call in calls:
+        with pytest.raises(HTTPException) as denied:
+            call()
+        assert denied.value.status_code == 403
 
 
 def test_kpi_auth_rejects_before_service_call(monkeypatch):

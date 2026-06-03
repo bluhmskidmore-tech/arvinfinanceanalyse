@@ -67,8 +67,18 @@ as an operator workflow, not a homepage write path:
   `docs/templates/tushare_news_backup_refresh_scheduler_handoff.md`
 - Go-live checklist:
   `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`
+- Timer enablement packet:
+  `docs/templates/tushare_news_backup_timer_enablement_packet.md`
 
 Keep the homepage read-only on `/ui/news/choice-events/latest`; use
 `scripts/refresh_tushare_news_backup.py --dry-run` before any trusted operator
 refresh. The reserved ingest routes remain reserved and are not maintenance
-entry points.
+entry points. Before enabling any recurring timer, run the read-only
+`scripts/tushare_news_backup_timer_preflight.py --stage all` to review both
+pre-enable and post-enable gates in one report. A
+`blocked` verdict means an owner, scheduler, write-window, rollback, page
+evidence, or enablement-packet gate is still open. Use
+`scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` before
+creating the timer. After the first scheduled run, use
+`scripts/tushare_news_backup_timer_preflight.py --stage post-enable` to also
+require the timer evidence fields.

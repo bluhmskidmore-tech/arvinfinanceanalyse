@@ -93,6 +93,7 @@ export type PnlByBusinessInsightModel = {
   missingAdbCount: number;
   manualAdjustmentCount: number;
   formalUntracedCount: number;
+  formalUntracedDisplay: string;
   nextStep: string;
 };
 
@@ -342,6 +343,21 @@ function hasYtdBusinessActivity(row: PnlByBusinessYtdItem): boolean {
     (numeric(row.capital_gain) ?? 0) !== 0 ||
     (numeric(row.manual_adjustment) ?? 0) !== 0
   );
+}
+
+function buildFormalUntracedDisplay(formalResult: PnlByBusinessPayload | undefined): string {
+  const untracedCount = formalResult?.summary.untraced_pnl_row_count ?? 0;
+  if (untracedCount <= 0) {
+    return "0 条未追溯";
+  }
+  const untracedRows = (formalResult?.rows ?? [])
+    .filter((row) => row.balance_row_count <= 0 && row.pnl_row_count > 0)
+    .sort((a, b) => b.pnl_row_count - a.pnl_row_count)
+    .slice(0, 3);
+  if (!untracedRows.length) {
+    return `${untracedCount} 条未追溯`;
+  }
+  return untracedRows.map((row) => `${row.business_type_primary} ${row.pnl_row_count} 条`).join(" / ");
 }
 
 export function formatPnlQualityStatus(
@@ -702,6 +718,8 @@ function buildPnlByBusinessInsight(input: {
 
   if (input.viewMode === "formal") {
     const topFormalValue = input.topFormalRow?.total_pnl;
+    const formalUntracedCount = input.formalResult?.summary.untraced_pnl_row_count ?? 0;
+    const formalUntracedDisplay = buildFormalUntracedDisplay(input.formalResult);
     return {
       confidenceLabel: isWarning ? "预警/降级" : "仅对账",
       totalPnlDisplay: formatYuanAsWanUnit(input.formalResult?.summary.total_pnl),
@@ -714,8 +732,12 @@ function buildPnlByBusinessInsight(input: {
       ftpAvailable: false,
       missingAdbCount: 0,
       manualAdjustmentCount: 0,
-      formalUntracedCount: input.formalResult?.summary.untraced_pnl_row_count ?? 0,
-      nextStep: "用于对账证据和未追溯行排查，不作为业务贡献主分析。",
+      formalUntracedCount,
+      formalUntracedDisplay,
+      nextStep:
+        formalUntracedCount > 0
+          ? `用于对账证据和未追溯行排查，不作为业务贡献主分析。优先核对：${formalUntracedDisplay}。`
+          : "用于对账证据，不作为业务贡献主分析；当前无未追溯行。",
     };
   }
 
@@ -734,6 +756,7 @@ function buildPnlByBusinessInsight(input: {
       missingAdbCount: 0,
       manualAdjustmentCount: 0,
       formalUntracedCount: 0,
+      formalUntracedDisplay: "不与月报/YTD 混加",
       nextStep: "先看当月贡献，再切到年累计核对趋势与 FTP 后收益。",
     };
   }
@@ -770,6 +793,7 @@ function buildPnlByBusinessInsight(input: {
     missingAdbCount,
     manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
     formalUntracedCount: 0,
+    formalUntracedDisplay: "不与月报/YTD 混加",
     nextStep: ftpAvailable
       ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
       : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",

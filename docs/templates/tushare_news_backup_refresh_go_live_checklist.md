@@ -11,6 +11,8 @@ open reserved routes, or approve scheduler platform changes by itself.
 - Refresh entry point: `scripts/refresh_tushare_news_backup.py`.
 - Scheduler handoff:
   `docs/templates/tushare_news_backup_refresh_scheduler_handoff.md`.
+- Timer enablement packet:
+  `docs/templates/tushare_news_backup_timer_enablement_packet.md`.
 
 ## Owners
 
@@ -122,6 +124,9 @@ Acceptance:
 
 After landed rows are verified, open the homepage and record:
 
+Current controlled local page evidence for the first refresh is recorded in
+`docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md`.
+
 - Page timestamp: `<timestamp>`
 - Visible source/status label: `<value>`
 - Visible headline source: `<Choice/Tushare>`
@@ -146,6 +151,14 @@ Do not enable the timer unless all of these are true:
 - Post-run dry-run evidence is attached.
 - Page evidence is attached.
 - Rollback owner is assigned.
+- `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable`
+  returns `pass`.
+
+For a combined read-only review of pre-enable and post-enable gates, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all
+```
 
 Decision:
 
@@ -153,6 +166,18 @@ Decision:
 - Enabled by: `<team/person>`
 - Enabled at: `<timestamp>`
 - Timer evidence: `<scheduler screenshot/log/config link>`
+- Timer enablement packet: `<filled packet path/link>`
+
+After the first scheduled run, record the timer evidence above and rerun:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
+```
+
+Update the go-live evidence bundle so it no longer says `not enabled`:
+
+- External timer enablement: enabled
+- Timer evidence in go-live bundle: `<scheduler screenshot/log/config link>`
 
 ## Rollback
 

@@ -402,6 +402,39 @@ function limitConfigStatusPayload(
     configured_accounting_classes: ["OCI"],
     missing_accounting_classes: ["AC", "TPL", "all"],
     invalid_accounting_classes: [],
+    missing_business_fields_by_class: {
+      AC: [
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+      ],
+      TPL: [
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+      ],
+      all: [
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+      ],
+    },
+    review_package_command:
+      "python -m backend.app.tasks.bond_dv01_limit_config_import --review-package-dir .tmp\\bond_dv01_limit_config_review_package --report-date 2026-03-31",
+    dry_run_command:
+      "python -m backend.app.tasks.bond_dv01_limit_config_import --config-path .tmp\\bond_dv01_limit_config_review_package\\bond_dv01_limit_config_review_2026-03-31.csv --report-date 2026-03-31 --dry-run",
     rows: [
       {
         accounting_class: "AC",
@@ -682,6 +715,61 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("验收说明");
     expect(panel).toHaveTextContent("下一步动作");
     expect(panel).toHaveTextContent("limit_effective_date");
+    expect(panel).toHaveTextContent("missing_business_fields_by_class");
+    expect(panel).toHaveTextContent("AC: limit_dv01");
+    expect(panel).toHaveTextContent("review_package_command");
+    expect(panel).toHaveTextContent("--review-package-dir");
+    expect(panel).toHaveTextContent("dry_run_command");
+    expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31.csv");
+    expect(panel).toHaveTextContent("--dry-run");
+  });
+
+  it("renders fallback business review commands for legacy DV01 limit status payloads", async () => {
+    const getDv01Risk = vi.fn(async () => ({
+      result_meta: resultMeta(),
+      result: payload(),
+    }));
+    const {
+      acceptance_status: _acceptanceStatus,
+      acceptance_message: _acceptanceMessage,
+      next_action: _nextAction,
+      configured_accounting_classes: _configuredAccountingClasses,
+      missing_business_fields_by_class: _missingBusinessFieldsByClass,
+      review_package_command: _reviewPackageCommand,
+      dry_run_command: _dryRunCommand,
+      ...legacyLimitStatus
+    } = limitConfigStatusPayload({
+      configured_count: 0,
+      missing_count: 4,
+      missing_accounting_classes: ["AC", "OCI", "TPL", "all"],
+      rows: ["AC", "OCI", "TPL", "all"].map((accountingClass) => ({
+        accounting_class: accountingClass,
+        status: "missing" as const,
+        limit_dv01: dv01(0),
+        warning_dv01: dv01(0),
+        hedge_target_dv01: dv01(0),
+        limit_source: "unconfigured",
+        limit_source_version: "unconfigured",
+        limit_rule_version: "unconfigured",
+        limit_effective_date: null,
+        message: "未找到正式 DV01 限额配置。",
+      })),
+    });
+    const getDv01LimitConfigStatus = vi.fn(async () => ({
+      result_meta: limitConfigStatusMeta(),
+      result: legacyLimitStatus as unknown as DV01LimitConfigStatusPayload,
+    }));
+
+    renderView(getDv01Risk, undefined, undefined, undefined, getDv01LimitConfigStatus);
+
+    const panel = await screen.findByTestId("dv01-limit-config-status-panel");
+    expect(panel).toHaveTextContent("未通过");
+    expect(panel).toHaveTextContent("AC: accounting_class");
+    expect(panel).toHaveTextContent("review_package_command");
+    expect(panel).toHaveTextContent("--review-package-dir");
+    expect(panel).toHaveTextContent("dry_run_command");
+    expect(panel).toHaveTextContent("bond_dv01_limit_config_review_2026-03-31.csv");
+    expect(panel).toHaveTextContent("--dry-run");
   });
 
   it("renders DV01 formal limit acceptance as ready when all classes are configured", async () => {
@@ -702,6 +790,9 @@ describe("DV01RiskView", () => {
         configured_accounting_classes: ["AC", "OCI", "TPL", "all"],
         missing_accounting_classes: [],
         invalid_accounting_classes: [],
+        missing_business_fields_by_class: {},
+        review_package_command: "",
+        dry_run_command: "",
         warnings: [],
         rows: ["AC", "OCI", "TPL", "all"].map((accountingClass) => ({
           accounting_class: accountingClass,

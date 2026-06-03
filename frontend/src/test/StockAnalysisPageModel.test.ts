@@ -2229,6 +2229,16 @@ describe("stockAnalysisPageModel", () => {
     expect(copy).not.toContain("待成熟");
   });
 
+  it("localizes unknown vendor code-only diagnostics as pending explanation copy", () => {
+    const copy = localizeStockBackendText(
+      "vendor_quality_signal_pending",
+      "external_vendor_quality_signal",
+    );
+
+    expect(copy).toBe("说明待确认");
+    expect(copy).not.toContain("vendor_quality_signal_pending");
+  });
+
   it("localizes strategy sample and observation-only backend reasons", () => {
     const insufficient = localizeStockBackendText(
       "Current market sample is insufficient: T+5 available 6/20, observation only.",

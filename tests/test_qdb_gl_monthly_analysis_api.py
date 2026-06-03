@@ -1,18 +1,58 @@
 from __future__ import annotations
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
 
 
-def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
-    sqlite_path = tmp_path / "auth-scope.db"
+QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-read-user", "X-User-Role": "viewer"}
+
+_QDB_GL_MONTHLY_ANALYSIS_READ_CASES: tuple[tuple[str, dict[str, str]], ...] = (
+    ("/ui/qdb-gl-monthly-analysis/dates", {}),
+    ("/ui/qdb-gl-monthly-analysis/workbook", {"report_month": "202602"}),
+    ("/ui/qdb-gl-monthly-analysis/workbook/export", {"report_month": "202602"}),
+    ("/ui/qdb-gl-monthly-analysis/refresh-status", {"run_id": "qdb-gl-run"}),
+    ("/ui/qdb-gl-monthly-analysis/scenario", {"report_month": "202602", "scenario_name": "threshold-stress"}),
+    ("/ui/qdb-gl-monthly-analysis/manual-adjustments", {"report_month": "202602"}),
+    ("/ui/qdb-gl-monthly-analysis/manual-adjustments/export", {"report_month": "202602"}),
+)
+
+
+def _qdb_scope_repo(tmp_path, monkeypatch) -> UserScopeRepository:
+    sqlite_path = tmp_path / "qdb-gl-monthly-analysis-auth-scope.db"
     dsn = f"sqlite:///{sqlite_path.as_posix()}"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
-    UserScopeRepository(dsn).grant_scope(
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(dsn)
+
+
+def _grant_qdb_read(tmp_path, monkeypatch) -> None:
+    _qdb_scope_repo(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="qdb_gl_monthly_analysis",
+        action="read",
+    )
+
+
+def _grant_qdb_refresh(tmp_path, monkeypatch) -> None:
+    _qdb_scope_repo(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="qdb_gl_monthly_analysis",
+        action="refresh",
+    )
+
+
+def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
+    _qdb_scope_repo(tmp_path, monkeypatch).grant_scope(
         user_id="*",
         role=None,
         resource="qdb_gl_monthly_analysis.adjustment",
@@ -20,11 +60,78 @@ def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
     )
 
 
+def test_qdb_gl_monthly_analysis_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.qdb_gl_monthly_analysis",
+        "backend/app/api/routes/qdb_gl_monthly_analysis.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "qdb_gl_monthly_analysis_dates_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "qdb-gl-monthly-analysis.dates"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "qdb_gl_monthly_analysis_workbook_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "qdb-gl-monthly-analysis.workbook"}, "result": {}},
+    )
+    monkeypatch.setattr(route_module, "export_qdb_gl_monthly_analysis_workbook_xlsx", lambda **_kwargs: ("qdb.xlsx", b"x"))
+    monkeypatch.setattr(route_module, "qdb_gl_monthly_analysis_refresh_status", lambda **_kwargs: {"run_id": "qdb-gl-run"})
+    monkeypatch.setattr(
+        route_module,
+        "qdb_gl_monthly_analysis_scenario_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "qdb-gl-monthly-analysis.scenario"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "list_qdb_gl_monthly_analysis_manual_adjustments",
+        lambda **_kwargs: {"adjustment_count": 0, "adjustments": []},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "export_qdb_gl_monthly_analysis_manual_adjustments_csv",
+        lambda **_kwargs: ("qdb-adjustments.csv", b""),
+    )
+    _qdb_scope_repo(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path, params in _QDB_GL_MONTHLY_ANALYSIS_READ_CASES:
+        response = client.get(path, params=params or None, headers=QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_qdb_gl_monthly_analysis_refresh_requires_explicit_refresh_scope(tmp_path, monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.qdb_gl_monthly_analysis",
+        "backend/app/api/routes/qdb_gl_monthly_analysis.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "refresh_qdb_gl_monthly_analysis",
+        lambda **_kwargs: {"status": "queued", "run_id": "qdb-gl-run"},
+    )
+    _qdb_scope_repo(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/ui/qdb-gl-monthly-analysis/refresh",
+        params={"report_month": "202602"},
+        headers=QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS,
+    )
+
+    assert response.status_code == 403
+
+
 def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     get_settings.cache_clear()
 
@@ -76,6 +183,7 @@ def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists
     _write_month_pair(source_dir, "202601")
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     get_settings.cache_clear()
 
@@ -127,6 +235,7 @@ def test_api_returns_404_for_missing_report_month(tmp_path, monkeypatch):
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     get_settings.cache_clear()
 
@@ -150,6 +259,8 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
+    _grant_qdb_refresh(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
@@ -193,6 +304,7 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
 
 def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
+    _grant_qdb_read(tmp_path, monkeypatch)
     _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
@@ -234,6 +346,7 @@ def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monke
 
 def test_api_rejects_invalid_manual_adjustment_payload(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
+    _grant_qdb_read(tmp_path, monkeypatch)
     _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
@@ -270,6 +383,7 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
@@ -325,6 +439,7 @@ def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
@@ -371,6 +486,7 @@ def test_api_workbook_rebuild_applies_approved_mapping_adjustments(tmp_path, mon
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))

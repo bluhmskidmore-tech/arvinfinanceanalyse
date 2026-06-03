@@ -1025,6 +1025,26 @@ def test_bond_analytics_dv01_limit_config_status_reports_ready_missing_and_inval
     assert "limit_source_version" in result["required_fields"]
     assert result["missing_accounting_classes"] == ["AC", "all"]
     assert result["invalid_accounting_classes"] == ["TPL"]
+    expected_business_fields = [
+        "limit_dv01",
+        "warning_dv01",
+        "hedge_target_dv01",
+        "limit_source",
+        "limit_source_version",
+        "limit_rule_version",
+        "limit_effective_date",
+    ]
+    assert result["missing_business_fields_by_class"]["AC"] == expected_business_fields
+    assert result["missing_business_fields_by_class"]["all"] == expected_business_fields
+    assert result["review_package_command"].startswith(
+        "python -m backend.app.tasks.bond_dv01_limit_config_import --review-package-dir"
+    )
+    assert "--report-date 2026-03-31" in result["review_package_command"]
+    assert result["dry_run_command"].startswith(
+        "python -m backend.app.tasks.bond_dv01_limit_config_import --config-path"
+    )
+    assert "bond_dv01_limit_config_review_2026-03-31.csv" in result["dry_run_command"]
+    assert "--dry-run" in result["dry_run_command"]
     assert "AC, all" in result["acceptance_message"]
     assert "TPL" in result["acceptance_message"]
     assert "bond_dv01_limit_config" in result["next_action"]
@@ -1072,6 +1092,9 @@ def test_bond_analytics_dv01_limit_config_status_acceptance_requires_direct_clas
     assert result["configured_accounting_classes"] == ["AC", "OCI", "TPL", "all"]
     assert result["missing_accounting_classes"] == []
     assert result["invalid_accounting_classes"] == []
+    assert result["missing_business_fields_by_class"] == {}
+    assert result["review_package_command"] == ""
+    assert result["dry_run_command"] == ""
     assert result["acceptance_message"] == "正式 DV01 限额配置验收通过。"
     assert result["next_action"] == "无需补充配置；动作计划将按正式限额口径计算。"
     assert result["warnings"] == []

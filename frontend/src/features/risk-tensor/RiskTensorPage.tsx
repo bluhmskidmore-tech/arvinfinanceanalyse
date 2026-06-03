@@ -572,6 +572,11 @@ export default function RiskTensorPage() {
   const [combinedQualityRequestCopyStatus, setCombinedQualityRequestCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -625,6 +630,10 @@ export default function RiskTensorPage() {
     result.bond_count === 0;
   const tensorErrorStatusCode = errorStatusCode(tensorQuery.error);
   const datesErrorStatusCode = errorStatusCode(datesQuery.error);
+  const tensorErrorReportDate = reportDate || explicitReportDate || "未选择";
+  const datesErrorReportDate = explicitReportDate || "未选择";
+  const datesGovernanceMeta = datesQuery.data?.result_meta;
+  const datesEmptyTraceId = datesGovernanceMeta?.trace_id ?? "未提供";
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -952,6 +961,131 @@ export default function RiskTensorPage() {
       : combinedQualityRequestCopyStatus === "failed"
         ? "复制失败，请手动选择完整补证包"
         : "";
+  const tensorErrorCopyText = [
+    "风险张量主读面加载失败排查信息",
+    `报告日 ${tensorErrorReportDate}`,
+    `HTTP 状态 ${tensorErrorStatusCode || "未知"}`,
+    `日期治理 trace_id ${datesGovernanceMeta?.trace_id ?? "未提供"}`,
+    `basis ${datesGovernanceMeta?.basis ?? "未提供"}`,
+    `cache_version ${datesGovernanceMeta?.cache_version ?? "未提供"}`,
+    `generated_at ${datesGovernanceMeta?.generated_at ?? "未提供"}`,
+    `source_version ${datesGovernanceMeta?.source_version ?? "未提供"}`,
+    `rule_version ${datesGovernanceMeta?.rule_version ?? "未提供"}`,
+    "主读面 trace_id 未提供",
+    "请先核对正式风险张量物化和 lineage 新鲜度",
+    "页面不会使用缓存或前端补算替代正式主读结果",
+  ].join("\n");
+  const tensorErrorCopyMessage =
+    tensorErrorCopyStatus === "copied"
+      ? "已复制排查信息"
+      : tensorErrorCopyStatus === "failed"
+        ? "复制失败，请手动选择排查信息"
+        : "";
+  const blockedDateCopyText = [
+    "风险张量报告日拦截排查信息",
+    `报告日 ${selectedBlockedReportDate?.report_date ?? (explicitReportDate || "未选择")}`,
+    `reason ${selectedBlockedReportDate?.reason || "后端未返回原因"}`,
+    `日期治理 trace_id ${datesGovernanceMeta?.trace_id ?? "未提供"}`,
+    "主读面未读取",
+    "请切换到可用报告日",
+  ].join("\n");
+  const blockedDateCopyMessage =
+    blockedDateCopyStatus === "copied"
+      ? "已复制拦截信息"
+      : blockedDateCopyStatus === "failed"
+        ? "复制失败，请手动选择拦截信息"
+        : "";
+  const datesErrorCopyText = [
+    "风险张量报告日列表加载失败排查信息",
+    `HTTP 状态 ${datesErrorStatusCode || "未知"}`,
+    "请求 /api/risk/tensor/dates",
+    `报告日参数 ${datesErrorReportDate}`,
+    "页面不会回退到硬编码报告日",
+    "主读面未读取",
+    "请核对风险张量报告日物化任务和日期治理接口",
+  ].join("\n");
+  const datesErrorCopyMessage =
+    datesErrorCopyStatus === "copied"
+      ? "已复制日期排查信息"
+      : datesErrorCopyStatus === "failed"
+        ? "复制失败，请手动选择日期排查信息"
+        : "";
+  const datesEmptyCopyText = [
+    "风险张量报告日列表为空排查信息",
+    `trace_id ${datesEmptyTraceId}`,
+    "可用报告日 0 个",
+    `报告日参数 ${datesErrorReportDate}`,
+    "页面不会回退到硬编码报告日",
+    "主读面未读取",
+    "请核对风险张量报告日物化任务和日期治理结果",
+  ].join("\n");
+  const datesEmptyCopyMessage =
+    datesEmptyCopyStatus === "copied"
+      ? "已复制空日期排查信息"
+      : datesEmptyCopyStatus === "failed"
+        ? "复制失败，请手动选择空日期排查信息"
+        : "";
+  const emptyPositionCopyText = [
+    "风险张量空持仓排查信息",
+    `报告日 ${result?.report_date ?? (reportDate || "未选择")}`,
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `bond_count ${result?.bond_count ?? "未提供"}`,
+    `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
+    `evidence_rows ${typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"}`,
+    `tables_used ${metadataTablesUsed || "未提供"}`,
+    `filters_applied ${metadataFiltersApplied || "未提供"}`,
+    "页面不会在前端补算正式指标",
+    "请核对持仓快照、风险张量物化任务和元数据证据",
+  ].join("\n");
+  const emptyPositionCopyMessage =
+    emptyPositionCopyStatus === "copied"
+      ? "已复制空持仓排查信息"
+      : emptyPositionCopyStatus === "failed"
+        ? "复制失败，请手动选择空持仓排查信息"
+        : "";
+
+  useEffect(() => {
+    setTensorErrorCopyStatus("idle");
+  }, [
+    tensorErrorReportDate,
+    tensorErrorStatusCode,
+    datesGovernanceMeta?.trace_id,
+    datesGovernanceMeta?.basis,
+    datesGovernanceMeta?.cache_version,
+    datesGovernanceMeta?.generated_at,
+    datesGovernanceMeta?.source_version,
+    datesGovernanceMeta?.rule_version,
+  ]);
+
+  useEffect(() => {
+    setBlockedDateCopyStatus("idle");
+  }, [
+    selectedBlockedReportDate?.report_date,
+    selectedBlockedReportDate?.reason,
+    explicitReportDate,
+    datesGovernanceMeta?.trace_id,
+  ]);
+
+  useEffect(() => {
+    setDatesErrorCopyStatus("idle");
+  }, [datesErrorReportDate, datesErrorStatusCode]);
+
+  useEffect(() => {
+    setDatesEmptyCopyStatus("idle");
+  }, [datesEmptyTraceId, datesErrorReportDate]);
+
+  useEffect(() => {
+    setEmptyPositionCopyStatus("idle");
+  }, [
+    result?.report_date,
+    result?.bond_count,
+    result?.quality_flag,
+    tensorMeta?.trace_id,
+    tensorMeta?.quality_flag,
+    tensorMeta?.evidence_rows,
+    metadataTablesUsed,
+    metadataFiltersApplied,
+  ]);
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
@@ -1057,6 +1191,61 @@ export default function RiskTensorPage() {
       .writeText(qualityEvidenceReviewRecordCopyText)
       .then(() => setQualityEvidenceReviewRecordCopyStatus("copied"))
       .catch(() => setQualityEvidenceReviewRecordCopyStatus("failed"));
+  };
+
+  const handleCopyTensorError = () => {
+    if (!navigator.clipboard?.writeText) {
+      setTensorErrorCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(tensorErrorCopyText)
+      .then(() => setTensorErrorCopyStatus("copied"))
+      .catch(() => setTensorErrorCopyStatus("failed"));
+  };
+
+  const handleCopyBlockedDate = () => {
+    if (!navigator.clipboard?.writeText) {
+      setBlockedDateCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(blockedDateCopyText)
+      .then(() => setBlockedDateCopyStatus("copied"))
+      .catch(() => setBlockedDateCopyStatus("failed"));
+  };
+
+  const handleCopyDatesError = () => {
+    if (!navigator.clipboard?.writeText) {
+      setDatesErrorCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(datesErrorCopyText)
+      .then(() => setDatesErrorCopyStatus("copied"))
+      .catch(() => setDatesErrorCopyStatus("failed"));
+  };
+
+  const handleCopyDatesEmpty = () => {
+    if (!navigator.clipboard?.writeText) {
+      setDatesEmptyCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(datesEmptyCopyText)
+      .then(() => setDatesEmptyCopyStatus("copied"))
+      .catch(() => setDatesEmptyCopyStatus("failed"));
+  };
+
+  const handleCopyEmptyPosition = () => {
+    if (!navigator.clipboard?.writeText) {
+      setEmptyPositionCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(emptyPositionCopyText)
+      .then(() => setEmptyPositionCopyStatus("copied"))
+      .catch(() => setEmptyPositionCopyStatus("failed"));
   };
 
   const handleKrdChartClick = (params: KrdChartClickParams) => {
@@ -1251,16 +1440,74 @@ export default function RiskTensorPage() {
             {selectedBlockedReportDate.reason || "后端未返回原因"}。trace_id{" "}
             {datesQuery.data?.result_meta.trace_id ?? "未提供"}。主读面未读取；请切换到可用报告日。
           </span>
+          <div className="risk-tensor-quality-detail__trace-actions">
+            <button
+              type="button"
+              className="risk-tensor-quality-detail__trace-action"
+              onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+            >
+              定位元数据
+            </button>
+            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyBlockedDate}>
+              复制拦截信息
+            </button>
+          </div>
+          {blockedDateCopyMessage ? (
+            <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+              {blockedDateCopyMessage}
+            </small>
+          ) : null}
+          {blockedDateCopyStatus === "failed" ? (
+            <pre
+              className="risk-tensor-quality-detail__manual-copy"
+              data-testid="risk-tensor-blocked-date-manual-copy"
+              tabIndex={0}
+            >
+              {blockedDateCopyText}
+            </pre>
+          ) : null}
         </div>
       ) : tensorQuery.isError ? (
         <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
           <strong>{riskTensorErrorMessage(tensorErrorStatusCode)}</strong>
           <span>
-            报告日 {reportDate || explicitReportDate || "未选择"}；HTTP 状态{" "}
+            报告日 {tensorErrorReportDate}；HTTP 状态{" "}
             {tensorErrorStatusCode || "未知"}。日期治理 trace_id{" "}
-            {datesQuery.data?.result_meta.trace_id ?? "未提供"}；主读面 trace_id 未提供。请先核对正式风险张量物化和
+            {datesGovernanceMeta?.trace_id ?? "未提供"}；主读面 trace_id 未提供。请先核对正式风险张量物化和
             lineage 新鲜度；页面不会使用缓存或前端补算替代正式主读结果。
           </span>
+          <span>
+            日期治理元数据：basis {datesGovernanceMeta?.basis ?? "未提供"}；cache_version{" "}
+            {datesGovernanceMeta?.cache_version ?? "未提供"}；generated_at{" "}
+            {datesGovernanceMeta?.generated_at ?? "未提供"}；source_version{" "}
+            {datesGovernanceMeta?.source_version ?? "未提供"}；rule_version {datesGovernanceMeta?.rule_version ?? "未提供"}。
+          </span>
+          <div className="risk-tensor-quality-detail__trace-actions">
+            <button
+              type="button"
+              className="risk-tensor-quality-detail__trace-action"
+              onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+            >
+              定位元数据
+            </button>
+            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyTensorError}>
+              复制排查信息
+            </button>
+          </div>
+          {tensorErrorCopyMessage ? (
+            <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+              {tensorErrorCopyMessage}
+            </small>
+          ) : null}
+          {tensorErrorCopyStatus === "failed" ? (
+            <pre
+              className="risk-tensor-quality-detail__manual-copy"
+              data-testid="risk-tensor-error-manual-copy"
+              tabIndex={0}
+            >
+              {tensorErrorCopyText}
+            </pre>
+          ) : null}
         </div>
       ) : datesBlockingError ? (
         <div className="risk-tensor-error-context" data-testid="risk-tensor-error-context">
@@ -1268,6 +1515,25 @@ export default function RiskTensorPage() {
           <span>
             HTTP 状态 {datesErrorStatusCode || "未知"}。页面不会回退到硬编码报告日。
           </span>
+          <div className="risk-tensor-quality-detail__trace-actions">
+            <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyDatesError}>
+              复制日期排查信息
+            </button>
+          </div>
+          {datesErrorCopyMessage ? (
+            <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+              {datesErrorCopyMessage}
+            </small>
+          ) : null}
+          {datesErrorCopyStatus === "failed" ? (
+            <pre
+              className="risk-tensor-quality-detail__manual-copy"
+              data-testid="risk-tensor-dates-error-manual-copy"
+              tabIndex={0}
+            >
+              {datesErrorCopyText}
+            </pre>
+          ) : null}
         </div>
       ) : null}
 
@@ -1286,9 +1552,35 @@ export default function RiskTensorPage() {
         {datesEmpty ? (
           <div className="risk-tensor-empty-state" data-testid="risk-tensor-dates-empty-state">
             <strong>后端未返回可用风险报告日</strong>
-            <span>trace_id {datesQuery.data?.result_meta.trace_id ?? "未提供"}</span>
+            <span>trace_id {datesEmptyTraceId}</span>
             <span>可用报告日 0 个</span>
             <p>页面不会回退到硬编码报告日；请核对风险张量报告日物化任务和日期治理结果。</p>
+            <div className="risk-tensor-quality-detail__trace-actions">
+              <button
+                type="button"
+                className="risk-tensor-quality-detail__trace-action"
+                onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+              >
+                定位元数据
+              </button>
+              <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyDatesEmpty}>
+                复制空日期排查信息
+              </button>
+            </div>
+            {datesEmptyCopyMessage ? (
+              <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                {datesEmptyCopyMessage}
+              </small>
+            ) : null}
+            {datesEmptyCopyStatus === "failed" ? (
+              <pre
+                className="risk-tensor-quality-detail__manual-copy"
+                data-testid="risk-tensor-dates-empty-manual-copy"
+                tabIndex={0}
+              >
+                {datesEmptyCopyText}
+              </pre>
+            ) : null}
           </div>
         ) : isEmpty && result ? (
           <div className="risk-tensor-empty-state" data-testid="risk-tensor-empty-state">
@@ -1298,6 +1590,36 @@ export default function RiskTensorPage() {
             <span>质量标记：{qualityFlagLabel(result.quality_flag)}</span>
             <span>{qualityTraceMetadataDetail}</span>
             <p>后端返回 bond_count 为 0，页面不会在前端补算正式指标；请核对持仓快照、风险张量物化任务和元数据证据。</p>
+            <div className="risk-tensor-quality-detail__trace-actions">
+              <button
+                type="button"
+                className="risk-tensor-quality-detail__trace-action"
+                onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+              >
+                定位元数据
+              </button>
+              <button
+                type="button"
+                className="risk-tensor-quality-detail__trace-action"
+                onClick={handleCopyEmptyPosition}
+              >
+                复制空持仓排查信息
+              </button>
+            </div>
+            {emptyPositionCopyMessage ? (
+              <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                {emptyPositionCopyMessage}
+              </small>
+            ) : null}
+            {emptyPositionCopyStatus === "failed" ? (
+              <pre
+                className="risk-tensor-quality-detail__manual-copy"
+                data-testid="risk-tensor-empty-position-manual-copy"
+                tabIndex={0}
+              >
+                {emptyPositionCopyText}
+              </pre>
+            ) : null}
           </div>
         ) : result ? (
           <>

@@ -453,11 +453,18 @@ def _configure_ledger_import_env(tmp_path, monkeypatch) -> Path:
     get_settings.cache_clear()
     from backend.app.repositories.user_scope_repo import UserScopeRepository
 
-    UserScopeRepository(f"sqlite:///{auth_scope_path.as_posix()}").grant_scope(
+    repo = UserScopeRepository(f"sqlite:///{auth_scope_path.as_posix()}")
+    repo.grant_scope(
         user_id="*",
         role=None,
         resource="ledger.data",
         action="import",
+    )
+    repo.grant_scope(
+        user_id="*",
+        role=None,
+        resource="ledger.data",
+        action="read",
     )
     return duckdb_path
 

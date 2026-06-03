@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import duckdb
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
 from tests.test_bond_analytics_service import _configure_and_materialize
@@ -16,10 +20,70 @@ from tests.test_risk_tensor_service import (
 )
 
 
+RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
+
+
+def _risk_tensor_scope_repo(tmp_path: Path, monkeypatch) -> UserScopeRepository:
+    sqlite_path = tmp_path / "risk-tensor-read-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(dsn)
+
+
+def _grant_risk_tensor_read(tmp_path: Path, monkeypatch) -> None:
+    _risk_tensor_scope_repo(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="risk_tensor",
+        action="read",
+    )
+
+
+def _risk_tensor_client(tmp_path: Path, monkeypatch, *, raise_server_exceptions: bool = True) -> TestClient:
+    _grant_risk_tensor_read(tmp_path, monkeypatch)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=raise_server_exceptions,
+    )
+    client.headers.update(RISK_TENSOR_READ_HEADERS)
+    return client
+
+
+def test_risk_tensor_read_surfaces_require_explicit_read_scope(tmp_path: Path, monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.risk_tensor",
+        "backend/app/api/routes/risk_tensor.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "risk_tensor_dates_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "risk.tensor.dates"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "risk_tensor_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "risk.tensor"}, "result": {}},
+    )
+    _risk_tensor_scope_repo(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path, params in (
+        ("/api/risk/tensor/dates", {}),
+        ("/api/risk/tensor", {"report_date": REPORT_DATE}),
+    ):
+        response = client.get(path, params=params or None, headers=RISK_TENSOR_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
 def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _risk_tensor_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": REPORT_DATE},
@@ -54,7 +118,7 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
 def test_risk_tensor_api_returns_available_report_dates(tmp_path, monkeypatch):
     _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _risk_tensor_client(tmp_path, monkeypatch)
     response = client.get("/api/risk/tensor/dates")
 
     assert response.status_code == 200
@@ -70,10 +134,7 @@ def test_risk_tensor_api_returns_available_report_dates(tmp_path, monkeypatch):
 def test_risk_tensor_api_returns_404_for_absent_report_date(tmp_path, monkeypatch):
     _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
 
-    client = TestClient(
-        load_module("backend.app.main", "backend/app/main.py").app,
-        raise_server_exceptions=False,
-    )
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": "2026-04-30"},
@@ -88,10 +149,7 @@ def test_risk_tensor_api_returns_404_for_absent_report_date(tmp_path, monkeypatc
 def test_risk_tensor_api_returns_503_when_upstream_exists_but_downstream_fact_is_missing(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
 
-    client = TestClient(
-        load_module("backend.app.main", "backend/app/main.py").app,
-        raise_server_exceptions=False,
-    )
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": REPORT_DATE},
@@ -130,10 +188,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
         governance_dir=str(governance_dir),
     )
 
-    client = TestClient(
-        load_module("backend.app.main", "backend/app/main.py").app,
-        raise_server_exceptions=False,
-    )
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": REPORT_DATE},
@@ -148,7 +203,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
 def test_risk_tensor_api_returns_non_empty_degraded_tensor_when_materialized_snapshot_rows_are_partial(tmp_path, monkeypatch):
     _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _risk_tensor_client(tmp_path, monkeypatch)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": REPORT_DATE},
@@ -183,10 +238,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
     finally:
         conn.close()
 
-    client = TestClient(
-        load_module("backend.app.main", "backend/app/main.py").app,
-        raise_server_exceptions=False,
-    )
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": REPORT_DATE},
@@ -215,10 +267,7 @@ def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer
     finally:
         conn.close()
 
-    client = TestClient(
-        load_module("backend.app.main", "backend/app/main.py").app,
-        raise_server_exceptions=False,
-    )
+    client = _risk_tensor_client(tmp_path, monkeypatch, raise_server_exceptions=False)
     response = client.get(
         "/api/risk/tensor",
         params={"report_date": REPORT_DATE},

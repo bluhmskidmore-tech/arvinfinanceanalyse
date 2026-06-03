@@ -35,12 +35,28 @@ def test_bond_dv01_limit_config_runbook_documents_acceptance_flow():
 
     assert "docs/templates/bond_dv01_limit_config_template.csv" in runbook
     assert "backend.app.tasks.bond_dv01_limit_config_import" in runbook
+    assert "hedge_target_dv01 <= warning_dv01 <= limit_dv01" in runbook
     assert "--reference-baseline" in runbook
     assert "--reference-baseline-csv" in runbook
+    assert "--review-package-dir" in runbook
+    assert "review_package_written" in runbook
     assert "business_limit_fields_blank" in runbook
+    assert "business_review_instruction" in runbook
+    assert "validation_instruction" in runbook
     assert "--write-template" in runbook
     assert "--check-status" in runbook
     assert "--dry-run" in runbook
+    assert "import_readiness_status" in runbook
+    assert "ready_for_import" in runbook
+    assert "review those rows" in runbook
+    assert "ignored_input_fields" in runbook
+    assert "missing_business_fields_by_class" in runbook
+    assert "limit_utilization_preview" in runbook
+    assert "limit_utilization_preview.summary" in runbook
+    assert "highest_severity_status" in runbook
+    assert "abs(current_total_dv01) / limit_dv01" in runbook
+    assert "threshold_status" in runbook
+    assert "hard_limit_breached" in runbook
     assert "/api/bond-analytics/dv01-limit-config-status" in runbook
     assert "acceptance_status" in runbook
     assert "AC / OCI / TPL / all" in runbook

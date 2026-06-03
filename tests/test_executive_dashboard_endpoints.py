@@ -13,7 +13,7 @@ from tests.helpers import load_module
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
 
 
-def _grant_executive_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> AuthContext:
+def _configure_executive_scope_store(tmp_path, monkeypatch):
     sqlite_path = tmp_path / "executive-read-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
@@ -22,7 +22,11 @@ def _grant_executive_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") ->
         "backend.app.repositories.user_scope_repo",
         "backend/app/repositories/user_scope_repo.py",
     )
-    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+    return repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+
+
+def _grant_executive_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> AuthContext:
+    _configure_executive_scope_store(tmp_path, monkeypatch).grant_scope(
         user_id=user_id,
         role=None,
         resource="executive",
@@ -70,9 +74,13 @@ def _client_with_stubbed_executive_services(monkeypatch, tmp_path=None, *, grant
         lambda report_date=None: _ok_payload("executive.pnl-attribution"),
     )
     monkeypatch.setattr(module, "home_snapshot_envelope", lambda **_kwargs: _ok_payload("home.snapshot"))
+    monkeypatch.setattr(module, "home_research_reports_envelope", lambda **_kwargs: _ok_payload("home.research_reports"))
+    monkeypatch.setattr(module, "home_income_trend_envelope", lambda **_kwargs: _ok_payload("home.income_trend"))
     app = FastAPI()
     app.include_router(module.router)
     client = TestClient(app)
+    if tmp_path is not None:
+        _configure_executive_scope_store(tmp_path, monkeypatch)
     if grant_read:
         if tmp_path is None:
             raise AssertionError("tmp_path is required when granting executive read scope")
@@ -121,7 +129,7 @@ def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch,
 
     for name in ("risk_overview", "alerts", "contribution"):
         with pytest.raises(HTTPException) as exc_info:
-            getattr(module, name)()
+            getattr(module, name)(auth=auth)
         assert exc_info.value.status_code == 503
 
 
@@ -129,6 +137,27 @@ def test_executive_overview_read_surface_requires_explicit_read_scope(tmp_path, 
     _module, client = _client_with_stubbed_executive_services(monkeypatch, tmp_path, grant_read=False)
 
     response = client.get("/ui/home/overview", headers=EXECUTIVE_READ_HEADERS)
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "path,params",
+    [
+        ("/ui/risk/overview", {}),
+        ("/ui/home/contribution", {}),
+        ("/ui/home/alerts", {}),
+        ("/ui/home/snapshot", {"report_date": "2025-11-20"}),
+        ("/ui/home/research-reports", {"report_date": "2025-11-20"}),
+        ("/ui/home/income-trend", {"report_date": "2025-11-20"}),
+    ],
+)
+def test_executive_remaining_read_surfaces_require_explicit_read_scope(
+    path, params, tmp_path, monkeypatch
+) -> None:
+    _module, client = _client_with_stubbed_executive_services(monkeypatch, tmp_path, grant_read=False)
+
+    response = client.get(path, params=params or None, headers=EXECUTIVE_READ_HEADERS)
 
     assert response.status_code == 403
 
@@ -166,6 +195,8 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
 
 def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailable(monkeypatch):
     module = _load_executive_routes_module()
+    auth = AuthContext(user_id="executive-read-user", role="viewer", identity_source="header")
+    monkeypatch.setattr(module, "_ensure_executive_read_allowed", lambda _auth: None)
 
     def _vendor_unavailable_payload(result_kind: str) -> dict[str, object]:
         return {
@@ -194,12 +225,14 @@ def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailabl
 
     for name in ("risk_overview", "contribution", "alerts"):
         with pytest.raises(HTTPException) as exc_info:
-            getattr(module, name)()
+            getattr(module, name)(auth=auth)
         assert exc_info.value.status_code == 503
 
 
 def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):
     module = _load_executive_routes_module()
+    auth = AuthContext(user_id="executive-read-user", role="viewer", identity_source="header")
+    monkeypatch.setattr(module, "_ensure_executive_read_allowed", lambda _auth: None)
 
     monkeypatch.setattr(
         module,
@@ -219,7 +252,7 @@ def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeyp
 
     for name in ("risk_overview", "contribution", "alerts"):
         with pytest.raises(HTTPException) as exc_info:
-            getattr(module, name)()
+            getattr(module, name)(auth=auth)
         assert exc_info.value.status_code == 503
 
 
@@ -252,7 +285,7 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch, tmp_p
 
     for name in ("risk_overview", "contribution", "alerts"):
         with pytest.raises(HTTPException) as exc_info:
-            getattr(module, name)(report_date="2025-11-20")
+            getattr(module, name)(auth=auth, report_date="2025-11-20")
         assert exc_info.value.status_code == 503
 
     assert calls == [

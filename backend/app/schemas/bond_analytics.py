@@ -1185,6 +1185,9 @@ class DV01LimitConfigStatusResponse(BaseModel):
     configured_accounting_classes: list[str] = Field(default_factory=list)
     missing_accounting_classes: list[str] = Field(default_factory=list)
     invalid_accounting_classes: list[str] = Field(default_factory=list)
+    missing_business_fields_by_class: dict[str, list[str]] = Field(default_factory=dict)
+    review_package_command: str = ""
+    dry_run_command: str = ""
     configured_count: int
     missing_count: int
     invalid_count: int

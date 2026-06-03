@@ -9,10 +9,37 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.news_warehouse_repo import ensure_news_warehouse_schema, upsert_news_event
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
 PREV_REPORT_DATE = "2026-03-30"
+READ_HEADERS = {"X-User-Id": "dashboard-home-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_read_scope(tmp_path, monkeypatch, *, resource: str) -> None:
+    sqlite_path = tmp_path / "auth-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource=resource,
+        action="read",
+    )
+
+
+def _authorized_client():
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update(READ_HEADERS)
+    return client
 
 
 def _make_bond_row(
@@ -116,7 +143,8 @@ def test_position_changes_endpoint_compares_adjacent_report_dates(tmp_path, monk
             ],
         )
 
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="bond_analytics")
+        client = _authorized_client()
         response = client.get(
             "/api/bond-analytics/position-changes",
             params={"report_date": REPORT_DATE, "top_n": 3},
@@ -173,7 +201,8 @@ def test_home_research_reports_endpoint_reads_research_news_only(tmp_path, monke
         conn.close()
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/research-reports",
             params={"report_date": REPORT_DATE, "limit": 5},
@@ -241,7 +270,8 @@ def test_home_research_reports_does_not_fallback_to_future_rows(
         conn.close()
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/research-reports",
             params={"report_date": REPORT_DATE, "limit": 5},
@@ -341,7 +371,8 @@ def test_home_income_trend_endpoint_reads_product_category_monthly_grand_total(t
     _seed_product_category_income_trend(duckdb_path)
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/income-trend",
             params={"report_date": REPORT_DATE, "window": 2},
@@ -406,7 +437,8 @@ def test_home_income_trend_endpoint_derives_cdb_benchmark_and_excess_pnl(tmp_pat
     monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/income-trend",
             params={"report_date": REPORT_DATE, "window": 2},
@@ -479,7 +511,8 @@ def test_home_income_trend_endpoint_accepts_bounded_cdb_curve_fallback(tmp_path,
     monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/income-trend",
             params={"report_date": REPORT_DATE, "window": 2},
@@ -528,7 +561,8 @@ def test_home_income_trend_endpoint_accepts_flat_numeric_benchmark_returns(tmp_p
     monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/income-trend",
             params={"report_date": REPORT_DATE, "window": 2},
@@ -589,7 +623,8 @@ def test_home_income_trend_endpoint_keeps_partial_when_cdb_curve_fallback_too_st
     monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/income-trend",
             params={"report_date": REPORT_DATE, "window": 2},
@@ -646,7 +681,8 @@ def test_home_income_trend_endpoint_keeps_partial_when_cdb_benchmark_missing(tmp
     monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
 
     try:
-        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        _grant_read_scope(tmp_path, monkeypatch, resource="executive")
+        client = _authorized_client()
         response = client.get(
             "/ui/home/income-trend",
             params={"report_date": REPORT_DATE, "window": 2},

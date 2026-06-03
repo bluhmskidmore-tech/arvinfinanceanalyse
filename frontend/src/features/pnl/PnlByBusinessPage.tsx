@@ -104,7 +104,7 @@ function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightM
         <div>
           <small>formal 对账</small>
           <strong>{insight.formalUntracedCount} 条未追溯</strong>
-          <span>不与月报/YTD 混加</span>
+          <span>{insight.formalUntracedDisplay}</span>
         </div>
       </div>
     </section>

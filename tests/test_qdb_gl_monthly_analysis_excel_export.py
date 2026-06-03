@@ -7,8 +7,27 @@ from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
+
+
+QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-export-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_qdb_read(tmp_path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "qdb-gl-monthly-analysis-export-read-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    UserScopeRepository(dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="qdb_gl_monthly_analysis",
+        action="read",
+    )
 
 
 def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
@@ -16,10 +35,12 @@ def test_export_returns_valid_xlsx_with_required_sheets(tmp_path, monkeypatch):
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     get_settings.cache_clear()
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update(QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS)
     response = client.get(
         "/ui/qdb-gl-monthly-analysis/workbook/export",
         params={"report_month": "202602"},
@@ -72,10 +93,12 @@ def test_export_includes_segment_scale_compare_sheet_when_history_exists(tmp_pat
     _write_month_pair(source_dir, "202601")
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_read(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     get_settings.cache_clear()
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update(QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS)
     response = client.get(
         "/ui/qdb-gl-monthly-analysis/workbook/export",
         params={"report_month": "202602"},

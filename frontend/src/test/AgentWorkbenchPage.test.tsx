@@ -500,6 +500,19 @@ describe("AgentWorkbenchPage", () => {
     });
     expect(await screen.findByText("Stock research ready.")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("Dexter");
+    expect(screen.getByText("研究上下文已返回 · 可以继续追问")).toBeInTheDocument();
+  });
+
+  it("cues research shortcut execution while the request is pending", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+
+    expect(screen.getByText("正在读取研究上下文 · 可继续输入下一句")).toBeInTheDocument();
   });
 
   it("cues retry after a research shortcut request fails", async () => {
@@ -589,6 +602,7 @@ describe("AgentWorkbenchPage", () => {
     expect(getAgentTurnStatus()).toHaveTextContent("Workflow 执行完成");
     expect(getAgentTurnStatus()).not.toHaveTextContent("Hermes 托管任务完成");
     expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo");
+    expect(screen.getByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
   });
 
   it("shows workflow-local pending copy before the Risk Memo workflow request resolves", async () => {
@@ -605,6 +619,7 @@ describe("AgentWorkbenchPage", () => {
     expect(status).toHaveTextContent("准备本地 workflow");
     expect(status).toHaveTextContent("本地 workflow 正在准备，本页会直接显示结果。");
     expect(status).not.toHaveTextContent("正在交给托管运行时");
+    expect(screen.getByText("正在执行 Workflow · 可继续输入下一句")).toBeInTheDocument();
   });
 
   it("cues retry after a financial workflow request fails", async () => {

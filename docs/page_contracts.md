@@ -1942,6 +1942,86 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Frontend: `frontend/src/test/ModuleWorkbenchHomeModel.test.ts`, `frontend/src/test/RouteRegistry.test.tsx`.
 - Contract gate: `tests/test_live_route_page_contract_completeness.py`.
 
+## 14.8.1 PAGE-PNL-BY-BUSINESS-001 Business Type PnL
+
+### A. Page identity
+
+- Page ID: `PAGE-PNL-BY-BUSINESS-001`
+- Primary front-end route: `/pnl-by-business`
+- Status: `temporary-exception with dedicated page contract`
+- Primary frontend files:
+  - `frontend/src/features/pnl/PnlByBusinessPage.tsx`
+  - `frontend/src/features/pnl/pnlByBusinessPageModel.ts`
+  - `frontend/src/api/pnlClient.ts`
+- Primary backend/API files:
+  - `backend/app/api/routes/pnl.py`
+  - `backend/app/services/pnl_service.py`
+  - `backend/app/repositories/pnl_repo.py`
+
+### B. Primary business question
+
+- The page answers: 哪类业务贡献/拖累最大，FTP 后是否仍有效，下一步该下钻哪里，数据能不能用于决策？
+- The primary analysis view is YTD/月报 ZQTZ 管理披露分类, not formal primary.
+- Formal primary is a reconciliation evidence view only; it must not be mixed with monthly/YTD business conclusions.
+- The page must not replace `/product-category-pnl`, `/ledger-pnl`, `/pnl`, or `/pnl-bridge`.
+
+### C. Data chain
+
+- Monthly analysis uses `GET /api/pnl/by-business-monthly`.
+- YTD analysis uses `GET /api/pnl/by-business-ytd`.
+- YTD FTP and annualized-yield analysis also consumes `GET /api/adb/comparison` through the existing PnL page client flow; front-end code may only resolve category rollups already defined for ZQTZ display alignment.
+- Formal reconciliation uses `GET /api/pnl/by-business`.
+- Manual adjustment audit/actions use `/api/pnl/by-business/manual-adjustments*`; they are displayed as audit/reconciliation controls and must not create a new official metric definition.
+- The front-end model may derive presentation-only insight labels from returned payload fields, but must not recalculate official PnL, balance, FTP cost, or formal yield formulas.
+
+### D. Required sections
+
+| section_key | Purpose | Data source |
+| --- | --- | --- |
+| `decision_hero` | State the selected view, report date, and current business question | page model + `result_meta` |
+| `data_status` | Keep `quality_flag`, fallback, vendor status, trace, and generated time visible | active endpoint `result_meta` |
+| `analysis_strip` | Summarize contribution, drag, share, FTP/ADB status, formal reconciliation warning, and next drilldown | page model derived from active payload fields |
+| `driver_overview` | In YTD, rank contribution, drag, yield, and ADB-vs-current-balance drivers before the large table | YTD rows + ADB comparison |
+| `main_table` | Show monthly/YTD/formal detail table with explicit units | active payload rows |
+| `monthly_breakdown` | In monthly/YTD, allow monthly reconciliation against published monthly buckets | monthly payload |
+| `drilldown` | In YTD, show FTP bridge, bond-bucket, instrument, and multidimensional drilldowns | `/api/pnl/by-business-analysis` |
+| `evidence` | Show source, lineage, and result metadata below the decision summary | `result_meta` |
+
+### E. Units, dates, and status
+
+- Amount columns displayed in the page are in `万元` unless the table header explicitly says `亿元`.
+- ADB and current balance displays are `亿元`.
+- Yield fields are displayed as `%`; formal primary `yield_pct` comes from the backend formal query and is not recomputed in the page model.
+- Monthly view date semantics use the selected report month/bucket from `/api/pnl/by-business-monthly`.
+- YTD view date semantics use selected `year` and `as_of_date` from `/api/pnl/by-business-ytd`.
+- Formal primary view uses the selected single `report_date` from `/api/pnl/by-business`.
+- Empty, loading, error, stale, fallback, and warning states must remain visible in the first screen status strip or state surfaces.
+- YTD `缺日均` confidence may only count parent rows with actual business activity; zero-PnL/zero-asset parent rows must not block FTP analysis.
+- ZQTZ parent rows whose ADB can be resolved through existing rollup children must not be counted as missing ADB.
+
+### F. Metric status and boundaries
+
+- This page has no newly approved `MTR-*` metric binding in this pass.
+- Business PnL rows reuse formal/monthly/YTD payload fields from the PnL service and remain page-level analytical display, not product-category truth.
+- Product-category truth remains governed by `PAGE-PROD-CAT-PNL-001`.
+- Ledger-account PnL truth/candidate display remains governed by `PAGE-LEDGER-PNL-001`.
+- Formal PnL overview truth remains governed by `PAGE-PNL-001`; PnL bridge truth remains governed by `PAGE-BRIDGE-001`.
+- The formal primary tab is `仅对账`; it is source evidence for tracing `fact_formal_pnl_fi`, `fact_nonstd_pnl_bridge`, and `fact_formal_zqtz_balance_daily`, not the page's primary business contribution analysis.
+
+### G. Known data-quality risks
+
+- Formal primary may return `quality_flag=warning` when `summary.untraced_pnl_row_count > 0`.
+- Current 2026-05-31 local evidence shows 148 formal FI rows untraced by balance join; page evidence surfaces the main zero-balance groups such as `T`, `A`, and `H` from existing rows where `balance_row_count = 0`.
+- Untraced formal rows must be treated as reconciliation follow-up, not as a reason to mix formal primary rows into monthly/YTD conclusions.
+- FTP rate remains the current page behavior until a metric contract explicitly formalizes it.
+
+### H. Tests
+
+- Frontend page/model: `frontend/src/features/pnl/pnlByBusinessPageModel.test.ts`.
+- Route smoke: `frontend/src/test/PnlRoutesSmoke.test.tsx`.
+- API contract: `tests/test_pnl_api_contract.py`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
 ## 14.9 PAGE-REPORTS-HOME-001 Reports And Data Home
 
 ### A. Page identity

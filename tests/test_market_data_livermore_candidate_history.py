@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_backtest_window_summary,
     livermore_candidate_history_envelope,
@@ -267,11 +268,22 @@ def _build_client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(tmp_path / "missing-choice-stock-catalog.json"))
     get_settings.cache_clear()
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="market_data.livermore",
+        action="read",
+    )
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)
-    return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update({"X-User-Id": "livermore-read-user", "X-User-Role": "viewer"})
+    return client
 
 
 def _insert_strategy_score_rows(

@@ -2390,6 +2390,7 @@ export function EmbeddedAgentCopilot({
     setAgentRun(pendingWorkflowRun);
     setResult(null);
     setError(null);
+    setComposerAssistHint("正在执行 Workflow · 可继续输入下一句");
 
     try {
       const response = await fetch("/api/agent/query", {
@@ -2409,6 +2410,7 @@ export function EmbeddedAgentCopilot({
         };
         setError(disabledError);
         updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
         return;
       }
 
@@ -2441,6 +2443,7 @@ export function EmbeddedAgentCopilot({
         error: null,
         activeSuggestedActionPayload: null,
       }));
+      setComposerAssistHint("Workflow 执行完成 · 可以继续追问");
     } catch (requestError) {
       const nextError: AgentQueryError = {
         kind: "request",
@@ -2478,6 +2481,7 @@ export function EmbeddedAgentCopilot({
     setAgentRun(pendingRun);
     setResult(null);
     setError(null);
+    setComposerAssistHint("正在读取研究上下文 · 可继续输入下一句");
 
     try {
       const response = await fetch("/api/agent/query", {
@@ -2497,6 +2501,7 @@ export function EmbeddedAgentCopilot({
         };
         setError(disabledError);
         updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
+        setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
         return;
       }
 
@@ -2530,6 +2535,7 @@ export function EmbeddedAgentCopilot({
         error: null,
         activeSuggestedActionPayload: null,
       }));
+      setComposerAssistHint("研究上下文已返回 · 可以继续追问");
     } catch (requestError) {
       const nextError: AgentQueryError = {
         kind: "request",
