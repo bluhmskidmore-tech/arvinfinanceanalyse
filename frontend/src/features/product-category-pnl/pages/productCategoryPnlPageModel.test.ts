@@ -659,6 +659,14 @@ describe("productCategoryPnlPageModel", () => {
         baselineNetIncomeLabel: "5.00",
         scenarioNetIncomeLabel: "4.20",
         summaryLabel: "AC债券投资在 2.00% 情景较正式基线 -0.80 亿元；正式归因显示主导因素为 FTP因素 -0.55 亿元。",
+        bridgeLabel: "口径桥：情景压力 -0.80 亿元；正式归因合计 -0.75 亿元；差异 -0.05 亿元。",
+        bridgeConclusionLabel: "情景压力与正式归因差异 0.05 亿元，需分开复核情景 FTP 假设和正式归因期间口径。",
+        bridgeTone: "warning",
+        reviewActionItems: [
+          "先复核情景 FTP 假设：确认 2.00% 情景是否只改变 FTP，不混入正式期间变动。",
+          "核对正式归因期间口径：确认正式归因的 current/prior 日期、月度/同比口径与情景基线不同。",
+          "重点追踪 FTP因素：复核 FTP 输入、基准利率和资产负债侧映射。",
+        ],
         emptyCopy: null,
       }),
     );

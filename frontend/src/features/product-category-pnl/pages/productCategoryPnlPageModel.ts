@@ -408,6 +408,10 @@ export type ProductCategoryScenarioExplanation = {
   baselineNetIncomeLabel: string;
   scenarioNetIncomeLabel: string;
   summaryLabel: string;
+  bridgeLabel: string;
+  bridgeConclusionLabel: string;
+  bridgeTone: "positive" | "negative" | "neutral" | "warning";
+  reviewActionItems: string[];
   driverRows: ProductCategoryScenarioExplanationDriverRow[];
   emptyCopy: string | null;
 };
@@ -1525,6 +1529,69 @@ function dominantScenarioExplanationDriver(
   return rows.find((row) => row.value !== null && row.value !== 0);
 }
 
+function scenarioExplanationAttributionTotal(
+  rows: ProductCategoryScenarioExplanationDriverRow[],
+): number | null {
+  const values = rows.map((row) => row.value).filter((value): value is number => value !== null);
+  if (values.length === 0) {
+    return null;
+  }
+  return Number(values.reduce((total, value) => total + value, 0).toFixed(2));
+}
+
+function scenarioExplanationBridge(input: {
+  scenarioDelta: number | null | undefined;
+  attributionTotal: number | null;
+}): Pick<ProductCategoryScenarioExplanation, "bridgeLabel" | "bridgeConclusionLabel" | "bridgeTone"> {
+  const scenarioDeltaLabel = formatSignedProductCategoryYi(input.scenarioDelta ?? null);
+  const attributionTotalLabel = formatSignedProductCategoryYi(input.attributionTotal);
+  if (input.scenarioDelta === null || input.scenarioDelta === undefined || input.attributionTotal === null) {
+    return {
+      bridgeLabel: `口径桥：情景压力 ${scenarioDeltaLabel} 亿元；正式归因合计 ${attributionTotalLabel} 亿元；差异 -。`,
+      bridgeConclusionLabel: "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
+      bridgeTone: "neutral",
+    };
+  }
+  const bridgeGap = Number((input.scenarioDelta - input.attributionTotal).toFixed(2));
+  const bridgeGapAbs = Math.abs(bridgeGap);
+  const bridgeTone = bridgeGapAbs <= 0.01 ? "neutral" : "warning";
+  return {
+    bridgeLabel: `口径桥：情景压力 ${scenarioDeltaLabel} 亿元；正式归因合计 ${attributionTotalLabel} 亿元；差异 ${formatSignedProductCategoryYi(bridgeGap)} 亿元。`,
+    bridgeConclusionLabel:
+      bridgeTone === "neutral"
+        ? "情景压力与正式归因合计接近，可优先复核主导驱动和输入来源。"
+        : `情景压力与正式归因差异 ${productCategoryYiNumberLabel(bridgeGapAbs)} 亿元，需分开复核情景 FTP 假设和正式归因期间口径。`,
+    bridgeTone,
+  };
+}
+
+function scenarioExplanationReviewActions(input: {
+  bridgeTone: ProductCategoryScenarioExplanation["bridgeTone"];
+  dominantDriver?: ProductCategoryScenarioExplanationDriverRow;
+  triggerRateLabel: string;
+}): string[] {
+  const actions =
+    input.bridgeTone === "warning"
+      ? [
+          `先复核情景 FTP 假设：确认 ${input.triggerRateLabel} 情景是否只改变 FTP，不混入正式期间变动。`,
+          "核对正式归因期间口径：确认正式归因的 current/prior 日期、月度/同比口径与情景基线不同。",
+        ]
+      : [
+          "先确认情景压力与正式归因合计接近，再复核主导驱动和输入来源。",
+          "核对正式归因期间口径：确认 current/prior 日期、月度/同比口径与情景基线不同。",
+        ];
+  if (input.dominantDriver) {
+    const driverActionByKey: Record<ProductCategoryScenarioExplanationDriverRow["key"], string> = {
+      ftp_effect: "复核 FTP 输入、基准利率和资产负债侧映射。",
+      scale_effect: "复核规模口径、日均余额和产品分类映射。",
+      rate_effect: "复核收益率/成本率输入、计息天数和基准利率变动。",
+      unexplained_effect: "复核残差来源，检查缺失字段、四舍五入和未覆盖业务项。",
+    };
+    actions.push(`重点追踪 ${input.dominantDriver.label}：${driverActionByKey[input.dominantDriver.key]}`);
+  }
+  return actions.slice(0, 3);
+}
+
 export function selectProductCategoryScenarioExplanation(input: {
   categoryId: string | null | undefined;
   baseline?: ProductCategoryPnlPayload | null;
@@ -1545,6 +1612,10 @@ export function selectProductCategoryScenarioExplanation(input: {
       baselineNetIncomeLabel: "-",
       scenarioNetIncomeLabel: "-",
       summaryLabel: "当前正式基线未返回该产品行，无法形成行级情景解释。",
+      bridgeLabel: "口径桥：情景压力 - 亿元；正式归因合计 - 亿元；差异 -。",
+      bridgeConclusionLabel: "当前缺少可比较的情景压力或正式归因驱动，暂不能做口径差异判断。",
+      bridgeTone: "neutral",
+      reviewActionItems: ["补齐正式基线和情景矩阵后，再生成行级复核动作。"],
       driverRows: [],
       emptyCopy: "当前正式基线未返回该产品行，无法形成行级情景解释。",
     };
@@ -1580,10 +1651,20 @@ export function selectProductCategoryScenarioExplanation(input: {
   const attributionRow = input.attribution?.rows.find((row) => row.category_id === input.categoryId);
   const driverRows = scenarioExplanationDriverRows(attributionRow);
   const dominantDriver = dominantScenarioExplanationDriver(driverRows);
+  const attributionTotal = scenarioExplanationAttributionTotal(driverRows);
   const scenarioDeltaLabel = formatSignedProductCategoryYi(topMove?.delta ?? null);
   const triggerRateLabel = topMove?.rateLabel ?? "-";
   const baselineNetIncomeLabel = productCategoryYiNumberLabel(baselineNetIncome);
   const scenarioNetIncomeLabel = productCategoryYiNumberLabel(topMove?.scenarioNetIncome ?? null);
+  const bridge = scenarioExplanationBridge({
+    scenarioDelta: topMove?.delta,
+    attributionTotal,
+  });
+  const reviewActionItems = scenarioExplanationReviewActions({
+    bridgeTone: bridge.bridgeTone,
+    dominantDriver,
+    triggerRateLabel,
+  });
   const driverCopy = dominantDriver
     ? `正式归因显示主导因素为 ${dominantDriver.label} ${dominantDriver.valueLabel} 亿元。`
     : "当前正式归因未返回可排序的驱动项。";
@@ -1597,6 +1678,8 @@ export function selectProductCategoryScenarioExplanation(input: {
     baselineNetIncomeLabel,
     scenarioNetIncomeLabel,
     summaryLabel,
+    ...bridge,
+    reviewActionItems,
     driverRows,
     emptyCopy: topMove ? null : "当前情景矩阵未返回该产品行的可比较结果。",
   };

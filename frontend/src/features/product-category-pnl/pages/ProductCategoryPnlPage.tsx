@@ -1092,6 +1092,13 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                     <div className="product-category-financial-analysis__scenario-kicker">复核解释包</div>
                     <strong>{props.scenarioExplanation.categoryLabel}</strong>
                     <p>{props.scenarioExplanation.summaryLabel}</p>
+                    <div className="product-category-financial-analysis__bridge">
+                      <span className="product-category-financial-analysis__scenario-kicker">口径桥</span>
+                      <b className={`is-${props.scenarioExplanation.bridgeTone}`}>
+                        {props.scenarioExplanation.bridgeLabel}
+                      </b>
+                      <small>{props.scenarioExplanation.bridgeConclusionLabel}</small>
+                    </div>
                     <div className="product-category-financial-analysis__explanation-grid">
                       <span>{props.scenarioExplanation.sideLabel}</span>
                       <span>基线 {props.scenarioExplanation.baselineNetIncomeLabel}</span>
