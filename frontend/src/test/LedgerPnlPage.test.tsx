@@ -2049,6 +2049,8 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("毛贡献金额");
     expect(panel).toHaveTextContent("毛拖累金额");
     expect(panel).toHaveTextContent("净额抵消率");
+    expect(panel).toHaveTextContent("按总账科目代码和名称启发式归类");
+    expect(panel).toHaveTextContent("不是正式产品、策略或管理归因维度");
     expect(panel).toHaveTextContent("利息收支");
     expect(panel).toHaveTextContent("30.00 亿元");
     expect(panel).toHaveTextContent("-25.00 亿元");

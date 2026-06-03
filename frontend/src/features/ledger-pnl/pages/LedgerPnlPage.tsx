@@ -845,6 +845,9 @@ function LedgerExplainabilityPanel(props: {
             className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
           >
             <div className="ledger-pnl-analysis__table-title">损益方向拆解</div>
+            <div className="ledger-pnl-analysis__empty">
+              候选归类：按总账科目代码和名称启发式归类，用于定位解释线索，不是正式产品、策略或管理归因维度。
+            </div>
             {props.model.driverRows.length > 0 ? (
               <table className="ledger-pnl-analysis__residual-table ledger-pnl-analysis__direction-table">
                 <thead>
