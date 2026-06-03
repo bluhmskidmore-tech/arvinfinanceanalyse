@@ -148,19 +148,19 @@ def _compute_natural_cubic_spline_coefficients(
         alpha[i] = (3.0 / h[i]) * (ys[i + 1] - ys[i]) - (3.0 / h[i - 1]) * (ys[i] - ys[i - 1])
 
     # Thomas algorithm (tridiagonal solver)
-    l = [0.0] * n
+    lower = [0.0] * n
     mu = [0.0] * n
     z = [0.0] * n
-    l[0] = 1.0
+    lower[0] = 1.0
 
     for i in range(1, n - 1):
-        l[i] = 2.0 * (xs[i + 1] - xs[i - 1]) - h[i - 1] * mu[i - 1]
-        if l[i] == 0.0:
-            l[i] = 1e-12  # degenerate guard
-        mu[i] = h[i] / l[i]
-        z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i]
+        lower[i] = 2.0 * (xs[i + 1] - xs[i - 1]) - h[i - 1] * mu[i - 1]
+        if lower[i] == 0.0:
+            lower[i] = 1e-12  # degenerate guard
+        mu[i] = h[i] / lower[i]
+        z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / lower[i]
 
-    l[n - 1] = 1.0
+    lower[n - 1] = 1.0
 
     c = [0.0] * n
     # Back-substitution

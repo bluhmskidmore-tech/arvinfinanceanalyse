@@ -1,15 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 credit_bond_data.py
 信用债数据层：收益率曲线、信用利差、二永债利差、理财规模
-数据源：Wind API（日频，收盘后跑）
+数据源：Choice/Tushare 系统源（日频，收盘后跑，经 WindPy 兼容接口）
 输出：output/credit_bond_latest.csv
 """
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import warnings
+
 import paths
 
-import warnings
 warnings.filterwarnings("ignore")
 
 try:
@@ -17,14 +19,15 @@ try:
     WIND_AVAILABLE = w.start() == 0
 except Exception:
     WIND_AVAILABLE = False
-    print("[WARNING] Wind not available, using mock data for development")
+    print("[WARNING] Choice/Tushare system source not available, using mock data for development")
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, date
 import time
+from datetime import date, datetime
 
-# ── Wind 代码定义 ──────────────────────────────────────────────────────────────
+import numpy as np
+import pandas as pd
+
+# ── 兼容代码定义 ──────────────────────────────────────────────────────────────
 
 # 中债估值收益率（城投债）
 # 格式: 隐含评级_期限，如 AA_2Y 代表隐含评级AA、2年期
@@ -113,10 +116,10 @@ PERPETUAL_CODES = {
 }
 
 
-# ── Wind 数据拉取 ──────────────────────────────────────────────────────────────
+# ── 系统源数据拉取 ──────────────────────────────────────────────────────────────
 
 def pull_wind_series(codes_dict, start_date, end_date):
-    """批量拉取 Wind 时序数据"""
+    """批量拉取系统源时序数据"""
     results = {}
     if not WIND_AVAILABLE:
         return results

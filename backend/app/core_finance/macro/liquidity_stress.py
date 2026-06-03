@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable
 
 from app.core_finance.safe_decimal import safe_decimal
 from app.core_finance.macro.helpers import get_value as _get_value

@@ -8,7 +8,7 @@ M14: 经济周期定位（纯函数，自 V1 macro_analysis.economic_cycle 迁�
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any
 
 from app.core_finance.macro.helpers import to_decimal_safe as _d, to_rounded_float as _f

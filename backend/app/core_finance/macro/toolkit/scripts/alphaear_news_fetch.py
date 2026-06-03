@@ -1,11 +1,12 @@
-# -*- coding: utf-8 -*-
 """
 alphaear_news_fetch.py
 接入 alphaear-news skill，获取实时财经热点
 数据源：财联社、华尔街见闻、雪球等
 输出：output/alphaear_news_latest.csv
 """
-import os, sys
+import os
+import sys
+
 SKILL_PATH = os.environ.get(
     "ALPHAEAR_NEWS_SKILL_PATH",
     r"C:\Users\arvin\AppData\Roaming\npm\node_modules\openclaw\skills\alphaear-news",
@@ -14,14 +15,15 @@ sys.path.insert(0, SKILL_PATH)
 _toolkit_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _toolkit_root)
 
+import warnings
+
 import paths
 
-import warnings
 warnings.filterwarnings("ignore")
 
 from datetime import datetime
-import pandas as pd
 
+import pandas as pd
 from scripts.database_manager import DatabaseManager
 from scripts.news_tools import NewsNowTools
 
@@ -89,7 +91,7 @@ def fetch_alphaear_news(sources=None, count=20):
     print(f"\n  Total: {len(df)} items saved to {all_out}")
 
     # 只筛选宏观相关的
-    macro_df = df[df["is_macro"] == True].copy()
+    macro_df = df[df["is_macro"]].copy()
     macro_out = paths.OUTPUT_DIR / "alphaear_macro_news.csv"
     macro_df.to_csv(macro_out, index=False, encoding="utf-8-sig")
     print(f"  Macro: {len(macro_df)} items saved to {macro_out}")
@@ -109,13 +111,12 @@ def print_macro_news(macro_df):
             continue
         print(f"\n--- {name} ---")
         for _, row in subset.iterrows():
-            tag = "[MACRO]" if row["is_macro"] else ""
             print(f"  #{row['rank']} {row['title'][:50]}")
 
     # 没有宏规定的关键词但实际有用的
     other = macro_df[~macro_df["source"].isin(MACRO_SOURCES.keys())]
     if not other.empty:
-        print(f"\n--- 其他 ---")
+        print("\n--- 其他 ---")
         for _, row in other.head(5).iterrows():
             print(f"  #{row['rank']} [{row.get('source_name','')}] {row['title'][:50]}")
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 再平衡策略模型
 ================
@@ -11,23 +10,27 @@
 """
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import sys
-import numpy as np
-import pandas as pd
+
 import akshare as ak
 import matplotlib
+import numpy as np
+import pandas as pd
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -137,7 +140,7 @@ def load_target_weights() -> dict:
                 weights[k] = weight
                 break
 
-    print(f"\n目标权重（风险平价）:")
+    print("\n目标权重（风险平价）:")
     for k, v in weights.items():
         print(f"  {ASSET_LABELS.get(k, k)}: {v*100:.2f}%")
 

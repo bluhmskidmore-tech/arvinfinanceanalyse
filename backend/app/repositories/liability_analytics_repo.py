@@ -80,7 +80,7 @@ class LiabilityAnalyticsRepository:
     ) -> list[dict[str, Any]]:
         cursor = conn.execute(query, params or [])
         columns = [item[0] for item in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
 
     def _fetch_snapshot_zqtz_yield_rows_for_dates(
         self,

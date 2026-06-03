@@ -105,7 +105,7 @@ def compute_credit_spread_percentile(
 
     today_snap = history_wide[0] if history_wide else {}
     rows_1y_snaps = [
-        h for h, d in zip(history_wide, dates_used) if d >= cutoff_1y
+        h for h, d in zip(history_wide, dates_used, strict=False) if d >= cutoff_1y
     ][: _M16_LOOKBACK_DAYS_1Y]
 
     spreads_out: list[dict[str, Any]] = []

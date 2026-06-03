@@ -6,16 +6,17 @@
 """
 
 import warnings
+
 warnings.filterwarnings('ignore')
 
+import sys
+from datetime import datetime
+from pathlib import Path
+
+import akshare as ak
 import numpy as np
 import pandas as pd
-import akshare as ak
 from arch import arch_model
-from datetime import datetime, timedelta
-import os
-import sys
-from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -162,7 +163,7 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
 
     # 打印前5名
     ranking = sorted(all_results, key=lambda x: x['bic'])[:5]
-    print(f"\n  BIC 排名 Top 5:")
+    print("\n  BIC 排名 Top 5:")
     print(f"  {'模型':<25} {'AIC':>10} {'BIC':>10}")
     print(f"  {'-'*47}")
     for r in ranking:
@@ -171,7 +172,7 @@ def fit_single_asset(returns: pd.Series, asset_name: str) -> dict:
 
     # 提取关键参数
     params = best_result['params']
-    print(f"\n  最优模型参数:")
+    print("\n  最优模型参数:")
     for k, v in params.items():
         print(f"    {k}: {v:.6f}")
 

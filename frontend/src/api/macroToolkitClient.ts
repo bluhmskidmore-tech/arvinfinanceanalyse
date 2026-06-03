@@ -134,9 +134,60 @@ export type MacroToolkitChoiceStockRefreshResponse = ApiEnvelope<{
 
 export type MacroToolkitCommodityFuturesRefreshPermission = MacroToolkitChoiceStockRefreshPermission;
 
+export type MacroToolkitCommodityFuturesHealthStatus = {
+  materialized: boolean;
+  status: string;
+  table: string;
+  row_count: number | null;
+  latest_trade_date: string | null;
+  source_vendors: string[];
+  target_products?: string[];
+  coverage: {
+    target_product_count: number;
+    available_product_count: number;
+    available_products: string[];
+    missing_products: string[];
+    products?: Array<Record<string, unknown>>;
+  };
+  nanhua_input: {
+    status: string;
+    product_code: string;
+    series_id: string;
+    system_series_id?: string | null;
+    latest_trade_date: string | null;
+    latest_value: number | null;
+    row_count: number;
+    source_version?: string | null;
+    vendor_version?: string | null;
+    rule_version?: string | null;
+  };
+};
+
 export type MacroToolkitCommodityFuturesRefreshStatus = {
   permission: MacroToolkitCommodityFuturesRefreshPermission;
   refresh?: MacroToolkitCommodityFuturesRefreshRun;
+  status?: MacroToolkitCommodityFuturesHealthStatus;
+};
+
+export type MacroToolkitCommodityFuturesRefreshSummary = {
+  table: string;
+  row_count_before: number | null;
+  row_count_after: number | null;
+  row_count_delta: number | null;
+  latest_trade_date_before: string | null;
+  latest_trade_date_after: string | null;
+  available_product_count_before: number | null;
+  available_product_count_after: number | null;
+  target_product_count: number | null;
+  newly_available_products: string[];
+  missing_products_after: string[];
+  nanhua_status_before: string | null;
+  nanhua_status_after: string | null;
+  nanhua_latest_date_before: string | null;
+  nanhua_latest_date_after: string | null;
+  nanhua_latest_value_after: number | null;
+  source_vendors_after: string[];
+  dry_run: boolean;
 };
 
 export type MacroToolkitPayload = {
@@ -563,6 +614,9 @@ export type MacroToolkitCommodityFuturesRefreshRun = {
   table?: string;
   rule_version?: string;
   permission?: MacroToolkitCommodityFuturesRefreshPermission;
+  before_status?: MacroToolkitCommodityFuturesHealthStatus;
+  after_status?: MacroToolkitCommodityFuturesHealthStatus;
+  summary?: MacroToolkitCommodityFuturesRefreshSummary;
 };
 
 export type MacroToolkitCommodityFuturesRefreshResponse = ApiEnvelope<{
@@ -1456,6 +1510,33 @@ const MOCK_COMMODITY_FUTURES_REFRESH: MacroToolkitCommodityFuturesRefreshStatus 
     resource: "macro_toolkit.commodity_futures",
     actions: ["dry_run", "refresh"],
   },
+  status: {
+    materialized: true,
+    status: "ok",
+    table: "fact_commodity_futures_daily",
+    row_count: 154,
+    latest_trade_date: "2026-04-30",
+    source_vendors: ["tushare"],
+    target_products: ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+    coverage: {
+      target_product_count: 7,
+      available_product_count: 5,
+      available_products: ["CU", "AL", "SC", "AU", "NHCI"],
+      missing_products: ["RB", "I"],
+    },
+    nanhua_input: {
+      status: "hit",
+      product_code: "NHCI",
+      series_id: "NH0100.NHF",
+      system_series_id: "NHCI.NH",
+      latest_trade_date: "2026-04-30",
+      latest_value: 3187.42,
+      row_count: 22,
+      source_version: "sv_tushare_index_daily_nhci",
+      vendor_version: "vv_tushare_index_daily_NHCI_20260430",
+      rule_version: "rv_commodity_daily_v1",
+    },
+  },
 };
 
 const MOCK_A_SHARE_RISK: MacroToolkitAShareRiskPayload = {
@@ -1964,6 +2045,55 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         rule_version: "rv_commodity_daily_v1",
         permission: MOCK_COMMODITY_FUTURES_REFRESH.permission,
       };
+      const afterStatus: MacroToolkitCommodityFuturesHealthStatus = {
+        ...MOCK_COMMODITY_FUTURES_REFRESH.status!,
+        row_count: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.row_count : products.length * 22,
+        latest_trade_date: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.latest_trade_date : "2026-04-30",
+        source_vendors: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.source_vendors : ["tushare"],
+        coverage: {
+          ...MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage,
+          available_product_count: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.available_product_count : products.length,
+          available_products: options?.dryRun
+            ? MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.available_products
+            : products,
+          missing_products: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.missing_products : [],
+        },
+        nanhua_input: {
+          ...MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input,
+          latest_trade_date: options?.dryRun
+            ? MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.latest_trade_date
+            : "2026-04-30",
+          latest_value: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.latest_value : 3187.42,
+          row_count: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.row_count : 22,
+        },
+      };
+      refresh.before_status = MOCK_COMMODITY_FUTURES_REFRESH.status;
+      refresh.after_status = afterStatus;
+      refresh.summary = {
+        table: "fact_commodity_futures_daily",
+        row_count_before: MOCK_COMMODITY_FUTURES_REFRESH.status!.row_count,
+        row_count_after: afterStatus.row_count,
+        row_count_delta:
+          MOCK_COMMODITY_FUTURES_REFRESH.status!.row_count == null || afterStatus.row_count == null
+            ? null
+            : afterStatus.row_count - MOCK_COMMODITY_FUTURES_REFRESH.status!.row_count,
+        latest_trade_date_before: MOCK_COMMODITY_FUTURES_REFRESH.status!.latest_trade_date,
+        latest_trade_date_after: afterStatus.latest_trade_date,
+        available_product_count_before: MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.available_product_count,
+        available_product_count_after: afterStatus.coverage.available_product_count,
+        target_product_count: afterStatus.coverage.target_product_count,
+        newly_available_products: products.filter(
+          (product) => !MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.available_products.includes(product),
+        ),
+        missing_products_after: afterStatus.coverage.missing_products,
+        nanhua_status_before: MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.status,
+        nanhua_status_after: afterStatus.nanhua_input.status,
+        nanhua_latest_date_before: MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.latest_trade_date,
+        nanhua_latest_date_after: afterStatus.nanhua_input.latest_trade_date,
+        nanhua_latest_value_after: afterStatus.nanhua_input.latest_value,
+        source_vendors_after: afterStatus.source_vendors,
+        dry_run: options?.dryRun ?? false,
+      };
       return buildMockApiEnvelope(
         "macro_toolkit.commodity_futures_refresh",
         {
@@ -1971,6 +2101,7 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
           commodity_futures_refresh: {
             ...MOCK_COMMODITY_FUTURES_REFRESH,
             refresh,
+            status: afterStatus,
           },
         },
         {

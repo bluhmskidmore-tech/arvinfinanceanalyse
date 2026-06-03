@@ -3,10 +3,11 @@ from __future__ import annotations
 import math
 import os
 import sqlite3
-from datetime import datetime
+import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -19,12 +20,10 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-import sys
-
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 MARKET_DB = Path(os.environ.get("MOSS_MARKET_DB_PATH", r"D:\MOSS-SYSTEM-V1\data_warehouse\market.db"))
 OUTPUT_DOC = OUTPUT_DIR / f"债券及宏观报告_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
@@ -72,7 +71,7 @@ def _set_matplotlib_style() -> None:
     plt.rcParams["figure.facecolor"] = "white"
 
 
-def _styled_axes(ax, title: str, subtitle: Optional[str] = None) -> None:
+def _styled_axes(ax, title: str, subtitle: str | None = None) -> None:
     ax.set_facecolor("white")
     for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
@@ -93,7 +92,7 @@ def _read_sql(query: str) -> pd.DataFrame:
     return df
 
 
-def _load_market_data() -> Dict[str, pd.DataFrame]:
+def _load_market_data() -> dict[str, pd.DataFrame]:
     rates = _read_sql(
         """
         select trade_date, treasury_1y, treasury_3y, treasury_5y, treasury_7y, treasury_10y,
@@ -150,32 +149,32 @@ def _monthly_macro(df: pd.DataFrame) -> pd.DataFrame:
     return monthly.tail(12).reset_index(drop=True)
 
 
-def _fmt_num(value: Optional[float], digits: int = 2) -> str:
+def _fmt_num(value: float | None, digits: int = 2) -> str:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return "-"
     return f"{value:.{digits}f}"
 
 
-def _fmt_change_bp_pct(current: Optional[float], previous: Optional[float]) -> str:
+def _fmt_change_bp_pct(current: float | None, previous: float | None) -> str:
     if current is None or previous is None or any(math.isnan(v) for v in [current, previous]):
         return "-"
     return f'{(current - previous) * 100:+.1f}'
 
 
-def _fmt_change_bp_level(current: Optional[float], previous: Optional[float]) -> str:
+def _fmt_change_bp_level(current: float | None, previous: float | None) -> str:
     if current is None or previous is None or any(math.isnan(v) for v in [current, previous]):
         return "-"
     return f'{current - previous:+.1f}'
 
 
-def _percentile(df: pd.DataFrame, column: str, current: float, days: int = 365) -> Optional[float]:
+def _percentile(df: pd.DataFrame, column: str, current: float, days: int = 365) -> float | None:
     recent = df.loc[df["trade_date"] >= df["trade_date"].max() - pd.Timedelta(days=days), column].dropna()
     if recent.empty:
         return None
     return round((recent < current).mean() * 100, 2)
 
 
-def _safe_float(value) -> Optional[float]:
+def _safe_float(value) -> float | None:
     if value is None:
         return None
     if isinstance(value, str):
@@ -204,16 +203,16 @@ class ReportBundle:
     merrill_latest: pd.Series
     merrill_history: pd.DataFrame
     garch_df: pd.DataFrame
-    percentiles: Dict[str, Optional[float]]
+    percentiles: dict[str, float | None]
     # 新增模型数据
-    dcc_latest: Optional[pd.Series]
-    risk_parity_df: Optional[pd.DataFrame]
-    performance_df: Optional[pd.DataFrame]
-    cta_df: Optional[pd.DataFrame]
-    rebalance_df: Optional[pd.DataFrame]
-    regime_df: Optional[pd.DataFrame]
-    backtest_df: Optional[pd.DataFrame]
-    backtest_annual_df: Optional[pd.DataFrame]
+    dcc_latest: pd.Series | None
+    risk_parity_df: pd.DataFrame | None
+    performance_df: pd.DataFrame | None
+    cta_df: pd.DataFrame | None
+    rebalance_df: pd.DataFrame | None
+    regime_df: pd.DataFrame | None
+    backtest_df: pd.DataFrame | None
+    backtest_annual_df: pd.DataFrame | None
 
 
 def _build_bundle() -> ReportBundle:
@@ -261,7 +260,7 @@ def _build_bundle() -> ReportBundle:
     }
 
     # 新模型 CSV（可选，文件不存在时为 None）
-    def _try_load(name: str) -> Optional[pd.DataFrame]:
+    def _try_load(name: str) -> pd.DataFrame | None:
         p = OUTPUT_DIR / name
         return pd.read_csv(p, encoding="utf-8-sig") if p.exists() else None
 
@@ -519,7 +518,7 @@ def _add_table(document: Document, df: pd.DataFrame) -> None:
             cells[idx].text = str(value)
 
 
-def _macro_takeaways(bundle: ReportBundle) -> List[str]:
+def _macro_takeaways(bundle: ReportBundle) -> list[str]:
     pmi = float(bundle.macro_latest["pmi"])
     cpi = float(bundle.macro_latest["cpi_yoy"])
     ppi = float(bundle.macro_latest["ppi_yoy"])
@@ -584,7 +583,7 @@ def _macro_takeaways(bundle: ReportBundle) -> List[str]:
     ]
 
 
-def _bond_takeaways(bundle: ReportBundle) -> List[str]:
+def _bond_takeaways(bundle: ReportBundle) -> list[str]:
     y10 = float(bundle.rate_latest["treasury_10y"])
     y10_1m = float(bundle.rate_1m["treasury_10y"])
     curve = float(bundle.rate_latest["term_spread_10y_1y"])
@@ -639,7 +638,7 @@ def _bond_takeaways(bundle: ReportBundle) -> List[str]:
     ]
 
 
-def _credit_takeaways(bundle: ReportBundle) -> List[str]:
+def _credit_takeaways(bundle: ReportBundle) -> list[str]:
     aaa = float(bundle.credit_latest["credit_spread_aaa_3y"])
     aa_aaa = float(bundle.credit_latest["aa_aaa_spread_3y"])
     aaa_pct = bundle.percentiles["aaa_1y"] or 50.0
@@ -687,7 +686,7 @@ def _credit_takeaways(bundle: ReportBundle) -> List[str]:
     ]
 
 
-def _garch_takeaways(bundle: ReportBundle) -> List[str]:
+def _garch_takeaways(bundle: ReportBundle) -> list[str]:
     extreme = bundle.garch_df[bundle.garch_df["波动率状态"].astype(str).str.contains("极端")]["asset_name"].tolist()
     extreme_text = "、".join(extreme) if extreme else "无"
     return [
@@ -699,7 +698,7 @@ def _garch_takeaways(bundle: ReportBundle) -> List[str]:
     ]
 
 
-def _model_cross_takeaways(bundle: ReportBundle) -> List[str]:
+def _model_cross_takeaways(bundle: ReportBundle) -> list[str]:
     crisis_score = _safe_float(bundle.crisis_latest.get("Crisis Score")) or 0.0
     fx_z     = _safe_float(bundle.crisis_latest.get("汇率波动率z"))  or 0.0
     commod_z = _safe_float(bundle.crisis_latest.get("商品波动率z"))  or 0.0
@@ -726,9 +725,12 @@ def _model_cross_takeaways(bundle: ReportBundle) -> List[str]:
 
     # 主要压力来源
     pressure = []
-    if abs(fx_z) > 1.5:   pressure.append(f"汇率（z={fx_z:.2f}）")
-    if abs(commod_z) > 1.5: pressure.append(f"商品（z={commod_z:.2f}）")
-    if abs(equity_z) > 1.5: pressure.append(f"股市（z={equity_z:.2f}）")
+    if abs(fx_z) > 1.5:
+        pressure.append(f"汇率（z={fx_z:.2f}）")
+    if abs(commod_z) > 1.5:
+        pressure.append(f"商品（z={commod_z:.2f}）")
+    if abs(equity_z) > 1.5:
+        pressure.append(f"股市（z={equity_z:.2f}）")
     pressure_desc = "压力主要来自 " + "、".join(pressure) if pressure else "各分项均无明显压力"
 
     # 美林时钟资产排序（取偏好分最高的前3）
@@ -765,7 +767,7 @@ def _model_cross_takeaways(bundle: ReportBundle) -> List[str]:
     ]
 
 
-def _quant_models_takeaways(bundle: ReportBundle) -> List[str]:
+def _quant_models_takeaways(bundle: ReportBundle) -> list[str]:
     """六个量化模型的综合解读"""
     lines = []
 
@@ -888,26 +890,26 @@ def _make_quant_summary_table(bundle: ReportBundle) -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["模型", "关键指标", "状态/结论"])
 
 
-def _strategy_recommendations(bundle: ReportBundle) -> List[str]:
+def _strategy_recommendations(bundle: ReportBundle) -> list[str]:
     bond_pref = _safe_float(bundle.merrill_latest["债券偏好"]) or 0.0
 
     # 债券偏好 [-1, +1]：正数=偏好债券=拉长久期，负数=不偏好债券=缩短久期
     if bond_pref > 0.3:
         duration = "偏长"
         duration_range = "7Y-10Y 甚至 30Y 超长端"
-        duration_reason = "美林时钟显示债券偏好强（+{:.2f}），增长放缓+通胀回落环境利好长久期".format(bond_pref)
+        duration_reason = f"美林时钟显示债券偏好强（+{bond_pref:.2f}），增长放缓+通胀回落环境利好长久期"
     elif bond_pref > 0:
         duration = "中性偏长"
         duration_range = "5Y-10Y"
-        duration_reason = "美林时钟显示债券偏好温和（+{:.2f}），可适度拉长久期".format(bond_pref)
+        duration_reason = f"美林时钟显示债券偏好温和（+{bond_pref:.2f}），可适度拉长久期"
     elif bond_pref > -0.3:
         duration = "中性偏短"
         duration_range = "3Y-5Y"
-        duration_reason = "美林时钟显示债券偏好偏弱（{:.2f}），建议缩短久期控制利率风险".format(bond_pref)
+        duration_reason = f"美林时钟显示债券偏好偏弱（{bond_pref:.2f}），建议缩短久期控制利率风险"
     else:
         duration = "偏短"
         duration_range = "1Y-3Y 短端"
-        duration_reason = "美林时钟显示债券偏好很弱（{:.2f}），通胀上行+增长复苏不利于债券，大幅缩短久期".format(bond_pref)
+        duration_reason = f"美林时钟显示债券偏好很弱（{bond_pref:.2f}），通胀上行+增长复苏不利于债券，大幅缩短久期"
 
     # 信用策略：根据 AA-AAA 等级利差分位数动态调整
     aa_aaa_pct = bundle.percentiles.get("aa_aaa_1y") or 50.0
@@ -1052,12 +1054,12 @@ def _make_garch_table(bundle: ReportBundle) -> pd.DataFrame:
             {
                 "资产": row["asset_name"],
                 "最优模型": row["最优模型"],
-                "实际α": f'{row['alpha']:.3f}',
-                "默认α": f'{row['note_alpha']:.2f}',
-                "实际β": f'{row['beta']:.3f}',
-                "默认β": f'{row['note_beta']:.2f}',
-                "年化波动率%": f'{row['年化波动率%']:.2f}',
-                "样本外相关性": f'{row['样本外相关性']:.3f}',
+                "实际α": f"{row['alpha']:.3f}",
+                "默认α": f"{row['note_alpha']:.2f}",
+                "实际β": f"{row['beta']:.3f}",
+                "默认β": f"{row['note_beta']:.2f}",
+                "年化波动率%": f"{row['年化波动率%']:.2f}",
+                "样本外相关性": f"{row['样本外相关性']:.3f}",
                 "状态": row["波动率状态"],
             }
         )
@@ -1102,7 +1104,7 @@ def _make_cross_model_table(bundle: ReportBundle) -> pd.DataFrame:
     ])
 
 
-def _build_document(bundle: ReportBundle, chart_paths: List[Path]) -> Document:
+def _build_document(bundle: ReportBundle, chart_paths: list[Path]) -> Document:
     document = Document()
     _set_document_style(document)
     section = document.sections[0]

@@ -1,25 +1,29 @@
-# -*- coding: utf-8 -*-
 """
 credit_bond_dashboard.py
 信用债仪表盘：读取所有信用债模块输出，生成可视化图表
 依赖：credit_bond_latest.csv, credit_signal.csv, credit_monitor.csv, risk_alert.csv
 输出：output/bond_macro_report_assets/credit_dashboard_*.png
 """
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import warnings
+
 import paths
 
-import warnings
 warnings.filterwarnings("ignore")
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+from datetime import datetime
+
 import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from datetime import datetime
 
 # 中文字体
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
@@ -79,7 +83,8 @@ def draw_roll_yield_chart(ax):
     y_aap = np.array([0.42,0.46,0.48,0.58,0.55,0.68,0.66,0.62]) + np.random.randn(8)*0.02
     y_aaa = np.array([0.38,0.42,0.44,0.52,0.50,0.62,0.60,0.58]) + np.random.randn(8)*0.02
 
-    x = np.arange(len(tenors)); w = 0.25
+    x = np.arange(len(tenors))
+    w = 0.25
     highlight = {3: COLORS["warning"], 5: COLORS["positive"], 6: COLORS["positive"]}
 
     def bar_color(arr, idx):
@@ -95,11 +100,14 @@ def draw_roll_yield_chart(ax):
         ax.bar(x[i],     y_aap[i]*100, w, color=COLORS["positive"],  alpha=0.9)
         ax.bar(x[i]+w,   y_aa[i]*100,  w, color=COLORS["warning"],  alpha=0.9)
 
-    ax.set_xticks(x); ax.set_xticklabels(tenors, fontsize=9, color=COLORS["text"])
+    ax.set_xticks(x)
+    ax.set_xticklabels(tenors, fontsize=9, color=COLORS["text"])
     ax.set_ylabel("Hold Period Yield (%, 3M)", fontsize=9, color=COLORS["text"])
     ax.set_title("Roll Yield Curve (3M Holding)", fontsize=10, color=COLORS["text"], pad=6)
-    for spine in ax.spines.values(): spine.set_visible(False)
-    ax.set_facecolor(COLORS["bg_dark"]); ax.tick_params(colors=COLORS["text_dim"])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_facecolor(COLORS["bg_dark"])
+    ax.tick_params(colors=COLORS["text_dim"])
     ax.legend(fontsize=8, facecolor=COLORS["bg_card"], edgecolor="none", labelcolor=COLORS["text"])
     ax.set_ylim(0, 0.85)
     ax.annotate("4Y", xy=(3, y_aa[3]*100+0.03), fontsize=7,
@@ -118,7 +126,7 @@ def draw_perpetual_spread_chart(ax):
 
     x = np.arange(len(cats))
     bars = ax.bar(x, sps, color=bar_c, alpha=0.85, width=0.5)
-    for bar, pct, sp in zip(bars, pcts, sps):
+    for bar, pct, sp in zip(bars, pcts, sps, strict=False):
         ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.3,
                 f"{pct}%", ha="center", fontsize=9,
                 color=COLORS["text"], fontweight="bold")
@@ -126,13 +134,16 @@ def draw_perpetual_spread_chart(ax):
                 f"{sp}bp", ha="center", va="center", fontsize=8,
                 color="white", fontweight="bold")
 
-    ax.set_xticks(x); ax.set_xticklabels(cats, fontsize=8, color=COLORS["text"])
+    ax.set_xticks(x)
+    ax.set_xticklabels(cats, fontsize=8, color=COLORS["text"])
     ax.set_ylabel("Spread (bp)", fontsize=9, color=COLORS["text"])
     ax.set_title("Perpetual Spread + Hist Percentile (1Y)", fontsize=10,
                  color=COLORS["text"], pad=6)
     ax.axhline(y=12, color=COLORS["warning"], linestyle="--", linewidth=1)
-    for spine in ax.spines.values(): spine.set_visible(False)
-    ax.set_facecolor(COLORS["bg_dark"]); ax.tick_params(colors=COLORS["text_dim"])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_facecolor(COLORS["bg_dark"])
+    ax.tick_params(colors=COLORS["text_dim"])
 
 
 # ── 固收+申赎强度 ─────────────────────────────────────────────────────────────
@@ -159,8 +170,10 @@ def draw_fi_plus_chart(ax):
                 xytext=(5, 5), textcoords="offset points",
                 fontsize=8, color=COLORS["warning"])
     ax.set_title("FI+ Redemption Intensity MA5", fontsize=10, color=COLORS["text"], pad=6)
-    for spine in ax.spines.values(): spine.set_visible(False)
-    ax.set_facecolor(COLORS["bg_dark"]); ax.tick_params(colors=COLORS["text_dim"], labelsize=8)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_facecolor(COLORS["bg_dark"])
+    ax.tick_params(colors=COLORS["text_dim"], labelsize=8)
     ax.legend(fontsize=7, loc="lower left", facecolor=COLORS["bg_card"],
               edgecolor="none", labelcolor=COLORS["text"])
 
@@ -193,7 +206,9 @@ def draw_province_heatmap(ax):
 
 def draw_kpi_card_on_ax(ax, title, value, subtitle, color):
     """在已有的 ax 上画 KPI 卡（用于 GridSpec top row）"""
-    ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.axis("off")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
     rect = mpatches.FancyBboxPatch(
         (0.02, 0.05), 0.96, 0.90,
         boxstyle="round,pad=0.02",
@@ -262,7 +277,7 @@ def generate_dashboard():
                  color=COLORS["text"], y=0.99)
 
     fig.text(0.99, 0.005,
-             f"Updated {datetime.now().strftime('%Y-%m-%d %H:%M')} | Source: Wind | For reference only",
+             f"Updated {datetime.now().strftime('%Y-%m-%d %H:%M')} | Source: Choice/Tushare system source | For reference only",
              ha="right", va="bottom", fontsize=7, color=COLORS["text_dim"])
 
     out_path = paths.ASSET_DIR / f"credit_dashboard_{datetime.now().strftime('%Y%m%d_%H%M')}.png"

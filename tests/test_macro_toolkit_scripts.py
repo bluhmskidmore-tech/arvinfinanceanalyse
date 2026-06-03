@@ -24,11 +24,23 @@ from backend.app.core_finance.macro.crisis_score import (
     compute_crisis_score,
     compute_crisis_score_payload,
 )
-from backend.app.core_finance.macro.toolkit import get_toolkit_script, iter_toolkit_scripts
-from backend.app.core_finance.macro.toolkit.runner import OMITTED_SOURCE_SCRIPTS, SCRIPTS_DIR, TOOLKIT_ROOT
-from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias, load_system_macro_frame
+from backend.app.core_finance.macro.toolkit import (
+    get_toolkit_script,
+    iter_toolkit_scripts,
+)
+from backend.app.core_finance.macro.toolkit.runner import (
+    OMITTED_SOURCE_SCRIPTS,
+    SCRIPTS_DIR,
+    TOOLKIT_ROOT,
+)
+from backend.app.core_finance.macro.toolkit.system_sources import (
+    load_series_by_alias,
+    load_system_macro_frame,
+)
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.cffex_member_rank_repo import ensure_cffex_member_rank_schema
+from backend.app.repositories.cffex_member_rank_repo import (
+    ensure_cffex_member_rank_schema,
+)
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -644,6 +656,213 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
         "choice_stock_daily_observation",
         "choice_stock_factor_snapshot",
     ]
+
+
+def test_macro_toolkit_scripts_surfaces_empty_commodity_futures_status(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    missing_response = client.get("/ui/macro/toolkit/scripts")
+    assert missing_response.status_code == 200, missing_response.text
+    missing_status = missing_response.json()["result"]["commodity_futures_refresh"]["status"]
+    assert missing_status["status"] == "missing_table"
+    assert missing_status["row_count"] is None
+    assert missing_status["latest_trade_date"] is None
+    assert missing_status["nanhua_input"]["status"] == "missing_table"
+    assert missing_status["nanhua_input"]["series_id"] == "NH0100.NHF"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    empty_response = client.get("/ui/macro/toolkit/scripts")
+    assert empty_response.status_code == 200, empty_response.text
+    empty_status = empty_response.json()["result"]["commodity_futures_refresh"]["status"]
+    assert empty_status["status"] == "empty_table"
+    assert empty_status["row_count"] == 0
+    assert empty_status["latest_trade_date"] is None
+    assert empty_status["coverage"]["available_product_count"] == 0
+    assert empty_status["nanhua_input"]["status"] == "missing"
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_scripts_surfaces_commodity_futures_health_from_daily_table(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values
+              ('20260429', 'CU', 'CU2606.SHF', 'SHF',
+               72000.0, 72400.0, 71800.0, 72200.0, 72100.0,
+               12000, 88000, 'sv_tushare_fut_daily_cu', 'vv_tushare_fut_daily_CU_SHF_20260430',
+               'rv_commodity_daily_v1'),
+              ('20260430', 'CU', 'CU2606.SHF', 'SHF',
+               72200.0, 72900.0, 72100.0, 72800.0, 72700.0,
+               13000, 89000, 'sv_tushare_fut_daily_cu', 'vv_tushare_fut_daily_CU_SHF_20260430',
+               'rv_commodity_daily_v1'),
+              ('2026-04-30', 'NHCI', 'NHCI.NH', 'NH',
+               3180.0, 3190.0, 3170.0, 3187.42, null,
+               null, null, 'sv_tushare_index_daily_nhci', 'vv_tushare_index_daily_NHCI_20260430',
+               'rv_commodity_daily_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    response = client.get("/ui/macro/toolkit/scripts")
+
+    assert response.status_code == 200, response.text
+    status = response.json()["result"]["commodity_futures_refresh"]["status"]
+    assert status["status"] == "ok"
+    assert status["row_count"] == 3
+    assert status["latest_trade_date"] == "2026-04-30"
+    assert status["coverage"]["available_product_count"] == 2
+    assert status["coverage"]["target_product_count"] == 7
+    assert status["coverage"]["available_products"] == ["CU", "NHCI"]
+    assert status["coverage"]["products"][0]["latest_trade_date"] == "2026-04-30"
+    assert status["source_vendors"] == ["tushare"]
+    assert status["nanhua_input"] == {
+        "status": "hit",
+        "product_code": "NHCI",
+        "series_id": "NH0100.NHF",
+        "system_series_id": "NHCI.NH",
+        "latest_trade_date": "2026-04-30",
+        "latest_value": 3187.42,
+        "row_count": 1,
+        "source_version": "sv_tushare_index_daily_nhci",
+        "vendor_version": "vv_tushare_index_daily_NHCI_20260430",
+        "rule_version": "rv_commodity_daily_v1",
+    }
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_scripts_normalizes_mixed_commodity_dates_before_latest_selection(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange,
+              open_value, high_value, low_value, close_value, settle_value,
+              volume, open_interest, source_version, vendor_version, rule_version
+            ) values
+              ('20260520', 'CU', 'CU2606.SHF', 'SHF',
+               72000.0, 72400.0, 71800.0, 72200.0, 72100.0,
+               12000, 88000, 'sv_tushare_fut_daily_cu', 'vv_tushare_fut_daily_CU_SHF_20260520',
+               'rv_commodity_daily_v1'),
+              ('20260520', 'NHCI', 'NHCI.NH', 'NH',
+               3000.0, 3010.0, 2990.0, 3007.05, null,
+               null, null, 'sv_tushare_index_daily_nhci_old', 'vv_tushare_index_daily_NHCI_20260520',
+               'rv_commodity_daily_v1'),
+              ('2026-06-01', 'NHCI', 'NHCI.NH', 'NH',
+               3180.0, 3190.0, 3170.0, 3187.42, null,
+               null, null, 'sv_tushare_index_daily_nhci_new', 'vv_tushare_index_daily_NHCI_20260601',
+               'rv_commodity_daily_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    response = client.get("/ui/macro/toolkit/scripts")
+
+    assert response.status_code == 200, response.text
+    status = response.json()["result"]["commodity_futures_refresh"]["status"]
+    assert status["latest_trade_date"] == "2026-06-01"
+    nanhua_product = next(
+        item for item in status["coverage"]["products"] if item["product_code"] == "NHCI"
+    )
+    assert nanhua_product["latest_trade_date"] == "2026-06-01"
+    assert status["nanhua_input"]["latest_trade_date"] == "2026-06-01"
+    assert status["nanhua_input"]["latest_value"] == 3187.42
+    assert status["nanhua_input"]["source_version"] == "sv_tushare_index_daily_nhci_new"
+    get_settings.cache_clear()
 
 
 def test_cffex_member_rank_refresh_materializes_tushare_rows(tmp_path, monkeypatch) -> None:
@@ -2340,6 +2559,236 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
             "dry_run": False,
         }
     ]
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_refresh_returns_after_refresh_health_summary(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    observed_statuses = [
+        {
+            "materialized": True,
+            "status": "ok",
+            "table": "fact_commodity_futures_daily",
+            "row_count": 120,
+            "latest_trade_date": "2026-05-20",
+            "source_vendors": ["tushare"],
+            "coverage": {
+                "target_product_count": 7,
+                "available_product_count": 5,
+                "available_products": ["CU", "AL", "SC", "AU", "NHCI"],
+                "missing_products": ["RB", "I"],
+            },
+            "nanhua_input": {
+                "status": "hit",
+                "product_code": "NHCI",
+                "series_id": "NH0100.NHF",
+                "system_series_id": "NHCI.NH",
+                "latest_trade_date": "2026-05-20",
+                "latest_value": 3007.05,
+                "row_count": 18,
+                "source_version": "sv_tushare_index_daily_nhci_old",
+                "vendor_version": "vv_tushare_index_daily_NHCI_20260520",
+                "rule_version": "rv_commodity_daily_v1",
+            },
+        },
+        {
+            "materialized": True,
+            "status": "ok",
+            "table": "fact_commodity_futures_daily",
+            "row_count": 154,
+            "latest_trade_date": "2026-06-01",
+            "source_vendors": ["tushare"],
+            "coverage": {
+                "target_product_count": 7,
+                "available_product_count": 7,
+                "available_products": ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+                "missing_products": [],
+            },
+            "nanhua_input": {
+                "status": "hit",
+                "product_code": "NHCI",
+                "series_id": "NH0100.NHF",
+                "system_series_id": "NHCI.NH",
+                "latest_trade_date": "2026-06-01",
+                "latest_value": 3187.42,
+                "row_count": 22,
+                "source_version": "sv_tushare_index_daily_nhci_new",
+                "vendor_version": "vv_tushare_index_daily_NHCI_20260601",
+                "rule_version": "rv_commodity_daily_v1",
+            },
+        },
+    ]
+
+    def fake_commodity_status(_duckdb_path: object) -> dict[str, object]:
+        return observed_statuses.pop(0)
+
+    def fake_run_commodity_daily_ingest(**kwargs: object) -> dict[str, object]:
+        assert kwargs["dry_run"] is False
+        return {
+            "status": "completed",
+            "dry_run": False,
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "product_count": 7,
+            "row_count": 154,
+            "products": [
+                {"product_code": "RB", "row_count": 22, "vendor": "tushare", "latest_date": "2026-06-01"},
+                {"product_code": "I", "row_count": 22, "vendor": "tushare", "latest_date": "2026-06-01"},
+                {"product_code": "NHCI", "row_count": 22, "vendor": "tushare", "latest_date": "2026-06-01", "latest_value": 3187.42, "series_id": "NHCI.NH"},
+            ],
+            "rule_version": "rv_commodity_daily_v1",
+            "table": "fact_commodity_futures_daily",
+        }
+
+    monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", fake_commodity_status)
+    monkeypatch.setattr(macro_toolkit_route, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+
+    response = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json={"start_date": "2026-05-01", "end_date": "2026-06-01", "dry_run": False},
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    refresh = payload["refresh"]
+    assert refresh["before_status"]["latest_trade_date"] == "2026-05-20"
+    assert refresh["after_status"]["latest_trade_date"] == "2026-06-01"
+    assert refresh["summary"] == {
+        "table": "fact_commodity_futures_daily",
+        "row_count_before": 120,
+        "row_count_after": 154,
+        "row_count_delta": 34,
+        "latest_trade_date_before": "2026-05-20",
+        "latest_trade_date_after": "2026-06-01",
+        "available_product_count_before": 5,
+        "available_product_count_after": 7,
+        "target_product_count": 7,
+        "newly_available_products": ["RB", "I"],
+        "missing_products_after": [],
+        "nanhua_status_before": "hit",
+        "nanhua_status_after": "hit",
+        "nanhua_latest_date_before": "2026-05-20",
+        "nanhua_latest_date_after": "2026-06-01",
+        "nanhua_latest_value_after": 3187.42,
+        "source_vendors_after": ["tushare"],
+        "dry_run": False,
+    }
+    assert payload["commodity_futures_refresh"]["status"]["latest_trade_date"] == "2026-06-01"
+    assert payload["commodity_futures_refresh"]["refresh"]["summary"]["row_count_delta"] == 34
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_dry_run_returns_baseline_health_summary(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    baseline_status = {
+        "materialized": True,
+        "status": "ok",
+        "table": "fact_commodity_futures_daily",
+        "row_count": 120,
+        "latest_trade_date": "2026-05-20",
+        "source_vendors": ["tushare"],
+        "coverage": {
+            "target_product_count": 7,
+            "available_product_count": 5,
+            "available_products": ["CU", "AL", "SC", "AU", "NHCI"],
+            "missing_products": ["RB", "I"],
+        },
+        "nanhua_input": {
+            "status": "hit",
+            "product_code": "NHCI",
+            "series_id": "NH0100.NHF",
+            "system_series_id": "NHCI.NH",
+            "latest_trade_date": "2026-05-20",
+            "latest_value": 3007.05,
+            "row_count": 18,
+            "source_version": "sv_tushare_index_daily_nhci_old",
+            "vendor_version": "vv_tushare_index_daily_NHCI_20260520",
+            "rule_version": "rv_commodity_daily_v1",
+        },
+    }
+
+    def fake_commodity_status(_duckdb_path: object) -> dict[str, object]:
+        return baseline_status
+
+    def fake_run_commodity_daily_ingest(**kwargs: object) -> dict[str, object]:
+        assert kwargs["dry_run"] is True
+        return {
+            "status": "dry_run",
+            "dry_run": True,
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "product_count": 4,
+            "estimated_total_rows": 88,
+            "estimated_trading_days": 22,
+            "products": [
+                {"product_code": "CU", "estimated_rows": 22, "vendor": "estimate_only", "series_id": "CA.COPPER"},
+                {"product_code": "SC", "estimated_rows": 22, "vendor": "estimate_only", "series_id": "COMMODITY.SC"},
+                {"product_code": "AU", "estimated_rows": 22, "vendor": "estimate_only", "series_id": "COMMODITY.AU"},
+                {"product_code": "NHCI", "estimated_rows": 22, "vendor": "estimate_only", "series_id": "NHCI.NH"},
+            ],
+            "rule_version": "rv_commodity_daily_v1",
+            "table": "fact_commodity_futures_daily",
+        }
+
+    monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", fake_commodity_status)
+    monkeypatch.setattr(macro_toolkit_route, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+
+    response = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json={
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "products": ["CU", "SC", "AU", "NHCI"],
+            "dry_run": True,
+        },
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 200, response.text
+    refresh = response.json()["result"]["refresh"]
+    assert refresh["status"] == "dry_run"
+    assert refresh["before_status"] == baseline_status
+    assert refresh["after_status"] == baseline_status
+    assert refresh["summary"]["dry_run"] is True
+    assert refresh["summary"]["row_count_before"] == 120
+    assert refresh["summary"]["row_count_after"] == 120
+    assert refresh["summary"]["row_count_delta"] == 0
+    assert refresh["summary"]["latest_trade_date_before"] == "2026-05-20"
+    assert refresh["summary"]["latest_trade_date_after"] == "2026-05-20"
+    assert refresh["summary"]["available_product_count_before"] == 5
+    assert refresh["summary"]["available_product_count_after"] == 5
+    assert refresh["summary"]["missing_products_after"] == ["RB", "I"]
+    assert refresh["summary"]["nanhua_latest_value_after"] == 3007.05
+    assert response.json()["result"]["commodity_futures_refresh"]["status"] == baseline_status
     get_settings.cache_clear()
 
 

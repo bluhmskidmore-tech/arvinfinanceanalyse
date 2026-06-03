@@ -100,6 +100,9 @@ from backend.app.schemas.bond_analytics import (
     CreditSpreadMigrationResponse,
     DV01ReconciliationResponse,
     DV01ReconciliationRow,
+    DV01MovementAttributionItem,
+    DV01MovementBondItem,
+    DV01MovementResponse,
     DV01RiskResponse,
     DV01ShockScenario,
     DV01TenorBucket,
@@ -2007,6 +2010,137 @@ def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") ->
     )
 
 
+def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: int = 20) -> dict:
+    normalized_class = _normalize_dv01_accounting_class(accounting_class)
+    top_n = max(1, min(int(top_n), 100))
+    repo = _repo()
+    current_date = report_date.isoformat()
+    previous_date = _resolve_prior_bond_snapshot_date(repo, current_date)
+    current_rows = repo.fetch_bond_analytics_rows(
+        report_date=current_date,
+        accounting_class=normalized_class,
+    )
+    previous_rows = (
+        repo.fetch_bond_analytics_rows(
+            report_date=previous_date,
+            accounting_class=normalized_class,
+        )
+        if previous_date
+        else []
+    )
+    current_all_rows = repo.fetch_bond_analytics_rows(report_date=current_date, accounting_class="all")
+    previous_all_rows = repo.fetch_bond_analytics_rows(report_date=previous_date, accounting_class="all") if previous_date else []
+
+    current_summary = _dv01_scope_summary(current_rows)
+    previous_summary = _dv01_scope_summary(previous_rows)
+    delta_dv01 = current_summary["total_dv01"] - previous_summary["total_dv01"]
+    warnings: list[str] = []
+    if not current_rows:
+        warnings.append(EMPTY_WARNING)
+    if not previous_date:
+        warnings.append("No prior bond analytics report date available; DV01 movement cannot be computed.")
+    elif not previous_rows:
+        warnings.append("Prior bond analytics snapshot is empty for this accounting class; DV01 movement is current-only.")
+
+    if not current_rows or not previous_rows:
+        payload = DV01MovementResponse.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": report_date,
+                    "previous_report_date": date.fromisoformat(previous_date) if previous_date else None,
+                    "accounting_class": normalized_class,
+                    "source_status": "empty",
+                    "current_total_face_value": current_summary["total_face_value"],
+                    "previous_total_face_value": previous_summary["total_face_value"],
+                    "current_total_market_value": current_summary["total_market_value"],
+                    "previous_total_market_value": previous_summary["total_market_value"],
+                    "current_face_weighted_modified_duration": current_summary["face_weighted_modified_duration"],
+                    "previous_face_weighted_modified_duration": previous_summary["face_weighted_modified_duration"],
+                    "current_total_dv01": current_summary["total_dv01"],
+                    "previous_total_dv01": previous_summary["total_dv01"],
+                    "delta_dv01": delta_dv01,
+                    "current_position_count": len(current_rows),
+                    "previous_position_count": len(previous_rows),
+                    "attribution": [],
+                    "anomaly_bonds": [],
+                    "methodology_checks": [],
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "warnings": warnings,
+                },
+                DV01MovementResponse,
+            )
+        )
+        return build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_analytics.dv01_movement",
+            lineage=_lineage(current_date, [*current_rows, *previous_rows]),
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=payload.model_dump(mode="json"),
+        )
+
+    movement_rows = _build_dv01_movement_bond_rows(
+        current_rows=current_rows,
+        previous_rows=previous_rows,
+        current_all_rows=current_all_rows,
+        previous_all_rows=previous_all_rows,
+    )
+    attribution = _build_dv01_movement_attribution(movement_rows, total_delta_dv01=delta_dv01)
+    anomaly_bonds = sorted(
+        movement_rows,
+        key=lambda row: (
+            safe_decimal(row.dv01_delta.raw).copy_abs(),
+            safe_decimal(row.current_dv01.raw).copy_abs(),
+            row.instrument_code,
+        ),
+        reverse=True,
+    )[:top_n]
+    methodology_checks = sorted(
+        [row for row in movement_rows if safe_decimal(row.current_dv01.raw) != ZERO],
+        key=lambda row: (
+            safe_decimal(row.dv01_estimate_gap.raw).copy_abs(),
+            safe_decimal(row.current_dv01.raw).copy_abs(),
+            row.instrument_code,
+        ),
+        reverse=True,
+    )[:top_n]
+    payload = DV01MovementResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "previous_report_date": date.fromisoformat(previous_date),
+                "accounting_class": normalized_class,
+                "source_status": "ready",
+                "current_total_face_value": current_summary["total_face_value"],
+                "previous_total_face_value": previous_summary["total_face_value"],
+                "current_total_market_value": current_summary["total_market_value"],
+                "previous_total_market_value": previous_summary["total_market_value"],
+                "current_face_weighted_modified_duration": current_summary["face_weighted_modified_duration"],
+                "previous_face_weighted_modified_duration": previous_summary["face_weighted_modified_duration"],
+                "current_total_dv01": current_summary["total_dv01"],
+                "previous_total_dv01": previous_summary["total_dv01"],
+                "delta_dv01": delta_dv01,
+                "current_position_count": len(current_rows),
+                "previous_position_count": len(previous_rows),
+                "attribution": attribution,
+                "anomaly_bonds": anomaly_bonds,
+                "methodology_checks": methodology_checks,
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": warnings,
+            },
+            DV01MovementResponse,
+        )
+    )
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind="bond_analytics.dv01_movement",
+        lineage=_lineage(current_date, [*current_rows, *previous_rows]),
+        default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
 def _normalize_dv01_accounting_class(value: str) -> str:
     normalized = str(value or "OCI").strip().upper()
     if normalized in {"", "ALL"}:
@@ -2200,6 +2334,205 @@ def _build_dv01_reconciliation_rows(
         )
         for row in ordered
     ]
+
+
+def _dv01_scope_summary(rows: list[dict[str, object]]) -> dict[str, Decimal]:
+    return {
+        "total_face_value": sum((safe_decimal(row.get("face_value")) for row in rows), ZERO),
+        "total_market_value": sum((safe_decimal(row.get("market_value")) for row in rows), ZERO),
+        "face_weighted_modified_duration": _face_weighted_modified_duration(rows),
+        "total_dv01": sum((safe_decimal(row.get("dv01")) for row in rows), ZERO),
+    }
+
+
+def _row_key(row: dict[str, object]) -> str:
+    return str(row.get("instrument_code") or "").strip()
+
+
+def _rows_by_instrument(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    return {key: row for row in rows if (key := _row_key(row))}
+
+
+def _estimated_dv01_from_face_duration(row: dict[str, object] | None) -> Decimal:
+    if not row:
+        return ZERO
+    return safe_decimal(row.get("face_value")) * safe_decimal(row.get("modified_duration")) * Decimal("0.0001")
+
+
+def _dv01_movement_reason(
+    *,
+    current_row: dict[str, object] | None,
+    previous_row: dict[str, object] | None,
+    current_all_row: dict[str, object] | None,
+    previous_all_row: dict[str, object] | None,
+) -> str:
+    if previous_row is None and current_row is not None:
+        if previous_all_row is not None:
+            return "分类转入"
+        return "新增"
+    if previous_row is not None and current_row is None:
+        if current_all_row is not None:
+            return "分类转出"
+        return "退出/到期"
+    previous_face = safe_decimal((previous_row or {}).get("face_value"))
+    current_face = safe_decimal((current_row or {}).get("face_value"))
+    previous_duration = safe_decimal((previous_row or {}).get("modified_duration"))
+    current_duration = safe_decimal((current_row or {}).get("modified_duration"))
+    if current_face != previous_face and current_duration != previous_duration:
+        return "面值和久期变化"
+    if current_face != previous_face:
+        return "面值变化"
+    if current_duration != previous_duration:
+        return "久期变化"
+    return "DV01口径差异"
+
+
+def _build_dv01_movement_bond_rows(
+    *,
+    current_rows: list[dict[str, object]],
+    previous_rows: list[dict[str, object]],
+    current_all_rows: list[dict[str, object]],
+    previous_all_rows: list[dict[str, object]],
+) -> list[DV01MovementBondItem]:
+    current_by_code = _rows_by_instrument(current_rows)
+    previous_by_code = _rows_by_instrument(previous_rows)
+    current_all_by_code = _rows_by_instrument(current_all_rows)
+    previous_all_by_code = _rows_by_instrument(previous_all_rows)
+    instrument_codes = sorted((set(current_by_code) | set(previous_by_code)) - {""})
+    items: list[DV01MovementBondItem] = []
+    for instrument_code in instrument_codes:
+        current_row = current_by_code.get(instrument_code)
+        previous_row = previous_by_code.get(instrument_code)
+        row = current_row or previous_row or {}
+        current_dv01 = safe_decimal((current_row or {}).get("dv01"))
+        previous_dv01 = safe_decimal((previous_row or {}).get("dv01"))
+        estimated_dv01 = _estimated_dv01_from_face_duration(current_row)
+        items.append(
+            DV01MovementBondItem.model_validate(
+                promote_flat_payload(
+                    {
+                        "instrument_code": instrument_code,
+                        "instrument_name": _optional_text(row.get("instrument_name")),
+                        "issuer_name": _optional_text(row.get("issuer_name")),
+                        "rating": _optional_text(row.get("rating")),
+                        "tenor_bucket": str(row.get("tenor_bucket") or ""),
+                        "previous_accounting_class": _optional_text(
+                            (previous_row or previous_all_by_code.get(instrument_code) or {}).get("accounting_class")
+                        ),
+                        "current_accounting_class": _optional_text(
+                            (current_row or current_all_by_code.get(instrument_code) or {}).get("accounting_class")
+                        ),
+                        "previous_face_value": safe_decimal((previous_row or {}).get("face_value")),
+                        "current_face_value": safe_decimal((current_row or {}).get("face_value")),
+                        "previous_modified_duration": safe_decimal((previous_row or {}).get("modified_duration")),
+                        "current_modified_duration": safe_decimal((current_row or {}).get("modified_duration")),
+                        "previous_dv01": previous_dv01,
+                        "current_dv01": current_dv01,
+                        "dv01_delta": current_dv01 - previous_dv01,
+                        "estimated_dv01_from_face_duration": estimated_dv01,
+                        "dv01_estimate_gap": current_dv01 - estimated_dv01,
+                        "reason_label": _dv01_movement_reason(
+                            current_row=current_row,
+                            previous_row=previous_row,
+                            current_all_row=current_all_by_code.get(instrument_code),
+                            previous_all_row=previous_all_by_code.get(instrument_code),
+                        ),
+                    },
+                    DV01MovementBondItem,
+                )
+            )
+        )
+    return items
+
+
+def _movement_share(value: Decimal, denominator: Decimal) -> Decimal:
+    if denominator == ZERO:
+        return ZERO
+    return value / denominator.copy_abs()
+
+
+def _build_dv01_movement_attribution(
+    movement_rows: list[DV01MovementBondItem],
+    *,
+    total_delta_dv01: Decimal,
+) -> list[DV01MovementAttributionItem]:
+    driver_order = [
+        ("new_position", "新增", ZERO, 0),
+        ("exited_position", "退出/到期", ZERO, 0),
+        ("classification_change", "分类变化", ZERO, 0),
+        ("face_value_change", "面值变化", ZERO, 0),
+        ("duration_change", "久期变化", ZERO, 0),
+    ]
+    totals: dict[str, dict[str, Decimal | int | str]] = {
+        key: {"label": label, "dv01_delta": value, "position_count": count}
+        for key, label, value, count in driver_order
+    }
+    for row in movement_rows:
+        current_dv01 = safe_decimal(row.current_dv01.raw)
+        previous_dv01 = safe_decimal(row.previous_dv01.raw)
+        current_face = safe_decimal(row.current_face_value.raw)
+        previous_face = safe_decimal(row.previous_face_value.raw)
+        current_duration = safe_decimal(row.current_modified_duration.raw)
+        previous_duration = safe_decimal(row.previous_modified_duration.raw)
+        current_class = str(row.current_accounting_class or "")
+        previous_class = str(row.previous_accounting_class or "")
+
+        if previous_class and current_class and previous_class != current_class:
+            delta = current_dv01 - previous_dv01
+            totals["classification_change"]["dv01_delta"] = safe_decimal(totals["classification_change"]["dv01_delta"]) + delta
+            totals["classification_change"]["position_count"] = int(totals["classification_change"]["position_count"]) + 1
+            continue
+        if previous_dv01 == ZERO and current_dv01 != ZERO:
+            totals["new_position"]["dv01_delta"] = safe_decimal(totals["new_position"]["dv01_delta"]) + current_dv01
+            totals["new_position"]["position_count"] = int(totals["new_position"]["position_count"]) + 1
+            continue
+        if previous_dv01 != ZERO and current_dv01 == ZERO:
+            totals["exited_position"]["dv01_delta"] = safe_decimal(totals["exited_position"]["dv01_delta"]) - previous_dv01
+            totals["exited_position"]["position_count"] = int(totals["exited_position"]["position_count"]) + 1
+            continue
+
+        face_delta = (current_face - previous_face) * previous_duration * Decimal("0.0001")
+        duration_delta = previous_face * (current_duration - previous_duration) * Decimal("0.0001")
+        if face_delta != ZERO:
+            totals["face_value_change"]["dv01_delta"] = safe_decimal(totals["face_value_change"]["dv01_delta"]) + face_delta
+            totals["face_value_change"]["position_count"] = int(totals["face_value_change"]["position_count"]) + 1
+        if duration_delta != ZERO:
+            totals["duration_change"]["dv01_delta"] = safe_decimal(totals["duration_change"]["dv01_delta"]) + duration_delta
+            totals["duration_change"]["position_count"] = int(totals["duration_change"]["position_count"]) + 1
+
+    explained_delta = sum((safe_decimal(item["dv01_delta"]) for item in totals.values()), ZERO)
+    residual_delta = total_delta_dv01 - explained_delta
+    denominator = total_delta_dv01.copy_abs()
+    items = [
+        DV01MovementAttributionItem.model_validate(
+            promote_flat_payload(
+                {
+                    "driver_key": key,
+                    "driver_label": str(item["label"]),
+                    "dv01_delta": safe_decimal(item["dv01_delta"]),
+                    "dv01_delta_share": _movement_share(safe_decimal(item["dv01_delta"]), denominator),
+                    "position_count": int(item["position_count"]),
+                },
+                DV01MovementAttributionItem,
+            )
+        )
+        for key, item in totals.items()
+    ]
+    items.append(
+        DV01MovementAttributionItem.model_validate(
+            promote_flat_payload(
+                {
+                    "driver_key": "residual",
+                    "driver_label": "口径/价格残差",
+                    "dv01_delta": residual_delta,
+                    "dv01_delta_share": _movement_share(residual_delta, denominator),
+                    "position_count": 0,
+                },
+                DV01MovementAttributionItem,
+            )
+        )
+    )
+    return items
 
 
 def _optional_text(value: object) -> str | None:

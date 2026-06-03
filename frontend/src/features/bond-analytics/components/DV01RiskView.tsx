@@ -5,6 +5,8 @@ import type { ColumnsType } from "antd/es/table";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  DV01MovementAttributionItem,
+  DV01MovementBondItem,
   DV01ReconciliationRow,
   DV01ShockScenario,
   DV01TenorBucket,
@@ -15,7 +17,12 @@ import type {
 import { apiQueryKeys } from "../../../api/queryKeys";
 import { tabularNumsStyle } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
-import type { BondAnalyticsDV01AccountingClassFilter, DV01ReconciliationResponse, DV01RiskResponse } from "../types";
+import type {
+  BondAnalyticsDV01AccountingClassFilter,
+  DV01MovementResponse,
+  DV01ReconciliationResponse,
+  DV01RiskResponse,
+} from "../types";
 import { formatPct, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 import styles from "./DV01RiskView.module.css";
@@ -319,12 +326,256 @@ const reconciliationColumns: ColumnsType<DV01ReconciliationRow> = [
   { title: "trace_id", dataIndex: "trace_id", key: "trace_id", width: 140 },
 ];
 
+const movementAttributionColumns: ColumnsType<DV01MovementAttributionItem> = [
+  { title: "解释项", dataIndex: "driver_label", key: "driver_label" },
+  {
+    title: "DV01 变动",
+    dataIndex: "dv01_delta",
+    key: "dv01_delta",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "变动占比",
+    dataIndex: "dv01_delta_share",
+    key: "dv01_delta_share",
+    render: formatPct,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "涉及债券",
+    dataIndex: "position_count",
+    key: "position_count",
+    render: formatCount,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+];
+
+const movementBondColumns: ColumnsType<DV01MovementBondItem> = [
+  { title: "债券代码", dataIndex: "instrument_code", key: "instrument_code", fixed: "left", width: 120 },
+  {
+    title: "债券名称",
+    dataIndex: "instrument_name",
+    key: "instrument_name",
+    render: nullableText,
+    width: 160,
+  },
+  {
+    title: "发行人",
+    dataIndex: "issuer_name",
+    key: "issuer_name",
+    render: nullableText,
+    width: 140,
+  },
+  { title: "原因", dataIndex: "reason_label", key: "reason_label", width: 130 },
+  { title: "上期分类", dataIndex: "previous_accounting_class", key: "previous_accounting_class", render: nullableText, width: 90 },
+  { title: "本期分类", dataIndex: "current_accounting_class", key: "current_accounting_class", render: nullableText, width: 90 },
+  {
+    title: "上期 DV01",
+    dataIndex: "previous_dv01",
+    key: "previous_dv01",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "本期 DV01",
+    dataIndex: "current_dv01",
+    key: "current_dv01",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "DV01 变动",
+    dataIndex: "dv01_delta",
+    key: "dv01_delta",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "本期面值",
+    dataIndex: "current_face_value",
+    key: "current_face_value",
+    render: formatMoneyYi,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "本期久期",
+    dataIndex: "current_modified_duration",
+    key: "current_modified_duration",
+    render: formatDurationYears,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 110,
+  },
+];
+
+const methodologyCheckColumns: ColumnsType<DV01MovementBondItem> = [
+  { title: "债券代码", dataIndex: "instrument_code", key: "instrument_code", fixed: "left", width: 120 },
+  {
+    title: "债券名称",
+    dataIndex: "instrument_name",
+    key: "instrument_name",
+    render: nullableText,
+    width: 160,
+  },
+  {
+    title: "发行人",
+    dataIndex: "issuer_name",
+    key: "issuer_name",
+    render: nullableText,
+    width: 140,
+  },
+  {
+    title: "系统 DV01",
+    dataIndex: "current_dv01",
+    key: "current_dv01",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "面值久期估算",
+    dataIndex: "estimated_dv01_from_face_duration",
+    key: "estimated_dv01_from_face_duration",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 140,
+  },
+  {
+    title: "估算差异",
+    dataIndex: "dv01_estimate_gap",
+    key: "dv01_estimate_gap",
+    render: formatNumeric,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "本期面值",
+    dataIndex: "current_face_value",
+    key: "current_face_value",
+    render: formatMoneyYi,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 120,
+  },
+  {
+    title: "本期久期",
+    dataIndex: "current_modified_duration",
+    key: "current_modified_duration",
+    render: formatDurationYears,
+    onCell: () => ({ style: tabularNumsStyle }),
+    width: 110,
+  },
+];
+
 function KpiCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className={styles.kpiCard}>
       <span className={styles.kpiLabel}>{label}</span>
       <span className={styles.kpiValue}>{value}</span>
     </div>
+  );
+}
+
+function DV01MovementPanel({
+  data,
+  isLoading,
+  isError,
+  error,
+}: {
+  data: DV01MovementResponse | null;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}) {
+  return (
+    <section className={styles.panel} data-testid="dv01-movement-panel">
+      <div className={styles.reconciliationHeader}>
+        <div>
+          <h3 className={styles.panelTitle}>较上一报告日变化</h3>
+          <div className={styles.reconciliationMeta}>
+            上一报告日 {data?.previous_report_date ?? "—"} · 本期 DV01 {formatNumeric(data?.current_total_dv01)} · 上期 DV01{" "}
+            {formatNumeric(data?.previous_total_dv01)} · 变动 {formatNumeric(data?.delta_dv01)}
+          </div>
+        </div>
+        <span className={styles.reconciliationCount}>
+          本期 {formatCount(data?.current_position_count ?? 0)} / 上期 {formatCount(data?.previous_position_count ?? 0)}
+        </span>
+      </div>
+
+      {isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="DV01 变化加载失败"
+          description={error instanceof Error ? error.message : String(error)}
+        />
+      ) : isLoading && !data ? (
+        <div className={styles.loadingState} data-testid="dv01-movement-loading">
+          <Spin />
+        </div>
+      ) : !data || data.source_status === "empty" ? (
+        <div className={styles.emptyState} data-testid="dv01-movement-empty-state">
+          该报告日/分类暂无可对比的 DV01 变化数据
+        </div>
+      ) : (
+        <>
+          {data.warnings.length > 0 ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="DV01 变化提示"
+              description={data.warnings.map((warning, index) => (
+                <div key={index}>{warning}</div>
+              ))}
+            />
+          ) : null}
+          <div className={styles.movementSummaryGrid}>
+            <KpiCard label="本期总 DV01" value={formatNumeric(data.current_total_dv01)} />
+            <KpiCard label="上期总 DV01" value={formatNumeric(data.previous_total_dv01)} />
+            <KpiCard label="DV01 变动" value={formatNumeric(data.delta_dv01)} />
+            <KpiCard label="本期加权久期" value={formatDurationYears(data.current_face_weighted_modified_duration)} />
+          </div>
+          <Table<DV01MovementAttributionItem>
+            data-testid="dv01-movement-attribution-table"
+            dataSource={data.attribution}
+            columns={movementAttributionColumns}
+            rowKey={(row) => row.driver_key}
+            pagination={false}
+            size="small"
+            scroll={{ x: true }}
+          />
+          <div className={styles.twoColumnGrid}>
+            <section className={styles.subPanel}>
+              <h4 className={styles.subPanelTitle}>异常单券</h4>
+              <Table<DV01MovementBondItem>
+                data-testid="dv01-movement-anomaly-table"
+                dataSource={data.anomaly_bonds}
+                columns={movementBondColumns}
+                rowKey={(row) => `anomaly-${row.instrument_code}`}
+                pagination={false}
+                size="small"
+                scroll={{ x: 1300, y: 360 }}
+              />
+            </section>
+            <section className={styles.subPanel}>
+              <h4 className={styles.subPanelTitle}>口径核验</h4>
+              <Table<DV01MovementBondItem>
+                data-testid="dv01-methodology-check-table"
+                dataSource={data.methodology_checks}
+                columns={methodologyCheckColumns}
+                rowKey={(row) => `methodology-${row.instrument_code}`}
+                pagination={false}
+                size="small"
+                scroll={{ x: 1200, y: 360 }}
+              />
+            </section>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -442,10 +693,26 @@ export function DV01RiskView({ reportDate }: Props) {
     enabled: Boolean(reportDate),
     retry: false,
   });
+  const movementQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsDv01Movement(
+      client.mode,
+      reportDate,
+      accountingClass,
+      topN,
+    ),
+    queryFn: () =>
+      client.getBondAnalyticsDv01Movement(reportDate, {
+        accountingClass,
+        topN,
+      }),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
 
   const data = query.data?.result ?? null;
   const hasData = data ? hasDv01RiskData(data) : false;
   const reconciliationData = reconciliationQuery.data?.result ?? null;
+  const movementData = movementQuery.data?.result ?? null;
 
   if (!reportDate) {
     return null;
@@ -592,6 +859,13 @@ export function DV01RiskView({ reportDate }: Props) {
               </div>
             </>
           )}
+
+          <DV01MovementPanel
+            data={movementData}
+            isLoading={movementQuery.isLoading}
+            isError={movementQuery.isError}
+            error={movementQuery.error}
+          />
 
           <DV01ReconciliationPanel
             data={reconciliationData}

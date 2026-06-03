@@ -10,19 +10,21 @@
   4. 商品波动率(CRB)  → 南华商品指数 实现波动率（20日滚动）
   5. 流动性(TED)      → DR007 与7天逆回购利率的偏离度
 
-数据源: Wind API (w.wsd / w.edb)
+数据源: Choice/Tushare 系统源（经 WindPy 兼容接口 w.wsd / w.edb）
 输出: 每日 Crisis Score + 历史分位数 + 状态判断
 """
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
+
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, date, timedelta
-from pathlib import Path
-import os
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -30,7 +32,7 @@ if str(_PKG) not in sys.path:
 from paths import OUTPUT_DIR
 
 # ============================================================
-# Wind API 连接
+# WindPy 兼容接口连接
 # ============================================================
 
 def connect_wind():
@@ -40,12 +42,12 @@ def connect_wind():
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:
-                print(f"[ERROR] Wind 连接失败: {ret.ErrorCode}")
+                print(f"[ERROR] Choice/Tushare 系统源连接失败: {ret.ErrorCode}")
                 return None
-        print("Wind 已连接")
+        print("Choice/Tushare 系统源已连接")
         return w
     except ImportError:
-        print("[ERROR] WindPy 未安装，请确认 Wind 终端已启动")
+        print("[ERROR] WindPy 兼容模块未安装，无法读取 Choice/Tushare 系统源")
         return None
 
 
@@ -345,7 +347,7 @@ def backtest_validation(result: pd.DataFrame, data: dict):
 
     # 统计分布
     scores = result['crisis_score'].dropna()
-    print(f"\n  Crisis Score 分布统计:")
+    print("\n  Crisis Score 分布统计:")
     print(f"    均值: {scores.mean():.3f}")
     print(f"    标准差: {scores.std():.3f}")
     print(f"    25%分位: {scores.quantile(0.25):.3f}")
@@ -369,7 +371,7 @@ def main():
     # 连接 Wind
     w = connect_wind()
     if w is None:
-        print("\nWind 不可用，退出。")
+        print("\nChoice/Tushare 系统源不可用，退出。")
         return
 
     # 拉数据（5年历史，覆盖2021年以来的主要危机事件）
@@ -401,7 +403,7 @@ def main():
     print(f"{'='*60}")
 
     # 各分项 z-score
-    print(f"\n  分项 z-score 明细:")
+    print("\n  分项 z-score 明细:")
     z_cols = [c for c in result.columns if c.endswith('_z')]
     labels = {
         'equity_vol_z':       '股市波动率',

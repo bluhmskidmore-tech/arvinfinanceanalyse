@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """
 国债期货拥挤度模块
 ==================
-数据源: 中金所每日结算会员成交持仓排名（Wind w.wset）
+数据源: 中金所每日结算会员成交持仓排名（Choice/Tushare 系统源，经 WindPy 兼容接口 w.wset）
 
 指标体系:
   1. 成交持仓比  Ratio = TV / OI          → 越大投机越强
@@ -19,26 +18,28 @@
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
+
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import duckdb
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR
 from backend.app.core_finance.macro.toolkit.system_sources import resolve_system_duckdb_path
 from backend.app.repositories.cffex_member_rank_repo import TABLE_NAME as CFFEX_TABLE_NAME
 from backend.app.repositories.cffex_member_rank_repo import VIEW_NAME as CFFEX_VIEW_NAME
+from paths import OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
 # ============================================================
-# Wind 连接
+# WindPy 兼容接口连接
 # ============================================================
 
 def connect_wind():
@@ -47,12 +48,12 @@ def connect_wind():
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:
-                print(f"[ERROR] Wind 连接失败: {ret.ErrorCode}")
+                print(f"[ERROR] Choice/Tushare 系统源连接失败: {ret.ErrorCode}")
                 return None
-        print("Wind 已连接")
+        print("Choice/Tushare 系统源已连接")
         return w
     except ImportError:
-        print("[ERROR] WindPy 未安装")
+        print("[ERROR] WindPy 兼容模块未安装")
         return None
 
 
@@ -95,7 +96,7 @@ def fetch_cffe_positions(w, contract: str, trade_date: str) -> pd.DataFrame:
         data   = result.Data
         if not fields or not data:
             return None
-        df = pd.DataFrame(dict(zip(fields, data)))
+        df = pd.DataFrame(dict(zip(fields, data, strict=False)))
         return df
 
     df_long  = _fetch("longholdingvolume")
@@ -105,7 +106,7 @@ def fetch_cffe_positions(w, contract: str, trade_date: str) -> pd.DataFrame:
     if df_long is None or df_short is None:
         return pd.DataFrame()
 
-    # 标准化列名（Wind 返回字段名可能有大小写差异）
+    # 标准化列名（兼容接口返回字段名可能有大小写差异）
     def _normalize(df, rename_map):
         df.columns = [c.lower() for c in df.columns]
         return df.rename(columns=rename_map)
@@ -454,7 +455,7 @@ def main():
 
     w = connect_wind()
     if w is None:
-        print("[ERROR] Wind 不可用，退出")
+        print("[ERROR] Choice/Tushare 系统源不可用，退出")
         sys.exit(1)
 
     # 拉取历史数据

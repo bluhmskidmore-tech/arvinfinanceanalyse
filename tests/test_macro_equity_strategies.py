@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pandas as pd
+
 from backend.app.core_finance.macro import equity_strategies as equity_strategies_module
 from backend.app.core_finance.macro.equity_strategies import (
+    _industry_neutralize_factors,
     classify_low_crowding_market_regime,
+    clean_low_crowding_observations,
     compute_factors,
     compute_low_crowding_scores,
     generate_random_prices,
@@ -11,9 +14,11 @@ from backend.app.core_finance.macro.equity_strategies import (
     mean_reversion_momentum_strategy,
     moving_average_strategy,
     multi_factor_selection,
-    _industry_neutralize_factors,
 )
-from backend.app.core_finance.macro.toolkit import get_toolkit_script, run_toolkit_script
+from backend.app.core_finance.macro.toolkit import (
+    get_toolkit_script,
+    run_toolkit_script,
+)
 
 
 def test_equity_strategies_are_exported_from_macro_package() -> None:
@@ -27,6 +32,7 @@ def test_equity_strategies_are_exported_from_macro_package() -> None:
     assert macro.multi_factor_selection is equity_strategies.multi_factor_selection
     assert macro.compute_low_crowding_scores is equity_strategies.compute_low_crowding_scores
     assert macro.classify_low_crowding_market_regime is equity_strategies.classify_low_crowding_market_regime
+    assert macro.clean_low_crowding_observations is equity_strategies.clean_low_crowding_observations
     assert macro.low_crowding_multifactor_selection is equity_strategies.low_crowding_multifactor_selection
 
 
@@ -434,6 +440,42 @@ def test_low_crowding_regime_reuses_cleaned_observations(monkeypatch) -> None:
 
     assert regime["regime"] == "crowded_quant"
     assert clean_calls == 1
+
+
+def test_low_crowding_scores_and_regime_can_share_cleaned_observations(monkeypatch) -> None:
+    prices = pd.DataFrame(
+        {
+            "a": [10.0] * 60 + [9.0],
+            "b": [10.0] * 60 + [9.0],
+            "c": [10.0] * 60 + [9.0],
+            "d": [10.0] * 60 + [9.0],
+            "e": [10.0] * 60 + [9.0],
+        },
+        index=pd.date_range("2026-01-01", periods=61, freq="D"),
+    )
+    observations = _low_crowding_observations(
+        {column: prices[column].tolist() for column in prices.columns},
+        pctchange={column: -10.0 for column in prices.columns},
+        lowlimit={column: 9.0 for column in prices.columns},
+    )
+    expected_scores = compute_low_crowding_scores(observations)
+    expected_regime = classify_low_crowding_market_regime(prices, observations)
+    clean_observations = clean_low_crowding_observations(observations)
+
+    def fail_clean(_observations: pd.DataFrame) -> pd.DataFrame:
+        raise AssertionError("low crowding summary steps should reuse pre-cleaned observations")
+
+    monkeypatch.setattr(equity_strategies_module, "_clean_observation_frame", fail_clean)
+
+    scores = compute_low_crowding_scores(observations, clean_observations=clean_observations)
+    regime = classify_low_crowding_market_regime(
+        prices,
+        observations,
+        clean_observations=clean_observations,
+    )
+
+    pd.testing.assert_frame_equal(scores, expected_scores)
+    assert regime == expected_regime
 
 
 def test_low_crowding_multifactor_selection_combines_factor_and_crowding_scores() -> None:

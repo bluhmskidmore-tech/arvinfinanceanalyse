@@ -16,6 +16,7 @@ from backend.app.api.response_cache import (
 from backend.app.core_finance.macro import (
     analyze_cross_market_linkage,
     classify_low_crowding_market_regime,
+    clean_low_crowding_observations,
     compute_credit_spread_risk,
     compute_crisis_score_payload,
     compute_economic_cycle,
@@ -280,6 +281,7 @@ def macro_toolkit_scripts(
         reference_date=_latest_source_check_date(source_checks),
     )
     commodity_permission = _commodity_futures_refresh_permission_payload(auth, settings=settings)
+    commodity_status = _commodity_futures_status(settings.duckdb_path)
     return _envelope(
         "macro_toolkit.scripts",
         {
@@ -303,6 +305,7 @@ def macro_toolkit_scripts(
             ),
             "commodity_futures_refresh": {
                 "permission": commodity_permission,
+                "status": commodity_status,
             },
             "warnings": _script_warnings(cffex_status),
         },
@@ -609,6 +612,7 @@ def macro_toolkit_refresh_commodity_futures(
     end_date = refresh_request.end_date or date.today().isoformat()
     start_date = refresh_request.start_date or _default_source_backfill_start_date(end_date)
     products = _macro_commodity_refresh_products(refresh_request.products)
+    before_status = _commodity_futures_status(settings.duckdb_path)
     try:
         refresh = run_commodity_daily_ingest(
             start_date=start_date,
@@ -622,7 +626,19 @@ def macro_toolkit_refresh_commodity_futures(
     if not refresh_request.dry_run:
         market_home_response_cache.invalidate()
     status = str(refresh.get("status") or "")
-    refresh_payload = {**refresh, "permission": permission}
+    after_status = before_status if refresh_request.dry_run else _commodity_futures_status(settings.duckdb_path)
+    summary = _commodity_futures_refresh_summary(
+        before_status=before_status,
+        after_status=after_status,
+        dry_run=refresh_request.dry_run,
+    )
+    refresh_payload = {
+        **refresh,
+        "permission": permission,
+        "before_status": before_status,
+        "after_status": after_status,
+        "summary": summary,
+    }
     return _envelope(
         "macro_toolkit.commodity_futures_refresh",
         {
@@ -630,6 +646,7 @@ def macro_toolkit_refresh_commodity_futures(
             "commodity_futures_refresh": {
                 "permission": permission,
                 "refresh": refresh_payload,
+                "status": after_status,
             },
         },
         quality_flag="ok" if status in {"completed", "dry_run"} else "warning",
@@ -994,6 +1011,270 @@ def _commodity_futures_refresh_permission_payload(
         auth,
         allowed=resolved_allowed,
     )
+
+
+def _commodity_futures_status(duckdb_path: str | Path) -> dict[str, object]:
+    base = {
+        "table": "fact_commodity_futures_daily",
+        "target_products": list(_DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS),
+    }
+    path = Path(duckdb_path)
+    if not path.exists():
+        return {
+            **base,
+            "materialized": False,
+            "status": "missing_table",
+            "row_count": None,
+            "latest_trade_date": None,
+            "source_vendors": [],
+            "coverage": _commodity_futures_coverage([]),
+            "nanhua_input": _commodity_futures_missing_nanhua("missing_table"),
+        }
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+        try:
+            if not _duckdb_table_exists(conn, "fact_commodity_futures_daily"):
+                return {
+                    **base,
+                    "materialized": False,
+                    "status": "missing_table",
+                    "row_count": None,
+                    "latest_trade_date": None,
+                    "source_vendors": [],
+                    "coverage": _commodity_futures_coverage([]),
+                    "nanhua_input": _commodity_futures_missing_nanhua("missing_table"),
+                }
+            row = conn.execute(
+                """
+                select count(*) as row_count
+                from fact_commodity_futures_daily
+                """
+            ).fetchone()
+            row_count = int(row[0] or 0) if row else 0
+            product_rows = conn.execute(
+                """
+                with normalized as (
+                  select
+                    product_code,
+                    case
+                      when regexp_matches(cast(trade_date as varchar), '^[0-9]{8}$')
+                        then try_strptime(cast(trade_date as varchar), '%Y%m%d')::date
+                      else try_cast(left(cast(trade_date as varchar), 10) as date)
+                    end as normalized_trade_date
+                  from fact_commodity_futures_daily
+                )
+                select product_code, count(*) as row_count, max(normalized_trade_date) as latest_trade_date
+                from normalized
+                group by product_code
+                order by product_code
+                """
+            ).fetchall()
+            products = [
+                {
+                    "product_code": str(product_code),
+                    "row_count": int(product_row_count or 0),
+                    "latest_trade_date": _normalize_commodity_trade_date(product_latest),
+                }
+                for product_code, product_row_count, product_latest in product_rows
+            ]
+            product_latest_dates = [
+                latest_date
+                for latest_date in (
+                    _normalize_commodity_trade_date(item.get("latest_trade_date")) for item in products
+                )
+                if latest_date
+            ]
+            latest_trade_date = max(product_latest_dates, default=None)
+            source_vendors = [
+                str(item[0]).strip()
+                for item in conn.execute(
+                    """
+                    select distinct
+                      case
+                        when lower(coalesce(source_version, '')) like '%choice%' then 'choice'
+                        when lower(coalesce(source_version, '')) like '%tushare%' then 'tushare'
+                        when lower(coalesce(vendor_version, '')) like '%choice%' then 'choice'
+                        when lower(coalesce(vendor_version, '')) like '%tushare%' then 'tushare'
+                        else coalesce(nullif(vendor_version, ''), nullif(source_version, ''), 'unknown')
+                      end as vendor
+                    from fact_commodity_futures_daily
+                    order by vendor
+                    """
+                ).fetchall()
+                if str(item[0]).strip()
+            ]
+            nanhua_input = _commodity_futures_nanhua_input(conn)
+            return {
+                **base,
+                "materialized": True,
+                "status": "ok" if row_count > 0 else "empty_table",
+                "row_count": row_count,
+                "latest_trade_date": latest_trade_date,
+                "source_vendors": source_vendors,
+                "coverage": _commodity_futures_coverage(products),
+                "nanhua_input": nanhua_input,
+            }
+        finally:
+            conn.close()
+    except duckdb.Error:
+        return {
+            **base,
+            "materialized": False,
+            "status": "unreadable_database",
+            "row_count": None,
+            "latest_trade_date": None,
+            "source_vendors": [],
+            "coverage": _commodity_futures_coverage([]),
+            "nanhua_input": _commodity_futures_missing_nanhua("missing_table"),
+        }
+
+
+def _commodity_futures_coverage(products: list[dict[str, object]]) -> dict[str, object]:
+    available_products = [
+        str(item["product_code"])
+        for item in products
+        if str(item.get("product_code") or "") in _DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS
+        and int(item.get("row_count") or 0) > 0
+    ]
+    return {
+        "target_product_count": len(_DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS),
+        "available_product_count": len(available_products),
+        "available_products": available_products,
+        "missing_products": [
+            product for product in _DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS if product not in set(available_products)
+        ],
+        "products": products,
+    }
+
+
+def _commodity_futures_refresh_summary(
+    *,
+    before_status: dict[str, object],
+    after_status: dict[str, object],
+    dry_run: bool,
+) -> dict[str, object]:
+    before_coverage = before_status.get("coverage") if isinstance(before_status.get("coverage"), dict) else {}
+    after_coverage = after_status.get("coverage") if isinstance(after_status.get("coverage"), dict) else {}
+    before_available = _commodity_status_text_set(before_coverage.get("available_products"))
+    after_available = _commodity_status_text_set(after_coverage.get("available_products"))
+    newly_available_products = after_available - before_available
+    before_nanhua = before_status.get("nanhua_input") if isinstance(before_status.get("nanhua_input"), dict) else {}
+    after_nanhua = after_status.get("nanhua_input") if isinstance(after_status.get("nanhua_input"), dict) else {}
+    before_row_count = _commodity_status_int(before_status.get("row_count"))
+    after_row_count = _commodity_status_int(after_status.get("row_count"))
+    return {
+        "table": str(after_status.get("table") or before_status.get("table") or "fact_commodity_futures_daily"),
+        "row_count_before": before_row_count,
+        "row_count_after": after_row_count,
+        "row_count_delta": (
+            after_row_count - before_row_count
+            if before_row_count is not None and after_row_count is not None
+            else None
+        ),
+        "latest_trade_date_before": before_status.get("latest_trade_date"),
+        "latest_trade_date_after": after_status.get("latest_trade_date"),
+        "available_product_count_before": _commodity_status_int(before_coverage.get("available_product_count")),
+        "available_product_count_after": _commodity_status_int(after_coverage.get("available_product_count")),
+        "target_product_count": _commodity_status_int(after_coverage.get("target_product_count"))
+        or _commodity_status_int(before_coverage.get("target_product_count")),
+        "newly_available_products": _commodity_ordered_products(newly_available_products),
+        "missing_products_after": _commodity_ordered_products(
+            _commodity_status_text_set(after_coverage.get("missing_products"))
+        ),
+        "nanhua_status_before": before_nanhua.get("status"),
+        "nanhua_status_after": after_nanhua.get("status"),
+        "nanhua_latest_date_before": before_nanhua.get("latest_trade_date"),
+        "nanhua_latest_date_after": after_nanhua.get("latest_trade_date"),
+        "nanhua_latest_value_after": after_nanhua.get("latest_value"),
+        "source_vendors_after": sorted(_commodity_status_text_set(after_status.get("source_vendors"))),
+        "dry_run": dry_run,
+    }
+
+
+def _commodity_status_text_set(value: object) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    return {str(item).strip() for item in value if str(item).strip()}
+
+
+def _commodity_ordered_products(products: set[str]) -> list[str]:
+    ordered = [product for product in _DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS if product in products]
+    ordered.extend(sorted(product for product in products if product not in set(ordered)))
+    return ordered
+
+
+def _commodity_status_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _commodity_futures_missing_nanhua(status: str) -> dict[str, object]:
+    return {
+        "status": status,
+        "product_code": "NHCI",
+        "series_id": "NH0100.NHF",
+        "system_series_id": "NHCI.NH",
+        "latest_trade_date": None,
+        "latest_value": None,
+        "row_count": 0,
+        "source_version": None,
+        "vendor_version": None,
+        "rule_version": None,
+    }
+
+
+def _normalize_commodity_trade_date(value: object) -> str | None:
+    text = str(value or "").strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+    if len(text) >= 10:
+        return text[:10]
+    return text or None
+
+
+def _commodity_futures_nanhua_input(conn: duckdb.DuckDBPyConnection) -> dict[str, object]:
+    row = conn.execute(
+        """
+        with normalized as (
+          select
+            trade_date,
+            close_value,
+            source_version,
+            vendor_version,
+            rule_version,
+            case
+              when regexp_matches(cast(trade_date as varchar), '^[0-9]{8}$')
+                then try_strptime(cast(trade_date as varchar), '%Y%m%d')::date
+              else try_cast(left(cast(trade_date as varchar), 10) as date)
+            end as normalized_trade_date
+          from fact_commodity_futures_daily
+          where product_code = 'NHCI'
+        )
+        select trade_date, close_value, count(*) over () as row_count, source_version, vendor_version, rule_version
+        from normalized
+        order by normalized_trade_date desc nulls last, trade_date desc
+        limit 1
+        """
+    ).fetchone()
+    if not row:
+        return _commodity_futures_missing_nanhua("missing")
+    trade_date, latest_value, row_count, source_version, vendor_version, rule_version = row
+    return {
+        "status": "hit",
+        "product_code": "NHCI",
+        "series_id": "NH0100.NHF",
+        "system_series_id": "NHCI.NH",
+        "latest_trade_date": _normalize_commodity_trade_date(trade_date),
+        "latest_value": float(latest_value) if latest_value is not None else None,
+        "row_count": int(row_count or 0),
+        "source_version": str(source_version) if source_version is not None else None,
+        "vendor_version": str(vendor_version) if vendor_version is not None else None,
+        "rule_version": str(rule_version) if rule_version is not None else None,
+    }
 
 
 def _choice_stock_refresh_overview(
@@ -1854,8 +2135,9 @@ def _real_low_crowding_regime_multifactor_summary(
             "result": {"data_status": "unavailable"},
         }
 
-    crowding_scores = compute_low_crowding_scores(observations)
-    regime = classify_low_crowding_market_regime(prices, observations)
+    clean_observations = clean_low_crowding_observations(observations)
+    crowding_scores = compute_low_crowding_scores(observations, clean_observations=clean_observations)
+    regime = classify_low_crowding_market_regime(prices, observations, clean_observations=clean_observations)
     base_result = {
         "data_status": "complete",
         "price_source": "choice_stock_daily_observation",

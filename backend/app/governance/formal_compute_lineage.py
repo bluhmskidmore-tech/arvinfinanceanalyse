@@ -3,8 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
 

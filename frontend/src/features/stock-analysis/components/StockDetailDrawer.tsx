@@ -239,10 +239,11 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
   });
 
   const candidateHistoryQuery = useQuery({
-    queryKey: ["stock-analysis", "livermore-candidate-history", stockCode, 10] as const,
+    queryKey: ["stock-analysis", "livermore-candidate-history", stockCode, asOfDate ?? null, 10] as const,
     queryFn: () =>
       client.getLivermoreCandidateHistory({
-        stockCode: stockCode ?? undefined,
+        stockCode: stockCodeForQuery,
+        snapshotTo: asOfDate,
         limit: 10,
       }),
     enabled: open,

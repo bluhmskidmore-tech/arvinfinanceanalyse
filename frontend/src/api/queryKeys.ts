@@ -42,6 +42,20 @@ export const apiQueryKeys = {
       normalizeReportDate(reportDate),
       accountingClass,
     ] as const,
+  bondAnalyticsDv01Movement: (
+    mode: string,
+    reportDate: string | null | undefined,
+    accountingClass: string,
+    topN: number,
+  ) =>
+    [
+      "bond-analytics",
+      "dv01-movement",
+      mode,
+      normalizeReportDate(reportDate),
+      accountingClass,
+      topN,
+    ] as const,
   bondDashboardPortfolioComparison: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "portfolio-comparison", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardAssetStructure: (

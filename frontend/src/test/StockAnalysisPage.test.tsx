@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -262,6 +262,39 @@ function buildStrategyPayload(
       ],
     },
     ...overrides,
+  };
+}
+
+function buildCycleRotationFramework(): NonNullable<LivermoreStrategyPayload["cycle_rotation_framework"]> {
+  return {
+    strategy_name: "A-share cycle rotation research framework",
+    display_name: "A股景气周期选股与行业轮动",
+    observation_only: true,
+    implementation_stage: "verification_pending",
+    score_formula: "CycleScore = 0.30 Macro + 0.35 Industry + 0.20 MarketFlow + 0.15 ValuationSupport",
+    rebalance_cadence: "Monthly core review with weekly satellite monitoring.",
+    boundary: "blocked_missing_inputs",
+    constraints: ["industry cap 25%", "stock cap 5%", "exclude ST and suspended stocks"],
+    layers: [
+      {
+        key: "macro_direction",
+        title: "Macro direction",
+        weight: 0.3,
+        status: "missing_inputs",
+        evidence: "Market gate is available; PMI and credit impulse are not landed.",
+        available_inputs: ["market_gate"],
+        missing_inputs: ["PMI", "credit_impulse"],
+      },
+      {
+        key: "industry_cycle",
+        title: "Industry cycle",
+        weight: 0.35,
+        status: "provisional",
+        evidence: "sector_rank is available.",
+        available_inputs: ["sector_rank"],
+        missing_inputs: ["profit_cycle"],
+      },
+    ],
   };
 }
 
@@ -1127,6 +1160,58 @@ function stockClient(options?: {
   };
 }
 
+function mockStrategyLatestSnapshotFallback(
+  client: ApiClient,
+  dates: {
+    initialAsOfDate?: string;
+    resolvedAsOfDate?: string;
+    payloadOverrides?: Partial<LivermoreStrategyPayload>;
+  } = {},
+) {
+  const resolvedAsOfDate = dates.resolvedAsOfDate ?? "2026-04-29";
+  const initialAsOfDate = dates.initialAsOfDate ?? resolvedAsOfDate;
+
+  return vi.spyOn(client, "getLivermoreStrategy").mockImplementation(async (options) =>
+    buildMockApiEnvelope(
+      "market_data.livermore",
+      buildStrategyPayload({
+        as_of_date: options?.asOfDate ? resolvedAsOfDate : initialAsOfDate,
+        requested_as_of_date: options?.asOfDate ?? null,
+        ...dates.payloadOverrides,
+      }),
+      {
+        basis: "analytical",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_test",
+        vendor_version: "vv_livermore_test",
+        rule_version: "rv_livermore_market_gate_v1",
+        fallback_mode: options?.asOfDate ? "latest_snapshot" : "none",
+      },
+    ),
+  );
+}
+
+async function requestStockAnalysisAsOfDate(
+  user: ReturnType<typeof userEvent.setup>,
+  strategySpy: ReturnType<typeof mockStrategyLatestSnapshotFallback>,
+  requestedAsOfDate = "2026-05-08",
+  resolvedAsOfDate = "2026-04-29",
+) {
+  await screen.findByTestId("stock-analysis-decision-panel");
+  const picker = screen.getByTestId("stock-analysis-as-of-picker");
+  const pickerInput = picker instanceof HTMLInputElement ? picker : picker.querySelector("input");
+  expect(pickerInput).toBeInstanceOf(HTMLInputElement);
+  await user.click(pickerInput as HTMLInputElement);
+  fireEvent.change(pickerInput as HTMLInputElement, { target: { value: requestedAsOfDate } });
+  fireEvent.keyDown(pickerInput as HTMLInputElement, { key: "Enter", code: "Enter" });
+  fireEvent.blur(pickerInput as HTMLInputElement);
+
+  await waitFor(() => expect(strategySpy).toHaveBeenCalledWith({ asOfDate: requestedAsOfDate }));
+  await waitFor(() =>
+    expect(screen.getByTestId("stock-analysis-decision-panel")).toHaveTextContent(resolvedAsOfDate),
+  );
+}
+
 describe("StockAnalysisPage", () => {
   it("marks the backend-supply cockpit without changing the stock data path", async () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
@@ -1157,7 +1242,7 @@ describe("StockAnalysisPage", () => {
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("复核队列");
     expect(selection).toHaveTextContent("策略共振选股");
-    expect(selection).toHaveTextContent("多策略观察池");
+    expect(await screen.findByTestId("stock-analysis-observation-preview")).toHaveTextContent("多策略观察池");
     expect(await screen.findByTestId("stock-analysis-strategy-lens")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-review-queue-ranking-chart")).toHaveTextContent("队列排序");
 
@@ -2405,6 +2490,59 @@ describe("StockAnalysisPage", () => {
     spy.mockRestore();
   });
 
+  it("loads sector rank series with the resolved data date when a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = mockStrategyLatestSnapshotFallback(client);
+    const seriesSpy = vi.spyOn(client, "getLivermoreSectorRankSeries");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await requestStockAnalysisAsOfDate(user, strategySpy);
+    await user.click(screen.getByText("多日强弱"));
+
+    await waitFor(() =>
+      expect(seriesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ asOfDate: "2026-04-29", windowDays: 5, topK: 10 }),
+      ),
+    );
+    expect(seriesSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ asOfDate: "2026-05-08" }),
+    );
+  });
+
+  it("does not load sector rank series with only the requested date when no data date is resolved", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = vi.spyOn(client, "getLivermoreStrategy").mockImplementation(async (options) =>
+      buildMockApiEnvelope(
+        "market_data.livermore",
+        buildStrategyPayload({
+          as_of_date: options?.asOfDate ? null : "2026-04-29",
+          requested_as_of_date: options?.asOfDate ?? null,
+        }),
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_livermore_test",
+          vendor_version: "vv_livermore_test",
+          rule_version: "rv_livermore_market_gate_v1",
+          fallback_mode: options?.asOfDate ? "latest_snapshot" : "none",
+        },
+      ),
+    );
+    const seriesSpy = vi.spyOn(client, "getLivermoreSectorRankSeries");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    expect(await screen.findByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
+    await requestStockAnalysisAsOfDate(user, strategySpy, "2026-05-08", "2026-05-08");
+    await user.click(screen.getByText("多日强弱"));
+
+    await waitFor(() => expect(screen.getByTestId("stock-analysis-sector-series-panel")).toBeInTheDocument());
+    expect(seriesSpy).not.toHaveBeenCalled();
+  });
+
   it("shows sector series failure alert without breaking sector bars", async () => {
     const user = userEvent.setup();
     const client = stockClient();
@@ -2439,6 +2577,138 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("stock-detail-review-context")).toHaveTextContent("复核队列");
     expect(screen.getByTestId("stock-detail-review-context")).toHaveTextContent("#1");
     expect(screen.getByTestId("stock-detail-review-context")).toHaveTextContent("AI");
+  });
+
+  it("opens stock detail with the resolved data date when a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = mockStrategyLatestSnapshotFallback(client);
+    const detailSpy = vi.spyOn(client, "getLivermoreStockDetail");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await requestStockAnalysisAsOfDate(user, strategySpy);
+    const decisionPanel = screen.getByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("数据日期");
+    expect(decisionPanel).toHaveTextContent("2026-04-29");
+    expect(decisionPanel).toHaveTextContent("请求日期");
+    expect(decisionPanel).toHaveTextContent("2026-05-08");
+
+    await user.click(screen.getByTestId("stock-candidate-review-chart-000001.SZ"));
+
+    await waitFor(() =>
+      expect(detailSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ stockCode: "000001.SZ", asOfDate: "2026-04-29" }),
+      ),
+    );
+    expect(detailSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ stockCode: "000001.SZ", asOfDate: "2026-05-08" }),
+    );
+  });
+
+  it("loads first-screen strategy diagnostics with the resolved data date when a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = mockStrategyLatestSnapshotFallback(client, {
+      initialAsOfDate: "2026-04-28",
+      resolvedAsOfDate: "2026-04-29",
+    });
+    const strategyScoreSpy = vi.spyOn(client, "getLivermoreStrategyScore");
+    const strategyOptimizationSpy = vi.spyOn(client, "getLivermoreStrategyOptimization");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await requestStockAnalysisAsOfDate(user, strategySpy);
+    const analytics = await screen.findByTestId("stock-analysis-first-screen-analytics");
+    const [, priorityTab] = within(analytics).getAllByRole("tab");
+    await user.click(priorityTab);
+
+    await waitFor(() =>
+      expect(strategyScoreSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ snapshotTo: "2026-04-29", currentMarketState: "WARM" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(strategyOptimizationSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ snapshotTo: "2026-04-29", currentMarketState: "WARM" }),
+      ),
+    );
+    expect(strategyScoreSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ snapshotTo: "2026-05-08" }),
+    );
+    expect(strategyOptimizationSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ snapshotTo: "2026-05-08" }),
+    );
+  });
+
+  it("loads strategy backtest with the resolved data date when a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = mockStrategyLatestSnapshotFallback(client, {
+      initialAsOfDate: "2026-04-28",
+      resolvedAsOfDate: "2026-04-29",
+    });
+    const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await requestStockAnalysisAsOfDate(user, strategySpy);
+    await screen.findByTestId("stock-analysis-strategy-backtest");
+
+    await waitFor(
+      () =>
+        expect(candidateHistorySpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshotFrom: "2026-04-19",
+            snapshotTo: "2026-04-29",
+            limit: 500,
+          }),
+        ),
+      { timeout: 6_000 },
+    );
+    expect(candidateHistorySpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ snapshotTo: "2026-05-08", limit: 500 }),
+    );
+  });
+
+  it("loads cycle rotation backtests with the resolved data date when a requested date falls back", async () => {
+    const user = userEvent.setup();
+    const client = stockClient();
+    const strategySpy = mockStrategyLatestSnapshotFallback(client, {
+      initialAsOfDate: "2026-04-28",
+      resolvedAsOfDate: "2026-04-29",
+      payloadOverrides: {
+        cycle_rotation_framework: buildCycleRotationFramework(),
+      },
+    });
+    const cycleProxySpy = vi.spyOn(client, "getLivermoreCycleProxyBacktest");
+    const portfolioBacktestSpy = vi.spyOn(client, "getLivermoreCandidateHistoryPortfolioBacktest");
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    await requestStockAnalysisAsOfDate(user, strategySpy);
+    await screen.findByTestId("stock-analysis-cycle-rotation-framework");
+
+    await waitFor(
+      () =>
+        expect(cycleProxySpy).toHaveBeenCalledWith(
+          expect.objectContaining({ snapshotTo: "2026-04-29" }),
+        ),
+      { timeout: 6_000 },
+    );
+    await waitFor(
+      () =>
+        expect(portfolioBacktestSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ snapshotTo: "2026-04-29" }),
+        ),
+      { timeout: 6_000 },
+    );
+    expect(cycleProxySpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ snapshotTo: "2026-05-08" }),
+    );
+    expect(portfolioBacktestSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ snapshotTo: "2026-05-08" }),
+    );
   });
 
   it("opens Agent drawer and submits page_context.page_id stock-analysis + filters", async () => {

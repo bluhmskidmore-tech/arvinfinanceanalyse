@@ -533,6 +533,238 @@ def test_bond_analytics_dv01_reconciliation_empty_scope_returns_warning(tmp_path
     get_settings.cache_clear()
 
 
+def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    previous_date = "2026-02-28"
+    current_date = "2026-03-31"
+    rows_by_date = {
+        previous_date: [
+            {
+                "report_date": previous_date,
+                "instrument_code": "A-001",
+                "instrument_name": "Alpha Bond",
+                "issuer_name": "Issuer A",
+                "rating": "AAA",
+                "tenor_bucket": "3-5Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("1000000"),
+                "market_value": Decimal("1005000"),
+                "modified_duration": Decimal("3"),
+                "dv01": Decimal("300"),
+                "source_version": "sv_prev",
+                "rule_version": "rv_prev",
+                "trace_id": "tr_prev_a",
+            },
+            {
+                "report_date": previous_date,
+                "instrument_code": "B-001",
+                "instrument_name": "Beta Bond",
+                "issuer_name": "Issuer B",
+                "rating": "AA+",
+                "tenor_bucket": "1-3Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("500000"),
+                "market_value": Decimal("501000"),
+                "modified_duration": Decimal("2"),
+                "dv01": Decimal("100"),
+                "source_version": "sv_prev",
+                "rule_version": "rv_prev",
+                "trace_id": "tr_prev_b",
+            },
+            {
+                "report_date": previous_date,
+                "instrument_code": "X-001",
+                "instrument_name": "Exit Bond",
+                "issuer_name": "Issuer X",
+                "rating": "AA",
+                "tenor_bucket": "5-7Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("100000"),
+                "market_value": Decimal("100000"),
+                "modified_duration": Decimal("5"),
+                "dv01": Decimal("50"),
+                "source_version": "sv_prev",
+                "rule_version": "rv_prev",
+                "trace_id": "tr_prev_x",
+            },
+            {
+                "report_date": previous_date,
+                "instrument_code": "C-001",
+                "instrument_name": "Class Change Bond",
+                "issuer_name": "Issuer C",
+                "rating": "AAA",
+                "tenor_bucket": "3-5Y",
+                "accounting_class": "TPL",
+                "face_value": Decimal("100000"),
+                "market_value": Decimal("100000"),
+                "modified_duration": Decimal("4"),
+                "dv01": Decimal("40"),
+                "source_version": "sv_prev",
+                "rule_version": "rv_prev",
+                "trace_id": "tr_prev_c",
+            },
+        ],
+        current_date: [
+            {
+                "report_date": current_date,
+                "instrument_code": "A-001",
+                "instrument_name": "Alpha Bond",
+                "issuer_name": "Issuer A",
+                "rating": "AAA",
+                "tenor_bucket": "3-5Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("1100000"),
+                "market_value": Decimal("1110000"),
+                "modified_duration": Decimal("3.5"),
+                "dv01": Decimal("390"),
+                "source_version": "sv_current",
+                "rule_version": "rv_current",
+                "trace_id": "tr_current_a",
+            },
+            {
+                "report_date": current_date,
+                "instrument_code": "B-001",
+                "instrument_name": "Beta Bond",
+                "issuer_name": "Issuer B",
+                "rating": "AA+",
+                "tenor_bucket": "1-3Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("500000"),
+                "market_value": Decimal("502000"),
+                "modified_duration": Decimal("2"),
+                "dv01": Decimal("100"),
+                "source_version": "sv_current",
+                "rule_version": "rv_current",
+                "trace_id": "tr_current_b",
+            },
+            {
+                "report_date": current_date,
+                "instrument_code": "N-001",
+                "instrument_name": "New Bond",
+                "issuer_name": "Issuer N",
+                "rating": "AA",
+                "tenor_bucket": "5-7Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("200000"),
+                "market_value": Decimal("201000"),
+                "modified_duration": Decimal("5"),
+                "dv01": Decimal("100"),
+                "source_version": "sv_current",
+                "rule_version": "rv_current",
+                "trace_id": "tr_current_n",
+            },
+            {
+                "report_date": current_date,
+                "instrument_code": "C-001",
+                "instrument_name": "Class Change Bond",
+                "issuer_name": "Issuer C",
+                "rating": "AAA",
+                "tenor_bucket": "3-5Y",
+                "accounting_class": "OCI",
+                "face_value": Decimal("100000"),
+                "market_value": Decimal("100000"),
+                "modified_duration": Decimal("4"),
+                "dv01": Decimal("40"),
+                "source_version": "sv_current",
+                "rule_version": "rv_current",
+                "trace_id": "tr_current_c",
+            },
+        ],
+    }
+
+    class FakeRepo:
+        def list_report_dates(self):
+            return [current_date, previous_date]
+
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            rows = list(rows_by_date.get(report_date, []))
+            if accounting_class != "all":
+                rows = [row for row in rows if row["accounting_class"] == accounting_class]
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_movement(date(2026, 3, 31), accounting_class="OCI", top_n=10)
+    result = payload["result"]
+
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_movement"
+    assert result["accounting_class"] == "OCI"
+    assert result["previous_report_date"] == previous_date
+    assert _numeric_raw(result["current_total_dv01"]) == Decimal("630")
+    assert _numeric_raw(result["previous_total_dv01"]) == Decimal("450")
+    assert _numeric_raw(result["delta_dv01"]) == Decimal("180")
+
+    attribution = {row["driver_key"]: row for row in result["attribution"]}
+    assert _numeric_raw(attribution["new_position"]["dv01_delta"]) == Decimal("100")
+    assert _numeric_raw(attribution["exited_position"]["dv01_delta"]) == Decimal("-50")
+    assert _numeric_raw(attribution["face_value_change"]["dv01_delta"]) == Decimal("30.00")
+    assert _numeric_raw(attribution["duration_change"]["dv01_delta"]) == Decimal("50.0000")
+    assert _numeric_raw(attribution["classification_change"]["dv01_delta"]) == Decimal("40")
+    assert _numeric_raw(attribution["residual"]["dv01_delta"]) == Decimal("10.0000")
+    assert sum(_numeric_raw(row["dv01_delta"]) for row in result["attribution"]) == _numeric_raw(result["delta_dv01"])
+
+    top_codes = [row["instrument_code"] for row in result["anomaly_bonds"]]
+    assert top_codes[:3] == ["N-001", "A-001", "X-001"]
+    alpha = next(row for row in result["methodology_checks"] if row["instrument_code"] == "A-001")
+    assert _numeric_raw(alpha["estimated_dv01_from_face_duration"]) == Decimal("385.00000")
+    assert _numeric_raw(alpha["dv01_estimate_gap"]) == Decimal("5.00000")
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_movement_without_prior_returns_warning(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    class FakeRepo:
+        def list_report_dates(self):
+            return ["2026-03-31"]
+
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return []
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_empty",
+            "rule_version": "rv_empty",
+            "cache_version": "cv_empty",
+            "vendor_version": "vv_empty",
+        },
+    )
+
+    payload = service_mod.get_dv01_movement(date(2026, 3, 31))
+    result = payload["result"]
+
+    assert result["previous_report_date"] is None
+    assert result["source_status"] == "empty"
+    assert result["attribution"] == []
+    assert result["anomaly_bonds"] == []
+    assert result["methodology_checks"] == []
+    assert result["warnings"]
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_dv01_risk_shares_use_absolute_exposure_denominator(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()

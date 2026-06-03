@@ -226,7 +226,7 @@ def _write_workbook_table_sheet(sheet: Worksheet, table: dict[str, Any]) -> None
             values.append(coerced)
             coerced_values.append(coerced)
         sheet.append(values)
-        for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values), start=1):
+        for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values, strict=False), start=1):
             _style_numeric_cell(sheet.cell(row=sheet.max_row, column=column_index), value, column_key=column_key)
 
     _autosize_sheet_columns(sheet)

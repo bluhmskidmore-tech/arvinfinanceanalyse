@@ -16,6 +16,7 @@ from backend.app.services.bond_analytics_service import (
     get_action_attribution,
     get_benchmark_excess,
     get_credit_spread_migration,
+    get_dv01_movement,
     get_dv01_reconciliation,
     get_dv01_risk,
     get_krd_curve_risk,
@@ -91,6 +92,18 @@ def dv01_reconciliation(
 ):
     try:
         return get_dv01_reconciliation(report_date, accounting_class=accounting_class)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/dv01-movement")
+def dv01_movement(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
+    top_n: int = Query(20, ge=1, le=100, description="Number of anomaly and methodology rows"),
+):
+    try:
+        return get_dv01_movement(report_date, accounting_class=accounting_class, top_n=top_n)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

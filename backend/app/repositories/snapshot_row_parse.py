@@ -99,7 +99,7 @@ def _decimal(value: object) -> Decimal | None:
         return None
     try:
         return Decimal(text)
-    except (TypeError, ValueError, ArithmeticError) as exc:
+    except (TypeError, ValueError, ArithmeticError):
         logger.exception("_decimal: failed to convert %r", type(value).__name__)
         return None
 

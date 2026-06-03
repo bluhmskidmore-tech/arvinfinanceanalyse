@@ -36,7 +36,7 @@ def coerce_date(value: Any) -> date | None:
     if hasattr(value, "date"):
         try:
             return value.date()
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
@@ -178,7 +178,7 @@ def to_decimal_safe(v: Any) -> Decimal:
         return v
     try:
         return Decimal(str(v))
-    except (TypeError, ValueError, ArithmeticError) as exc:
+    except (TypeError, ValueError, ArithmeticError):
         logger.exception("to_decimal_safe: failed to convert %r", type(v).__name__)
         return Decimal("0")
 
@@ -202,7 +202,7 @@ def pearson_corr(x: list[float], y: list[float], min_samples: int = 5) -> float 
     n = len(x)
     sum_x = sum(x)
     sum_y = sum(y)
-    sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+    sum_xy = sum(xi * yi for xi, yi in zip(x, y, strict=False))
     sum_xx = sum(xi * xi for xi in x)
     sum_yy = sum(yi * yi for yi in y)
     num = n * sum_xy - sum_x * sum_y

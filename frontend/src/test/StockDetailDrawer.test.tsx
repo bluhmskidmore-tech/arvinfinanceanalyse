@@ -166,6 +166,45 @@ describe("StockDetailDrawer", () => {
     expect(screen.queryByText("截至日 2026-05-08")).not.toBeInTheDocument();
   });
 
+  it("fetches candidate history with the resolved detail date when a requested date falls back", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        payload: {
+          requested_as_of_date: "2026-05-08",
+          as_of_date: "2026-04-29",
+        },
+      }),
+    );
+    vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
+      buildMockApiEnvelope(
+        "news.choice.latest",
+        { total_rows: 0, limit: 10, offset: 0, events: [] },
+        { basis: "analytical", result_kind: "news.choice.latest" },
+      ),
+    );
+    const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope([]));
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-05-08" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    await waitFor(() =>
+      expect(histSpy).toHaveBeenCalledWith({
+        stockCode: "000001.SZ",
+        snapshotTo: "2026-04-29",
+        limit: 10,
+      }),
+    );
+    expect(histSpy).not.toHaveBeenCalledWith({
+      stockCode: "000001.SZ",
+      snapshotTo: "2026-05-08",
+      limit: 10,
+    });
+  });
+
   it("localizes stock detail footer governance statuses", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
@@ -539,6 +578,7 @@ describe("StockDetailDrawer", () => {
     await waitFor(() =>
       expect(histSpy).toHaveBeenCalledWith({
         stockCode: "000001.SZ",
+        snapshotTo: "2026-04-29",
         limit: 10,
       }),
     );
@@ -606,6 +646,7 @@ describe("StockDetailDrawer", () => {
     await waitFor(() =>
       expect(histSpy).toHaveBeenCalledWith({
         stockCode: "000003.SZ",
+        snapshotTo: "2026-04-29",
         limit: 10,
       }),
     );

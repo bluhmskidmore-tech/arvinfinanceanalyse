@@ -26,7 +26,7 @@ def to_decimal(x: Any) -> Decimal:
         pass
     try:
         return Decimal(str(x))
-    except (TypeError, ValueError, ArithmeticError) as exc:
+    except (TypeError, ValueError, ArithmeticError):
         logger.exception("to_decimal: failed to convert %r", type(x).__name__)
         return Decimal("0")
 
@@ -62,6 +62,6 @@ def safe_float(x: Any) -> float:
         if math.isnan(f) or math.isinf(f):
             return 0.0
         return f
-    except (TypeError, ValueError, OverflowError) as exc:
+    except (TypeError, ValueError, OverflowError):
         logger.exception("safe_float: failed to convert %r", type(x).__name__)
         return 0.0

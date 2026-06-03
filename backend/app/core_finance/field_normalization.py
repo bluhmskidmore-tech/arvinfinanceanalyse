@@ -16,6 +16,19 @@ NormalizedCurrencyBasis = Literal["CNY", "CNX"]
 
 # Re-export: canonical tokens live in ``accounting_basis_constants`` (leaf module)
 # to avoid import cycles with ``config.classification_rules``.
+__all__ = [
+    "ACCOUNTING_BASIS_AC",
+    "ACCOUNTING_BASIS_FVOCI",
+    "ACCOUNTING_BASIS_FVTPL",
+    "NormalizedAccountingBasis",
+    "NormalizedCurrencyBasis",
+    "NormalizedInvestTypeStd",
+    "derive_accounting_basis_value",
+    "is_approved_status",
+    "normalize_currency_basis_value",
+    "resolve_pnl_source_currency",
+]
+
 
 def is_approved_status(value: str | None) -> bool:
     return str(value or "").strip().lower() == "approved"

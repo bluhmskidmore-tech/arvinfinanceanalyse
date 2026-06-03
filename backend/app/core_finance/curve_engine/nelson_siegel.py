@@ -129,7 +129,7 @@ def fit_nelson_siegel(
         if lam <= 0.01:
             return 1e12
         p = NSParams(b0, b1, b2, lam)
-        return sum((ns_rate(t, p) - y) ** 2 for t, y in zip(xs, ys))
+        return sum((ns_rate(t, p) - y) ** 2 for t, y in zip(xs, ys, strict=False))
 
     best, iters = _nelder_mead(objective, x0, max_iter=max_iter)
     params = NSParams(best[0], best[1], best[2], max(best[3], 0.01))
@@ -164,7 +164,7 @@ def fit_svensson(
         if lam <= 0.01 or lam2 <= 0.01:
             return 1e12
         p = SvenssonParams(b0, b1, b2, lam, b3, lam2)
-        return sum((svensson_rate(t, p) - y) ** 2 for t, y in zip(xs, ys))
+        return sum((svensson_rate(t, p) - y) ** 2 for t, y in zip(xs, ys, strict=False))
 
     best, iters = _nelder_mead(objective, x0, max_iter=max_iter)
     params = SvenssonParams(

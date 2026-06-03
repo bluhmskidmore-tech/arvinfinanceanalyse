@@ -1,20 +1,23 @@
-# -*- coding: utf-8 -*-
 """
 credit_bond_signals.py
 信用债信号层：基于 credit_bond_data.py 的输出
 计算：骑乘收益凸点、品种利差、性价比评分
 输出：output/credit_signal.csv
 """
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import warnings
+
 import paths
 
-import warnings
 warnings.filterwarnings("ignore")
 
-import pandas as pd
+from datetime import datetime
+
 import numpy as np
-from datetime import datetime, date
+import pandas as pd
 
 # ── 筛选参数（来自研报方法论）──────────────────────────────────────────────────
 
@@ -93,8 +96,6 @@ def compute_roll_yield_signals(df: pd.DataFrame) -> pd.DataFrame:
                 if next_tenor in curve:
                     y_short = curve[tenor] / 100
                     y_long  = curve[next_tenor] / 100
-                    # 持有3个月骑乘收益
-                    roll_yield = (y_short - y_long) * 0.25 + y_short * 0.25  # ≈ 持有3个月
                     # 也可以简化为：carry = y_short * 0.25
                     carry = y_short * 0.25
                     signals.append({
@@ -139,7 +140,6 @@ def compute_two_four_bond_signals(df: pd.DataFrame) -> pd.DataFrame:
     """
     计算二永债性价比信号：相对普通信用债利差
     """
-    spreads = df[df["指标类型"] == "信用利差"].copy()
     signals = []
 
     # 大行二永债 2Y vs 城投债 AA 2Y（简单对比）
@@ -204,18 +204,18 @@ def generate_credit_signals():
     # 各模块信号
     roll_signals  = compute_roll_yield_signals(df)
     perp_signals  = compute_perpetual_spread_signals(df)
-    bond_signals  = compute_two_four_bond_signals(df)
+    _ = compute_two_four_bond_signals(df)
 
     # 综合
     result = compute_comprehensive_score(df)
 
     if not result.empty:
-        print(f"\n  骑乘收益信号 TOP5:")
+        print("\n  骑乘收益信号 TOP5:")
         if not roll_signals.empty:
             top5 = roll_signals.sort_values("持有3月收益率%", ascending=False).head(5)
             print(top5[["品种", "持有3月收益率%", "曲线斜率", "评分"]].to_string(index=False))
 
-        print(f"\n  永续品种利差信号:")
+        print("\n  永续品种利差信号:")
         if not perp_signals.empty:
             print(perp_signals.to_string(index=False))
 

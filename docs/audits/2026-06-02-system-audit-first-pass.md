@@ -11,7 +11,7 @@ Release posture: **core automated gates are now green**, but do not call this re
 Current top blockers:
 
 1. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
-2. **P2 - Page-level MCP trace bundle coverage is still partial.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers. Seeded page trace bundles now cover 10 of 26 page-contract IDs: `PAGE-DASH-001`, `PAGE-RISK-001`, `PAGE-BALANCE-001`, `PAGE-PNL-001`, `PAGE-EXEC-PNL-ATTR-001`, `PAGE-PNL-ATTR-WB-001`, `PAGE-OPS-001`, `PAGE-LIAB-ANALYTICS-001`, `PAGE-BRIDGE-001`, and `PAGE-PROD-CAT-PNL-001`; 16 page contracts still lack bundles.
+2. **P2 - Page-level MCP trace bundle coverage now has first-pass closure.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers. Seeded page trace bundles now cover 26 of 26 page-contract IDs, including the remaining Agent, Cube Query, and module-home surfaces. This closes the bundle-coverage gap, but it does not replace full data-catalog/date-lineage review for every governed metric page.
 3. **P2 - Direct business MCP tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass. This continuation used the equivalent local JSON-RPC MCP process instead of direct deferred `moss-*` tool calls.
 4. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green and `PAGE-RISK-001` is now bundle-backed and page-evidence checked, but every governed metric page has not yet been re-audited with contract/catalog/lineage evidence.
 
@@ -57,6 +57,16 @@ Changed during the continuation:
   - Follow-up fix: add the seeded `pnl-bridge` bundle for `PAGE-BRIDGE-001` with `/pnl-bridge`, `/api/pnl/bridge`, contract docs, formal PnL bridge tables, backend/frontend/test touchpoints, `GS-BRIDGE-A`, `GS-BRIDGE-WARN-B`, and warning/fallback guardrails.
   - Follow-up fix: add separate seeded bundles for `PAGE-EXEC-PNL-ATTR-001` and `PAGE-PNL-ATTR-WB-001` so the executive analytical overlay and `/pnl-attribution` workbench do not share a fuzzy attribution boundary.
   - Follow-up fix: add the seeded `operations-analysis` bundle for `PAGE-OPS-001` with product-category headline truth, supplemental balance entry evidence, and `GAP-OPS-MACRO-FX` guardrails.
+  - Follow-up fix: add the seeded `executive-overview` bundle for `PAGE-EXEC-OVERVIEW-001` with `/ui/home/overview`, executive overview service/schema/frontend touchpoints, `GS-EXEC-OVERVIEW-A`, and analytical-overlay guardrails.
+  - Follow-up fix: add the seeded `balance-movement-analysis` bundle for `PAGE-BAL-MOVE-001` with `/ui/balance-movement-analysis`, dates/refresh APIs, accounting asset movement source lineage anchors, and explicit no-dedicated-golden-sample status.
+  - Follow-up fix: add the seeded `ledger-pnl` bundle for `PAGE-LEDGER-PNL-001` with `/api/ledger-pnl/summary`, detail/date APIs, the formal financial indicator source-contract fixture boundary, and candidate-summary guardrails.
+  - Follow-up fix: add the seeded `bond-dashboard` bundle for `PAGE-BOND-001` with `/api/bond-dashboard/headline-kpis`, risk and supporting read APIs, `GS-BOND-HEADLINE-A`, and the `GAP-BOND-DASH-*` candidate-metric guardrails.
+  - Follow-up fix: add the seeded `positions` bundle for `PAGE-POS-001` with `/api/positions/bonds`, interbank/counterparty/stat/customer APIs, balance-analysis date-source evidence, and `GAP-POS-LIST` candidate-metric guardrails.
+  - Follow-up fix: add the seeded `market-data` bundle for `PAGE-MKT-001` with `/ui/preview/macro-foundation`, the formal rates fragment, FX status/analytical APIs, NCD funding proxy, Livermore analytical APIs, explicit no-dedicated-golden-sample status, and `GAP-MKT-DATA` mixed-source guardrails.
+  - Follow-up fix: add the seeded `executive-summary` bundle for `PAGE-EXEC-SUMMARY-001` with `/ui/home/summary`, `SummaryPayload`, `GS-EXEC-SUMMARY-A`, and narrative-only guardrails.
+  - Follow-up fix: add the seeded `macro-toolkit` bundle for `PAGE-MACRO-TOOLKIT-001` with `/macro-toolkit`, `/ui/macro/toolkit/analysis`, strategy summaries, scripts, run/refresh/status endpoints, explicit no-dedicated-golden-sample status, and tooling/non-metric guardrails.
+  - Follow-up fix: add the seeded `macro-observation` bundle for `PAGE-MACRO-OBS-001` with `/macro-observation`, the shared analysis and strategy-summary read APIs, explicit no-dedicated-golden-sample status, and read-only/non-metric guardrails that exclude script registry, run, refresh, and operational controls.
+  - Follow-up fix: add seeded bundles for `PAGE-AGENT-001`, `PAGE-CUBE-QUERY-001`, `PAGE-PORTFOLIO-HOME-001`, `PAGE-MARKET-HOME-001`, `PAGE-RISK-HOME-001`, `PAGE-PERFORMANCE-HOME-001`, and `PAGE-REPORTS-HOME-001`, closing first-pass page-contract bundle coverage at 26/26 while preserving tool/query/module-home non-metric guardrails.
 - `tests/test_project_mcp_servers.py`
   - Added regression coverage that `risk-tensor`, `/risk-tensor`, and `PAGE-RISK-001` resolve through `get_page_trace_bundle`, while unknown pages still fail with the supported-page list.
   - Added regression coverage that `PAGE-PROD-CAT-PNL-001` resolves through the existing `product-category-pnl` bundle.
@@ -64,9 +74,22 @@ Changed during the continuation:
   - Added regression coverage that `executive-pnl-attribution`, `/ui/pnl/attribution`, and `PAGE-EXEC-PNL-ATTR-001` preserve analytical-overlay boundaries.
   - Added regression coverage that `pnl-attribution`, `/pnl-attribution`, `PAGE-PNL-ATTR-WB-001`, and `/api/pnl-attribution/volume-rate` preserve workbench/provenance boundaries.
   - Added regression coverage that `operations-analysis`, `/operations-analysis`, `PAGE-OPS-001`, and `/ui/pnl/product-category` preserve temporary-exception and mixed-source boundaries.
+  - Added regression coverage that `executive-overview`, `/ui/home/overview`, and `PAGE-EXEC-OVERVIEW-001` preserve executive overlay boundaries and the approved golden sample.
+  - Added regression coverage that `balance-movement-analysis`, `/balance-movement-analysis`, `PAGE-BAL-MOVE-001`, and `/ui/balance-movement-analysis` preserve movement-analysis source/date/refresh boundaries.
+  - Added regression coverage that `ledger-pnl`, `/ledger-pnl`, `PAGE-LEDGER-PNL-001`, and `/api/ledger-pnl/formal-financial-indicators` preserve candidate-summary and formal-financial-indicator source-contract boundaries.
+  - Added regression coverage that `bond-dashboard`, `/bond-dashboard`, `PAGE-BOND-001`, `/api/bond-dashboard/headline-kpis`, and `/api/bond-dashboard/risk-indicators` preserve page-sample and candidate-metric boundaries.
+  - Added regression coverage that `positions`, `/positions`, `PAGE-POS-001`, `/api/positions/bonds`, and `/api/positions/interbank` preserve list-candidate and balance-date-source boundaries.
+  - Added regression coverage that `market-data`, `/market-data`, `PAGE-MKT-001`, `/ui/preview/macro-foundation`, and `/ui/market-data/rates` preserve mixed-source, candidate, formal-fragment, NCD-proxy, Livermore, and source-pending boundaries.
+  - Added regression coverage that `executive-summary`, `/ui/home/summary`, and `PAGE-EXEC-SUMMARY-001` preserve narrative contract, golden-sample, and non-formal metric boundaries.
+  - Added regression coverage that `macro-toolkit`, `/macro-toolkit`, `PAGE-MACRO-TOOLKIT-001`, `/ui/macro/toolkit/analysis`, and `/ui/macro/toolkit/scripts` preserve tooling, operational, and non-formal metric boundaries.
+  - Added regression coverage that `macro-observation`, `/macro-observation`, and `PAGE-MACRO-OBS-001` preserve read-only, no-script/no-refresh, and non-formal metric boundaries.
+  - Added regression coverage that `agent`, `/agent`, and `PAGE-AGENT-001` preserve read-only, formal-use, source-lineage, and no-mutation boundaries.
+  - Added regression coverage that `cube-query`, `/cube-query`, and `PAGE-CUBE-QUERY-001` preserve candidate query-surface, allowed-dimension, and no-standalone-metric boundaries.
+  - Added regression coverage that `portfolio-home`, `market-home`, `risk-home`, `performance-home`, and `reports-home` preserve downstream ownership and module-home non-metric boundaries.
 - `docs/audits/2026-06-02-system-audit-first-pass.md`
   - Added the follow-up `risk-tensor` page evidence check: bundle path existence, live service payload, lineage query outcome, and targeted backend/frontend verification results.
   - Added the current page-contract-to-bundle coverage matrix and next-pass priority list, then updated it after the `PAGE-BRIDGE-001`, `PAGE-EXEC-PNL-ATTR-001`, `PAGE-PNL-ATTR-WB-001`, and `PAGE-OPS-001` bundles were seeded.
+  - Updated page-contract-to-bundle coverage to 26/26 after seeding the Agent, Cube Query, and module-home page bundles.
 
 Earlier continuation edits verified in this pass:
 
@@ -219,16 +242,32 @@ Impact: `risk-tensor` now has a canonical MCP page trace bundle containing route
 
 Remaining risk: direct `PAGE-RISK-001` lineage search still did not produce a page-level lineage hit, and every governed metric page has not yet received the same contract/catalog/lineage/bundle audit.
 
-### P2 - Page-contract trace bundle coverage remains sparse
+### Resolved - Page-contract trace bundle coverage has first-pass closure
 
 Evidence from the 2026-06-03 page-contract coverage matrix:
 
 - `docs/page_contracts.md` currently exposes 26 `PAGE-*` page-contract IDs.
-- `product_page_trace_bundles()` now resolves 10 page-contract IDs:
+- `product_page_trace_bundles()` now resolves all 26 page-contract IDs:
   - `PAGE-DASH-001` -> `dashboard-home`
   - `PAGE-RISK-001` -> `risk-tensor`
   - `PAGE-BALANCE-001` -> `balance-analysis`
+  - `PAGE-BAL-MOVE-001` -> `balance-movement-analysis`
+  - `PAGE-BOND-001` -> `bond-dashboard`
+  - `PAGE-POS-001` -> `positions`
+  - `PAGE-MKT-001` -> `market-data`
+  - `PAGE-MACRO-TOOLKIT-001` -> `macro-toolkit`
+  - `PAGE-MACRO-OBS-001` -> `macro-observation`
+  - `PAGE-AGENT-001` -> `agent`
+  - `PAGE-CUBE-QUERY-001` -> `cube-query`
+  - `PAGE-PORTFOLIO-HOME-001` -> `portfolio-home`
+  - `PAGE-MARKET-HOME-001` -> `market-home`
+  - `PAGE-RISK-HOME-001` -> `risk-home`
+  - `PAGE-PERFORMANCE-HOME-001` -> `performance-home`
+  - `PAGE-REPORTS-HOME-001` -> `reports-home`
   - `PAGE-PNL-001` -> `pnl`
+  - `PAGE-LEDGER-PNL-001` -> `ledger-pnl`
+  - `PAGE-EXEC-OVERVIEW-001` -> `executive-overview`
+  - `PAGE-EXEC-SUMMARY-001` -> `executive-summary`
   - `PAGE-EXEC-PNL-ATTR-001` -> `executive-pnl-attribution`
   - `PAGE-PNL-ATTR-WB-001` -> `pnl-attribution`
   - `PAGE-OPS-001` -> `operations-analysis`
@@ -243,21 +282,29 @@ Evidence from the 2026-06-03 page-contract coverage matrix:
 - The `executive-pnl-attribution` bundle covers `/ui/pnl/attribution`, `PnlAttributionPayload`, `GS-EXEC-PNL-ATTR-A`, executive service/route touchpoints, and the analytical-overlay guardrails that prevent replacing formal PnL or bridge truth.
 - The `pnl-attribution` bundle covers `/pnl-attribution`, `/api/pnl-attribution/*`, workbench DTOs, advanced/Campisi touchpoints, frontend workbench tests, and explicit no-dedicated-golden-sample status.
 - The `operations-analysis` bundle covers `/operations-analysis`, `/ui/pnl/product-category`, product-category headline samples, supplemental balance overview samples, source/macro/FX/news supporting APIs, and `GAP-OPS-MACRO-FX` guardrails.
-- 16 page-contract IDs still lack a seeded bundle. Highest metric-count missing pages:
-  - `PAGE-EXEC-OVERVIEW-001` and `PAGE-BAL-MOVE-001` (4 metrics each)
-  - `PAGE-LEDGER-PNL-001` (3 metrics)
-- Additional page contracts without seeded bundles have no current `MTR-*` bindings or only low-count bindings, but still need explicit governance boundaries before release claims: `PAGE-EXEC-SUMMARY-001`, `PAGE-BOND-001`, `PAGE-POS-001`, `PAGE-MKT-001`, `PAGE-MACRO-TOOLKIT-001`, `PAGE-MACRO-OBS-001`, `PAGE-AGENT-001`, `PAGE-CUBE-QUERY-001`, `PAGE-PORTFOLIO-HOME-001`, `PAGE-MARKET-HOME-001`, `PAGE-RISK-HOME-001`, `PAGE-PERFORMANCE-HOME-001`, and `PAGE-REPORTS-HOME-001`.
+- The `executive-overview` bundle covers `/ui/home/overview`, executive overview payload/schema/service/frontend adapter and selector touchpoints, `GS-EXEC-OVERVIEW-A`, and the analytical-overlay guardrails that prevent management summary cards from replacing formal page truth.
+- The `balance-movement-analysis` bundle covers `/balance-movement-analysis`, `/ui/balance-movement-analysis`, dates/refresh APIs, accounting asset movement schema/service/core/materialize touchpoints, and explicit no-dedicated-golden-sample status.
+- The `ledger-pnl` bundle covers `/ledger-pnl`, `/api/ledger-pnl/summary`, `/api/ledger-pnl/data`, `/api/ledger-pnl/dates`, `/api/ledger-pnl/formal-financial-indicators`, the `GS-LEDGER-PNL-FIN-IND-202603-B` source-contract fixture, and guardrails that keep `MTR-LPN-*` candidate metrics separate from formal PnL, product-category PnL, and formal financial indicator truth.
+- The `bond-dashboard` bundle covers `/bond-dashboard`, `/api/bond-dashboard/headline-kpis`, supporting bond dashboard APIs, `GS-BOND-HEADLINE-A`, and guardrails that keep `MTR-BOND-*` candidate metrics separate from balance-analysis truth and risk-tensor truth.
+- The `positions` bundle covers `/positions`, `/api/positions/bonds`, `/api/positions/interbank`, counterparty/stat/customer APIs, balance-analysis default date evidence, and guardrails that keep `MTR-POS-*` candidate metrics and filter context separate from formal business metric truth.
+- The `market-data` bundle covers `/market-data`, `/ui/preview/macro-foundation`, `/ui/market-data/rates`, FX status/analytical APIs, NCD funding proxy, macro-bond linkage, Livermore APIs, and guardrails that keep `MTR-MKT-001` candidate, `GAP-MKT-DATA`, formal rates fragments, NCD proxy, Livermore `risk_exit`, and source-pending terminal panels separate from full-page formal truth.
+- The `executive-summary` bundle covers `/ui/home/summary`, `SummaryPayload`, `GS-EXEC-SUMMARY-A`, endpoint/service/frontend/test touchpoints, and guardrails that keep narrative-only summary text out of the business metric dictionary main table.
+- The `macro-toolkit` bundle covers `/macro-toolkit`, `/ui/macro/toolkit/analysis`, strategy summaries, script registry, script run, refresh/status endpoints, and guardrails that keep analysis, strategy, script, refresh, source/version/run_id, and coverage evidence out of formal metric truth.
+- The `macro-observation` bundle covers `/macro-observation`, shared read-only analysis and strategy-summary APIs, `macro-observation-readonly-boundary`, and guardrails that keep script registry, run, refresh, and operational controls off the observation route.
+- The `agent` bundle covers `/agent`, managed runs, compatibility query, AgentEnvelope, evidence/result_meta display, read-only request enforcement, and guardrails that keep agent answers from replacing formal metrics or source lineage.
+- The `cube-query` bundle covers `/cube-query`, `/api/cube/query`, cube dimensions lookup, CubeQueryResult, candidate query-surface semantics, and guardrails that keep query results scoped to returned result_meta.
+- The `portfolio-home`, `market-home`, `risk-home`, `performance-home`, and `reports-home` bundles cover live module-home routes, frontend aggregation through `ModuleWorkbenchHomePage` / `moduleHomeModel`, downstream page ownership, explicit no-dedicated-golden-sample status, and guardrails that prevent module summaries from becoming standalone formal metric pages.
 
-Impact: the bundle workflow is now useful for the ten seeded pages, but cannot yet support a full system-wide page-level closure claim. The next bundle work should prioritize pages with the most formal metrics and highest business-decision impact.
+Impact: the bundle workflow can now return first-pass trace bundles for every page contract, but this is not a full system-wide release claim because direct page-level lineage, data-catalog/date review, and broader browser/a11y coverage remain incomplete.
 
-Recommendation: continue seeding bundles in descending business-risk order, starting with `PAGE-EXEC-OVERVIEW-001`, `PAGE-BAL-MOVE-001`, and `PAGE-LEDGER-PNL-001`, then validate each with contract/API/service/frontend/test/golden-sample evidence before moving to lower-metric or navigation/home surfaces.
+Recommendation: keep the bundle workflow as the entry point for future page audits, and use it to drive the remaining lineage/catalog/browser audit work instead of continuing bundle seeding.
 
 ## Positive Evidence
 
 - `codex mcp list` confirms `gitnexus`, `moss-data-catalog`, `moss-data-quality`, `moss-lineage-evidence`, and `moss-metric-contracts` are registered and enabled.
-- `python -m pytest tests/test_project_mcp_servers.py -q`: latest focused MCP continuation run passed with `29 passed`.
+- `python -m pytest tests/test_project_mcp_servers.py -q`: latest focused MCP continuation run passed with `57 passed`.
 - Local MCP fallback evidence:
-  - `moss-metric-contracts`: resources and tools are callable through the repository's JSON-RPC MCP process; contract docs exist; seeded trace bundles are available for `product-category-pnl`, `dashboard-home`, `balance-analysis`, `pnl`, `executive-pnl-attribution`, `pnl-attribution`, `operations-analysis`, `pnl-bridge`, `liability-analytics`, and `risk-tensor`.
+  - `moss-metric-contracts`: resources and tools are callable through the repository's JSON-RPC MCP process; contract docs exist; seeded trace bundles are available for all 26 page-contract IDs, including `agent`, `cube-query`, `portfolio-home`, `market-home`, `risk-home`, `performance-home`, and `reports-home`.
   - `moss-data-catalog`: `data/moss.duckdb` exists; 63 tables were inventoried; `fact_formal_risk_tensor_daily` is present with latest sampled dates through `2026-04-30`.
   - `moss-data-quality`: `fact_formal_risk_tensor_daily` is a quality target with 486 rows and date coverage from `2024-01-01` to `2026-04-30`.
   - `moss-lineage-evidence`: governance streams exist and are readable; direct search found `risk_tensor` / `fact_formal_risk_tensor_daily` agent-audit records, but no `PAGE-RISK-001` page-level lineage record.
@@ -332,6 +379,62 @@ Recommendation: continue seeding bundles in descending business-risk order, star
   - Focused doc/API/golden-sample check: `python -m pytest tests/test_governance_doc_contract.py::test_operations_analysis_contract_matches_current_product_category_headline_binding tests/test_live_route_page_contract_completeness.py tests/test_product_category_pnl_flow.py tests/test_balance_analysis_api.py tests/test_golden_samples_capture_ready.py -q` passed with `87 passed`.
   - Frontend operations route check: `npm run test -- src/test/OperationsAnalysisPage.test.tsx src/test/OperationsAnalysisPage.governed.test.tsx src/test/navigation.test.ts src/test/RouteRegistry.test.tsx src/test/WorkbenchShell.test.tsx` from `frontend/` passed with `5` test files and `104` tests.
   - Current residual evidence note: `PAGE-OPS-001` remains a temporary-exception mixed-source page; product-category headline truth is governed, balance overview is supplemental, and macro/FX/news/static sections remain bounded by `GAP-OPS-MACRO-FX`.
+- Executive Overview and Balance Movement Analysis page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `4 failed, 29 passed` because `executive-overview` and `balance-movement-analysis` were unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `33 passed`.
+  - Focused backend/API/service/golden/sample/accounting-movement check: `python -m pytest tests/test_executive_dashboard_endpoints.py tests/test_executive_service_contract.py tests/test_executive_release_contract.py tests/test_executive_dashboard_numeric_migration.py tests/test_golden_samples_capture_ready.py tests/test_accounting_asset_movement_api.py tests/test_accounting_asset_movement_service.py tests/test_accounting_asset_movement_core.py tests/test_accounting_asset_movement_materialize.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_live_route_page_contract_completeness.py tests/test_write_route_auth_contract.py -q` passed with `177 passed`.
+  - Frontend executive overview and balance movement check: `npm run test -- src/test/OverviewSection.test.tsx src/features/executive-dashboard/components/OverviewSection.states.test.tsx src/features/executive-dashboard/selectors/executiveDashboardSelectors.test.ts src/features/executive-dashboard/adapters/executiveDashboardAdapter.test.ts src/test/BalanceMovementAnalysisPage.test.tsx src/test/RouteRegistry.test.tsx` from `frontend/` passed with `6` test files and `91` tests.
+  - Current residual evidence note: `PAGE-EXEC-OVERVIEW-001` has `GS-EXEC-OVERVIEW-A` and remains an analytical management overlay; `PAGE-BAL-MOVE-001` intentionally records no dedicated golden sample and relies on page-contract, service/materialize/result-meta/frontend evidence until a sample is approved.
+- Ledger PnL page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `2 failed, 33 passed` because `ledger-pnl` was unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `35 passed`.
+  - Focused backend/API/source-contract check: `python -m pytest tests/test_ledger_pnl_service.py tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py tests/test_governance_doc_contract.py::test_ledger_pnl_candidate_metrics_bind_existing_page_contract_without_formal_promotion tests/test_live_route_page_contract_completeness.py -q` passed with `15 passed`.
+  - Frontend ledger page/route check: `npm run test -- src/test/LedgerPnlPage.test.tsx src/test/LedgerPnlRoutesSmoke.test.tsx` from `frontend/` passed with `2` test files and `13` tests.
+  - Focused Ruff check: `python -m ruff check scripts/mcp/moss_project_mcp.py tests/test_project_mcp_servers.py` passed.
+  - Current residual evidence note: `PAGE-LEDGER-PNL-001` has no dedicated capture-ready summary golden sample; `GS-LEDGER-PNL-FIN-IND-202603-B` is a source-contract fixture and must not promote formal-pending or candidate QDB values into formal financial indicator truth.
+- Bond Dashboard page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `2 failed, 35 passed` because `bond-dashboard` was unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `37 passed`.
+  - Focused backend/API/golden-sample check: `python -m pytest tests/test_bond_dashboard_api_contract.py tests/test_bond_dashboard_headlines_contract.py tests/test_bond_analytics_api.py tests/test_result_meta_source_surface_followup.py tests/test_golden_samples_capture_ready.py -q` passed with `49 passed`.
+  - Frontend bond dashboard check: `npm run test -- src/test/BondDashboardPage.test.tsx` from `frontend/` passed with `1` test file and `11` tests.
+  - Focused Ruff check: `python -m ruff check scripts/mcp/moss_project_mcp.py tests/test_project_mcp_servers.py` passed.
+  - Current residual evidence note: `PAGE-BOND-001` has `GS-BOND-HEADLINE-A` as a capture-ready page DTO sample, but `MTR-BOND-001` through `MTR-BOND-004` remain `candidate` with `pending_confirmation=true`; bond dashboard headline and risk fields must not be treated as `MTR-BAL-*` or `PAGE-RISK-001` equivalents without a separate approved contract.
+- Positions page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `2 failed, 37 passed` because `positions` was unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `39 passed`.
+  - Focused backend/API/live-route check: `python -m pytest tests/test_positions_api_contract.py tests/test_live_route_page_contract_completeness.py -q` passed with `15 passed`.
+  - Page contract / metric dictionary binding check: `python -m pytest tests/test_page_contract_metric_dictionary_completeness.py -q` passed with `1 passed`.
+  - Frontend positions route/page/customer check: `npm run test -- src/test/PositionsView.test.tsx src/test/CustomerDetailModal.test.tsx src/test/RouteRegistry.test.tsx` from `frontend/` passed with `3` test files and `38` tests.
+  - Focused Ruff and whitespace checks passed for `scripts/mcp/moss_project_mcp.py`, `tests/test_project_mcp_servers.py`, and this audit report.
+  - Current residual evidence note: `PAGE-POS-001` has no dedicated golden sample; `MTR-POS-001` and `MTR-POS-002` remain `candidate` with `pending_confirmation=true` and `bound_sample_id=none`; list filters/date ranges/search fields remain excluded context rather than standalone metrics.
+- Market Data page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `2 failed, 39 passed` because `market-data` was unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `41 passed`.
+  - Focused backend/API/mixed-source check: `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py tests/test_market_data_ncd_proxy_api.py tests/test_market_data_livermore_risk_exit_source.py tests/test_fx_analytical_view_api.py tests/test_macro_bond_linkage.py -q` passed with `78 passed`.
+  - Focused Livermore API check: `python -m pytest tests/test_market_data_livermore_api.py -q` passed with `34 passed`.
+  - Frontend market-data page/model/route check: `npm run test -- src/test/MarketDataPage.test.tsx src/features/market-data/pages/marketDataPageModel.test.ts src/test/RouteRegistry.test.tsx` from `frontend/` passed with `3` test files and `56` tests.
+  - Focused Ruff check: `python -m ruff check scripts/mcp/moss_project_mcp.py tests/test_project_mcp_servers.py` passed.
+  - Current residual evidence note: `PAGE-MKT-001` has no full-page capture-ready golden sample; `MTR-MKT-001` remains `candidate` with `pending_confirmation=true` and `bound_sample_id=none`; `/ui/market-data/rates` is only a formal rates fragment; NCD is a Shibor/funding proxy; Livermore `risk_exit` remains backend-owned and gated by unsupported outputs/readiness/data gaps.
+- Executive Summary page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `2 failed, 41 passed` because `executive-summary` was unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `43 passed`.
+  - Focused backend/endpoint/release/golden-sample check: `python -m pytest tests/test_executive_service_contract.py tests/test_executive_dashboard_endpoints.py tests/test_executive_release_contract.py tests/test_golden_samples_capture_ready.py -q` passed with `65 passed`.
+  - Frontend summary section check: `npm run test -- src/test/SummarySection.test.tsx` from `frontend/` passed with `1` test file and `3` tests.
+  - Focused Ruff check: `python -m ruff check scripts/mcp/moss_project_mcp.py tests/test_project_mcp_servers.py` passed.
+  - Current residual evidence note: `PAGE-EXEC-SUMMARY-001` is a narrative-only contract; `GS-EXEC-SUMMARY-A` freezes title, points length, point labels, and result metadata for `/ui/home/summary`, but does not promote narrative text into formal business metrics or cover upstream no-data/fallback/stale states.
+- Macro Toolkit and Macro Observation page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `4 failed, 43 passed` because `macro-toolkit` and `macro-observation` were unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `47 passed`.
+  - Focused backend/doc/API/auth check: `python -m pytest tests/test_governance_doc_contract.py::test_macro_toolkit_page_contract_closes_tooling_route_without_metric_promotion tests/test_page_contract_metric_dictionary_completeness.py tests/test_live_route_page_contract_completeness.py tests/test_macro_toolkit_scripts.py tests/test_macro_toolkit_choice_stock_refresh_overview.py tests/test_macro_toolkit_factor_snapshot_dates.py tests/test_macro_toolkit_a_share_risk.py tests/test_macro_query_contract_smoke.py tests/test_write_route_auth_contract.py -q` passed with `136 passed`.
+  - Frontend macro route/page/client check: `npm run test -- src/test/MacroToolkitPage.test.tsx src/test/RouteRegistry.test.tsx src/test/navigation.test.ts src/test/macroToolkitClient.test.ts` from `frontend/` passed with `4` test files and `113` tests.
+  - Focused Ruff check: `python -m ruff check scripts/mcp/moss_project_mcp.py tests/test_project_mcp_servers.py` passed.
+  - Focused whitespace check: `git diff --check -- docs/audits/2026-06-02-system-audit-first-pass.md scripts/mcp/moss_project_mcp.py tests/test_project_mcp_servers.py` passed.
+  - Current residual evidence note: `PAGE-MACRO-TOOLKIT-001` and `PAGE-MACRO-OBS-001` have no dedicated golden samples and no `MTR-MACRO-*`; macro toolkit analysis, strategy, script, refresh, source/version/run_id, and coverage outputs are tooling/tracing evidence only, while macro observation remains read-only and must not expose script registry, run, refresh, or operational controls.
+- Agent, Cube Query, and module-home page-contract bundle check:
+  - Red check before implementation: `python -m pytest tests/test_project_mcp_servers.py -q` failed with `10 failed, 47 passed` because `agent`, `cube-query`, `portfolio-home`, `market-home`, `risk-home`, `performance-home`, and `reports-home` were unknown.
+  - Green check after implementation: `python -m pytest tests/test_project_mcp_servers.py -q` passed with `57 passed`.
+  - Frontend focused page/tool check: `npm run test -- src/test/ModuleWorkbenchHomeModel.test.ts src/test/ModuleWorkbenchHomePage.test.tsx src/test/CubeQueryPage.test.tsx src/test/AgentWorkbenchPage.test.tsx src/test/AgentPlaceholderPage.test.tsx src/test/AgentClient.test.ts src/test/RouteRegistry.test.tsx` from `frontend/` passed with `7` test files and `180` tests after a transient earlier failure in the Agent restore-status case was not reproducible in isolation or on fresh suite rerun.
+  - Current residual evidence note: these seven page contracts intentionally have no dedicated golden samples and no standalone `MTR-*` bindings; Agent answers remain read-only/formal-use gated, Cube Query remains scoped to returned query `result_meta`, and module-home pages remain navigation/aggregation surfaces whose formal claims stay on downstream pages.
 - Focused `risk-tensor` page evidence verification after the bundle check:
   - `python -m pytest tests/test_risk_tensor_api.py tests/test_risk_tensor_service.py tests/test_risk_tensor_repo.py tests/test_risk_tensor_core.py tests/test_risk_tensor_materialize.py tests/test_risk_tensor_numeric_migration.py tests/test_risk_tensor_liquidity.py tests/test_golden_samples_capture_ready.py -q`
   - Result: `82 passed`.
@@ -342,14 +445,14 @@ Recommendation: continue seeding bundles in descending business-risk order, star
 
 - Direct `moss-*` MCP tools were not exposed in the current Codex App deferred tool surface. `tool_search` exposed Playwright/GitHub/Canva/Node tools, but not `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, `moss-data-quality`, or `gitnexus` callable tools. This continuation used the local JSON-RPC MCP process as a read-only fallback and records that distinction.
 - `PAGE-RISK-001` / `risk-tensor` now has sampled contract/catalog/data-quality evidence, a seeded MCP page trace bundle, and a focused page evidence check, but it still lacks a direct `PAGE-RISK-001` lineage hit.
-- Page-level MCP bundle coverage is 10 of 26 page-contract IDs; 16 page contracts still need seeded bundles or explicit approved non-bundle rationale.
+- Page-level MCP bundle coverage is 26 of 26 page-contract IDs. This coverage is first-pass traceability only; it does not prove every page's data lineage, date semantics, browser state, or golden-sample coverage.
 - No full data-catalog/date lineage review was completed for every metric page.
 - Browser axe now completes for the four covered smoke pages, but broader page coverage is not complete.
 
 ## Recommended Next Pass
 
 1. Add a direct `PAGE-RISK-001` lineage record or an explicit approved mapping from `PAGE-RISK-001` to the existing `risk_tensor` / `fact_formal_risk_tensor_daily` lineage records.
-2. Seed and verify page trace bundles for `PAGE-EXEC-OVERVIEW-001`, `PAGE-BAL-MOVE-001`, and `PAGE-LEDGER-PNL-001`; these are the highest metric-count missing governed pages after the currently covered dashboard, risk, balance, PnL, bridge, liability, product-category, attribution, and operations surfaces.
+2. Use the 26/26 page trace bundles as the routing map for the next audit pass: data-catalog/date-lineage review by page, starting with the highest-risk governed metric pages and known mixed-source surfaces.
 3. Decide whether the broad backend Ruff backlog is a release blocker or a separately tracked cleanup stream.
-4. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and the remaining governed metric pages; add page bundles where those audits find gaps.
+4. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and governed metric pages.
 5. Keep the updated a11y smoke in the release gate, and add page-specific ready selectors as new browser smoke pages are covered.

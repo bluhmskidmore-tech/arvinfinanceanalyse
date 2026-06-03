@@ -37,7 +37,7 @@ def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
 
             if pd.isna(v):
                 continue
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError):
             logger.exception("_get_bond_field: pd.isna check failed for key=%r", k)
             pass
         return v
@@ -246,7 +246,7 @@ def compute_bond_six_effects(
                 mat_date = date(mat.year, mat.month, mat.day) if hasattr(mat, "day") else date(mat.year, mat.month, 1)
             else:
                 mat_date = None
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("compute_bond_convexity_standalone: date coercion failed for maturity_date")
             mat_date = None
     else:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 
 from backend.app.core_finance.hybrid_fusion_config import (
     HybridFusionThresholds,
@@ -66,7 +66,6 @@ def compute_hybrid_fusion_candidates(
             factor_rows=factor_rows,
             theme_rows=theme_rows,
         )
-        base = _first_row(sources)
         stock_name = _first_text(*(row.get("stock_name") for row in sources)) or stock_code
         sector_code = _first_text(*(row.get("sector_code") for row in sources))
         sector_name = _first_text(*(row.get("sector_name") for row in sources))

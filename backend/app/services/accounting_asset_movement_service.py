@@ -41,7 +41,6 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta,
 )
 from backend.app.tasks.accounting_asset_movement import (
-    CACHE_KEY,
     RULE_VERSION,
     refresh_accounting_asset_movement_window,
 )

@@ -85,8 +85,6 @@ def compute_leading_indicator(
     monthly_pmi = ms["pmi"]
     monthly_m2 = ms["m2"]
     monthly_sf = ms["sf"]
-    monthly_term = ms["term"]
-    monthly_credit = ms["credit"]
     monthly_oil = ms["oil"]
 
     weights = _M10_WEIGHTS

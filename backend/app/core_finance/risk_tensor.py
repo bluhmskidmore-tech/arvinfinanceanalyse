@@ -55,7 +55,7 @@ def _safe_decimal(value: object) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except (TypeError, ValueError, ArithmeticError) as exc:
+    except (TypeError, ValueError, ArithmeticError):
         logger.exception("_safe_decimal: failed to convert %r", type(value).__name__)
         return ZERO
 

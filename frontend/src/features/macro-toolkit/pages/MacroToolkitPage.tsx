@@ -26,6 +26,7 @@ import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
   MacroToolkitCommodityFuturesRefreshRun,
+  MacroToolkitCommodityFuturesRefreshStatus,
   MacroToolkitChoiceStockRefreshRun,
   MacroToolkitChoiceStockRefreshPermission,
   MacroToolkitAShareRiskPayload,
@@ -435,6 +436,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     strategyPayload?.choice_stock_refresh ?? payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
   const commodityFuturesRefresh = payload?.commodity_futures_refresh ?? null;
   const commodityPermission = commodityRefreshRun?.permission ?? commodityFuturesRefresh?.permission ?? null;
+  const commodityStatus = commodityFuturesRefresh?.status ?? null;
   const isCommodityRefreshUnauthorized = commodityPermission?.allowed === false;
   const commodityRefreshDisabled = selectedCommodityProducts.length === 0 || isCommodityRefreshUnauthorized;
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
@@ -1469,6 +1471,34 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   tone={isCommodityRefreshUnauthorized ? "missing" : "neutral"}
                 />
                 <MetricTile
+                  icon={<LineChartOutlined />}
+                  label="南华输入"
+                  value={commodityNanhuaStatusValue(commodityStatus)}
+                  detail={commodityNanhuaStatusDetail(commodityStatus)}
+                  tone={commodityNanhuaStatusTone(commodityStatus)}
+                />
+                <MetricTile
+                  icon={<ClockCircleOutlined />}
+                  label="最新日期"
+                  value={commodityLatestDateValue(commodityStatus)}
+                  detail={commodityTableStatusDetail(commodityStatus)}
+                  tone={commodityStatusTone(commodityStatus)}
+                />
+                <MetricTile
+                  icon={<DatabaseOutlined />}
+                  label="覆盖品种"
+                  value={commodityCoverageValue(commodityStatus)}
+                  detail={commodityCoverageDetail(commodityStatus)}
+                  tone={commodityStatusTone(commodityStatus)}
+                />
+                <MetricTile
+                  icon={<SafetyCertificateOutlined />}
+                  label="数据来源"
+                  value={commoditySourceValue(commodityStatus)}
+                  detail={commoditySourceDetail(commodityStatus)}
+                  tone={commodityStatusTone(commodityStatus)}
+                />
+                <MetricTile
                   icon={<SafetyCertificateOutlined />}
                   label="目标表"
                   value="fact_commodity_futures_daily"
@@ -1499,6 +1529,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   ))}
                 </Checkbox.Group>
               </div>
+              {isCommodityRefreshUnauthorized ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="缺少商品期货刷新授权"
+                  description={commodityFuturesPermissionNotice(commodityPermission)}
+                />
+              ) : null}
               <div className="macro-toolkit-cffex-actions">
                 <Button
                   icon={<InfoCircleOutlined />}
@@ -1708,6 +1746,7 @@ function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodi
   const rows = normalizeCommodityRefreshRows(refresh);
   const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
   const nanhuaRow = rows.find((row) => row.isNanhua);
+  const summary = refresh.summary;
   const nanhuaMessage =
     nanhuaRow && !isDryRun && nanhuaRow.status === "written"
       ? "Crisis Score 南华输入已更新"
@@ -1771,6 +1810,7 @@ function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodi
         <strong>{formatCommodityRefreshResult(refresh)}</strong>
         <Tag color={nanhuaRow && !isDryRun && nanhuaRow.status === "written" ? "green" : "blue"}>{nanhuaMessage}</Tag>
       </div>
+      {summary ? <CommodityRefreshSummaryStrip summary={summary} isDryRun={isDryRun} /> : null}
       <Table
         rowKey="key"
         size="small"
@@ -1779,6 +1819,25 @@ function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodi
         pagination={false}
         scroll={{ x: 760 }}
       />
+    </div>
+  );
+}
+
+function CommodityRefreshSummaryStrip({
+  summary,
+  isDryRun,
+}: {
+  summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>;
+  isDryRun: boolean;
+}) {
+  return (
+    <div className="macro-toolkit-commodity-refresh-closure" aria-label="商品期货刷新后闭环">
+      <span>{isDryRun ? "预估基线" : "刷新后闭环"}</span>
+      <strong>{commodityRefreshRowDeltaText(summary)}</strong>
+      <strong>{commodityRefreshLatestDateText(summary)}</strong>
+      <strong>{commodityRefreshCoverageText(summary)}</strong>
+      <strong>{commodityRefreshNanhuaText(summary)}</strong>
+      <strong>{commodityRefreshSourceText(summary)}</strong>
     </div>
   );
 }
@@ -2728,6 +2787,151 @@ function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefre
   return `商品期货${action}：${productCount} 个品种，${rowCount} 行${tradingDays}`;
 }
 
+function commodityRefreshRowDeltaText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
+  const before = commodityRefreshNullableNumberText(summary.row_count_before);
+  const after = commodityRefreshNullableNumberText(summary.row_count_after);
+  const delta = summary.row_count_delta == null ? "变化缺失" : `${summary.row_count_delta >= 0 ? "+" : ""}${summary.row_count_delta}`;
+  return `行数 ${before} → ${after}（${delta}）`;
+}
+
+function commodityRefreshLatestDateText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
+  const before = summary.latest_trade_date_before ?? "缺失";
+  const after = summary.latest_trade_date_after ?? "缺失";
+  return `最新日期 ${before} → ${after}`;
+}
+
+function commodityRefreshCoverageText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
+  const before = commodityRefreshCountPair(summary.available_product_count_before, summary.target_product_count);
+  const after = commodityRefreshCountPair(summary.available_product_count_after, summary.target_product_count);
+  const newlyAvailable = summary.newly_available_products.length
+    ? `新增 ${summary.newly_available_products.join(" / ")}`
+    : "新增 无";
+  const missing = summary.missing_products_after.length ? `缺失 ${summary.missing_products_after.join(" / ")}` : "缺失 无";
+  return `覆盖 ${before} → ${after}，${newlyAvailable}，${missing}`;
+}
+
+function commodityRefreshNanhuaText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
+  const before = summary.nanhua_latest_date_before ?? "缺失";
+  const after = summary.nanhua_latest_date_after ?? "缺失";
+  const value = formatNumberValue(summary.nanhua_latest_value_after, 2);
+  return `南华 ${before} → ${after}，${value}`;
+}
+
+function commodityRefreshSourceText(summary: NonNullable<MacroToolkitCommodityFuturesRefreshRun["summary"]>) {
+  const source = summary.source_vendors_after.length ? summary.source_vendors_after.join(" / ") : "缺失";
+  return `来源 ${source}`;
+}
+
+function commodityRefreshNullableNumberText(value: number | null) {
+  return value == null ? "缺失" : String(value);
+}
+
+function commodityRefreshCountPair(value: number | null, total: number | null) {
+  return value == null || total == null ? "缺失" : `${value}/${total}`;
+}
+
+type CommodityHealthStatus = NonNullable<NonNullable<MacroToolkitCommodityFuturesRefreshStatus>["status"]>;
+
+function commodityStatusTone(status: CommodityHealthStatus | null | undefined): "neutral" | "positive" | "missing" {
+  if (!status) {
+    return "neutral";
+  }
+  return status.status === "ok" ? "positive" : "missing";
+}
+
+function commodityNanhuaStatusTone(status: CommodityHealthStatus | null | undefined): "neutral" | "positive" | "missing" {
+  if (!status) {
+    return "neutral";
+  }
+  return status.nanhua_input?.status === "hit" ? "positive" : "missing";
+}
+
+function commodityNanhuaStatusValue(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "待确认";
+  }
+  if (status.nanhua_input?.status !== "hit") {
+    return "缺失";
+  }
+  const latestValue = formatNumberValue(status.nanhua_input.latest_value, 2);
+  return latestValue === "缺失" ? "已命中" : `已命中 ${latestValue}`;
+}
+
+function commodityNanhuaStatusDetail(status: CommodityHealthStatus | null | undefined) {
+  const input = status?.nanhua_input;
+  if (!input || input.status !== "hit") {
+    return "NHCI / NH0100.NHF 未命中";
+  }
+  const date = input.latest_trade_date ?? "日期缺失";
+  const value = formatNumberValue(input.latest_value, 2);
+  const source = input.source_version || input.vendor_version || "来源缺失";
+  return `${input.product_code} / ${input.series_id} · ${date} · ${value} · ${source}`;
+}
+
+function commodityLatestDateValue(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "待确认";
+  }
+  return status.latest_trade_date ?? "暂无数据";
+}
+
+function commodityTableStatusDetail(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "fact_commodity_futures_daily 状态待确认";
+  }
+  const rowText = status.row_count == null ? "行数缺失" : `${status.row_count} 行`;
+  return `${status.table} · ${commodityTableStatusLabel(status.status)} · ${rowText}`;
+}
+
+function commodityCoverageValue(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "待确认";
+  }
+  const coverage = status.coverage;
+  return `${coverage.available_product_count}/${coverage.target_product_count}`;
+}
+
+function commodityCoverageDetail(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "覆盖品种待确认";
+  }
+  const available = status.coverage.available_products.length ? status.coverage.available_products.join(" / ") : "无命中";
+  const missing = status.coverage.missing_products.length ? ` · 缺失 ${status.coverage.missing_products.join(" / ")}` : "";
+  return `${available}${missing}`;
+}
+
+function commoditySourceValue(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "待确认";
+  }
+  return status.source_vendors.length ? status.source_vendors.join(" / ") : "缺失";
+}
+
+function commoditySourceDetail(status: CommodityHealthStatus | null | undefined) {
+  if (!status) {
+    return "来源待确认";
+  }
+  const nanhua = status.nanhua_input;
+  const source = nanhua?.source_version || nanhua?.vendor_version || status.source_vendors.join(" / ") || "来源缺失";
+  return `${status.table} · ${source}`;
+}
+
+function commodityTableStatusLabel(status: string) {
+  if (status === "ok") {
+    return "正常";
+  }
+  if (status === "empty_table") {
+    return "暂无数据";
+  }
+  if (status === "missing_table") {
+    return "未接入";
+  }
+  if (status === "unreadable_database") {
+    return "读取失败";
+  }
+  return status || "未知";
+}
+
 function commodityFuturesPermissionErrorMessage() {
   return "当前账号没有商品期货刷新权限，请先授予 macro_toolkit.commodity_futures:refresh。";
 }
@@ -2745,6 +2949,14 @@ function commodityFuturesPermissionDetail(permission: MacroToolkitChoiceStockRef
     return "resource macro_toolkit.commodity_futures";
   }
   return choiceStockPermissionDetail(permission, "macro_toolkit.commodity_futures");
+}
+
+function commodityFuturesPermissionNotice(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
+  const resource = permission?.resource ?? "macro_toolkit.commodity_futures";
+  const actions = permission?.actions?.length ? permission.actions.join(" / ") : "dry_run / refresh";
+  const user = permission?.user_id || "anonymous";
+  const role = permission?.role || "unknown";
+  return `请授予 ${resource}: ${actions}；当前用户 ${user}，角色 ${role}。`;
 }
 
 function choiceStockFallbackText(

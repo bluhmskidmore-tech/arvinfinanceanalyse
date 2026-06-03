@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 国债期货数据层
 ==============
@@ -10,7 +9,7 @@
   5. 计算净基差 = 现券净价 - 期货价格 × CF - 持有收益
   6. 计算 IRR（隐含回购利率）
 
-数据源: Wind API
+数据源: Choice/Tushare 系统源（经 WindPy 兼容接口）
 输出:
   bond_futures_latest.csv   — 最新一日快照
   bond_futures_history.csv  — 历史时序（近1年）
@@ -23,12 +22,14 @@ Wind 代码说明:
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
+
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -38,7 +39,7 @@ from paths import OUTPUT_DIR
 ROOT = OUTPUT_DIR
 
 # ============================================================
-# Wind 连接（复用 crisis_score_cn.py 的模式）
+# WindPy 兼容接口连接（复用 crisis_score_cn.py 的模式）
 # ============================================================
 
 def connect_wind():
@@ -47,12 +48,12 @@ def connect_wind():
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:
-                print(f"[ERROR] Wind 连接失败: {ret.ErrorCode}")
+                print(f"[ERROR] Choice/Tushare 系统源连接失败: {ret.ErrorCode}")
                 return None
-        print("Wind 已连接")
+        print("Choice/Tushare 系统源已连接")
         return w
     except ImportError:
-        print("[ERROR] WindPy 未安装，请确认 Wind 终端已启动")
+        print("[ERROR] WindPy 兼容模块未安装，无法读取 Choice/Tushare 系统源")
         return None
 
 
@@ -223,7 +224,7 @@ def ytm_to_price(ytm: float, maturity: float,
                  coupon: float = COUPON_RATE, freq: int = 2) -> float:
     """
     用收益率反推债券净价（面值100元）
-    用于将 Wind 收益率数据转换为可比价格
+    用于将系统源收益率数据转换为可比价格
     """
     if ytm <= 0 or maturity <= 0:
         return 100.0
@@ -289,7 +290,7 @@ def fetch_dr007(w, lookback_days: int = 365) -> pd.Series:
     end_date   = datetime.now().strftime('%Y-%m-%d')
     start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
-    print(f"  拉取 DR007...", end="", flush=True)
+    print("  拉取 DR007...", end="", flush=True)
     df = wind_wsd(w, DR007_CODE, 'close', start_date, end_date)
     if df is not None and not df.empty:
         print(f"OK ({len(df)}天)")
@@ -323,7 +324,7 @@ def compute_basis_metrics(futures_data: dict, yield_data: dict,
             continue
 
         fut_close = fut_df.loc[common_idx, 'close']
-        ytm_vals  = ytm_ser.loc[common_idx] / 100  # Wind 收益率是百分数，转小数
+        ytm_vals  = ytm_ser.loc[common_idx] / 100  # 系统源收益率是百分数，转小数
 
         # DR007 对齐
         dr007_aligned = dr007.reindex(common_idx, method='ffill') / 100
@@ -331,21 +332,21 @@ def compute_basis_metrics(futures_data: dict, yield_data: dict,
         maturity = CTD_MATURITY[name]
 
         # 逐日计算
-        cf_series        = ytm_vals.apply(lambda y: calc_cf_approximate(y, maturity))
-        spot_price_series = ytm_vals.apply(lambda y: ytm_to_price(y, maturity))
+        cf_series        = ytm_vals.apply(lambda y, maturity=maturity: calc_cf_approximate(y, maturity))
+        spot_price_series = ytm_vals.apply(lambda y, maturity=maturity: ytm_to_price(y, maturity))
         carry_series     = dr007_aligned.apply(
-            lambda d: calc_carry(0.03, d if not np.isnan(d) else 0.018, maturity)
+            lambda d, maturity=maturity: calc_carry(0.03, d if not np.isnan(d) else 0.018, maturity)
         )
         net_basis_series = pd.Series([
             calc_net_basis(sp, fp, cf, carry)
             for sp, fp, cf, carry in zip(
-                spot_price_series, fut_close, cf_series, carry_series
+                spot_price_series, fut_close, cf_series, carry_series, strict=False
             )
         ], index=common_idx)
 
         irr_series = pd.Series([
             calc_irr(sp, fp, cf, COUPON_RATE, 90)
-            for sp, fp, cf in zip(spot_price_series, fut_close, cf_series)
+            for sp, fp, cf in zip(spot_price_series, fut_close, cf_series, strict=False)
         ], index=common_idx)
 
         # 取最新值
@@ -394,20 +395,20 @@ def compute_history(futures_data: dict, yield_data: dict,
         dr007_aligned = dr007.reindex(common_idx, method='ffill') / 100
         maturity = CTD_MATURITY[name]
 
-        cf_series         = ytm_vals.apply(lambda y: calc_cf_approximate(y, maturity))
-        spot_price_series = ytm_vals.apply(lambda y: ytm_to_price(y, maturity))
+        cf_series         = ytm_vals.apply(lambda y, maturity=maturity: calc_cf_approximate(y, maturity))
+        spot_price_series = ytm_vals.apply(lambda y, maturity=maturity: ytm_to_price(y, maturity))
         carry_series      = dr007_aligned.apply(
-            lambda d: calc_carry(0.03, d if not np.isnan(d) else 0.018, maturity)
+            lambda d, maturity=maturity: calc_carry(0.03, d if not np.isnan(d) else 0.018, maturity)
         )
         net_basis_series  = pd.Series([
             calc_net_basis(sp, fp, cf, carry)
             for sp, fp, cf, carry in zip(
-                spot_price_series, fut_close, cf_series, carry_series
+                spot_price_series, fut_close, cf_series, carry_series, strict=False
             )
         ], index=common_idx)
         irr_series = pd.Series([
             calc_irr(sp, fp, cf, COUPON_RATE, 90)
-            for sp, fp, cf in zip(spot_price_series, fut_close, cf_series)
+            for sp, fp, cf in zip(spot_price_series, fut_close, cf_series, strict=False)
         ], index=common_idx)
 
         for dt in common_idx:
@@ -502,7 +503,7 @@ def main():
 
     w = connect_wind()
     if w is None:
-        print("[ERROR] Wind 不可用，退出")
+        print("[ERROR] Choice/Tushare 系统源不可用，退出")
         sys.exit(1)
 
     # 拉取数据

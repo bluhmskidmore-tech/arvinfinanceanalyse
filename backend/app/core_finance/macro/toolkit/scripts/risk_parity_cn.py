@@ -1,16 +1,23 @@
-# -*- coding: utf-8 -*-
-import warnings; warnings.filterwarnings("ignore")
-import sys, os, numpy as np, pandas as pd
+import warnings
+
+warnings.filterwarnings("ignore")
+import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-import matplotlib; matplotlib.use("Agg")
+
+import matplotlib
+import numpy as np
+import pandas as pd
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 plt.rcParams["font.family"] = ["Microsoft YaHei", "SimHei", "sans-serif"]
 plt.rcParams["axes.unicode_minus"] = False
@@ -110,7 +117,8 @@ def solve_risk_parity(cov):
 
 def solve_risk_budget(cov, budget):
     n = cov.shape[0]
-    b = np.array(budget, dtype=float); b = b / b.sum()
+    b = np.array(budget, dtype=float)
+    b = b / b.sum()
     def objective(w):
         rc, sig = risk_contributions(w, cov)
         return float(np.sum((rc / sig - b) ** 2))
@@ -157,7 +165,7 @@ def print_results(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, vol):
     vol_lbl = chr(32452) + chr(21512) + chr(24180) + chr(21270) + chr(27874) + chr(21160) + chr(29575)
     rp_lbl = chr(39118) + chr(38505) + chr(24179) + chr(20215)
     rb_lbl = chr(39118) + chr(38505) + chr(39044) + chr(31639)
-    print("  " + vol_lbl + " — " + rp_lbl + ": {:.2f}%   ".format(sig_rp*100) + rb_lbl + ": {:.2f}%".format(sig_rb*100))
+    print("  " + vol_lbl + " — " + rp_lbl + f": {sig_rp*100:.2f}%   " + rb_lbl + f": {sig_rb*100:.2f}%")
     print("=" * 74)
 
 
@@ -197,10 +205,10 @@ def plot_results(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, phase):
     ax.grid(axis="y", alpha=0.3)
     for bar in bars1:
         ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.3,
-                "{:.1f}%".format(bar.get_height()), ha="center", va="bottom", fontsize=8, color=COLORS["navy"])
+                f"{bar.get_height():.1f}%", ha="center", va="bottom", fontsize=8, color=COLORS["navy"])
     for bar in bars2:
         ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.3,
-                "{:.1f}%".format(bar.get_height()), ha="center", va="bottom", fontsize=8, color=COLORS["gold"])
+                f"{bar.get_height():.1f}%", ha="center", va="bottom", fontsize=8, color=COLORS["gold"])
 
     ax2 = axes[1]
     ax2.set_facecolor("#F5F5F0")
@@ -218,10 +226,10 @@ def plot_results(asset_names, w_rp, w_rb, rc_rp, sig_rp, rc_rb, sig_rb, phase):
     ax2.grid(axis="y", alpha=0.3)
     for bar in bars3:
         ax2.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.3,
-                 "{:.1f}%".format(bar.get_height()), ha="center", va="bottom", fontsize=8, color=COLORS["steel"])
+                 f"{bar.get_height():.1f}%", ha="center", va="bottom", fontsize=8, color=COLORS["steel"])
     for bar in bars4:
         ax2.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.3,
-                 "{:.1f}%".format(bar.get_height()), ha="center", va="bottom", fontsize=8, color=COLORS["teal"])
+                 f"{bar.get_height():.1f}%", ha="center", va="bottom", fontsize=8, color=COLORS["teal"])
 
     title = chr(39118)+chr(38505)+chr(24179)+chr(20215)+" vs "+chr(39118)+chr(38505)+chr(39044)+chr(31639)+chr(65288)+phase+chr(35937)+chr(38480)+chr(65289)
     plt.suptitle(title, fontsize=15, fontweight="bold", color=COLORS["navy"], y=1.01)
@@ -255,14 +263,14 @@ def main():
     print("[3/4] " + chr(27714)+chr(35299)+chr(20248)+chr(21270)+chr(26435)+chr(37325)+"...")
     w_rp = solve_risk_parity(cov)
     rc_rp, sig_rp = risk_contributions(w_rp, cov)
-    print("  " + chr(39118)+chr(38505)+chr(24179)+chr(20215)+chr(27714)+chr(35299)+chr(23436)+chr(25104)+chr(65292)+chr(32452)+chr(21512)+chr(27874)+chr(21160)+chr(29575)+": {:.2f}%".format(sig_rp*100))
+    print("  " + chr(39118)+chr(38505)+chr(24179)+chr(20215)+chr(27714)+chr(35299)+chr(23436)+chr(25104)+chr(65292)+chr(32452)+chr(21512)+chr(27874)+chr(21160)+chr(29575)+f": {sig_rp*100:.2f}%")
 
     phase      = get_clock_phase()
     budget_raw = BUDGET_MAP.get(phase, BUDGET_MAP[chr(34928)+chr(36864)])
     budget     = [budget_raw[k] for k in asset_keys]
     w_rb = solve_risk_budget(cov, budget)
     rc_rb, sig_rb = risk_contributions(w_rb, cov)
-    print("  " + chr(39118)+chr(38505)+chr(39044)+chr(31639)+chr(27714)+chr(35299)+chr(23436)+chr(25104)+chr(65292)+chr(32452)+chr(21512)+chr(27874)+chr(21160)+chr(29575)+": {:.2f}%".format(sig_rb*100))
+    print("  " + chr(39118)+chr(38505)+chr(39044)+chr(31639)+chr(27714)+chr(35299)+chr(23436)+chr(25104)+chr(65292)+chr(32452)+chr(21512)+chr(27874)+chr(21160)+chr(29575)+f": {sig_rb*100:.2f}%")
     bdesc = ", ".join(asset_names[i]+"="+str(int(budget[i]*100))+"%" for i in range(len(asset_keys)))
     print("  " + chr(39118)+chr(38505)+chr(39044)+chr(31639)+chr(30446)+chr(26631)+chr(65288)+phase+chr(65289)+": " + bdesc)
 

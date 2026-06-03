@@ -136,13 +136,13 @@ def _coerce_date(value: Any) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("_coerce_date: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("_coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
@@ -155,7 +155,7 @@ def _optional_decimal(value: Any) -> Decimal | None:
         return None
     try:
         return value if isinstance(value, Decimal) else Decimal(str(value))
-    except (TypeError, ValueError, ArithmeticError) as exc:
+    except (TypeError, ValueError, ArithmeticError):
         logger.exception("_optional_decimal: failed to convert %r", type(value).__name__)
         return None
 

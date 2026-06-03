@@ -9,8 +9,12 @@ from fastapi.testclient import TestClient
 
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
-from backend.app.core_finance.macro import equity_shadow_portfolio as shadow_portfolio_module
-from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
+from backend.app.core_finance.macro import (
+    equity_shadow_portfolio as shadow_portfolio_module,
+)
+from backend.app.core_finance.macro.equity_shadow_portfolio import (
+    compute_equity_shadow_portfolio_report,
+)
 from backend.app.governance.settings import get_settings
 
 
@@ -132,7 +136,7 @@ def test_macro_toolkit_strategy_endpoint_exposes_unavailable_shadow_portfolio_re
     assert report["portfolios"] == []
 
 
-def test_shadow_portfolio_reuses_period_returns_per_period(
+def test_shadow_portfolio_batches_period_return_loads(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -166,7 +170,8 @@ def test_shadow_portfolio_reuses_period_returns_per_period(
     report = compute_equity_shadow_portfolio_report(duckdb_path)
 
     assert report["status"] == "complete"
-    assert query_counts["daily_observation"] == report["completed_periods"]
+    assert report["completed_periods"] > 1
+    assert query_counts["daily_observation"] == 1
 
 
 def test_shadow_portfolio_batches_factor_snapshot_history_loads(

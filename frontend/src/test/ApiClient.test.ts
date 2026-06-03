@@ -1269,6 +1269,121 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode for the bond analytics DV01 movement endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_dv01_movement",
+          basis: "formal",
+          result_kind: "bond_analytics.dv01_movement",
+          formal_use_allowed: true,
+          source_version: "sv_dv01",
+          vendor_version: "vv_dv01",
+          rule_version: "rv_dv01",
+          cache_version: "cv_dv01",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-03-31",
+          previous_report_date: "2026-02-28",
+          accounting_class: "OCI",
+          source_status: "ready",
+          current_total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous_total_face_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          current_total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous_total_market_value: {
+            raw: 0,
+            unit: "yuan",
+            display: "0.00 亿",
+            precision: 2,
+            sign_aware: false,
+          },
+          current_face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          previous_face_weighted_modified_duration: {
+            raw: 0,
+            unit: "ratio",
+            display: "0.00",
+            precision: 2,
+            sign_aware: false,
+          },
+          current_total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          previous_total_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "0",
+            precision: 0,
+            sign_aware: false,
+          },
+          delta_dv01: {
+            raw: 0,
+            unit: "dv01",
+            display: "+0",
+            precision: 0,
+            sign_aware: true,
+          },
+          current_position_count: 0,
+          previous_position_count: 0,
+          attribution: [],
+          anomaly_bonds: [],
+          methodology_checks: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getBondAnalyticsDv01Movement("2026-03-31", {
+      accountingClass: "all",
+      topN: 50,
+    });
+
+    expect(payload.result_meta.result_kind).toBe("bond_analytics.dv01_movement");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/bond-analytics/dv01-movement?report_date=2026-03-31&accounting_class=all&top_n=50",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
   it("returns a structured analytical macro-bond-linkage mock envelope", async () => {
     const client = createApiClient({ mode: "mock" });
 

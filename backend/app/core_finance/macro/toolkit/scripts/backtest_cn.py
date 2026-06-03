@@ -1,32 +1,35 @@
-# -*- coding: utf-8 -*-
 """
 全策略综合回测框架
 ==================
 对比5种策略：买持等权 / 风险平价 / CTA趋势 / 状态切换 / 全模型综合
 资产池: 沪深300、中证500、黄金、铜、原油、国债ETF、十年国债ETF、国开债ETF
-数据源: akshare（股票/商品）+ Wind（债券ETF）
+数据源: akshare（股票/商品）+ Choice/Tushare 系统源（债券ETF，经 WindPy 兼容接口）
 回测区间: 近5年
 """
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import sys
-import numpy as np
-import pandas as pd
+
 import akshare as ak
 import matplotlib
+import numpy as np
+import pandas as pd
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -104,7 +107,6 @@ def load_prices() -> pd.DataFrame:
             data = wind.wsd(codes, "close", "2015-01-01",
                             datetime.now().strftime("%Y-%m-%d"), "Fill=Previous")
             if data.ErrorCode == 0:
-                import datetime as dt
                 dates = [pd.Timestamp(d) for d in data.Times]
                 for i, (_, name) in enumerate(BOND_ETFS):
                     s = pd.Series(data.Data[i], index=dates, name=name, dtype=float)
@@ -113,11 +115,11 @@ def load_prices() -> pd.DataFrame:
                     print(f"  {name}({BOND_ETFS[i][0]}): {len(s)} 条，最新 {s.index[-1].date()}")
                 wind_ok = True
             else:
-                print(f"  [警告] Wind wsd 返回错误码 {data.ErrorCode}，跳过债券ETF")
+                print(f"  [警告] WindPy 兼容接口 wsd 返回错误码 {data.ErrorCode}，跳过债券ETF")
         else:
-            print(f"  [警告] Wind 启动失败（ErrorCode={r.ErrorCode}），跳过债券ETF")
+            print(f"  [警告] Choice/Tushare 系统源启动失败（ErrorCode={r.ErrorCode}），跳过债券ETF")
     except Exception as e:
-        print(f"  [警告] Wind 不可用（{str(e)[:60]}），跳过债券ETF")
+        print(f"  [警告] Choice/Tushare 系统源不可用（{str(e)[:60]}），跳过债券ETF")
 
     if not wind_ok:
         # 尝试 akshare 备用
@@ -386,26 +388,36 @@ def run_backtest(prices: pd.DataFrame) -> dict:
             clock_regime = str(row.get("regime", "")) if "regime" in row.index else ""
             # 滞胀：减股票+减债券，加黄金+商品
             if clock_regime == "滞胀":
-                for j in equity_idx: w_base[j] *= 0.70
-                for j in bond_idx:   w_base[j] *= 0.80
+                for j in equity_idx:
+                    w_base[j] *= 0.70
+                for j in bond_idx:
+                    w_base[j] *= 0.80
                 gold_j = [j for j, a in enumerate(assets) if a == "gold"]
-                for j in gold_j:     w_base[j] *= 1.40
+                for j in gold_j:
+                    w_base[j] *= 1.40
             # 衰退：减股票+减商品，加债券
             elif clock_regime == "衰退":
-                for j in equity_idx: w_base[j] *= 0.65
-                for j in commod_idx: w_base[j] *= 0.75
-                for j in bond_idx:   w_base[j] *= 1.35
+                for j in equity_idx:
+                    w_base[j] *= 0.65
+                for j in commod_idx:
+                    w_base[j] *= 0.75
+                for j in bond_idx:
+                    w_base[j] *= 1.35
             # 复苏：加股票，减债券
             elif clock_regime == "复苏":
-                for j in equity_idx: w_base[j] *= 1.30
-                for j in bond_idx:   w_base[j] *= 0.75
+                for j in equity_idx:
+                    w_base[j] *= 1.30
+                for j in bond_idx:
+                    w_base[j] *= 0.75
             # 过热：加商品，减债券
             elif clock_regime == "过热":
-                for j in commod_idx: w_base[j] *= 1.25
-                for j in bond_idx:   w_base[j] *= 0.80
+                for j in commod_idx:
+                    w_base[j] *= 1.25
+                for j in bond_idx:
+                    w_base[j] *= 0.80
 
         # 2. CTA 信号微调（±8%，幅度小于美林时钟调整）
-        for j, a in enumerate(assets):
+        for j, _asset in enumerate(assets):
             s = float(cta_signals.iloc[i - 1, j]) if not np.isnan(cta_signals.iloc[i - 1, j]) else 0.0
             if s > 0.4:
                 w_base[j] *= 1.08
@@ -570,11 +582,11 @@ def plot_annual(annual_df: pd.DataFrame) -> Path:
     offsets = np.linspace(-(n_strat - 1) / 2, (n_strat - 1) / 2, n_strat) * width
 
     fig, ax = plt.subplots(figsize=(12, 5.5))
-    for idx, (name, offset) in enumerate(zip(strategies, offsets)):
+    for name, offset in zip(strategies, offsets, strict=False):
         color = STRATEGY_COLORS.get(name, COLORS["muted"])
         vals = annual_df[name].values
-        bars = ax.bar(x + offset, vals, width=width * 0.9, color=color,
-                      alpha=0.85, label=name)
+        ax.bar(x + offset, vals, width=width * 0.9, color=color,
+               alpha=0.85, label=name)
 
     ax.axhline(0, color=COLORS["grid"], linewidth=1)
     ax.set_xticks(x)
@@ -682,7 +694,7 @@ def main():
 
     # 分年度收益
     annual_df = calc_annual_returns(ret_df)
-    print(f"\n  分年度收益 (%):")
+    print("\n  分年度收益 (%):")
     print("  " + annual_df.to_string(index=False))
 
     # 保存 CSV

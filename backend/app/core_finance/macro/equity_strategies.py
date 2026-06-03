@@ -273,9 +273,12 @@ def multi_factor_selection(
 def classify_low_crowding_market_regime(
     prices: pd.DataFrame,
     observations: pd.DataFrame | None = None,
+    *,
+    clean_observations: pd.DataFrame | None = None,
 ) -> dict[str, float | int | str | None]:
     price_frame = _clean_price_frame(prices)
-    clean_observations = _clean_observation_frame(observations) if observations is not None and not observations.empty else None
+    if clean_observations is None and observations is not None and not observations.empty:
+        clean_observations = _clean_observation_frame(observations)
     market_index = price_frame.div(price_frame.iloc[0]).mean(axis=1) * 100.0
     latest_index = float(market_index.iloc[-1])
     ma_fast = float(market_index.rolling(20, min_periods=min(5, len(market_index))).mean().iloc[-1])
@@ -312,8 +315,12 @@ def classify_low_crowding_market_regime(
     }
 
 
-def compute_low_crowding_scores(observations: pd.DataFrame) -> pd.DataFrame:
-    obs = _clean_observation_frame(observations)
+def compute_low_crowding_scores(
+    observations: pd.DataFrame,
+    *,
+    clean_observations: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    obs = clean_observations if clean_observations is not None else _clean_observation_frame(observations)
     recent = obs.groupby("stock_code", sort=False).tail(21).copy()
     if recent.empty:
         return pd.DataFrame(
@@ -420,6 +427,10 @@ def low_crowding_multifactor_selection(
     filtered["crowding_excluded_count"] = excluded_count
     cutoff = max(int(len(filtered) * top_pct), 1)
     return filtered.sort_values("combined_score", ascending=False).head(cutoff)
+
+
+def clean_low_crowding_observations(observations: pd.DataFrame) -> pd.DataFrame:
+    return _clean_observation_frame(observations)
 
 
 def _clean_price_frame(prices: pd.DataFrame) -> pd.DataFrame:

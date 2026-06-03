@@ -280,6 +280,9 @@ function qualityFlagLabel(flag: string | undefined) {
   if (flag === "stale") {
     return "陈旧";
   }
+  if (flag === "missing") {
+    return "缺失";
+  }
   return flag || "未提供";
 }
 
@@ -485,6 +488,13 @@ export default function RiskTensorPage() {
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
   const [selectedTenor, setSelectedTenor] = useState<string>("");
   const [qualityEvidenceCopyStatus, setQualityEvidenceCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [qualityEvidenceReviewConfirmed, setQualityEvidenceReviewConfirmed] = useState(false);
+  const [qualityEvidenceReviewRecordCopyStatus, setQualityEvidenceReviewRecordCopyStatus] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
+  const [qualityEvidenceRequestCopyStatus, setQualityEvidenceRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -623,6 +633,12 @@ export default function RiskTensorPage() {
     setQualityEvidenceCopyStatus("idle");
   }, [tensorMeta?.trace_id]);
 
+  useEffect(() => {
+    setQualityEvidenceReviewConfirmed(false);
+    setQualityEvidenceReviewRecordCopyStatus("idle");
+    setQualityEvidenceRequestCopyStatus("idle");
+  }, [tensorMeta?.trace_id]);
+
   const fallbackStatus = fallbackModeLabel(tensorMeta?.fallback_mode);
   const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
   const metadataTablesUsed = tensorMeta?.tables_used?.filter(Boolean).join(" / ") ?? "";
@@ -707,17 +723,25 @@ export default function RiskTensorPage() {
     },
   ];
   const hasMissingQualityEvidence = qualityEvidenceReviewItems.some((item) => item.status === "未提供");
+  const missingQualityEvidenceLabels = qualityEvidenceReviewItems
+    .filter((item) => item.status === "未提供")
+    .map((item) => item.label);
+  const canConfirmQualityEvidenceReview =
+    !hasMissingQualityEvidence && qualityEvidenceCopyStatus === "copied" && !qualityEvidenceReviewConfirmed;
   const qualityReviewStateLabel =
-    qualityEvidenceCopyStatus === "copied"
-      ? "证据已复制，待业务确认"
-      : qualityEvidenceCopyStatus === "failed"
-        ? "复制失败，需手动选择证据"
-        : hasMissingQualityEvidence
-          ? "证据不完整，待补证"
+    hasMissingQualityEvidence
+      ? "证据不完整，待补证"
+      : qualityEvidenceReviewConfirmed
+        ? "业务已确认"
+      : qualityEvidenceCopyStatus === "copied"
+        ? "证据已复制，待业务确认"
+        : qualityEvidenceCopyStatus === "failed"
+          ? "复制失败，需手动选择证据"
           : "待复核";
   const qualityTraceCopyText = [
     "风险张量质量证据",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
     `复核状态 ${qualityReviewStateLabel}`,
     `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
     `source_version ${tensorMeta?.source_version ?? "未提供"}`,
@@ -729,11 +753,45 @@ export default function RiskTensorPage() {
     "证据字段复核",
     ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
   ].join("\n");
+  const qualityEvidenceRequestCopyText = [
+    "风险张量质量证据补证请求",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    `缺失字段 ${missingQualityEvidenceLabels.join(" / ") || "无"}`,
+    "请在 result_meta 补充 evidence_rows、tables_used、filters_applied 后重新出具",
+  ].join("\n");
+  const qualityEvidenceReviewRecordCopyText = [
+    "风险张量质量证据确认记录",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    "确认状态 业务已确认",
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    `证据范围 ${qualityTraceMetadataDetail}`,
+    "证据字段复核",
+    ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
+  ].join("\n");
   const qualityEvidenceCopyMessage =
     qualityEvidenceCopyStatus === "copied"
       ? "已复制证据摘要"
       : qualityEvidenceCopyStatus === "failed"
         ? "复制失败，请手动选择证据"
+        : "";
+  const qualityEvidenceRequestCopyMessage =
+    qualityEvidenceRequestCopyStatus === "copied"
+      ? "已复制补证请求"
+      : qualityEvidenceRequestCopyStatus === "failed"
+        ? "复制失败，请手动选择补证请求"
+        : "";
+  const qualityEvidenceReviewRecordCopyMessage =
+    qualityEvidenceReviewRecordCopyStatus === "copied"
+      ? "已复制确认记录"
+      : qualityEvidenceReviewRecordCopyStatus === "failed"
+        ? "复制失败，请手动选择确认记录"
         : "";
 
   const handlePrimaryTenorDrill = () => {
@@ -786,6 +844,32 @@ export default function RiskTensorPage() {
       .writeText(qualityTraceCopyText)
       .then(() => setQualityEvidenceCopyStatus("copied"))
       .catch(() => setQualityEvidenceCopyStatus("failed"));
+  };
+
+  const handleCopyQualityEvidenceRequest = () => {
+    if (!navigator.clipboard?.writeText) {
+      setQualityEvidenceRequestCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(qualityEvidenceRequestCopyText)
+      .then(() => setQualityEvidenceRequestCopyStatus("copied"))
+      .catch(() => setQualityEvidenceRequestCopyStatus("failed"));
+  };
+
+  const handleConfirmQualityEvidenceReview = () => {
+    setQualityEvidenceReviewConfirmed(true);
+  };
+
+  const handleCopyQualityEvidenceReviewRecord = () => {
+    if (!navigator.clipboard?.writeText) {
+      setQualityEvidenceReviewRecordCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(qualityEvidenceReviewRecordCopyText)
+      .then(() => setQualityEvidenceReviewRecordCopyStatus("copied"))
+      .catch(() => setQualityEvidenceReviewRecordCopyStatus("failed"));
   };
 
   const handleKrdChartClick = (params: KrdChartClickParams) => {
@@ -1001,7 +1085,7 @@ export default function RiskTensorPage() {
         title="组合风险张量"
         isLoading={datesQuery.isLoading || tensorQuery.isLoading}
         isError={datesBlockingError || tensorBlockedByReportDate || tensorQuery.isError}
-        isEmpty={datesEmpty || isEmpty}
+        isEmpty={isEmpty && !result}
         onRetry={() => {
           void datesQuery.refetch();
           if (tensorQueryEnabled) {
@@ -1009,7 +1093,23 @@ export default function RiskTensorPage() {
           }
         }}
       >
-        {result ? (
+        {datesEmpty ? (
+          <div className="risk-tensor-empty-state" data-testid="risk-tensor-dates-empty-state">
+            <strong>后端未返回可用风险报告日</strong>
+            <span>trace_id {datesQuery.data?.result_meta.trace_id ?? "未提供"}</span>
+            <span>可用报告日 0 个</span>
+            <p>页面不会回退到硬编码报告日；请核对风险张量报告日物化任务和日期治理结果。</p>
+          </div>
+        ) : isEmpty && result ? (
+          <div className="risk-tensor-empty-state" data-testid="risk-tensor-empty-state">
+            <strong>当前报告日无风险张量持仓</strong>
+            <span>报告日 {result.report_date}</span>
+            <span>trace_id {tensorMeta?.trace_id ?? "未提供"}</span>
+            <span>质量标记：{qualityFlagLabel(result.quality_flag)}</span>
+            <span>{qualityTraceMetadataDetail}</span>
+            <p>后端返回 bond_count 为 0，页面不会在前端补算正式指标；请核对持仓快照、风险张量物化任务和元数据证据。</p>
+          </div>
+        ) : result ? (
           <>
             <section className="risk-tensor-brief" data-testid="risk-tensor-brief">
               <div className="risk-tensor-brief__lead" data-tone={qualityTone(result.quality_flag)}>
@@ -1648,6 +1748,15 @@ export default function RiskTensorPage() {
                         {qualityEvidenceCopyMessage}
                       </small>
                     ) : null}
+                    {qualityEvidenceCopyStatus === "failed" ? (
+                      <pre
+                        className="risk-tensor-quality-detail__manual-copy"
+                        data-testid="risk-tensor-quality-evidence-manual-copy"
+                        tabIndex={0}
+                      >
+                        {qualityTraceCopyText}
+                      </pre>
+                    ) : null}
                     <div className="risk-tensor-quality-detail__evidence-checklist">
                       <strong>证据字段复核</strong>
                       <ul>
@@ -1658,6 +1767,67 @@ export default function RiskTensorPage() {
                           </li>
                         ))}
                       </ul>
+                      {canConfirmQualityEvidenceReview ? (
+                        <div className="risk-tensor-quality-detail__evidence-request">
+                          <button
+                            type="button"
+                            className="risk-tensor-quality-detail__trace-action"
+                            onClick={handleConfirmQualityEvidenceReview}
+                          >
+                            确认业务复核
+                          </button>
+                        </div>
+                      ) : null}
+                      {qualityEvidenceReviewConfirmed ? (
+                        <div className="risk-tensor-quality-detail__evidence-request">
+                          <button
+                            type="button"
+                            className="risk-tensor-quality-detail__trace-action"
+                            onClick={handleCopyQualityEvidenceReviewRecord}
+                          >
+                            复制确认记录
+                          </button>
+                          {qualityEvidenceReviewRecordCopyMessage ? (
+                            <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                              {qualityEvidenceReviewRecordCopyMessage}
+                            </small>
+                          ) : null}
+                          {qualityEvidenceReviewRecordCopyStatus === "failed" ? (
+                            <pre
+                              className="risk-tensor-quality-detail__manual-copy"
+                              data-testid="risk-tensor-quality-evidence-review-record-manual-copy"
+                              tabIndex={0}
+                            >
+                              {qualityEvidenceReviewRecordCopyText}
+                            </pre>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {hasMissingQualityEvidence ? (
+                        <div className="risk-tensor-quality-detail__evidence-request">
+                          <button
+                            type="button"
+                            className="risk-tensor-quality-detail__trace-action"
+                            onClick={handleCopyQualityEvidenceRequest}
+                          >
+                            复制补证请求
+                          </button>
+                          {qualityEvidenceRequestCopyMessage ? (
+                            <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                              {qualityEvidenceRequestCopyMessage}
+                            </small>
+                          ) : null}
+                          {qualityEvidenceRequestCopyStatus === "failed" ? (
+                            <pre
+                              className="risk-tensor-quality-detail__manual-copy"
+                              data-testid="risk-tensor-quality-evidence-request-manual-copy"
+                              tabIndex={0}
+                            >
+                              {qualityEvidenceRequestCopyText}
+                            </pre>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </li>
                 </ol>

@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -32,13 +31,13 @@ def _coerce_date_like(value: object | None) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("_coerce_date_like: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("_coerce_date_like: .date() failed for %r", type(value).__name__)
             return None
     return None
@@ -60,7 +59,7 @@ def _estimate_duration_proxy_years(
 
     try:
         return max(0.0, (maturity - report).days / 365.0)
-    except (TypeError, OverflowError) as exc:
+    except (TypeError, OverflowError):
         logger.exception("_estimate_duration_proxy_years: date subtraction failed for bond %s", bond_code)
         return 3.0
 

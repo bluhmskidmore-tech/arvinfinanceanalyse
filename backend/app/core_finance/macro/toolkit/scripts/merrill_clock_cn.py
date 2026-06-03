@@ -7,19 +7,21 @@
   3. 多指标合成: 增长不只看工业增加值，通胀不只看CPI
   4. 输出资产偏好得分，而非简单的四象限标签
 
-数据源: Wind EDB（宏观经济数据库）
+数据源: Choice/Tushare 系统源（经 WindPy 兼容接口）
 输出: 增长动量 / 通胀动量 / 流动性动量 + 各资产偏好得分
 """
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
+
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-import os
-from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -27,29 +29,29 @@ if str(_PKG) not in sys.path:
 from paths import OUTPUT_DIR
 
 # ============================================================
-# Wind 连接
+# WindPy 兼容接口连接
 # ============================================================
 
 def connect_wind():
-    """连接 Wind"""
+    """连接 Choice/Tushare 系统源兼容接口"""
     try:
         from WindPy import w
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:
-                print(f"[ERROR] Wind 连接失败: {ret.ErrorCode}")
+                print(f"[ERROR] Choice/Tushare 系统源连接失败: {ret.ErrorCode}")
                 return None
-        print("Wind 已连接")
+        print("Choice/Tushare 系统源已连接")
         return w
     except ImportError:
-        print("[ERROR] WindPy 未安装")
+        print("[ERROR] WindPy 兼容模块未安装")
         return None
 
 
 def wind_edb(w, codes: dict, start: str, end: str) -> pd.DataFrame:
     """
-    从 Wind EDB 拉取宏观指标，返回 DataFrame。
-    codes: {指标名: Wind代码}
+    从 Choice/Tushare 系统源拉取宏观指标，返回 DataFrame。
+    codes: {指标名: 兼容代码}
     """
     codes_list = list(codes.values())
     names_list = list(codes.keys())
@@ -319,7 +321,7 @@ def main():
     latest = result.iloc[-1]
     g = latest['growth_momentum']
     i = latest['inflation_momentum']
-    l = latest['liquidity_momentum']
+    liquidity = latest['liquidity_momentum']
     regime = latest['regime']
 
     print(f"\n{'='*60}")
@@ -327,13 +329,13 @@ def main():
     print(f"{'='*60}")
     print(f"  增长动量:   {g:+.3f}  {'↑加速' if g > 0.1 else '↓减速' if g < -0.1 else '→平稳'}")
     print(f"  通胀动量:   {i:+.3f}  {'↑升温' if i > 0.1 else '↓降温' if i < -0.1 else '→平稳'}")
-    print(f"  流动性动量: {l:+.3f}  {'↑宽松' if l > 0.1 else '↓收紧' if l < -0.1 else '→中性'}")
+    print(f"  流动性动量: {liquidity:+.3f}  {'↑宽松' if liquidity > 0.1 else '↓收紧' if liquidity < -0.1 else '→中性'}")
     print(f"  传统象限:   {regime}")
 
     # 资产偏好得分
-    scores = compute_asset_scores(g, i, l)
+    scores = compute_asset_scores(g, i, liquidity)
 
-    print(f"\n  资产偏好得分 [-1, +1]:")
+    print("\n  资产偏好得分 [-1, +1]:")
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     for asset, score in sorted_scores:
         bar_len = int(abs(score) * 20)
@@ -345,7 +347,7 @@ def main():
     print(f"\n  资产排序: {ranking}")
 
     # 最近12个月趋势
-    print(f"\n  最近12个月动量趋势:")
+    print("\n  最近12个月动量趋势:")
     recent = result.tail(12)
     print(f"  {'月份':<10} {'增长':>8} {'通胀':>8} {'流动性':>8} {'象限':<6}")
     print(f"  {'-'*44}")
@@ -381,9 +383,9 @@ def main():
     # 逻辑：增长减速 + 流动性宽松 → 利率下行 → 做多期货
     #       增长加速 + 通胀升温     → 利率上行 → 做空期货
     #       其余                   → 观望
-    if g < -0.2 and l > 0:
+    if g < -0.2 and liquidity > 0:
         bond_direction = '多'
-        bond_note = f'增长减速({g:+.2f})+流动性宽松({l:+.2f})，利率下行预期'
+        bond_note = f'增长减速({g:+.2f})+流动性宽松({liquidity:+.2f})，利率下行预期'
     elif g > 0.2 and i > 0.2:
         bond_direction = '空'
         bond_note = f'增长加速({g:+.2f})+通胀升温({i:+.2f})，利率上行压力'
@@ -392,7 +394,7 @@ def main():
         bond_note = f'增长减速({g:+.2f})+通胀降温({i:+.2f})，债券强势'
     else:
         bond_direction = '观望'
-        bond_note = f'宏观信号不明确(g={g:+.2f},i={i:+.2f},l={l:+.2f})'
+        bond_note = f'宏观信号不明确(g={g:+.2f},i={i:+.2f},l={liquidity:+.2f})'
 
     print(f"\n  国债期货方向: {bond_direction}  ({bond_note})")
 
@@ -400,7 +402,7 @@ def main():
         '日期': result.index[-1].strftime('%Y-%m'),
         '增长动量': f"{g:+.3f}",
         '通胀动量': f"{i:+.3f}",
-        '流动性动量': f"{l:+.3f}",
+        '流动性动量': f"{liquidity:+.3f}",
         '传统象限': regime,
         'bond_direction': bond_direction,
         'bond_note': bond_note,

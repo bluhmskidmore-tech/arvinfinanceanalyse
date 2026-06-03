@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 三层信号合成器
 ==============
@@ -18,12 +17,14 @@
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
+
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -296,8 +297,6 @@ def run_three_layer_filter(
 
     # Crisis Score 风险调整
     crisis_score = crisis.get('score', 0)
-    crisis_status = crisis.get('status', '正常')
-
     if crisis_score >= 2.0:
         # 高风险/危机状态：仓位减半
         position_scale = 0.5
@@ -340,7 +339,7 @@ def main():
     basis_df    = load_basis()
     crowding_df = load_crowding()
     crisis      = load_crisis()
-    regime      = load_regime()
+    _ = load_regime()
     tech_df     = load_technical_signals()
     signal_date = latest_input_snapshot_date(merrill, basis_df, crowding_df, crisis, tech_df)
 

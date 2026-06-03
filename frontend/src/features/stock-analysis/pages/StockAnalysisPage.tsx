@@ -1936,24 +1936,25 @@ export default function StockAnalysisPage() {
     asOfOverride != null && asOfOverride.trim() !== "" ? dayjs(asOfOverride) : headerDateValue;
 
   const effectiveAsOf = strategyPayload?.as_of_date ?? asOfOverride ?? null;
-  const stockDetailAsOfDate = effectiveAsOf ?? undefined;
+  const analyticsAsOf = strategyPayload?.as_of_date ?? null;
+  const stockDetailAsOfDate = analyticsAsOf ?? undefined;
   const currentMarketState = strategyPayload?.market_gate.state ?? null;
   const strategyScoreQuery = useQuery({
     queryKey: [
       "stock-analysis",
       "livermore-strategy-score",
-      effectiveAsOf ?? "__none",
+      analyticsAsOf ?? "__none",
       currentMarketState ?? "__none",
     ] as const,
     queryFn: () =>
       client.getLivermoreStrategyScore({
-        snapshotTo: effectiveAsOf ?? undefined,
+        snapshotTo: analyticsAsOf ?? undefined,
         currentMarketState: currentMarketState ?? undefined,
         minSample: 20,
         primaryHorizon: "return_5d",
       }),
     enabled: Boolean(
-      effectiveAsOf && (strategyPrioritySection.seen || firstScreenAnalyticsRequested),
+      analyticsAsOf && (strategyPrioritySection.seen || firstScreenAnalyticsRequested),
     ),
     ...stockAnalysisReadQueryOptions,
   });
@@ -1962,18 +1963,18 @@ export default function StockAnalysisPage() {
     queryKey: [
       "stock-analysis",
       "livermore-strategy-optimization",
-      effectiveAsOf ?? "__none",
+      analyticsAsOf ?? "__none",
       currentMarketState ?? "__none",
     ] as const,
     queryFn: () =>
       client.getLivermoreStrategyOptimization({
-        snapshotTo: effectiveAsOf ?? undefined,
+        snapshotTo: analyticsAsOf ?? undefined,
         currentMarketState: currentMarketState ?? undefined,
         minSample: 20,
         primaryHorizon: "return_5d",
       }),
     enabled: Boolean(
-      effectiveAsOf && (strategyOptimizationSection.seen || firstScreenAnalyticsRequested),
+      analyticsAsOf && (strategyOptimizationSection.seen || firstScreenAnalyticsRequested),
     ),
     ...stockAnalysisReadQueryOptions,
   });
@@ -1995,22 +1996,22 @@ export default function StockAnalysisPage() {
   const strategyMaturityDetailSnapshotFrom =
     strategyMaturitySnapshots[strategyMaturitySnapshots.length - 1]?.snapshot_as_of_date ?? null;
   const strategyMaturityDetailSnapshotTo = strategyMaturitySnapshots[0]?.snapshot_as_of_date ?? null;
-  const strategyBacktestSnapshotFrom = effectiveAsOf ? dayjs(effectiveAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
+  const strategyBacktestSnapshotFrom = analyticsAsOf ? dayjs(analyticsAsOf).subtract(10, "day").format("YYYY-MM-DD") : null;
 
   const strategyBacktestQuery = useQuery({
     queryKey: [
       "stock-analysis",
       "livermore-candidate-history-strategy-backtest",
       strategyBacktestSnapshotFrom ?? "__none",
-      effectiveAsOf ?? "__none",
+      analyticsAsOf ?? "__none",
     ] as const,
     queryFn: () =>
       client.getLivermoreCandidateHistory({
         snapshotFrom: strategyBacktestSnapshotFrom ?? undefined,
-        snapshotTo: effectiveAsOf ?? undefined,
+        snapshotTo: analyticsAsOf ?? undefined,
         limit: 500,
       }),
-    enabled: Boolean(effectiveAsOf && strategyBacktestSection.seen),
+    enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
     ...stockAnalysisReadQueryOptions,
   });
 
@@ -2029,13 +2030,13 @@ export default function StockAnalysisPage() {
     queryKey: [
       "stock-analysis",
       "livermore-cycle-proxy-backtest",
-      effectiveAsOf ?? "__none",
+      analyticsAsOf ?? "__none",
     ] as const,
     queryFn: () =>
       client.getLivermoreCycleProxyBacktest({
-        snapshotTo: effectiveAsOf ?? undefined,
+        snapshotTo: analyticsAsOf ?? undefined,
       }),
-    enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+    enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
     ...stockAnalysisReadQueryOptions,
   });
   const cycleProxyBacktestPayload: LivermoreCycleProxyBacktestPayload | null =
@@ -2044,13 +2045,13 @@ export default function StockAnalysisPage() {
     queryKey: [
       "stock-analysis",
       "livermore-candidate-history-portfolio-backtest",
-      effectiveAsOf ?? "__none",
+      analyticsAsOf ?? "__none",
     ] as const,
     queryFn: () =>
       client.getLivermoreCandidateHistoryPortfolioBacktest({
-        snapshotTo: effectiveAsOf ?? undefined,
+        snapshotTo: analyticsAsOf ?? undefined,
       }),
-    enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+    enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
     ...stockAnalysisReadQueryOptions,
   });
   const candidateHistoryPortfolioBacktestPayload: LivermoreCandidateHistoryPortfolioBacktestPayload | null =
@@ -2088,8 +2089,8 @@ export default function StockAnalysisPage() {
   );
 
   const strategyBacktestDateRangeLabel =
-    strategyBacktestSnapshotFrom && effectiveAsOf
-      ? `${strategyBacktestSnapshotFrom} 至 ${effectiveAsOf}`
+    strategyBacktestSnapshotFrom && analyticsAsOf
+      ? `${strategyBacktestSnapshotFrom} 至 ${analyticsAsOf}`
       : "日期待补";
 
   const cycleRotationPanelSummary = useMemo(
@@ -2101,12 +2102,12 @@ export default function StockAnalysisPage() {
             portfolioBacktest: candidateHistoryPortfolioBacktestPayload,
             proxyBacktest: cycleProxyBacktestPayload,
             portfolioQueryState: resolvePanelQueryState({
-              enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+              enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
               isLoading: candidateHistoryPortfolioBacktestQuery.isLoading,
               isError: candidateHistoryPortfolioBacktestQuery.isError,
             }),
             proxyQueryState: resolvePanelQueryState({
-              enabled: Boolean(effectiveAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
+              enabled: Boolean(analyticsAsOf && cycleRotationFramework && cycleFrameworkSection.seen),
               isLoading: cycleProxyBacktestQuery.isLoading,
               isError: cycleProxyBacktestQuery.isError,
             }),
@@ -2117,7 +2118,7 @@ export default function StockAnalysisPage() {
       cycleMacroLayerSummary,
       candidateHistoryPortfolioBacktestPayload,
       cycleProxyBacktestPayload,
-      effectiveAsOf,
+      analyticsAsOf,
       cycleFrameworkSection.seen,
       candidateHistoryPortfolioBacktestQuery.isLoading,
       candidateHistoryPortfolioBacktestQuery.isError,
@@ -2151,7 +2152,7 @@ export default function StockAnalysisPage() {
         payload: strategyScorePayload,
         marketState: currentMarketState,
         queryState: resolvePanelQueryState({
-          enabled: Boolean(effectiveAsOf && strategyPrioritySection.seen),
+          enabled: Boolean(analyticsAsOf && strategyPrioritySection.seen),
           isLoading: strategyScoreQuery.isLoading,
           isError: strategyScoreQuery.isError,
         }),
@@ -2161,7 +2162,7 @@ export default function StockAnalysisPage() {
       strategyPriorityRows,
       strategyScorePayload,
       currentMarketState,
-      effectiveAsOf,
+      analyticsAsOf,
       strategyPrioritySection.seen,
       strategyScoreQuery.isLoading,
       strategyScoreQuery.isError,
@@ -2178,7 +2179,7 @@ export default function StockAnalysisPage() {
         dateRangeLabel: strategyBacktestDateRangeLabel,
         rows: strategyBacktestRows,
         queryState: resolvePanelQueryState({
-          enabled: Boolean(effectiveAsOf && strategyBacktestSection.seen),
+          enabled: Boolean(analyticsAsOf && strategyBacktestSection.seen),
           isLoading: strategyBacktestQuery.isLoading,
           isError: strategyBacktestQuery.isError,
         }),
@@ -2190,7 +2191,7 @@ export default function StockAnalysisPage() {
       strategyBacktestWindow,
       strategyBacktestDateRangeLabel,
       strategyBacktestRows,
-      effectiveAsOf,
+      analyticsAsOf,
       strategyBacktestSection.seen,
       strategyBacktestQuery.isLoading,
       strategyBacktestQuery.isError,
@@ -2204,7 +2205,7 @@ export default function StockAnalysisPage() {
         payload: strategyOptimizationPayload,
         rows: strategyOptimizationRows,
         queryState: resolvePanelQueryState({
-          enabled: Boolean(effectiveAsOf && strategyOptimizationSection.seen),
+          enabled: Boolean(analyticsAsOf && strategyOptimizationSection.seen),
           isLoading: strategyOptimizationQuery.isLoading,
           isError: strategyOptimizationQuery.isError,
         }),
@@ -2215,7 +2216,7 @@ export default function StockAnalysisPage() {
     [
       strategyOptimizationPayload,
       strategyOptimizationRows,
-      effectiveAsOf,
+      analyticsAsOf,
       strategyOptimizationSection.seen,
       strategyOptimizationQuery.isLoading,
       strategyOptimizationQuery.isError,
@@ -2261,16 +2262,16 @@ export default function StockAnalysisPage() {
   const sectorSeriesExpanded = sectorSeriesCollapseKeys.includes("sector-rank-series-multi");
 
   const sectorRankSeriesQuery = useQuery({
-    queryKey: ["stock-analysis", "livermore-sector-rank-series", effectiveAsOf ?? "__none", sectorSeriesWindow] as const,
+    queryKey: ["stock-analysis", "livermore-sector-rank-series", analyticsAsOf ?? "__none", sectorSeriesWindow] as const,
     queryFn: () =>
       client.getLivermoreSectorRankSeries({
-        asOfDate: effectiveAsOf ?? undefined,
+        asOfDate: analyticsAsOf ?? undefined,
         windowDays: sectorSeriesWindow,
         topK: 10,
       }),
     enabled: Boolean(
       sectorSeriesExpanded &&
-        effectiveAsOf &&
+        analyticsAsOf &&
         strategyPayload &&
         !sectorRankUnavailable(strategyPayload),
     ),
@@ -2413,6 +2414,10 @@ export default function StockAnalysisPage() {
                   </div>
                 ) : null}
 
+                <div
+                  className="stock-analysis-page__first-screen-main"
+                  data-testid="stock-analysis-first-screen-main"
+                >
                 <section
                   data-testid="stock-analysis-tailwind-cockpit"
                   className={SA_FIRST_HERO}
@@ -3053,7 +3058,7 @@ export default function StockAnalysisPage() {
                     testId="stock-analysis-review-queue-filter-empty"
                   />
                 ) : (
-                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                  <div className="stock-analysis-page__review-candidate-grid grid grid-cols-1 gap-2 lg:grid-cols-2">
                     {filteredCandidates.map((card) => {
                       const visibleEvidence = [...card.primaryEvidence, ...card.supportingEvidence].slice(0, 4);
                       const hiddenEvidenceCount =
@@ -3061,7 +3066,7 @@ export default function StockAnalysisPage() {
 
                       return (
                         <article
-                          className="grid gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
+                          className="stock-analysis-page__review-candidate-card grid gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
                           data-testid={`stock-candidate-${card.stockCode}`}
                           key={card.stockCode}
                         >
@@ -3114,7 +3119,7 @@ export default function StockAnalysisPage() {
                           <p className="m-0 border-l-2 border-primary-500 pl-2 text-xs font-semibold leading-relaxed text-neutral-900">
                             {card.reviewFocus}
                           </p>
-                          <div className="grid gap-1.5 sm:grid-cols-2">
+                          <div className="stock-analysis-page__review-candidate-evidence grid gap-1.5 sm:grid-cols-2">
                             {visibleEvidence.map((item, index) => (
                               <div
                                 className="flex min-w-0 items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5"
@@ -3139,7 +3144,7 @@ export default function StockAnalysisPage() {
                               </div>
                             ))}
                           </div>
-                          <div className="flex flex-wrap gap-1 text-xs">
+                          <div className="stock-analysis-page__review-candidate-chips flex flex-wrap gap-1 text-xs">
                             <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-semibold text-neutral-600">
                               <SafetyCertificateOutlined aria-hidden="true" /> 边界 {card.boundaryEvidence.length}
                             </span>
@@ -3334,6 +3339,8 @@ export default function StockAnalysisPage() {
                       </div>
                     )}
                   </section>
+                </div>
+                </div>
 
                   <section
                     className={SA_FIRST_CARD}
@@ -3963,7 +3970,6 @@ export default function StockAnalysisPage() {
                       ]}
                     />
                   </section>
-                </div>
 
                 <div className="stock-analysis-page__dh-work-grid" data-testid="stock-analysis-first-screen-workbench">
                   <div className="flex flex-col gap-3" data-testid="stock-analysis-first-screen-primary">

@@ -1,19 +1,23 @@
-# -*- coding: utf-8 -*-
-import sys, os, warnings
+import os
+import sys
+import warnings
+
 warnings.filterwarnings("ignore")
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from datetime import datetime, timedelta
 from pathlib import Path
+
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 COLORS = {"navy":"#0B1F33","gold":"#C99A2E","danger":"#B83B3B","teal":"#2E6F72","sage":"#6E8B6B"}
 ASSET_COLORS = ["#0B1F33","#C99A2E","#B83B3B","#2E6F72","#6E8B6B"]
@@ -113,7 +117,7 @@ def plot_performance(df, path):
     ax1.axvline(0,   color="gray",         lw=0.8, ls="--")
     ax1.axvline(0.5, color=COLORS["gold"], lw=1.0, ls="--", alpha=0.8, label="良好 0.5")
     ax1.axvline(1.0, color=COLORS["teal"], lw=1.0, ls="--", alpha=0.8, label="优秀 1.0")
-    for bar, val in zip(bars, sharpes):
+    for bar, val in zip(bars, sharpes, strict=False):
         ax1.text(val + 0.02, bar.get_y() + bar.get_height() / 2,
                  f"{val:.3f}", va="center", fontsize=8.5, color=COLORS["navy"])
     ax1.set_xlabel("夏普比率", fontsize=10)
@@ -123,7 +127,7 @@ def plot_performance(df, path):
     ax1.spines[["top", "right"]].set_visible(False)
 
     ax2 = fig.add_subplot(gs[1])
-    for lbl, x, y, c in zip(labels, max_dds, ann_rets, palette):
+    for lbl, x, y, c in zip(labels, max_dds, ann_rets, palette, strict=False):
         ax2.scatter(x, y, color=c, s=130, zorder=3, edgecolors="white", linewidths=0.8)
         ax2.annotate(lbl, (x, y), textcoords="offset points", xytext=(6, 4), fontsize=8, color=COLORS["navy"])
     ax2.axhline(0, color="gray", lw=0.8, ls="--")
@@ -190,7 +194,10 @@ def main():
     m_eq = calc_metrics(eq_ret, "等权组合")
     if m_eq:
         results.append(m_eq)
-        print(f"  等权组合  夏普={m_eq["夏普比率"]:6.3f}  索提诺={m_eq["索提诺比率"]:6.3f}  年化收益={m_eq["年化收益%"]:6.2f}%  评级={m_eq["评级"]}")
+        print(
+            f"  等权组合  夏普={m_eq['夏普比率']:6.3f}  索提诺={m_eq['索提诺比率']:6.3f}  "
+            f"年化收益={m_eq['年化收益%']:6.2f}%  评级={m_eq['评级']}"
+        )
 
     rp_label = "风险平价组合"
     rp_w = None
@@ -204,7 +211,7 @@ def main():
                         w_map[aname] = float(rp_df[col].iloc[-1])
             if len(w_map) == n:
                 rp_w = np.array([w_map[a] for a in asset_names])
-                print(f"  已读取风险平价权重：{dict(zip(asset_names, rp_w.round(4)))}")
+                print(f"  已读取风险平价权重：{dict(zip(asset_names, rp_w.round(4), strict=False))}")
         except Exception as e:
             print(f"  读取 risk_parity_results.csv 失败（{e}），使用等权替代")
     if rp_w is None:
@@ -215,7 +222,10 @@ def main():
     m_rp = calc_metrics(rp_ret, rp_label)
     if m_rp:
         results.append(m_rp)
-        print(f"  风险平价  夏普={m_rp["夏普比率"]:6.3f}  索提诺={m_rp["索提诺比率"]:6.3f}  年化收益={m_rp["年化收益%"]:6.2f}%  评级={m_rp["评级"]}")
+        print(
+            f"  风险平价  夏普={m_rp['夏普比率']:6.3f}  索提诺={m_rp['索提诺比率']:6.3f}  "
+            f"年化收益={m_rp['年化收益%']:6.2f}%  评级={m_rp['评级']}"
+        )
 
     df_out = pd.DataFrame(results)
     print("=" * 60)

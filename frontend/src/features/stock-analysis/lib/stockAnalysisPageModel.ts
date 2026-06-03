@@ -1469,7 +1469,7 @@ export function buildStrategyLensItems(
       key: "hybrid",
       label: "融合策略",
       value: String(consensus.strategyCounts.hybrid_fusion),
-      detail: "观察池",
+      detail: "多策略观察池",
       tone: consensus.strategyCounts.hybrid_fusion > 0 ? "positive" : "neutral",
       scrollTarget: "stock-analysis-observation-preview",
       progress: clampRatio(consensus.strategyCounts.hybrid_fusion / strategyMax),

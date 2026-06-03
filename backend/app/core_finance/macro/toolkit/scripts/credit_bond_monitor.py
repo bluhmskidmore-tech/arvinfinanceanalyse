@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 credit_bond_monitor.py
 信用债风控层：
@@ -6,20 +5,22 @@ credit_bond_monitor.py
 2. 城投区域风险评分（弱省份预警）
 3. 每日截面利差分位数（距离历史底部空间）
 
-依赖：第三方固收+申赎数据（需接入）、Wind 区域城投数据
+依赖：第三方固收+申赎数据（需接入）、Choice/Tushare 区域城投数据（待接入）
 输出：output/credit_monitor.csv / risk_alert.csv
 """
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import warnings
+
 import paths
 
-import warnings
 warnings.filterwarnings("ignore")
 
+from datetime import datetime
+
 import pandas as pd
-import numpy as np
-from datetime import datetime, date
-from pathlib import Path
 
 # ── 阈值定义 ──────────────────────────────────────────────────────────────────
 
@@ -195,14 +196,14 @@ def generate_monitor_report():
 
     # 3. 城投区域风险
     province_risk = monitor_province_risk()
-    print(f"\n  城投区域风险 TOP5（高风险省份）:")
+    print("\n  城投区域风险 TOP5（高风险省份）:")
     print(province_risk.head(5).to_string(index=False))
 
     # 4. 利差底部空间
     if not credit_df.empty:
         spread_floor = monitor_spread_floor(credit_df)
         if not spread_floor.empty:
-            print(f"\n  利差底部空间（距区间最小值）:")
+            print("\n  利差底部空间（距区间最小值）:")
             print(spread_floor.to_string(index=False))
 
     # 5. 生成预警记录

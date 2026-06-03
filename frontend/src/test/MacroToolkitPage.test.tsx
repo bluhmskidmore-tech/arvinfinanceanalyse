@@ -845,6 +845,103 @@ describe("MacroToolkitPage", () => {
               row_count: isDryRun ? 0 : products.length * 22,
               estimated_total_rows: isDryRun ? products.length * 22 : undefined,
               estimated_trading_days: isDryRun ? 22 : undefined,
+              before_status: isDryRun
+                ? undefined
+                : {
+                    materialized: true,
+                    status: "ok",
+                    table: "fact_commodity_futures_daily",
+                    row_count: 120,
+                    latest_trade_date: "2026-05-20",
+                    source_vendors: ["tushare"],
+                    coverage: {
+                      target_product_count: 7,
+                      available_product_count: 5,
+                      available_products: ["CU", "AL", "SC", "AU", "NHCI"],
+                      missing_products: ["RB", "I"],
+                    },
+                    nanhua_input: {
+                      status: "hit",
+                      product_code: "NHCI",
+                      series_id: "NH0100.NHF",
+                      system_series_id: "NHCI.NH",
+                      latest_trade_date: "2026-05-20",
+                      latest_value: 3007.05,
+                      row_count: 18,
+                      source_version: "sv_tushare_index_daily_nhci_old",
+                      vendor_version: "vv_tushare_index_daily_NHCI_20260520",
+                      rule_version: "rv_commodity_daily_v1",
+                    },
+                  },
+              after_status: isDryRun
+                ? undefined
+                : {
+                    materialized: true,
+                    status: "ok",
+                    table: "fact_commodity_futures_daily",
+                    row_count: 154,
+                    latest_trade_date: "2026-06-01",
+                    source_vendors: ["tushare"],
+                    coverage: {
+                      target_product_count: 7,
+                      available_product_count: 7,
+                      available_products: ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+                      missing_products: [],
+                    },
+                    nanhua_input: {
+                      status: "hit",
+                      product_code: "NHCI",
+                      series_id: "NH0100.NHF",
+                      system_series_id: "NHCI.NH",
+                      latest_trade_date: "2026-06-01",
+                      latest_value: 3187.42,
+                      row_count: 22,
+                      source_version: "sv_tushare_index_daily_nhci_new",
+                      vendor_version: "vv_tushare_index_daily_NHCI_20260601",
+                      rule_version: "rv_commodity_daily_v1",
+                    },
+                  },
+              summary: isDryRun
+                ? {
+                    table: "fact_commodity_futures_daily",
+                    row_count_before: 120,
+                    row_count_after: 120,
+                    row_count_delta: 0,
+                    latest_trade_date_before: "2026-05-20",
+                    latest_trade_date_after: "2026-05-20",
+                    available_product_count_before: 5,
+                    available_product_count_after: 5,
+                    target_product_count: 7,
+                    newly_available_products: [],
+                    missing_products_after: ["RB", "I"],
+                    nanhua_status_before: "hit",
+                    nanhua_status_after: "hit",
+                    nanhua_latest_date_before: "2026-05-20",
+                    nanhua_latest_date_after: "2026-05-20",
+                    nanhua_latest_value_after: 3007.05,
+                    source_vendors_after: ["tushare"],
+                    dry_run: true,
+                  }
+                : {
+                    table: "fact_commodity_futures_daily",
+                    row_count_before: 120,
+                    row_count_after: 154,
+                    row_count_delta: 34,
+                    latest_trade_date_before: "2026-05-20",
+                    latest_trade_date_after: "2026-06-01",
+                    available_product_count_before: 5,
+                    available_product_count_after: 7,
+                    target_product_count: 7,
+                    newly_available_products: ["RB", "I"],
+                    missing_products_after: [],
+                    nanhua_status_before: "hit",
+                    nanhua_status_after: "hit",
+                    nanhua_latest_date_before: "2026-05-20",
+                    nanhua_latest_date_after: "2026-06-01",
+                    nanhua_latest_value_after: 3187.42,
+                    source_vendors_after: ["tushare"],
+                    dry_run: false,
+                  },
               products: products.map((product) => {
                 const productCode = product === "NHCI" ? "NH0100.NHF" : product;
                 return {
@@ -894,6 +991,12 @@ describe("MacroToolkitPage", () => {
     expect(dryRunSummaries[0]).toHaveTextContent("22 个交易日");
     const dryRunResult = await screen.findByLabelText("商品期货刷新结果");
     expect(dryRunResult).toHaveTextContent("预计可写");
+    expect(dryRunResult).toHaveTextContent("预估基线");
+    expect(dryRunResult).toHaveTextContent("120 → 120");
+    expect(dryRunResult).toHaveTextContent("+0");
+    expect(dryRunResult).toHaveTextContent("覆盖 5/7 → 5/7");
+    expect(dryRunResult).toHaveTextContent("缺失 RB / I");
+    expect(dryRunResult).toHaveTextContent("南华 2026-05-20 → 2026-05-20");
     expect(dryRunResult).toHaveTextContent("estimate_only");
     expect(dryRunResult).toHaveTextContent("CU / CA.COPPER");
     expect(dryRunResult).toHaveTextContent("NHCI / NH0100.NHF");
@@ -911,6 +1014,14 @@ describe("MacroToolkitPage", () => {
     expect(refreshSummaries[0]).toHaveTextContent("4 个品种，88 行");
     const completedResult = await screen.findByLabelText("商品期货刷新结果");
     expect(completedResult).toHaveTextContent("Crisis Score 南华输入已更新");
+    expect(completedResult).toHaveTextContent("刷新后闭环");
+    expect(completedResult).toHaveTextContent("120 → 154");
+    expect(completedResult).toHaveTextContent("+34");
+    expect(completedResult).toHaveTextContent("2026-05-20 → 2026-06-01");
+    expect(completedResult).toHaveTextContent("5/7 → 7/7");
+    expect(completedResult).toHaveTextContent("新增 RB / I");
+    expect(completedResult).toHaveTextContent("缺失 无");
+    expect(completedResult).toHaveTextContent("tushare");
     expect(completedResult).toHaveTextContent("已写入");
     expect(completedResult).toHaveTextContent("2026-04-30");
     expect(completedResult).toHaveTextContent("3187.42");
@@ -942,6 +1053,65 @@ describe("MacroToolkitPage", () => {
       "title",
       expect.stringContaining("resource macro_toolkit.commodity_futures"),
     );
+  });
+
+  it("shows commodity futures data health before a refresh is clicked", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const scriptsEnvelope = await baseClient.getMacroToolkitScripts();
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => analysisEnvelope,
+      getMacroToolkitScripts: async () => ({
+        ...scriptsEnvelope,
+        result: {
+          ...scriptsEnvelope.result,
+          commodity_futures_refresh: {
+            ...scriptsEnvelope.result.commodity_futures_refresh!,
+            status: {
+              materialized: true,
+              status: "ok",
+              table: "fact_commodity_futures_daily",
+              row_count: 154,
+              latest_trade_date: "2026-04-30",
+              source_vendors: ["tushare"],
+              coverage: {
+                target_product_count: 7,
+                available_product_count: 5,
+                available_products: ["CU", "AL", "SC", "AU", "NHCI"],
+                missing_products: ["RB", "I"],
+              },
+              nanhua_input: {
+                status: "hit",
+                product_code: "NHCI",
+                series_id: "NH0100.NHF",
+                system_series_id: "NHCI.NH",
+                latest_trade_date: "2026-04-30",
+                latest_value: 3187.42,
+                row_count: 22,
+                source_version: "sv_tushare_index_daily_nhci",
+                vendor_version: "vv_tushare_index_daily_NHCI_20260430",
+                rule_version: "rv_commodity_daily_v1",
+              },
+            },
+          },
+        },
+      }),
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    await waitFor(() => expect(within(commodityPanel).getByText("南华输入")).toBeInTheDocument());
+    const nanhuaTile = within(commodityPanel).getByText("南华输入").closest(".macro-toolkit-metric");
+    expect(nanhuaTile?.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NH0100.NHF"));
+    expect(commodityPanel).toHaveTextContent("NH0100.NHF");
+    expect(commodityPanel).toHaveTextContent("2026-04-30");
+    expect(commodityPanel).toHaveTextContent("3187.42");
+    expect(commodityPanel).toHaveTextContent("覆盖品种");
+    expect(commodityPanel).toHaveTextContent("5/7");
+    expect(commodityPanel).toHaveTextContent("数据来源");
+    expect(commodityPanel).toHaveTextContent("tushare");
   });
 
   it("shows commodity futures refresh permission and blocks unauthorized actions", async () => {
@@ -996,6 +1166,11 @@ describe("MacroToolkitPage", () => {
       "title",
       expect.stringContaining("user commodity-user"),
     );
+    expect(commodityPanel).toHaveTextContent("缺少商品期货刷新授权");
+    expect(commodityPanel).toHaveTextContent("macro_toolkit.commodity_futures");
+    expect(commodityPanel).toHaveTextContent("dry_run / refresh");
+    expect(commodityPanel).toHaveTextContent("commodity-user");
+    expect(commodityPanel).toHaveTextContent("viewer");
 
     const dryRunButton = within(commodityPanel).getByRole("button", { name: /预估商品期货/ });
     const refreshButton = within(commodityPanel).getByRole("button", { name: /刷新商品期货/ });

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 evening_report.py
 每日宏观晚间综合报告
@@ -10,7 +9,8 @@ evening_report.py
 5. 信用债监控
 输出：output/evening_report_YYYYMMDD.md
 """
-import os, sys
+import os
+import sys
 
 SKILL_PATH = os.environ.get(
     "ALPHAEAR_NEWS_SKILL_PATH",
@@ -20,14 +20,15 @@ TOOLKIT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SKILL_PATH)
 sys.path.insert(0, TOOLKIT_ROOT)
 
+import warnings
+
 import paths
 
-import warnings
 warnings.filterwarnings("ignore")
 
+from datetime import date, datetime
+
 import pandas as pd
-import numpy as np
-from datetime import datetime, date
 from scripts.database_manager import DatabaseManager
 from scripts.news_tools import NewsNowTools, PolymarketTools
 
@@ -95,7 +96,7 @@ def fetch_news():
             print(f"  [{src}] ERROR: {e}")
 
     df_all = pd.DataFrame(all_news)
-    df_macro = df_all[df_all["is_macro"] == True].copy()
+    df_macro = df_all[df_all["is_macro"]].copy()
     df_all.to_csv(paths.OUTPUT_DIR / "alphaear_news_latest.csv", index=False, encoding="utf-8-sig")
     df_macro.to_csv(paths.OUTPUT_DIR / "alphaear_macro_news.csv", index=False, encoding="utf-8-sig")
     print(f"  Total: {len(df_all)} | Macro: {len(df_macro)}")
@@ -258,38 +259,38 @@ def build_report():
 
     # ── 报告内容 ─────────────────────────────────────────────────
     lines = []
-    lines.append(f"# 宏观量化晚间报告")
-    lines.append(f"")
+    lines.append("# 宏观量化晚间报告")
+    lines.append("")
     lines.append(f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     lines.append(f"**报告日期**: {today.strftime('%Y年%m月%d日')}")
-    lines.append(f"")
-    lines.append(f"---")
-    lines.append(f"")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
 
     # 一句话
-    lines.append(f"## 一句话总结")
-    lines.append(f"")
+    lines.append("## 一句话总结")
+    lines.append("")
     lines.append(f"**{risk_rating}** — {overall}")
-    lines.append(f"")
+    lines.append("")
     lines.append(f"Crisis Score: **{cs_score}** | CTA: **{cta_sig}** | 美林时钟: **{mc_quad}**")
-    lines.append(f"")
+    lines.append("")
 
     # 量化信号
-    lines.append(f"## 量化信号面板")
-    lines.append(f"")
-    lines.append(f"| 指标 | 数值 | 含义 |")
-    lines.append(f"|------|------|------|")
+    lines.append("## 量化信号面板")
+    lines.append("")
+    lines.append("| 指标 | 数值 | 含义 |")
+    lines.append("|------|------|------|")
     lines.append(f"| Crisis Score | {cs_score} | {cs_status} |")
     lines.append(f"| CTA信号 | {cta_sig} | 强度 {cta_str_val} |")
     lines.append(f"| 美林时钟 | {mc_quad} | 债券方向 {mc_bond} |")
     lines.append(f"| VaR(99%) | {var99} | Monte Carlo模拟 |")
     lines.append(f"| 夏普比率 | {sharpe} | 风险调整后收益 |")
     lines.append(f"| 固收+风险 | {fi_risk} | 赎回压力 |")
-    lines.append(f"")
+    lines.append("")
 
     # 宏观舆情
-    lines.append(f"## 宏观舆情（今日热点）")
-    lines.append(f"")
+    lines.append("## 宏观舆情（今日热点）")
+    lines.append("")
     if not df_macro.empty:
         for src, name in MACRO_SOURCES.items():
             subset = df_macro[df_macro["source"] == src].head(5)
@@ -299,32 +300,32 @@ def build_report():
             for _, row in subset.iterrows():
                 title = str(row.get("title", ""))[:60]
                 lines.append(f"- {title}")
-            lines.append(f"")
+            lines.append("")
     else:
         lines.append("*今日无宏观相关热点*")
-        lines.append(f"")
+        lines.append("")
 
     # Polymarket
-    lines.append(f"## 预测市场（聪明钱情绪）")
-    lines.append(f"")
+    lines.append("## 预测市场（聪明钱情绪）")
+    lines.append("")
     if not pm_df.empty:
-        lines.append(f"| 概率 | 交易量 | 预测问题 |")
-        lines.append(f"|------|--------|----------|")
+        lines.append("| 概率 | 交易量 | 预测问题 |")
+        lines.append("|------|--------|----------|")
         for _, row in pm_df.head(10).iterrows():
             prob = f"{row['yes_prob_pct']:.1f}%" if pd.notna(row['yes_prob_pct']) else "N/A"
             vol = f"${row['volume_usd']/1e6:.1f}M" if row['volume_usd'] > 1e6 else f"${row['volume_usd']/1e3:.0f}K"
             q = str(row['question'])[:50]
             lines.append(f"| {prob} | {vol} | {q} |")
-        lines.append(f"")
-        lines.append(f"*来源：Polymarket | 概率为 YES 选项*")
-        lines.append(f"")
+        lines.append("")
+        lines.append("*来源：Polymarket | 概率为 YES 选项*")
+        lines.append("")
     else:
         lines.append("*暂无宏观相关预测市场*")
-        lines.append(f"")
+        lines.append("")
 
     # 风险提示
-    lines.append(f"## 风险提示")
-    lines.append(f"")
+    lines.append("## 风险提示")
+    lines.append("")
     if fi_risk not in ("N/A", "正常", "✅ 正常"):
         lines.append(f"- ⚠️ **固收+赎回风险**: {fi_risk}")
     if cs_v is not None and cs_v >= 1:
@@ -335,29 +336,29 @@ def build_report():
                 lines.append(f"- ⚠️ **VaR(99%)较低**: {var99}，尾部风险显著")
         except (ValueError, TypeError):
             pass
-    if not lines[-1].startswith(f"- ⚠️"):
-        lines.append(f"- ✅ 无重大风险预警")
-    lines.append(f"")
+    if not lines[-1].startswith("- ⚠️"):
+        lines.append("- ✅ 无重大风险预警")
+    lines.append("")
 
     # 下一步
-    lines.append(f"## 下一步建议")
-    lines.append(f"")
+    lines.append("## 下一步建议")
+    lines.append("")
     if cs_v is not None and cs_v >= 2:
-        lines.append(f"1. **降低风险资产敞口**，等待CTA信号确认")
-        lines.append(f"2. 关注明日宏观数据（PMI/CPI）是否验证当前判断")
-        lines.append(f"3. 减少二永债仓位，防范固收+赎回传导")
+        lines.append("1. **降低风险资产敞口**，等待CTA信号确认")
+        lines.append("2. 关注明日宏观数据（PMI/CPI）是否验证当前判断")
+        lines.append("3. 减少二永债仓位，防范固收+赎回传导")
     elif cs_v is not None and cs_v >= 1:
-        lines.append(f"1. **维持现有配置**，不追高不加仓")
-        lines.append(f"2. 关注Crisis Score每日变化，触发阈值时再调整")
-        lines.append(f"3. 信用债注意弱省份城投风险")
+        lines.append("1. **维持现有配置**，不追高不加仓")
+        lines.append("2. 关注Crisis Score每日变化，触发阈值时再调整")
+        lines.append("3. 信用债注意弱省份城投风险")
     else:
-        lines.append(f"1. **维持或适度加仓**，当前环境支持风险偏好")
-        lines.append(f"2. 关注美元/黄金走势，持续跟踪宏观舆情")
-        lines.append(f"3. 下个月理财规模增量可期，信用债仍有配置需求")
+        lines.append("1. **维持或适度加仓**，当前环境支持风险偏好")
+        lines.append("2. 关注美元/黄金走势，持续跟踪宏观舆情")
+        lines.append("3. 下个月理财规模增量可期，信用债仍有配置需求")
 
-    lines.append(f"")
-    lines.append(f"---")
-    lines.append(f"*数据来源: Wind / AlphaEar / Polymarket | 仅供参考，不构成投资建议*")
+    lines.append("")
+    lines.append("---")
+    lines.append("*数据来源: Choice/Tushare 系统源 / AlphaEar / Polymarket | 仅供参考，不构成投资建议*")
 
     report_text = "\n".join(lines)
 

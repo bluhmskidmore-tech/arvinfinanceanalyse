@@ -112,7 +112,7 @@ def compute_monetary_policy_stance(
 
     current_date = dates[0]
     warnings: list[str] = []
-    current_curves = curves_by_date[current_date]
+    _ = curves_by_date[current_date]
 
     policy_curve_id, policy_tenor, policy_rate = first_available_rate(
         curves_by_date,

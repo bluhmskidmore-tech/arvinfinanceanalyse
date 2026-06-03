@@ -9,8 +9,6 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-import duckdb
-
 from backend.app.core_finance import product_category_pnl_attribution as product_category_attribution
 from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.governance.locks import LockDefinition, acquire_lock

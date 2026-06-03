@@ -66,7 +66,7 @@ def interpolate_treasury_yield_pct(market: dict[str, Any] | None, maturity_years
     )
 
     yields = [curve.get(k, 0.0) for k in _TREASURY_KEYS]
-    points = [CurvePoint(years=float(t), rate=Decimal(str(y))) for t, y in zip(_TENORS, yields)]
+    points = [CurvePoint(years=float(t), rate=Decimal(str(y))) for t, y in zip(_TENORS, yields, strict=False)]
     points.sort(key=lambda p: p.years)
 
     if len(points) >= 3:

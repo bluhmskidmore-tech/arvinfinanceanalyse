@@ -4,11 +4,11 @@ import json
 import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_SCRIPT = REPO_ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
@@ -361,6 +361,150 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "/risk-tensor",
         ),
         (
+            "bond-dashboard",
+            "/bond-dashboard",
+            "/api/bond-dashboard/headline-kpis",
+            "bond_dashboard.headline_kpis",
+            "backend/app/services/bond_dashboard_service.py",
+            "frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx",
+            "tests/test_bond_dashboard_api_contract.py",
+            "tests/golden_samples/GS-BOND-HEADLINE-A",
+            "pending_confirmation=true",
+            "PAGE-BOND-001",
+        ),
+        (
+            "positions",
+            "/positions",
+            "/api/positions/bonds",
+            "positions.bonds.list",
+            "backend/app/services/positions_service.py",
+            "frontend/src/features/positions/components/PositionsView.tsx",
+            "tests/test_positions_api_contract.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "GAP-POS-LIST",
+            "PAGE-POS-001",
+        ),
+        (
+            "market-data",
+            "/market-data",
+            "/ui/preview/macro-foundation",
+            "GAP-MKT-DATA",
+            "backend/app/services/macro_vendor_service.py",
+            "frontend/src/features/market-data/pages/MarketDataPage.tsx",
+            "frontend/src/test/MarketDataPage.test.tsx",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "mixed-source",
+            "PAGE-MKT-001",
+        ),
+        (
+            "macro-toolkit",
+            "/macro-toolkit",
+            "/ui/macro/toolkit/analysis",
+            "macro_toolkit.analysis",
+            "backend/app/api/routes/macro_toolkit.py",
+            "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
+            "frontend/src/test/MacroToolkitPage.test.tsx",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "tooling/analysis",
+            "PAGE-MACRO-TOOLKIT-001",
+        ),
+        (
+            "macro-observation",
+            "/macro-observation",
+            "/ui/macro/toolkit/analysis",
+            "read-only macro observation",
+            "backend/app/api/routes/macro_toolkit.py",
+            "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
+            "frontend/src/test/MacroToolkitPage.test.tsx",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "read-only",
+            "PAGE-MACRO-OBS-001",
+        ),
+        (
+            "agent",
+            "/agent",
+            "POST /api/agent/runs",
+            "AgentEnvelope",
+            "backend/app/api/routes/agent.py",
+            "frontend/src/features/agent/AgentWorkbenchPage.tsx",
+            "tests/test_agent_api_contract.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "read-only",
+            "PAGE-AGENT-001",
+        ),
+        (
+            "cube-query",
+            "/cube-query",
+            "POST /api/cube/query",
+            "CubeQueryResult",
+            "backend/app/api/routes/cube_query.py",
+            "frontend/src/features/cube-query/pages/CubeQueryPage.tsx",
+            "tests/test_cube_query_api.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "candidate query surface",
+            "PAGE-CUBE-QUERY-001",
+        ),
+        (
+            "portfolio-home",
+            "/portfolio",
+            "frontend aggregation: module-home/portfolio",
+            "PAGE-PORTFOLIO-HOME-001",
+            "backend/app/api/routes/balance_analysis.py",
+            "frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx",
+            "frontend/src/test/ModuleWorkbenchHomeModel.test.ts",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "module home",
+            "PAGE-PORTFOLIO-HOME-001",
+        ),
+        (
+            "market-home",
+            "/market-overview",
+            "frontend aggregation: module-home/market",
+            "PAGE-MARKET-HOME-001",
+            "backend/app/api/routes/macro_vendor.py",
+            "frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx",
+            "frontend/src/test/ModuleWorkbenchHomeModel.test.ts",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "module home",
+            "PAGE-MARKET-HOME-001",
+        ),
+        (
+            "risk-home",
+            "/risk-overview",
+            "frontend aggregation: module-home/risk",
+            "PAGE-RISK-HOME-001",
+            "backend/app/api/routes/risk_tensor.py",
+            "frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx",
+            "frontend/src/test/ModuleWorkbenchHomeModel.test.ts",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "module home",
+            "PAGE-RISK-HOME-001",
+        ),
+        (
+            "performance-home",
+            "/performance",
+            "frontend aggregation: module-home/performance",
+            "PAGE-PERFORMANCE-HOME-001",
+            "backend/app/api/routes/kpi.py",
+            "frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx",
+            "frontend/src/test/ModuleWorkbenchHomeModel.test.ts",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "module home",
+            "PAGE-PERFORMANCE-HOME-001",
+        ),
+        (
+            "reports-home",
+            "/reports",
+            "frontend aggregation: module-home/governance",
+            "PAGE-REPORTS-HOME-001",
+            "backend/app/api/routes/health.py",
+            "frontend/src/features/workbench/module-home/ModuleWorkbenchHomePage.tsx",
+            "frontend/src/test/ModuleWorkbenchHomeModel.test.ts",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "module home",
+            "PAGE-REPORTS-HOME-001",
+        ),
+        (
             "pnl-bridge",
             "/pnl-bridge",
             "/api/pnl/bridge",
@@ -397,6 +541,18 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "/pnl",
         ),
         (
+            "ledger-pnl",
+            "/ledger-pnl",
+            "/api/ledger-pnl/summary",
+            "ledger_pnl.summary",
+            "backend/app/services/ledger_pnl_service.py",
+            "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx",
+            "tests/test_ledger_pnl_service.py",
+            "NO_DEDICATED_GOLDEN_SAMPLE",
+            "candidate display metrics",
+            "PAGE-LEDGER-PNL-001",
+        ),
+        (
             "executive-overview",
             "/dashboard",
             "/ui/home/overview",
@@ -407,6 +563,18 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "tests/golden_samples/GS-EXEC-OVERVIEW-A",
             "analytical overlay",
             "PAGE-EXEC-OVERVIEW-001",
+        ),
+        (
+            "executive-summary",
+            "/dashboard",
+            "/ui/home/summary",
+            "executive.summary",
+            "backend/app/services/executive_service.py",
+            "frontend/src/features/executive-dashboard/components/SummarySection.tsx",
+            "tests/test_executive_service_contract.py",
+            "tests/golden_samples/GS-EXEC-SUMMARY-A",
+            "narrative-only",
+            "PAGE-EXEC-SUMMARY-001",
         ),
         (
             "executive-pnl-attribution",
@@ -593,6 +761,44 @@ def test_formal_pnl_trace_bundle_preserves_formal_total_boundaries() -> None:
         server.close()
 
 
+def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "ledger-pnl",
+            "/ledger-pnl",
+            "PAGE-LEDGER-PNL-001",
+            "/api/ledger-pnl/summary",
+            "/api/ledger-pnl/formal-financial-indicators",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "ledger-pnl"
+
+        assert payload["page_id"] == "PAGE-LEDGER-PNL-001"
+        assert payload["primary_api"] == "/api/ledger-pnl/summary"
+        assert "/api/ledger-pnl/dates" in payload["supporting_apis"]
+        assert "/api/ledger-pnl/data" in payload["supporting_apis"]
+        assert "/api/ledger-pnl/formal-financial-indicators" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("MTR-LPN-001" in item for item in payload["truth_chain"])
+        assert any("MTR-LPN-003" in item for item in payload["truth_chain"])
+        assert any("ledger_pnl.formal_financial_indicator_source_contract" in item for item in payload["truth_chain"])
+        assert any("GS-LEDGER-PNL-FIN-IND-202603-B" in item for item in payload["truth_chain"])
+        assert any("pending_confirmation=true" in item for item in payload["guardrails"])
+        assert any("formal PnL" in item for item in payload["guardrails"])
+        assert any("formal financial indicator truth" in item for item in payload["guardrails"])
+        assert any("zero" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
 def test_executive_overview_trace_bundle_preserves_analytical_overlay_boundaries() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -621,6 +827,41 @@ def test_executive_overview_trace_bundle_preserves_analytical_overlay_boundaries
         assert any("analytical overlay" in item for item in payload["guardrails"])
         assert any("formal source-of-truth" in item for item in payload["guardrails"])
         assert any("silent downgrade" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_executive_summary_trace_bundle_preserves_narrative_contract_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "executive-summary",
+            "/ui/home/summary",
+            "PAGE-EXEC-SUMMARY-001",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "executive-summary"
+
+        assert payload["page_id"] == "PAGE-EXEC-SUMMARY-001"
+        assert payload["primary_api"] == "/ui/home/summary"
+        assert "/ui/home/overview" in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-EXEC-SUMMARY-A" in payload["golden_samples"]
+        assert any("GS-EXEC-SUMMARY-A" in item for item in payload["truth_chain"])
+        assert any("SummaryPayload" in item for item in payload["truth_chain"])
+        assert any("executive.summary" in item for item in payload["truth_chain"])
+        assert any("narrative-only" in item for item in payload["truth_chain"])
+        assert any("title" in item and "points.length" in item for item in payload["truth_chain"])
+        assert any("metric dictionary" in item for item in payload["guardrails"])
+        assert any("narrative" in item and "formal" in item for item in payload["guardrails"])
+        assert any("upstream metric" in item for item in payload["guardrails"])
+        assert any("report_date" in item for item in payload["verification_focus"])
     finally:
         server.close()
 
@@ -885,6 +1126,359 @@ def test_risk_tensor_trace_bundle_preserves_formal_warning_boundaries() -> None:
         assert any("fact_formal_risk_tensor_daily" in item for item in payload["truth_chain"])
         assert any("warning quality" in item for item in payload["guardrails"])
         assert any("duration denominator" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_bond_dashboard_trace_bundle_preserves_candidate_metric_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "bond-dashboard",
+            "/bond-dashboard",
+            "PAGE-BOND-001",
+            "/api/bond-dashboard/headline-kpis",
+            "/api/bond-dashboard/risk-indicators",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "bond-dashboard"
+
+        assert payload["page_id"] == "PAGE-BOND-001"
+        assert payload["primary_api"] == "/api/bond-dashboard/headline-kpis"
+        assert "/api/bond-dashboard/dates" in payload["supporting_apis"]
+        assert "/api/bond-dashboard/risk-indicators" in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-BOND-HEADLINE-A" in payload["golden_samples"]
+        assert any("MTR-BOND-001" in item for item in payload["truth_chain"])
+        assert any("MTR-BOND-004" in item for item in payload["truth_chain"])
+        assert any("GAP-BOND-DASH-HL" in item for item in payload["truth_chain"])
+        assert any("GAP-BOND-DASH-RISK" in item for item in payload["truth_chain"])
+        assert any("BondDashboardHeadlinePayload" in item for item in payload["truth_chain"])
+        assert any("source_surface=\"bond_analytics\"" in item for item in payload["truth_chain"])
+        assert any("pending_confirmation=true" in item for item in payload["guardrails"])
+        assert any("GS-RISK-A" in item for item in payload["guardrails"])
+        assert any("MTR-BAL" in item for item in payload["guardrails"])
+        assert any("frontend" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_positions_trace_bundle_preserves_list_candidate_and_dual_date_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "positions",
+            "/positions",
+            "PAGE-POS-001",
+            "/api/positions/bonds",
+            "/api/positions/interbank",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "positions"
+
+        assert payload["page_id"] == "PAGE-POS-001"
+        assert payload["primary_api"] == "/api/positions/bonds"
+        assert "/api/positions/bonds/sub_types" in payload["supporting_apis"]
+        assert "/api/positions/interbank/product_types" in payload["supporting_apis"]
+        assert "/api/positions/counterparty/bonds" in payload["supporting_apis"]
+        assert "/api/positions/stats/rating" in payload["supporting_apis"]
+        assert "/api/positions/customer/details" in payload["supporting_apis"]
+        assert "GET /ui/balance-analysis/dates" in payload["truth_chain"]
+        assert payload["golden_samples"] == []
+        assert any("MTR-POS-001" in item for item in payload["truth_chain"])
+        assert any("MTR-POS-002" in item for item in payload["truth_chain"])
+        assert any("GAP-POS-LIST" in item for item in payload["truth_chain"])
+        assert any("BondPositionsPageResponse" in item for item in payload["truth_chain"])
+        assert any("InterbankPositionsPageResponse" in item for item in payload["truth_chain"])
+        assert any("pending_confirmation=true" in item for item in payload["guardrails"])
+        assert any("bound_sample_id=none" in item for item in payload["guardrails"])
+        assert any("balance-analysis dates" in item for item in payload["guardrails"])
+        assert any("formal PnL" in item for item in payload["guardrails"])
+        assert any("frontend" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_market_data_trace_bundle_preserves_mixed_source_candidate_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "market-data",
+            "/market-data",
+            "PAGE-MKT-001",
+            "/ui/preview/macro-foundation",
+            "/ui/market-data/rates",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "market-data"
+
+        assert payload["page_id"] == "PAGE-MKT-001"
+        assert payload["primary_api"] == "/ui/preview/macro-foundation"
+        assert "/ui/market-data/rates" in payload["supporting_apis"]
+        assert "/ui/market-data/fx/formal-status" in payload["supporting_apis"]
+        assert "/ui/market-data/fx/analytical" in payload["supporting_apis"]
+        assert "/ui/market-data/ncd-funding-proxy" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("MTR-MKT-001" in item for item in payload["truth_chain"])
+        assert any("GAP-MKT-DATA" in item for item in payload["truth_chain"])
+        assert any("formal rates fragment" in item for item in payload["truth_chain"])
+        assert any("ncd-funding-proxy" in item for item in payload["truth_chain"])
+        assert any("Livermore" in item for item in payload["truth_chain"])
+        assert any("source-pending" in item for item in payload["truth_chain"])
+        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("full-page formal truth" in item for item in payload["guardrails"])
+        assert any("static demo" in item for item in payload["guardrails"])
+        assert any("NCD" in item and "proxy" in item for item in payload["guardrails"])
+        assert any("Livermore" in item and "risk_exit" in item for item in payload["guardrails"])
+        assert any("MTR-" in item and "promote" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_macro_toolkit_trace_bundle_preserves_tooling_non_metric_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "macro-toolkit",
+            "/macro-toolkit",
+            "PAGE-MACRO-TOOLKIT-001",
+            "/ui/macro/toolkit/analysis",
+            "/ui/macro/toolkit/scripts",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "macro-toolkit"
+
+        assert payload["page_id"] == "PAGE-MACRO-TOOLKIT-001"
+        assert payload["primary_api"] == "/ui/macro/toolkit/analysis"
+        assert "/ui/macro/toolkit/analysis/strategy-summaries" in payload["supporting_apis"]
+        assert "/ui/macro/toolkit/scripts" in payload["supporting_apis"]
+        assert "POST /ui/macro/toolkit/scripts/{name}/run" in payload["supporting_apis"]
+        assert "POST /ui/macro/toolkit/cffex-member-rank/refresh" in payload["supporting_apis"]
+        assert "POST /ui/macro/toolkit/choice-stock/refresh" in payload["supporting_apis"]
+        assert "GET /ui/macro/toolkit/choice-stock/refresh-status" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("PAGE-MACRO-TOOLKIT-001" in item for item in payload["truth_chain"])
+        assert any("macro_toolkit.analysis" in item for item in payload["truth_chain"])
+        assert any("macro_toolkit.scripts" in item for item in payload["truth_chain"])
+        assert any("MTR-MACRO" in item and "no" in item.lower() for item in payload["truth_chain"])
+        assert any("source/version/run_id" in item for item in payload["truth_chain"])
+        assert any("MacroToolkitContractBoundary" in item for item in payload["truth_chain"])
+        assert any("operation/script outputs" in item for item in payload["truth_chain"])
+        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("formal metric truth" in item for item in payload["guardrails"])
+        assert any("investment" in item and "trade signal" in item for item in payload["guardrails"])
+        assert any("static demo" in item for item in payload["guardrails"])
+        assert any("fallback" in item and "stale" in item and "source gaps" in item for item in payload["guardrails"])
+        assert any("frontend" in item and "recompute" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_macro_observation_trace_bundle_preserves_readonly_non_metric_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "macro-observation",
+            "/macro-observation",
+            "PAGE-MACRO-OBS-001",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "macro-observation"
+
+        assert payload["page_id"] == "PAGE-MACRO-OBS-001"
+        assert payload["primary_api"] == "/ui/macro/toolkit/analysis"
+        assert payload["supporting_apis"] == ["/ui/macro/toolkit/analysis/strategy-summaries"]
+        assert payload["golden_samples"] == []
+        assert any("PAGE-MACRO-OBS-001" in item for item in payload["truth_chain"])
+        assert any("read-only macro observation" in item for item in payload["truth_chain"])
+        assert any("macro-observation-readonly-boundary" in item for item in payload["truth_chain"])
+        assert any("MTR-MACRO" in item and "no" in item.lower() for item in payload["truth_chain"])
+        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("script" in item and "refresh" in item for item in payload["guardrails"])
+        assert any("MTR" in item and "promote" in item for item in payload["guardrails"])
+        assert any("read-only boundary" in item for item in payload["guardrails"])
+        assert all("scripts" not in api for api in payload["supporting_apis"])
+        assert all("refresh" not in api for api in payload["supporting_apis"])
+    finally:
+        server.close()
+
+
+def test_agent_trace_bundle_preserves_readonly_formal_use_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "agent",
+            "/agent",
+            "PAGE-AGENT-001",
+            "POST /api/agent/runs",
+            "POST /api/agent/query",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "agent"
+
+        assert payload["page_id"] == "PAGE-AGENT-001"
+        assert payload["primary_api"] == "POST /api/agent/runs"
+        assert "GET /api/agent/runs/{run_id}" in payload["supporting_apis"]
+        assert "POST /api/agent/query" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("AgentEnvelope" in item for item in payload["truth_chain"])
+        assert any("formal_use_allowed" in item for item in payload["truth_chain"])
+        assert any("read-only" in item for item in payload["truth_chain"])
+        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("formal financial result" in item for item in payload["guardrails"])
+        assert any("mutating" in item for item in payload["guardrails"])
+        assert any("source lineage" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_cube_query_trace_bundle_preserves_query_tool_non_metric_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "cube-query",
+            "/cube-query",
+            "PAGE-CUBE-QUERY-001",
+            "POST /api/cube/query",
+            "GET /api/cube/dimensions/{fact_table}",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "cube-query"
+
+        assert payload["page_id"] == "PAGE-CUBE-QUERY-001"
+        assert payload["primary_api"] == "POST /api/cube/query"
+        assert "GET /api/cube/dimensions/{fact_table}" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("CubeQueryResult" in item for item in payload["truth_chain"])
+        assert any("candidate query surface" in item for item in payload["truth_chain"])
+        assert any("no standalone MTR" in item for item in payload["truth_chain"])
+        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("new page-level KPI" in item for item in payload["guardrails"])
+        assert any("fail closed" in item for item in payload["guardrails"])
+        assert any("frontend" in item and "reinterpret" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_module_home_trace_bundles_preserve_downstream_truth_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        cases = [
+            (
+                "portfolio-home",
+                "PAGE-PORTFOLIO-HOME-001",
+                "/portfolio",
+                "frontend aggregation: module-home/portfolio",
+                ["/balance-analysis", "/bond-dashboard", "/positions", "/pnl-attribution"],
+                "standalone formal metric page",
+            ),
+            (
+                "market-home",
+                "PAGE-MARKET-HOME-001",
+                "/market-overview",
+                "frontend aggregation: module-home/market",
+                ["/market-data", "/macro-toolkit", "/stock-analysis", "/news-events"],
+                "formal market data claims",
+            ),
+            (
+                "risk-home",
+                "PAGE-RISK-HOME-001",
+                "/risk-overview",
+                "frontend aggregation: module-home/risk",
+                ["/risk-tensor", "/concentration-monitor", "/cashflow-projection"],
+                "PAGE-RISK-001 formal risk truth",
+            ),
+            (
+                "performance-home",
+                "PAGE-PERFORMANCE-HOME-001",
+                "/performance",
+                "frontend aggregation: module-home/performance",
+                ["/kpi", "/team-performance", "/pnl-by-business", "/product-category-pnl"],
+                "KPI scoring",
+            ),
+            (
+                "reports-home",
+                "PAGE-REPORTS-HOME-001",
+                "/reports",
+                "frontend aggregation: module-home/governance",
+                ["/platform-config", "/cube-query"],
+                "data-quality approval",
+            ),
+        ]
+
+        for page_slug, page_id, route, primary_api, downstream_pages, guardrail_marker in cases:
+            for alias in (page_slug, route, page_id):
+                result = server.request(
+                    "tools/call",
+                    {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+                )
+                payload = json.loads(result["content"][0]["text"])
+                assert payload["page_slug"] == page_slug
+
+            assert payload["page_id"] == page_id
+            assert payload["frontend_route"] == route
+            assert payload["primary_api"] == primary_api
+            assert payload["golden_samples"] == []
+            assert any(page_id in item for item in payload["truth_chain"])
+            assert any("module home" in item for item in payload["truth_chain"])
+            assert any("no standalone MTR" in item for item in payload["truth_chain"])
+            assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+            assert any("downstream" in item for item in payload["guardrails"])
+            assert any(guardrail_marker in item for item in payload["guardrails"])
+            for downstream_page in downstream_pages:
+                assert downstream_page in payload["supporting_apis"]
     finally:
         server.close()
 

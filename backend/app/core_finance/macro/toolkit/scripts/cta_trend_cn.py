@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 CTA 趋势跟踪模型
 ================
@@ -8,23 +7,27 @@ CTA 趋势跟踪模型
 """
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import sys
-import numpy as np
-import pandas as pd
+
 import akshare as ak
 import matplotlib
+import numpy as np
+import pandas as pd
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -135,14 +138,6 @@ def signal_donchian(price: pd.Series, window=20) -> pd.Series:
 
 def signal_atr_position(price: pd.Series, atr_window=14, target_vol=0.01) -> pd.Series:
     """ATR 波动率调整仓位：仓位 = 目标日波动率 / ATR，结合均线方向"""
-    high = price  # 只有收盘价，用收盘价近似 high/low
-    low  = price
-    tr = pd.concat([
-        (high - low).abs(),
-        (high - price.shift(1)).abs(),
-        (low  - price.shift(1)).abs(),
-    ], axis=1).max(axis=1)
-    atr = tr.rolling(atr_window).mean()
     daily_ret_std = np.log(price / price.shift(1)).rolling(atr_window).std()
     # 用收益率标准差代替 ATR（因为只有收盘价）
     pos = (target_vol / daily_ret_std.replace(0, np.nan)).clip(0, 1.0)
@@ -171,16 +166,22 @@ def compute_composite(price: pd.Series) -> pd.DataFrame:
 
 
 def trend_label(val: float) -> str:
-    if val > 0.5:   return "强多头"
-    if val > 0.2:   return "弱多头"
-    if val > -0.2:  return "震荡观望"
-    if val > -0.5:  return "弱空头"
+    if val > 0.5:
+        return "强多头"
+    if val > 0.2:
+        return "弱多头"
+    if val > -0.2:
+        return "震荡观望"
+    if val > -0.5:
+        return "弱空头"
     return "强空头"
 
 
 def trend_strength(val: float) -> str:
-    if abs(val) > 0.5:  return "强趋势"
-    if abs(val) > 0.2:  return "弱趋势"
+    if abs(val) > 0.5:
+        return "强趋势"
+    if abs(val) > 0.2:
+        return "弱趋势"
     return "震荡"
 
 

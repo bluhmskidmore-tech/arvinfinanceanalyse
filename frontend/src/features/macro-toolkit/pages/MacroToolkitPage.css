@@ -1390,6 +1390,37 @@
   font-weight: 780;
 }
 
+.macro-toolkit-commodity-refresh-closure {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--moss-color-success-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-success-soft);
+}
+
+.macro-toolkit-commodity-refresh-closure > span,
+.macro-toolkit-commodity-refresh-closure > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-commodity-refresh-closure > span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.macro-toolkit-commodity-refresh-closure > strong {
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .macro-toolkit-commodity-refresh-product {
   display: grid;
   min-width: 0;

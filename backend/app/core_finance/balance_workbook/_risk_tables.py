@@ -23,7 +23,6 @@ from backend.app.core_finance.balance_workbook._utils import (
 )
 from backend.app.core_finance.balance_workbook._bond_tables import (
     _build_maturity_gap_table,
-    _build_issuance_business_type_table,
 )
 from backend.app.core_finance.balance_workbook._analysis_tables import (
     _build_rating_table,

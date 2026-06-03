@@ -65,6 +65,10 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
         {"report_date": REPORT_DATE, "accounting_class": "OCI"},
     ),
     (
+        "/api/bond-analytics/dv01-movement",
+        {"report_date": REPORT_DATE, "accounting_class": "OCI", "top_n": "20"},
+    ),
+    (
         "/api/bond-analytics/credit-spread-migration",
         {"report_date": REPORT_DATE},
     ),
@@ -137,7 +141,7 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 12
+    assert len(paths) == len(set(paths)) == 13
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):
@@ -252,6 +256,57 @@ def test_bond_analytics_dv01_reconciliation_returns_numeric_payload(tmp_path, mo
     assert result["rows"][0]["modified_duration"]["unit"] == "ratio"
     assert result["rows"][0]["dv01"]["unit"] == "dv01"
     assert result["rows"][0]["dv01_share"]["unit"] == "ratio"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_movement_returns_numeric_payload(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/api/bond-analytics/dv01-movement",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "OCI",
+            "top_n": "20",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_movement"
+    result = payload["result"]
+    assert result["accounting_class"] == "OCI"
+    assert result["current_total_dv01"]["unit"] == "dv01"
+    assert result["previous_total_dv01"]["unit"] == "dv01"
+    assert result["delta_dv01"]["unit"] == "dv01"
+    assert result["current_face_weighted_modified_duration"]["unit"] == "ratio"
+    assert result["current_total_face_value"]["unit"] == "yuan"
+    assert result["current_total_market_value"]["unit"] == "yuan"
+    if result["attribution"]:
+        assert result["attribution"][0]["dv01_delta"]["unit"] == "dv01"
+        assert result["attribution"][0]["dv01_delta_share"]["unit"] == "ratio"
+    if result["anomaly_bonds"]:
+        assert result["anomaly_bonds"][0]["current_dv01"]["unit"] == "dv01"
+        assert result["anomaly_bonds"][0]["dv01_delta"]["unit"] == "dv01"
+    if result["methodology_checks"]:
+        assert result["methodology_checks"][0]["estimated_dv01_from_face_duration"]["unit"] == "dv01"
+        assert result["methodology_checks"][0]["dv01_estimate_gap"]["unit"] == "dv01"
     get_settings.cache_clear()
 
 

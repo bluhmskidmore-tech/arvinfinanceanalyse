@@ -136,7 +136,7 @@ def livermore_sector_rank_series_envelope(
             }
 
         by_date_item: dict[tuple[str, str], dict[str, Any]] = {}
-        for td, payload, _, _ in daily_results:
+        for _td, payload, _, _ in daily_results:
             day_items = payload.get("items")
             if not isinstance(day_items, list):
                 continue
@@ -148,7 +148,7 @@ def livermore_sector_rank_series_envelope(
                 by_date_item[(td.isoformat(), code)] = it
 
         cum_by_sector: dict[str, float] = {c: 0.0 for c in selected_codes}
-        for td, payload, _, _ in daily_results:
+        for _td, payload, _, _ in daily_results:
             day_items = payload.get("items")
             if not isinstance(day_items, list):
                 continue

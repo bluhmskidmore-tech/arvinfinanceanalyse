@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 DCC-GARCH 动态相关模型（滚动相关矩阵近似）
 ==========================================
@@ -11,24 +10,28 @@ DCC-GARCH 动态相关模型（滚动相关矩阵近似）
 """
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import sys
-import numpy as np
-import pandas as pd
+
 import akshare as ak
 import matplotlib
+import numpy as np
+import pandas as pd
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib.colors as mcolors
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -311,7 +314,7 @@ def main():
     else:
         print("  → 相关性处于合理水平，分散化有效")
 
-    print(f"\n  关键资产对详情:")
+    print("\n  关键资产对详情:")
     key_pairs = [("hs300", "gold"), ("hs300", "crude_oil"), ("gold", "crude_oil"),
                  ("hs300", "csi500"), ("hs300", "copper")]
     for a, b in key_pairs:

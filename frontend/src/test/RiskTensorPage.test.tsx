@@ -1004,15 +1004,15 @@ describe("RiskTensorPage", () => {
       const base = createApiClient({ mode: "mock" });
       const getRiskTensorDates = vi.fn(async () => ({
         result_meta: buildMeta("risk.tensor.dates", "tr_tensor_meta_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
+        result: { report_dates: ["2026-02-28", "2026-01-31"] },
       }));
       const getRiskTensor = vi.fn(async (reportDate: string) => ({
         result_meta: {
           ...buildMeta("risk.tensor", `tr_tensor_meta_copy_${reportDate}`),
-          evidence_rows: 128,
+          evidence_rows: reportDate === "2026-01-31" ? 96 : 128,
           tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
           filters_applied: {
-            report_date: "2026-02-28",
+            report_date: reportDate,
             desk: "FI",
           },
         },
@@ -1030,10 +1030,12 @@ describe("RiskTensorPage", () => {
       const copyEvidence = within(tracePriority).getByRole("button", { name: "复制证据" });
 
       expect(tracePriority).toHaveTextContent("复核状态：待复核");
+      expect(within(tracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
 
       await user.click(copyEvidence);
 
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("复核状态 待复核"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("source_version sv_tensor_test"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_tensor_test"));
@@ -1050,6 +1052,102 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("filters_applied 已提供"));
       expect(tracePriority).toHaveTextContent("已复制证据摘要");
       expect(tracePriority).toHaveTextContent("复核状态：证据已复制，待业务确认");
+
+      const confirmReview = within(tracePriority).getByRole("button", { name: "确认业务复核" });
+      await user.click(confirmReview);
+
+      expect(tracePriority).toHaveTextContent("复核状态：业务已确认");
+      const copyReviewRecord = within(tracePriority).getByRole("button", { name: "复制确认记录" });
+
+      await user.click(copyEvidence);
+
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("复核状态 业务已确认"));
+
+      await user.click(copyReviewRecord);
+
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("风险张量质量证据确认记录"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("trace_id tr_tensor_meta_copy_2026-02-28"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("确认状态 业务已确认"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("证据范围 evidence_rows 128"));
+      expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("证据字段复核"));
+      expect(tracePriority).toHaveTextContent("已复制确认记录");
+
+      const reportDateSelect = screen.getByLabelText("风险报告日");
+      await user.selectOptions(reportDateSelect, "2026-01-31");
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
+      });
+      const nextTracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      expect(nextTracePriority).toHaveTextContent("复核状态：待复核");
+      expect(nextTracePriority).toHaveTextContent("evidence_rows 96");
+      expect(nextTracePriority).not.toHaveTextContent("已复制证据摘要");
+      expect(nextTracePriority).not.toHaveTextContent("已复制确认记录");
+      expect(within(nextTracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+      expect(within(nextTracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("shows manual quality evidence text when clipboard copy fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard denied");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_meta_copy_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_meta_copy_failure_${reportDate}`),
+          evidence_rows: 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: reportDate,
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+
+      await waitFor(() => {
+        expect(tracePriority).toHaveTextContent("复制失败，请手动选择证据");
+      });
+
+      const manualCopy = within(tracePriority).getByTestId("risk-tensor-quality-evidence-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量质量证据");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_meta_copy_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("报告日 2026-02-28");
+      expect(manualCopy).toHaveTextContent("证据范围 evidence_rows 128");
+      expect(manualCopy).toHaveTextContent("tables_used risk_tensor_daily / bond_position_snapshot");
+      expect(manualCopy).toHaveTextContent("filters_applied report_date=2026-02-28；desk=FI");
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);
@@ -1060,37 +1158,216 @@ describe("RiskTensorPage", () => {
   });
 
   it("explicitly marks missing backend evidence fields in quality evidence", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
       result_meta: buildMeta("risk.tensor.dates", "tr_tensor_missing_meta_evidence_dates"),
-      result: { report_dates: ["2026-02-28"] },
+      result: { report_dates: ["2026-02-28", "2026-01-31"] },
     }));
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: buildMeta("risk.tensor", `tr_tensor_missing_meta_evidence_${reportDate}`),
       result: tensorResult(reportDate),
     }));
 
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
+    try {
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+
+      expect(qualityDetail).toHaveTextContent("evidence_rows 未提供");
+      expect(qualityDetail).toHaveTextContent("tables_used 未提供");
+      expect(qualityDetail).toHaveTextContent("filters_applied 未提供");
+      expect(tracePriority).toHaveTextContent("证据范围");
+      expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
+      expect(tracePriority).toHaveTextContent("tables_used 未提供");
+      expect(tracePriority).toHaveTextContent("filters_applied 未提供");
+      expect(tracePriority).toHaveTextContent("证据字段复核");
+      expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
+      expect(tracePriority).toHaveTextContent("tables_used 未提供");
+      expect(tracePriority).toHaveTextContent("filters_applied 未提供");
+      expect(tracePriority).toHaveTextContent("复核状态：证据不完整，待补证");
+      expect(within(tracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+      expect(within(tracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
+
+      const copyRequest = within(tracePriority).getByRole("button", { name: "复制补证请求" });
+      await user.click(copyRequest);
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量质量证据补证请求"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("trace_id tr_tensor_missing_meta_evidence_2026-02-28"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("缺失字段 evidence_rows / tables_used / filters_applied"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("请在 result_meta 补充 evidence_rows、tables_used、filters_applied 后重新出具"),
+      );
+      expect(tracePriority).toHaveTextContent("已复制补证请求");
+
+      const reportDateSelect = screen.getByLabelText("风险报告日");
+      await user.selectOptions(reportDateSelect, "2026-01-31");
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
+      });
+      const nextTracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      expect(nextTracePriority).toHaveTextContent("复核状态：证据不完整，待补证");
+      expect(nextTracePriority).toHaveTextContent("evidence_rows 未提供");
+      expect(nextTracePriority).not.toHaveTextContent("已复制补证请求");
+      expect(within(nextTracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+      expect(within(nextTracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("shows manual supplement request text when clipboard copy fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard denied");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
     });
 
-    const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
-    const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_missing_request_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_missing_request_failure_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
 
-    expect(qualityDetail).toHaveTextContent("evidence_rows 未提供");
-    expect(qualityDetail).toHaveTextContent("tables_used 未提供");
-    expect(qualityDetail).toHaveTextContent("filters_applied 未提供");
-    expect(tracePriority).toHaveTextContent("证据范围");
-    expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
-    expect(tracePriority).toHaveTextContent("tables_used 未提供");
-    expect(tracePriority).toHaveTextContent("filters_applied 未提供");
-    expect(tracePriority).toHaveTextContent("证据字段复核");
-    expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
-    expect(tracePriority).toHaveTextContent("tables_used 未提供");
-    expect(tracePriority).toHaveTextContent("filters_applied 未提供");
-    expect(tracePriority).toHaveTextContent("复核状态：证据不完整，待补证");
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+      await user.click(within(tracePriority).getByRole("button", { name: "复制补证请求" }));
+
+      await waitFor(() => {
+        expect(tracePriority).toHaveTextContent("复制失败，请手动选择补证请求");
+      });
+
+      const manualCopy = within(tracePriority).getByTestId("risk-tensor-quality-evidence-request-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量质量证据补证请求");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_missing_request_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("报告日 2026-02-28");
+      expect(manualCopy).toHaveTextContent("缺失字段 evidence_rows / tables_used / filters_applied");
+      expect(manualCopy).toHaveTextContent(
+        "请在 result_meta 补充 evidence_rows、tables_used、filters_applied 后重新出具",
+      );
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("shows manual review record text when confirmation copy fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard denied");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_review_record_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_review_record_failure_${reportDate}`),
+          evidence_rows: 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: reportDate,
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      const tracePriority = within(qualityDetail).getByTestId("risk-tensor-quality-trace-priority");
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+
+      await waitFor(() => {
+        expect(tracePriority).toHaveTextContent("复制失败，请手动选择证据");
+      });
+
+      expect(within(tracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: vi.fn(async () => undefined) },
+      });
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+      const confirmReview = await within(tracePriority).findByRole("button", { name: "确认业务复核" });
+      await user.click(confirmReview);
+
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+      await user.click(within(tracePriority).getByRole("button", { name: "复制确认记录" }));
+
+      await waitFor(() => {
+        expect(tracePriority).toHaveTextContent("复制失败，请手动选择确认记录");
+      });
+
+      const manualCopy = within(tracePriority).getByTestId("risk-tensor-quality-evidence-review-record-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量质量证据确认记录");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_review_record_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("报告日 2026-02-28");
+      expect(manualCopy).toHaveTextContent("确认状态 业务已确认");
+      expect(manualCopy).toHaveTextContent("证据范围 evidence_rows 128");
+      expect(manualCopy).toHaveTextContent("证据字段复核");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("surfaces issuer concentration detail from backend fields", async () => {
@@ -1156,7 +1433,9 @@ describe("RiskTensorPage", () => {
       const fiveYear = within(drill).getByRole("button", { name: "5Y" });
       const krdChart = screen.getAllByTestId("risk-tensor-echarts-stub")[1]!;
 
-      expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+      await waitFor(() => {
+        expect(fiveYear).toHaveAttribute("aria-pressed", "true");
+      });
 
       await user.click(krdChart);
 
@@ -1787,8 +2066,57 @@ describe("RiskTensorPage", () => {
     });
 
     expect(await screen.findByText("后端未返回可用风险报告日。")).toBeInTheDocument();
+    const emptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
+    expect(emptyState).toHaveTextContent("后端未返回可用风险报告日");
+    expect(emptyState).toHaveTextContent("trace_id tr_tensor_dates_empty");
+    expect(emptyState).toHaveTextContent("可用报告日 0 个");
+    expect(emptyState).toHaveTextContent("页面不会回退到硬编码报告日");
+    expect(emptyState).toHaveTextContent("请核对风险张量报告日物化任务和日期治理结果");
     expect(getRiskTensor).not.toHaveBeenCalled();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dates_empty");
+  });
+
+  it("surfaces a traceable no-position state when the risk tensor result is empty", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_empty_position_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: {
+        ...buildMeta("risk.tensor", `tr_tensor_empty_position_${reportDate}`),
+        quality_flag: "missing" as const,
+        evidence_rows: 0,
+        tables_used: ["risk_tensor_daily"],
+        filters_applied: {
+          report_date: reportDate,
+          desk: "FI",
+        },
+      },
+      result: {
+        ...tensorResult(reportDate),
+        bond_count: 0,
+        quality_flag: "missing",
+        warnings: [],
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const emptyState = await screen.findByTestId("risk-tensor-empty-state");
+    expect(emptyState).toHaveTextContent("当前报告日无风险张量持仓");
+    expect(emptyState).toHaveTextContent("报告日 2026-02-28");
+    expect(emptyState).toHaveTextContent("trace_id tr_tensor_empty_position_2026-02-28");
+    expect(emptyState).toHaveTextContent("质量标记：缺失");
+    expect(emptyState).toHaveTextContent("页面不会在前端补算正式指标");
+    expect(screen.queryByTestId("risk-tensor-brief")).not.toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+      "tr_tensor_empty_position_2026-02-28",
+    );
   });
 
   it("surfaces report-date list failures without hardcoded fallback", async () => {

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 国债期货技术信号模块
 ====================
@@ -11,18 +10,20 @@
   4. 布林带突破
   5. 多信号投票：≥2个信号同向才触发
 
-数据源: Wind API（期货主力合约价格）
+数据源: Choice/Tushare 系统源（期货主力合约价格，经 WindPy 兼容接口）
 输出: bond_signals_latest.csv
 """
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
+
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -32,7 +33,7 @@ from paths import OUTPUT_DIR
 ROOT = OUTPUT_DIR
 
 # ============================================================
-# Wind 连接
+# WindPy 兼容接口连接
 # ============================================================
 
 def connect_wind():
@@ -41,12 +42,12 @@ def connect_wind():
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:
-                print(f"[ERROR] Wind 连接失败: {ret.ErrorCode}")
+                print(f"[ERROR] Choice/Tushare 系统源连接失败: {ret.ErrorCode}")
                 return None
-        print("Wind 已连接")
+        print("Choice/Tushare 系统源已连接")
         return w
     except ImportError:
-        print("[ERROR] WindPy 未安装")
+        print("[ERROR] WindPy 兼容模块未安装")
         return None
 
 
@@ -225,7 +226,7 @@ def main():
 
     w = connect_wind()
     if w is None:
-        print("[ERROR] Wind 不可用，退出")
+        print("[ERROR] Choice/Tushare 系统源不可用，退出")
         sys.exit(1)
 
     # 拉取数据

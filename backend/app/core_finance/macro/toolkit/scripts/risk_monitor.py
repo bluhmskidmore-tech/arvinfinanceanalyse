@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 风控监控器
 ==========
@@ -22,12 +21,13 @@
 
 import sys
 import warnings
+
 warnings.filterwarnings('ignore')
 
-import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
+
+import pandas as pd
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
@@ -384,7 +384,7 @@ def main():
     if LOG_FILE.exists():
         log = pd.read_csv(LOG_FILE, encoding='utf-8-sig')
         if not log.empty:
-            print(f"\n最近风控事件（最近5条）:")
+            print("\n最近风控事件（最近5条）:")
             print(log.tail(5).to_string(index=False))
 
     print("\n完成")

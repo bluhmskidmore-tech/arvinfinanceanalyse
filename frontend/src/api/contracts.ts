@@ -518,6 +518,57 @@ export type DV01ReconciliationPayload = {
   computed_at: string;
 };
 
+export type DV01MovementAttributionItem = {
+  driver_key: string;
+  driver_label: string;
+  dv01_delta: Numeric;
+  dv01_delta_share: Numeric;
+  position_count: number;
+};
+
+export type DV01MovementBondItem = {
+  instrument_code: string;
+  instrument_name: string | null;
+  issuer_name: string | null;
+  rating: string | null;
+  tenor_bucket: string;
+  previous_accounting_class: string | null;
+  current_accounting_class: string | null;
+  previous_face_value: Numeric;
+  current_face_value: Numeric;
+  previous_modified_duration: Numeric;
+  current_modified_duration: Numeric;
+  previous_dv01: Numeric;
+  current_dv01: Numeric;
+  dv01_delta: Numeric;
+  estimated_dv01_from_face_duration: Numeric;
+  dv01_estimate_gap: Numeric;
+  reason_label: string;
+};
+
+export type DV01MovementPayload = {
+  report_date: string;
+  previous_report_date: string | null;
+  accounting_class: string;
+  source_status: "ready" | "empty";
+  current_total_face_value: Numeric;
+  previous_total_face_value: Numeric;
+  current_total_market_value: Numeric;
+  previous_total_market_value: Numeric;
+  current_face_weighted_modified_duration: Numeric;
+  previous_face_weighted_modified_duration: Numeric;
+  current_total_dv01: Numeric;
+  previous_total_dv01: Numeric;
+  delta_dv01: Numeric;
+  current_position_count: number;
+  previous_position_count: number;
+  attribution: DV01MovementAttributionItem[];
+  anomaly_bonds: DV01MovementBondItem[];
+  methodology_checks: DV01MovementBondItem[];
+  warnings: string[];
+  computed_at: string;
+};
+
 export type SpreadScenarioResult = {
   scenario_name: string;
   spread_change_bp: Numeric;

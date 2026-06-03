@@ -9,6 +9,7 @@ import type {
   BondBusinessTypeMetricsPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
+  DV01MovementPayload,
   DV01ReconciliationPayload,
   DV01RiskPayload,
   BenchmarkExcessPayload,
@@ -90,6 +91,10 @@ type BondAnalyticsCoreSurfaceMethods = {
     reportDate: string,
     options?: { accountingClass?: string },
   ) => Promise<ApiEnvelope<DV01ReconciliationPayload>>;
+  getBondAnalyticsDv01Movement: (
+    reportDate: string,
+    options?: { accountingClass?: string; topN?: number },
+  ) => Promise<ApiEnvelope<DV01MovementPayload>>;
   getBondAnalyticsActionAttribution: (
     reportDate: string,
     periodType: string,
@@ -136,6 +141,7 @@ type BondAnalyticsCoreClientMethods = Pick<
   | "getBondAnalyticsKrdCurveRisk"
   | "getBondAnalyticsDv01Risk"
   | "getBondAnalyticsDv01Reconciliation"
+  | "getBondAnalyticsDv01Movement"
   | "getBondAnalyticsActionAttribution"
   | "getBondAnalyticsAccountingClassAudit"
   | "getBondAnalyticsCreditSpreadMigration"
@@ -501,6 +507,44 @@ export function createDemoBondAnalyticsClient(
           total_dv01: zeroDv01,
           position_count: 0,
           rows: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsDv01Movement(
+      reportDate: string,
+      options?: { accountingClass?: string; topN?: number },
+    ) {
+      await delay();
+      void options?.topN;
+      const accountingClass = options?.accountingClass ?? "OCI";
+      const zeroYuan = formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false });
+      const zeroRatio = formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: false });
+      const zeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
+      const signedZeroDv01 = formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: true });
+      return (await ensureMockClientBundle()).buildMockApiEnvelope<DV01MovementPayload>(
+        "bond_analytics.dv01_movement",
+        {
+          report_date: reportDate,
+          previous_report_date: null,
+          accounting_class: accountingClass,
+          source_status: "empty",
+          current_total_face_value: zeroYuan,
+          previous_total_face_value: zeroYuan,
+          current_total_market_value: zeroYuan,
+          previous_total_market_value: zeroYuan,
+          current_face_weighted_modified_duration: zeroRatio,
+          previous_face_weighted_modified_duration: zeroRatio,
+          current_total_dv01: zeroDv01,
+          previous_total_dv01: zeroDv01,
+          delta_dv01: signedZeroDv01,
+          current_position_count: 0,
+          previous_position_count: 0,
+          attribution: [],
+          anomaly_bonds: [],
+          methodology_checks: [],
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -1045,6 +1089,19 @@ export function createRealBondAnalyticsClient(
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/dv01-reconciliation?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsDv01Movement: (
+      reportDate: string,
+      options?: { accountingClass?: string; topN?: number },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      params.set("accounting_class", options?.accountingClass ?? "OCI");
+      params.set("top_n", String(options?.topN ?? 20));
+      return requestJson<DV01MovementPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/dv01-movement?${params.toString()}`,
       );
     },
     getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>

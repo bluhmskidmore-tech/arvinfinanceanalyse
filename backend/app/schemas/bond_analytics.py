@@ -903,6 +903,107 @@ class DV01ReconciliationResponse(BaseModel):
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
+class DV01MovementAttributionItem(BaseModel):
+    """DV01 delta contribution by explanatory driver."""
+
+    driver_key: str
+    driver_label: str
+    dv01_delta: Numeric
+    dv01_delta_share: Numeric
+    position_count: int
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "dv01_delta": ("dv01", True),
+        "dv01_delta_share": ("ratio", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01MovementBondItem(BaseModel):
+    """Bond-level DV01 movement row."""
+
+    instrument_code: str
+    instrument_name: str | None = None
+    issuer_name: str | None = None
+    rating: str | None = None
+    tenor_bucket: str
+    previous_accounting_class: str | None = None
+    current_accounting_class: str | None = None
+    previous_face_value: Numeric
+    current_face_value: Numeric
+    previous_modified_duration: Numeric
+    current_modified_duration: Numeric
+    previous_dv01: Numeric
+    current_dv01: Numeric
+    dv01_delta: Numeric
+    estimated_dv01_from_face_duration: Numeric
+    dv01_estimate_gap: Numeric
+    reason_label: str
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "previous_face_value": ("yuan", False),
+        "current_face_value": ("yuan", False),
+        "previous_modified_duration": ("ratio", False),
+        "current_modified_duration": ("ratio", False),
+        "previous_dv01": ("dv01", False),
+        "current_dv01": ("dv01", False),
+        "dv01_delta": ("dv01", True),
+        "estimated_dv01_from_face_duration": ("dv01", False),
+        "dv01_estimate_gap": ("dv01", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class DV01MovementResponse(BaseModel):
+    """DV01 movement, anomaly, and methodology-check response."""
+
+    report_date: date
+    previous_report_date: date | None = None
+    accounting_class: str
+    source_status: Literal["ready", "empty"]
+    current_total_face_value: Numeric
+    previous_total_face_value: Numeric
+    current_total_market_value: Numeric
+    previous_total_market_value: Numeric
+    current_face_weighted_modified_duration: Numeric
+    previous_face_weighted_modified_duration: Numeric
+    current_total_dv01: Numeric
+    previous_total_dv01: Numeric
+    delta_dv01: Numeric
+    current_position_count: int
+    previous_position_count: int
+    attribution: list[DV01MovementAttributionItem] = Field(default_factory=list)
+    anomaly_bonds: list[DV01MovementBondItem] = Field(default_factory=list)
+    methodology_checks: list[DV01MovementBondItem] = Field(default_factory=list)
+    computed_at: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "current_total_face_value": ("yuan", False),
+        "previous_total_face_value": ("yuan", False),
+        "current_total_market_value": ("yuan", False),
+        "previous_total_market_value": ("yuan", False),
+        "current_face_weighted_modified_duration": ("ratio", False),
+        "previous_face_weighted_modified_duration": ("ratio", False),
+        "current_total_dv01": ("dv01", False),
+        "previous_total_dv01": ("dv01", False),
+        "delta_dv01": ("dv01", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class BondTopHoldingItem(BaseModel):
     """Single row in top-holdings by market value."""
 

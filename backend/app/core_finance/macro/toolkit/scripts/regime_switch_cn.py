@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 市场状态转换模型
 ================
@@ -11,23 +10,27 @@
 """
 
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import sys
-import numpy as np
-import pandas as pd
+
 import akshare as ak
 import matplotlib
+import numpy as np
+import pandas as pd
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 
 _PKG = Path(__file__).resolve().parent.parent
 if str(_PKG) not in sys.path:
     sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR, ASSET_DIR
+from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -328,7 +331,7 @@ def plot_regime_overview(prices: pd.DataFrame, all_regimes: dict) -> Path:
         dates = price.index.tolist()
         regimes = reg_df["regime"].tolist()
 
-        for i, (d, r) in enumerate(zip(dates, regimes)):
+        for i, (d, r) in enumerate(zip(dates, regimes, strict=False)):
             if r != prev_regime:
                 if prev_regime is not None and prev_regime in REGIME_COLORS:
                     ax.axvspan(dates[start_i], d,
@@ -392,11 +395,11 @@ def plot_regime_distribution(all_regimes: dict) -> Path:
     bottoms = np.zeros(len(assets))
     bar_colors = [REGIME_COLORS[r] for r in regime_order]
 
-    for r, color in zip(regime_order, bar_colors):
+    for r, color in zip(regime_order, bar_colors, strict=False):
         vals = np.array(data[r])
         bars = ax.bar(labels, vals, bottom=bottoms, color=color, alpha=0.85, label=r, width=0.55)
         # 标注百分比（>5% 才显示）
-        for bar, val, bot in zip(bars, vals, bottoms):
+        for bar, val, bot in zip(bars, vals, bottoms, strict=False):
             if val > 5:
                 ax.text(bar.get_x() + bar.get_width() / 2,
                         bot + val / 2,
@@ -520,7 +523,6 @@ def main():
     print("  当前市场状态汇总")
     print(f"{'='*75}")
     for _, r in df.iterrows():
-        rc = REGIME_COLORS.get(r["当前状态"], "")
         print(f"  {r['资产']:<8}  [{r['当前状态']:<5}]  Hurst={r['Hurst指数']}  "
               f"AC={r['自相关(1日)']}  波动={r['年化波动率%']}%  → {r['策略建议']}")
 

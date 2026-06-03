@@ -66,7 +66,7 @@ def _coerce_date(value: Any) -> date | None:
     if hasattr(value, "date"):
         try:
             return value.date()
-        except (ValueError, TypeError, AttributeError) as exc:
+        except (ValueError, TypeError, AttributeError):
             logger.exception("_coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None

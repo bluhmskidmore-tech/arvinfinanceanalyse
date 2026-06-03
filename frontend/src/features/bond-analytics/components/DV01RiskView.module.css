@@ -86,6 +86,25 @@
   font-weight: 700;
 }
 
+.movementSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: var(--moss-space-3);
+}
+
+.subPanel {
+  display: grid;
+  gap: var(--moss-space-2);
+  min-width: 0;
+}
+
+.subPanelTitle {
+  margin: 0;
+  color: var(--moss-color-neutral-800);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .reconciliationHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -154,6 +173,10 @@
     grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 
+  .movementSummaryGrid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
   .twoColumnGrid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -174,6 +197,10 @@
   }
 
   .kpiGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .movementSummaryGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
