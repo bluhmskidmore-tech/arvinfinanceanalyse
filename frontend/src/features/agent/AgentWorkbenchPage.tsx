@@ -3517,7 +3517,9 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-callout__action"
-                              onClick={() => void rerunOrdinaryTurn(turn)}
+                              onClick={() =>
+                                void rerunOrdinaryTurn(turn, "正在重新发送已停止回答 · 可继续输入下一句")
+                              }
                               disabled={loading}
                             >
                               重新发送

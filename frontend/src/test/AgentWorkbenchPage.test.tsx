@@ -4505,33 +4505,20 @@ describe("AgentWorkbenchPage", () => {
     const stoppedRunResponse = new Promise<Response>((resolve) => {
       resolveStoppedRun = resolve;
     });
-    fetchMock.mockReturnValueOnce(stoppedRunResponse);
-    mockManagedRunResult(
-      fetchMock,
-      {
-        answer: "stopped turn rerun answer",
-        cards: [],
-        evidence: {
-          tables_used: ["hermes_cli"],
-          filters_applied: {
-            provider: "hermes",
-            model: "gpt-5.5",
-            transport: "bridge",
-            toolsets: "file",
-          },
-          evidence_rows: 1,
-          quality_flag: "ok",
-        },
-        result_meta: {
-          trace_id: "tr_stopped_rerun",
-          basis: "formal",
-          result_kind: "agent.hermes",
-        },
-        next_drill: [],
-        suggested_actions: [],
-      },
-      "agent_run:stopped-rerun",
-    );
+    fetchMock
+      .mockReturnValueOnce(stoppedRunResponse)
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          run_id: "agent_run:stopped-rerun",
+          status: "queued",
+          provider: "hermes",
+          model: "gpt-5.5",
+          transport: "bridge",
+          toolsets: "file",
+          queued_at: "2026-05-07T08:00:00Z",
+        }),
+      )
+      .mockReturnValueOnce(new Promise(() => undefined));
 
     render(<AgentWorkbenchPage />);
 
@@ -4544,7 +4531,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "重新发送" }));
 
-    expect(await screen.findByText("stopped turn rerun answer")).toBeInTheDocument();
+    expect(await screen.findByText("正在重新发送已停止回答 · 可继续输入下一句")).toBeInTheDocument();
     expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("");
