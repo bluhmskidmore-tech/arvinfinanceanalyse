@@ -2800,6 +2800,7 @@ export function EmbeddedAgentCopilot({
       activeSuggestedActionPayload: action.payload,
     }));
     setComposerAssistHint("已选择建议动作 · 可继续提问");
+    focusComposerInput();
   }
 
   async function copyAgentAnswer(turn: AgentConversationTurn) {
