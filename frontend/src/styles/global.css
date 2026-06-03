@@ -2836,15 +2836,27 @@ select {
   background: var(--moss-color-primary-700);
 }
 
-.agent-chat-composer__action-stack {
+.agent-chat-composer__actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  min-width: 104px;
+  align-items: end;
+  min-width: 176px;
+}
+
+.agent-chat-composer__actions > .agent-chat-composer__send {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.agent-chat-composer__actions--running > .agent-chat-composer__send {
+  grid-column: auto;
 }
 
 .agent-chat-composer__queue {
-  min-height: 34px;
-  padding: 8px 12px;
+  min-height: 42px;
+  padding: 9px 12px;
   border: 1px solid #b8cbe6;
   border-radius: 8px;
   background: #f8fbff;

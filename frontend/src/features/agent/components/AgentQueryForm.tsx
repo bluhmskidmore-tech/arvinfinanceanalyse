@@ -198,37 +198,45 @@ export function AgentQueryForm({
           ) : null}
         </div>
         {compact ? <div className="agent-chat-composer__hint">{submitHint}</div> : null}
-        {loading && onStop ? (
-          <div className="agent-chat-composer__action-stack">
-            {onQueueSubmit ? (
+        <div
+          className={
+            loading && onStop
+              ? "agent-chat-composer__actions agent-chat-composer__actions--running"
+              : "agent-chat-composer__actions"
+          }
+        >
+          {loading && onStop ? (
+            <>
+              {onQueueSubmit ? (
+                <button
+                  type="button"
+                  className="agent-chat-composer__queue"
+                  disabled={!hasQuery}
+                  onClick={onQueueSubmit}
+                >
+                  发送下一句
+                </button>
+              ) : null}
               <button
                 type="button"
-                className="agent-chat-composer__queue"
-                disabled={!hasQuery}
-                onClick={onQueueSubmit}
+                data-testid="agent-panel-submit"
+                className="agent-chat-composer__send agent-chat-composer__send--stop"
+                onClick={onStop}
               >
-                发送下一句
+                停止
               </button>
-            ) : null}
+            </>
+          ) : (
             <button
-              type="button"
+              type="submit"
               data-testid="agent-panel-submit"
-              className="agent-chat-composer__send agent-chat-composer__send--stop"
-              onClick={onStop}
+              disabled={loading || !hasQuery}
+              className="agent-chat-composer__send"
             >
-              停止
+              {loading ? "发送中..." : "发送"}
             </button>
-          </div>
-        ) : (
-          <button
-            type="submit"
-            data-testid="agent-panel-submit"
-            disabled={loading || !hasQuery}
-            className="agent-chat-composer__send"
-          >
-            {loading ? "发送中..." : "发送"}
-          </button>
-        )}
+          )}
+        </div>
       </form>
 
       {showAdvancedTools ? (
