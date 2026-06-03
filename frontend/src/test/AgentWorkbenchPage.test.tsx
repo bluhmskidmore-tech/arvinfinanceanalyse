@@ -662,6 +662,12 @@ describe("AgentWorkbenchPage", () => {
           scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom"),
         ).toBe(true);
       });
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 0);
+      });
+      expect(
+        scrollTargets.filter((target) => target.dataset.testid === "agent-conversation-bottom"),
+      ).toHaveLength(1);
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }

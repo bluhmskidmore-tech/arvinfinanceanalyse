@@ -815,6 +815,40 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("surfaces backend tables, filters, and evidence rows in quality evidence", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_meta_evidence_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: {
+        ...buildMeta("risk.tensor", `tr_tensor_meta_evidence_${reportDate}`),
+        evidence_rows: 128,
+        tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+        filters_applied: {
+          report_date: "2026-02-28",
+          desk: "FI",
+        },
+      },
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+    expect(qualityDetail).toHaveTextContent("evidence_rows 128");
+    expect(qualityDetail).toHaveTextContent("risk_tensor_daily");
+    expect(qualityDetail).toHaveTextContent("bond_position_snapshot");
+    expect(qualityDetail).toHaveTextContent("report_date=2026-02-28");
+    expect(qualityDetail).toHaveTextContent("desk=FI");
+  });
+
   it("surfaces issuer concentration detail from backend fields", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

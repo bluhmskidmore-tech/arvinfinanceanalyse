@@ -322,6 +322,28 @@ function compactVersion(value: string | undefined) {
   return `${value.slice(0, 22)}...${value.slice(-12)}`;
 }
 
+function metaValueLabel(value: unknown) {
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "未提供";
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function filtersAppliedLabel(filters: ResultMeta["filters_applied"] | undefined) {
+  const entries = Object.entries(filters ?? {});
+  return entries.map(([key, value]) => `${key}=${metaValueLabel(value)}`).join("；");
+}
+
 function liquidityGapLabel(raw: number | null) {
   if (raw === null) {
     return "30 日缺口待确认";
@@ -597,6 +619,8 @@ export default function RiskTensorPage() {
   const tensorMeta = envelope?.result_meta;
   const fallbackStatus = fallbackModeLabel(tensorMeta?.fallback_mode);
   const blockedReportDateSummary = `${blockedReportDates.length} 个陈旧日期已拦截`;
+  const metadataTablesUsed = tensorMeta?.tables_used?.filter(Boolean).join(" / ") ?? "";
+  const metadataFiltersApplied = filtersAppliedLabel(tensorMeta?.filters_applied);
   const primaryTenor = dominantTenorRow?.tenor ?? result?.dv01_controls?.dominant_krd_bucket ?? "--";
   const primaryTenorValue = dominantTenorRow
     ? yuanAsWanWithUnit(dominantTenorRow.value)
@@ -1478,6 +1502,11 @@ export default function RiskTensorPage() {
                 <span>{fallbackStatus}</span>
                 {tensorMeta?.fallback_date ? <span>fallback_date {tensorMeta.fallback_date}</span> : null}
                 <span>{blockedReportDateSummary}</span>
+                {typeof tensorMeta?.evidence_rows === "number" ? (
+                  <span>evidence_rows {tensorMeta.evidence_rows}</span>
+                ) : null}
+                {metadataTablesUsed ? <span>tables_used {metadataTablesUsed}</span> : null}
+                {metadataFiltersApplied ? <span>filters_applied {metadataFiltersApplied}</span> : null}
               </div>
               {highlightedBlockedReportDate ? (
                 <div className="risk-tensor-quality-detail__blocked" data-testid="risk-tensor-quality-blocked-date">

@@ -2705,17 +2705,11 @@ export function EmbeddedAgentCopilot({
         className="agent-result-side-drawer"
         onToggle={(event) => {
           if (event.currentTarget.open) {
-            scrollConversationToBottom();
+            window.setTimeout(scrollConversationToBottom, 0);
           }
         }}
       >
-        <summary
-          onClick={() => {
-            window.setTimeout(scrollConversationToBottom, 0);
-          }}
-        >
-          依据与运行信息 · {detailSectionCount} 项
-        </summary>
+        <summary>依据与运行信息 · {detailSectionCount} 项</summary>
         {resultSide}
       </details>
     );
