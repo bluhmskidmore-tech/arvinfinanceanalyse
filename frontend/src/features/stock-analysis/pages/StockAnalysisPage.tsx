@@ -104,10 +104,21 @@ const stockAnalysisReadQueryOptions = {
 const EMPTY_STRATEGY_PRIORITY_ROWS: LivermoreStrategyScorePayload["rows"] = [];
 
 function errorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
+  const message = error instanceof Error ? error.message : String(error);
+  return localizeStockErrorMessage(message);
+}
+
+function localizeStockErrorMessage(message: string) {
+  const value = message.trim();
+  const normalized = value.toLowerCase().replace(/\s+/g, " ");
+  const exactMessages: Record<string, string> = {
+    "strategy unavailable": "策略服务暂不可用，请稍后重试。",
+    "confluence unavailable": "联动观察服务暂不可用，请稍后重试。",
+  };
+  if (exactMessages[normalized]) {
+    return exactMessages[normalized];
   }
-  return String(error);
+  return localizeStockBackendText(value);
 }
 
 function statusLabel(status: string) {

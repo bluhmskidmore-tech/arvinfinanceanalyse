@@ -14,6 +14,10 @@ const { Text } = Typography;
 
 const LOOKBACK_CHOICES = [30, 60, 120] as const;
 
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function buildCandleVolumeOption(candles: LivermoreStockDetailCandle[]): EChartsOption {
   const dates = candles.map((c) => c.trade_date);
   const ohlc: [number, number, number, number][] = candles.map((c) => {
@@ -81,17 +85,17 @@ function buildCandleVolumeOption(candles: LivermoreStockDetailCandle[]): ECharts
 }
 
 function formatPePb(value: number | null): string {
-  if (value == null || Number.isNaN(value)) return "待补";
+  if (!isFiniteNumber(value)) return "待补";
   return value.toFixed(2);
 }
 
 function formatRoe(value: number | null): string {
-  if (value == null || Number.isNaN(value)) return "待补";
+  if (!isFiniteNumber(value)) return "待补";
   return `${(value * 100).toFixed(2)}%`;
 }
 
 function formatDividendYield(value: number | null): string {
-  if (value == null || Number.isNaN(value)) return "待补";
+  if (!isFiniteNumber(value)) return "待补";
   return `${(value * 100).toFixed(2)}%`;
 }
 
@@ -169,7 +173,7 @@ function choiceNewsTopicLabel(topicCode: string | null | undefined, contentType:
 }
 
 function formatCandidateHistoryReturn(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "—";
+  if (!isFiniteNumber(value)) return "—";
   return `${(value * 100).toFixed(2)}%`;
 }
 

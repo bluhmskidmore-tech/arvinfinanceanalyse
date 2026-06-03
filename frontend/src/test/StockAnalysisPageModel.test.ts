@@ -1437,11 +1437,21 @@ describe("stockAnalysisPageModel", () => {
       ],
     });
 
-    expect(notes.join(" ")).toContain("basis: analytical");
+    expect(notes.join(" ")).toContain("口径：分析口径（非交易）");
+    expect(notes.join(" ")).toContain("策略：Livermore A-Share Defended Trend");
+    expect(notes.join(" ")).toContain("数据日期：2026-04-29");
+    expect(notes.join(" ")).toContain("板块强弱公式：rv_livermore_sector_rank_provisional_v1");
+    expect(notes.join(" ")).toContain("可用输出：市场门控、板块强弱、趋势候选、风险退出");
     expect(notes.join(" ")).toContain("预警 [LIVERMORE_BREADTH_MISSING]: 市场宽度输入不可用。");
     expect(notes.join(" ")).toContain("市场宽度 缺数据：5日市场宽度输入未落地。");
     expect(notes.join(" ")).toContain("LIVERMORE_BREADTH_MISSING");
     expect(notes.join(" ")).toContain("rv_livermore_sector_rank_provisional_v1");
+    expect(notes.join(" ")).not.toContain("basis:");
+    expect(notes.join(" ")).not.toContain("as_of_date:");
+    expect(notes.join(" ")).not.toContain("sector_rank formula");
+    expect(notes.join(" ")).not.toContain("stock_candidates formula");
+    expect(notes.join(" ")).not.toContain("risk_exit formula");
+    expect(notes.join(" ")).not.toContain("supported_outputs:");
     expect(notes.join(" ")).not.toContain("Breadth inputs are unavailable.");
     expect(notes.join(" ")).not.toContain("breadth missing");
     expect(blockedNotes.join(" ")).toContain("风险退出 阻断：持仓快照缺失，暂无可执行风险退出样本。");

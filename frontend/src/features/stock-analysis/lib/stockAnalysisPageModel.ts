@@ -1965,25 +1965,25 @@ export function buildDecisionSummary(
 
 /** @deprecated Stage 1.5 — 已由 inline meta + Drawer 替代正文列表；保留给需要纯文本的诊断导出 */
 export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): string[] {
-  const notes = [`basis: ${payload.basis}`, `strategy: ${payload.strategy_name}`];
+  const notes = [`口径：${localizeBasisLabel(payload.basis)}`, `策略：${payload.strategy_name || "待补"}`];
   for (const diag of payload.diagnostics) {
     const severityLabel = diag.severity === "error" ? "错误" : diag.severity === "warning" ? "预警" : "信息";
     notes.push(`${severityLabel} [${diag.code}]: ${localizeStockBackendText(diag.message, diag.input_family)}`);
   }
   if (payload.as_of_date) {
-    notes.push(`as_of_date: ${payload.as_of_date}`);
+    notes.push(`数据日期：${payload.as_of_date}`);
   }
   if (payload.sector_rank?.formula_version) {
-    notes.push(`sector_rank formula: ${payload.sector_rank.formula_version}`);
+    notes.push(`板块强弱公式：${payload.sector_rank.formula_version}`);
   }
   if (payload.stock_candidates?.formula_version) {
-    notes.push(`stock_candidates formula: ${payload.stock_candidates.formula_version}`);
+    notes.push(`趋势候选公式：${payload.stock_candidates.formula_version}`);
   }
   if (payload.hybrid_fusion_candidates?.formula_version) {
-    notes.push(`hybrid_fusion formula: ${payload.hybrid_fusion_candidates.formula_version}`);
+    notes.push(`融合池公式：${payload.hybrid_fusion_candidates.formula_version}`);
   }
   if (payload.risk_exit?.formula_version) {
-    notes.push(`risk_exit formula: ${payload.risk_exit.formula_version}`);
+    notes.push(`风险退出公式：${payload.risk_exit.formula_version}`);
   }
   for (const gap of payload.data_gaps) {
     notes.push(
@@ -1996,7 +1996,7 @@ export function buildDataBoundaryNotes(payload: LivermoreStrategyPayload): strin
   for (const output of payload.unsupported_outputs) {
     notes.push(`${localizeStockDataFamily(output.key)} 阻断：${localizeStockBackendText(output.reason, output.key)}`);
   }
-  notes.push(`supported_outputs: ${payload.supported_outputs.map(localizeStockDataFamily).join("、") || "无"}`);
+  notes.push(`可用输出：${payload.supported_outputs.map(localizeStockDataFamily).join("、") || "无"}`);
   return notes;
 }
 
