@@ -290,6 +290,75 @@ export type ProductCategoryOperatingAnalysisSurface = {
   };
 };
 
+export type ProductCategoryScenarioSensitivityRow = {
+  rate: string;
+  rateLabel: string;
+  assetNetIncomeLabel: string;
+  assetDeltaLabel: string;
+  liabilityNetIncomeLabel: string;
+  liabilityDeltaLabel: string;
+  grandNetIncomeLabel: string;
+  grandDeltaLabel: string;
+  topMoverCategoryLabel: string;
+  topMoverDeltaLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioSensitivitySurface = {
+  baselineGrandTotalLabel: string | null;
+  rows: ProductCategoryScenarioSensitivityRow[];
+  emptyCopy: string | null;
+};
+
+export type ProductCategoryAttributionWaterfallKey =
+  | "prior"
+  | "day_effect"
+  | "scale_effect"
+  | "rate_effect"
+  | "ftp_effect"
+  | "direct_effect"
+  | "unexplained_effect"
+  | "closure_error"
+  | "current";
+
+export type ProductCategoryAttributionWaterfallRow = {
+  key: ProductCategoryAttributionWaterfallKey;
+  label: string;
+  value: number | null;
+  valueLabel: string;
+  cumulative: number | null;
+  cumulativeLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryAttributionWaterfallSurface = {
+  title: string;
+  deltaLabel: string;
+  rows: ProductCategoryAttributionWaterfallRow[];
+  emptyCopy: string | null;
+};
+
+export type ProductCategoryDecisionFocusKey =
+  | "top_contributor"
+  | "top_pressure"
+  | "largest_deterioration"
+  | "largest_unexplained";
+
+export type ProductCategoryDecisionFocusItem = {
+  key: ProductCategoryDecisionFocusKey;
+  categoryId: string;
+  categoryLabel: string;
+  reasonLabel: string;
+  primaryLabel: string;
+  secondaryLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryDecisionFocusSurface = {
+  items: ProductCategoryDecisionFocusItem[];
+  emptyCopy: string | null;
+};
+
 export type ProductCategoryTplScaleYieldChart = {
   labels: string[];
   cnyScale: number[];
@@ -590,6 +659,13 @@ function productCategoryPercentLabel(value: number | null): string {
   return `${value.toFixed(1)}%`;
 }
 
+function productCategoryYiNumberLabel(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+  return value.toFixed(2);
+}
+
 function nonTotalProductCategoryRows(rows: ProductCategoryPnlRow[]): ProductCategoryPnlRow[] {
   return rows.filter((row) => !row.is_total && !row.category_id.endsWith("_total") && row.category_id !== "grand_total");
 }
@@ -833,6 +909,271 @@ export function selectProductCategoryOperatingAnalysisSurface(input: {
     }),
     movement: selectProductCategoryOperatingMovement(input.attribution, parentCategoryIds),
     quadrant: selectProductCategoryOperatingQuadrant(input.rows),
+  };
+}
+
+function productCategoryRowDeltaYi(
+  baselineRowsById: Map<string, ProductCategoryPnlRow>,
+  scenarioRow: ProductCategoryPnlRow,
+): number | null {
+  const baselineRow = baselineRowsById.get(scenarioRow.category_id);
+  if (!baselineRow) {
+    return null;
+  }
+  const baselineValue = yiNumber(baselineRow.business_net_income);
+  const scenarioValue = yiNumber(scenarioRow.business_net_income);
+  if (baselineValue === null || scenarioValue === null) {
+    return null;
+  }
+  return Number((scenarioValue - baselineValue).toFixed(2));
+}
+
+function productCategoryDeltaTone(value: number | null): "positive" | "negative" | "neutral" {
+  if (value === null || value === 0) {
+    return "neutral";
+  }
+  return value > 0 ? "positive" : "negative";
+}
+
+export function selectProductCategoryScenarioSensitivitySurface(input: {
+  baseline?: ProductCategoryPnlPayload | null;
+  scenarios: ProductCategoryPnlPayload[];
+}): ProductCategoryScenarioSensitivitySurface {
+  if (!input.baseline || input.scenarios.length === 0) {
+    return {
+      baselineGrandTotalLabel: input.baseline
+        ? formatProductCategoryValue(input.baseline.grand_total.business_net_income)
+        : null,
+      rows: [],
+      emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
+    };
+  }
+  const baselineRowsById = new Map(input.baseline.rows.map((row) => [row.category_id, row]));
+  const baselineAssetTotal = yiNumber(input.baseline.asset_total.business_net_income);
+  const baselineLiabilityTotal = yiNumber(input.baseline.liability_total.business_net_income);
+  const baselineGrandTotal = yiNumber(input.baseline.grand_total.business_net_income);
+  const rows = input.scenarios
+    .map((scenario) => {
+      const scenarioRate = scenario.scenario_rate_pct;
+      if (scenarioRate === null || scenarioRate === undefined) {
+        return null;
+      }
+      const assetValue = yiNumber(scenario.asset_total.business_net_income);
+      const liabilityValue = yiNumber(scenario.liability_total.business_net_income);
+      const grandValue = yiNumber(scenario.grand_total.business_net_income);
+      const assetDelta =
+        assetValue === null || baselineAssetTotal === null
+          ? null
+          : Number((assetValue - baselineAssetTotal).toFixed(2));
+      const liabilityDelta =
+        liabilityValue === null || baselineLiabilityTotal === null
+          ? null
+          : Number((liabilityValue - baselineLiabilityTotal).toFixed(2));
+      const grandDelta =
+        grandValue === null || baselineGrandTotal === null
+          ? null
+          : Number((grandValue - baselineGrandTotal).toFixed(2));
+      const topMover = leafProductCategoryRows(scenario.rows)
+        .map((row) => ({
+          row,
+          delta: productCategoryRowDeltaYi(baselineRowsById, row),
+        }))
+        .filter((item): item is { row: ProductCategoryPnlRow; delta: number } => item.delta !== null)
+        .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
+      return {
+        rate: String(scenarioRate),
+        rateLabel: `${Number(scenarioRate).toFixed(2)}%`,
+        assetNetIncomeLabel: productCategoryYiNumberLabel(assetValue),
+        assetDeltaLabel: formatSignedProductCategoryYi(assetDelta),
+        liabilityNetIncomeLabel: productCategoryYiNumberLabel(
+          liabilityValue === null ? null : Math.abs(liabilityValue),
+        ),
+        liabilityDeltaLabel: formatSignedProductCategoryYi(liabilityDelta),
+        grandNetIncomeLabel: productCategoryYiNumberLabel(grandValue),
+        grandDeltaLabel: formatSignedProductCategoryYi(grandDelta),
+        topMoverCategoryLabel: topMover?.row.category_name || topMover?.row.category_id || "-",
+        topMoverDeltaLabel: formatSignedProductCategoryYi(topMover?.delta ?? null),
+        tone: productCategoryDeltaTone(grandDelta),
+      };
+    })
+    .filter((row): row is ProductCategoryScenarioSensitivityRow => row !== null)
+    .sort((left, right) => Number(left.rate) - Number(right.rate));
+  return {
+    baselineGrandTotalLabel: formatProductCategoryValue(input.baseline.grand_total.business_net_income),
+    rows,
+    emptyCopy: rows.length === 0 ? "当前尚未返回可比较的 FTP 情景结果。" : null,
+  };
+}
+
+const PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS = [
+  ["day_effect", "天数因素"],
+  ["scale_effect", "规模因素"],
+  ["rate_effect", "利率因素"],
+  ["ftp_effect", "FTP因素"],
+  ["direct_effect", "直接因素"],
+  ["unexplained_effect", "未解释"],
+  ["closure_error", "闭合误差"],
+] as const;
+
+export function selectProductCategoryAttributionWaterfallSurface(
+  attribution: ProductCategoryAttributionPayload | null | undefined,
+): ProductCategoryAttributionWaterfallSurface {
+  const headline = attribution?.totals?.grand_total;
+  if (!headline || attribution?.state !== "complete") {
+    return {
+      title: "经营差异瀑布",
+      deltaLabel: "-",
+      rows: [],
+      emptyCopy: "当前缺少可用的全表经营差异归因。",
+    };
+  }
+  const prior = yiNumber(headline.prior?.business_net_income);
+  const current = yiNumber(headline.current?.business_net_income);
+  const delta = yiNumber(headline.effects.delta_business_net_income);
+  if (prior === null || current === null) {
+    return {
+      title: `${headline.category_name || "全表合计"}经营差异瀑布`,
+      deltaLabel: formatSignedProductCategoryYi(delta),
+      rows: [],
+      emptyCopy: "当前归因缺少本期或对比期净营收。",
+    };
+  }
+  let cumulative = prior;
+  const rows: ProductCategoryAttributionWaterfallRow[] = [
+    {
+      key: "prior",
+      label: "对比期净营收",
+      value: prior,
+      valueLabel: productCategoryYiNumberLabel(prior),
+      cumulative: prior,
+      cumulativeLabel: productCategoryYiNumberLabel(prior),
+      tone: productCategoryDeltaTone(prior),
+    },
+  ];
+  for (const [key, label] of PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS) {
+    const value = yiNumber(headline.effects[key]);
+    if (value !== null) {
+      cumulative = Number((cumulative + value).toFixed(2));
+    }
+    rows.push({
+      key,
+      label,
+      value,
+      valueLabel: formatSignedProductCategoryYi(value),
+      cumulative: value === null ? null : cumulative,
+      cumulativeLabel: value === null ? "-" : productCategoryYiNumberLabel(cumulative),
+      tone: productCategoryDeltaTone(value),
+    });
+  }
+  rows.push({
+    key: "current",
+    label: "本期净营收",
+    value: current,
+    valueLabel: productCategoryYiNumberLabel(current),
+    cumulative: current,
+    cumulativeLabel: productCategoryYiNumberLabel(current),
+    tone: productCategoryDeltaTone(delta),
+  });
+  return {
+    title: `${headline.category_name || "全表合计"}经营差异瀑布`,
+    deltaLabel: formatSignedProductCategoryYi(delta),
+    rows,
+    emptyCopy: null,
+  };
+}
+
+function focusItemFromRow(input: {
+  key: ProductCategoryDecisionFocusKey;
+  row: ProductCategoryPnlRow;
+  value: number;
+  reasonLabel: string;
+  secondaryLabel: string;
+}): ProductCategoryDecisionFocusItem {
+  return {
+    key: input.key,
+    categoryId: input.row.category_id,
+    categoryLabel: input.row.category_name || input.row.category_id,
+    reasonLabel: input.reasonLabel,
+    primaryLabel: productCategoryYiNumberLabel(input.value),
+    secondaryLabel: input.secondaryLabel,
+    tone: productCategoryDeltaTone(input.value),
+  };
+}
+
+export function selectProductCategoryDecisionFocusSurface(input: {
+  rows: ProductCategoryPnlRow[];
+  grandTotal?: Pick<ProductCategoryPnlRow, "business_net_income"> | null;
+  attribution?: ProductCategoryAttributionPayload | null;
+}): ProductCategoryDecisionFocusSurface {
+  const candidates = leafProductCategoryRows(input.rows)
+    .map((row) => {
+      const value = yiNumber(row.business_net_income);
+      return value === null || value === 0 ? null : { row, value };
+    })
+    .filter((item): item is { row: ProductCategoryPnlRow; value: number } => item !== null);
+  const items: ProductCategoryDecisionFocusItem[] = [];
+  const topContributor = candidates.filter((item) => item.value > 0).sort((left, right) => right.value - left.value)[0];
+  if (topContributor) {
+    items.push(focusItemFromRow({
+      key: "top_contributor",
+      row: topContributor.row,
+      value: topContributor.value,
+      reasonLabel: "本期贡献最高",
+      secondaryLabel: "优先确认利润可持续性",
+    }));
+  }
+  const topPressure = candidates.filter((item) => item.value < 0).sort((left, right) => left.value - right.value)[0];
+  if (topPressure) {
+    items.push(focusItemFromRow({
+      key: "top_pressure",
+      row: topPressure.row,
+      value: topPressure.value,
+      reasonLabel: "本期压力最大",
+      secondaryLabel: "优先定位收入承压来源",
+    }));
+  }
+  if (input.attribution?.state === "complete") {
+    const attributionRows = input.attribution.rows.filter(
+      (row) => !row.category_id.endsWith("_total") && row.category_id !== "grand_total",
+    );
+    const largestDeterioration = attributionRows
+      .map((row) => ({ row, value: yiNumber(row.effects.delta_business_net_income) }))
+      .filter((item): item is { row: ProductCategoryAttributionRow; value: number } =>
+        item.value !== null && item.value < 0,
+      )
+      .sort((left, right) => left.value - right.value)[0];
+    if (largestDeterioration) {
+      items.push({
+        key: "largest_deterioration",
+        categoryId: largestDeterioration.row.category_id,
+        categoryLabel: largestDeterioration.row.category_name || largestDeterioration.row.category_id,
+        reasonLabel: "环比恶化最大",
+        primaryLabel: formatSignedProductCategoryYi(largestDeterioration.value),
+        secondaryLabel: "优先查看规模/利率/FTP驱动",
+        tone: "negative",
+      });
+    }
+    const largestUnexplained = attributionRows
+      .map((row) => ({ row, value: yiNumber(row.effects.unexplained_effect) }))
+      .filter((item): item is { row: ProductCategoryAttributionRow; value: number } =>
+        item.value !== null && item.value !== 0,
+      )
+      .sort((left, right) => Math.abs(right.value) - Math.abs(left.value))[0];
+    if (largestUnexplained) {
+      items.push({
+        key: "largest_unexplained",
+        categoryId: largestUnexplained.row.category_id,
+        categoryLabel: largestUnexplained.row.category_name || largestUnexplained.row.category_id,
+        reasonLabel: "未解释金额最大",
+        primaryLabel: formatSignedProductCategoryYi(largestUnexplained.value),
+        secondaryLabel: "需要复核归因残差",
+        tone: productCategoryDeltaTone(largestUnexplained.value),
+      });
+    }
+  }
+  return {
+    items,
+    emptyCopy: items.length === 0 ? "当前没有可形成决策焦点的产品行或归因结果。" : null,
   };
 }
 

@@ -173,6 +173,11 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-profit-rank")).toHaveTextContent("1.45");
     expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
     expect(screen.getByTestId("product-category-operating-quadrant")).toHaveTextContent("2.57");
+    expect(screen.getByTestId("product-category-financial-analysis")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
+    expect(screen.getByTestId("product-category-attribution-waterfall")).toHaveTextContent("经营差异瀑布");
+    expect(screen.getByTestId("product-category-decision-focus")).toHaveTextContent("本期决策焦点");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债侧产品类别口径");
     expect(screen.queryByText("同业负债")).not.toBeInTheDocument();
@@ -363,6 +368,35 @@ describe("ProductCategoryPnlPage", () => {
       "href",
       "/ledger-pnl?report_date=2026-03-31",
     );
+  });
+
+  it("loads product-category scenario sensitivity only when requested", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getProductCategoryPnl = vi.fn((options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
+      baseClient.getProductCategoryPnl(options),
+    );
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl,
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(getProductCategoryPnl.mock.calls.map((call) => call[0]?.scenarioRatePct)).toEqual([undefined]);
+
+    await user.click(within(screen.getByTestId("product-category-scenario-sensitivity")).getByRole("button"));
+
+    await waitFor(() => {
+      const scenarioRates = getProductCategoryPnl.mock.calls
+        .map((call) => call[0]?.scenarioRatePct)
+        .filter(Boolean)
+        .sort();
+      expect(scenarioRates).toEqual(["1.50", "1.60", "1.75", "2.00"]);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("总净营收");
+    });
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {

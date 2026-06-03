@@ -38,7 +38,11 @@ import {
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
   nextDefaultReportDateIfUnset,
+  type ProductCategoryAttributionWaterfallSurface,
+  selectProductCategoryAttributionWaterfallSurface,
   selectProductCategoryCurrencyNetIncomeChart,
+  type ProductCategoryDecisionFocusSurface,
+  selectProductCategoryDecisionFocusSurface,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
@@ -47,6 +51,8 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
+  type ProductCategoryScenarioSensitivitySurface,
+  selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportPoints,
@@ -949,6 +955,142 @@ function ProductCategoryOperatingContributionList(props: {
   );
 }
 
+function ProductCategoryFinancialAnalysisPanel(props: {
+  scenarioSensitivity: ProductCategoryScenarioSensitivitySurface;
+  scenarioSensitivityRequested: boolean;
+  scenarioSensitivityLoading: boolean;
+  scenarioSensitivityError: boolean;
+  onLoadScenarioSensitivity: () => void;
+  waterfall: ProductCategoryAttributionWaterfallSurface;
+  decisionFocus: ProductCategoryDecisionFocusSurface;
+}) {
+  return (
+    <section className="product-category-financial-analysis" data-testid="product-category-financial-analysis">
+      <div className="product-category-financial-analysis__header">
+        <div>
+          <span className="product-category-operating-analysis__eyebrow">财务分析增强</span>
+          <h2 className="product-category-operating-analysis__title">情景弹性、差异桥与决策焦点</h2>
+          <p className="product-category-operating-analysis__description">
+            保留正式表为主口径；这里只把后端情景结果和正式归因整理成可执行的财务观察。
+          </p>
+        </div>
+        <span className="product-category-operating-analysis__badge">
+          基线总净营收 {props.scenarioSensitivity.baselineGrandTotalLabel ?? "-"} 亿元
+        </span>
+      </div>
+      <div className="product-category-financial-analysis__grid">
+        <article
+          className="product-category-financial-analysis__panel product-category-financial-analysis__panel--scenario"
+          data-testid="product-category-scenario-sensitivity"
+        >
+          <div className="product-category-financial-analysis__panel-head">
+            <div>
+              <h3 className="product-category-financial-analysis__title">FTP 情景敏感度</h3>
+              <p className="product-category-financial-analysis__note">
+                四档情景均来自后端 scenario payload，本地仅展示与正式基线的差额。
+              </p>
+            </div>
+            <button
+              type="button"
+              className="product-category-financial-analysis__load-button"
+              onClick={props.onLoadScenarioSensitivity}
+              disabled={props.scenarioSensitivityLoading}
+            >
+              {props.scenarioSensitivityRequested ? "刷新矩阵" : "加载矩阵"}
+            </button>
+          </div>
+          {props.scenarioSensitivityError ? (
+            <div className="product-category-financial-analysis__empty">情景敏感度加载失败。</div>
+          ) : props.scenarioSensitivityLoading ? (
+            <div className="product-category-financial-analysis__empty">正在加载四档 FTP 情景。</div>
+          ) : props.scenarioSensitivity.emptyCopy ? (
+            <div className="product-category-financial-analysis__empty">{props.scenarioSensitivity.emptyCopy}</div>
+          ) : (
+            <div className="product-category-financial-analysis__table-wrap">
+              <table className="product-category-financial-analysis__table">
+                <thead>
+                  <tr>
+                    <th>FTP</th>
+                    <th>资产端</th>
+                    <th>负债端</th>
+                    <th>总净营收</th>
+                    <th>最大变动行</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.scenarioSensitivity.rows.map((row) => (
+                    <tr key={row.rate}>
+                      <td>{row.rateLabel}</td>
+                      <td>{row.assetNetIncomeLabel} / {row.assetDeltaLabel}</td>
+                      <td>{row.liabilityNetIncomeLabel} / {row.liabilityDeltaLabel}</td>
+                      <td className={`is-${row.tone}`}>{row.grandNetIncomeLabel} / {row.grandDeltaLabel}</td>
+                      <td>{row.topMoverCategoryLabel} {row.topMoverDeltaLabel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+        <article
+          className="product-category-financial-analysis__panel"
+          data-testid="product-category-attribution-waterfall"
+        >
+          <div className="product-category-financial-analysis__panel-head">
+            <div>
+              <h3 className="product-category-financial-analysis__title">经营差异瀑布</h3>
+              <p className="product-category-financial-analysis__note">
+                {props.waterfall.title}，变动合计 {props.waterfall.deltaLabel} 亿元。
+              </p>
+            </div>
+          </div>
+          {props.waterfall.emptyCopy ? (
+            <div className="product-category-financial-analysis__empty">{props.waterfall.emptyCopy}</div>
+          ) : (
+            <div className="product-category-financial-analysis__waterfall">
+              {props.waterfall.rows.map((row) => (
+                <div className="product-category-financial-analysis__waterfall-row" key={row.key}>
+                  <span>{row.label}</span>
+                  <b className={`is-${row.tone}`}>{row.valueLabel}</b>
+                  <small>累计 {row.cumulativeLabel}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+        <article
+          className="product-category-financial-analysis__panel"
+          data-testid="product-category-decision-focus"
+        >
+          <div className="product-category-financial-analysis__panel-head">
+            <div>
+              <h3 className="product-category-financial-analysis__title">本期决策焦点</h3>
+              <p className="product-category-financial-analysis__note">
+                只使用当前产品行和正式归因，按贡献、压力、恶化和未解释残差提取。
+              </p>
+            </div>
+          </div>
+          {props.decisionFocus.emptyCopy ? (
+            <div className="product-category-financial-analysis__empty">{props.decisionFocus.emptyCopy}</div>
+          ) : (
+            <div className="product-category-financial-analysis__focus-list">
+              {props.decisionFocus.items.map((item) => (
+                <div className="product-category-financial-analysis__focus-item" key={item.key}>
+                  <div>
+                    <strong>{item.categoryLabel}</strong>
+                    <span>{item.reasonLabel} · {item.secondaryLabel}</span>
+                  </div>
+                  <b className={`is-${item.tone}`}>{item.primaryLabel}</b>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function ProductCategoryAttributionCompareSwitch(props: {
   compare: ProductCategoryAttributionCompare;
   onCompareChange: (compare: ProductCategoryAttributionCompare) => void;
@@ -1173,6 +1315,7 @@ export default function ProductCategoryPnlPage() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [lastRefreshRunId, setLastRefreshRunId] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
+  const [scenarioSensitivityRequested, setScenarioSensitivityRequested] = useState(false);
   const [loadedTrendDiagnosticsKey, setLoadedTrendDiagnosticsKey] = useState("");
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
@@ -1257,6 +1400,27 @@ export default function ProductCategoryPnlPage() {
     retry: false,
   });
 
+  const scenarioSensitivityQueries = useQueries({
+    queries: PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => ({
+      queryKey: [
+        "product-category-pnl",
+        "scenario-sensitivity",
+        client.mode,
+        selectedDate,
+        selectedView,
+        option.value,
+      ],
+      queryFn: () =>
+        client.getProductCategoryPnl({
+          reportDate: selectedDate,
+          view: selectedView,
+          scenarioRatePct: option.value,
+        }),
+      enabled: Boolean(selectedDate && baselineQuery.data?.result && scenarioSensitivityRequested),
+      retry: false,
+    })),
+  });
+
   const adjustmentsQuery = useQuery({
     queryKey: ["product-category-pnl", "adjustments", client.mode, selectedDate],
     queryFn: () => client.getProductCategoryManualAdjustments(selectedDate),
@@ -1298,6 +1462,29 @@ export default function ProductCategoryPnlPage() {
   const operatingAnalysisSurface = useMemo(
     () =>
       selectProductCategoryOperatingAnalysisSurface({
+        rows: rowsToRender,
+        grandTotal: displayedGrandTotal,
+        attribution: attributionQuery.data?.result,
+      }),
+    [attributionQuery.data?.result, displayedGrandTotal, rowsToRender],
+  );
+  const scenarioSensitivitySurface = useMemo(
+    () =>
+      selectProductCategoryScenarioSensitivitySurface({
+        baseline,
+        scenarios: scenarioSensitivityQueries.flatMap((query) =>
+          query.data?.result ? [query.data.result] : [],
+        ),
+      }),
+    [baseline, scenarioSensitivityQueries],
+  );
+  const attributionWaterfallSurface = useMemo(
+    () => selectProductCategoryAttributionWaterfallSurface(attributionQuery.data?.result),
+    [attributionQuery.data?.result],
+  );
+  const decisionFocusSurface = useMemo(
+    () =>
+      selectProductCategoryDecisionFocusSurface({
         rows: rowsToRender,
         grandTotal: displayedGrandTotal,
         attribution: attributionQuery.data?.result,
@@ -2436,7 +2623,28 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void attributionQuery.refetch()}
       />
 
-      {!baselineQuery.isError ? <ProductCategoryOperatingAnalysisPanel surface={operatingAnalysisSurface} /> : null}
+      {!baselineQuery.isError ? (
+        <ProductCategoryFinancialAnalysisPanel
+          scenarioSensitivity={scenarioSensitivitySurface}
+          scenarioSensitivityRequested={scenarioSensitivityRequested}
+          scenarioSensitivityLoading={scenarioSensitivityQueries.some((query) => query.isLoading)}
+          scenarioSensitivityError={scenarioSensitivityQueries.some((query) => query.isError)}
+          onLoadScenarioSensitivity={() => {
+            setScenarioSensitivityRequested(true);
+            if (scenarioSensitivityRequested) {
+              scenarioSensitivityQueries.forEach((query) => void query.refetch());
+            }
+          }}
+          waterfall={attributionWaterfallSurface}
+          decisionFocus={decisionFocusSurface}
+        />
+      ) : null}
+
+      {!baselineQuery.isError ? (
+        <ProductCategoryOperatingAnalysisPanel
+          surface={operatingAnalysisSurface}
+        />
+      ) : null}
 
       <SectionLead
         eyebrow="正式口径"

@@ -32,10 +32,13 @@ import {
   mainPageViewsAreGovernedDetailSubset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
+  selectProductCategoryAttributionWaterfallSurface,
+  selectProductCategoryDecisionFocusSurface,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
+  selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportDates,
@@ -310,6 +313,265 @@ describe("productCategoryPnlPageModel", () => {
         quadrantLabel: "低规模低收益",
       }),
     ]);
+  });
+
+  it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
+    const baseline = {
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          business_net_income: yi(5),
+        }),
+        row({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          business_net_income: yi(-0.5),
+        }),
+      ],
+      asset_total: row({ category_id: "asset_total", business_net_income: yi(6), is_total: true }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        business_net_income: yi(-1.2),
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", business_net_income: yi(4.8), is_total: true }),
+    } satisfies ProductCategoryPnlPayload;
+    const scenarios: ProductCategoryPnlPayload[] = [
+      {
+        ...baseline,
+        scenario_rate_pct: "1.50",
+        rows: [
+          row({
+            category_id: "bond_ac",
+            category_name: "AC债券投资",
+            business_net_income: yi(5.4),
+          }),
+          row({
+            category_id: "repo_assets",
+            category_name: "买入返售",
+            business_net_income: yi(-0.3),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(6.4), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.1),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(5.3), is_total: true }),
+      },
+      {
+        ...baseline,
+        scenario_rate_pct: "2.00",
+        rows: [
+          row({
+            category_id: "bond_ac",
+            category_name: "AC债券投资",
+            business_net_income: yi(4.2),
+          }),
+          row({
+            category_id: "repo_assets",
+            category_name: "买入返售",
+            business_net_income: yi(-0.6),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", business_net_income: yi(5.3), is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          business_net_income: yi(-1.4),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", business_net_income: yi(3.9), is_total: true }),
+      },
+    ];
+
+    const surface = selectProductCategoryScenarioSensitivitySurface({
+      baseline,
+      scenarios,
+    });
+
+    expect(surface.baselineGrandTotalLabel).toBe("4.80");
+    expect(surface.rows).toEqual([
+      expect.objectContaining({
+        rateLabel: "1.50%",
+        assetNetIncomeLabel: "6.40",
+        assetDeltaLabel: "+0.40",
+        liabilityNetIncomeLabel: "1.10",
+        liabilityDeltaLabel: "+0.10",
+        grandNetIncomeLabel: "5.30",
+        grandDeltaLabel: "+0.50",
+        topMoverCategoryLabel: "AC债券投资",
+        topMoverDeltaLabel: "+0.40",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        rateLabel: "2.00%",
+        assetDeltaLabel: "-0.70",
+        liabilityDeltaLabel: "-0.20",
+        grandDeltaLabel: "-0.90",
+        topMoverCategoryLabel: "AC债券投资",
+        topMoverDeltaLabel: "-0.80",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a governed attribution waterfall from the grand total attribution row", () => {
+    const grandTotal = attributionRow({
+      category_id: "grand_total",
+      category_name: "全表合计",
+      side: "all",
+      current: {
+        report_date: "2026-02-28",
+        days: 28,
+        scale: "0",
+        yield_pct: null,
+        cash: "0",
+        ftp: "0",
+        business_net_income: yi(6.1),
+      },
+      prior: {
+        report_date: "2026-01-31",
+        days: 31,
+        scale: "0",
+        yield_pct: null,
+        cash: "0",
+        ftp: "0",
+        business_net_income: yi(5),
+      },
+      effects: {
+        day_effect: yi(-0.2),
+        scale_effect: yi(0.7),
+        rate_effect: yi(0.4),
+        ftp_effect: yi(0.3),
+        direct_effect: yi(0.1),
+        unexplained_effect: yi(-0.15),
+        closure_error: yi(-0.05),
+        explained_effect: yi(1.3),
+        delta_business_net_income: yi(1.1),
+      },
+    });
+
+    const surface = selectProductCategoryAttributionWaterfallSurface(
+      attributionPayload({
+        totals: {
+          asset_total: attributionRow({ category_id: "asset_total" }),
+          liability_total: attributionRow({ category_id: "liability_total", side: "liability" }),
+          grand_total: grandTotal,
+        },
+      }),
+    );
+
+    expect(surface.title).toBe("全表合计经营差异瀑布");
+    expect(surface.deltaLabel).toBe("+1.10");
+    expect(surface.rows.map((item) => [item.key, item.label, item.valueLabel, item.cumulativeLabel])).toEqual([
+      ["prior", "对比期净营收", "5.00", "5.00"],
+      ["day_effect", "天数因素", "-0.20", "4.80"],
+      ["scale_effect", "规模因素", "+0.70", "5.50"],
+      ["rate_effect", "利率因素", "+0.40", "5.90"],
+      ["ftp_effect", "FTP因素", "+0.30", "6.20"],
+      ["direct_effect", "直接因素", "+0.10", "6.30"],
+      ["unexplained_effect", "未解释", "-0.15", "6.15"],
+      ["closure_error", "闭合误差", "-0.05", "6.10"],
+      ["current", "本期净营收", "6.10", "6.10"],
+    ]);
+    expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a decision focus list from contribution, deterioration, and unexplained drivers", () => {
+    const rows = [
+      row({
+        category_id: "bond_ac",
+        category_name: "AC债券投资",
+        business_net_income: yi(5),
+      }),
+      row({
+        category_id: "repo_assets",
+        category_name: "买入返售",
+        business_net_income: yi(-0.7),
+      }),
+      row({
+        category_id: "derivatives",
+        category_name: "衍生工具",
+        business_net_income: yi(-0.2),
+      }),
+    ];
+    const attribution = attributionPayload({
+      rows: [
+        attributionRow({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          effects: {
+            delta_business_net_income: yi(0.4),
+            unexplained_effect: yi(0.05),
+          },
+        }),
+        attributionRow({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          effects: {
+            delta_business_net_income: yi(-0.8),
+            unexplained_effect: yi(-0.15),
+          },
+        }),
+        attributionRow({
+          category_id: "derivatives",
+          category_name: "衍生工具",
+          effects: {
+            delta_business_net_income: yi(-0.1),
+            unexplained_effect: yi(-0.45),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryDecisionFocusSurface({
+      rows,
+      grandTotal: row({ category_id: "grand_total", business_net_income: yi(4.1), is_total: true }),
+      attribution,
+    });
+
+    expect(surface.items).toEqual([
+      expect.objectContaining({
+        key: "top_contributor",
+        categoryLabel: "AC债券投资",
+        reasonLabel: "本期贡献最高",
+        primaryLabel: "5.00",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        key: "top_pressure",
+        categoryLabel: "买入返售",
+        reasonLabel: "本期压力最大",
+        primaryLabel: "-0.70",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        key: "largest_deterioration",
+        categoryLabel: "买入返售",
+        reasonLabel: "环比恶化最大",
+        primaryLabel: "-0.80",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        key: "largest_unexplained",
+        categoryLabel: "衍生工具",
+        reasonLabel: "未解释金额最大",
+        primaryLabel: "-0.45",
+        secondaryLabel: "需要复核归因残差",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.emptyCopy).toBeNull();
   });
 
   it("formats attribution effects from governed yuan values into yi display values", () => {
