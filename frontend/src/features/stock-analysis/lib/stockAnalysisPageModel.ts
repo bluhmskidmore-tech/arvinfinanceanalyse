@@ -760,6 +760,13 @@ export function localizeStockBackendText(
     return "持仓快照未落地。";
   }
   if (
+    lower.includes("risk-exit evidence") &&
+    lower.includes("position snapshot") &&
+    lower.includes("stale")
+  ) {
+    return "持仓快照已陈旧，风险退出证据待补。";
+  }
+  if (
     lower.includes("livermore_position_snapshot") ||
     (lower.includes("position snapshot") && (lower.includes("active a-share") || lower.includes("missing")))
   ) {
@@ -825,7 +832,7 @@ export function buildStockAnalysisPagePurpose(
     dataStatusLine: aligned
       ? `数据状态：已对齐（${asOf}）`
       : `数据状态：待复核 · ${localizeMetaQualityFlag(quality)} / ${localizeMetaVendorStatus(vendor)}${
-          fallback !== "none" ? ` / 回退 ${fallback}` : ""
+          fallback !== "none" ? ` / ${localizeFallbackMode(fallback)}` : ""
         }`,
   };
 }
@@ -2392,6 +2399,7 @@ export function buildRiskExitRows(
       latest: latest ?? null,
       exit,
     });
+    const evidenceReason = normalizeEvidence(item.evidence)[0];
     rows.push({
       stockCode: item.stock_code,
       stockName: item.stock_name ?? item.stock_code,
@@ -2399,7 +2407,7 @@ export function buildRiskExitRows(
       latestClose: formatNumber(latest),
       exitWatchPrice: formatNumber(exit ?? undefined),
       reason:
-        normalizeEvidence(item.evidence)[0] ??
+        (evidenceReason ? localizeRiskExitReason(evidenceReason) : null) ??
         (status === "triggered" ? "触发复核：联动观察命中" : "观察中：联动观察"),
       distanceToExitPct,
       exitDistanceBucket,
@@ -3307,6 +3315,19 @@ export function buildConsensusReviewPanelSummary(consensus: ConsensusSummary): S
   };
 }
 
+function localizeStrategyPanelErrorDetail(errorMessage: string | null | undefined): string {
+  const value = errorMessage?.trim();
+  if (!value) return "请求失败：错误详情待补。";
+  const lower = value.toLowerCase();
+  if (lower.includes("source_table") || lower.includes("source table")) {
+    return "请求失败：必需源表缺失，稍后复核供数状态。";
+  }
+  if (lower.includes("failed to fetch") || lower.includes("network error")) {
+    return "请求失败：暂时无法连接策略分析服务。";
+  }
+  return `请求失败：${localizeStockBackendText(value)}。`;
+}
+
 export function buildMarketPriorityPanelSummary(input: {
   rows: LivermoreStrategyScorePayload["rows"];
   payload: LivermoreStrategyScorePayload | null;
@@ -3326,7 +3347,7 @@ export function buildMarketPriorityPanelSummary(input: {
   if (input.queryState === "error") {
     return {
       headline: "优先级暂不可用",
-      detail: input.errorMessage,
+      detail: localizeStrategyPanelErrorDetail(input.errorMessage),
       badgeLabel: "待补",
       stats: [],
       tone: "warning",
@@ -3389,7 +3410,7 @@ export function buildStrategyBacktestPanelSummary(input: {
   if (input.queryState === "error") {
     return {
       headline: "回溯暂不可用",
-      detail: input.errorMessage,
+      detail: localizeStrategyPanelErrorDetail(input.errorMessage),
       badgeLabel: "待补",
       stats: [],
       tone: "warning",
@@ -3450,7 +3471,7 @@ export function buildStrategyOptimizationPanelSummary(input: {
   if (input.queryState === "error") {
     return {
       headline: "优化诊断暂不可用",
-      detail: input.errorMessage,
+      detail: localizeStrategyPanelErrorDetail(input.errorMessage),
       badgeLabel: "待补",
       stats: [],
       tone: "warning",

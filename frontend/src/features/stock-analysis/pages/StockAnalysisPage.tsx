@@ -432,7 +432,7 @@ const stockChartPalette = {
 const miniBarChartStyle: CSSProperties = { height: 54, width: "100%" };
 const miniStackChartStyle: CSSProperties = { height: 40, width: "100%" };
 const reviewQueueChartStyle: CSSProperties = { height: 74, width: "100%" };
-const sectorStrengthChartStyle: CSSProperties = { height: 220, width: "100%" };
+const sectorStrengthChartStyle: CSSProperties = { height: 190, width: "100%" };
 
 type CompactChartRow = {
   key: string;
@@ -539,7 +539,7 @@ function buildEventSummaryOption(rows: Array<{ label: string; count: number }>):
     animation: false,
     grid: { top: 4, right: 4, bottom: 4, left: 2, containLabel: false },
     xAxis: { type: "value", show: false, splitLine: { show: false } },
-    yAxis: { type: "category", show: false, data: ["events"] },
+    yAxis: { type: "category", show: false, data: ["输出"] },
     series: rows.map((row, index) => ({
       name: row.label,
       type: "bar",
@@ -1586,6 +1586,22 @@ export default function StockAnalysisPage() {
     if (!sectorFilterSectorCode) return reviewQueue;
     return reviewQueue.filter((c) => c.sectorCode === sectorFilterSectorCode);
   }, [reviewQueue, sectorFilterSectorCode]);
+  const selectedSectorLeadCandidate = filteredCandidates[0] ?? null;
+  const sectorLinkTone = sectorFilterSectorCode
+    ? filteredCandidates.length > 0
+      ? "active"
+      : "empty"
+    : "all";
+  const sectorLinkSummary = sectorFilterSectorCode
+    ? filteredCandidates.length > 0
+      ? `${selectedSectorLabel ?? sectorFilterSectorCode} · ${filteredCandidates.length} 个候选`
+      : `${selectedSectorLabel ?? sectorFilterSectorCode} · 无候选`
+    : `全部行业 · ${reviewQueue.length} 个候选`;
+  const sectorLinkFocus = selectedSectorLeadCandidate
+    ? `首位 ${selectedSectorLeadCandidate.stockName} · 距观察 ${selectedSectorLeadCandidate.distanceToBreakoutPct}`
+    : sectorFilterSectorCode
+      ? "该行业暂无线索"
+      : "点击左侧板块收敛队列";
 
   const reviewQueueChartRows = useMemo<CompactChartRow[]>(
     () => {
@@ -1686,7 +1702,7 @@ export default function StockAnalysisPage() {
       return ["ready", "partial", "blocked", "missing", "stale"]
         .map((status) => ({
           key: status,
-          label: status,
+          label: statusLabel(status),
           value: counts[status] ?? 0,
         }))
         .filter((row) => row.value > 0);
@@ -2441,7 +2457,7 @@ export default function StockAnalysisPage() {
                   <div className="flex flex-col gap-3" data-testid="stock-analysis-decision-panel">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="flex min-w-0 flex-1 flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="stock-analysis-page__dh-hero-meta-row flex flex-wrap items-center gap-2">
                           <span className="stock-analysis-page__dh-chip">只读复核</span>
                           <span className="stock-analysis-page__dh-hero-meta">
                             观察日{" "}
@@ -2985,6 +3001,22 @@ export default function StockAnalysisPage() {
                   </div>
                 ) : null}
 
+                {sectorRowsFull.length > 0 ? (
+                  <div
+                    className="stock-analysis-page__sector-review-link"
+                    aria-live="polite"
+                    data-tone={sectorLinkTone}
+                    data-testid="stock-analysis-sector-review-link"
+                    title={`${sectorLinkSummary} ${sectorLinkFocus}`}
+                  >
+                    <span aria-hidden="true">
+                      <BarChartOutlined />
+                    </span>
+                    <strong>{sectorLinkSummary}</strong>
+                    <small>{sectorLinkFocus}</small>
+                  </div>
+                ) : null}
+
                 {reviewQueueChartRows.length > 0 ? (
                   <div
                     className="mb-2 grid gap-2 border-y border-neutral-100 bg-neutral-50/70 px-2 py-2 md:grid-cols-[minmax(0,1fr)_minmax(160px,220px)]"
@@ -3067,6 +3099,9 @@ export default function StockAnalysisPage() {
                         <article
                           className="stock-analysis-page__review-candidate-card grid gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2.5 transition-shadow hover:border-primary-200 hover:shadow-[0_0_0_1px_theme(colors.primary.200)]"
                           data-testid={`stock-candidate-${card.stockCode}`}
+                          data-selected-sector={
+                            sectorFilterSectorCode != null && card.sectorCode === sectorFilterSectorCode ? "true" : undefined
+                          }
                           key={card.stockCode}
                         >
                           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
@@ -3342,7 +3377,7 @@ export default function StockAnalysisPage() {
                 </div>
 
                   <section
-                    className={SA_FIRST_CARD}
+                    className={`${SA_FIRST_CARD} stock-analysis-page__lower-data-band`}
                     id="stock-analysis-observation-preview"
                     data-testid="stock-analysis-observation-preview"
                   >
@@ -3350,7 +3385,7 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>多策略观察池</p>
                         <h2 className={SA_CARD_TITLE}>因子 / 超跌观察池</h2>
-                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="观察池状态">
+                        <div className="stock-analysis-page__lower-signal-strip" aria-label="观察池状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
                           </span>
@@ -3520,7 +3555,7 @@ export default function StockAnalysisPage() {
                   </section>
 
                   <section
-                    className={SA_FIRST_CARD}
+                    className={`${SA_FIRST_CARD} stock-analysis-page__lower-data-band`}
                     id="stock-analysis-theme-leaders-first-screen"
                     data-testid="stock-analysis-theme-leaders-first-screen"
                   >
@@ -3528,7 +3563,7 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>题材突变</p>
                         <h2 className={SA_CARD_TITLE}>题材突破 Leader 股</h2>
-                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="题材突破状态">
+                        <div className="stock-analysis-page__lower-signal-strip" aria-label="题材突破状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <FireOutlined aria-hidden="true" /> 题材 {themeBreakoutCards.length}
                           </span>
@@ -3605,7 +3640,7 @@ export default function StockAnalysisPage() {
                   </section>
 
                   <section
-                    className={SA_FIRST_CARD}
+                    className={`${SA_FIRST_CARD} stock-analysis-page__lower-data-band`}
                     id="stock-analysis-sector-heavyweights-first-screen"
                     data-testid="stock-analysis-sector-heavyweights-first-screen"
                   >
@@ -3613,7 +3648,7 @@ export default function StockAnalysisPage() {
                       <div className="min-w-0">
                         <p className={SA_SECTION_EYEBROW}>板块结构</p>
                         <h2 className={SA_CARD_TITLE}>各板块权重股表现</h2>
-                        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="权重股样本状态">
+                        <div className="stock-analysis-page__lower-signal-strip" aria-label="权重股样本状态">
                           <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
                             <BarChartOutlined aria-hidden="true" /> Top {sectorHeavyweightPreview?.sectorLimit ?? 0}
                           </span>

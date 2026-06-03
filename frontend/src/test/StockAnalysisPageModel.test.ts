@@ -38,6 +38,7 @@ import {
   buildObservationPoolsPanelSummary,
   buildThemeBreakoutPanelSummary,
   buildMarketPriorityPanelSummary,
+  buildStrategyBacktestPanelSummary,
   buildStrategyOptimizationPanelSummary,
   localizeStockBackendText,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
@@ -586,8 +587,15 @@ describe("stockAnalysisPageModel", () => {
       vendor_status: "ok",
       fallback_mode: "latest_snapshot",
     });
+    const purpose = buildStockAnalysisPagePurpose(strategyPayload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "latest_snapshot",
+    });
 
     expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 通道正常 / 回退快照");
+    expect(purpose.dataStatusLine).toContain("回退快照");
+    expect(purpose.dataStatusLine).not.toContain("latest_snapshot");
   });
 
   it("builds page purpose and review-queue empty guidance in Chinese", () => {
@@ -1519,6 +1527,28 @@ describe("stockAnalysisPageModel", () => {
     expect(watch?.exitDistanceBucket === "triggered" || watch?.exitDistanceBucket === "0-3%").toBe(true);
   });
 
+  it("localizes confluence risk exit evidence before exposing row reasons", () => {
+    const rows = buildRiskExitRows(strategyPayload, {
+      ...confluencePayload,
+      exit_observations: [
+        {
+          stock_code: "000888.SZ",
+          stock_name: "Stale Position",
+          action: "observe_exit_watch",
+          current_price: 18.6,
+          exit_watch_price: 18.4,
+          triggered: false,
+          evidence: ["Risk-exit evidence missing because position snapshot is stale."],
+        },
+      ],
+    });
+
+    const watch = rows.find((row) => row.stockCode === "000888.SZ");
+    expect(watch?.reason).toBe("持仓快照已陈旧，风险退出证据待补。");
+    expect(watch?.reason).not.toContain("Risk-exit evidence");
+    expect(watch?.reason).not.toContain("position snapshot");
+  });
+
   it("surfaces data boundary notes and missing evidence", () => {
     const notes = buildDataBoundaryNotes(strategyPayload);
     const blockedNotes = buildDataBoundaryNotes({
@@ -2007,6 +2037,40 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.detail).toBe("T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。");
     expect(summary.detail).not.toContain("sample 30");
     expect(summary.detail).not.toContain("priority review ranking");
+  });
+
+  it("localizes strategy panel error summaries before exposing request failures", () => {
+    const errorMessage = "Failed to fetch market priority because source_table livermore_signal_snapshots is missing.";
+    const priority = buildMarketPriorityPanelSummary({
+      payload: null,
+      rows: [],
+      marketState: "HOT",
+      queryState: "error",
+      errorMessage,
+    });
+    const backtest = buildStrategyBacktestPanelSummary({
+      payload: null,
+      sampleCount: 0,
+      window: null,
+      dateRangeLabel: "",
+      rows: [],
+      queryState: "error",
+      errorMessage,
+    });
+    const optimization = buildStrategyOptimizationPanelSummary({
+      payload: null,
+      rows: [],
+      queryState: "error",
+      errorMessage,
+    });
+
+    const copy = [priority.detail, backtest.detail, optimization.detail].join(" ");
+    expect(priority.detail).toBe("请求失败：必需源表缺失，稍后复核供数状态。");
+    expect(backtest.detail).toBe("请求失败：必需源表缺失，稍后复核供数状态。");
+    expect(optimization.detail).toBe("请求失败：必需源表缺失，稍后复核供数状态。");
+    expect(copy).not.toContain("Failed to fetch");
+    expect(copy).not.toContain("source_table");
+    expect(copy).not.toContain("livermore_signal_snapshots");
   });
 
   it("keeps generic backend pending copy as confirmation status, not return maturity", () => {

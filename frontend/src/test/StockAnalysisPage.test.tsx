@@ -1337,6 +1337,22 @@ describe("StockAnalysisPage", () => {
     expect(supplyStatus).not.toHaveTextContent("partial");
     expect(supplyStatus).not.toHaveTextContent("breadth");
 
+    await userEvent.click(screen.getByText("供数明细与闭环"));
+    const reviewMiniChartOption = JSON.parse(
+      within(screen.getByTestId("stock-analysis-review-mini-chart"))
+        .getByTestId("stock-analysis-echarts-stub")
+        .getAttribute("data-option") ?? "null",
+    );
+    expect(reviewMiniChartOption?.yAxis?.data).toContain("部分");
+    expect(reviewMiniChartOption?.yAxis?.data).not.toContain("partial");
+    const outputMiniChartOption = JSON.parse(
+      within(screen.getByTestId("stock-analysis-event-mini-chart"))
+        .getByTestId("stock-analysis-echarts-stub")
+        .getAttribute("data-option") ?? "null",
+    );
+    expect(outputMiniChartOption?.yAxis?.data).toContain("输出");
+    expect(outputMiniChartOption?.yAxis?.data).not.toContain("events");
+
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("多因子");
     expect(selection).toHaveTextContent("复核 K 线");
@@ -1905,7 +1921,10 @@ describe("StockAnalysisPage", () => {
       client: stockClient({ metaOverrides: { fallback_mode: "latest_snapshot" } }),
     });
 
+    const purpose = await screen.findByTestId("stock-analysis-page-purpose");
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(purpose).toHaveTextContent("回退快照");
+    expect(purpose).not.toHaveTextContent("latest_snapshot");
     expect(decisionPanel).toHaveTextContent("质量 正常");
     expect(decisionPanel).toHaveTextContent("回退快照");
     expect(decisionPanel).not.toHaveTextContent("latest_snapshot");
@@ -2184,6 +2203,8 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
 
     expect(await screen.findByTestId("stock-candidate-000001.SZ")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("全部行业");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("2 个候选");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("全部行业");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 2 / 2 个候选");
     await user.click(screen.getByTestId("sector-filter-chip-801002"));
@@ -2196,6 +2217,10 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByRole("button", { name: "全部行业" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("新能源车");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 1 / 2 个候选");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("新能源车");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("1 个候选");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("Beta");
+    expect(screen.getByTestId("stock-candidate-000002.SZ")).toHaveAttribute("data-selected-sector", "true");
 
     await user.click(screen.getByRole("button", { name: "全部行业" }));
     await screen.findByTestId("stock-candidate-000001.SZ");
@@ -2283,6 +2308,9 @@ describe("StockAnalysisPage", () => {
     });
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("无候选行业");
     expect(screen.getByTestId("stock-review-filter-status")).toHaveTextContent("显示 0 / 2 个候选");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("无候选行业");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("无候选");
+    expect(screen.getByTestId("stock-analysis-sector-review-link")).toHaveTextContent("该行业暂无线索");
     expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("行业筛选");
     expect(screen.getByTestId("stock-analysis-review-queue-filter-empty")).toHaveTextContent("0 候选");
     expect(screen.queryByTestId("stock-analysis-review-queue-ranking-chart")).not.toBeInTheDocument();
