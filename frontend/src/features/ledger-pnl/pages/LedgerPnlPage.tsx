@@ -195,6 +195,57 @@ function buildLedgerDriverRows(rows: LedgerPnlSummaryByAccount[]) {
   return Array.from(buckets.values()).sort((left, right) => Math.abs(right.yuan) - Math.abs(left.yuan));
 }
 
+function buildLedgerResidualDiagnosticRows(props: {
+  totalYuan: number | null;
+  currencyYuan: number | null;
+  accountYuan: number | null;
+  detailYuan: number | null;
+}) {
+  return [
+    {
+      layer: "币种层",
+      reconciliationYuan: props.currencyYuan,
+      diff: differenceYuan(props.totalYuan, props.currencyYuan),
+      evidenceWhenMissing: "补币种汇总或确认币种口径",
+    },
+    {
+      layer: "科目层",
+      reconciliationYuan: props.accountYuan,
+      diff: differenceYuan(props.totalYuan, props.accountYuan),
+      evidenceWhenMissing: "补科目汇总或确认科目范围",
+    },
+    {
+      layer: "明细层",
+      reconciliationYuan: props.detailYuan,
+      diff: differenceYuan(props.totalYuan, props.detailYuan),
+      evidenceWhenMissing: "补明细或确认过滤口径",
+    },
+  ].map((row) => {
+    if (row.diff === null) {
+      return {
+        ...row,
+        ledgerYuan: props.totalYuan,
+        judgment: `${row.layer}待校验`,
+        evidence: "补总账与对账口径数据",
+      };
+    }
+    if (Math.abs(row.diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN) {
+      return {
+        ...row,
+        ledgerYuan: props.totalYuan,
+        judgment: `${row.layer}闭合`,
+        evidence: "无需补证",
+      };
+    }
+    return {
+      ...row,
+      ledgerYuan: props.totalYuan,
+      judgment: `${row.layer}残差 ${formatYuanAsYi(row.diff)}`,
+      evidence: row.evidenceWhenMissing,
+    };
+  });
+}
+
 function buildLedgerExplainabilityModel(props: {
   totalPnl: LedgerMoneyValue | null | undefined;
   byCurrency: LedgerPnlSummaryByCurrency[];
@@ -241,6 +292,12 @@ function buildLedgerExplainabilityModel(props: {
       ? `${largestResidualCheck.label}${reconciliationStatus(largestResidualCheck.diff)}`
       : "暂无可校验卡点",
     driverRows: buildLedgerDriverRows(props.byAccount),
+    residualDiagnosticRows: buildLedgerResidualDiagnosticRows({
+      totalYuan,
+      currencyYuan,
+      accountYuan,
+      detailYuan,
+    }),
     residualYuan,
     formalBoundary:
       props.formalUseAllowed === true
@@ -307,6 +364,37 @@ function LedgerExplainabilityPanel(props: {
                 未解释残差 {formatYuanAsYi(props.model.residualYuan)}
               </div>
             </div>
+          </div>
+
+          <div
+            data-testid="ledger-pnl-residual-diagnostic-table"
+            className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
+          >
+            <div className="ledger-pnl-analysis__table-title">残差诊断表</div>
+            <table className="ledger-pnl-analysis__residual-table">
+              <thead>
+                <tr>
+                  <th>卡点层级</th>
+                  <th>总账金额</th>
+                  <th>对账金额</th>
+                  <th>差异金额</th>
+                  <th>诊断判断</th>
+                  <th>需要补的证据</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.model.residualDiagnosticRows.map((row) => (
+                  <tr key={row.layer}>
+                    <td>{row.layer}</td>
+                    <td>{formatYuanAsYi(row.ledgerYuan)}</td>
+                    <td>{formatYuanAsYi(row.reconciliationYuan)}</td>
+                    <td>{formatYuanAsYi(row.diff)}</td>
+                    <td>{row.judgment}</td>
+                    <td>{row.evidence}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <div className="ledger-pnl-analysis__tables">
