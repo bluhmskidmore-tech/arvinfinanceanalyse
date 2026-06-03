@@ -828,6 +828,10 @@ describe("MacroToolkitPage", () => {
     expect(promotionRulePack).toHaveTextContent("待人工判断 2");
     expect(promotionRulePack).toHaveTextContent("不建议进入公式 4");
     expect(promotionRulePack).toHaveTextContent("准入检查：样本>=20 / 危机样本>=5 / 相关性可读 / 命中率可读");
+    expect(promotionRulePack).toHaveTextContent("规则版本 shadow_rule_v1");
+    expect(promotionRulePack).toHaveTextContent("样本阈值 >=20 个重叠样本");
+    expect(promotionRulePack).toHaveTextContent("危机样本阈值 >=5 个高 Crisis Score 样本");
+    expect(promotionRulePack).toHaveTextContent("相关性阈值 |corr|>=0.20 才可直接通过");
     expect(promotionRulePack).toHaveTextContent("Copper futures");
     expect(promotionRulePack).toHaveTextContent("待人工判断");
     expect(promotionRulePack).toHaveTextContent("相关性偏弱，需人工复核");

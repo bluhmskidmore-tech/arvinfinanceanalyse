@@ -72,6 +72,10 @@ const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
 const MACRO_TOOLKIT_FULL_PREFETCH_DELAY_MS = 1_500;
 const MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY = ["macro-toolkit", "analysis", "full"] as const;
+const MACRO_COMMODITY_SHADOW_RULE_VERSION = "shadow_rule_v1";
+const MACRO_COMMODITY_SHADOW_MIN_SAMPLES = 20;
+const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
+const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
 const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "RB", label: "螺纹钢", description: "黑色链条" },
   { value: "I", label: "铁矿石", description: "黑色链条" },
@@ -2137,7 +2141,18 @@ function CrisisCommodityShadowDecisionPanel({ coverage }: { coverage: CrisisComm
             </strong>
           </div>
           <small>规则只用于审批前复核，不改变 Crisis Score 公式</small>
-          <small>准入检查：样本&gt;=20 / 危机样本&gt;=5 / 相关性可读 / 命中率可读</small>
+          <small>规则版本 {MACRO_COMMODITY_SHADOW_RULE_VERSION}</small>
+          <small>
+            准入检查：样本&gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} / 危机样本&gt;=
+            {MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} / 相关性可读 / 命中率可读
+          </small>
+          <small>样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本</small>
+          <small>
+            危机样本阈值 &gt;={MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本
+          </small>
+          <small>
+            相关性阈值 |corr|&gt;={MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过
+          </small>
         </div>
         <div className="macro-toolkit-crisis-promotion-rule-pack__grid">
           {promotionItems.map((item) => (
@@ -3438,8 +3453,9 @@ function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): Commodit
       checks: commodityPromotionRuleChecks(evaluation),
     };
   }
-  const hasEnoughSamples = (evaluation.sample_count ?? 0) >= (evaluation.minimum_sample_count ?? 20);
-  const hasCrisisSamples = (evaluation.crisis_sample_count ?? 0) >= 5;
+  const hasEnoughSamples =
+    (evaluation.sample_count ?? 0) >= (evaluation.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES);
+  const hasCrisisSamples = (evaluation.crisis_sample_count ?? 0) >= MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES;
   const correlation = Math.max(
     Math.abs(evaluation.same_day_correlation ?? 0),
     Math.abs(evaluation.lead_1d_correlation ?? 0),
@@ -3455,7 +3471,7 @@ function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): Commodit
       checks: commodityPromotionRuleChecks(evaluation),
     };
   }
-  if (!hasReadableMetrics || correlation < 0.2) {
+  if (!hasReadableMetrics || correlation < MACRO_COMMODITY_SHADOW_MIN_CORRELATION) {
     return {
       field: item.field,
       label: item.label || item.field,
@@ -3478,7 +3494,7 @@ function commodityPromotionRuleChecks(
 ): CommodityPromotionRuleCheck[] {
   const isReviewReady = evaluation?.status === "review_ready";
   const sampleCount = evaluation?.sample_count ?? null;
-  const minimumSampleCount = evaluation?.minimum_sample_count ?? 20;
+  const minimumSampleCount = evaluation?.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES;
   const crisisSampleCount = isReviewReady ? (evaluation.crisis_sample_count ?? null) : null;
   const correlation = isReviewReady
     ? Math.max(
@@ -3499,15 +3515,17 @@ function commodityPromotionRuleChecks(
     {
       name: "危机样本检查",
       status:
-        typeof crisisSampleCount === "number" && crisisSampleCount >= 5 ? "ready_for_review" : "not_recommended",
-      value: `${crisisSampleCount ?? "缺失"}/5`,
+        typeof crisisSampleCount === "number" && crisisSampleCount >= MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES
+          ? "ready_for_review"
+          : "not_recommended",
+      value: `${crisisSampleCount ?? "缺失"}/${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES}`,
     },
     {
       name: "相关性检查",
       status:
         correlation == null
           ? "not_recommended"
-          : correlation >= 0.2
+          : correlation >= MACRO_COMMODITY_SHADOW_MIN_CORRELATION
             ? "ready_for_review"
             : "manual_review",
       value: typeof correlation === "number" ? formatSignedDecimal(correlation) : "缺失",
