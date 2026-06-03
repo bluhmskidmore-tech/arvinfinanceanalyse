@@ -482,6 +482,16 @@
   gap: var(--moss-space-2);
 }
 
+.market-data-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.market-data-series-value {
+  color: var(--moss-color-neutral-900);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .market-data-inset-card {
   display: grid;
   gap: var(--moss-space-3);
@@ -728,6 +738,10 @@
   font-size: 14px;
 }
 
+.market-data-section-heading--relaxed p {
+  line-height: 1.7;
+}
+
 .market-data-catalog-row {
   display: grid;
   gap: var(--moss-space-2);
@@ -735,6 +749,30 @@
   border-radius: var(--moss-space-4);
   border: 1px solid var(--moss-color-primary-200);
   background: #ffffff;
+}
+
+.market-data-catalog-meta {
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.market-data-catalog-note {
+  color: var(--moss-color-neutral-800);
+  font-size: 13px;
+}
+
+.market-data-catalog-vendor {
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+}
+
+.market-data-catalog-empty {
+  padding: var(--moss-space-4);
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-space-4);
+  background: #ffffff;
+  color: var(--moss-color-neutral-600);
+  font-size: 14px;
 }
 
 .market-data-metadata-panel-title {

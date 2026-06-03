@@ -28,7 +28,7 @@ import {
   type MarketObservationPoint,
 } from "../lib/marketDataCategoryStore";
 import { formatSignedNumber } from "../lib/marketDataFormat";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
 import { MarketDataHeroSection } from "./MarketDataHeroSection";
@@ -45,8 +45,6 @@ const MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP = false;
 const MARKET_DATA_SHOW_FX_ANALYSIS_SECTION = false;
 
 const s = designTokens.space;
-const fs = designTokens.fontSize;
-const c = designTokens.color;
 
 const marketDataSectionLeadStyle: CSSProperties = {
   marginTop: 0,
@@ -175,19 +173,19 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
       <div className="market-data-corr-grid-inner">
         <div>
           <div className="market-data-dim-label">3月相关</div>
-          <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_3m)}</div>
+          <div className="market-data-tabular">{formatCorrelation(point.correlation_3m)}</div>
         </div>
         <div>
           <div className="market-data-dim-label">6月相关</div>
-          <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_6m)}</div>
+          <div className="market-data-tabular">{formatCorrelation(point.correlation_6m)}</div>
         </div>
         <div>
           <div className="market-data-dim-label">1年相关</div>
-          <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_1y)}</div>
+          <div className="market-data-tabular">{formatCorrelation(point.correlation_1y)}</div>
         </div>
         <div>
           <div className="market-data-dim-label">领先/滞后</div>
-          <div style={tabularNumsStyle}>{`${point.lead_lag_days} 天`}</div>
+          <div className="market-data-tabular">{`${point.lead_lag_days} 天`}</div>
         </div>
       </div>
     </div>
@@ -230,13 +228,13 @@ function renderSeriesCards(
             </div>
             <div>
               <div className="market-data-dim-label">最新值</div>
-              <div style={{ fontWeight: 600, color: c.neutral[900], ...tabularNumsStyle }}>
+              <div className="market-data-series-value">
                 {formatChoiceMacroValue(point)}
               </div>
             </div>
             <div>
               <div className="market-data-dim-label">变动</div>
-              <div style={tabularNumsStyle}>{formatChoiceMacroDelta(point, { emptyDisplay: "无" })}</div>
+              <div className="market-data-tabular">{formatChoiceMacroDelta(point, { emptyDisplay: "无" })}</div>
             </div>
             <div>
               <div className="market-data-dim-label">抓取</div>
@@ -492,7 +490,7 @@ export default function MarketDataPage() {
                 }
                 onRetry={() => void latestQuery.refetch(nonCancellingRefetchOptions)}
               >
-                <div style={{ display: "grid", gap: s[6] }}>
+                <div className="market-data-stack-gap-6">
                   {!latestQuery.isLoading && !latestQuery.isError ? (
                     <LiveResultMetaStrip
                       lead="本区块·宏观最新"
@@ -501,16 +499,9 @@ export default function MarketDataPage() {
                     />
                   ) : null}
                   <section data-testid="market-data-stable-section">
-                    <div style={{ marginBottom: s[3] }}>
-                      <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>稳定主链路</h2>
-                      <p
-                        style={{
-                          marginTop: s[2],
-                          marginBottom: 0,
-                          color: c.neutral[600],
-                          fontSize: fs[14],
-                        }}
-                      >
+                    <div className="market-data-section-heading">
+                      <h2>稳定主链路</h2>
+                      <p>
                         面向日常分析的主刷新读面，只显示稳定可取的序列。
                       </p>
                     </div>
@@ -518,87 +509,45 @@ export default function MarketDataPage() {
                   </section>
 
                   <section data-testid="market-data-missing-stable-section">
-                    <div style={{ marginBottom: s[3] }}>
-                      <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>待补齐稳定链路</h2>
-                      <p
-                        style={{
-                          marginTop: s[2],
-                          marginBottom: 0,
-                          color: c.neutral[600],
-                          fontSize: fs[14],
-                        }}
-                      >
+                    <div className="market-data-section-heading">
+                      <h2>待补齐稳定链路</h2>
+                      <p>
                         目录中归属稳定链路，但当前刷新尚未回收的序列。
                       </p>
                     </div>
                     {missingStableSeries.length > 0 ? (
-                      <div style={{ display: "grid", gap: s[3] }}>
+                      <div className="market-data-stack-gap-3">
                         {missingStableSeries.map((series) => (
-                          <div
-                            key={series.series_id}
-                            style={{
-                              display: "grid",
-                              gap: s[2],
-                              padding: s[4],
-                              borderRadius: s[4],
-                              border: `1px solid ${c.primary[200]}`,
-                              background: "#ffffff",
-                            }}
-                          >
+                          <div key={series.series_id} className="market-data-catalog-row">
                             <strong>{series.series_name}</strong>
-                            <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
+                            <div className="market-data-catalog-meta">
                               {series.series_id} 路 {refreshTierLabel(marketCatalogRefreshTier(series))} 路{" "}
                               {seriesFetchModeLabel(series)}
                             </div>
-                            <div style={{ color: c.neutral[800], fontSize: fs[13] }}>
+                            <div className="market-data-catalog-note">
                               {series.policy_note ?? "主刷新日期切片链路"}
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div
-                        style={{
-                          padding: s[4],
-                          borderRadius: s[4],
-                          border: `1px solid ${c.primary[200]}`,
-                          background: "#ffffff",
-                          color: c.neutral[600],
-                          fontSize: fs[14],
-                        }}
-                      >
+                      <div className="market-data-catalog-empty">
                         当前稳定目录已全部回收。
                       </div>
                     )}
                   </section>
 
                   <section data-testid="market-data-fallback-section">
-                    <div style={{ marginBottom: s[3] }}>
-                      <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>仅取最新降级</h2>
-                      <p
-                        style={{
-                          marginTop: s[2],
-                          marginBottom: 0,
-                          color: c.neutral[600],
-                          fontSize: fs[14],
-                        }}
-                      >
+                    <div className="market-data-section-heading">
+                      <h2>仅取最新降级</h2>
+                      <p>
                         低频或稀疏序列保留为降级链路展示，不混入稳定主链路。
                       </p>
                     </div>
                     {fallbackSeries.length > 0 ? (
                       renderSeriesCards(fallbackSeries)
                     ) : (
-                      <div
-                        style={{
-                          padding: s[4],
-                          borderRadius: s[4],
-                          border: `1px solid ${c.primary[200]}`,
-                          background: "#ffffff",
-                          color: c.neutral[600],
-                          fontSize: fs[14],
-                        }}
-                      >
+                      <div className="market-data-catalog-empty">
                         当前无仅取最新降级序列。
                       </div>
                     )}
@@ -622,7 +571,7 @@ export default function MarketDataPage() {
           }
           onRetry={() => void fxAnalyticalQuery.refetch(nonCancellingRefetchOptions)}
         >
-          <div style={{ display: "grid", gap: s[6] }}>
+          <div className="market-data-stack-gap-6">
             {!fxAnalyticalQuery.isLoading && !fxAnalyticalQuery.isError && MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP ? (
               <LiveResultMetaStrip
                 lead="本区块·外汇分析"
@@ -635,17 +584,9 @@ export default function MarketDataPage() {
                 key={group.group_key}
                 data-testid={`market-data-fx-group-${group.group_key}`}
               >
-                <div style={{ marginBottom: s[3] }}>
-                  <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>{fxAnalyticalGroupTitle(group.title)}</h2>
-                  <p
-                    style={{
-                      marginTop: s[2],
-                      marginBottom: 0,
-                      color: c.neutral[600],
-                      fontSize: fs[14],
-                      lineHeight: designTokens.lineHeight.relaxed,
-                    }}
-                  >
+                <div className="market-data-section-heading market-data-section-heading--relaxed">
+                  <h2>{fxAnalyticalGroupTitle(group.title)}</h2>
+                  <p>
                     {fxAnalyticalGroupDescription(group.description)}
                   </p>
                 </div>
@@ -792,31 +733,31 @@ export default function MarketDataPage() {
                 <div className="market-data-portfolio-grid">
                   <div>
                     <div className="market-data-dim-label">利率变动</div>
-                    <div style={tabularNumsStyle}>
+                    <div className="market-data-tabular">
                       {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}
                     </div>
                   </div>
                   <div>
                     <div className="market-data-dim-label">利差走阔</div>
-                    <div style={tabularNumsStyle}>
+                    <div className="market-data-tabular">
                       {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}
                     </div>
                   </div>
                   <div>
                     <div className="market-data-dim-label">利率影响</div>
-                    <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_pnl_impact)}</div>
+                    <div className="market-data-tabular">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_pnl_impact)}</div>
                   </div>
                   <div>
                     <div className="market-data-dim-label">利差影响</div>
-                    <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_pnl_impact)}</div>
+                    <div className="market-data-tabular">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_pnl_impact)}</div>
                   </div>
                   <div>
                     <div className="market-data-dim-label">合计估算</div>
-                    <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                    <div className="market-data-tabular">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
                   </div>
                   <div>
                     <div className="market-data-dim-label">影响占比</div>
-                    <div style={tabularNumsStyle}>{macroBondLinkage.portfolio_impact?.impact_ratio_to_market_value ?? "不可用"}</div>
+                    <div className="market-data-tabular">{macroBondLinkage.portfolio_impact?.impact_ratio_to_market_value ?? "不可用"}</div>
                   </div>
                 </div>
               ) : (
@@ -845,8 +786,8 @@ export default function MarketDataPage() {
                     {point ? (
                       <>
                         <div className="market-data-muted-body">{point.series_name}</div>
-                        <div style={tabularNumsStyle}>{`1年相关 ${formatCorrelation(point.correlation_1y)}`}</div>
-                        <div style={tabularNumsStyle}>{`领先/滞后 ${point.lead_lag_days} 天`}</div>
+                        <div className="market-data-tabular">{`1年相关 ${formatCorrelation(point.correlation_1y)}`}</div>
+                        <div className="market-data-tabular">{`领先/滞后 ${point.lead_lag_days} 天`}</div>
                       </>
                     ) : (
                       <div className="market-data-muted-body">
@@ -894,24 +835,14 @@ export default function MarketDataPage() {
               isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
               onRetry={() => void catalogQuery.refetch(nonCancellingRefetchOptions)}
             >
-              <div style={{ display: "grid", gap: s[3] }}>
+              <div className="market-data-stack-gap-3">
                 {catalog.map((series) => (
-                  <div
-                    key={series.series_id}
-                    style={{
-                      display: "grid",
-                      gap: s[2],
-                      padding: s[4],
-                      borderRadius: s[4],
-                      border: `1px solid ${c.primary[200]}`,
-                      background: "#ffffff",
-                    }}
-                  >
+                  <div key={series.series_id} className="market-data-catalog-row">
                     <strong>{series.series_name}</strong>
-                    <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
+                    <div className="market-data-catalog-meta">
                       {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
                     </div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>
+                    <div className="market-data-catalog-vendor">
                       供应商版本 {series.vendor_version}
                     </div>
                   </div>

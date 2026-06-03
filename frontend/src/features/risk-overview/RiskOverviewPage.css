@@ -96,6 +96,45 @@
   margin-top: 12px;
 }
 
+.risk-overview-drill-chip {
+  padding: 8px 12px;
+  border: 1px solid #e2e6ec;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f2937;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.risk-overview-drill-chip[aria-pressed="true"] {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.risk-overview-krd-chart {
+  height: 320px;
+}
+
+.risk-overview-quality-panel {
+  margin-top: 20px;
+  padding: 12px;
+  border-radius: 12px;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.risk-overview-quality-panel.is-ok {
+  border: 1px solid #d7dfea;
+  background: #f6f9fc;
+}
+
+.risk-overview-quality-panel.is-warning {
+  border: 1px solid #e8d9a8;
+  background: #fffbeb;
+}
+
 .risk-overview-block-title {
   margin: 24px 0 0;
   color: #1f2937;

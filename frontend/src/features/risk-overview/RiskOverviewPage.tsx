@@ -16,7 +16,6 @@ import type {
   KRDCurveRiskResponse,
 } from "../bond-analytics/types";
 import { designTokens } from "../../theme/designSystem";
-import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
 import type { RiskTensorPayload } from "../../api/contracts";
@@ -26,19 +25,6 @@ import {
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
 import "./RiskOverviewPage.css";
-
-function drillChipStyle(active: boolean) {
-  return {
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: active ? `1px solid ${designTokens.color.primary[600]}` : `1px solid ${shellTokens.colorBorderSoft}`,
-    background: active ? designTokens.color.primary[50] : "#ffffff",
-    color: active ? designTokens.color.primary[600] : designTokens.color.neutral[900],
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-  } as const;
-}
 
 function cellText(value: unknown) {
   if (value === null || value === undefined) {
@@ -315,7 +301,7 @@ export default function RiskOverviewPage() {
                 KRD 分桶（估值 DV01）
               </h2>
               {krdChartOption ? (
-                <ReactECharts option={krdChartOption} style={{ height: 320 }} />
+                <ReactECharts className="risk-overview-krd-chart" option={krdChartOption} />
               ) : null}
 
               <h2 className="risk-overview-section-title">
@@ -383,19 +369,9 @@ export default function RiskOverviewPage() {
               </div>
 
               <div
-                style={{
-                  marginTop: 20,
-                  padding: 12,
-                  borderRadius: 12,
-                  border:
-                    tensorResult.quality_flag === "ok"
-                      ? "1px solid #d7dfea"
-                      : "1px solid #e8d9a8",
-                  background:
-                    tensorResult.quality_flag === "ok" ? "#f6f9fc" : "#fffbeb",
-                  color: designTokens.color.neutral[900],
-                  fontSize: 14,
-                }}
+                className={`risk-overview-quality-panel ${
+                  tensorResult.quality_flag === "ok" ? "is-ok" : "is-warning"
+                }`}
               >
                 <div className="risk-overview-quality-title">
                   质量标记：
@@ -489,7 +465,8 @@ export default function RiskOverviewPage() {
                   <button
                     key={row.tenor}
                     type="button"
-                    style={drillChipStyle(row.tenor === selectedTenor)}
+                    className="risk-overview-drill-chip"
+                    aria-pressed={row.tenor === selectedTenor}
                     onClick={() => setSelectedTenor(row.tenor)}
                   >
                     {row.tenor}
@@ -642,7 +619,8 @@ export default function RiskOverviewPage() {
                   <button
                     key={row.name}
                     type="button"
-                    style={drillChipStyle(row.name === selectedIssuer)}
+                    className="risk-overview-drill-chip"
+                    aria-pressed={row.name === selectedIssuer}
                     onClick={() => setSelectedIssuer(row.name)}
                   >
                     {row.name}
