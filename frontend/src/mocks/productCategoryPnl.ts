@@ -612,6 +612,37 @@ export function buildMockProductCategoryAttributionEnvelope(
     prior: priorPoint,
     effects,
   };
+  const interestEarningAssetsRow: ProductCategoryAttributionRow = {
+    ...row,
+    category_id: "interest_earning_assets",
+    category_name: "生息资产",
+    current: {
+      ...currentPoint,
+      scale: toYuan("392.00"),
+      yield_pct: "2.80",
+      cash: toYuan("1.12"),
+      ftp: toYuan("0.75"),
+      business_net_income: toYuan("0.37"),
+    },
+    prior: {
+      ...priorPoint,
+      scale: toYuan("384.00"),
+      yield_pct: "2.92",
+      cash: toYuan("1.20"),
+      ftp: toYuan("0.72"),
+      business_net_income: toYuan("0.48"),
+    },
+    effects: {
+      ...effects,
+      scale_effect: toYuan("0.08"),
+      rate_effect: toYuan("-0.16"),
+      ftp_effect: toYuan("-0.62"),
+      unexplained_effect: toYuan("-0.38"),
+      explained_effect: toYuan("-1.08"),
+      delta_business_net_income: toYuan("-1.08"),
+      closure_error: toYuan("0.00"),
+    },
+  };
   const assetTotal: ProductCategoryAttributionRow = {
     ...row,
     category_id: "asset_total",
@@ -651,7 +682,7 @@ export function buildMockProductCategoryAttributionEnvelope(
     prior_report_date: priorReportDate,
     state: "complete",
     reason: null,
-    rows: [row],
+    rows: [row, interestEarningAssetsRow],
     totals: {
       asset_total: assetTotal,
       liability_total: liabilityTotal,

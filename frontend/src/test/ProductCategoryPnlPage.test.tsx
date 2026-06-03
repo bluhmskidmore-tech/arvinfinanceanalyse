@@ -413,8 +413,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(explanation).toHaveTextContent("复核解释包");
     expect(explanation).toHaveTextContent("生息资产");
     expect(explanation).toHaveTextContent("正式归因");
-    expect(explanation).toHaveTextContent("当前正式归因未返回可排序的驱动项");
-    expect(explanation).not.toHaveTextContent("FTP因素");
+    expect(explanation).toHaveTextContent("FTP因素");
+    expect(explanation).toHaveTextContent("-0.62");
+    expect(explanation).toHaveTextContent("未解释");
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {

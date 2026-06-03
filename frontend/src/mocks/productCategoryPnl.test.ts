@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildProductCategoryMockYuanPayload, buildMockProductCategoryPnlEnvelope } from "./productCategoryPnl";
+import {
+  buildProductCategoryMockYuanPayload,
+  buildMockProductCategoryAttributionEnvelope,
+  buildMockProductCategoryPnlEnvelope,
+} from "./productCategoryPnl";
 import type { ProductCategoryPnlRow } from "../api/contracts";
 
 const YI = 100_000_000;
@@ -73,5 +77,20 @@ describe("productCategoryPnl mock", () => {
     });
     expect(row?.business_net_income).toBeDefined();
     expect(row?.business_net_income).not.toBe("");
+  });
+
+  it("includes interest-earning asset attribution for scenario review explanations", () => {
+    const env = buildMockProductCategoryAttributionEnvelope({
+      reportDate: "2026-02-28",
+      compare: "mom",
+    });
+    const row = env.result.rows.find((item) => item.category_id === "interest_earning_assets");
+
+    expect(row).toMatchObject({
+      category_id: "interest_earning_assets",
+      category_name: "生息资产",
+    });
+    expect(row?.effects.ftp_effect).toBe(String(-0.62 * YI));
+    expect(row?.effects.unexplained_effect).toBe(String(-0.38 * YI));
   });
 });
