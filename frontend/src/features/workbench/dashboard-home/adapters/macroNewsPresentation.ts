@@ -156,17 +156,22 @@ function extractTitleFromPayloadJson(payloadJson: string | null | undefined): st
   }
 }
 
+function trimLeadingNewsSeparator(text: string): string {
+  return text.replace(/^[\s—-]+/, "").trim();
+}
+
 export function summarizeMacroNewsEvent(event: ChoiceNewsEvent): string {
   const jsonTitle = extractTitleFromPayloadJson(event.payload_json);
   const payloadText = stripHtmlTags(event.payload_text?.trim() ?? "");
   if (jsonTitle) {
-    return jsonTitle;
+    return trimLeadingNewsSeparator(jsonTitle);
   }
   if (!payloadText) {
     return "";
   }
-  const headline = payloadText.split(" — ")[0]?.trim() ?? payloadText;
-  return stripHtmlTags(headline);
+  const normalizedPayload = trimLeadingNewsSeparator(payloadText);
+  const headline = normalizedPayload.split(" — ")[0]?.trim() ?? normalizedPayload;
+  return trimLeadingNewsSeparator(stripHtmlTags(headline));
 }
 
 export function shouldIncludeMacroNewsEvent(

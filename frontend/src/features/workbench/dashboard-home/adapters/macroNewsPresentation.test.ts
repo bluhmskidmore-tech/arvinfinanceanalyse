@@ -73,6 +73,19 @@ describe("macroNewsPresentation", () => {
     ).toBe(true);
   });
 
+  it("removes leading separators from tushare market flash titles", () => {
+    const title = summarizeMacroNewsEvent(
+      event({
+        event_key: "market-flash-1",
+        received_at: "2026-06-01T08:19:56+00:00",
+        topic_code: "tushare.news.sina",
+        payload_text: " — 【高盛上调2026年底铜价预测】高盛周一将铜价预测上调",
+      }),
+    );
+
+    expect(title).toBe("【高盛上调2026年底铜价预测】高盛周一将铜价预测上调");
+  });
+
   it("keeps only policy and funding news when requested", () => {
     expect(isPolicyFundingRelevantForHomeBriefing("央行公开市场净投放保持平稳")).toBe(true);
     expect(isPolicyFundingRelevantForHomeBriefing("国际油价直线拉升")).toBe(false);
