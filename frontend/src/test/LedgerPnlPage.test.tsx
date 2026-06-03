@@ -1434,6 +1434,17 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("币种合计一致");
     expect(panel).toHaveTextContent("科目汇总差异 10.00 亿元");
     expect(panel).toHaveTextContent("未解释残差 20.00 亿元");
+    expect(panel).toHaveTextContent("残差诊断表");
+    expect(panel).toHaveTextContent("卡点层级");
+    expect(panel).toHaveTextContent("总账金额");
+    expect(panel).toHaveTextContent("对账金额");
+    expect(panel).toHaveTextContent("差异金额");
+    expect(panel).toHaveTextContent("诊断判断");
+    expect(panel).toHaveTextContent("需要补的证据");
+    expect(panel).toHaveTextContent("币种层闭合");
+    expect(panel).toHaveTextContent("科目层残差 10.00 亿元");
+    expect(panel).toHaveTextContent("明细层残差 20.00 亿元");
+    expect(panel).toHaveTextContent("补明细或确认过滤口径");
     expect(panel).toHaveTextContent("利息收支");
     expect(panel).toHaveTextContent("估值变动");
     expect(panel).toHaveTextContent("衍生品/套保");
