@@ -4,6 +4,7 @@ import {
   ArrowUpOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  CopyOutlined,
   DatabaseOutlined,
   ExclamationCircleOutlined,
   InfoCircleOutlined,
@@ -2080,13 +2081,34 @@ function CrisisCommodityClosurePanel({
 }
 
 function CrisisCommodityShadowDecisionPanel({ coverage }: { coverage: CrisisCommodityCoverage }) {
+  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
+  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
+  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
+  const auditPackCopyText = buildCommodityPromotionAuditPackCopyText(promotionItems, {
+    manualCount,
+    rejectedCount,
+  });
+  const [auditPackCopyStatus, setAuditPackCopyStatus] = useState<"idle" | "success" | "error">("idle");
+  const handleCopyAuditPack = useCallback(async () => {
+    const clipboard =
+      (typeof navigator === "undefined" ? undefined : navigator.clipboard) ??
+      (typeof window === "undefined" ? undefined : window.navigator.clipboard);
+    const writeText = clipboard?.writeText;
+    if (typeof writeText !== "function") {
+      setAuditPackCopyStatus("error");
+      return;
+    }
+    try {
+      await writeText(auditPackCopyText);
+      setAuditPackCopyStatus("success");
+    } catch {
+      setAuditPackCopyStatus("error");
+    }
+  }, [auditPackCopyText]);
   const summary = coverage.candidate_summary;
   if (!summary) {
     return null;
   }
-  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
-  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
-  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
   const reviewableCount = summary.shadow_evaluation_ready_count;
   const shortCount = summary.shadow_evaluation_short_count;
   const totalCount = coverage.tracked_count || coverage.items.length;
@@ -2153,6 +2175,38 @@ function CrisisCommodityShadowDecisionPanel({ coverage }: { coverage: CrisisComm
           <small>
             相关性阈值 |corr|&gt;={MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过
           </small>
+          <div className="macro-toolkit-crisis-promotion-rule-pack__actions">
+            <Button
+              aria-label="复制审计包"
+              icon={<CopyOutlined aria-hidden="true" />}
+              size="small"
+              type="default"
+              onClick={() => void handleCopyAuditPack()}
+            >
+              {auditPackCopyStatus === "success"
+                ? "已复制"
+                : auditPackCopyStatus === "error"
+                  ? "复制失败"
+                  : "复制审计包"}
+            </Button>
+            {auditPackCopyStatus !== "idle" ? (
+              <span
+                aria-atomic="true"
+                aria-label="审计包复制状态"
+                aria-live="polite"
+                className={`macro-toolkit-crisis-promotion-rule-pack__copy-status macro-toolkit-crisis-promotion-rule-pack__copy-status--${auditPackCopyStatus}`}
+                role="status"
+              >
+                {auditPackCopyStatus === "success" ? "审计包已复制" : "复制失败，请手动选择审计包文本"}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="macro-toolkit-crisis-promotion-rule-pack__audit" aria-label="shadow_rule_v1 审计注记">
+          <strong>{MACRO_COMMODITY_SHADOW_RULE_VERSION} 审计注记</strong>
+          <small>用途：商品候选进入公式前的影子复核</small>
+          <small>边界：不写入 Crisis Score，不改变权重</small>
+          <small>审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交</small>
         </div>
         <div className="macro-toolkit-crisis-promotion-rule-pack__grid">
           {promotionItems.map((item) => (
@@ -3556,6 +3610,32 @@ function commodityPromotionRuleCheckStatusLabel(status: CommodityPromotionRuleSt
     return "待人工判断";
   }
   return "未通过";
+}
+
+function buildCommodityPromotionAuditPackCopyText(
+  promotionItems: CommodityPromotionRuleItem[],
+  counts: { manualCount: number; rejectedCount: number },
+) {
+  return [
+    "Crisis Score 商品候选审计包",
+    `规则版本 ${MACRO_COMMODITY_SHADOW_RULE_VERSION}`,
+    "用途：商品候选进入公式前的影子复核",
+    "边界：不写入 Crisis Score，不改变权重",
+    "审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交",
+    `准入检查：样本>=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} / 危机样本>=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} / 相关性可读 / 命中率可读`,
+    `样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本`,
+    `危机样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本`,
+    `相关性阈值 |corr|>=${MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过`,
+    `待人工判断 ${counts.manualCount}`,
+    `不建议进入公式 ${counts.rejectedCount}`,
+    ...promotionItems.flatMap((item) => [
+      `${item.label} · ${commodityPromotionRuleStatusLabel(item.status)} · ${item.reason}`,
+      ...item.checks.map(
+        (check) =>
+          `${item.label} · ${check.name} ${commodityPromotionRuleCheckStatusLabel(check.status)} ${check.value}`,
+      ),
+    ]),
+  ].join("\n");
 }
 
 function commodityShadowStatusColor(status: string | null | undefined) {

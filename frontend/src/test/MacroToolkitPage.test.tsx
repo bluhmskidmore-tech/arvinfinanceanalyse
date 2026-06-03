@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import { ApiClientProvider } from "../api/clientContext";
@@ -832,6 +832,11 @@ describe("MacroToolkitPage", () => {
     expect(promotionRulePack).toHaveTextContent("样本阈值 >=20 个重叠样本");
     expect(promotionRulePack).toHaveTextContent("危机样本阈值 >=5 个高 Crisis Score 样本");
     expect(promotionRulePack).toHaveTextContent("相关性阈值 |corr|>=0.20 才可直接通过");
+    const auditNote = within(promotionRulePack).getByLabelText("shadow_rule_v1 审计注记");
+    expect(auditNote).toHaveTextContent("shadow_rule_v1 审计注记");
+    expect(auditNote).toHaveTextContent("用途：商品候选进入公式前的影子复核");
+    expect(auditNote).toHaveTextContent("边界：不写入 Crisis Score，不改变权重");
+    expect(auditNote).toHaveTextContent("审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交");
     expect(promotionRulePack).toHaveTextContent("Copper futures");
     expect(promotionRulePack).toHaveTextContent("待人工判断");
     expect(promotionRulePack).toHaveTextContent("相关性偏弱，需人工复核");
@@ -866,6 +871,59 @@ describe("MacroToolkitPage", () => {
     expect(commodityPanel).toHaveTextContent("商品期货预估完成：4 个品种，88 行");
     expect(crisisEvidence).toHaveTextContent("最低样本 20");
     expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
+  });
+
+  it("copies the commodity promotion rule audit pack from the full evidence panel", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const originalWindowClipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    try {
+      renderWorkbenchApp(["/macro-toolkit"]);
+
+      const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+      const promotionRulePack = within(crisisEvidence).getByLabelText("候选商品转正规则包");
+      const copyButton = within(promotionRulePack).getByRole("button", { name: "复制审计包" });
+      expect(copyButton).toBeEnabled();
+
+      fireEvent.click(copyButton);
+
+      expect(promotionRulePack).not.toHaveTextContent("复制失败");
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Crisis Score 商品候选审计包")),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("规则版本 shadow_rule_v1"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("用途：商品候选进入公式前的影子复核"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("边界：不写入 Crisis Score，不改变权重"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 待人工判断 · 相关性偏弱，需人工复核"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 样本检查 通过 41/20"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 相关性检查 待人工判断 0.00"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Rebar futures · 不建议进入公式 · 样本不足，先补齐历史数据"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Rebar futures · 危机样本检查 未通过 缺失/5"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不建议进入公式 4"));
+      await waitFor(() => expect(promotionRulePack).toHaveTextContent("审计包已复制"));
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+      if (originalWindowClipboard) {
+        Object.defineProperty(window.navigator, "clipboard", originalWindowClipboard);
+      } else {
+        Reflect.deleteProperty(window.navigator, "clipboard");
+      }
+    }
   });
 
   it("prefetches full analysis after the core screen without revealing evidence early", async () => {
