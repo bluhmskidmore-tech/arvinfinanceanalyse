@@ -44,6 +44,48 @@ function requireClosestElement<T extends Element>(element: T | null, label: stri
   return element;
 }
 
+function withCrisisScoreInputEvidence(
+  envelope: MacroToolkitAnalysisEnvelope,
+  inputs: MacroToolkitInputEvidenceFixture[],
+  warnings: string[],
+) {
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      capability_results: envelope.result.capability_results.map((result) => {
+        if (result.key !== "crisis_score_cn") {
+          return result;
+        }
+        const rawInputEvidence =
+          result.result.input_evidence && typeof result.result.input_evidence === "object"
+            ? result.result.input_evidence
+            : {};
+        return {
+          ...result,
+          status: warnings.length ? ("degraded" as const) : result.status,
+          warnings,
+          input_evidence: result.input_evidence
+            ? {
+                ...result.input_evidence,
+                inputs,
+                missing_inputs: warnings,
+              }
+            : result.input_evidence,
+          result: {
+            ...result.result,
+            input_evidence: {
+              ...rawInputEvidence,
+              inputs,
+              missing_inputs: warnings,
+            },
+          },
+        };
+      }),
+    },
+  };
+}
+
 describe("MacroToolkitPage", () => {
   it("keeps the macro toolkit page off the monolithic API client entrypoint", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
@@ -918,7 +960,7 @@ describe("MacroToolkitPage", () => {
 
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     const commodityInputTile = requireClosestElement(
-      within(crisisEvidence).getByText("商品期货输入").closest(".macro-toolkit-metric"),
+      within(crisisEvidence).getAllByText("商品期货输入")[0]?.closest(".macro-toolkit-metric") ?? null,
       "commodity input tile",
     );
     expect(commodityInputTile).toHaveTextContent("Nanhua commodity index");
@@ -1160,7 +1202,7 @@ describe("MacroToolkitPage", () => {
 
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
-    await user.click(within(gapList).getByRole("button", { name: "按建议预估" }));
+    await user.click(within(gapList).getAllByRole("button", { name: "按建议预估" })[0]!);
     expect(refreshCalls[0]).toEqual({
       endDate: "2026-04-30",
       products: ["RB", "I", "AL", "AU"],
@@ -1184,6 +1226,140 @@ describe("MacroToolkitPage", () => {
     expect(gapList).toHaveTextContent("NANHUA_MISSING");
     const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
     expect(repairFeedback).toHaveTextContent("已补齐，完整分析已重读");
+  });
+
+  it("keeps source gap feedback partial when full analysis still reports same-group missing inputs", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const crisisResult = analysisEnvelope.result.capability_results.find((result) => result.key === "crisis_score_cn");
+    if (!crisisResult) {
+      throw new Error("Missing Crisis Score fixture");
+    }
+    const sourceBackfillCalls: Array<Parameters<ApiClient["refreshMacroSourceBackfill"]>[0]> = [];
+    const ncdInput: MacroToolkitInputEvidenceFixture = {
+      field: "ncd_3m",
+      label: "3M NCD",
+      aliases: ["M0041813"],
+      warning: "NCD_3M_MISSING",
+      required: true,
+      available: false,
+      row_count: 0,
+      latest_date: null,
+      series_id: "NCD.SHIBOR.3M",
+      source: null,
+      value: null,
+    };
+    const shiborInput: MacroToolkitInputEvidenceFixture = {
+      field: "shibor_1m",
+      label: "1M SHIBOR",
+      aliases: ["M0041813"],
+      warning: "SHIBOR_1M_MISSING",
+      required: true,
+      available: false,
+      row_count: 0,
+      latest_date: null,
+      series_id: "SHIBOR.1M",
+      source: null,
+      value: null,
+    };
+    const initialEnvelope = withCrisisScoreInputEvidence(analysisEnvelope, [
+      ...requireInputEvidenceInputs(crisisResult),
+      ncdInput,
+      shiborInput,
+    ], ["NCD_3M_MISSING", "SHIBOR_1M_MISSING"]);
+    const partialEnvelope = withCrisisScoreInputEvidence(analysisEnvelope, [
+      ...requireInputEvidenceInputs(crisisResult),
+      shiborInput,
+    ], ["SHIBOR_1M_MISSING"]);
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => (sourceBackfillCalls.length ? partialEnvelope : initialEnvelope),
+      refreshMacroSourceBackfill: async (options) => {
+        sourceBackfillCalls.push(options);
+        return baseClient.refreshMacroSourceBackfill(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    await user.click(within(gapList).getByRole("button", { name: "需要补齐来源数据" }));
+
+    const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
+    expect(repairFeedback).toHaveTextContent("完整分析已重读，仍有缺口");
+    expect(repairFeedback).toHaveTextContent("SHIBOR_1M_MISSING");
+    await waitFor(() => expect(gapList).not.toHaveTextContent("NCD_3M_MISSING"));
+    expect(gapList).toHaveTextContent("SHIBOR_1M_MISSING");
+  });
+
+  it("keeps source gap failure feedback inside the Crisis Score gap list", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const crisisResult = analysisEnvelope.result.capability_results.find((result) => result.key === "crisis_score_cn");
+    if (!crisisResult) {
+      throw new Error("Missing Crisis Score fixture");
+    }
+    const ncdInput: MacroToolkitInputEvidenceFixture = {
+      field: "ncd_3m",
+      label: "3M NCD",
+      aliases: ["M0041813"],
+      warning: "NCD_3M_MISSING",
+      required: true,
+      available: false,
+      row_count: 0,
+      latest_date: null,
+      series_id: "NCD.SHIBOR.3M",
+      source: null,
+      value: null,
+    };
+    const envelopeWithSourceGap = withCrisisScoreInputEvidence(analysisEnvelope, [
+      ...requireInputEvidenceInputs(crisisResult),
+      ncdInput,
+    ], ["NCD_3M_MISSING"]);
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => envelopeWithSourceGap,
+      refreshMacroSourceBackfill: async () => {
+        throw new Error("source backfill unavailable");
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    await user.click(within(gapList).getByRole("button", { name: "需要补齐来源数据" }));
+
+    const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
+    expect(repairFeedback).toHaveTextContent("补齐失败，缺口仍需处理");
+    expect(repairFeedback).toHaveTextContent("source backfill unavailable");
+    expect(gapList).toHaveTextContent("NCD_3M_MISSING");
+  });
+
+  it("labels commodity preview failures as estimates in the Crisis Score gap list", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => analysisEnvelope,
+      refreshCommodityFutures: async () => {
+        throw new Error("commodity preview unavailable");
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    await user.click(within(gapList).getAllByRole("button", { name: "按建议预估" })[0]!);
+
+    const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
+    expect(repairFeedback).toHaveTextContent("预估失败，缺口仍需处理");
+    expect(repairFeedback).toHaveTextContent("commodity preview unavailable");
   });
 
   it("previews Crisis Score suggested commodity futures from the evidence panel", async () => {
@@ -1281,7 +1457,7 @@ describe("MacroToolkitPage", () => {
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("建议刷新品种：RB / I / AL / AU");
 
-    await user.click(within(crisisEvidence).getByRole("button", { name: "按建议预估" }));
+    await user.click(within(crisisEvidence).getAllByRole("button", { name: "按建议预估" })[0]!);
 
     expect(refreshCalls).toHaveLength(1);
     expect(refreshCalls[0]).toEqual({
@@ -1358,7 +1534,18 @@ describe("MacroToolkitPage", () => {
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
-    await user.click(within(crisisEvidence).getByRole("button", { name: "按建议预估" }));
+    const gapSummaryTile = requireClosestElement(
+      within(crisisEvidence).getByText("缺口提示").closest(".macro-toolkit-metric"),
+      "gap summary tile",
+    );
+    expect(gapSummaryTile).toHaveTextContent("4");
+    expect(gapSummaryTile.querySelector("small")).toHaveAttribute(
+      "title",
+      expect.stringContaining("COMMODITY_SAMPLE_SHORT"),
+    );
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    expect(gapList).toHaveTextContent("COMMODITY_SAMPLE_SHORT");
+    await user.click(within(crisisEvidence).getAllByRole("button", { name: "按建议预估" })[0]!);
 
     const commodityPanel = await screen.findByLabelText("商品期货刷新");
     expect(commodityPanel).toHaveTextContent("商品期货预估完成：4 个品种，4 行");
@@ -1580,6 +1767,7 @@ describe("MacroToolkitPage", () => {
     expect(dryRunResult).toHaveTextContent("NHCI / NH0100.NHF");
     expect(dryRunResult).toHaveTextContent("fact_commodity_futures_daily");
     expect(calls.filter((item) => item?.detail === "full")).toHaveLength(0);
+    expect(screen.queryByTestId("crisis-gap-repair-feedback")).not.toBeInTheDocument();
 
     await user.click(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ }));
 
@@ -1604,6 +1792,10 @@ describe("MacroToolkitPage", () => {
     expect(completedResult).toHaveTextContent("2026-04-30");
     expect(completedResult).toHaveTextContent("3187.42");
     await waitFor(() => expect(calls).toContainEqual({ detail: "full" }));
+    const repairFeedback = screen.queryByTestId("crisis-gap-repair-feedback");
+    if (repairFeedback) {
+      expect(repairFeedback).not.toHaveTextContent("正在刷新并重读完整分析");
+    }
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
     expect(crisisEvidence).toHaveTextContent("Nanhua commodity index");
     expect(crisisEvidence).toHaveTextContent("NH0100.NHF");
@@ -1850,11 +2042,12 @@ describe("MacroToolkitPage", () => {
 
     expect(refreshCalls).toHaveLength(1);
     expect(
-      await screen.findByText(/当前账号没有商品期货刷新权限/, {}, { timeout: 5_000 }),
-    ).toBeInTheDocument();
+      (await within(commodityPanel).findAllByText(/当前账号没有商品期货刷新权限/, {}, { timeout: 5_000 })).length,
+    ).toBeGreaterThan(0);
     expect(
-      await screen.findByText(/macro_toolkit\.commodity_futures:refresh/, {}, { timeout: 5_000 }),
-    ).toBeInTheDocument();
+      (await within(commodityPanel).findAllByText(/macro_toolkit\.commodity_futures:refresh/, {}, { timeout: 5_000 }))
+        .length,
+    ).toBeGreaterThan(0);
   });
 
   it("does not trigger source backfill for unsupported aliases even when action is enabled", async () => {

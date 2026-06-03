@@ -398,10 +398,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     [client],
   );
 
-  const clearFullAnalysisCache = useCallback(async () => {
+  const clearFullAnalysisCache = useCallback(async (options?: { preserveCrisisGapRepairFeedback?: boolean }) => {
     setFullAnalysisEnvelope(null);
     setFullAnalysisError(null);
-    setCrisisGapRepairFeedback(null);
+    if (!options?.preserveCrisisGapRepairFeedback) {
+      setCrisisGapRepairFeedback(null);
+    }
     await queryClient.cancelQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
     queryClient.removeQueries({ queryKey: MACRO_TOOLKIT_FULL_ANALYSIS_QUERY_KEY });
   }, [queryClient]);
@@ -556,7 +558,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   }, [fetchFullAnalysis, queryClient]);
 
   const refreshMacroSourceBackfill = useCallback(
-    async (item: MacroToolkitRepairItem) => {
+    async (item: MacroToolkitRepairItem, gapGroup?: CrisisGapGroup) => {
       const alias = normalizeMacroSourceBackfillAlias(item.alias);
       if (!alias || !canRefreshMacroSourceBackfill(item)) {
         return;
@@ -564,6 +566,15 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setRefreshingSourceAlias(alias);
       setSourceBackfillError(null);
       setSourceBackfillResult(null);
+      if (gapGroup) {
+        setCrisisGapRepairFeedback({
+          groupKey: gapGroup.key,
+          groupLabel: gapGroup.label,
+          status: "pending",
+          message: "正在补齐并重读完整分析",
+          detail: item.action?.label ?? alias,
+        });
+      }
       try {
         const response = await client.refreshMacroSourceBackfill({
           alias,
@@ -571,11 +582,25 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           sources: undefined,
         });
         const refresh = response.result.refresh;
-        setSourceBackfillResult(`来源补齐完成：${refresh.alias} 新增 ${refresh.total_added} 行`);
-        await clearFullAnalysisCache();
-        await loadFullAnalysis();
+        const resultMessage = `来源补齐完成：${refresh.alias} 新增 ${refresh.total_added} 行`;
+        setSourceBackfillResult(resultMessage);
+        await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: Boolean(gapGroup) });
+        const reloaded = await loadFullAnalysis();
+        if (gapGroup) {
+          setCrisisGapRepairFeedback(buildCrisisGapRepairFeedback(gapGroup, reloaded, resultMessage));
+        }
       } catch (error) {
-        setSourceBackfillError(error instanceof Error ? error.message : "来源补齐失败");
+        const errorMessage = error instanceof Error ? error.message : "来源补齐失败";
+        setSourceBackfillError(errorMessage);
+        if (gapGroup) {
+          setCrisisGapRepairFeedback({
+            groupKey: gapGroup.key,
+            groupLabel: gapGroup.label,
+            status: "failed",
+            message: "补齐失败，缺口仍需处理",
+            detail: errorMessage,
+          });
+        }
       } finally {
         setRefreshingSourceAlias(null);
       }
@@ -700,6 +725,16 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     setCommodityShortfallEstimates([]);
     const shouldReloadFullAnalysis = !dryRun && !isCoreAnalysis;
     const shortfallsBeforeRefresh = crisisCommodityShortItemsFromResult(crisisScoreResult);
+    const commodityGapGroup = crisisGapGroupFromResult(crisisScoreResult, "commodity");
+    if (shouldReloadFullAnalysis && commodityGapGroup) {
+      setCrisisGapRepairFeedback({
+        groupKey: commodityGapGroup.key,
+        groupLabel: commodityGapGroup.label,
+        status: "pending",
+        message: "正在刷新并重读完整分析",
+        detail: formatCommodityProducts(products),
+      });
+    }
     try {
       const response = await client.refreshCommodityFutures({
         endDate: analysis?.as_of_date ?? undefined,
@@ -713,7 +748,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         setCommodityShortfallEstimates(formatCommodityShortfallEstimates(shortfallsBeforeRefresh, refresh));
         return;
       }
-      await clearFullAnalysisCache();
+      await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: shouldReloadFullAnalysis && Boolean(commodityGapGroup) });
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       if (shouldReloadFullAnalysis) {
         setCommodityEvidenceReloadMessage("正在重新读取完整分析证据");
@@ -722,16 +757,31 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         setCommodityShortfallChanges(
           formatCommodityShortfallChanges(shortfallsBeforeRefresh, shortfallsAfterRefresh),
         );
+        if (commodityGapGroup) {
+          setCrisisGapRepairFeedback(
+            buildCrisisGapRepairFeedback(commodityGapGroup, reloaded, formatCommodityRefreshResult(refresh)),
+          );
+        }
         setCommodityEvidenceReloadMessage(
           reloaded ? "完整分析证据已重新读取" : "完整分析证据重新读取失败，请重新完整分析",
         );
       }
     } catch (error) {
-      setCommodityRefreshError(formatCommodityFuturesRefreshError(error));
+      const errorMessage = formatCommodityFuturesRefreshError(error);
+      setCommodityRefreshError(errorMessage);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
       setCommodityShortfallChanges([]);
       setCommodityShortfallEstimates([]);
+      if (commodityGapGroup) {
+        setCrisisGapRepairFeedback({
+          groupKey: commodityGapGroup.key,
+          groupLabel: commodityGapGroup.label,
+          status: "failed",
+          message: dryRun ? "预估失败，缺口仍需处理" : "刷新失败，缺口仍需处理",
+          detail: errorMessage,
+        });
+      }
     } finally {
       setIsRefreshingCommodity(false);
     }
@@ -1220,10 +1270,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               refreshingSourceAlias={refreshingSourceAlias}
               commodityRefreshResult={commodityRefreshResult}
               commodityShortfallEstimates={commodityShortfallEstimates}
+              repairFeedback={crisisGapRepairFeedback}
               sourceBackfillResult={sourceBackfillResult}
               sourceBackfillError={sourceBackfillError}
-              onRepairSourceBackfill={(item) => {
-                void refreshMacroSourceBackfill(item);
+              onRepairSourceBackfill={(item, group) => {
+                void refreshMacroSourceBackfill(item, group);
               }}
               onApplyCommodityRefreshProducts={(products) => {
                 setSelectedCommodityProducts(products);
@@ -1446,7 +1497,6 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 eyebrow="toolkit"
                 title="宏观工具"
                 description="迁移脚本是否已经能在系统 Choice/Tushare 数据源上直接运行？"
-                style={{ marginTop: 0 }}
               />
               <Button
                 icon={<ReloadOutlined />}
@@ -1884,7 +1934,7 @@ function CrisisGapAction({
   sourceBackfillResult: string | null;
   sourceBackfillError: string | null;
   onPreviewCommodityRefreshProducts?: (products: string[]) => void;
-  onRepairSourceBackfill?: (item: MacroToolkitRepairItem) => void;
+  onRepairSourceBackfill?: (item: MacroToolkitRepairItem, group: CrisisGapGroup) => void;
 }) {
   if (group.key === "commodity" && commodityRefreshProducts.length && onPreviewCommodityRefreshProducts) {
     return (
@@ -1918,12 +1968,25 @@ function CrisisGapAction({
         icon={<ReloadOutlined />}
         loading={refreshingSourceAlias === alias}
         aria-label={repairItem.action?.label ?? "需要补齐来源数据"}
-        onClick={() => onRepairSourceBackfill(repairItem)}
+        onClick={() => onRepairSourceBackfill(repairItem, group)}
       >
         {repairItem.action?.label ?? "需要补齐来源数据"}
       </Button>
       {sourceBackfillResult ? <small>{sourceBackfillResult}</small> : null}
       {sourceBackfillError ? <small>{sourceBackfillError}</small> : null}
+    </div>
+  );
+}
+
+function CrisisGapRepairFeedback({ feedback }: { feedback: CrisisGapRepairFeedback }) {
+  return (
+    <div
+      className={`macro-toolkit-crisis-gap-feedback macro-toolkit-crisis-gap-feedback--${feedback.status}`}
+      data-testid="crisis-gap-repair-feedback"
+    >
+      <span>{feedback.groupLabel}</span>
+      <strong>{feedback.message}</strong>
+      <small>{feedback.detail}</small>
     </div>
   );
 }
@@ -2050,6 +2113,7 @@ function CrisisScoreEvidencePanel({
   refreshingSourceAlias = null,
   commodityRefreshResult = null,
   commodityShortfallEstimates = [],
+  repairFeedback = null,
   sourceBackfillResult = null,
   sourceBackfillError = null,
   onRepairSourceBackfill,
@@ -2061,9 +2125,10 @@ function CrisisScoreEvidencePanel({
   refreshingSourceAlias?: string | null;
   commodityRefreshResult?: string | null;
   commodityShortfallEstimates?: CommodityShortfallEstimate[];
+  repairFeedback?: CrisisGapRepairFeedback | null;
   sourceBackfillResult?: string | null;
   sourceBackfillError?: string | null;
-  onRepairSourceBackfill?: (item: MacroToolkitRepairItem) => void;
+  onRepairSourceBackfill?: (item: MacroToolkitRepairItem, group: CrisisGapGroup) => void;
   onApplyCommodityRefreshProducts?: (products: string[]) => void;
   onPreviewCommodityRefreshProducts?: (products: string[]) => void;
 }) {
@@ -2083,7 +2148,9 @@ function CrisisScoreEvidencePanel({
     : [];
   const commodityShortRefreshHint = formatCommodityShadowRefreshHint(commodityShortRefreshProducts);
   const warnings = uniqueDisplayParts([...result.warnings, ...(normalizedEvidence?.missingInputs ?? [])]);
-  const crisisGapGroups = buildCrisisGapGroups(inputEvidence, warnings);
+  const crisisGapGroups = buildCrisisGapGroups(inputEvidence, warnings, commodityCoverage);
+  const crisisGapCount = crisisGapGroups.reduce((total, group) => total + group.items.length, 0);
+  const crisisGapDetail = formatCrisisGapSummaryDetail(crisisGapGroups);
 
   return (
     <section
@@ -2115,9 +2182,9 @@ function CrisisScoreEvidencePanel({
         <MetricTile
           icon={<WarningOutlined />}
           label="缺口提示"
-          value={warnings.length}
-          detail={warnings.join(" / ") || "无缺失输入"}
-          tone={warnings.length ? "neutral" : "positive"}
+          value={crisisGapCount}
+          detail={crisisGapDetail}
+          tone={crisisGapCount ? "neutral" : "positive"}
         />
       </div>
 
@@ -2127,6 +2194,7 @@ function CrisisScoreEvidencePanel({
             <strong>Crisis Score 缺口清单</strong>
             <small>缺失不按 0 处理；补齐后重新运行完整分析确认分数。</small>
           </div>
+          {repairFeedback ? <CrisisGapRepairFeedback feedback={repairFeedback} /> : null}
           <div className="macro-toolkit-crisis-gap-list__grid">
             {crisisGapGroups.map((group) => (
               <div className="macro-toolkit-crisis-gap-group" key={group.key}>
@@ -2240,17 +2308,6 @@ function CrisisScoreEvidencePanel({
                       onClick={() => onApplyCommodityRefreshProducts(commodityShortRefreshProducts)}
                     >
                       按建议选择
-                    </Button>
-                  ) : null}
-                  {onPreviewCommodityRefreshProducts ? (
-                    <Button
-                      size="small"
-                      type="primary"
-                      icon={<InfoCircleOutlined />}
-                      aria-label="按建议预估"
-                      onClick={() => onPreviewCommodityRefreshProducts(commodityShortRefreshProducts)}
-                    >
-                      按建议预估
                     </Button>
                   ) : null}
                 </div>
@@ -3274,6 +3331,10 @@ function formatCommodityShadowRefreshHint(products: string[]) {
   return products.length ? `建议刷新品种：${products.join(" / ")}` : "";
 }
 
+function formatCommodityProducts(products: string[]) {
+  return products.length ? `品种 ${products.join(" / ")}` : "品种待选择";
+}
+
 function formatSignedDecimal(value: number | null | undefined) {
   return typeof value === "number" ? value.toFixed(2) : "缺失";
 }
@@ -3291,7 +3352,11 @@ function uniqueDisplayParts(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
 
-function buildCrisisGapGroups(inputEvidence: MacroToolkitInputEvidenceItem[], warnings: string[]): CrisisGapGroup[] {
+function buildCrisisGapGroups(
+  inputEvidence: MacroToolkitInputEvidenceItem[],
+  warnings: string[],
+  commodityCoverage?: CrisisCommodityCoverage | null,
+): CrisisGapGroup[] {
   const warningSet = new Set(warnings);
   const itemsByGroup = new Map<CrisisGapGroupKey, CrisisGapItem[]>();
   const pushItem = (groupKey: CrisisGapGroupKey, item: CrisisGapItem) => {
@@ -3326,9 +3391,84 @@ function buildCrisisGapGroups(inputEvidence: MacroToolkitInputEvidenceItem[], wa
     });
   }
 
+  for (const item of commodityCoverage?.candidate_summary?.shadow_evaluation_short_items ?? []) {
+    pushItem("commodity", {
+      label: item.label || item.field,
+      warning: "COMMODITY_SAMPLE_SHORT",
+      detail: formatCommodityShortfallGapDetail(item),
+      identifiers: uniqueDisplayParts([item.field, item.label, "COMMODITY_SAMPLE_SHORT"]),
+    });
+  }
+
   return (["equity", "liquidity", "commodity", "curve_credit", "fx", "other"] as CrisisGapGroupKey[])
     .map((key) => ({ key, label: CRISIS_GAP_GROUP_LABELS[key], items: itemsByGroup.get(key) ?? [] }))
     .filter((group) => group.items.length);
+}
+
+function formatCrisisGapSummaryDetail(groups: CrisisGapGroup[]) {
+  if (!groups.length) {
+    return "无缺失输入";
+  }
+  return groups
+    .map((group) => `${group.label}: ${uniqueDisplayParts(group.items.map((item) => item.warning)).join(" / ")}`)
+    .join("；");
+}
+
+function buildCrisisGapRepairFeedback(
+  previousGroup: CrisisGapGroup,
+  envelope: ApiEnvelope<MacroToolkitAnalysisPayload> | null,
+  actionMessage: string,
+): CrisisGapRepairFeedback {
+  if (!envelope) {
+    return {
+      groupKey: previousGroup.key,
+      groupLabel: previousGroup.label,
+      status: "failed",
+      message: "完整分析重读失败",
+      detail: actionMessage,
+    };
+  }
+  const currentGroup = crisisGapGroupFromEnvelope(envelope, previousGroup.key);
+  if (!currentGroup) {
+    return {
+      groupKey: previousGroup.key,
+      groupLabel: previousGroup.label,
+      status: "resolved",
+      message: "已补齐，完整分析已重读",
+      detail: actionMessage,
+    };
+  }
+  return {
+    groupKey: previousGroup.key,
+    groupLabel: previousGroup.label,
+    status: "partial",
+    message: "完整分析已重读，仍有缺口",
+    detail: currentGroup.items.map((item) => item.warning).join(" / ") || actionMessage,
+  };
+}
+
+function crisisGapGroupFromEnvelope(
+  envelope: ApiEnvelope<MacroToolkitAnalysisPayload>,
+  groupKey: CrisisGapGroupKey,
+) {
+  const result = envelope.result.capability_results.find((item) => item.key === "crisis_score_cn");
+  return crisisGapGroupFromResult(result, groupKey);
+}
+
+function crisisGapGroupFromResult(
+  result: MacroToolkitCapabilityResult | null | undefined,
+  groupKey: CrisisGapGroupKey,
+) {
+  if (!result) {
+    return null;
+  }
+  const normalizedEvidence = normalizeInputEvidence(result);
+  const inputEvidence = normalizedEvidence?.inputs ?? [];
+  const warnings = uniqueDisplayParts([...(result.warnings ?? []), ...(normalizedEvidence?.missingInputs ?? [])]);
+  const commodityCoverage = normalizeCommodityCoverage(
+    (result as { commodity_coverage?: unknown }).commodity_coverage ?? result.result.commodity_coverage,
+  );
+  return buildCrisisGapGroups(inputEvidence, warnings, commodityCoverage).find((group) => group.key === groupKey) ?? null;
 }
 
 function crisisGapGroupKey(field: string, warning: string): CrisisGapGroupKey {
@@ -3360,6 +3500,16 @@ function crisisGapInputDetail(input: MacroToolkitInputEvidenceItem) {
 
 function crisisGapInputIdentifiers(input: MacroToolkitInputEvidenceItem) {
   return uniqueDisplayParts([input.field, input.warning, ...(input.aliases ?? []), input.series_id]);
+}
+
+function formatCommodityShortfallGapDetail(item: CrisisCommodityShadowShortItem) {
+  const sampleText =
+    item.sample_count == null || item.minimum_sample_count == null
+      ? "样本缺失"
+      : `${item.sample_count}/${item.minimum_sample_count}`;
+  const gapText = item.sample_gap == null ? "缺口待确认" : `还差 ${item.sample_gap}`;
+  const dateText = item.latest_date ? `最新 ${item.latest_date}` : "日期缺失";
+  return `${sampleText} · ${gapText} · ${dateText} · 缺失不按 0 处理`;
 }
 
 function findCrisisGapRepairItem(group: CrisisGapGroup, repairItems: MacroToolkitRepairItem[]) {
