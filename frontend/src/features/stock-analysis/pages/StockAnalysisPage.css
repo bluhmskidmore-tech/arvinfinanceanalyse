@@ -899,6 +899,10 @@
 .stock-analysis-page__consensus-first-list {
   display: grid;
   gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
 }
 
 .stock-analysis-page__consensus-first-row {
@@ -937,6 +941,12 @@
 .stock-analysis-page__consensus-first-badges {
   display: flex;
   flex-wrap: wrap;
+  gap: 4px;
+}
+
+[data-testid="stock-analysis-consensus-first-screen"] .stock-analysis-page__consensus-ranks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -1175,6 +1185,10 @@
 
   [data-testid="stock-analysis-first-screen-primary"] {
     order: 4;
+  }
+
+  [data-testid="stock-analysis-consensus-first-screen"] {
+    min-height: 0;
   }
 }
 
