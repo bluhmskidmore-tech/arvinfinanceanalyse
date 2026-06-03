@@ -223,6 +223,84 @@ export type MacroToolkitStrategySummary = {
   result: Record<string, unknown>;
 };
 
+export type MacroToolkitShadowPortfolioCostResult = {
+  cost_bps: number;
+  total_return?: number | null;
+  excess_return?: number | null;
+  max_drawdown?: number | null;
+  win_rate?: number | null;
+  net_return?: number | null;
+  cost?: number | null;
+};
+
+export type MacroToolkitShadowPortfolioHolding = {
+  rank?: number | null;
+  stock_code: string;
+  industry?: string | null;
+  score?: number | null;
+  pe?: number | null;
+  pb?: number | null;
+  three_month_return?: number | null;
+};
+
+export type MacroToolkitShadowPortfolioAdmission = {
+  status: string;
+  label: string;
+  summary: string;
+  criteria: Array<{
+    key: string;
+    passed: boolean;
+    actual?: string | number | boolean | null;
+    threshold?: string | number | boolean | null;
+  }>;
+};
+
+export type MacroToolkitShadowPortfolio = {
+  key: string;
+  label: string;
+  role: string;
+  total_return: number | null;
+  excess_return: number | null;
+  max_drawdown: number | null;
+  win_rate: number | null;
+  average_turnover: number | null;
+  average_traded_notional: number | null;
+  average_count: number | null;
+  average_pe: number | null;
+  average_pb: number | null;
+  weights: Record<string, number | null>;
+  constraints: Record<string, number | null>;
+  cost_results: MacroToolkitShadowPortfolioCostResult[];
+  latest_holdings: MacroToolkitShadowPortfolioHolding[];
+  admission?: MacroToolkitShadowPortfolioAdmission;
+};
+
+export type MacroToolkitShadowPortfolioReport = {
+  status: string;
+  basis: string;
+  label: string;
+  as_of_date: string | null;
+  completed_periods: number;
+  factor_dates: string[];
+  rule_version: string;
+  tables_used: string[];
+  warnings: string[];
+  cost_model: {
+    cost_bps: number[];
+    initial_build_included: boolean;
+    final_liquidation_included: boolean;
+    method: string;
+  };
+  benchmark: {
+    key: string;
+    label: string;
+    total_return: number | null;
+    max_drawdown: number | null;
+  } | null;
+  portfolios: MacroToolkitShadowPortfolio[];
+  period_returns: Array<Record<string, unknown>>;
+};
+
 export type MacroToolkitAShareRiskPayload = {
   trade_date: string | null;
   status: "complete" | "degraded" | "unavailable";
@@ -259,12 +337,19 @@ export type MacroToolkitAnalysisPayload = {
   a_share_risk?: MacroToolkitAShareRiskPayload;
   capability_results: MacroToolkitCapabilityResult[];
   strategy_summaries: MacroToolkitStrategySummary[];
+  shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
   output_files: MacroToolkitOutputFile[];
   source_checks: MacroToolkitSourceCheck[];
   capabilities: MacroToolkitCapability[];
   cffex_member_rank?: MacroToolkitPayload["cffex_member_rank"];
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   warnings: string[];
+};
+
+export type MacroToolkitStrategySummariesPayload = {
+  strategy_summaries: MacroToolkitStrategySummary[];
+  shadow_portfolio_report?: MacroToolkitShadowPortfolioReport;
+  choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
 };
 
 export type MacroToolkitRunResponse = {
@@ -284,6 +369,7 @@ export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
 
 export type MacroToolkitClientMethods = {
   getMacroToolkitAnalysis: () => Promise<ApiEnvelope<MacroToolkitAnalysisPayload>>;
+  getMacroToolkitStrategySummaries: () => Promise<ApiEnvelope<MacroToolkitStrategySummariesPayload>>;
   getMacroToolkitScripts: () => Promise<ApiEnvelope<MacroToolkitPayload>>;
   runMacroToolkitScript: (
     name: string,
@@ -596,6 +682,95 @@ const MOCK_CHOICE_STOCK_REFRESH: MacroToolkitChoiceStockRefreshStatus = {
   default_factor_max_stock_count: null,
 };
 
+const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
+  status: "complete",
+  basis: "read_only_shadow",
+  label: "Shadow portfolio report",
+  as_of_date: "2026-04-30",
+  completed_periods: 2,
+  factor_dates: ["2026-04-28", "2026-04-29", "2026-04-30"],
+  rule_version: "rv_macro_toolkit_shadow_portfolio_v1",
+  tables_used: ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+  warnings: ["READ_ONLY_SHADOW_NOT_PRODUCTION", "SHORT_HISTORY"],
+  cost_model: {
+    cost_bps: [0, 10, 20, 50],
+    initial_build_included: true,
+    final_liquidation_included: false,
+    method: "cost_bps_applied_to_abs_weight_delta",
+  },
+  benchmark: {
+    key: "equal_weight_factor_universe",
+    label: "Equal-weight factor universe",
+    total_return: 0.018,
+    max_drawdown: -0.004,
+  },
+  portfolios: [
+    {
+      key: "current_baseline",
+      label: "Current production rule",
+      role: "production_reference",
+      total_return: 0.019,
+      excess_return: 0.001,
+      max_drawdown: -0.003,
+      win_rate: 0.5,
+      average_turnover: 0.2,
+      average_traded_notional: 0.4,
+      average_count: 30,
+      average_pe: 24.2,
+      average_pb: 1.7,
+      weights: { value: 0.3, quality: 0.25, momentum: 0.15, low_vol: 0.15, dividend: 0.15 },
+      constraints: { pe_max: null, pb_max: null, turnover_cap: null, top_pct: 0.1, max_candidates: 30 },
+      cost_results: [
+        { cost_bps: 0, total_return: 0.019, excess_return: 0.001, max_drawdown: -0.003, win_rate: 0.5 },
+        { cost_bps: 20, total_return: 0.017, excess_return: -0.001, max_drawdown: -0.004, win_rate: 0.5 },
+      ],
+      latest_holdings: [],
+    },
+    {
+      key: "deep_value_quality_pe80",
+      label: "Deep value quality shadow",
+      role: "shadow_candidate",
+      total_return: 0.026,
+      excess_return: 0.008,
+      max_drawdown: -0.002,
+      win_rate: 1,
+      average_turnover: 0.18,
+      average_traded_notional: 0.35,
+      average_count: 30,
+      average_pe: 21.4,
+      average_pb: 1.5,
+      weights: { value: 0.45, quality: 0.25, momentum: 0.05, low_vol: 0.1, dividend: 0.15 },
+      constraints: { pe_max: 80, pb_max: null, turnover_cap: null, top_pct: 0.1, max_candidates: 30 },
+      cost_results: [
+        { cost_bps: 0, total_return: 0.026, excess_return: 0.008, max_drawdown: -0.002, win_rate: 1 },
+        { cost_bps: 20, total_return: 0.023, excess_return: 0.005, max_drawdown: -0.003, win_rate: 1 },
+        { cost_bps: 50, total_return: 0.02, excess_return: 0.002, max_drawdown: -0.004, win_rate: 0.5 },
+      ],
+      latest_holdings: [
+        {
+          rank: 1,
+          stock_code: "000001.SZ",
+          industry: "Technology",
+          score: 1.234,
+          pe: 18.5,
+          pb: 1.3,
+          three_month_return: 0.08,
+        },
+      ],
+      admission: {
+        status: "needs_review",
+        label: "Needs review",
+        summary: "Keep as shadow observation until validation is complete",
+        criteria: [
+          { key: "history_length", passed: false, actual: 2, threshold: ">=12" },
+          { key: "cost_20bps_outperformance", passed: true, actual: 0.005, threshold: "above reference" },
+        ],
+      },
+    },
+  ],
+  period_returns: [],
+};
+
 const MOCK_A_SHARE_RISK: MacroToolkitAShareRiskPayload = {
   trade_date: "2026-04-30",
   status: "degraded",
@@ -732,6 +907,7 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
   a_share_risk: MOCK_A_SHARE_RISK,
   capability_results: MOCK_CAPABILITY_RESULTS,
   strategy_summaries: MOCK_STRATEGY_SUMMARIES,
+  shadow_portfolio_report: MOCK_SHADOW_PORTFOLIO_REPORT,
   output_files: [],
   source_checks: [],
   capabilities: [],
@@ -888,6 +1064,25 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         cache_version: "none",
       });
     },
+    async getMacroToolkitStrategySummaries() {
+      return buildMockApiEnvelope(
+        "macro_toolkit.analysis.strategy_summaries",
+        {
+          strategy_summaries: MOCK_STRATEGY_SUMMARIES,
+          shadow_portfolio_report: MOCK_SHADOW_PORTFOLIO_REPORT,
+          choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_shadow_portfolio_v1",
+          cache_version: "none",
+          tables_used: ["choice_stock_daily_observation", "choice_stock_factor_snapshot"],
+        },
+      );
+    },
     async getMacroToolkitScripts() {
       return buildMockApiEnvelope("macro_toolkit.scripts", MOCK_PAYLOAD, {
         basis: "analytical",
@@ -982,6 +1177,12 @@ export function createRealMacroToolkitClient({
   return {
     getMacroToolkitAnalysis: () =>
       requestJson<MacroToolkitAnalysisPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/analysis"),
+    getMacroToolkitStrategySummaries: () =>
+      requestJson<MacroToolkitStrategySummariesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/analysis/strategy-summaries",
+      ),
     getMacroToolkitScripts: () =>
       requestJson<MacroToolkitPayload>(fetchImpl, baseUrl, "/ui/macro/toolkit/scripts"),
     runMacroToolkitScript: (name, options) =>

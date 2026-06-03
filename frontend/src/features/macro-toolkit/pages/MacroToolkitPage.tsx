@@ -23,6 +23,9 @@ import type {
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
+  MacroToolkitShadowPortfolio,
+  MacroToolkitShadowPortfolioHolding,
+  MacroToolkitShadowPortfolioReport,
   MacroToolkitSignalCard,
   MacroToolkitSourceCheck,
   MacroToolkitStrategySummary,
@@ -155,6 +158,13 @@ function formatPercent(value: number | null | undefined) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatNullableNumber(value: number | null | undefined, digits = 2) {
+  if (value == null || !Number.isFinite(value)) {
+    return "缺失";
+  }
+  return Number.isInteger(value) ? value.toString() : value.toFixed(digits);
+}
+
 function clampScore(score: number | null | undefined) {
   if (score == null) {
     return 0;
@@ -205,11 +215,20 @@ export default function MacroToolkitPage() {
     staleTime: 60_000,
   });
 
+  const strategyQuery = useQuery({
+    queryKey: ["macro-toolkit", "strategy-summaries"],
+    queryFn: () => client.getMacroToolkitStrategySummaries(),
+    staleTime: 60_000,
+  });
+
   const payload = scriptsQuery.data?.result;
   const analysis = analysisQuery.data?.result;
+  const strategyPayload = strategyQuery.data?.result;
   const scripts = payload?.scripts ?? EMPTY_SCRIPTS;
   const capabilityResults = analysis?.capability_results ?? [];
-  const strategySummaries = analysis?.strategy_summaries ?? [];
+  const strategySummaries = strategyPayload?.strategy_summaries ?? analysis?.strategy_summaries ?? [];
+  const shadowPortfolioReport =
+    strategyPayload?.shadow_portfolio_report ?? analysis?.shadow_portfolio_report ?? null;
   const hasRealStrategyData = strategySummaries.some(
     (strategy) =>
       strategy.status === "complete" &&
@@ -252,7 +271,8 @@ export default function MacroToolkitPage() {
     ? `${payload.output_files[0]!.name} · ${formatSize(payload.output_files[0]!.size_bytes)}`
     : payload?.output_dir ?? "data/macro_toolkit/output";
   const cffexStatus = payload?.cffex_member_rank ?? analysis?.cffex_member_rank ?? null;
-  const choiceStockRefresh = payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
+  const choiceStockRefresh =
+    strategyPayload?.choice_stock_refresh ?? payload?.choice_stock_refresh ?? analysis?.choice_stock_refresh ?? null;
   const omittedEntries = Object.entries(payload?.omitted_scripts ?? {});
   const sourceChecks = payload?.source_checks ?? analysis?.source_checks ?? [];
   const capabilityItems = payload?.capabilities ?? analysis?.capabilities ?? [];
@@ -268,6 +288,7 @@ export default function MacroToolkitPage() {
     analysis?.signal_cards
       .filter((card) => card.score != null)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))[0] ?? null;
+  const strategyErrorText = strategyQuery.error ? formatQueryError(strategyQuery.error) : null;
   const queryErrorText = [analysisQuery.error, scriptsQuery.error]
     .filter(Boolean)
     .map(formatQueryError)
@@ -283,13 +304,13 @@ export default function MacroToolkitPage() {
     try {
       const result = await client.runMacroToolkitScript(selectedScript.name);
       setRunResult(result);
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : "运行失败");
     } finally {
       setIsRunning(false);
     }
-  }, [analysisQuery, client, scriptsQuery, selectedScript]);
+  }, [analysisQuery, client, scriptsQuery, selectedScript, strategyQuery]);
 
   const refreshCffexMemberRank = useCallback(async () => {
     setIsRefreshingCffex(true);
@@ -301,13 +322,13 @@ export default function MacroToolkitPage() {
       });
       const rank = response.result.cffex_member_rank;
       setRefreshResult(`刷新完成：${rank.row_count} 行，最新交易日 ${rank.latest_trade_date ?? "缺失"}`);
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新席位失败");
     } finally {
       setIsRefreshingCffex(false);
     }
-  }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery]);
+  }, [analysis?.as_of_date, client, scriptsQuery, analysisQuery, strategyQuery]);
 
   const refreshChoiceStock = useCallback(async () => {
     setIsRefreshingChoiceStock(true);
@@ -344,14 +365,14 @@ export default function MacroToolkitPage() {
       setStockRefreshResult(
         `刷新完成：历史 ${refresh.history_row_count ?? "-"} 行，因子 ${refresh.factor_row_count ?? "-"} 行`,
       );
-      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch()]);
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
     } catch (error) {
       setStockRefreshError(error instanceof Error ? error.message : "刷新股票数据失败");
       setStockRefreshResult(null);
     } finally {
       setIsRefreshingChoiceStock(false);
     }
-  }, [analysis?.as_of_date, analysisQuery, client, scriptsQuery]);
+  }, [analysis?.as_of_date, analysisQuery, client, scriptsQuery, strategyQuery]);
 
   const indicatorColumns: ColumnsType<MacroToolkitIndicator> = [
     {
@@ -555,8 +576,9 @@ export default function MacroToolkitPage() {
             onClick={() => {
               void analysisQuery.refetch();
               void scriptsQuery.refetch();
+              void strategyQuery.refetch();
             }}
-            loading={analysisQuery.isFetching || scriptsQuery.isFetching}
+            loading={analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching}
           >
             重试读取
           </Button>
@@ -577,8 +599,9 @@ export default function MacroToolkitPage() {
             onClick={() => {
               void analysisQuery.refetch();
               void scriptsQuery.refetch();
+              void strategyQuery.refetch();
             }}
-            loading={analysisQuery.isFetching || scriptsQuery.isFetching}
+            loading={analysisQuery.isFetching || scriptsQuery.isFetching || strategyQuery.isFetching}
           >
             刷新结果
           </Button>
@@ -732,12 +755,20 @@ export default function MacroToolkitPage() {
             )}
           </section>
 
-          <section className="macro-toolkit-section">
+          <section className="macro-toolkit-section" aria-label="绛栫暐渚涙暟闂幆">
             <PageSectionLead
               eyebrow="strategies"
               title="策略展示"
               description={strategyDescription}
             />
+            {strategyErrorText ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="策略供数闭环暂未完成"
+                description={strategyErrorText}
+              />
+            ) : null}
             <div className="macro-toolkit-stock-refresh-panel">
               <div className="macro-toolkit-cffex-metrics">
                 <MetricTile
@@ -777,6 +808,7 @@ export default function MacroToolkitPage() {
             ) : (
               <div className="macro-toolkit-empty-output">暂无策略摘要。</div>
             )}
+            <ShadowPortfolioReportPanel report={shadowPortfolioReport} />
           </section>
         </>
       ) : null}
@@ -1175,6 +1207,122 @@ function StrategySummaryCard({ strategy }: { strategy: MacroToolkitStrategySumma
         <b>{metric ? `${metric.value}${metric.unit}` : statusLabel(strategy.status)}</b>
       </div>
       <small>{strategy.evidence.slice(0, 2).join(" / ") || "暂无证据"}</small>
+    </div>
+  );
+}
+
+function ShadowPortfolioReportPanel({ report }: { report: MacroToolkitShadowPortfolioReport | null }) {
+  if (!report) {
+    return (
+      <section className="macro-toolkit-shadow-panel" aria-label="A股影子组合观察">
+        <div className="macro-toolkit-empty-output">
+          A股影子组合报告尚未返回；当前页面仅保留策略摘要观察，不形成正式投资信号。
+        </div>
+      </section>
+    );
+  }
+
+  const candidate = report.portfolios.find((item) => item.role === "shadow_candidate") ?? report.portfolios[0] ?? null;
+  const benchmarkText = report.benchmark
+    ? `${report.benchmark.label} ${formatPercent(report.benchmark.total_return)}`
+    : "基准缺失";
+
+  return (
+    <section className="macro-toolkit-shadow-panel" aria-label="A股影子组合观察">
+      <div className="macro-toolkit-shadow-panel__head">
+        <div>
+          <span>A股影子组合观察</span>
+          <strong>{report.label}</strong>
+          <small>
+            {report.basis} / {report.rule_version}
+          </small>
+        </div>
+        <div className="macro-toolkit-tag-row">
+          <Tag color={statusColor(report.status)}>{statusLabel(report.status)}</Tag>
+          <Tag color="gold">只读观察</Tag>
+        </div>
+      </div>
+
+      <div className="macro-toolkit-shadow-panel__metrics">
+        <MetricTile label="观察日" value={report.as_of_date ?? "缺失"} detail={`完成区间 ${report.completed_periods}`} />
+        <MetricTile
+          label="成本假设"
+          value={report.cost_model.cost_bps.map((cost) => `${cost}bp`).join(" / ")}
+          detail={report.cost_model.method}
+        />
+        <MetricTile label="观察基准" value={benchmarkText} detail="等权因子股票池" />
+      </div>
+
+      {report.warnings.length ? (
+        <div className="macro-toolkit-shadow-panel__warnings">
+          {report.warnings.map((warning) => (
+            <Tag color="orange" key={warning}>
+              {warning}
+            </Tag>
+          ))}
+        </div>
+      ) : null}
+
+      {candidate ? <ShadowPortfolioCard portfolio={candidate} /> : <div className="macro-toolkit-empty-output">暂无影子组合候选。</div>}
+
+      <div className="macro-toolkit-shadow-panel__tables">
+        <span>来源表</span>
+        <small>{report.tables_used.join(" / ") || "缺失"}</small>
+      </div>
+    </section>
+  );
+}
+
+function ShadowPortfolioCard({ portfolio }: { portfolio: MacroToolkitShadowPortfolio }) {
+  const visibleCosts = portfolio.cost_results.slice(0, 4);
+  const holdings = portfolio.latest_holdings.slice(0, 5);
+  return (
+    <div className="macro-toolkit-shadow-portfolio">
+      <div className="macro-toolkit-capability-result-head">
+        <span>{portfolio.role}</span>
+        {portfolio.admission ? <Tag color={statusColor(portfolio.admission.status)}>{portfolio.admission.label}</Tag> : null}
+      </div>
+      <strong>{portfolio.label}</strong>
+      {portfolio.admission ? <p>{portfolio.admission.summary}</p> : null}
+
+      <div className="macro-toolkit-shadow-portfolio__metrics">
+        <MetricTile label="总收益" value={formatPercent(portfolio.total_return)} detail="shadow total return" />
+        <MetricTile label="超额收益" value={formatPercent(portfolio.excess_return)} detail="vs factor universe" />
+        <MetricTile label="最大回撤" value={formatPercent(portfolio.max_drawdown)} detail="drawdown" />
+        <MetricTile label="平均 PE" value={formatNullableNumber(portfolio.average_pe, 1)} detail={`平均持仓 ${formatNullableNumber(portfolio.average_count, 0)}`} />
+      </div>
+
+      {visibleCosts.length ? (
+        <div className="macro-toolkit-shadow-portfolio__costs">
+          {visibleCosts.map((cost) => (
+            <div className="macro-toolkit-strategy-metric" key={cost.cost_bps}>
+              <span>{cost.cost_bps}bp</span>
+              <b>{formatPercent(cost.total_return ?? cost.net_return ?? null)}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <ShadowHoldingsList holdings={holdings} />
+    </div>
+  );
+}
+
+function ShadowHoldingsList({ holdings }: { holdings: MacroToolkitShadowPortfolioHolding[] }) {
+  if (!holdings.length) {
+    return <div className="macro-toolkit-empty-output">暂无最新持仓明细。</div>;
+  }
+  return (
+    <div className="macro-toolkit-shadow-holdings">
+      <span>最新持仓</span>
+      {holdings.map((holding) => (
+        <small key={`${holding.rank ?? "na"}-${holding.stock_code}`}>
+          {holding.rank ? `${holding.rank}. ` : ""}
+          {holding.stock_code}
+          {holding.industry ? ` / ${holding.industry}` : ""} / score {formatNullableNumber(holding.score, 3)} / PE{" "}
+          {formatNullableNumber(holding.pe, 1)}
+        </small>
+      ))}
     </div>
   );
 }
