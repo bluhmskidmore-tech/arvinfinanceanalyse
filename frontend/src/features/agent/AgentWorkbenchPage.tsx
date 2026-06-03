@@ -1608,6 +1608,7 @@ export function EmbeddedAgentCopilot({
     }
     updateComposerQuery(queuedQuery);
     setQueuedQueries((currentQueries) => currentQueries.slice(1));
+    setComposerAssistHint("已恢复排队草稿 · Enter 重新排队");
     shouldFocusComposerRef.current = true;
     focusComposerInput();
   }

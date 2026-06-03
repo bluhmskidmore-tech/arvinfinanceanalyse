@@ -3538,6 +3538,7 @@ describe("AgentWorkbenchPage", () => {
     expect(document.activeElement).toBe(input);
     expect(input).toHaveProperty("selectionStart", input.value.length);
     expect(input).toHaveProperty("selectionEnd", input.value.length);
+    expect(screen.getByText("已恢复排队草稿 · Enter 重新排队")).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
 
