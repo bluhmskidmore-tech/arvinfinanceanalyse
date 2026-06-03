@@ -8,7 +8,6 @@ from datetime import date
 from pathlib import Path
 
 import duckdb
-
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
@@ -19,8 +18,8 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.snapshot_repo import (
     ensure_snapshot_tables,
-    merge_zqtz_rows_by_grain,
     merge_tyw_rows_by_grain,
+    merge_zqtz_rows_by_grain,
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
 )

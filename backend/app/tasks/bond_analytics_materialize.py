@@ -18,7 +18,6 @@ from backend.app.schemas.formal_compute_runtime import (
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
-
 BOND_ANALYTICS_MODULE = ensure_formal_module(
     FormalComputeModuleDescriptor(
         module_name="bond_analytics",

@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 
 DEFAULT_MACRO_SERIES_IDS = (

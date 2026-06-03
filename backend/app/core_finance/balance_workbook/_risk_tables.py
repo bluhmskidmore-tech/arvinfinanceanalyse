@@ -9,23 +9,23 @@ from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
 )
-from backend.app.core_finance.balance_workbook._utils import (
-    _ZERO,
-    _group_rows,
-    _sum_decimal,
-    _weighted_average,
-    _remaining_years,
-    _safe_ratio,
-    _to_wanyuan,
-    _decimal_value,
-    _section,
-    _table,
+from backend.app.core_finance.balance_workbook._analysis_tables import (
+    _build_rating_table,
 )
 from backend.app.core_finance.balance_workbook._bond_tables import (
     _build_maturity_gap_table,
 )
-from backend.app.core_finance.balance_workbook._analysis_tables import (
-    _build_rating_table,
+from backend.app.core_finance.balance_workbook._utils import (
+    _ZERO,
+    _decimal_value,
+    _group_rows,
+    _remaining_years,
+    _safe_ratio,
+    _section,
+    _sum_decimal,
+    _table,
+    _to_wanyuan,
+    _weighted_average,
 )
 
 

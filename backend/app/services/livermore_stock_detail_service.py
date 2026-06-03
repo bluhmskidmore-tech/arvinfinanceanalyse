@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,

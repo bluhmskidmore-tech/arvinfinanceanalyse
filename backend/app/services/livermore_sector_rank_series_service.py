@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-
 from backend.app.core_finance.livermore_sector_rank import (
     SectorRankConstituent,
     compute_sector_rank,
@@ -136,7 +135,7 @@ def livermore_sector_rank_series_envelope(
             }
 
         by_date_item: dict[tuple[str, str], dict[str, Any]] = {}
-        for _td, payload, _, _ in daily_results:
+        for day_td, payload, _, _ in daily_results:
             day_items = payload.get("items")
             if not isinstance(day_items, list):
                 continue
@@ -145,7 +144,7 @@ def livermore_sector_rank_series_envelope(
                 if code not in selected_codes:
                     continue
                 name = str(it.get("sector_name") or "").strip()
-                by_date_item[(td.isoformat(), code)] = it
+                by_date_item[(day_td.isoformat(), code)] = it
 
         cum_by_sector: dict[str, float] = {c: 0.0 for c in selected_codes}
         for _td, payload, _, _ in daily_results:

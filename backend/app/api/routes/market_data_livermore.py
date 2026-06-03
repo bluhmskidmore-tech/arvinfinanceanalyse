@@ -6,34 +6,33 @@ from pathlib import Path
 from typing import Annotated
 
 import duckdb
+from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import load_choice_stock_readiness
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.livermore_gate_supplement_compute_service import (
-    compute_and_materialize_gate_supplement,
-)
-from backend.app.services.livermore_signal_confluence_service import (
-    build_livermore_signal_confluence,
-)
-from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
     livermore_candidate_history_envelope,
     livermore_candidate_history_portfolio_backtest_envelope,
-    livermore_candidate_history_strategy_score_envelope,
     livermore_candidate_history_strategy_optimization_envelope,
+    livermore_candidate_history_strategy_score_envelope,
+)
+from backend.app.services.livermore_gate_supplement_compute_service import (
+    compute_and_materialize_gate_supplement,
 )
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
+from backend.app.services.livermore_signal_confluence_service import (
+    build_livermore_signal_confluence,
+)
 from backend.app.services.livermore_stock_detail_service import livermore_stock_detail_envelope
+from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
     livermore_strategy_envelope,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-
-from backend.app.api.perf_logging import timed_api_call
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")

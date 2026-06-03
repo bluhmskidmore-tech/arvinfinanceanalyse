@@ -9,8 +9,6 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from backend.app.core_finance.cashflow_projection import (
     project_bond_cashflows,
     project_liability_cashflows,
@@ -24,6 +22,8 @@ from backend.app.core_finance.risk_tensor_regulatory_scope import (
     RegulatoryDv01ScopeRule,
     row_in_regulatory_dv01_scope,
 )
+
+logger = logging.getLogger(__name__)
 
 ZERO = Decimal("0")
 SUPPORTED_KRD_BUCKETS = {

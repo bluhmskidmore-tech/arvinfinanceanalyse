@@ -1,14 +1,14 @@
-import duckdb
+import hashlib
 import logging
 import os
-import hashlib
 import sys
 from importlib import import_module
 from pathlib import Path
 
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-from backend.app.governance.locks import LockDefinition, MATERIALIZE_LOCK, acquire_lock
+import duckdb
+from backend.app.governance.locks import MATERIALIZE_LOCK, LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,

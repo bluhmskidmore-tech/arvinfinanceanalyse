@@ -1,10 +1,9 @@
-from fastapi import APIRouter
-
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.postgres_repo import PostgresRepository
 from backend.app.repositories.redis_repo import RedisRepository
+from fastapi import APIRouter
 
 router = APIRouter(prefix="/health")
 

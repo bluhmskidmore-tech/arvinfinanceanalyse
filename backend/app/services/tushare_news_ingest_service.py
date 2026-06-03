@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.news_warehouse_repo import purge_expired_news_events, upsert_news_event
 from backend.app.repositories.tushare_adapter import (

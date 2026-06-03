@@ -790,7 +790,11 @@ export default function RiskTensorPage() {
     `tables_used:${metadataTablesUsed || "missing"}`,
     `filters_applied:${metadataFiltersApplied || "missing"}`,
   ].join("|");
-  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}`;
+  const qualityLineageStateKey = [
+    `source_version:${tensorMeta?.source_version ?? "missing"}`,
+    `rule_version:${tensorMeta?.rule_version ?? "missing"}`,
+  ].join("|");
+  const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}`;
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");

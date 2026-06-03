@@ -32,6 +32,9 @@ data_input/
 *.pkl
 *.log
 
+## Tracked documentation templates
+!docs/templates/bond_dv01_limit_config_template.csv
+
 ## Local visual verification artifacts
 .playwright-mcp/
 .codex/screenshots/

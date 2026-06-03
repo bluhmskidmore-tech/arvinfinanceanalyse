@@ -17,8 +17,8 @@ from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeResult,
 )
 from backend.app.tasks.broker import register_actor_once
-from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_for_report_date
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
+from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_for_report_date
 
 BALANCE_ANALYSIS_MODULE = ensure_formal_module(
     FormalComputeModuleDescriptor(

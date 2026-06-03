@@ -12,9 +12,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import duckdb
-
-from backend.app.repositories.duckdb_migrations import (
+import duckdb  # noqa: E402
+from backend.app.repositories.duckdb_migrations import (  # noqa: E402
     apply_pending_migrations_on_connection,
     ensure_choice_macro_schema_if_missing,
 )

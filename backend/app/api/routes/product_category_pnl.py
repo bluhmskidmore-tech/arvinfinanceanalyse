@@ -4,12 +4,12 @@ import importlib
 from typing import Annotated
 
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentQuery,
     ProductCategoryManualAdjustmentUpdateRequest,
 )
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
     ProductCategoryReadModelNotFoundError,

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import logging
-
-logger = logging.getLogger(__name__)
 import json
+import logging
 import re
 from datetime import UTC, datetime
 from html.parser import HTMLParser
@@ -13,6 +11,8 @@ from urllib.parse import urljoin
 
 import requests
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
+
+logger = logging.getLogger(__name__)
 
 MOF_TREASURY_VENDOR = "mof_treasury"
 MOF_TREASURY_SOURCE_FAMILY = "research_calendar"

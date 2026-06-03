@@ -13,12 +13,26 @@ from typing import Annotated
 
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.analytical_bridge_service import AnalyticalBridgeService
 from backend.app.services.cube_query_service import CubeQueryService
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter(prefix="/api/cube")
+
+
+def _ensure_cube_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="cube",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/query", response_model=CubeQueryResponse)
@@ -37,7 +51,11 @@ def cube_query(
 
 
 @router.get("/dimensions/{fact_table}")
-def list_dimensions(fact_table: str) -> dict[str, object]:
+def list_dimensions(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    fact_table: str,
+) -> dict[str, object]:
+    _ensure_cube_read_allowed(auth)
     try:
         return CubeQueryService.describe_fact_table(fact_table)
     except ValueError as exc:

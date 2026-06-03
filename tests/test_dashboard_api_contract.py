@@ -7,12 +7,38 @@ from decimal import Decimal
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+DASHBOARD_READ_HEADERS = {"X-User-Id": "dashboard-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_dashboard_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "dashboard-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="dashboard",
+        action="read",
+    )
+
+
+def _dashboard_client_with_read_scope(tmp_path, monkeypatch) -> TestClient:
+    _grant_dashboard_read_scope(tmp_path, monkeypatch)
+    return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
 
 def _perf_records(caplog, endpoint: str):
@@ -209,6 +235,34 @@ def _one_bond_row(*, rd: str, mv: Decimal, ytm: Decimal, bond_type: str = "å›½å€
     )
 
 
+def test_dashboard_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "tests._dashboard_routes_auth",
+        "backend/app/api/routes/dashboard.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_core_metrics",
+        lambda report_date=None: {"result_meta": {"result_kind": "dashboard.core_metrics"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_daily_changes",
+        lambda report_date=None: {"result_meta": {"result_kind": "dashboard.daily_changes"}, "result": {}},
+    )
+    sqlite_path = tmp_path / "dashboard-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path in ("/api/dashboard/core_metrics", "/api/dashboard/daily-changes"):
+        response = client.get(path, headers=DASHBOARD_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
 def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "dash-core.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -294,7 +348,7 @@ def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> No
     finally:
         con.close()
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
     rsp = client.get("/api/dashboard/core_metrics")
     assert rsp.status_code == 200, rsp.text
     payload = rsp.json()
@@ -360,7 +414,7 @@ def test_core_metrics_treats_tyw_funding_cost_rate_as_percent_even_below_one(
     finally:
         con.close()
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
     rsp = client.get("/api/dashboard/core_metrics")
     assert rsp.status_code == 200, rsp.text
     body = rsp.json()["result"]
@@ -402,7 +456,7 @@ def test_core_metrics_weights_tyw_rate_by_principal_and_skips_missing_rates(
     finally:
         con.close()
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
     rsp = client.get("/api/dashboard/core_metrics")
     assert rsp.status_code == 200, rsp.text
     body = rsp.json()["result"]
@@ -421,7 +475,7 @@ def test_dashboard_endpoints_empty_db(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     cm = client.get("/api/dashboard/core_metrics")
     assert cm.status_code == 200
@@ -478,7 +532,7 @@ def test_daily_changes_use_formal_zqtz_balance_when_bond_analytics_prior_is_spar
     finally:
         con.close()
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     cm = client.get("/api/dashboard/core_metrics", params={"report_date": d2})
     assert cm.status_code == 200, cm.text
@@ -532,7 +586,7 @@ def test_core_metrics_falls_back_to_bond_analytics_when_zqtz_date_is_missing(
     finally:
         con.close()
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     cm = client.get("/api/dashboard/core_metrics")
     assert cm.status_code == 200, cm.text
@@ -669,7 +723,7 @@ def test_daily_changes_missing_formal_zqtz_balance_baseline_returns_null_numeric
     finally:
         con.close()
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     cm = client.get("/api/dashboard/core_metrics", params={"report_date": d2})
     assert cm.status_code == 200, cm.text
@@ -872,7 +926,7 @@ def test_dashboard_core_metrics_logs_api_perf(tmp_path, monkeypatch, caplog) -> 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
         response = client.get("/api/dashboard/core_metrics")

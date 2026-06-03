@@ -4,14 +4,13 @@ import csv
 from io import StringIO
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
-
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import kpi_workbench_service
 from backend.app.services.kpi_service import kpi_owners_payload, kpi_period_summary_payload
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/kpi", tags=["kpi"])
 

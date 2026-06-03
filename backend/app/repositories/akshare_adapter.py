@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
 import hashlib
-from io import StringIO
 import json
 import os
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
+from io import StringIO
 
 import pandas as pd
 import requests
-
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.schemas.vendor import (
     VendorAdapter as VendorAdapterBase,
+)
+from backend.app.schemas.vendor import (
     VendorPreflightResult,
     VendorSnapshot,
 )
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
-
 
 # AkShare `bond_china_yield` curve names. For `aaa_credit`, only this enterprise-AAA family is allowed
 # (no cross-family AAA substitution — matches must equal this string exactly).

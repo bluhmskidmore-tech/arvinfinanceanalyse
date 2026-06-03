@@ -12,9 +12,7 @@ from decimal import Decimal
 from typing import Any
 
 import pandas as pd
-
 from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
-
 
 # ---------------------------------------------------------------------------
 # Trend computation

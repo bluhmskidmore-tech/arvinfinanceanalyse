@@ -7,7 +7,6 @@ from typing import Literal
 
 from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
 
-
 BasisBucket = Literal["AC", "OCI", "TPL"]
 ReconciliationStatus = Literal["matched", "mismatch", "gl_only", "zqtz_only"]
 

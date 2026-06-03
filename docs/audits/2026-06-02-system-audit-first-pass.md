@@ -10,14 +10,17 @@ Release posture: **core automated quality gates are now green**, but do not call
 
 Current top blockers:
 
-1. **P1 - API authorization boundary is inconsistent on sensitive read surfaces.** Several business and governance read routes expose data without `Depends(get_auth_context)`, while the auth helper itself can fall back to anonymous/env identity and optionally trust `X-User-*` headers.
-2. **P1 - Source preview read endpoints expose governance rows/traces behind only an environment flag.** Refresh is permission checked, but read/list/history/rows/traces endpoints are not.
-3. **P1 - Formal calculation boundary drift remains in `bond_analytics_service`.** DV01 shock expansion, duration aggregation, DV01 share/bucket helpers, and action attribution orchestration still live in the service layer instead of a `core_finance` calculation boundary.
-4. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
-5. **P2 - Candidate metric API metadata sampled in this pass is now weakened away from formal-use approval.** Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, Cashflow Projection, and Concentration Monitor metadata now avoid `formal_use_allowed=true` while preserving source/date evidence. These fields still remain candidate or page-contract-pending until dictionary approval, golden samples, and lineage closure exist.
-6. **P2 - Page-level MCP trace bundle coverage now has first-pass closure.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers. Seeded page trace bundles now cover 26 of 26 page-contract IDs, including the remaining Agent, Cube Query, and module-home surfaces. This closes the bundle-coverage gap, but it does not replace full data-catalog/date-lineage review for every governed metric page.
-7. **P2 - Direct business MCP tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass. This continuation used the equivalent local JSON-RPC MCP process instead of direct deferred `moss-*` tool calls.
-8. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green and `PAGE-RISK-001` is now bundle-backed and page-evidence checked, but every governed metric page has not yet been re-audited with contract/catalog/lineage evidence.
+1. **P1 - API authorization boundary still needs full inventory and policy closure.** Sampled sensitive reads now require explicit read scopes, but the broader business/governance GET inventory and production header-trust startup guardrails are not yet complete.
+2. **P1 - Formal calculation boundary drift remains in `bond_analytics_service`.** DV01 shock expansion, duration aggregation, DV01 share/bucket helpers, and action attribution orchestration still live in the service layer instead of a `core_finance` calculation boundary.
+3. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
+4. **P2 - Candidate metric API metadata sampled in this pass is now weakened away from formal-use approval.** Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, Cashflow Projection, and Concentration Monitor metadata now avoid `formal_use_allowed=true` while preserving source/date evidence. These fields still remain candidate or page-contract-pending until dictionary approval, golden samples, and lineage closure exist.
+5. **P2 - Page-level MCP trace bundle coverage now has first-pass closure.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers. Seeded page trace bundles now cover 26 of 26 page-contract IDs, including the remaining Agent, Cube Query, and module-home surfaces. This closes the bundle-coverage gap, but it does not replace full data-catalog/date-lineage review for every governed metric page.
+6. **P2 - Direct business MCP tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass. This continuation used the equivalent local JSON-RPC MCP process instead of direct deferred `moss-*` tool calls.
+7. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green and `PAGE-RISK-001` is now bundle-backed and page-evidence checked, but every governed metric page has not yet been re-audited with contract/catalog/lineage evidence.
+
+Closed during this continuation:
+
+- **P1 remediated - Source preview read endpoints no longer rely only on the environment flag.** The HTTP kill switch still fails closed, and read/list/history/status/rows/traces now require `source_preview.source_foundation/read`.
 
 ## Audit Health Score
 
@@ -197,34 +200,184 @@ Evidence from the second-pass security review:
 - `backend/app/security/auth_context.py:12-26` defines `anonymous` / `viewer` defaults and accepts `X-User-Id` / `X-User-Role` headers.
 - `backend/app/security/auth_context.py:78` enables header trust through `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST`.
 - `backend/app/main.py:50-52` allows credentials and explicitly allows `Authorization`, `X-User-Id`, and `X-User-Role` CORS headers.
-- Sampled business read routes do not use `Depends(get_auth_context)`:
-  - `backend/app/api/routes/dashboard.py:13` `/api/dashboard/core_metrics`
-  - `backend/app/api/routes/dashboard.py:26` `/api/dashboard/daily-changes`
-  - `backend/app/api/routes/external_data.py:25` `/api/external-data/catalog`
-  - `backend/app/api/routes/external_data.py:58` `/api/external-data/series/{series_id}/data`
-  - `backend/app/api/routes/executive.py:57` `/ui/home/overview`
-  - `backend/app/api/routes/positions.py:21` `/api/positions/bonds`
-  - `backend/app/api/routes/positions.py:68` `/api/positions/interbank`
-  - `backend/app/api/routes/positions.py:142` `/api/positions/customer/details`
-  - `backend/app/api/routes/market_data_ncd_proxy.py:9` `/api/market-data/ncd-funding-proxy`
-  - `backend/app/api/routes/research_calendar.py:14` `/api/research-calendar/supply-auctions`
-  - `backend/app/api/routes/cube_query.py:39` `/api/cube/dimensions/{fact_table}`
+- Sampled business read routes from this pass now have explicit read boundaries; broader route inventory review remains incomplete.
+- Remediated in this continuation: `backend/app/api/routes/positions.py` now requires `positions/read` on the sampled positions read surface.
+- Remediated in this continuation: `backend/app/api/routes/external_data.py` now requires `external_data/read` on catalog and series-data reads.
+- Remediated in this continuation: `backend/app/api/routes/cube_query.py` now requires `cube/read` on the cube dimensions read surface.
+- Remediated in this continuation: `backend/app/api/routes/research_calendar.py` now requires `research_calendar/read` on supply-auction calendar reads.
+- Remediated in this continuation: `backend/app/api/routes/market_data_ncd_proxy.py` now requires `market_data_ncd_proxy/read` on the NCD funding proxy read surface.
+- Remediated in this continuation: `backend/app/api/routes/dashboard.py` now requires `dashboard/read` on core-metrics and daily-changes reads.
+- Remediated in this continuation: `backend/app/api/routes/executive.py` now requires `executive/read` on active executive overview, summary, and PnL attribution reads.
+- Remediated in this continuation: `backend/app/api/routes/bond_dashboard.py` now requires `bond_dashboard/read` on dates, headline, structure, distribution, comparison, spread, maturity, industry, risk, and business-type reads.
+- Remediated in this continuation: `backend/app/api/routes/cashflow_projection.py` now requires `cashflow_projection/read` on the cashflow projection read surface.
+- Remediated in this continuation: `backend/app/api/routes/ledger_pnl.py` now requires `ledger_pnl/read` on dates, data, summary, and formal financial indicator source-contract reads.
 
 Impact: automated metric and page-contract tests can pass while sensitive business data remains readable through unauthenticated GET surfaces. The header-trust development path also makes production misconfiguration more consequential.
 
 Recommendation: define the intended read-access policy once, then add route-level or router-level read authorization for business/governance surfaces. Keep public liveness endpoints separate. Production startup should fail closed if header trust or anonymous business reads are enabled outside local development.
 
-### P1 - Source preview read endpoints expose governance rows/traces behind only an environment flag
+## Remediated Findings
+
+### P1 remediated - Source preview read endpoints require read permission
 
 Evidence:
 
-- `backend/app/api/routes/source_preview.py:52`, `:61`, `:104`, `:115`, and `:133` expose source preview list, history, refresh-status, rows, and traces as GET routes.
-- These GET routes call `_require_source_preview_http_enabled()` but do not accept `auth: Depends(get_auth_context)` and do not call `ensure_user_allowed`.
-- The write/refresh path at `backend/app/api/routes/source_preview.py:79-88` does use `Depends(get_auth_context)` and `ensure_user_allowed`.
+- `backend/app/api/routes/source_preview.py:52-64` centralizes source-preview permission checks on `source_preview.source_foundation`.
+- `backend/app/api/routes/source_preview.py:67-168` keeps `_require_source_preview_http_enabled()` first and then requires `action="read"` for list, history, refresh-status, rows, and traces.
+- `tests/test_source_preview_flow.py:301-342` verifies the five read surfaces return 403 without an explicit read grant, then stop returning 403 after granting `source_preview.source_foundation/read`.
+- `tests/test_preview_lineage_rule_trace.py:16-26` and `tests/test_source_preview_worker_e2e.py:82-88` seed read permission only for tests that intentionally exercise the enabled read surface.
 
-Impact: when `MOSS_SOURCE_PREVIEW_HTTP_ENABLED` is set, source families, sample rows, ingest batches, and trace evidence can be exposed without the same permission boundary used by refresh. This is governance/data-lineage sensitive even when it is read-only.
+Verification:
 
-Recommendation: require read permission for source preview list/history/status/rows/traces or restrict the entire read surface to local/admin-only contexts. Preserve the existing environment flag as an additional kill switch, not the only control.
+- `python -m pytest tests/test_source_preview_flow.py -q`: `43 passed`.
+- `python -m pytest tests/test_preview_lineage_rule_trace.py -q`: `7 passed`.
+- `python -m pytest tests/test_pnl_source_preview_flow.py -q`: `3 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py::test_excluded_ui_surfaces_fail_closed_without_governed_result_meta tests/test_result_meta_on_all_ui_endpoints.py::test_source_preview_surfaces_fail_closed_instead_of_emitting_analytical_meta tests/test_result_meta_on_all_ui_endpoints.py::test_source_preview_refresh_status_now_fails_closed -q`: `9 passed`.
+- `python -m pytest tests/test_source_preview_worker_e2e.py::test_source_preview_refresh_real_worker_e2e -q`: `1 passed`.
+- `python -m ruff check backend/app/api/routes/source_preview.py tests/test_source_preview_flow.py tests/test_preview_lineage_rule_trace.py tests/test_source_preview_worker_e2e.py`: passed.
+
+Residual risk: this closes the source-preview read surface only. The broader API read-authorization boundary still needs full-route inventory and production startup guardrails.
+
+### P1 remediated - Sampled business dashboard and market-data reads require read permission
+
+Evidence:
+
+- `backend/app/api/routes/market_data_ncd_proxy.py` now checks `market_data_ncd_proxy/read` before returning `/ui/market-data/ncd-funding-proxy`.
+- `backend/app/api/routes/dashboard.py` now checks `dashboard/read` before returning `/api/dashboard/core_metrics` and `/api/dashboard/daily-changes`.
+- `backend/app/api/routes/executive.py` now checks `executive/read` before returning active executive reads: `/ui/home/overview`, `/ui/home/summary`, and `/ui/pnl/attribution`.
+- Route-level regression tests verify 403 without an explicit read grant, while existing payload/golden-sample tests seed only the needed read scope.
+
+Verification:
+
+- `python -m pytest tests/test_market_data_ncd_proxy_api.py -q`: `9 passed`.
+- `python -m pytest tests/test_dashboard_api_contract.py -q`: `13 passed`.
+- `python -m pytest tests/test_executive_dashboard_endpoints.py -q`: `9 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py -q`: `26 passed`.
+- `python -m pytest tests/test_executive_release_contract.py tests/test_golden_samples_capture_ready.py -k "EXEC or exec" -q`: `7 passed, 15 deselected`.
+- `python -m ruff check backend/app/api/routes/market_data_ncd_proxy.py backend/app/api/routes/dashboard.py backend/app/api/routes/executive.py tests/test_market_data_ncd_proxy_api.py tests/test_dashboard_api_contract.py tests/test_executive_dashboard_endpoints.py tests/test_result_meta_on_all_ui_endpoints.py`: passed.
+
+Residual risk: this closes the sampled NCD proxy, dashboard KPI, and active executive read surfaces from the P1 list. It does not prove every business GET route in the application has been inventoried or assigned the correct public/internal/admin policy.
+
+### P1 remediated - Bond Dashboard read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/bond_dashboard.py` now checks `bond_dashboard/read` before returning all ten Bond Dashboard GET surfaces: dates, headline KPIs, asset structure, yield distribution, portfolio comparison, spread analysis, maturity structure, industry distribution, risk indicators, and business-type metrics.
+- `tests/test_bond_dashboard_api_contract.py` verifies the ten Bond Dashboard GET surfaces return 403 without an explicit read grant.
+- Existing Bond Dashboard contract and golden-sample tests seed `bond_dashboard/read` before asserting envelope shape, candidate headline metadata, seeded-fact numeric behavior, sub-one-percent display, business-type metrics, and `GS-BOND-HEADLINE-A`.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_bond_dashboard_api_contract.py::test_bond_dashboard_read_surfaces_require_explicit_read_scope -q` failed because `/api/bond-dashboard/dates` returned 200 instead of 403.
+- `python -m pytest tests/test_bond_dashboard_api_contract.py -q`: `12 passed`.
+- `python -m pytest tests/test_golden_samples_capture_ready.py -k "BOND or bond" -q`: `1 passed, 17 deselected`.
+- `python -m ruff check backend/app/api/routes/bond_dashboard.py tests/test_bond_dashboard_api_contract.py tests/test_golden_samples_capture_ready.py`: passed.
+
+Residual risk: this closes the Bond Dashboard page read surface, but it does not prove every bond-analytics, risk, or portfolio-home consumer route has been inventoried.
+
+### P1 remediated - Cashflow Projection read endpoint requires read permission
+
+Evidence:
+
+- `backend/app/api/routes/cashflow_projection.py` now checks `cashflow_projection/read` before parsing the requested report date or invoking the cashflow projection service.
+- `tests/test_cashflow_projection.py` verifies `/api/cashflow-projection` returns 403 without an explicit read grant.
+- Existing Cashflow Projection API tests seed `cashflow_projection/read` before asserting the analytical candidate metadata, formal source-table evidence, duration gap payload, and percent-rate duration behavior.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_cashflow_projection.py::test_cashflow_projection_read_surface_requires_explicit_read_scope -q` failed because `/api/cashflow-projection` returned 200 instead of 403 and reached cashflow calculation.
+- `python -m pytest tests/test_cashflow_projection.py -q`: `16 passed`.
+- `python -m ruff check backend/app/api/routes/cashflow_projection.py tests/test_cashflow_projection.py`: passed.
+
+Residual risk: this closes the Cashflow Projection read surface, but it does not promote its page metrics to formal-use approval; the candidate metadata and missing lineage/page-contract closure remain separate P2 evidence gaps.
+
+### P1 remediated - Ledger PnL read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/ledger_pnl.py` now checks `ledger_pnl/read` before returning `/api/ledger-pnl/dates`, `/api/ledger-pnl/data`, `/api/ledger-pnl/summary`, and `/api/ledger-pnl/formal-financial-indicators`.
+- `tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py` verifies the four Ledger PnL GET surfaces return 403 without an explicit read grant.
+- Existing Ledger PnL API source-contract tests now seed `ledger_pnl/read` before asserting registered and unregistered formal financial indicator source-contract envelopes.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py::test_ledger_pnl_read_surfaces_require_explicit_read_scope -q` failed because `/api/ledger-pnl/dates` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py::test_ledger_pnl_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py tests/test_ledger_pnl_service.py -q`: `14 passed`.
+- `python -m ruff check backend/app/api/routes/ledger_pnl.py tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py`: passed.
+
+Residual risk: this closes the Ledger PnL HTTP read surface, but it does not promote `MTR-LPN-*` candidate metrics or replace the separate lineage/golden-sample closure gaps recorded under candidate metric metadata.
+
+### P1 partially remediated - Positions read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/positions.py:17-31` centralizes `positions/read` enforcement.
+- `backend/app/api/routes/positions.py:34-207` applies that read check before all positions read handlers: bond sub-types/list, counterparty bonds, interbank product-types/list/split, rating/industry stats, customer details, and customer trend.
+- `tests/test_positions_api_contract.py:288-316` verifies the ten positions GET surfaces return 403 without an explicit read grant.
+- Existing positions contract tests now seed `positions/read` explicitly before asserting envelope shape, pagination, date fallback, rate normalization, customer details, and interbank split behavior.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_positions_api_contract.py::test_positions_read_surfaces_require_explicit_read_scope -q` failed because `/api/positions/bonds/sub_types` returned 200 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_positions_api_contract.py::test_positions_read_surfaces_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_positions_api_contract.py -q`: `13 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py -q`: `26 passed`.
+- `python -m pytest tests/test_backend_release_suite.py::test_backend_release_suite_declares_bounded_phase2_gate -q`: `1 passed`.
+- `python -m ruff check backend/app/api/routes/positions.py tests/test_positions_api_contract.py`: passed.
+
+Residual risk: this narrows the global API-read P1, but it does not prove every positions-adjacent or downstream consumer route has been inventoried.
+
+### P1 partially remediated - External-data read endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/external_data.py:26-37` centralizes `external_data/read` enforcement.
+- `backend/app/api/routes/external_data.py:40-122` applies that read check before catalog, catalog entry, domain catalog, series data, and recent series data handlers.
+- `tests/test_external_data_api.py:54-99` verifies the five external-data GET surfaces return 403 without an explicit read grant.
+- Existing external-data API tests now seed `external_data/read` explicitly before validating catalog listing, domain filtering, series data, recent series data, and missing-series 404 behavior.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_external_data_api.py::test_external_data_read_surfaces_require_explicit_read_scope -q` failed because `/api/external-data/catalog` returned 200 instead of 403 after the catalog table was seeded.
+- `python -m pytest tests/test_external_data_api.py tests/test_external_data_api_m2b.py -q`: `3 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py -q`: `26 passed`.
+- `python -m ruff check backend/app/api/routes/external_data.py tests/test_external_data_api.py tests/test_external_data_api_m2b.py`: passed.
+
+Residual risk: this narrows the global API-read P1, but it does not prove every external-data consumer route has been inventoried.
+
+### P1 partially remediated - Cube dimensions endpoint requires read permission
+
+Evidence:
+
+- `backend/app/api/routes/cube_query.py:24-35` centralizes `cube/read` enforcement for cube read metadata.
+- `backend/app/api/routes/cube_query.py:53-58` applies the read check before `/api/cube/dimensions/{fact_table}` describes promoted dimensions and measures.
+- `tests/test_cube_query_api.py:102-119` verifies the dimensions endpoint returns 403 without an explicit read grant.
+- Existing dimensions contract tests now seed `cube/read` explicitly before asserting promoted dimension and unknown fact-table behavior.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_cube_query_api.py::test_cube_dimensions_route_requires_explicit_read_scope -q` failed because `/api/cube/dimensions/bond_analytics` returned 200 instead of 403.
+- `python -m pytest tests/test_cube_query_api.py -q`: `6 passed`.
+- `python -m ruff check backend/app/api/routes/cube_query.py tests/test_cube_query_api.py`: passed.
+
+Residual risk: this narrows the global API-read P1, but it does not prove every cube/query-adjacent route has been inventoried.
+
+### P1 partially remediated - Research calendar endpoint requires read permission
+
+Evidence:
+
+- `backend/app/api/routes/research_calendar.py:16-27` centralizes `research_calendar/read` enforcement.
+- `backend/app/api/routes/research_calendar.py:30-38` applies the read check before `/ui/calendar/supply-auctions` returns supply and auction calendar events.
+- `tests/test_supply_auction_calendar_api.py` verifies the route returns 403 without an explicit read grant and continues to return the analytical supply-auction envelope with `research_calendar/read`.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_supply_auction_calendar_api.py::test_supply_auction_calendar_route_requires_explicit_read_scope -q` failed because `/ui/calendar/supply-auctions` returned 200 instead of 403.
+- `python -m pytest tests/test_supply_auction_calendar_api.py -q`: `3 passed`.
+- `python -m ruff check backend/app/api/routes/research_calendar.py tests/test_supply_auction_calendar_api.py`: passed.
+
+Residual risk: this narrows the global API-read P1, but it does not prove every calendar or research-adjacent route has been inventoried.
 
 ### P1 - Formal calculation boundary drift remains in `bond_analytics_service`
 
@@ -592,12 +745,11 @@ Recommendation: keep the bundle workflow as the entry point for future page audi
 
 ## Recommended Next Pass
 
-1. Fix or explicitly scope the read authorization boundary: business metric, position, external-data, executive, research calendar, and cube metadata reads need a deliberate public/internal/admin policy, plus startup guardrails for header-trust auth.
-2. Lock down `source_preview` GET surfaces so read/list/history/status/rows/traces require permission or local/admin-only access, while preserving the environment kill switch.
-3. Create a bounded architecture remediation for `bond_analytics_service` calculation drift: migrate DV01/duration/bucket/action-attribution helpers behind `core_finance` or document a temporary exception with tests.
-4. Audit the next highest-risk governed metric pages for data-catalog/date-lineage gaps using the 26/26 page trace bundles as the routing map, starting with pages that mix formal source tables with candidate or tooling display fields.
-5. Add a direct `PAGE-RISK-001` lineage record or an explicit approved mapping from `PAGE-RISK-001` to the existing `risk_tensor` / `fact_formal_risk_tensor_daily` lineage records.
-6. Decide whether the broad backend Ruff backlog is a release blocker or a separately tracked cleanup stream.
-7. Add coverage reporting first, then focused coverage gates for high-risk business display paths.
-8. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and governed metric pages.
-9. Keep the updated a11y smoke in the release gate, and add page-specific ready selectors as new browser smoke pages are covered.
+1. Finish the read authorization boundary inventory: classify every business/governance GET route as public/internal/admin, add missing read checks where needed, and add startup guardrails for header-trust auth outside local development.
+2. Create a bounded architecture remediation for `bond_analytics_service` calculation drift: migrate DV01/duration/bucket/action-attribution helpers behind `core_finance` or document a temporary exception with tests.
+3. Audit the next highest-risk governed metric pages for data-catalog/date-lineage gaps using the 26/26 page trace bundles as the routing map, starting with pages that mix formal source tables with candidate or tooling display fields.
+4. Add a direct `PAGE-RISK-001` lineage record or an explicit approved mapping from `PAGE-RISK-001` to the existing `risk_tensor` / `fact_formal_risk_tensor_daily` lineage records.
+5. Decide whether the broad backend Ruff backlog is a release blocker or a separately tracked cleanup stream.
+6. Add coverage reporting first, then focused coverage gates for high-risk business display paths.
+7. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and governed metric pages.
+8. Keep the updated a11y smoke in the release gate, and add page-specific ready selectors as new browser smoke pages are covered.

@@ -221,6 +221,31 @@ def _materialize_choice_news_events(
     }
 
 
+def _ingest_tushare_news_to_choice_news(
+    duckdb_path: str | None = None,
+    limit: int = 20,
+    news_limit: int = 100,
+    news_src: str | None = None,
+    news_lookback_hours: int = 48,
+    cctv_lookback_days: int = 3,
+    major_lookback_hours: int = 48,
+    research_lookback_days: int = 3,
+) -> dict[str, object]:
+    settings = get_settings()
+    from backend.app.services.tushare_news_ingest_service import ingest_tushare_npr_to_choice_news
+
+    return ingest_tushare_npr_to_choice_news(
+        str(duckdb_path or settings.duckdb_path),
+        limit=limit,
+        news_limit=news_limit,
+        news_src=news_src,
+        news_lookback_hours=news_lookback_hours,
+        cctv_lookback_days=cctv_lookback_days,
+        major_lookback_hours=major_lookback_hours,
+        research_lookback_days=research_lookback_days,
+    )
+
+
 subscribe_choice_sectornews = register_actor_once(
     "subscribe_choice_sectornews",
     _subscribe_choice_sectornews,
@@ -232,6 +257,10 @@ materialize_choice_news_events = register_actor_once(
 pull_choice_sectornews_snapshot = register_actor_once(
     "pull_choice_sectornews_snapshot",
     _pull_choice_sectornews_snapshot,
+)
+ingest_tushare_news_to_choice_news = register_actor_once(
+    "ingest_tushare_news_to_choice_news",
+    _ingest_tushare_news_to_choice_news,
 )
 
 

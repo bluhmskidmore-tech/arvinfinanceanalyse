@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.tasks.livermore_gate_supplement import (
     materialize_livermore_gate_supplement_daily,
 )

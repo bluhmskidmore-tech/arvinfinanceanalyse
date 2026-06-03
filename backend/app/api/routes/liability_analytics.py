@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
-
 from backend.app.governance.settings import get_settings
 from backend.app.services.liability_analytics_service import (
     cockpit_warnings_payload,
@@ -17,6 +15,7 @@ from backend.app.services.liability_analytics_service import (
 from backend.app.services.liability_knowledge_service import (
     liability_knowledge_brief_envelope,
 )
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(tags=["liability-analytics"])
 

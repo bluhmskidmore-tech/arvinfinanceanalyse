@@ -601,15 +601,30 @@ function buildLedgerExplainabilityModel(props: {
   const detailYuan = sumLedgerMoney(props.detailRows, (row) => row.monthly_pnl);
   const summaryDetailComparabilityReason = firstMetaMismatch(props.summaryMeta, props.detailMeta);
   const checks = [
-    { label: "币种合计", diff: differenceYuan(totalYuan, currencyYuan) },
-    { label: "科目汇总", diff: differenceYuan(totalYuan, accountYuan) },
-    { label: "明细", diff: differenceYuan(totalYuan, detailYuan) },
+    { label: "币种合计", diff: differenceYuan(totalYuan, currencyYuan), comparabilityReason: null },
+    { label: "科目汇总", diff: differenceYuan(totalYuan, accountYuan), comparabilityReason: null },
+    { label: "明细", diff: differenceYuan(totalYuan, detailYuan), comparabilityReason: summaryDetailComparabilityReason },
   ];
+  const comparableChecks = checks.filter((check) => !check.comparabilityReason);
   const largestResidualCheck =
-    checks
-      .filter((check): check is { label: string; diff: number } => check.diff !== null)
+    comparableChecks
+      .filter(
+        (check): check is { label: string; diff: number; comparabilityReason: string | null } => check.diff !== null,
+      )
       .sort((left, right) => Math.abs(right.diff) - Math.abs(left.diff))[0] ?? null;
-  const residualYuan = largestResidualCheck?.diff ?? null;
+  const hasMaterialGap = comparableChecks.some(
+    (check) => check.diff !== null && Math.abs(check.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN,
+  );
+  const hasPendingCheck = checks.some((check) => check.diff === null || check.comparabilityReason);
+  const residualYuan =
+    largestResidualCheck && (hasMaterialGap || !hasPendingCheck) ? largestResidualCheck.diff : null;
+  const largestResidualStatus = largestResidualCheck
+    ? `${largestResidualCheck.label}${reconciliationStatus(largestResidualCheck.diff)}`
+    : null;
+  const bottleneck =
+    hasMaterialGap && largestResidualStatus
+      ? largestResidualStatus
+      : summaryDetailComparabilityReason ?? largestResidualStatus ?? "暂无可校验卡点";
   const absTotalYuan = totalYuan === null ? null : Math.abs(totalYuan);
   const absResidualYuan = residualYuan === null ? null : Math.abs(residualYuan);
   const explanationCoveragePct =
@@ -620,19 +635,16 @@ function buildLedgerExplainabilityModel(props: {
           ? 100
           : 0
         : Math.max(0, Math.min(100, (1 - absResidualYuan / absTotalYuan) * 100));
-  const hasMaterialGap = checks.some(
-    (check) => check.diff !== null && Math.abs(check.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN,
-  );
-  const hasUnknownCheck = checks.some((check) => check.diff === null);
-
   return {
     totalYuan,
     checks,
-    verdict: hasMaterialGap ? "解释链未闭合" : hasUnknownCheck ? "解释链待校验" : "解释链闭合",
+    verdict: hasMaterialGap
+        ? "解释链未闭合"
+        : hasPendingCheck
+          ? "解释链待校验"
+          : "解释链闭合",
     explanationCoveragePct,
-    bottleneck: largestResidualCheck
-      ? `${largestResidualCheck.label}${reconciliationStatus(largestResidualCheck.diff)}`
-      : "暂无可校验卡点",
+    bottleneck,
     driverRows: buildLedgerDriverRows(props.byAccount),
     residualDiagnosticRows: buildLedgerResidualDiagnosticRows({
       totalYuan,
@@ -708,7 +720,7 @@ function LedgerExplainabilityPanel(props: {
               <div key={check.label} className="ledger-pnl-analysis__kpi">
                 <div className="ledger-pnl-analysis__kpi-label">{check.label}</div>
                 <div className="ledger-pnl-analysis__kpi-value">
-                  {check.label}{reconciliationStatus(check.diff)}
+                  {check.comparabilityReason ? `${check.label}可比性待核` : `${check.label}${reconciliationStatus(check.diff)}`}
                 </div>
               </div>
             ))}

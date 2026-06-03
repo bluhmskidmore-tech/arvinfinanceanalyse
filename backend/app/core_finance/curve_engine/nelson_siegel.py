@@ -27,7 +27,6 @@ from decimal import Decimal
 
 from backend.app.core_finance.curve_engine.curve_types import CurvePoint
 
-
 # ---------------------------------------------------------------------------
 # Parameter containers
 # ---------------------------------------------------------------------------

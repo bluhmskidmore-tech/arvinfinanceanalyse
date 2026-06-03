@@ -563,7 +563,7 @@ describe("stockAnalysisPageModel", () => {
             crowding_penalty: 0.1,
             confidence: "medium",
             reason: "Fusion observation-only candidate",
-            evidence: { source_kinds: ["factor_screen", "theme_breakout"] },
+            evidence: { source_kinds: ["factor_screen", "theme_breakout", "external_vendor_signal"] },
           },
         ],
       },
@@ -577,6 +577,8 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].stockCode).toBe("000009.SZ");
     expect(cards[0].evidence.join(" ")).toContain("融合分");
     expect(cards[0].counterEvidence.join(" ")).toContain("代理信号");
+    expect(cards[0].counterEvidence.join(" ")).toContain("来源待确认");
+    expect(cards[0].counterEvidence.join(" ")).not.toContain("external_vendor_signal");
     expect(queue[0].stockName).toBe("Fusion Alpha");
     expect(summary.candidateCountLabel).toBe("候选 1");
     expect(summary.nextReviewAction).toContain("Fusion Alpha");
@@ -630,6 +632,8 @@ describe("stockAnalysisPageModel", () => {
     expect(empty.detail).toContain("多因子池 30 只");
 
     expect(localizeImplementationStage("verification_pending")).toBe("证据待齐");
+    expect(localizeImplementationStage("external_vendor_pending")).toBe("阶段待确认");
+    expect(localizeImplementationStage("external_vendor_pending")).not.toBe("external vendor pending");
     expect(localizeMarketDataStatus("unknown")).toBe("状态待确认");
     expect(localizeMarketDataStatus("unknown")).not.toBe("unknown");
     expect(localizeThemeSourceKind("choice_stock_intraday_movement_event", false)).toBe("来源待确认");
@@ -1020,22 +1024,37 @@ describe("stockAnalysisPageModel", () => {
               matched_row_count: 0,
               message: "source_table choice_stock_intraday_movement_event is missing.",
             },
+            {
+              input_family: "external_vendor_theme_feed",
+              status: "vendor_sync_delayed",
+              row_count: 0,
+              matched_row_count: 0,
+              message: "External vendor theme feed sync is delayed.",
+            },
           ],
         },
         items: [],
       },
     });
 
+    expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       label: "盘中异动",
       statusLabel: "源表缺失",
       detail: "盘中异动：源表缺失",
+    });
+    expect(rows[1]).toMatchObject({
+      label: "题材输入",
+      statusLabel: "状态待确认",
+      detail: "题材输入：状态待确认",
     });
     expect(`${rows[0].label} ${rows[0].statusLabel} ${rows[0].detail}`).not.toContain(
       "choice_stock_intraday_movement_event",
     );
     expect(`${rows[0].label} ${rows[0].statusLabel} ${rows[0].detail}`).not.toContain("source_table_missing");
     expect(`${rows[0].label} ${rows[0].statusLabel} ${rows[0].detail}`).not.toContain("source_table");
+    expect(`${rows[1].label} ${rows[1].statusLabel} ${rows[1].detail}`).not.toContain("external_vendor_theme_feed");
+    expect(`${rows[1].label} ${rows[1].statusLabel} ${rows[1].detail}`).not.toContain("vendor_sync_delayed");
   });
 
   it("builds theme breakout review items with failed gate codes as additive evidence", () => {
@@ -1066,7 +1085,7 @@ describe("stockAnalysisPageModel", () => {
             avg_turn: 4.1,
             avg_amplitude: 6.8,
             movement_event_count: 0,
-            failed_gates: ["insufficient_cluster_strength"],
+            failed_gates: ["insufficient_cluster_strength", "liquidity_pressure_too_high"],
             observation_only: true,
             reason: "Observation-only near-miss: failed gates insufficient_cluster_strength.",
             items: [
@@ -1099,12 +1118,14 @@ describe("stockAnalysisPageModel", () => {
       sourceKindLabel: "代理观察",
     });
     expect(reviewItems[0].failedGateLabel).toContain("簇强度不足");
+    expect(reviewItems[0].failedGateLabel).toContain("门槛待确认");
     expect(reviewItems[0].summary).toContain("2");
     expect(reviewItems[0].reason).toContain("强势样本未过门槛，保留观察");
     expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("buy");
     expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("Observation-only");
     expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("failed gates");
     expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("insufficient_cluster_strength");
+    expect(`${reviewItems[0].reason} ${reviewItems[0].failedGateLabel}`).not.toContain("liquidity_pressure_too_high");
   });
 
   it("builds a closed-loop summary for complete pass states", () => {

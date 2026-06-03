@@ -7,12 +7,13 @@ from decimal import Decimal
 from typing import Any, Literal
 
 import duckdb
-
-from backend.app.core_finance.pnl_attribution import workbench as pa_wb
 from backend.app.core_finance.campisi import (
     campisi_attribution as _core_campisi,
+)
+from backend.app.core_finance.campisi import (
     classify_primary_driver,
 )
+from backend.app.core_finance.pnl_attribution import workbench as pa_wb
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -37,6 +38,7 @@ from backend.app.schemas.pnl_attribution import (
     VolumeRateAttributionItem,
     VolumeRateAttributionPayload,
 )
+from backend.app.services import pnl_service
 from backend.app.services.campisi_attribution_service import (
     FORMAL_REPORT_BASIS,
     _formal_bridge_has_position_overlap,
@@ -47,7 +49,6 @@ from backend.app.services.campisi_attribution_service import (
     merge_positions,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
-from backend.app.services import pnl_service
 
 RULE_VERSION = "rv_pnl_attribution_workbench_v1"
 CACHE_VERSION = "cv_pnl_attribution_workbench_v1"

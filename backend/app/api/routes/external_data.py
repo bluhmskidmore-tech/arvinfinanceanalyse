@@ -4,17 +4,18 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import duckdb
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.external_data_query_service import (
     fetch_series_data_page,
     fetch_series_data_recent,
 )
 from backend.app.services.external_data_service import default_service
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 
 router = APIRouter(prefix="/api/external-data", tags=["external-data"])
@@ -22,14 +23,35 @@ router = APIRouter(prefix="/api/external-data", tags=["external-data"])
 DomainParam = Literal["macro", "news", "yield_curve", "fx", "other"]
 
 
+def _ensure_external_data_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="external_data",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/catalog")
-def list_catalog() -> list[dict[str, object]]:
+def list_catalog(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> list[dict[str, object]]:
+    _ensure_external_data_read_allowed(auth)
     svc = default_service()
     return [e.model_dump() for e in svc.list_catalog()]
 
 
 @router.get("/catalog/{series_id}")
-def get_catalog_entry(series_id: str) -> dict[str, object]:
+def get_catalog_entry(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    series_id: str,
+) -> dict[str, object]:
+    _ensure_external_data_read_allowed(auth)
     svc = default_service()
     entry = svc.get_catalog_entry(series_id.strip())
     if entry is None:
@@ -38,7 +60,11 @@ def get_catalog_entry(series_id: str) -> dict[str, object]:
 
 
 @router.get("/catalog/by-domain/{domain}")
-def list_catalog_by_domain(domain: DomainParam) -> list[dict[str, object]]:
+def list_catalog_by_domain(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    domain: DomainParam,
+) -> list[dict[str, object]]:
+    _ensure_external_data_read_allowed(auth)
     svc = default_service()
     return [e.model_dump() for e in svc.list_by_domain(domain)]
 
@@ -57,10 +83,12 @@ def _json_safe_row(row: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/series/{series_id}/data")
 def get_series_data(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     series_id: str,
     limit: int = Query(100, ge=1, le=10_000),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    _ensure_external_data_read_allowed(auth)
     settings = get_settings()
     path = str(settings.duckdb_path)
     conn = duckdb.connect(path, read_only=True)
@@ -86,10 +114,12 @@ def get_series_data(
 
 @router.get("/series/{series_id}/data/recent")
 def get_series_data_recent(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     series_id: str,
     days: int = Query(30, ge=1, le=3650),
     limit: int = Query(10_000, ge=1, le=50_000),
 ) -> dict[str, object]:
+    _ensure_external_data_read_allowed(auth)
     settings = get_settings()
     path = str(settings.duckdb_path)
     conn = duckdb.connect(path, read_only=True)

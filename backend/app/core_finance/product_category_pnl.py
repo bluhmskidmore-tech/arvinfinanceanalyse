@@ -7,7 +7,6 @@ from decimal import Decimal
 
 from backend.app.core_finance.field_normalization import is_approved_status
 
-
 ZERO = Decimal("0")
 DAYS_IN_YEAR = Decimal("365")
 ASSET_SCALE_EXCLUSIONS = {

@@ -10,7 +10,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -18,16 +18,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import duckdb
-
-from backend.app.governance.locks import LockDefinition, acquire_lock
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.choice_client import ChoiceClient
-from backend.app.repositories.duckdb_migrations import (
+import duckdb  # noqa: E402
+from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
+from backend.app.governance.settings import get_settings  # noqa: E402
+from backend.app.repositories.choice_client import ChoiceClient  # noqa: E402
+from backend.app.repositories.duckdb_migrations import (  # noqa: E402
     apply_pending_migrations_on_connection,
     ensure_choice_macro_schema_if_missing,
 )
-from backend.app.repositories.tushare_adapter import (
+from backend.app.repositories.tushare_adapter import (  # noqa: E402
     import_tushare_pro,
     resolve_tushare_token_with_settings_fallback,
 )
@@ -40,7 +39,7 @@ MIN_ROW_THRESHOLD = 10
 LOCK = LockDefinition(key="lock:duckdb:macro-series-backfill", ttl_seconds=900)
 
 
-class BackfillSource(str, Enum):
+class BackfillSource(StrEnum):
     CHOICE_SNAPSHOT = "choice_snapshot"
     CHOICE_EDB = "choice_edb"
     TUSHARE_MACRO = "tushare_macro"

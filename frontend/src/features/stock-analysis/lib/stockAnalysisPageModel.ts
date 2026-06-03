@@ -1218,7 +1218,7 @@ function sectorHeavyweightSourceLabel(source: string) {
     review_queue: "复核队列",
     sector_constituent: "板块成分",
   };
-  return labels[source] ?? source;
+  return labels[source] ?? "来源待确认";
 }
 
 export function buildSectorHeavyweightPreview(
@@ -1755,7 +1755,7 @@ function localizeThemeGateLabel(gate: string): string {
   const labels: Record<string, string> = {
     insufficient_cluster_strength: "簇强度不足",
   };
-  return labels[gate] ?? gate.replace(/_/g, " ");
+  return labels[gate] ?? "门槛待确认";
 }
 
 export function buildThemeBreakoutCards(payload: LivermoreStrategyPayload): StockThemeBreakoutCard[] {
@@ -1823,8 +1823,8 @@ const themeEvidenceStatusLabels: Record<string, string> = {
 };
 
 function localizeThemeEvidenceDetail(row: LivermoreThemeEvidenceInputState, inputFamily: string, status: string): string {
-  const label = themeEvidenceInputLabels[inputFamily] ?? inputFamily;
-  const statusLabel = themeEvidenceStatusLabels[status] ?? status;
+  const label = themeEvidenceInputLabels[inputFamily] ?? "题材输入";
+  const statusLabel = themeEvidenceStatusLabels[status] ?? "状态待确认";
   const message = row.message?.trim().toLowerCase() ?? "";
   if (message.includes("concept membership") || status === "catalog_unconfirmed") {
     return `${label}：${statusLabel}`;
@@ -1872,9 +1872,9 @@ export function buildThemeEvidenceStateRows(payload: LivermoreStrategyPayload): 
     const status = String(row.status ?? row.state ?? "unknown");
     return {
       key: inputFamily,
-      label: themeEvidenceInputLabels[inputFamily] ?? inputFamily,
+      label: themeEvidenceInputLabels[inputFamily] ?? "题材输入",
       status,
-      statusLabel: themeEvidenceStatusLabels[status] ?? status,
+      statusLabel: themeEvidenceStatusLabels[status] ?? "状态待确认",
       detail: localizeThemeEvidenceDetail(row, inputFamily, status),
       rowCountLabel: `行 ${rowCount} / 命中 ${matchedCount}`,
     };
@@ -2966,7 +2966,7 @@ export function localizeImplementationStage(stage: string): string {
     ready: "就绪",
     no_data: "暂无数据",
   };
-  return labels[normalized] ?? stage.replace(/_/g, " ");
+  return labels[normalized] ?? "阶段待确认";
 }
 
 export function localizeThemeRadarBadge(isProxy: boolean, formulaVersion?: string | null): string {

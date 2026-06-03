@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 from tests.test_qdb_gl_monthly_analysis_core import (
     _real_month_source,
@@ -20,6 +22,7 @@ SAMPLE_PATH = (
     / "formal_financial_indicators"
     / "ledger_pnl_202603_financial_indicator_golden.json"
 )
+LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
 
 
 def _load_sample() -> dict[str, Any]:
@@ -28,6 +31,30 @@ def _load_sample() -> dict[str, Any]:
 
 def _metrics_by_key(sample: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(metric["metric_key"]): metric for metric in sample["metrics"]}
+
+
+def _grant_ledger_pnl_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "ledger-pnl-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="ledger_pnl",
+        action="read",
+    )
+
+
+def _ledger_pnl_client_with_read_scope(tmp_path, monkeypatch) -> TestClient:
+    _grant_ledger_pnl_read_scope(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update(LEDGER_PNL_READ_HEADERS)
+    return client
 
 
 def test_ledger_pnl_202603_golden_sample_freezes_excel_values_units_and_source_statuses():
@@ -160,9 +187,55 @@ def test_ledger_pnl_service_wraps_unregistered_month_as_empty_warning_envelope()
     assert envelope["result"]["metrics"] == []
 
 
-def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract():
-    app_module = load_module("backend.app.main", "backend/app/main.py")
-    client = TestClient(app_module.app)
+def test_ledger_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.ledger_pnl",
+        "backend/app/api/routes/ledger_pnl.py",
+    )
+
+    class FakeLedgerPnlService:
+        @staticmethod
+        def ledger_pnl_dates_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "ledger_pnl.dates"}, "result": {"dates": []}}
+
+        @staticmethod
+        def ledger_pnl_data_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "ledger_pnl.data"}, "result": {"items": []}}
+
+        @staticmethod
+        def ledger_pnl_summary_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "ledger_pnl.summary"}, "result": {}}
+
+        @staticmethod
+        def ledger_pnl_formal_financial_indicator_contract_envelope(**_kwargs):
+            return {
+                "result_meta": {"result_kind": "ledger_pnl.formal_financial_indicator_source_contract"},
+                "result": {"metrics": []},
+            }
+
+    monkeypatch.setattr(route_module, "_svc", lambda: FakeLedgerPnlService)
+    sqlite_path = tmp_path / "ledger-pnl-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    cases = [
+        ("/api/ledger-pnl/dates", {}),
+        ("/api/ledger-pnl/data", {"date": "2026-03-31"}),
+        ("/api/ledger-pnl/summary", {"date": "2026-03-31"}),
+        ("/api/ledger-pnl/formal-financial-indicators", {"report_month": "202603"}),
+    ]
+
+    for path, params in cases:
+        response = client.get(path, params=params, headers=LEDGER_PNL_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract(tmp_path, monkeypatch):
+    client = _ledger_pnl_client_with_read_scope(tmp_path, monkeypatch)
 
     response = client.get(
         "/api/ledger-pnl/formal-financial-indicators",
@@ -183,9 +256,8 @@ def test_ledger_pnl_api_exposes_formal_financial_indicator_source_contract():
     assert metrics["parent.loan_balance"]["value"] is None
 
 
-def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month():
-    app_module = load_module("backend.app.main", "backend/app/main.py")
-    client = TestClient(app_module.app)
+def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month(tmp_path, monkeypatch):
+    client = _ledger_pnl_client_with_read_scope(tmp_path, monkeypatch)
 
     response = client.get(
         "/api/ledger-pnl/formal-financial-indicators",

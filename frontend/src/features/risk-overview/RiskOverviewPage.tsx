@@ -27,81 +27,6 @@ import {
 } from "../workbench/components/kpiFormat";
 import "./RiskOverviewPage.css";
 
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
-} as const;
-
-const tableShellStyle = {
-  overflowX: "auto",
-  borderRadius: 16,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-  marginTop: 18,
-} as const;
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-} as const;
-
-const thStyle = {
-  textAlign: "left" as const,
-  padding: "10px 12px",
-  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-};
-
-const tdStyle = {
-  padding: "12px",
-  borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
-  color: designTokens.color.neutral[900],
-};
-
-const blockTitleStyle = {
-  margin: "24px 0 0",
-  fontSize: 16,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const drillDownIntroStyle = {
-  margin: "28px 0 12px",
-  padding: "14px 16px",
-  borderRadius: 14,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: designTokens.color.neutral[50],
-  color: designTokens.color.neutral[600],
-  fontSize: 14,
-  lineHeight: 1.65,
-} as const;
-
-const drillCardStyle = {
-  marginTop: 18,
-  padding: 16,
-  borderRadius: 16,
-  border: `1px solid ${designTokens.color.neutral[200]}`,
-  background: "#ffffff",
-} as const;
-
-const drillChipRowStyle = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  gap: 8,
-  marginTop: 12,
-} as const;
-
 function drillChipStyle(active: boolean) {
   return {
     padding: "8px 12px",
@@ -284,44 +209,19 @@ export default function RiskOverviewPage() {
 
   return (
     <section>
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: "-0.03em",
-          }}
-        >
+      <div className="risk-overview-hero">
+        <h1 className="risk-overview-title">
           风险总览
         </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: designTokens.color.neutral[600],
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
-        >
+        <p className="risk-overview-description">
           主指标来自正式风险张量接口{" "}
           <code className="risk-overview-api-code">/api/risk/tensor</code>
           （与「风险张量」页同一主链）。下方债券分析物化结果为下钻与补充视图，不在浏览器端做金融重算。
         </p>
       </div>
 
-      <div style={controlBarStyle}>
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #d7dfea",
-            background: "#ffffff",
-            color: designTokens.color.neutral[900],
-            fontSize: 14,
-          }}
-        >
+      <div className="risk-overview-control-bar">
+        <div className="risk-overview-report-date-card">
           {datesEmpty ? (
             <span>后端未返回可用风险报告日。</span>
           ) : datesBlockingError ? (
@@ -329,7 +229,7 @@ export default function RiskOverviewPage() {
           ) : (
             <>
               报告日：<strong>{reportDate}</strong>
-              <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
+              <span className="risk-overview-report-date-hint">
                 （可通过地址栏报告日参数指定）
               </span>
             </>
@@ -352,7 +252,7 @@ export default function RiskOverviewPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 8 }}>
+      <div className="risk-overview-section-gap-sm">
         <AsyncSection
           title="正式风险张量（主数据）"
           isLoading={datesQuery.isLoading || tensorQuery.isLoading}
@@ -365,7 +265,7 @@ export default function RiskOverviewPage() {
         >
           {tensorResult && (
             <>
-              <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
+              <div data-testid="risk-overview-kpi-grid" className="risk-overview-summary-grid">
                 <KpiCard
                   title="估值口径 DV01"
                   value={bondNumericDisplay(tensorResult.portfolio_dv01)}
@@ -421,7 +321,7 @@ export default function RiskOverviewPage() {
               <h2 className="risk-overview-section-title">
                 集中度
               </h2>
-              <div style={summaryGridStyle}>
+              <div className="risk-overview-summary-grid">
                 <KpiCard
                   title="发行人 HHI"
                   value={bondNumericDisplay(tensorResult.issuer_concentration_hhi)}
@@ -446,7 +346,7 @@ export default function RiskOverviewPage() {
               <h2 className="risk-overview-section-title">
                 流动性缺口（市值）
               </h2>
-              <div style={summaryGridStyle}>
+              <div className="risk-overview-summary-grid">
                 <KpiCard
                   title="30 日内到期市值"
                   value={bondNumericDisplay(tensorResult.liquidity_gap_30d)}
@@ -497,7 +397,7 @@ export default function RiskOverviewPage() {
                   fontSize: 14,
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                <div className="risk-overview-quality-title">
                   质量标记：
                   {tensorResult.quality_flag === "ok"
                     ? "正常"
@@ -510,9 +410,9 @@ export default function RiskOverviewPage() {
                           : tensorResult.quality_flag}
                 </div>
                 {tensorResult.warnings.length === 0 ? (
-                  <div style={{ color: designTokens.color.neutral[600] }}>无预警。</div>
+                  <div className="risk-overview-muted-text">无预警。</div>
                 ) : (
-                  <ul style={{ margin: 0, paddingLeft: 20, color: designTokens.color.neutral[600] }}>
+                  <ul className="risk-overview-warning-list">
                     {tensorResult.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
@@ -524,15 +424,15 @@ export default function RiskOverviewPage() {
         </AsyncSection>
       </div>
 
-      <div style={drillDownIntroStyle}>
-        <strong style={{ color: designTokens.color.neutral[900] }}>债券分析下钻与补充</strong>
+      <div className="risk-overview-drill-intro">
+        <strong className="risk-overview-strong-text">债券分析下钻与补充</strong>
         ：以下接口来自{" "}
         <code className="risk-overview-api-code risk-overview-api-code--compact">/api/bond-analytics/krd-curve-risk</code> 与{" "}
         <code className="risk-overview-api-code risk-overview-api-code--compact">/api/bond-analytics/credit-spread-migration</code>
         ，用于曲线/KRD 明细与信用利差迁移等物化视角，与主链风险张量并存时可对照阅读。
       </div>
 
-      <div style={{ marginTop: 8 }}>
+      <div className="risk-overview-section-gap-sm">
         <AsyncSection
           title="利率曲线与 KRD 风险（物化下钻）"
           isLoading={datesQuery.isLoading || krdQuery.isLoading}
@@ -543,7 +443,7 @@ export default function RiskOverviewPage() {
             void krdQuery.refetch();
           }}
         >
-          <div data-testid="risk-overview-bond-krd-kpi-grid" style={summaryGridStyle}>
+          <div data-testid="risk-overview-bond-krd-kpi-grid" className="risk-overview-summary-grid">
             <KpiCard
               title="组合久期"
               value={cellText(krd?.portfolio_duration)}
@@ -571,17 +471,7 @@ export default function RiskOverviewPage() {
           </div>
 
           {krd && krd.warnings.length > 0 && (
-            <div
-              style={{
-                marginTop: 16,
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid #e8d9a8",
-                background: "#fffbeb",
-                color: "#7a5c1a",
-                fontSize: 13,
-              }}
-            >
+            <div className="risk-overview-warning-panel">
               {krd.warnings.map((w, i) => (
                 <div key={i}>{w}</div>
               ))}
@@ -589,12 +479,12 @@ export default function RiskOverviewPage() {
           )}
 
           {selectedTenorRow ? (
-            <div data-testid="risk-overview-tenor-drill" style={drillCardStyle}>
-              <div style={{ color: designTokens.color.neutral[900], fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
-              <div style={{ color: designTokens.color.neutral[600], fontSize: 13, marginTop: 6 }}>
+            <div data-testid="risk-overview-tenor-drill" className="risk-overview-drill-card">
+              <div className="risk-overview-drill-title">期限桶下钻</div>
+              <div className="risk-overview-drill-description">
                 使用债券分析的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
               </div>
-              <div style={drillChipRowStyle}>
+              <div className="risk-overview-drill-chip-row">
                 {tenorRows.map((row) => (
                   <button
                     key={row.tenor}
@@ -606,23 +496,23 @@ export default function RiskOverviewPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 12, color: designTokens.color.neutral[900], fontSize: 14 }}>
+              <div className="risk-overview-drill-current">
                 当前桶：<strong>{selectedTenorRow.tenor}</strong>
               </div>
-              <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
+              <div className="risk-overview-drill-detail">
                 KRD：{selectedTenorRow.krd.display} · 估值DV01：{selectedTenorRow.dv01.display} · 市值权重：
                 {selectedTenorRow.market_value_weight.display}
               </div>
             </div>
           ) : null}
 
-          <h2 style={blockTitleStyle}>KRD 分桶</h2>
-          <div style={tableShellStyle}>
-            <table style={tableStyle}>
+          <h2 className="risk-overview-block-title">KRD 分桶</h2>
+          <div className="risk-overview-table-shell">
+            <table className="risk-overview-table">
               <thead>
                 <tr>
                   {["期限", "KRD", "DV01（估值）", "市值权重"].map((label) => (
-                    <th key={label} style={thStyle}>
+                    <th key={label} className="risk-overview-table-header">
                       {label}
                     </th>
                   ))}
@@ -631,23 +521,23 @@ export default function RiskOverviewPage() {
               <tbody>
                 {(krd?.krd_buckets ?? []).map((row) => (
                   <tr key={row.tenor}>
-                    <td style={tdStyle}>{row.tenor}</td>
-                    <td style={tdStyle}>{row.krd.display}</td>
-                    <td style={tdStyle}>{row.dv01.display}</td>
-                    <td style={tdStyle}>{row.market_value_weight.display}</td>
+                    <td className="risk-overview-table-cell">{row.tenor}</td>
+                    <td className="risk-overview-table-cell">{row.krd.display}</td>
+                    <td className="risk-overview-table-cell">{row.dv01.display}</td>
+                    <td className="risk-overview-table-cell">{row.market_value_weight.display}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <h2 style={blockTitleStyle}>情景分析</h2>
-          <div style={tableShellStyle}>
-            <table style={tableStyle}>
+          <h2 className="risk-overview-block-title">情景分析</h2>
+          <div className="risk-overview-table-shell">
+            <table className="risk-overview-table">
               <thead>
                 <tr>
                   {["情景名称", "情景说明", "经济口径损益", "OCI", "TPL"].map((label) => (
-                    <th key={label} style={thStyle}>
+                    <th key={label} className="risk-overview-table-header">
                       {label}
                     </th>
                   ))}
@@ -656,24 +546,24 @@ export default function RiskOverviewPage() {
               <tbody>
                 {(krd?.scenarios ?? []).map((row) => (
                   <tr key={row.scenario_name}>
-                    <td style={tdStyle}>{row.scenario_name}</td>
-                    <td style={tdStyle}>{row.scenario_description}</td>
-                    <td style={tdStyle}>{row.pnl_economic.display}</td>
-                    <td style={tdStyle}>{row.pnl_oci.display}</td>
-                    <td style={tdStyle}>{row.pnl_tpl.display}</td>
+                    <td className="risk-overview-table-cell">{row.scenario_name}</td>
+                    <td className="risk-overview-table-cell">{row.scenario_description}</td>
+                    <td className="risk-overview-table-cell">{row.pnl_economic.display}</td>
+                    <td className="risk-overview-table-cell">{row.pnl_oci.display}</td>
+                    <td className="risk-overview-table-cell">{row.pnl_tpl.display}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <h2 style={blockTitleStyle}>资产类别风险汇总</h2>
-          <div style={tableShellStyle}>
-            <table style={tableStyle}>
+          <h2 className="risk-overview-block-title">资产类别风险汇总</h2>
+          <div className="risk-overview-table-shell">
+            <table className="risk-overview-table">
               <thead>
                 <tr>
                   {["资产类别", "市值", "久期", "DV01（估值）", "权重"].map((label) => (
-                    <th key={label} style={thStyle}>
+                    <th key={label} className="risk-overview-table-header">
                       {label}
                     </th>
                   ))}
@@ -682,11 +572,11 @@ export default function RiskOverviewPage() {
               <tbody>
                 {(krd?.by_asset_class ?? []).map((row) => (
                   <tr key={row.asset_class}>
-                    <td style={tdStyle}>{row.asset_class}</td>
-                    <td style={tdStyle}>{row.market_value.display}</td>
-                    <td style={tdStyle}>{row.duration.display}</td>
-                    <td style={tdStyle}>{row.dv01.display}</td>
-                    <td style={tdStyle}>{row.weight.display}</td>
+                    <td className="risk-overview-table-cell">{row.asset_class}</td>
+                    <td className="risk-overview-table-cell">{row.market_value.display}</td>
+                    <td className="risk-overview-table-cell">{row.duration.display}</td>
+                    <td className="risk-overview-table-cell">{row.dv01.display}</td>
+                    <td className="risk-overview-table-cell">{row.weight.display}</td>
                   </tr>
                 ))}
               </tbody>
@@ -694,14 +584,14 @@ export default function RiskOverviewPage() {
           </div>
 
           {krd?.computed_at && (
-            <p style={{ marginTop: 16, marginBottom: 0, color: "#8090a8", fontSize: 12 }}>
+            <p className="risk-overview-computed-at">
               computed_at: {krd.computed_at}
             </p>
           )}
         </AsyncSection>
       </div>
 
-      <div style={{ marginTop: 24 }}>
+      <div className="risk-overview-section-gap-lg">
         <AsyncSection
           title="信用利差迁移（物化下钻）"
           isLoading={datesQuery.isLoading || creditQuery.isLoading}
@@ -712,7 +602,7 @@ export default function RiskOverviewPage() {
             void creditQuery.refetch();
           }}
         >
-          <div style={summaryGridStyle}>
+          <div className="risk-overview-summary-grid">
             <KpiCard
               title="信用债数量"
               value={cellText(credit?.credit_bond_count)}
@@ -734,17 +624,7 @@ export default function RiskOverviewPage() {
           </div>
 
           {credit && credit.warnings.length > 0 && (
-            <div
-              style={{
-                marginTop: 16,
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid #e8d9a8",
-                background: "#fffbeb",
-                color: "#7a5c1a",
-                fontSize: 13,
-              }}
-            >
+            <div className="risk-overview-warning-panel">
               {credit.warnings.map((w, i) => (
                 <div key={i}>{w}</div>
               ))}
@@ -752,12 +632,12 @@ export default function RiskOverviewPage() {
           )}
 
           {selectedIssuerRow ? (
-            <div data-testid="risk-overview-issuer-drill" style={drillCardStyle}>
-              <div style={{ color: designTokens.color.neutral[900], fontSize: 15, fontWeight: 600 }}>发行人维度下钻</div>
-              <div style={{ color: designTokens.color.neutral[600], fontSize: 13, marginTop: 6 }}>
+            <div data-testid="risk-overview-issuer-drill" className="risk-overview-drill-card">
+              <div className="risk-overview-drill-title">发行人维度下钻</div>
+              <div className="risk-overview-drill-description">
                 使用信用利差迁移读面的 `concentration_by_issuer.top_items` 作为 issuer drill。
               </div>
-              <div style={drillChipRowStyle}>
+              <div className="risk-overview-drill-chip-row">
                 {issuerRows.map((row) => (
                   <button
                     key={row.name}
@@ -769,22 +649,22 @@ export default function RiskOverviewPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 12, color: designTokens.color.neutral[900], fontSize: 14 }}>
+              <div className="risk-overview-drill-current">
                 当前发行人：<strong>{selectedIssuerRow.name}</strong>
               </div>
-              <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
+              <div className="risk-overview-drill-detail">
                 权重：{selectedIssuerRow.weight.display} · 市值：{selectedIssuerRow.market_value.display}
               </div>
             </div>
           ) : null}
 
-          <h2 style={blockTitleStyle}>利差情景</h2>
-          <div style={tableShellStyle}>
-            <table style={tableStyle}>
+          <h2 className="risk-overview-block-title">利差情景</h2>
+          <div className="risk-overview-table-shell">
+            <table className="risk-overview-table">
               <thead>
                 <tr>
                   {["情景", "利差变动 (bp)", "损益影响", "OCI", "TPL"].map((label) => (
-                    <th key={label} style={thStyle}>
+                    <th key={label} className="risk-overview-table-header">
                       {label}
                     </th>
                   ))}
@@ -793,11 +673,11 @@ export default function RiskOverviewPage() {
               <tbody>
                 {(credit?.spread_scenarios ?? []).map((row) => (
                   <tr key={row.scenario_name}>
-                    <td style={tdStyle}>{row.scenario_name}</td>
-                    <td style={tdStyle}>{cellText(row.spread_change_bp)}</td>
-                    <td style={tdStyle}>{row.pnl_impact.display}</td>
-                    <td style={tdStyle}>{row.oci_impact.display}</td>
-                    <td style={tdStyle}>{row.tpl_impact.display}</td>
+                    <td className="risk-overview-table-cell">{row.scenario_name}</td>
+                    <td className="risk-overview-table-cell">{cellText(row.spread_change_bp)}</td>
+                    <td className="risk-overview-table-cell">{row.pnl_impact.display}</td>
+                    <td className="risk-overview-table-cell">{row.oci_impact.display}</td>
+                    <td className="risk-overview-table-cell">{row.tpl_impact.display}</td>
                   </tr>
                 ))}
               </tbody>
@@ -805,7 +685,7 @@ export default function RiskOverviewPage() {
           </div>
 
           {credit?.computed_at && (
-            <p style={{ marginTop: 16, marginBottom: 0, color: "#8090a8", fontSize: 12 }}>
+            <p className="risk-overview-computed-at">
               computed_at: {credit.computed_at}
             </p>
           )}

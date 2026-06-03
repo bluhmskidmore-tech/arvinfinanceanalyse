@@ -13,10 +13,11 @@ from decimal import Decimal
 from typing import Any
 
 from backend.app.core_finance.liability_analytics_compat import (
-    ZERO,
     ONE_HUNDRED_MILLION,
+    ZERO,
     clean_text,
     is_interbank_cd,
+    is_interest_bearing_bond_asset,
     monthly_v1_bucket_name,
     normalize_bond_rate_decimal,
     normalize_interbank_rate_decimal,
@@ -26,9 +27,7 @@ from backend.app.core_finance.liability_analytics_compat import (
     zqtz_asset_amount,
     zqtz_asset_yield_weight,
     zqtz_liability_amount,
-    is_interest_bearing_bond_asset,
 )
-
 
 # ---------------------------------------------------------------------------
 # Alert / warning thresholds (business-calibrated defaults)

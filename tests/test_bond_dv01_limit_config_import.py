@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import date
+from pathlib import Path
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
@@ -119,3 +123,69 @@ def test_import_bond_dv01_limit_config_validates_csv_without_writing_in_dry_run(
     assert payload["limit_config_status"]["result"]["acceptance_status"] == "blocked"
     assert GovernanceRepository(base_dir=governance_dir).read_all(STREAM) == []
     get_settings.cache_clear()
+
+
+def test_import_bond_dv01_limit_config_cli_dry_run_then_import(tmp_path):
+    governance_dir = tmp_path / "governance"
+    config_path = tmp_path / "dv01_limits.csv"
+    rows = [_valid_record(accounting_class) for accounting_class in ["AC", "OCI", "TPL", "all"]]
+    header = list(rows[0])
+    config_path.write_text(
+        "\n".join([",".join(header), *[",".join(row[column] for column in header) for row in rows]]),
+        encoding="utf-8",
+    )
+    env = {**os.environ, "MOSS_ENVIRONMENT": "test", "MOSS_GOVERNANCE_PATH": str(governance_dir)}
+
+    dry_run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "backend.app.tasks.bond_dv01_limit_config_import",
+            "--config-path",
+            str(config_path),
+            "--governance-dir",
+            str(governance_dir),
+            "--report-date",
+            REPORT_DATE,
+            "--dry-run",
+        ],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    dry_run_payload = json.loads(dry_run.stdout)
+
+    assert dry_run_payload["status"] == "validated"
+    assert dry_run_payload["records_written"] == 0
+    assert dry_run_payload["validation_errors"] == []
+    assert GovernanceRepository(base_dir=governance_dir).read_all(STREAM) == []
+
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "backend.app.tasks.bond_dv01_limit_config_import",
+            "--config-path",
+            str(config_path),
+            "--governance-dir",
+            str(governance_dir),
+            "--report-date",
+            REPORT_DATE,
+        ],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    imported_payload = json.loads(imported.stdout)
+    status_result = imported_payload["limit_config_status"]["result"]
+
+    assert imported_payload["status"] == "imported"
+    assert imported_payload["records_written"] == 4
+    assert imported_payload["configured_accounting_classes"] == ["AC", "OCI", "TPL", "all"]
+    assert status_result["acceptance_status"] == "ready"
+    assert status_result["missing_accounting_classes"] == []
+    assert len(GovernanceRepository(base_dir=governance_dir).read_all(STREAM)) == 4

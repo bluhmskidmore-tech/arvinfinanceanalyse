@@ -12,7 +12,6 @@ from typing import Any
 
 from app.core_finance.macro.helpers import to_decimal_safe as _d
 
-
 _M15_SCENARIOS: tuple[dict[str, Any], ...] = (
     {
         "name": "rate_cut",

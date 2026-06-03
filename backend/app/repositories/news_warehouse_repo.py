@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 

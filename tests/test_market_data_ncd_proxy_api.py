@@ -5,7 +5,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+NCD_PROXY_READ_HEADERS = {"X-User-Id": "ncd-proxy-read-user", "X-User-Role": "viewer"}
 
 
 def _service_module():
@@ -13,6 +16,64 @@ def _service_module():
         "backend.app.services.market_data_ncd_proxy_service",
         "backend/app/services/market_data_ncd_proxy_service.py",
     )
+
+
+def _grant_ncd_proxy_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "ncd-proxy-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="market_data_ncd_proxy",
+        action="read",
+    )
+
+
+def _explicit_proxy_envelope() -> dict[str, object]:
+    return {
+        "result_meta": {
+            "trace_id": "tr_ncd_proxy_test",
+            "basis": "analytical",
+            "result_kind": "market_data.ncd_proxy",
+            "formal_use_allowed": False,
+            "source_version": "sv_tushare_shibor",
+            "vendor_version": "vv_tushare_shibor",
+            "rule_version": "rv_ncd_proxy_v1",
+            "cache_version": "cv_ncd_proxy_v1",
+            "quality_flag": "ok",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "scenario_flag": False,
+            "generated_at": "2026-04-23T10:00:00Z",
+        },
+        "result": {
+            "as_of_date": "2026-04-23",
+            "proxy_label": "Tushare Shibor funding proxy",
+            "is_actual_ncd_matrix": False,
+            "rows": [
+                {
+                    "row_key": "shibor_fixing",
+                    "label": "Shibor fixing",
+                    "1M": 1.412,
+                    "3M": 1.4345,
+                    "6M": 1.4535,
+                    "9M": 1.4695,
+                    "1Y": 1.4825,
+                    "quote_count": None,
+                }
+            ],
+            "warnings": [
+                "Proxy only; not actual NCD issuance matrix.",
+                "Using landed Tushare Shibor; quote medians unavailable.",
+            ],
+        },
+    }
 
 
 def _seed_landed_shibor_proxy(
@@ -204,58 +265,37 @@ def test_ncd_proxy_falls_back_to_tushare_when_choice_landed_data_is_incomplete(t
     get_settings.cache_clear()
 
 
-def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(monkeypatch) -> None:
+def test_market_data_ncd_proxy_read_surface_requires_explicit_read_scope(tmp_path, monkeypatch) -> None:
     route_mod = load_module(
         "backend.app.api.routes.market_data_ncd_proxy",
         "backend/app/api/routes/market_data_ncd_proxy.py",
     )
-    monkeypatch.setattr(
-        route_mod,
-        "ncd_funding_proxy_envelope",
-        lambda: {
-            "result_meta": {
-                "trace_id": "tr_ncd_proxy_test",
-                "basis": "analytical",
-                "result_kind": "market_data.ncd_proxy",
-                "formal_use_allowed": False,
-                "source_version": "sv_tushare_shibor",
-                "vendor_version": "vv_tushare_shibor",
-                "rule_version": "rv_ncd_proxy_v1",
-                "cache_version": "cv_ncd_proxy_v1",
-                "quality_flag": "ok",
-                "vendor_status": "ok",
-                "fallback_mode": "none",
-                "scenario_flag": False,
-                "generated_at": "2026-04-23T10:00:00Z",
-            },
-            "result": {
-                "as_of_date": "2026-04-23",
-                "proxy_label": "Tushare Shibor funding proxy",
-                "is_actual_ncd_matrix": False,
-                "rows": [
-                    {
-                        "row_key": "shibor_fixing",
-                        "label": "Shibor fixing",
-                        "1M": 1.412,
-                        "3M": 1.4345,
-                        "6M": 1.4535,
-                        "9M": 1.4695,
-                        "1Y": 1.4825,
-                        "quote_count": None,
-                    }
-                ],
-                "warnings": [
-                    "Proxy only; not actual NCD issuance matrix.",
-                    "Using landed Tushare Shibor; quote medians unavailable.",
-                ],
-            },
-        },
-    )
+    monkeypatch.setattr(route_mod, "ncd_funding_proxy_envelope", _explicit_proxy_envelope)
+    sqlite_path = tmp_path / "ncd-proxy-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
     app = FastAPI()
     app.include_router(route_mod.router)
     client = TestClient(app)
 
-    response = client.get("/ui/market-data/ncd-funding-proxy")
+    response = client.get("/ui/market-data/ncd-funding-proxy", headers=NCD_PROXY_READ_HEADERS)
+
+    assert response.status_code == 403
+
+
+def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(tmp_path, monkeypatch) -> None:
+    route_mod = load_module(
+        "backend.app.api.routes.market_data_ncd_proxy",
+        "backend/app/api/routes/market_data_ncd_proxy.py",
+    )
+    monkeypatch.setattr(route_mod, "ncd_funding_proxy_envelope", _explicit_proxy_envelope)
+    _grant_ncd_proxy_read_scope(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get("/ui/market-data/ncd-funding-proxy", headers=NCD_PROXY_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()

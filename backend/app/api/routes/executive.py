@@ -1,6 +1,9 @@
 from datetime import date
+from typing import Annotated
 
 from backend.app.api.perf_logging import timed_api_call
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.executive_service import (
     executive_alerts,  # noqa: F401 - reserved route contract monkeypatch target
     executive_contribution,  # noqa: F401 - reserved route contract monkeypatch target
@@ -12,7 +15,7 @@ from backend.app.services.executive_service import (
     home_research_reports_envelope,
     home_snapshot_envelope,
 )
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui")
 
@@ -54,18 +57,44 @@ def _raise_executive_reserved_surface(route_name: str) -> None:
     )
 
 
+def _ensure_executive_read_allowed(auth: AuthContext) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="executive",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/home/overview")
-def overview(report_date: str | None = None) -> dict[str, object]:
+def overview(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = None,
+) -> dict[str, object]:
+    _ensure_executive_read_allowed(auth)
     return executive_overview(report_date=_normalize_report_date(report_date))
 
 
 @router.get("/home/summary")
-def summary(report_date: str | None = None) -> dict[str, object]:
+def summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = None,
+) -> dict[str, object]:
+    _ensure_executive_read_allowed(auth)
     return executive_summary(report_date=_normalize_report_date(report_date))
 
 
 @router.get("/pnl/attribution")
-def pnl_attribution(report_date: str | None = None) -> dict[str, object]:
+def pnl_attribution(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = None,
+) -> dict[str, object]:
+    _ensure_executive_read_allowed(auth)
     return executive_pnl_attribution(report_date=_normalize_report_date(report_date))
 
 

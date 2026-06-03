@@ -11,7 +11,7 @@ from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from .safe_decimal import safe_decimal
@@ -26,14 +26,14 @@ MAX_DURATION = Decimal("30.0")
 DEFAULT_DURATION = Decimal("3.0")
 
 
-class DayCountConvention(str, Enum):
+class DayCountConvention(StrEnum):
     ACT_365 = "ACT/365"
     ACT_360 = "ACT/360"
     ACT_ACT = "ACT/ACT"
     THIRTY_360 = "30/360"
 
 
-class QualityFlag(str, Enum):
+class QualityFlag(StrEnum):
     OK = "OK"
     WARN = "WARN"
     BAD = "BAD"
@@ -322,7 +322,7 @@ def get_adjacent_tenor_buckets(maturity_years: float) -> tuple[str, str, float]:
     return "10Y", "10Y", 0.5
 
 
-class PnLScope(str, Enum):
+class PnLScope(StrEnum):
     TOTAL_PNL = "total_pnl"
     INTEREST_ONLY = "interest_only"
     FV_CHANGE_ONLY = "fv_change_only"

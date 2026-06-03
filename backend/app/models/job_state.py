@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from backend.app.models.base import Base
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from backend.app.models.base import Base
 
 
 class JobRunState(Base):

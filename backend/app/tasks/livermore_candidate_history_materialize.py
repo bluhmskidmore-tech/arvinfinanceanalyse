@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
-
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, load_choice_stock_readiness
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text

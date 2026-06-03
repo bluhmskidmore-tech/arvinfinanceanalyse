@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.settings import get_settings
@@ -15,11 +14,11 @@ from backend.app.repositories.akshare_adapter import (
     _prepare_curve_points,
 )
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
-from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
 )
+from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 

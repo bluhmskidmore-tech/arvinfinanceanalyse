@@ -4,12 +4,32 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.governance.settings import get_settings
 from backend.app.repositories.external_data_migrations_extra import ensure_std_external_macro_schema
 from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
 )
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
+from tests.helpers import load_module
+
+
+def _grant_external_data_read_scope(tmp_path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "external-data-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="external_data",
+        action="read",
+    )
 
 
 def _seed_tushare_like(tmp_path) -> str:
@@ -59,6 +79,7 @@ def _seed_tushare_like(tmp_path) -> str:
 def test_external_data_m2b_endpoints(tmp_path, monkeypatch) -> None:
     p = _seed_tushare_like(tmp_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", p)
+    _grant_external_data_read_scope(tmp_path, monkeypatch)
     client = TestClient(app)
     r = client.get("/api/external-data/series/api.m2b.series/data?limit=5&offset=0")
     assert r.status_code == 200

@@ -8,7 +8,56 @@ from typing import Any
 import duckdb
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+
+POSITIONS_READ_HEADERS = {"X-User-Id": "positions-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_positions_read_scope(*, settings, user_id: str = "*") -> None:
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="positions",
+        action="read",
+    )
+
+
+def _enable_positions_read_scope(tmp_path: Path, monkeypatch) -> None:
+    sqlite_path = tmp_path / "positions-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _grant_positions_read_scope(settings=get_settings())
+
+
+def _positions_app_client() -> TestClient:
+    return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+
+def _authorized_positions_client(tmp_path: Path, monkeypatch) -> TestClient:
+    _enable_positions_read_scope(tmp_path, monkeypatch)
+    return _positions_app_client()
+
+
+def _configure_positions_scope_store(tmp_path: Path, monkeypatch, *, grant_read: bool) -> None:
+    sqlite_path = tmp_path / "positions-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    if grant_read:
+        _grant_positions_read_scope(settings=get_settings())
+
+
+def _positions_client(tmp_path: Path, monkeypatch, *, grant_read: bool = True) -> TestClient:
+    _configure_positions_scope_store(tmp_path, monkeypatch, grant_read=grant_read)
+    return _positions_app_client()
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -239,10 +288,39 @@ def _assert_envelope_shape(payload: dict[str, Any], *, result_kind: str) -> None
     assert meta["result_kind"] == result_kind
 
 
+def test_positions_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "pos.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = _positions_client(tmp_path, monkeypatch, grant_read=False)
+
+    read_requests = (
+        ("/api/positions/bonds/sub_types", {"report_date": "2026-01-10"}),
+        ("/api/positions/bonds", {"report_date": "2026-01-10", "page": 1, "page_size": 10}),
+        (
+            "/api/positions/counterparty/bonds",
+            {"start_date": "2026-01-01", "end_date": "2026-01-31", "page": 1, "page_size": 10},
+        ),
+        ("/api/positions/interbank/product_types", {"report_date": "2026-01-10"}),
+        ("/api/positions/interbank", {"report_date": "2026-01-10", "page": 1, "page_size": 10}),
+        (
+            "/api/positions/counterparty/interbank/split",
+            {"start_date": "2026-01-01", "end_date": "2026-01-31"},
+        ),
+        ("/api/positions/stats/rating", {"start_date": "2026-01-01", "end_date": "2026-01-31"}),
+        ("/api/positions/stats/industry", {"start_date": "2026-01-01", "end_date": "2026-01-31"}),
+        ("/api/positions/customer/details", {"customer_name": "发行人甲", "report_date": "2026-01-10"}),
+        ("/api/positions/customer/trend", {"customer_name": "发行人甲", "end_date": "2026-01-10"}),
+    )
+
+    for path, params in read_requests:
+        response = client.get(path, params=params, headers=POSITIONS_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
 def test_positions_endpoints_envelope_and_empty_db(tmp_path, monkeypatch) -> None:
     db = tmp_path / "pos.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     r = client.get("/api/positions/bonds/sub_types", params={"report_date": "2026-01-10"})
     assert r.status_code == 200
@@ -269,7 +347,7 @@ def test_positions_bonds_filters_issuance_and_pagination(tmp_path, monkeypatch) 
     db = tmp_path / "pos.duckdb"
     _seed_positions_db(db)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     sub = client.get("/api/positions/bonds/sub_types", params={"report_date": "2026-01-10"})
     assert sub.status_code == 200
@@ -319,7 +397,7 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
     db = tmp_path / "pos.duckdb"
     _seed_positions_db(db)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     cp = client.get(
         "/api/positions/counterparty/bonds",
@@ -380,7 +458,7 @@ def test_positions_counterparty_bonds_excludes_issuance_like_from_asset_scope(tm
     db = tmp_path / "pos.duckdb"
     _seed_positions_db(db)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     cp = client.get(
         "/api/positions/counterparty/bonds",
@@ -410,7 +488,7 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
     db = tmp_path / "pos.duckdb"
     _seed_positions_db(db)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     rt = client.get(
         "/api/positions/stats/rating",
@@ -491,7 +569,7 @@ def test_positions_rating_and_industry_stats_exclude_issuance_like_from_asset_sc
     finally:
         conn.close()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     rating = client.get(
         "/api/positions/stats/rating",
@@ -566,7 +644,7 @@ def test_positions_rating_order_follows_business_priority_not_amount_order(tmp_p
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     response = client.get(
         "/api/positions/stats/rating",
@@ -614,7 +692,7 @@ def test_positions_reads_normalize_percentage_rates_and_compute_net_price_from_m
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     bond_response = client.get(
         "/api/positions/bonds",
@@ -713,7 +791,7 @@ def test_positions_bond_weighted_rates_exclude_missing_rate_denominator(
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     counterparty_response = client.get(
         "/api/positions/counterparty/bonds",
@@ -796,7 +874,7 @@ def test_positions_interbank_rates_treat_low_values_as_percent(tmp_path, monkeyp
         conn.close()
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     ib_response = client.get(
         "/api/positions/interbank",
@@ -824,7 +902,7 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
     db = tmp_path / "pos.duckdb"
     _seed_positions_db(db)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _authorized_positions_client(tmp_path, monkeypatch)
 
     subtypes = client.get("/api/positions/bonds/sub_types")
     assert subtypes.status_code == 200

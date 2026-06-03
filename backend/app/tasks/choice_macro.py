@@ -12,7 +12,6 @@ from pathlib import Path
 import dramatiq
 import duckdb
 import requests
-
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings

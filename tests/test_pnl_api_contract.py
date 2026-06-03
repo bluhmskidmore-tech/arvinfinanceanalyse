@@ -8,6 +8,8 @@ from pathlib import Path
 from decimal import Decimal
 
 import duckdb
+import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
@@ -19,7 +21,10 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
+
+PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
 
 
 def _perf_records(caplog, endpoint: str):
@@ -39,9 +44,29 @@ def _force_pnl_ytd_refresh_bundle_contract(monkeypatch) -> None:
 def _setup_route_scope_store(tmp_path, monkeypatch) -> UserScopeRepository:
     sqlite_path = tmp_path / "auth-scope-contract.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
-    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     return UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+
+
+def _grant_pnl_read_scope(repo: UserScopeRepository, *, user_id: str = "*") -> None:
+    repo.grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="pnl",
+        action="read",
+    )
+
+
+@pytest.fixture(autouse=True)
+def seed_pnl_read_scope(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "pnl-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _grant_pnl_read_scope(UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}"))
+    yield
+    get_settings.cache_clear()
 
 
 def test_fastapi_application_registers_pnl_routes():
@@ -65,6 +90,93 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/pnl/yearly-summary" in paths
     assert "/api/data/refresh_pnl" in paths
     assert "/api/data/import_status/pnl" in paths
+
+
+def test_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
+    route_module = load_module("backend.app.api.routes.pnl", "backend/app/api/routes/pnl.py")
+
+    class FakePnlService:
+        @staticmethod
+        def pnl_dates_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.dates"}, "result": {"report_dates": []}}
+
+        @staticmethod
+        def pnl_data_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.data"}, "result": {}}
+
+        @staticmethod
+        def pnl_overview_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.overview"}, "result": {}}
+
+        @staticmethod
+        def pnl_v1_data_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.v1_data"}, "result": {}}
+
+        @staticmethod
+        def pnl_by_business_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.by_business"}, "result": {}}
+
+        @staticmethod
+        def pnl_by_business_ytd_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.by_business_ytd"}, "result": {}}
+
+        @staticmethod
+        def pnl_by_business_monthly_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.by_business_monthly"}, "result": {}}
+
+        @staticmethod
+        def pnl_by_business_analysis_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.by_business_analysis"}, "result": {}}
+
+        @staticmethod
+        def list_pnl_by_business_manual_adjustments(*_args, **_kwargs):
+            return {"items": []}
+
+        @staticmethod
+        def pnl_yearly_summary_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.yearly_summary"}, "result": {}}
+
+        @staticmethod
+        def pnl_import_status(*_args, **_kwargs):
+            return {"status": "idle"}
+
+    class FakePnlBridgeService:
+        @staticmethod
+        def pnl_bridge_envelope(**_kwargs):
+            return {"result_meta": {"result_kind": "pnl.bridge"}, "result": {}}
+
+    def fake_import_module(module_name: str):
+        if module_name == "backend.app.services.pnl_bridge_service":
+            return FakePnlBridgeService
+        return FakePnlService
+
+    monkeypatch.setattr(route_module, "import_module", fake_import_module)
+    sqlite_path = tmp_path / "pnl-read-denied.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    cases = [
+        ("/api/pnl/dates", {}),
+        ("/api/pnl/data", {"date": "2026-02-28"}),
+        ("/api/pnl/bridge", {"report_date": "2026-02-28"}),
+        ("/api/pnl/overview", {"report_date": "2026-02-28"}),
+        ("/api/pnl/v1-data", {"date": "2026-02-28"}),
+        ("/api/pnl/by-business", {"report_date": "2026-02-28"}),
+        ("/api/pnl/by-business-ytd", {"year": 2026}),
+        ("/api/pnl/by-business-monthly", {"year": 2026}),
+        ("/api/pnl/by-business-analysis", {"year": 2026}),
+        ("/api/pnl/by-business/manual-adjustments", {"report_date": "2026-02-28"}),
+        ("/api/pnl/yearly-summary", {"year": 2026}),
+        ("/api/data/import_status/pnl", {}),
+    ]
+
+    for path, params in cases:
+        response = client.get(path, params=params, headers=PNL_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
 
 def test_pnl_by_business_analysis_logs_api_perf(monkeypatch, caplog):
@@ -1202,6 +1314,7 @@ def test_pnl_by_business_manual_adjustment_audit_tracks_current_and_events(
     seed_wildcard_scope,
 ):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _grant_pnl_read_scope(UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn))
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     create_response = client.post(
         "/api/pnl/by-business/manual-adjustments",
@@ -1261,6 +1374,7 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     seed_wildcard_scope,
 ):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _grant_pnl_read_scope(UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn))
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
     monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
@@ -4366,7 +4480,9 @@ def _configure_refresh_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", '["*"]')
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}")
     get_settings.cache_clear()
-    UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn).grant_scope(
+    scope_repo = UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn)
+    _grant_pnl_read_scope(scope_repo)
+    scope_repo.grant_scope(
         user_id="*",
         role=None,
         resource="formal_pnl",

@@ -15,8 +15,11 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import ensure_balance_analysis_tables
 from backend.app.repositories.governance_repo import CACHE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.tasks.balance_analysis_materialize import CACHE_KEY, RULE_VERSION
 from tests.helpers import load_module
+
+EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
 
 
 def _required_result_meta_keys() -> frozenset[str]:
@@ -59,7 +62,24 @@ def _stub_executive_payload(result_kind: str) -> dict[str, Any]:
     return {"result_meta": _stub_result_meta(result_kind), "result": {}}
 
 
-def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def _grant_executive_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "executive-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource="executive",
+        action="read",
+    )
+
+
+def _executive_contract_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     module = load_module(
         "tests._result_meta_exec.executive_contract",
         "backend/app/api/routes/executive.py",
@@ -81,7 +101,10 @@ def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     )
     app = FastAPI()
     app.include_router(module.router)
-    return TestClient(app)
+    _grant_executive_read_scope(tmp_path, monkeypatch)
+    client = TestClient(app)
+    client.headers.update(EXECUTIVE_READ_HEADERS)
+    return client
 
 
 def _assert_json_envelope(payload: dict[str, Any], *, path: str) -> dict[str, Any]:
@@ -158,7 +181,7 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
     get_settings.cache_clear()
 
     if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
-        client = _executive_contract_client(monkeypatch)
+        client = _executive_contract_client(monkeypatch, tmp_path)
     else:
         for mod in (
             "backend.app.main",
@@ -178,7 +201,7 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
-    client = _executive_contract_client(monkeypatch)
+    client = _executive_contract_client(monkeypatch, tmp_path)
 
     for path in (
         "/ui/home/overview",

@@ -4,7 +4,6 @@ import sys
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 
-
 _FORMAL_MODULES: dict[str, FormalComputeModuleDescriptor] = {}
 _FORMAL_FACT_TABLE_TO_MODULE: dict[str, str] = {}
 _FORMAL_RESULT_KIND_FAMILY_TO_MODULE: dict[str, str] = {}

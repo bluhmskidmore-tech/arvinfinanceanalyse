@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import cast
 
 import duckdb
-
 from backend.app.core_finance.cycle_macro_score import (
     CN10Y_SERIES_ID,
     CSI300_PE_SERIES_ID,

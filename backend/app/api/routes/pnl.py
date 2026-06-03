@@ -14,9 +14,21 @@ def _pnl_service():
     return import_module("backend.app.services.pnl_service")
 
 
+def _ensure_pnl_read_allowed(auth: AuthContext, settings) -> None:
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="pnl", action="read")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/pnl/dates")
-def dates() -> dict[str, object]:
+def dates(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_dates_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -28,12 +40,14 @@ def dates() -> dict[str, object]:
 
 @router.get("/pnl/data")
 def data(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     date: str = Query(
         ...,
         description="Requested report date for formal /api/pnl data.",
     ),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_data_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -48,9 +62,11 @@ def data(
 
 @router.get("/pnl/bridge")
 def pnl_bridge(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Requested report date for formal /pnl bridge."),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return import_module("backend.app.services.pnl_bridge_service").pnl_bridge_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -65,9 +81,11 @@ def pnl_bridge(
 
 @router.get("/pnl/overview")
 def overview(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Requested report date for formal /api/pnl overview."),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_overview_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -82,12 +100,14 @@ def overview(
 
 @router.get("/pnl/v1-data")
 def v1_data(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     date: str = Query(
         ...,
         description="Requested report date for V1-compatible /api/pnl detail data.",
     ),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_v1_data_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -102,9 +122,11 @@ def v1_data(
 
 @router.get("/pnl/by-business")
 def by_business(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Requested report date for governed PnL by ZQTZ business type 1."),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_by_business_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -119,6 +141,7 @@ def by_business(
 
 @router.get("/pnl/by-business-ytd")
 def by_business_ytd(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for V1-compatible PnL by business type."),
     as_of_date: str | None = Query(
         None,
@@ -126,6 +149,7 @@ def by_business_ytd(
     ),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_by_business_ytd_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -141,6 +165,7 @@ def by_business_ytd(
 
 @router.get("/pnl/by-business-monthly")
 def by_business_monthly(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for monthly PnL by business type."),
     as_of_date: str | None = Query(
         None,
@@ -148,6 +173,7 @@ def by_business_monthly(
     ),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_by_business_monthly_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -163,6 +189,7 @@ def by_business_monthly(
 
 @router.get("/pnl/by-business-analysis")
 def by_business_analysis(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for PnL by business analysis."),
     as_of_date: str | None = Query(
         None,
@@ -178,6 +205,7 @@ def by_business_analysis(
     ),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return timed_api_call(
             "/api/pnl/by-business-analysis",
@@ -208,9 +236,12 @@ def create_by_business_manual_adjustment(
 
 @router.get("/pnl/by-business/manual-adjustments")
 def list_by_business_manual_adjustments(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Report date for PnL by-business manual adjustment audit."),
 ) -> dict[str, object]:
-    return _pnl_service().list_pnl_by_business_manual_adjustments(get_settings(), report_date=report_date)
+    settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
+    return _pnl_service().list_pnl_by_business_manual_adjustments(settings, report_date=report_date)
 
 
 @router.post("/pnl/by-business/manual-adjustments/{adjustment_id}/edit")
@@ -259,9 +290,11 @@ def restore_by_business_manual_adjustment(
 
 @router.get("/pnl/yearly-summary")
 def yearly_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int = Query(..., description="Requested calendar year for governed PnL by ZQTZ business type 1."),
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_yearly_summary_envelope(
             duckdb_path=str(settings.duckdb_path),
@@ -307,8 +340,12 @@ def refresh_pnl(
 
 
 @router.get("/data/import_status/pnl")
-def import_status(run_id: str | None = Query(None)) -> dict[str, object]:
+def import_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str | None = Query(None),
+) -> dict[str, object]:
     settings = get_settings()
+    _ensure_pnl_read_allowed(auth, settings)
     try:
         return _pnl_service().pnl_import_status(settings, run_id=run_id)
     except ValueError as exc:

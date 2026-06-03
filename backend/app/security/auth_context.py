@@ -4,10 +4,9 @@ import os
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Header
-
 from backend.app.governance.settings import Settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
+from fastapi import Header
 
 DEFAULT_AUTH_USER_ID = "anonymous"
 DEFAULT_AUTH_ROLE = "viewer"

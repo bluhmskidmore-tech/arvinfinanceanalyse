@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from backend.app.services.tushare_news_ingest_service import ingest_tushare_npr_to_choice_news
+from tests.helpers import load_module
 
 
 class _FakeFrame:
@@ -275,3 +276,55 @@ def test_ingest_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     with pytest.raises(RuntimeError, match="MOSS_TUSHARE_TOKEN"):
         ingest_tushare_npr_to_choice_news(str(tmp_path / "x.duckdb"), limit=1)
+
+
+def test_tushare_news_background_actor_calls_ingest_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task_module = load_module(
+        "backend.app.tasks.choice_news",
+        "backend/app/tasks/choice_news.py",
+    )
+    import backend.app.services.tushare_news_ingest_service as mod
+
+    calls: list[dict[str, object]] = []
+
+    def fake_ingest(duckdb_path: str, **kwargs: object) -> dict[str, object]:
+        calls.append({"duckdb_path": duckdb_path, **kwargs})
+        return {
+            "status": "completed",
+            "inserted": 2,
+            "skipped_duplicates": 1,
+            "fetched": 3,
+            "purged_expired": 0,
+        }
+
+    monkeypatch.setattr(mod, "ingest_tushare_npr_to_choice_news", fake_ingest)
+
+    db = tmp_path / "news.duckdb"
+    actor = task_module.ingest_tushare_news_to_choice_news
+    result = actor.fn(
+        duckdb_path=str(db),
+        limit=7,
+        news_limit=13,
+        news_src="sina",
+        news_lookback_hours=6,
+        cctv_lookback_days=2,
+        major_lookback_hours=4,
+        research_lookback_days=1,
+    )
+
+    assert actor.actor_name == "ingest_tushare_news_to_choice_news"
+    assert result["status"] == "completed"
+    assert calls == [
+        {
+            "duckdb_path": str(db),
+            "limit": 7,
+            "news_limit": 13,
+            "news_src": "sina",
+            "news_lookback_hours": 6,
+            "cctv_lookback_days": 2,
+            "major_lookback_hours": 4,
+            "research_lookback_days": 1,
+        }
+    ]

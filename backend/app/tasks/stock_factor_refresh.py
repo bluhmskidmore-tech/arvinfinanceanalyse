@@ -14,12 +14,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import duckdb
-
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.choice_client import ChoiceClient
-from backend.app.tasks.broker import register_actor_once
-from backend.app.tasks.choice_stock_materialize import (
+import duckdb  # noqa: E402
+from backend.app.governance.settings import get_settings  # noqa: E402
+from backend.app.repositories.choice_client import ChoiceClient  # noqa: E402
+from backend.app.tasks.broker import register_actor_once  # noqa: E402
+from backend.app.tasks.choice_stock_materialize import (  # noqa: E402
     _choice_client_default_options,
     _choice_stock_factor_css_options,
     _extract_result_rows,

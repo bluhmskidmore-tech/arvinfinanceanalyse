@@ -7,7 +7,30 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+CASHFLOW_PROJECTION_READ_HEADERS = {
+    "X-User-Id": "cashflow-projection-read-user",
+    "X-User-Role": "viewer",
+}
+
+
+def _grant_cashflow_projection_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "cashflow-projection-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="cashflow_projection",
+        action="read",
+    )
 
 
 def _core_module():
@@ -490,6 +513,27 @@ def test_reinvestment_risk_ratio():
     assert result.reinvestment_risk_12m == Decimal("0.25")
 
 
+def test_cashflow_projection_read_surface_requires_explicit_read_scope(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'cashflow-projection-read-scope.db').as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    route_mod = load_module(
+        "backend.app.api.routes.cashflow_projection",
+        "backend/app/api/routes/cashflow_projection.py",
+    )
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/cashflow-projection",
+        params={"report_date": "2026-01-01"},
+        headers=CASHFLOW_PROJECTION_READ_HEADERS,
+    )
+
+    assert response.status_code == 403
+
+
 def test_api_returns_envelope(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -552,12 +596,14 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         "backend.app.api.routes.cashflow_projection",
         "backend/app/api/routes/cashflow_projection.py",
     )
+    _grant_cashflow_projection_read_scope(tmp_path, monkeypatch)
     app = FastAPI()
     app.include_router(route_mod.router)
     client = TestClient(app)
     response = client.get(
         "/api/cashflow-projection",
         params={"report_date": "2026-01-01"},
+        headers=CASHFLOW_PROJECTION_READ_HEADERS,
     )
 
     assert response.status_code == 200
@@ -667,12 +713,14 @@ def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, mon
         "backend.app.api.routes.cashflow_projection",
         "backend/app/api/routes/cashflow_projection.py",
     )
+    _grant_cashflow_projection_read_scope(tmp_path, monkeypatch)
     app = FastAPI()
     app.include_router(route_mod.router)
     client = TestClient(app)
     response = client.get(
         "/api/cashflow-projection",
         params={"report_date": "2026-01-01"},
+        headers=CASHFLOW_PROJECTION_READ_HEADERS,
     )
 
     assert response.status_code == 200

@@ -13,11 +13,24 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 
 REFRESH_SOURCE_FAMILIES = ["zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"]
+SOURCE_PREVIEW_READ_USER = "source-preview-read-user"
+SOURCE_PREVIEW_READ_HEADERS = {"X-User-Id": SOURCE_PREVIEW_READ_USER, "X-User-Role": "viewer"}
 
 
 @pytest.fixture(autouse=True)
-def _enable_source_preview_http(monkeypatch):
+def _enable_source_preview_http(monkeypatch, tmp_path):
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "true")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'source-preview-read-scope.db').as_posix()}")
+    get_settings.cache_clear()
+    _grant_source_preview_read_scope(settings=get_settings(), user_id="*")
+
+
+def _source_preview_client(app) -> TestClient:
+    return TestClient(app, headers=SOURCE_PREVIEW_READ_HEADERS)
+
+
+def _grant_source_preview_read_scope(*, settings, user_id: str = "*") -> None:
+    _grant_source_preview_scope(settings=settings, user_id=user_id, action="read")
 
 
 def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
@@ -791,6 +804,7 @@ def test_source_preview_refresh_returns_stable_503_when_authority_governance_que
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
     _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
+    _grant_source_preview_read_scope(settings=get_settings())
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1084,6 +1098,7 @@ def test_source_preview_refresh_sql_authority_status_reads_sql_governance_when_j
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
     _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
+    _grant_source_preview_read_scope(settings=get_settings())
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1136,6 +1151,7 @@ def test_source_preview_refresh_sql_authority_status_returns_503_when_sql_govern
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
     get_settings.cache_clear()
     _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
+    _grant_source_preview_read_scope(settings=get_settings())
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1228,6 +1244,7 @@ def test_source_preview_refresh_sql_shadow_status_prefers_jsonl_over_conflicting
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-shadow")
     get_settings.cache_clear()
     _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
+    _grant_source_preview_read_scope(settings=get_settings())
     refresh_module = load_module(
         "backend.app.services.source_preview_refresh_service",
         "backend/app/services/source_preview_refresh_service.py",
@@ -1818,25 +1835,25 @@ def _configure_source_preview_refresh_env(
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
+    _grant_source_preview_read_scope(settings=get_settings())
     return duckdb_path, governance_dir, data_root
 
 
-def _configure_source_preview_refresh_scope_store(tmp_path, monkeypatch, *, user_id: str | None = None) -> object:
+def _configure_source_preview_refresh_scope_store(
+    tmp_path,
+    monkeypatch,
+    *,
+    user_id: str | None = None,
+    read_user_id: str | None = None,
+) -> object:
     sqlite_path = tmp_path / "source-preview-refresh-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     if user_id is not None:
-        repo_module = load_module(
-            "backend.app.repositories.user_scope_repo",
-            "backend/app/repositories/user_scope_repo.py",
-        )
-        repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
-            user_id=user_id,
-            role=None,
-            resource="source_preview.source_foundation",
-            action="refresh",
-        )
+        _grant_source_preview_refresh_scope(settings=get_settings(), user_id=user_id)
+    if read_user_id is not None:
+        _grant_source_preview_read_scope(settings=get_settings(), user_id=read_user_id)
     return sqlite_path
 
 
@@ -1849,10 +1866,15 @@ def _configure_source_preview_status_env(tmp_path, monkeypatch):
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     _grant_source_preview_refresh_scope(settings=get_settings(), user_id="*")
+    _grant_source_preview_read_scope(settings=get_settings())
     return governance_dir
 
 
 def _grant_source_preview_refresh_scope(*, settings, user_id: str) -> None:
+    _grant_source_preview_scope(settings=settings, user_id=user_id, action="refresh")
+
+
+def _grant_source_preview_scope(*, settings, user_id: str, action: str) -> None:
     repo_module = load_module(
         "backend.app.repositories.user_scope_repo",
         "backend/app/repositories/user_scope_repo.py",
@@ -1861,5 +1883,5 @@ def _grant_source_preview_refresh_scope(*, settings, user_id: str) -> None:
         user_id=user_id,
         role=None,
         resource="source_preview.source_foundation",
-        action="refresh",
+        action=action,
     )

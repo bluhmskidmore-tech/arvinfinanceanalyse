@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from backend.app.governance.locks import LockDefinition
 
-
 _FORMAL_FACT_PREFIX = "fact_formal_"
 
 

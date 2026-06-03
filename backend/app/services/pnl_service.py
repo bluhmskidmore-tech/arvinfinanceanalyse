@@ -25,7 +25,6 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.pnl import (
-    PnlByBusinessPayload,
     PnlByBusinessAnalysisDimension,
     PnlByBusinessAnalysisPayload,
     PnlByBusinessAnalysisRow,
@@ -36,6 +35,7 @@ from backend.app.schemas.pnl import (
     PnlByBusinessMonthlyItem,
     PnlByBusinessMonthlyPayload,
     PnlByBusinessMonthlySummary,
+    PnlByBusinessPayload,
     PnlByBusinessRow,
     PnlByBusinessSummary,
     PnlByBusinessYtdItem,

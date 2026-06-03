@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 

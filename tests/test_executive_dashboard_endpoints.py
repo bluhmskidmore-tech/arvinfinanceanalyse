@@ -6,7 +6,29 @@ from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_executive_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> AuthContext:
+    sqlite_path = tmp_path / "executive-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="executive",
+        action="read",
+    )
+    return AuthContext(user_id="executive-read-user", role="viewer", identity_source="header")
 
 
 def _perf_records(caplog, endpoint: str):
@@ -38,7 +60,7 @@ def _ok_payload(result_kind: str) -> dict[str, object]:
     }
 
 
-def _client_with_stubbed_executive_services(monkeypatch):
+def _client_with_stubbed_executive_services(monkeypatch, tmp_path=None, *, grant_read: bool = True):
     module = _load_executive_routes_module()
     monkeypatch.setattr(module, "executive_overview", lambda report_date=None: _ok_payload("executive.overview"))
     monkeypatch.setattr(module, "executive_summary", lambda report_date=None: _ok_payload("executive.summary"))
@@ -50,11 +72,17 @@ def _client_with_stubbed_executive_services(monkeypatch):
     monkeypatch.setattr(module, "home_snapshot_envelope", lambda **_kwargs: _ok_payload("home.snapshot"))
     app = FastAPI()
     app.include_router(module.router)
-    return module, TestClient(app)
+    client = TestClient(app)
+    if grant_read:
+        if tmp_path is None:
+            raise AssertionError("tmp_path is required when granting executive read scope")
+        _grant_executive_read_scope(tmp_path, monkeypatch)
+        client.headers.update(EXECUTIVE_READ_HEADERS)
+    return module, client
 
 
-def test_home_snapshot_route_logs_api_perf(monkeypatch, caplog):
-    _module, client = _client_with_stubbed_executive_services(monkeypatch)
+def test_home_snapshot_route_logs_api_perf(monkeypatch, tmp_path, caplog):
+    _module, client = _client_with_stubbed_executive_services(monkeypatch, tmp_path)
 
     with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
         response = client.get("/ui/home/snapshot", params={"report_date": "2025-11-20"})
@@ -81,11 +109,12 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
     assert "/ui/home/alerts" in paths
 
 
-def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch):
-    module, _client = _client_with_stubbed_executive_services(monkeypatch)
+def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch, tmp_path):
+    module, _client = _client_with_stubbed_executive_services(monkeypatch, tmp_path)
+    auth = _grant_executive_read_scope(tmp_path, monkeypatch)
 
     for name in ("overview", "summary", "pnl_attribution"):
-        payload = getattr(module, name)()
+        payload = getattr(module, name)(auth=auth)
         assert "result_meta" in payload
         assert "result" in payload
         assert payload["result_meta"]["result_kind"].startswith("executive.")
@@ -96,8 +125,16 @@ def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch)
         assert exc_info.value.status_code == 503
 
 
-def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200(monkeypatch):
-    _module, client = _client_with_stubbed_executive_services(monkeypatch)
+def test_executive_overview_read_surface_requires_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    _module, client = _client_with_stubbed_executive_services(monkeypatch, tmp_path, grant_read=False)
+
+    response = client.get("/ui/home/overview", headers=EXECUTIVE_READ_HEADERS)
+
+    assert response.status_code == 403
+
+
+def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200(monkeypatch, tmp_path):
+    _module, client = _client_with_stubbed_executive_services(monkeypatch, tmp_path)
     ok_paths = [
         "/ui/home/overview",
         "/ui/home/summary",
@@ -186,8 +223,9 @@ def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeyp
         assert exc_info.value.status_code == 503
 
 
-def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
+def test_executive_dashboard_routes_forward_report_date_query(monkeypatch, tmp_path):
     module = _load_executive_routes_module()
+    auth = _grant_executive_read_scope(tmp_path, monkeypatch)
 
     calls: list[tuple[str, str | None]] = []
 
@@ -205,9 +243,12 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
     monkeypatch.setattr(module, "executive_contribution", _stub("contribution"))
     monkeypatch.setattr(module, "executive_alerts", _stub("alerts"))
 
-    assert module.overview(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.overview"
-    assert module.summary(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.summary"
-    assert module.pnl_attribution(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.pnl-attribution"
+    assert module.overview(auth=auth, report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.overview"
+    assert module.summary(auth=auth, report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.summary"
+    assert (
+        module.pnl_attribution(auth=auth, report_date="2025-11-20")["result_meta"]["result_kind"]
+        == "executive.pnl-attribution"
+    )
 
     for name in ("risk_overview", "contribution", "alerts"):
         with pytest.raises(HTTPException) as exc_info:
@@ -221,7 +262,8 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
     ]
 
 
-def test_executive_dashboard_http_routes_reject_invalid_report_date():
+def test_executive_dashboard_http_routes_reject_invalid_report_date(tmp_path, monkeypatch):
+    _grant_executive_read_scope(tmp_path, monkeypatch)
     main = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main.app)
     for path in (
@@ -229,7 +271,7 @@ def test_executive_dashboard_http_routes_reject_invalid_report_date():
         "/ui/home/summary",
         "/ui/pnl/attribution",
     ):
-        response = client.get(path, params={"report_date": "2025-99-99"})
+        response = client.get(path, params={"report_date": "2025-99-99"}, headers=EXECUTIVE_READ_HEADERS)
         assert response.status_code == 422, path
 
     response = client.get("/ui/home/snapshot", params={"report_date": "2025-99-99"})

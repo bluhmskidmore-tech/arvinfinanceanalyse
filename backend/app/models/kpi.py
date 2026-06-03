@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+from backend.app.models.base import Base
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from backend.app.models.base import Base
 
 
 class KpiOwner(Base):

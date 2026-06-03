@@ -7,12 +7,39 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
+BOND_DASHBOARD_READ_HEADERS = {"X-User-Id": "bond-dashboard-read-user", "X-User-Role": "viewer"}
+
+
+def _grant_bond_dashboard_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "bond-dashboard-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="bond_dashboard",
+        action="read",
+    )
+
+
+def _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch) -> TestClient:
+    _grant_bond_dashboard_read_scope(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client.headers.update(BOND_DASHBOARD_READ_HEADERS)
+    return client
 
 
 def _perf_records(caplog, endpoint: str):
@@ -147,8 +174,8 @@ def _assert_bond_dashboard_headline_candidate_envelope(payload: dict[str, Any]) 
     assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
 
 
-def _check_all_on_empty_db() -> None:
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     for path, params in _BOND_DASHBOARD_CASES:
         response = client.get(path, params=params)
         assert response.status_code == 200, (
@@ -197,12 +224,30 @@ def _check_all_on_empty_db() -> None:
             assert result.get("items") == []
 
 
+def test_bond_dashboard_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "tests._bond_dashboard_routes_auth",
+        "backend/app/api/routes/bond_dashboard.py",
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    sqlite_path = tmp_path / "bond-dashboard-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    client = TestClient(app)
+
+    for path, params in _BOND_DASHBOARD_CASES:
+        response = client.get(path, params=params, headers=BOND_DASHBOARD_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
 def test_bond_dashboard_endpoints_envelope_empty_duckdb(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "empty.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
-    _check_all_on_empty_db()
+    _check_all_on_empty_db(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
 
@@ -289,7 +334,7 @@ def test_bond_dashboard_group_by_validation_422(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     response = client.get(
         "/api/bond-dashboard/asset-structure",
         params={"report_date": REPORT_DATE, "group_by": "not_a_column"},
@@ -303,7 +348,7 @@ def test_bond_dashboard_headline_logs_api_perf(tmp_path, monkeypatch, caplog) ->
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
         response = client.get(
@@ -328,7 +373,7 @@ def test_bond_dashboard_headline_kpis_metadata_preserves_candidate_boundary(tmp_
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     response = client.get(
         "/api/bond-dashboard/headline-kpis",
@@ -413,7 +458,7 @@ def test_bond_dashboard_headline_kpis_shape_with_seeded_facts(tmp_path, monkeypa
         )
         repo.replace_bond_analytics_rows(report_date=rd, rows=[row])
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     response = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": d2})
     assert response.status_code == 200
     payload = response.json()
@@ -475,7 +520,7 @@ def test_bond_dashboard_main_endpoints_return_numeric_payloads_with_seeded_facts
     ]
     repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     headline = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": REPORT_DATE})
     assert headline.status_code == 200, headline.text
@@ -599,7 +644,7 @@ def test_bond_dashboard_weighted_yield_and_duration_exclude_other_or_no_maturity
     ]
     repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
     headline = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": REPORT_DATE})
     assert headline.status_code == 200, headline.text
@@ -657,7 +702,7 @@ def test_bond_dashboard_distribution_percentage_keeps_sub_one_percent_ratio(tmp_
     ]
     repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     response = client.get(
         "/api/bond-dashboard/asset-structure",
         params={"report_date": REPORT_DATE, "group_by": "bond_type"},
@@ -704,7 +749,7 @@ def test_business_type_metrics_returns_envelope(tmp_path, monkeypatch) -> None:
     ]
     repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     rsp = client.get("/api/bond-dashboard/business-type-metrics", params={"report_date": REPORT_DATE})
     assert rsp.status_code == 200, rsp.text
     payload = rsp.json()

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Yield curve DuckDB access.
 
@@ -9,14 +7,14 @@ need vendor/source/rule lineage together with tenor points. Read-only views such
 `yield_curve_daily` omit `rule_version` and are not a substitute for lineage-aware reads.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
-
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.schemas.yield_curve import YieldCurveSnapshot
-
 
 FORMAL_FACT_TABLE = "fact_formal_yield_curve_daily"
 READ_VIEW = "yield_curve_daily"

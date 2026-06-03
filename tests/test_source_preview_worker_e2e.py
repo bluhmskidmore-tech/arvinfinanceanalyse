@@ -82,6 +82,12 @@ def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
         resource="source_preview.source_foundation",
     )
     get_settings.cache_clear()
+    UserScopeRepository(get_settings().postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="source_preview.source_foundation",
+        action="read",
+    )
     _reset_source_preview_modules()
 
     redis_proc = _start_redis_server(redis_server=redis_server, port=redis_port, work_dir=redis_dir)

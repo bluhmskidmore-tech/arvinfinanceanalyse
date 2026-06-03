@@ -4,8 +4,6 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from backend.app.governance.locks import acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
@@ -27,6 +25,8 @@ from backend.app.services.ingest_service import IngestService
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import resolve_data_input_root
 from backend.app.tasks.materialize import resolve_materialize_lock
+
+logger = logging.getLogger(__name__)
 
 SOURCE_PREVIEW_REFRESH_JOB_NAME = "source_preview_refresh"
 SOURCE_PREVIEW_REFRESH_CACHE_KEY = "source_preview.foundation"

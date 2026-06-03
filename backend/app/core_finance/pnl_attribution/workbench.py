@@ -10,19 +10,18 @@ from collections import defaultdict
 from decimal import Decimal
 from typing import Any, Literal
 
-logger = logging.getLogger(__name__)
-
-from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_FVTPL
-
-from backend.app.core_finance.bond_analytics.read_models import (
-    build_krd_distribution,
-    summarize_portfolio_risk,
-)
 from backend.app.core_finance.bond_analytics.common import (
     build_curve_points,
     build_full_curve,
     interpolate_rate,
 )
+from backend.app.core_finance.bond_analytics.read_models import (
+    build_krd_distribution,
+    summarize_portfolio_risk,
+)
+from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_FVTPL
+
+logger = logging.getLogger(__name__)
 
 CompareType = Literal["mom", "yoy"]
 PositionKey = tuple[str, str, str]

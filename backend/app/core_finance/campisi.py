@@ -55,14 +55,16 @@ def interpolate_treasury_yield_pct(market: dict[str, Any] | None, maturity_years
     if not curve:
         return 0.0
 
-    from backend.app.core_finance.curve_engine.interpolation import (
-        interpolate as _engine_interpolate,
-        build_cubic_spline as _build_spline,
-    )
     from backend.app.core_finance.curve_engine.curve_types import (
         CurvePoint,
         FittedCurve,
         InterpolationMethod,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
     )
 
     yields = [curve.get(k, 0.0) for k in _TREASURY_KEYS]

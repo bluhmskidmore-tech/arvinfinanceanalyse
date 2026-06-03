@@ -2283,6 +2283,82 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("resets quality review confirmation when source or rule version changes", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      let queryClient: QueryClient | undefined;
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_lineage_version_reset_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", "tr_tensor_lineage_version_reset"),
+          evidence_rows: 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: { report_date: reportDate, desk: "FI" },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute(
+        "/risk-tensor",
+        {
+          ...base,
+          getRiskTensorDates,
+          getRiskTensor,
+        },
+        (client) => {
+          queryClient = client;
+        },
+      );
+
+      const tracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+      await user.click(await within(tracePriority).findByRole("button", { name: "确认业务复核" }));
+
+      expect(tracePriority).toHaveTextContent("复核状态：业务已确认");
+      expect(within(tracePriority).getByRole("button", { name: "复制确认记录" })).toBeInTheDocument();
+
+      await act(async () => {
+        queryClient?.setQueryData(["risk-tensor", "2026-02-28"], {
+          result_meta: {
+            ...buildMeta("risk.tensor", "tr_tensor_lineage_version_reset"),
+            source_version: "sv_tensor_reissued",
+            rule_version: "rv_tensor_reissued",
+            evidence_rows: 128,
+            tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+            filters_applied: { report_date: "2026-02-28", desk: "FI" },
+          },
+          result: tensorResult("2026-02-28"),
+        });
+      });
+
+      await waitFor(() => {
+        expect(tracePriority).toHaveTextContent("来源 sv_tensor_reissued；规则 rv_tensor_reissued");
+      });
+      expect(tracePriority).toHaveTextContent("复核状态：待复核");
+      expect(tracePriority).not.toHaveTextContent("业务已确认");
+      expect(within(tracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("lets users copy a combined payload and evidence supplement package from the first-screen warning", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => undefined);

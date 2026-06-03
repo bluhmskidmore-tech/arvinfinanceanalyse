@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-
 from backend.app.repositories.choice_stock_adapter import load_choice_stock_readiness
 from backend.app.repositories.livermore_gate_supplement_repo import TABLE_NAME as GATE_SUPPLEMENT_TABLE
 from backend.app.services.market_data_livermore_service import (

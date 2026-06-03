@@ -12,9 +12,9 @@ from backend.app.core_finance.bond_analytics.common import (
     build_full_curve,
     infer_curve_type,
     interpolate_rate,
+    safe_decimal,
 )
 from backend.app.core_finance.bond_analytics.engine import ENGINE_RULE_VERSION
-from backend.app.core_finance.bond_analytics.common import safe_decimal
 
 ZERO = Decimal("0")
 BENCHMARK_DURATION_ASSUMPTIONS: dict[str, Decimal] = {

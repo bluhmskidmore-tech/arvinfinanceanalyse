@@ -5,10 +5,11 @@ M10: 宏观经济领先指标（纯函数，自 V1 macro_analysis.leading_indica
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import to_decimal_safe as _d, to_rounded_float as _f
+from app.core_finance.macro.helpers import to_decimal_safe as _d
+from app.core_finance.macro.helpers import to_rounded_float as _f
 
 # 与 V1 config.M10_* 对齐
 _M10_WEIGHTS = {

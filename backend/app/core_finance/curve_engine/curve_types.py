@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 
-class InterpolationMethod(str, Enum):
+class InterpolationMethod(StrEnum):
     LINEAR = "linear"
     CUBIC_SPLINE = "cubic_spline"
 

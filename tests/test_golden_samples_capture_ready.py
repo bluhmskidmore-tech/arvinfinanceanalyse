@@ -11,9 +11,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 
 GOLDEN_ROOT = ROOT / "tests" / "golden_samples"
+EXECUTIVE_SAMPLE_PATHS = {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}
+EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
+BOND_DASHBOARD_SAMPLE_PATHS = {"/api/bond-dashboard/headline-kpis"}
+BOND_DASHBOARD_READ_HEADERS = {"X-User-Id": "bond-dashboard-read-user", "X-User-Role": "viewer"}
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -466,14 +471,55 @@ def _run_request_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> dict[str, Any]:
     _clear_runtime_modules()
+    headers: dict[str, str] | None = None
+    if request["path"] in EXECUTIVE_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="executive-read-scope.db",
+            resource="executive",
+        )
+        headers = EXECUTIVE_READ_HEADERS
+    elif request["path"] in BOND_DASHBOARD_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="bond-dashboard-read-scope.db",
+            resource="bond_dashboard",
+        )
+        headers = BOND_DASHBOARD_READ_HEADERS
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
         request["method"],
         request["path"],
         params=request.get("params"),
+        headers=headers,
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _grant_sample_read_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    db_name: str,
+    resource: str,
+) -> None:
+    sqlite_path = tmp_path / db_name
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource=resource,
+        action="read",
+    )
 
 
 def _validate_balance_overview(actual: dict[str, Any], expected: dict[str, Any]) -> None:

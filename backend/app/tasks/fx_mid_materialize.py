@@ -10,19 +10,18 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import (
-    apply_pending_migrations_on_connection,
-    ensure_fx_daily_mid_schema_if_missing,
-)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.akshare_adapter import VendorAdapter as AkShareVendorAdapter
+from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_fx_catalog import (
     FormalFxCandidate,
     discover_formal_fx_candidates,
 )
-from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.currency_codes import normalize_currency_code
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_fx_daily_mid_schema_if_missing,
+)
 from backend.app.tasks.broker import register_actor_once
 
 logger = logging.getLogger(__name__)

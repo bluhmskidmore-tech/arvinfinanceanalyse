@@ -10,7 +10,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from app.core_finance.macro.helpers import to_float_safe as _d, pearson_corr as _pearson_corr
+from app.core_finance.macro.helpers import pearson_corr as _pearson_corr
+from app.core_finance.macro.helpers import to_float_safe as _d
 
 
 def _align(bond: list[float | None], other: list[float | None]) -> tuple[list[float], list[float]]:

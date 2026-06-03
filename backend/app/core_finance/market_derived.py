@@ -124,14 +124,16 @@ def interpolate_ftp_rate(term_months: float, curve_points: list[tuple[float, flo
     if not curve_points:
         return 0.0
 
-    from backend.app.core_finance.curve_engine.interpolation import (
-        interpolate as _engine_interpolate,
-        build_cubic_spline as _build_spline,
-    )
     from backend.app.core_finance.curve_engine.curve_types import (
         CurvePoint,
         FittedCurve,
         InterpolationMethod,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
     )
 
     t = float(term_months)

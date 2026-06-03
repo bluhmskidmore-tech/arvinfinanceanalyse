@@ -54,6 +54,13 @@ def test_worker_bootstrap_loads_canonical_modules_on_import():
     assert "get_broker()" in text
 
 
+def test_choice_news_task_module_declares_tushare_news_background_actor():
+    task_path = ROOT / "backend" / "app" / "tasks" / "choice_news.py"
+    text = task_path.read_text(encoding="utf-8")
+    assert 'register_actor_once(\n    "ingest_tushare_news_to_choice_news"' in text
+    assert "ingest_tushare_news_to_choice_news = register_actor_once" in text
+
+
 def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):
     broker_module = load_module(
         "backend.app.tasks.broker",
