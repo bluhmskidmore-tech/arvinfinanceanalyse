@@ -2215,6 +2215,7 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
         "shadow_evaluation_short_count": 0,
         "shadow_evaluation_status_counts": {"review_ready": 6},
         "shadow_evaluation_short_items": [],
+        "suggested_refresh_products": [],
         "shadow_evaluation_next_step": "6 个商品候选可进入人工复核；进入公式前仍需历史回测、相关性检验、权重审批和版本记录。",
         "formula_change_required": True,
         "approval_required": True,
@@ -2349,6 +2350,7 @@ def test_macro_toolkit_analysis_surfaces_actionable_commodity_shadow_shortfalls(
         "history_short": 2,
         "review_ready": 4,
     }
+    assert coverage["candidate_summary"]["suggested_refresh_products"] == ["RB", "I"]
     assert coverage["candidate_summary"]["shadow_evaluation_short_items"] == [
         {
             "field": "rebar",

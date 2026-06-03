@@ -106,10 +106,17 @@ type CommodityShortfallChange = {
   label: string;
   before: string;
   after: string;
+  remainingGap: number;
+  resolved: boolean;
 };
 type CommodityShortfallEstimate = CommodityShortfallChange & {
   estimatedRows: number;
   canFill: boolean;
+};
+type CommodityRefreshEvidenceChain = {
+  suggestedProducts: string[];
+  refreshedProducts: string[];
+  fullReloaded: boolean;
 };
 type CrisisGapRepairFeedback = {
   groupKey: CrisisGapGroupKey;
@@ -362,6 +369,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [commodityRefreshRun, setCommodityRefreshRun] = useState<MacroToolkitCommodityFuturesRefreshRun | null>(null);
   const [commoditySuggestedSelection, setCommoditySuggestedSelection] = useState<string[]>([]);
   const [commodityEvidenceReloadMessage, setCommodityEvidenceReloadMessage] = useState<string | null>(null);
+  const [commodityRefreshEvidenceChain, setCommodityRefreshEvidenceChain] =
+    useState<CommodityRefreshEvidenceChain | null>(null);
   const [commodityShortfallChanges, setCommodityShortfallChanges] = useState<CommodityShortfallChange[]>([]);
   const [commodityShortfallEstimates, setCommodityShortfallEstimates] = useState<CommodityShortfallEstimate[]>([]);
   const [isRefreshingCommodity, setIsRefreshingCommodity] = useState(false);
@@ -699,6 +708,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
+      setCommodityRefreshEvidenceChain(null);
       setCommodityShortfallChanges([]);
       setCommodityShortfallEstimates([]);
       return;
@@ -711,6 +721,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
+      setCommodityRefreshEvidenceChain(null);
       setCommodityShortfallChanges([]);
       setCommodityShortfallEstimates([]);
       return;
@@ -721,6 +732,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     setCommodityRefreshRun(null);
     setCommoditySuggestedSelection(options?.suggestedSelection ?? []);
     setCommodityEvidenceReloadMessage(null);
+    setCommodityRefreshEvidenceChain(null);
     setCommodityShortfallChanges([]);
     setCommodityShortfallEstimates([]);
     const shouldReloadFullAnalysis = !dryRun && !isCoreAnalysis;
@@ -748,6 +760,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         setCommodityShortfallEstimates(formatCommodityShortfallEstimates(shortfallsBeforeRefresh, refresh));
         return;
       }
+      setCommodityRefreshEvidenceChain({
+        suggestedProducts: options?.suggestedSelection ?? products,
+        refreshedProducts: commodityRefreshRunProducts(refresh),
+        fullReloaded: false,
+      });
       await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: shouldReloadFullAnalysis && Boolean(commodityGapGroup) });
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       if (shouldReloadFullAnalysis) {
@@ -756,6 +773,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         const shortfallsAfterRefresh = crisisCommodityShortItemsFromEnvelope(reloaded);
         setCommodityShortfallChanges(
           formatCommodityShortfallChanges(shortfallsBeforeRefresh, shortfallsAfterRefresh),
+        );
+        setCommodityRefreshEvidenceChain((chain) =>
+          chain
+            ? {
+                ...chain,
+                fullReloaded: Boolean(reloaded),
+              }
+            : chain,
         );
         if (commodityGapGroup) {
           setCrisisGapRepairFeedback(
@@ -771,6 +796,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setCommodityRefreshError(errorMessage);
       setCommodityRefreshRun(null);
       setCommodityEvidenceReloadMessage(null);
+      setCommodityRefreshEvidenceChain(null);
       setCommodityShortfallChanges([]);
       setCommodityShortfallEstimates([]);
       if (commodityGapGroup) {
@@ -1269,6 +1295,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               repairItems={analysis.data_health?.repair_items ?? []}
               refreshingSourceAlias={refreshingSourceAlias}
               commodityRefreshResult={commodityRefreshResult}
+              commodityRefreshEvidenceChain={commodityRefreshEvidenceChain}
+              commodityShortfallChanges={commodityShortfallChanges}
               commodityShortfallEstimates={commodityShortfallEstimates}
               repairFeedback={crisisGapRepairFeedback}
               sourceBackfillResult={sourceBackfillResult}
@@ -1283,6 +1311,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 setCommodityRefreshError(null);
                 setCommodityRefreshRun(null);
                 setCommodityEvidenceReloadMessage(null);
+                setCommodityRefreshEvidenceChain(null);
                 setCommodityShortfallChanges([]);
                 setCommodityShortfallEstimates([]);
               }}
@@ -2012,6 +2041,40 @@ function CrisisGapRepairFeedback({ feedback }: { feedback: CrisisGapRepairFeedba
   );
 }
 
+function CrisisCommodityClosurePanel({
+  changes,
+  evidenceChain,
+}: {
+  changes: CommodityShortfallChange[];
+  evidenceChain: CommodityRefreshEvidenceChain | null;
+}) {
+  const resolvedCount = changes.filter((item) => item.resolved).length;
+  return (
+    <div className="macro-toolkit-crisis-commodity-closure" aria-label="Crisis Score 样本刷新闭环">
+      <div>
+        <span>样本缺口刷新闭环</span>
+        <strong>
+          已补齐 {resolvedCount}/{changes.length}
+        </strong>
+      </div>
+      {evidenceChain ? (
+        <div className="macro-toolkit-crisis-commodity-closure__chain">
+          <small>建议品种 {formatCommodityProductsInline(evidenceChain.suggestedProducts)}</small>
+          <small>实际刷新 {formatCommodityProductsInline(evidenceChain.refreshedProducts)}</small>
+          <small>{evidenceChain.fullReloaded ? "完整分析已重读" : "完整分析重读待确认"}</small>
+        </div>
+      ) : null}
+      <div className="macro-toolkit-crisis-commodity-closure__grid">
+        {changes.map((item) => (
+          <small key={item.field}>
+            {item.label} · 刷新前 {item.before} · 刷新后 {item.after} · 剩余缺口 {item.remainingGap}
+          </small>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type CommodityRefreshProductRow = {
   key: string;
   productCode: string;
@@ -2133,6 +2196,8 @@ function CrisisScoreEvidencePanel({
   repairItems = [],
   refreshingSourceAlias = null,
   commodityRefreshResult = null,
+  commodityRefreshEvidenceChain = null,
+  commodityShortfallChanges = [],
   commodityShortfallEstimates = [],
   repairFeedback = null,
   sourceBackfillResult = null,
@@ -2146,6 +2211,8 @@ function CrisisScoreEvidencePanel({
   repairItems?: MacroToolkitRepairItem[];
   refreshingSourceAlias?: string | null;
   commodityRefreshResult?: string | null;
+  commodityRefreshEvidenceChain?: CommodityRefreshEvidenceChain | null;
+  commodityShortfallChanges?: CommodityShortfallChange[];
   commodityShortfallEstimates?: CommodityShortfallEstimate[];
   repairFeedback?: CrisisGapRepairFeedback | null;
   sourceBackfillResult?: string | null;
@@ -2211,6 +2278,13 @@ function CrisisScoreEvidencePanel({
         />
       </div>
 
+      {commodityShortfallChanges.length ? (
+        <CrisisCommodityClosurePanel
+          changes={commodityShortfallChanges}
+          evidenceChain={commodityRefreshEvidenceChain}
+        />
+      ) : null}
+
       {crisisGapGroups.length ? (
         <div className="macro-toolkit-crisis-gap-list" aria-label="Crisis Score 缺口清单">
           <div className="macro-toolkit-crisis-gap-list__head">
@@ -2271,6 +2345,9 @@ function CrisisScoreEvidencePanel({
           <small className="macro-toolkit-crisis-coverage-note">
             Crisis Score 公式仍仅使用 {commodityCoverage.used_in_crisis_score.join(" / ") || "nanhua"}；本区块为{" "}
             {commodityCoverage.role}
+          </small>
+          <small className="macro-toolkit-crisis-coverage-note">
+            候选商品仅做影子评估，当前未计入 Crisis Score 分数。
           </small>
           {commodityCoverage.candidate_summary ? (
             <>
@@ -2963,6 +3040,7 @@ type CrisisCommodityCandidateSummary = {
   shadow_evaluation_short_count: number;
   shadow_evaluation_status_counts: Record<string, number>;
   shadow_evaluation_short_items: CrisisCommodityShadowShortItem[];
+  suggested_refresh_products: string[];
   shadow_evaluation_next_step: string;
   formula_change_required: boolean;
   approval_required: boolean;
@@ -3069,6 +3147,9 @@ function normalizeCommodityCandidateSummary(value: unknown): CrisisCommodityCand
     shadow_evaluation_status_counts: normalizeNumberRecord(value.shadow_evaluation_status_counts),
     shadow_evaluation_short_items: Array.isArray(value.shadow_evaluation_short_items)
       ? value.shadow_evaluation_short_items.map(normalizeCommodityShadowShortItem).filter((item) => item !== null)
+      : [],
+    suggested_refresh_products: Array.isArray(value.suggested_refresh_products)
+      ? value.suggested_refresh_products.map((item) => String(item).trim()).filter(Boolean)
       : [],
     shadow_evaluation_next_step:
       typeof value.shadow_evaluation_next_step === "string" ? value.shadow_evaluation_next_step : "",
@@ -3272,11 +3353,14 @@ function formatCommodityShortfallChanges(
       const after = afterByField.get(before.field);
       const afterSample = after?.sample_count ?? before.minimum_sample_count;
       const afterMinimum = after?.minimum_sample_count ?? before.minimum_sample_count;
+      const remainingGap = Math.max(0, afterMinimum - afterSample);
       return {
         field: before.field,
         label: before.label || before.field,
         before: `${before.sample_count}/${before.minimum_sample_count}`,
         after: `${afterSample}/${afterMinimum}`,
+        remainingGap,
+        resolved: remainingGap === 0,
       };
     })
     .filter((item): item is CommodityShortfallChange => item !== null);
@@ -3346,6 +3430,12 @@ function commodityShortfallRemainingGap(sampleText: string) {
 }
 
 function commodityShadowRefreshProducts(summary: CrisisCommodityCandidateSummary) {
+  const backendSuggestions = summary.suggested_refresh_products.filter(
+    (item, index, array) => array.indexOf(item) === index,
+  );
+  if (backendSuggestions.length) {
+    return backendSuggestions;
+  }
   return summary.shadow_evaluation_short_items
     .map((item) => MACRO_COMMODITY_FIELD_TO_PRODUCT[item.field])
     .filter((item, index, array): item is string => Boolean(item) && array.indexOf(item) === index);
@@ -3357,6 +3447,16 @@ function formatCommodityShadowRefreshHint(products: string[]) {
 
 function formatCommodityProducts(products: string[]) {
   return products.length ? `品种 ${products.join(" / ")}` : "品种待选择";
+}
+
+function formatCommodityProductsInline(products: string[]) {
+  return products.length ? products.join(" / ") : "待确认";
+}
+
+function commodityRefreshRunProducts(refresh: MacroToolkitCommodityFuturesRefreshRun) {
+  return normalizeCommodityRefreshRows(refresh)
+    .map((row) => row.productCode)
+    .filter((item, index, array) => Boolean(item) && array.indexOf(item) === index);
 }
 
 function formatSignedDecimal(value: number | null | undefined) {

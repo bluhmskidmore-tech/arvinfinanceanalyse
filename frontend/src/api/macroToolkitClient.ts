@@ -1085,6 +1085,7 @@ const MOCK_CAPABILITY_RESULTS: MacroToolkitCapabilityResult[] = [
               latest_date: "2026-04-10",
             },
           ],
+          suggested_refresh_products: ["RB", "I", "AL", "AU"],
           shadow_evaluation_next_step: "2 个商品候选可读，4 个样本不足；先补齐样本不足品种的历史数据，再做人工复核和权重审批。",
           formula_change_required: true,
           approval_required: true,

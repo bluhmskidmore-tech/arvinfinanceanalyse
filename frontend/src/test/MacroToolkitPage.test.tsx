@@ -786,6 +786,7 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("6/6");
     expect(crisisEvidence).toHaveTextContent("supplemental_observation");
     expect(crisisEvidence).toHaveTextContent("Crisis Score 公式仍仅使用 nanhua");
+    expect(crisisEvidence).toHaveTextContent("候选商品仅做影子评估，当前未计入 Crisis Score 分数");
     expect(crisisEvidence).toHaveTextContent("Copper futures");
     expect(crisisEvidence).toHaveTextContent("CU0 / CU0.SHF");
     expect(crisisEvidence).toHaveTextContent("matched CU0");
@@ -968,6 +969,68 @@ describe("MacroToolkitPage", () => {
     expect(commodityInputTile).toHaveTextContent("NHCI.NH");
     expect(commodityInputTile.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NH0100.NHF"));
     expect(commodityInputTile.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NHCI.NH"));
+  });
+
+  it("uses backend-provided commodity refresh suggestions before field-name fallbacks", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    const envelopeWithBackendRefreshSuggestions = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        capability_results: analysisEnvelope.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const rawCommodityCoverage =
+            result.result.commodity_coverage && typeof result.result.commodity_coverage === "object"
+              ? result.result.commodity_coverage
+              : {};
+          const rawCandidateSummary =
+            "candidate_summary" in rawCommodityCoverage &&
+            rawCommodityCoverage.candidate_summary &&
+            typeof rawCommodityCoverage.candidate_summary === "object"
+              ? rawCommodityCoverage.candidate_summary
+              : {};
+          return {
+            ...result,
+            result: {
+              ...result.result,
+              commodity_coverage: {
+                ...rawCommodityCoverage,
+                candidate_summary: {
+                  ...rawCandidateSummary,
+                  suggested_refresh_products: ["CU", "SC"],
+                },
+              },
+            },
+          };
+        }),
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => envelopeWithBackendRefreshSuggestions,
+      refreshCommodityFutures: async (options) => {
+        refreshCalls.push(options);
+        return baseClient.refreshCommodityFutures(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    expect(crisisEvidence).toHaveTextContent("建议刷新品种：CU / SC");
+    expect(crisisEvidence).not.toHaveTextContent("建议刷新品种：RB / I / AL / AU");
+    await user.click(within(crisisEvidence).getAllByRole("button", { name: "按建议预估" })[0]!);
+
+    expect(refreshCalls[0]).toEqual({
+      endDate: "2026-04-30",
+      products: ["CU", "SC"],
+      dryRun: true,
+    });
   });
 
   it("groups Crisis Score warning and missing inputs into actionable gaps", async () => {
@@ -1500,8 +1563,18 @@ describe("MacroToolkitPage", () => {
     expect(commodityPanel).toHaveTextContent("Iron ore futures 17/20 -> 20/20");
     expect(commodityPanel).toHaveTextContent("Aluminum futures 17/20 -> 20/20");
     expect(commodityPanel).toHaveTextContent("Gold futures 17/20 -> 20/20");
-    await waitFor(() => expect(crisisEvidence).toHaveTextContent("2026-06-01"));
-    expect(crisisEvidence).toHaveTextContent("3187.42");
+    const reloadedCrisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    await waitFor(() => expect(reloadedCrisisEvidence).toHaveTextContent("2026-06-01"));
+    expect(reloadedCrisisEvidence).toHaveTextContent("3187.42");
+    const closurePanel = within(reloadedCrisisEvidence).getByLabelText("Crisis Score 样本刷新闭环");
+    expect(closurePanel).toHaveTextContent("建议品种 RB / I / AL / AU");
+    expect(closurePanel).toHaveTextContent("实际刷新 RB / I / AL / AU");
+    expect(closurePanel).toHaveTextContent("完整分析已重读");
+    expect(closurePanel).toHaveTextContent("已补齐 4/4");
+    expect(closurePanel).toHaveTextContent("Rebar futures");
+    expect(closurePanel).toHaveTextContent("刷新前 17/20");
+    expect(closurePanel).toHaveTextContent("刷新后 20/20");
+    expect(closurePanel).toHaveTextContent("剩余缺口 0");
   });
 
   it("shows remaining Crisis Score sample gaps when the commodity preview is still short", async () => {
@@ -1561,6 +1634,108 @@ describe("MacroToolkitPage", () => {
     expect(
       within(commodityPanel).getByRole("button", { name: "刷新商品期货：仍有缺口，谨慎刷新" }),
     ).toBeEnabled();
+  });
+
+  it("keeps a partial Crisis Score sample closure after commodity refresh reloads full evidence", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    let completedRefreshCount = 0;
+    const partiallyRefreshedEnvelope = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        capability_results: analysisEnvelope.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const rawCommodityCoverage =
+            result.result.commodity_coverage && typeof result.result.commodity_coverage === "object"
+              ? result.result.commodity_coverage
+              : {};
+          const rawCandidateSummary =
+            "candidate_summary" in rawCommodityCoverage &&
+            rawCommodityCoverage.candidate_summary &&
+            typeof rawCommodityCoverage.candidate_summary === "object"
+              ? rawCommodityCoverage.candidate_summary
+              : {};
+          return {
+            ...result,
+            result: {
+              ...result.result,
+              commodity_coverage: {
+                ...rawCommodityCoverage,
+                candidate_summary: {
+                  ...rawCandidateSummary,
+                  shadow_evaluation_short_count: 2,
+                  shadow_evaluation_ready_count: 4,
+                  shadow_evaluation_short_items: [
+                    {
+                      field: "rebar",
+                      label: "Rebar futures",
+                      sample_count: 19,
+                      minimum_sample_count: 20,
+                      sample_gap: 1,
+                      latest_date: "2026-04-30",
+                    },
+                    {
+                      field: "iron_ore",
+                      label: "Iron ore futures",
+                      sample_count: 19,
+                      minimum_sample_count: 20,
+                      sample_gap: 1,
+                      latest_date: "2026-04-30",
+                    },
+                  ],
+                },
+              },
+            },
+          };
+        }),
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async (options) => {
+        if (options?.detail === "full" && completedRefreshCount > 0) {
+          return partiallyRefreshedEnvelope;
+        }
+        return analysisEnvelope;
+      },
+      refreshCommodityFutures: async (options) => {
+        refreshCalls.push(options);
+        if (!options?.dryRun) {
+          completedRefreshCount += 1;
+        }
+        return baseClient.refreshCommodityFutures(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    await user.click(within(gapList).getAllByRole("button", { name: "按建议预估" })[0]!);
+    await user.click(within(gapList).getByRole("button", { name: "按建议刷新并重读" }));
+
+    expect(refreshCalls[1]).toEqual({
+      endDate: "2026-04-30",
+      products: ["RB", "I", "AL", "AU"],
+      dryRun: false,
+    });
+    const reloadedCrisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const closurePanel = await within(reloadedCrisisEvidence).findByLabelText("Crisis Score 样本刷新闭环");
+    expect(closurePanel).toHaveTextContent("建议品种 RB / I / AL / AU");
+    expect(closurePanel).toHaveTextContent("实际刷新 RB / I / AL / AU");
+    expect(closurePanel).toHaveTextContent("完整分析已重读");
+    expect(closurePanel).toHaveTextContent("已补齐 2/4");
+    expect(closurePanel).toHaveTextContent("Rebar futures");
+    expect(closurePanel).toHaveTextContent("刷新前 17/20");
+    expect(closurePanel).toHaveTextContent("刷新后 19/20");
+    expect(closurePanel).toHaveTextContent("剩余缺口 1");
+    expect(reloadedCrisisEvidence).toHaveTextContent("完整分析已重读，仍有缺口");
+    expect(reloadedCrisisEvidence).toHaveTextContent("COMMODITY_SAMPLE_SHORT");
   });
 
   it("previews selected commodity futures before refreshing full evidence", async () => {

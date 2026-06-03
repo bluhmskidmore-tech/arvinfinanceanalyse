@@ -1419,6 +1419,14 @@ _CRISIS_COMMODITY_COVERAGE_INPUTS = (
     {"field": "crude_oil", "label": "Crude oil futures", "aliases": ("SC0", "SC0.INE")},
     {"field": "gold", "label": "Gold futures", "aliases": ("AU0", "AU0.SHF")},
 )
+_CRISIS_COMMODITY_FIELD_TO_PRODUCT = {
+    "rebar": "RB",
+    "iron_ore": "I",
+    "copper": "CU",
+    "aluminum": "AL",
+    "crude_oil": "SC",
+    "gold": "AU",
+}
 _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES = 20
 
 _CAPABILITY_INPUT_REQUIREMENTS = {
@@ -2700,6 +2708,12 @@ def _crisis_commodity_candidate_summary(items: list[dict[str, object]]) -> dict[
         if isinstance(shadow := item.get("shadow_evaluation"), dict)
         and shadow.get("status") == "history_short"
     ]
+    suggested_refresh_products = _unique_texts(
+        [
+            _CRISIS_COMMODITY_FIELD_TO_PRODUCT.get(str(item.get("field") or ""))
+            for item in shadow_short_items
+        ]
+    )
     return {
         "shadow_review_ready_count": statuses.count("shadow_review_ready"),
         "needs_current_data_count": statuses.count("needs_current_data"),
@@ -2712,6 +2726,7 @@ def _crisis_commodity_candidate_summary(items: list[dict[str, object]]) -> dict[
             if status
         },
         "shadow_evaluation_short_items": shadow_short_items,
+        "suggested_refresh_products": suggested_refresh_products,
         "shadow_evaluation_next_step": _crisis_commodity_shadow_next_step(
             ready_count=shadow_ready_count,
             short_count=shadow_short_count,
