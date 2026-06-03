@@ -3093,6 +3093,12 @@ select {
   color: #b42318;
 }
 
+.agent-callout--warning {
+  border: 1px solid #f8d38d;
+  background: #fff8eb;
+  color: #8a4b0f;
+}
+
 .agent-callout--stopped {
   border: 1px solid #d7dee8;
   background: #f8fafc;

@@ -8,7 +8,6 @@ import type {
   AgentQueryRequest,
   AgentSuggestedAction,
 } from "../../api/contracts";
-import { shellTokens as t } from "../../theme/tokens";
 import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
 import { AgentEvidencePanel } from "./components/AgentEvidencePanel";
 import { AgentGenericCardsGrid } from "./components/AgentGenericCardsGrid";
@@ -3133,15 +3132,9 @@ export function EmbeddedAgentCopilot({
     if (turn.error?.kind === "disabled") {
       return (
         <div
-          style={{
-            padding: 24,
-            borderRadius: 16,
-            border: `1px solid ${t.colorBorderWarning}`,
-            background: t.colorBgWarningSoft,
-            color: t.colorTextWarning,
-            fontSize: 14,
-            lineHeight: 1.7,
-          }}
+          className="agent-callout agent-callout--warning"
+          role="status"
+          aria-label="agent-disabled-status"
         >
           智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
         </div>

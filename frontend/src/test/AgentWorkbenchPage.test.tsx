@@ -1960,6 +1960,8 @@ describe("AgentWorkbenchPage", () => {
         "智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
       ),
     ).toBeInTheDocument();
+    const disabledStatus = screen.getByRole("status", { name: "agent-disabled-status" });
+    expect(disabledStatus).toHaveClass("agent-callout", "agent-callout--warning");
   });
 
   it("shows request error on non-OK response", async () => {
