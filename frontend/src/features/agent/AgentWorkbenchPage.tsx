@@ -2448,6 +2448,7 @@ export function EmbeddedAgentCopilot({
       };
       setError(nextError);
       updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: nextError }));
+      setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
     } finally {
       setLoading(false);
     }
@@ -2536,6 +2537,7 @@ export function EmbeddedAgentCopilot({
       };
       setError(nextError);
       updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: nextError }));
+      setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
     } finally {
       setLoading(false);
     }

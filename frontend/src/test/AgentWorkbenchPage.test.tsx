@@ -502,6 +502,19 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("Dexter");
   });
 
+  it("cues retry after a research shortcut request fails", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse({}, 500));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    expect(screen.getByText("研究快捷入口失败 · 可重新点击或手动提问")).toBeInTheDocument();
+  });
+
   it("submits the macro research shortcut with the macro research domain filter", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
@@ -592,6 +605,19 @@ describe("AgentWorkbenchPage", () => {
     expect(status).toHaveTextContent("准备本地 workflow");
     expect(status).toHaveTextContent("本地 workflow 正在准备，本页会直接显示结果。");
     expect(status).not.toHaveTextContent("正在交给托管运行时");
+  });
+
+  it("cues retry after a financial workflow request fails", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse({}, 500));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    expect(screen.getByText("Workflow 执行失败 · 可重新点击或手动提问")).toBeInTheDocument();
   });
 
   it("falls back to local agent query when managed Hermes runs return the provider-gated 400", async () => {
