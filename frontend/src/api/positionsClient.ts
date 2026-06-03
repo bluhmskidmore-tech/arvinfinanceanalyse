@@ -140,7 +140,24 @@ export function createDemoPositionsClient(
           page: options.page,
           page_size: options.pageSize,
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          requested_report_date: options.reportDate,
+          resolved_report_date: options.reportDate,
+          as_of_date: options.reportDate,
+          date_basis: "positions_snapshot_report_date",
+          filters_applied: {
+            report_date: options.reportDate,
+            sub_type: options.subType,
+            page: options.page,
+            page_size: options.pageSize,
+            include_issued: Boolean(options.includeIssued),
+          },
+          tables_used: ["zqtz_bond_daily_snapshot"],
+          evidence_rows: 0,
+        },
       );
     },
     async getPositionsCounterpartyBonds(options: {
@@ -193,7 +210,24 @@ export function createDemoPositionsClient(
           page: options.page,
           page_size: options.pageSize,
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          requested_report_date: options.reportDate,
+          resolved_report_date: options.reportDate,
+          as_of_date: options.reportDate,
+          date_basis: "positions_snapshot_report_date",
+          filters_applied: {
+            report_date: options.reportDate,
+            product_type: options.productType,
+            direction: options.direction,
+            page: options.page,
+            page_size: options.pageSize,
+          },
+          tables_used: ["tyw_interbank_daily_snapshot"],
+          evidence_rows: 0,
+        },
       );
     },
     async getPositionsCounterpartyInterbankSplit(options: {

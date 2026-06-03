@@ -83,6 +83,49 @@ describe("createApiClient", () => {
     expect(payload.result_meta.fallback_mode).toBe("none");
   });
 
+  it("keeps mock positions list count envelopes at candidate analytical boundary", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const bonds = await client.getPositionsBondsList({
+      reportDate: "2026-01-10",
+      subType: "GOV",
+      page: 1,
+      pageSize: 10,
+    });
+    const interbank = await client.getPositionsInterbankList({
+      reportDate: "2026-01-10",
+      productType: "REPO",
+      direction: "Asset",
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(bonds.result_meta).toMatchObject({
+      basis: "analytical",
+      formal_use_allowed: false,
+      quality_flag: "warning",
+      result_kind: "positions.bonds.list",
+      requested_report_date: "2026-01-10",
+      resolved_report_date: "2026-01-10",
+      as_of_date: "2026-01-10",
+      date_basis: "positions_snapshot_report_date",
+      tables_used: ["zqtz_bond_daily_snapshot"],
+      evidence_rows: 0,
+    });
+    expect(interbank.result_meta).toMatchObject({
+      basis: "analytical",
+      formal_use_allowed: false,
+      quality_flag: "warning",
+      result_kind: "positions.interbank.list",
+      requested_report_date: "2026-01-10",
+      resolved_report_date: "2026-01-10",
+      as_of_date: "2026-01-10",
+      date_basis: "positions_snapshot_report_date",
+      tables_used: ["tyw_interbank_daily_snapshot"],
+      evidence_rows: 0,
+    });
+  });
+
   it("keeps mock balance-analysis overview, detail, basis, and summary amounts consistent", async () => {
     const client = createApiClient({ mode: "mock" });
     const overview = await client.getBalanceAnalysisOverview({

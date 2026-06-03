@@ -21,6 +21,7 @@ from backend.app.schemas.positions import (
     SubTypesResponse,
 )
 from backend.app.services.formal_result_runtime import (
+    build_analytical_result_meta,
     build_formal_result_envelope,
     build_formal_result_meta,
 )
@@ -28,6 +29,9 @@ from backend.app.services.formal_result_runtime import (
 CACHE_VERSION = "cv_positions_read_v1"
 RULE_VERSION = "rv_positions_read_v1"
 EMPTY_SOURCE_VERSION = "sv_positions_snapshot_empty"
+POSITIONS_DATE_BASIS = "positions_snapshot_report_date"
+ZQTZ_SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
+TYW_SNAPSHOT_TABLE = "tyw_interbank_daily_snapshot"
 
 
 def _trace_id() -> str:
@@ -58,6 +62,32 @@ def _meta(*, result_kind: str, src: list[str], rule: list[str]) -> object:
         cache_version=CACHE_VERSION,
         source_version=_merge_versions(src, empty_value=EMPTY_SOURCE_VERSION),
         rule_version=_merge_versions(rule, empty_value=RULE_VERSION),
+    )
+
+
+def _candidate_list_meta(
+    *,
+    result_kind: str,
+    report_date: str,
+    src: list[str],
+    rule: list[str],
+    filters_applied: dict[str, object],
+    table_name: str,
+    evidence_rows: int,
+) -> object:
+    return build_analytical_result_meta(
+        trace_id=_trace_id(),
+        result_kind=result_kind,
+        cache_version=CACHE_VERSION,
+        source_version=_merge_versions(src, empty_value=EMPTY_SOURCE_VERSION),
+        rule_version=_merge_versions(rule, empty_value=RULE_VERSION),
+        requested_report_date=report_date,
+        resolved_report_date=report_date,
+        as_of_date=report_date,
+        date_basis=POSITIONS_DATE_BASIS,
+        filters_applied=filters_applied,
+        tables_used=[table_name],
+        evidence_rows=evidence_rows,
     )
 
 
@@ -101,7 +131,21 @@ def bonds_list_envelope(
         page_size=page_size,
     )
     return build_formal_result_envelope(
-        result_meta=_meta(result_kind="positions.bonds.list", src=src, rule=rule),
+        result_meta=_candidate_list_meta(
+            result_kind="positions.bonds.list",
+            report_date=report_date,
+            src=src,
+            rule=rule,
+            filters_applied={
+                "report_date": report_date,
+                "sub_type": sub_type,
+                "page": page,
+                "page_size": page_size,
+                "include_issued": include_issued,
+            },
+            table_name=ZQTZ_SNAPSHOT_TABLE,
+            evidence_rows=total,
+        ),
         result_payload=payload.model_dump(mode="json"),
     )
 
@@ -170,7 +214,21 @@ def interbank_list_envelope(
         page_size=page_size,
     )
     return build_formal_result_envelope(
-        result_meta=_meta(result_kind="positions.interbank.list", src=src, rule=rule),
+        result_meta=_candidate_list_meta(
+            result_kind="positions.interbank.list",
+            report_date=report_date,
+            src=src,
+            rule=rule,
+            filters_applied={
+                "report_date": report_date,
+                "product_type": product_type,
+                "direction": direction,
+                "page": page,
+                "page_size": page_size,
+            },
+            table_name=TYW_SNAPSHOT_TABLE,
+            evidence_rows=total,
+        ),
         result_payload=payload.model_dump(mode="json"),
     )
 

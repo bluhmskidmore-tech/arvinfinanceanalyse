@@ -206,6 +206,39 @@ def _assert_envelope(payload: dict[str, Any], *, result_kind: str) -> None:
     assert meta["result_kind"] == result_kind
 
 
+def _assert_candidate_list_envelope(
+    payload: dict[str, Any],
+    *,
+    result_kind: str,
+    report_date: str,
+    table_name: str,
+    evidence_rows: int,
+) -> None:
+    _assert_envelope_shape(payload, result_kind=result_kind)
+    meta = payload["result_meta"]
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is False
+    assert meta["quality_flag"] == "warning"
+    assert meta["requested_report_date"] == report_date
+    assert meta["resolved_report_date"] == report_date
+    assert meta["as_of_date"] == report_date
+    assert meta["date_basis"] == "positions_snapshot_report_date"
+    assert meta["filters_applied"]["report_date"] == report_date
+    assert meta["tables_used"] == [table_name]
+    assert meta["evidence_rows"] == evidence_rows
+
+
+def _assert_envelope_shape(payload: dict[str, Any], *, result_kind: str) -> None:
+    assert "result_meta" in payload
+    assert "result" in payload
+    meta = payload["result_meta"]
+    for key in ("trace_id", "basis", "source_version", "rule_version", "cache_version", "result_kind"):
+        assert key in meta, f"result_meta missing {key!r}"
+        assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
+    assert meta["result_kind"] == result_kind
+
+
 def test_positions_endpoints_envelope_and_empty_db(tmp_path, monkeypatch) -> None:
     db = tmp_path / "pos.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
@@ -221,7 +254,13 @@ def test_positions_endpoints_envelope_and_empty_db(tmp_path, monkeypatch) -> Non
         params={"report_date": "2026-01-10", "sub_type": "GOV", "page": 1, "page_size": 10},
     )
     assert r2.status_code == 200
-    _assert_envelope(r2.json(), result_kind="positions.bonds.list")
+    _assert_candidate_list_envelope(
+        r2.json(),
+        result_kind="positions.bonds.list",
+        report_date="2026-01-10",
+        table_name="zqtz_bond_daily_snapshot",
+        evidence_rows=0,
+    )
     assert r2.json()["result"]["items"] == []
     assert r2.json()["result"]["total"] == 0
 
@@ -316,6 +355,13 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
         },
     )
     assert ib.status_code == 200
+    _assert_candidate_list_envelope(
+        ib.json(),
+        result_kind="positions.interbank.list",
+        report_date="2026-01-10",
+        table_name="tyw_interbank_daily_snapshot",
+        evidence_rows=1,
+    )
     assert ib.json()["result"]["total"] == 1
     assert ib.json()["result"]["items"][0]["direction"] == "Asset"
 
