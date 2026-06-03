@@ -936,6 +936,10 @@ describe("RiskTensorPage", () => {
     expect(tracePriority).toHaveTextContent("evidence_rows 128");
     expect(tracePriority).toHaveTextContent("tables_used risk_tensor_daily / bond_position_snapshot");
     expect(tracePriority).toHaveTextContent("filters_applied report_date=2026-02-28；desk=FI");
+    expect(tracePriority).toHaveTextContent("证据字段复核");
+    expect(tracePriority).toHaveTextContent("evidence_rows 已提供");
+    expect(tracePriority).toHaveTextContent("tables_used 已提供");
+    expect(tracePriority).toHaveTextContent("filters_applied 已提供");
   });
 
   it("jumps from quality evidence scope to result metadata panel", async () => {
@@ -1074,6 +1078,10 @@ describe("RiskTensorPage", () => {
     expect(qualityDetail).toHaveTextContent("tables_used 未提供");
     expect(qualityDetail).toHaveTextContent("filters_applied 未提供");
     expect(tracePriority).toHaveTextContent("证据范围");
+    expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
+    expect(tracePriority).toHaveTextContent("tables_used 未提供");
+    expect(tracePriority).toHaveTextContent("filters_applied 未提供");
+    expect(tracePriority).toHaveTextContent("证据字段复核");
     expect(tracePriority).toHaveTextContent("evidence_rows 未提供");
     expect(tracePriority).toHaveTextContent("tables_used 未提供");
     expect(tracePriority).toHaveTextContent("filters_applied 未提供");

@@ -689,6 +689,23 @@ export default function RiskTensorPage() {
   const qualityTraceMetadataDetail = `evidence_rows ${
     typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
   }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
+  const qualityEvidenceReviewItems = [
+    {
+      key: "evidence_rows",
+      label: "evidence_rows",
+      status: typeof tensorMeta?.evidence_rows === "number" ? "已提供" : "未提供",
+    },
+    {
+      key: "tables_used",
+      label: "tables_used",
+      status: metadataTablesUsed ? "已提供" : "未提供",
+    },
+    {
+      key: "filters_applied",
+      label: "filters_applied",
+      status: metadataFiltersApplied ? "已提供" : "未提供",
+    },
+  ];
   const qualityTraceCopyText = [
     "风险张量质量证据",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -1625,6 +1642,17 @@ export default function RiskTensorPage() {
                         {qualityEvidenceCopyMessage}
                       </small>
                     ) : null}
+                    <div className="risk-tensor-quality-detail__evidence-checklist">
+                      <strong>证据字段复核</strong>
+                      <ul>
+                        {qualityEvidenceReviewItems.map((item) => (
+                          <li key={item.key} data-status={item.status === "已提供" ? "provided" : "missing"}>
+                            <span>{item.label} </span>
+                            <b>{item.status}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </li>
                 </ol>
               </div>

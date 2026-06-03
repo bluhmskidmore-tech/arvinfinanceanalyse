@@ -279,6 +279,53 @@
   font-weight: 750;
 }
 
+.risk-tensor-quality-detail__evidence-checklist {
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+}
+
+.risk-tensor-quality-detail__evidence-checklist > strong {
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+}
+
+.risk-tensor-quality-detail__evidence-checklist ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-tensor-quality-detail__evidence-checklist li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--moss-color-text-muted);
+}
+
+.risk-tensor-quality-detail__evidence-checklist li span {
+  display: inline;
+  color: inherit;
+  font-weight: 700;
+}
+
+.risk-tensor-quality-detail__evidence-checklist li b {
+  color: var(--moss-color-success-600);
+  font-weight: 750;
+}
+
+.risk-tensor-quality-detail__evidence-checklist li[data-status="missing"] b {
+  color: var(--moss-color-warning-600);
+}
+
 .risk-tensor-quality-detail__blocked {
   display: grid;
   gap: 3px;
