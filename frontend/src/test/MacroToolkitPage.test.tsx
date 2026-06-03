@@ -899,6 +899,11 @@ describe("MacroToolkitPage", () => {
       await waitFor(() =>
         expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Crisis Score 商品候选审计包")),
       );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("分析日期 2026-04-30"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("source_version macro_toolkit_mock"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("vendor_version choice+tushare"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_macro_toolkit_ui_v1"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version none"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("规则版本 shadow_rule_v1"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("用途：商品候选进入公式前的影子复核"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("边界：不写入 Crisis Score，不改变权重"));

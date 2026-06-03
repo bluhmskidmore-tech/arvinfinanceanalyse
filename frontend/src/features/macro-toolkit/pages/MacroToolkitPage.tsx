@@ -22,7 +22,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/clientContext";
-import type { ApiEnvelope } from "../../../api/contracts";
+import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
 import type {
   MacroToolkitCapability,
   MacroToolkitCapabilityResult,
@@ -1297,6 +1297,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           {crisisScoreResult ? (
             <CrisisScoreEvidencePanel
               result={crisisScoreResult}
+              analysisMeta={analysisMeta}
+              analysisAsOfDate={analysis.as_of_date ?? null}
               repairItems={analysis.data_health?.repair_items ?? []}
               refreshingSourceAlias={refreshingSourceAlias}
               commodityRefreshResult={commodityRefreshResult}
@@ -2080,13 +2082,23 @@ function CrisisCommodityClosurePanel({
   );
 }
 
-function CrisisCommodityShadowDecisionPanel({ coverage }: { coverage: CrisisCommodityCoverage }) {
+function CrisisCommodityShadowDecisionPanel({
+  coverage,
+  analysisMeta,
+  analysisAsOfDate = null,
+}: {
+  coverage: CrisisCommodityCoverage;
+  analysisMeta?: ResultMeta | null;
+  analysisAsOfDate?: string | null;
+}) {
   const promotionItems = coverage.items.map(commodityPromotionRuleItem);
   const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
   const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
   const auditPackCopyText = buildCommodityPromotionAuditPackCopyText(promotionItems, {
     manualCount,
     rejectedCount,
+    analysisMeta,
+    analysisAsOfDate,
   });
   const [auditPackCopyStatus, setAuditPackCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const handleCopyAuditPack = useCallback(async () => {
@@ -2345,6 +2357,8 @@ function CommodityRefreshSummaryStrip({
 
 function CrisisScoreEvidencePanel({
   result,
+  analysisMeta = null,
+  analysisAsOfDate = null,
   repairItems = [],
   refreshingSourceAlias = null,
   commodityRefreshResult = null,
@@ -2360,6 +2374,8 @@ function CrisisScoreEvidencePanel({
   onRefreshCommodityProducts,
 }: {
   result: MacroToolkitCapabilityResult;
+  analysisMeta?: ResultMeta | null;
+  analysisAsOfDate?: string | null;
   repairItems?: MacroToolkitRepairItem[];
   refreshingSourceAlias?: string | null;
   commodityRefreshResult?: string | null;
@@ -2537,7 +2553,11 @@ function CrisisScoreEvidencePanel({
                   tone="neutral"
                 />
               </div>
-              <CrisisCommodityShadowDecisionPanel coverage={commodityCoverage} />
+              <CrisisCommodityShadowDecisionPanel
+                coverage={commodityCoverage}
+                analysisMeta={analysisMeta}
+                analysisAsOfDate={analysisAsOfDate}
+              />
               <small className="macro-toolkit-crisis-coverage-note">
                 {commodityCoverage.candidate_summary.next_step || "商品扩展候选下一步待确认"}
               </small>
@@ -3614,10 +3634,20 @@ function commodityPromotionRuleCheckStatusLabel(status: CommodityPromotionRuleSt
 
 function buildCommodityPromotionAuditPackCopyText(
   promotionItems: CommodityPromotionRuleItem[],
-  counts: { manualCount: number; rejectedCount: number },
+  counts: {
+    manualCount: number;
+    rejectedCount: number;
+    analysisMeta?: ResultMeta | null;
+    analysisAsOfDate?: string | null;
+  },
 ) {
   return [
     "Crisis Score 商品候选审计包",
+    `分析日期 ${counts.analysisMeta?.as_of_date ?? counts.analysisAsOfDate ?? "缺失"}`,
+    `source_version ${counts.analysisMeta?.source_version ?? "缺失"}`,
+    `vendor_version ${counts.analysisMeta?.vendor_version ?? "缺失"}`,
+    `rule_version ${counts.analysisMeta?.rule_version ?? "缺失"}`,
+    `cache_version ${counts.analysisMeta?.cache_version ?? "缺失"}`,
     `规则版本 ${MACRO_COMMODITY_SHADOW_RULE_VERSION}`,
     "用途：商品候选进入公式前的影子复核",
     "边界：不写入 Crisis Score，不改变权重",
