@@ -10,6 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 ZERO = Decimal("0")
@@ -228,10 +230,21 @@ def test_product_category_attribution_endpoint_rejects_unknown_compare(tmp_path,
 
 def _build_client(tmp_path: Path, monkeypatch) -> tuple[TestClient, Path]:
     duckdb_path = tmp_path / "moss.duckdb"
+    sqlite_path = tmp_path / "product-category-pnl-attribution-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(tmp_path / "data_input"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
+    UserScopeRepository(dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="product_category_pnl",
+        action="read",
+    )
     main_module = load_module("backend.app.main", "backend/app/main.py")
     return TestClient(main_module.app), duckdb_path
 

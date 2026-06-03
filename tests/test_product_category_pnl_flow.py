@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import csv
 import importlib
+import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -10,10 +11,13 @@ import sys
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.app.governance.settings import Settings, get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
 from backend.app.services.product_category_pnl_service import (
@@ -32,6 +36,16 @@ from tests.helpers import load_module
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
+PRODUCT_CATEGORY_READ_HEADERS = {"X-User-Id": "product-category-read-user", "X-User-Role": "viewer"}
+
+_PRODUCT_CATEGORY_READ_CASES: tuple[tuple[str, dict[str, str]], ...] = (
+    ("/ui/pnl/product-category/dates", {}),
+    ("/ui/pnl/product-category", {"report_date": "2026-02-28", "view": "monthly"}),
+    ("/ui/pnl/product-category/attribution", {"report_date": "2026-02-28", "compare": "mom"}),
+    ("/ui/pnl/product-category/refresh-status", {"run_id": "product-category-run"}),
+    ("/ui/pnl/product-category/manual-adjustments", {"report_date": "2026-02-28"}),
+    ("/ui/pnl/product-category/manual-adjustments/export", {"report_date": "2026-02-28"}),
+)
 
 
 def _pnl_row_payload(
@@ -87,6 +101,61 @@ def test_product_category_completeness_check_flags_inconsistent_totals() -> None
 
     assert check["breached"] is True
     assert check["diff"] == -1.0
+
+
+def test_product_category_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "tests._product_category_auth.product_category_pnl",
+        "backend/app/api/routes/product_category_pnl.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "product_category_dates_envelope",
+        lambda _duckdb_path: {"result_meta": {"result_kind": "product_category_pnl.dates"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "product_category_pnl_envelope",
+        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.detail"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "product_category_attribution_envelope",
+        lambda *_args, **_kwargs: {"result_meta": {"result_kind": "product_category_pnl.attribution"}, "result": {}},
+    )
+    monkeypatch.setattr(
+        route_module.importlib,
+        "import_module",
+        lambda _name: type(
+            "ProductCategoryStatusService",
+            (),
+            {"product_category_refresh_status": staticmethod(lambda _settings, *, run_id: {"run_id": run_id})},
+        ),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "list_product_category_manual_adjustments",
+        lambda *_args, **_kwargs: {"adjustment_count": 0, "adjustments": []},
+    )
+    monkeypatch.setattr(
+        route_module,
+        "export_product_category_manual_adjustments_csv",
+        lambda *_args, **_kwargs: ("product-category-adjustments.csv", b""),
+    )
+    _product_category_scope_repo(tmp_path, monkeypatch)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path, params in _PRODUCT_CATEGORY_READ_CASES:
+        response = client.get(path, params=params or None, headers=PRODUCT_CATEGORY_READ_HEADERS)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+    _grant_product_category_read(tmp_path, monkeypatch)
+
+    for path, params in _PRODUCT_CATEGORY_READ_CASES:
+        response = client.get(path, params=params or None, headers=PRODUCT_CATEGORY_READ_HEADERS)
+        assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
 
 
 def test_product_category_detail_rejects_invalid_view(tmp_path, monkeypatch):
@@ -206,6 +275,7 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     GovernanceRepository(base_dir=governance_dir).append(
@@ -417,6 +487,7 @@ def test_product_category_pnl_identical_requests_yield_identical_result_payload(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
@@ -457,6 +528,7 @@ def test_product_category_pnl_all_views_determinism_and_meta_contract(tmp_path, 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
@@ -528,6 +600,7 @@ def test_product_category_ytd_accumulates_monthly_pnl_from_year_start_without_ba
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     GovernanceRepository(base_dir=governance_dir).append(
@@ -601,6 +674,7 @@ def test_product_category_partial_ytd_returns_warning_and_matches_year_to_report
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = load_module(
@@ -658,6 +732,7 @@ def test_scenario_request_does_not_change_subsequent_formal_payload(tmp_path, mo
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = load_module(
@@ -702,6 +777,7 @@ def test_monthly_and_qtd_views_produce_distinct_formal_results_when_multimonth_q
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = load_module(
@@ -744,6 +820,7 @@ def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch, s
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
@@ -864,6 +941,7 @@ def test_product_category_refresh_empty_source_keeps_existing_read_model(tmp_pat
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = load_module(
@@ -915,6 +993,7 @@ def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timest
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     GovernanceRepository(base_dir=governance_dir).append(
@@ -971,6 +1050,7 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     GovernanceRepository(base_dir=governance_dir).append(
@@ -1025,6 +1105,8 @@ def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fai
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
+    _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     service_mod = _load_product_category_pnl_service_module()
@@ -1062,6 +1144,7 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     service_mod = _load_product_category_pnl_service_module()
@@ -1108,6 +1191,8 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
+    _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
@@ -1165,6 +1250,8 @@ def test_product_category_refresh_reconciles_stale_queued_run_and_requeues(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
+    _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
@@ -1219,6 +1306,7 @@ def test_product_category_refresh_status_completed_has_terminal_trigger_and_stab
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     run_id = "product_category_pnl:status-contract"
@@ -1266,6 +1354,7 @@ def test_sync_fallback_governance_latest_record_matches_refresh_run(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     service_mod = _load_product_category_pnl_service_module()
@@ -1309,6 +1398,7 @@ def test_materialize_failure_appends_error_message_to_governance(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     task_module = load_module(
@@ -1433,6 +1523,7 @@ def test_product_category_refresh_status_returns_503_when_status_backend_fails(
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
     service_mod = _load_product_category_pnl_service_module()
@@ -2153,8 +2244,40 @@ def test_manual_adjustment_export_locks_csv_order_under_sort_and_range(tmp_path,
     get_settings.cache_clear()
 
 
+def _product_category_scope_repo(tmp_path, monkeypatch) -> UserScopeRepository:
+    dsn = os.environ.get("MOSS_POSTGRES_DSN", "").strip()
+    if not dsn or not dsn.startswith("sqlite:///"):
+        sqlite_path = tmp_path / "product-category-pnl-auth-scope.db"
+        dsn = f"sqlite:///{sqlite_path.as_posix()}"
+        monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(dsn)
+
+
+def _grant_product_category_read(tmp_path, monkeypatch) -> None:
+    _product_category_scope_repo(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="product_category_pnl",
+        action="read",
+    )
+
+
+def _grant_product_category_adjustment_write(tmp_path, monkeypatch) -> None:
+    _product_category_scope_repo(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="product_category_pnl.adjustment",
+        action="write",
+    )
+
+
 def _build_product_category_client(tmp_path, monkeypatch) -> tuple[TestClient, Path]:
     governance_dir = tmp_path / "governance"
+    _grant_product_category_read(tmp_path, monkeypatch)
+    _grant_product_category_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(tmp_path / "data_input"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
