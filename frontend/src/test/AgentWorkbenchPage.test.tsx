@@ -3060,6 +3060,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("下一句");
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(screen.getByText("下一句已排队 · 还可以继续输入")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "编辑草稿" }));
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued second turn");

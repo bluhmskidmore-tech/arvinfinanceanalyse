@@ -2311,6 +2311,7 @@ export function EmbeddedAgentCopilot({
     }
     setQueuedQueries((currentQueries) => [...currentQueries, nextQueuedQuery]);
     clearComposerQuery();
+    setComposerAssistHint("下一句已排队 · 还可以继续输入");
     shouldFocusComposerRef.current = true;
     focusComposerInput();
   }
