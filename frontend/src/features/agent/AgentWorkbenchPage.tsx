@@ -3048,16 +3048,26 @@ export function EmbeddedAgentCopilot({
           <div className="agent-callout agent-callout--empty" role="status" aria-label="空结果状态">
             <strong>没有可展示结果</strong>
             <span>本次查询未返回可展示结果。请调整问题后重试。</span>
-            {canRegenerateAgentTurn(turn) ? (
+            <div className="agent-callout__actions">
               <button
                 type="button"
                 className="agent-callout__action"
-                onClick={() => void regenerateAgentTurn(turn)}
+                onClick={focusComposerInput}
                 disabled={loading}
               >
-                重新生成
+                继续输入
               </button>
-            ) : null}
+              {canRegenerateAgentTurn(turn) ? (
+                <button
+                  type="button"
+                  className="agent-callout__action"
+                  onClick={() => void regenerateAgentTurn(turn)}
+                  disabled={loading}
+                >
+                  重新生成
+                </button>
+              ) : null}
+            </div>
           </div>
         )}
 

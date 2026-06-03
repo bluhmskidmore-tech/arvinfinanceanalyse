@@ -5004,6 +5004,8 @@ describe("AgentWorkbenchPage", () => {
     fireEvent.click(emptyResultSummary);
     expect(emptyResultDetails).toHaveAttribute("open");
     expect(screen.getByText("tr_empty")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "继续输入" }));
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "重新生成" }));
     expect(await screen.findByText("empty fallback regenerated answer")).toBeInTheDocument();
   });
