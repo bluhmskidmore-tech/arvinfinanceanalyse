@@ -360,6 +360,18 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
             "warning quality",
             "/risk-tensor",
         ),
+        (
+            "pnl-bridge",
+            "/pnl-bridge",
+            "/api/pnl/bridge",
+            "PnlBridgePayload",
+            "backend/app/services/pnl_bridge_service.py",
+            "frontend/src/features/pnl/PnlBridgePage.tsx",
+            "tests/test_pnl_bridge_core.py",
+            "tests/golden_samples/GS-BRIDGE-A",
+            "bridge warnings",
+            "/pnl-bridge",
+        ),
     ],
 )
 def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
@@ -409,6 +421,37 @@ def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
         )
         alias_payload = json.loads(alias_result["content"][0]["text"])
         assert alias_payload["page_slug"] == page_slug
+    finally:
+        server.close()
+
+
+def test_pnl_bridge_trace_bundle_preserves_warning_and_source_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in ("pnl-bridge", "/pnl-bridge", "PAGE-BRIDGE-001", "/api/pnl/bridge"):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "pnl-bridge"
+
+        assert payload["page_id"] == "PAGE-BRIDGE-001"
+        assert payload["primary_api"] == "/api/pnl/bridge"
+        assert "/api/pnl/dates" in payload["supporting_apis"]
+        assert "/api/pnl/refresh" in payload["supporting_apis"]
+        assert "tests/golden_samples/GS-BRIDGE-A" in payload["golden_samples"]
+        assert "tests/golden_samples/GS-BRIDGE-WARN-B" in payload["golden_samples"]
+        assert any("MTR-BRG-001" in item for item in payload["truth_chain"])
+        assert any("MTR-BRG-105" in item for item in payload["truth_chain"])
+        assert any("PnlBridgePayload" in item for item in payload["truth_chain"])
+        assert any("pnl_bridge_envelope" in item for item in payload["truth_chain"])
+        assert any("bridge warnings" in item for item in payload["guardrails"])
+        assert any("future-only" in item for item in payload["guardrails"])
+        assert any("frontend" in item for item in payload["guardrails"])
     finally:
         server.close()
 
@@ -472,12 +515,13 @@ def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_
         server.request("initialize")
         server.notify("notifications/initialized")
 
-        alias_result = server.request(
-            "tools/call",
-            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "/product-category-pnl"}},
-        )
-        alias_payload = json.loads(alias_result["content"][0]["text"])
-        assert alias_payload["page_slug"] == "product-category-pnl"
+        for alias in ("/product-category-pnl", "PAGE-PROD-CAT-PNL-001"):
+            alias_result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            alias_payload = json.loads(alias_result["content"][0]["text"])
+            assert alias_payload["page_slug"] == "product-category-pnl"
 
         missing_slug = server.request_error(
             "tools/call",

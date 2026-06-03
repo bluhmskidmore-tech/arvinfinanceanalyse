@@ -605,6 +605,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "/product-category-pnl",
             "product_category_pnl",
             "PAGE-PROD-CAT-001",
+            "PAGE-PROD-CAT-PNL-001",
         ],
         "frontend_route": "/product-category-pnl",
         "primary_api": "/ui/pnl/product-category",
@@ -760,6 +761,86 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Treat the aggregate homepage as analytical/mixed-source; its executive golden samples cover sub-surfaces, not a full-page formal sample.",
         ],
     }
+    pnl_bridge_bundle = {
+        "page_slug": "pnl-bridge",
+        "page_id": "PAGE-BRIDGE-001",
+        "page_name": "PnL Bridge",
+        "aliases": [
+            "pnl-bridge",
+            "/pnl-bridge",
+            "pnl_bridge",
+            "PAGE-BRIDGE-001",
+            "/api/pnl/bridge",
+        ],
+        "frontend_route": "/pnl-bridge",
+        "primary_api": "/api/pnl/bridge",
+        "supporting_apis": [
+            "/api/pnl/dates",
+            "/api/pnl/refresh",
+            "/api/pnl/refresh-status",
+        ],
+        "contract_docs": [
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+            "docs/golden_sample_catalog.md",
+            "docs/calc_rules.md",
+        ],
+        "truth_chain": [
+            "docs/page_contracts.md PAGE-BRIDGE-001",
+            "docs/metric_dictionary.md MTR-BRG-001 through MTR-BRG-014 and MTR-BRG-101 through MTR-BRG-105",
+            "backend/app/schema_registry/duckdb/07_pnl_materialize.sql fact_formal_pnl_fi + fact_nonstd_pnl_bridge",
+            "backend/app/core_finance/pnl_bridge.py build_pnl_bridge_rows",
+            "backend/app/services/pnl_bridge_service.py pnl_bridge_envelope",
+            "PnlBridgePayload",
+            "/api/pnl/bridge",
+            "frontend/src/features/pnl/PnlBridgePage.tsx",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/pnl.py",
+            "backend/app/services/pnl_bridge_service.py",
+            "backend/app/core_finance/pnl_bridge.py",
+            "backend/app/schemas/pnl_bridge.py",
+            "backend/app/repositories/pnl_repo.py",
+            "backend/app/repositories/balance_analysis_repo.py",
+            "backend/app/repositories/yield_curve_repo.py",
+            "backend/app/tasks/pnl_materialize.py",
+            "backend/app/schema_registry/duckdb/07_pnl_materialize.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/pnlCoreClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/pnl/PnlBridgePage.tsx",
+            "frontend/src/features/pnl/adapters/pnlBridgeAdapter.ts",
+        ],
+        "test_touchpoints": [
+            "tests/test_pnl_api_contract.py",
+            "tests/test_pnl_bridge_core.py",
+            "tests/test_pnl_bridge_curve_effects.py",
+            "tests/test_pnl_bridge_fx_translation.py",
+            "tests/test_pnl_bridge_with_curve.py",
+            "tests/test_pnl_bridge_numeric_migration.py",
+            "tests/test_pnl_bridge_service_boundaries.py",
+            "frontend/src/test/PnlBridgePage.test.tsx",
+            "tests/test_golden_samples_capture_ready.py",
+        ],
+        "golden_samples": [
+            "tests/golden_samples/GS-BRIDGE-A",
+            "tests/golden_samples/GS-BRIDGE-WARN-B",
+        ],
+        "verification_focus": [
+            "Trace /api/pnl/bridge result_meta through getPnlBridge, adaptPnlBridge, PnlBridgePage, and the formal meta panel before changing display logic.",
+            "Check report_date, requested/resolved date behavior, source_version, rule_version, cache_version, trace_id, and curve/balance fallback visibility.",
+            "Check units and null-vs-zero semantics for beginning/ending dirty market value, carry, roll-down, curve effects, FX, actual, explained, residual, and residual ratio.",
+            "Keep bridge warnings and warning-profile golden samples visible; warning quality is valid governed output, not an error to hide.",
+        ],
+        "guardrails": [
+            "Do not hide bridge warnings, balance lineage fallback warnings, curve fallback, vendor stale, or quality_flag=warning states.",
+            "Do not use PnL Bridge to replace the formal PnL detail page or ledger-level PnL evidence.",
+            "Do not synthesize future-only attribution sections as current governed bridge output.",
+            "Do not recompute governed totals, residuals, or quality flags in the frontend; consume backend-owned PnlBridgePayload values.",
+            "Preserve balance-analysis current/prior input lineage and yield-curve fallback/vendor-stale visibility when auditing this page.",
+        ],
+    }
     risk_tensor_bundle = {
         "page_slug": "risk-tensor",
         "page_id": "PAGE-RISK-001",
@@ -838,7 +919,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "DV01 totals remain row-DV01 sourced even when duration denominator excludes rows.",
         ],
     }
-    bundles = [product_category_bundle, dashboard_home_bundle, risk_tensor_bundle]
+    bundles = [product_category_bundle, dashboard_home_bundle, pnl_bridge_bundle, risk_tensor_bundle]
     return {
         alias.casefold(): bundle
         for bundle in bundles
