@@ -48,8 +48,8 @@ The highest-impact issue is not a `BOND-` prefix mismatch. Most exposure comes f
 | 11 | `A` | `no_same_instrument_in_balance` | `102681643` | `FIOA` | `5010` | CNY | 151,246.57 | Does this PnL row represent matured, sold, or no-position accrual activity? |
 | 12 | `A` | `no_same_instrument_in_balance` | `250306` | `FIOA` | `501060` | CNY | 144,628.45 | Does this PnL row represent matured, sold, or no-position accrual activity? |
 | 13 | `A` | `cost_center_mismatch` | `260303` | `FIOA` | `50106001` | CNY | 133,823.81 | Can cost_center be normalized or relaxed for this trace grain? |
-| 14 | `A` | `cost_center_mismatch` | `250215` | `FIOA` | `50202001` | CNY | 70,737.95 | Can cost_center be normalized or relaxed for this trace grain? |
-| 15 | `A` | `cost_center_mismatch` | `250215` | `FIOA` | `50104001` | CNY | 70,626.88 | Can cost_center be normalized or relaxed for this trace grain? |
+| 14 | `A` | `no_same_instrument_in_balance` | `250211` | `FIOA` | `5010` | CNY | 116,374.43 | Does this PnL row represent matured, sold, or no-position accrual activity? |
+| 15 | `A` | `no_same_instrument_in_balance` | `188155` | `FIOA` | `5020` | CNY | 96,869.29 | Does this PnL row represent matured, sold, or no-position accrual activity? |
 
 ## Cost-Center Candidate Matches
 
@@ -69,6 +69,7 @@ These rows have same-instrument balance candidates on the same report date, but 
 | --- | ---: | ---: |
 | Top 5 absolute rows | 2,063,765.09 | 2,063,765.09 |
 | Top 10 absolute rows | 2,980,521.50 | 2,980,521.50 |
+| Top 15 absolute rows | 3,623,464.05 | 3,623,464.05 |
 | Top 20 absolute rows | 3,889,222.65 | 4,040,140.27 |
 | All untraced rows | 4,465,365.25 | 5,010,288.97 |
 
