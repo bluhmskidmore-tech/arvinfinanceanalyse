@@ -2287,7 +2287,7 @@ export function buildCandidateEvidenceCards(
         { key: "ma60", label: "60日均线", value: formatNumber(item.ma60) },
         { key: "ma120", label: "120日均线", value: formatNumber(item.ma120) },
         { key: "abnormal_turnover", label: "换手观察", value: formatNumber(item.abnormal_turnover, 4) },
-        { key: "gap_norm", label: "跳空观察", value: item.gap_norm != null ? String(item.gap_norm) : "待补" },
+        { key: "gap_norm", label: "跳空观察", value: formatNumber(item.gap_norm, 4) },
         {
           key: "breakout_extension_norm",
           label: "突破延展",
@@ -2298,7 +2298,7 @@ export function buildCandidateEvidenceCards(
         {
           key: "factor_overlay_rank",
           label: "因子叠加排名",
-          value: item.factor_overlay_rank != null ? String(item.factor_overlay_rank) : "待补",
+          value: formatNumber(item.factor_overlay_rank, 0),
         },
         { key: "pe", label: "PE", value: formatNumber(item.pe, 4) },
         { key: "pb", label: "PB", value: formatNumber(item.pb, 4) },

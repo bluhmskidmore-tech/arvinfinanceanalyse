@@ -324,6 +324,30 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].rawFields.some((row) => row.key === "breakout_extension_norm")).toBe(true);
   });
 
+  it("does not surface non-finite candidate raw field values", () => {
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      stock_candidates: {
+        ...strategyPayload.stock_candidates!,
+        items: [
+          {
+            ...strategyPayload.stock_candidates!.items[0],
+            gap_norm: Number.POSITIVE_INFINITY,
+            factor_overlay_rank: Number.NEGATIVE_INFINITY,
+          },
+        ],
+      },
+    };
+
+    const [card] = buildCandidateEvidenceCards(payload);
+    const rawFieldText = card.rawFields.map((row) => `${row.label}:${row.value}`).join(" ");
+
+    expect(card.rawFields.find((row) => row.key === "gap_norm")?.value).toBe("待补");
+    expect(card.rawFields.find((row) => row.key === "factor_overlay_rank")?.value).toBe("待补");
+    expect(rawFieldText).not.toContain("Infinity");
+    expect(rawFieldText).not.toContain("NaN");
+  });
+
   it("builds a decision summary and review queue without inventing unavailable evidence", () => {
     const summary = buildDecisionSummary(strategyPayload, {
       quality_flag: "warning",
