@@ -161,6 +161,7 @@ const MAX_AGENT_STORED_TURNS = 4;
 const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
+const AGENT_NARROW_VIEWPORT_QUERY = "(max-width: 720px)";
 const latestAgentRunStatusRequests = new Map<string, Promise<AgentRunPayload>>();
 const ANALYSIS_CHAT_PATTERNS = [
   "analysis",
@@ -232,6 +233,27 @@ const GOVERNED_AGENT_PATTERNS = [
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function useAgentNarrowViewport() {
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mediaQuery = window.matchMedia(AGENT_NARROW_VIEWPORT_QUERY);
+    const syncNarrowViewport = () => setIsNarrowViewport(mediaQuery.matches);
+    syncNarrowViewport();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncNarrowViewport);
+      return () => mediaQuery.removeEventListener("change", syncNarrowViewport);
+    }
+    mediaQuery.addListener(syncNarrowViewport);
+    return () => mediaQuery.removeListener(syncNarrowViewport);
+  }, []);
+
+  return isNarrowViewport;
 }
 
 function isAgentQueryResult(value: unknown): value is AgentQueryResult {
@@ -1339,6 +1361,7 @@ export function EmbeddedAgentCopilot({
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
   const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
+  const isNarrowAgentViewport = useAgentNarrowViewport();
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
@@ -2651,6 +2674,38 @@ export function EmbeddedAgentCopilot({
     );
   }
 
+  function renderAgentResultSide(turnResult: AgentQueryResult, resultMetaEntries: Array<[string, unknown]>) {
+    const hasEvidence = hasEvidenceContent(turnResult.evidence);
+    const detailSectionCount = (hasEvidence ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
+    const resultSide = (
+      <aside className="agent-result-side" aria-label="assistant-result-details">
+        {hasEvidence ? (
+          <AgentEvidencePanel
+            tablesUsed={turnResult.evidence.tables_used}
+            filtersApplied={turnResult.evidence.filters_applied}
+            evidenceRows={turnResult.evidence.evidence_rows}
+            qualityFlag={turnResult.evidence.quality_flag}
+          />
+        ) : null}
+        <AgentResultMetaPanel
+          entries={resultMetaEntries}
+          formatValue={formatMetaValue}
+        />
+      </aside>
+    );
+
+    if (!isNarrowAgentViewport) {
+      return resultSide;
+    }
+
+    return (
+      <details className="agent-result-side-drawer">
+        <summary>依据与运行信息 · {detailSectionCount} 项</summary>
+        {resultSide}
+      </details>
+    );
+  }
+
   function renderAgentTurnResult(turn: AgentConversationTurn) {
     const turnResult = turn.result;
     if (!turnResult) {
@@ -2765,20 +2820,7 @@ export function EmbeddedAgentCopilot({
               </div>
             </div>
 
-            <aside className="agent-result-side" aria-label="assistant-result-details">
-              {hasEvidenceContent(turnResult.evidence) ? (
-                <AgentEvidencePanel
-                  tablesUsed={turnResult.evidence.tables_used}
-                  filtersApplied={turnResult.evidence.filters_applied}
-                  evidenceRows={turnResult.evidence.evidence_rows}
-                  qualityFlag={turnResult.evidence.quality_flag}
-                />
-              ) : null}
-              <AgentResultMetaPanel
-                entries={resultMetaEntries}
-                formatValue={formatMetaValue}
-              />
-            </aside>
+            {renderAgentResultSide(turnResult, resultMetaEntries)}
           </div>
         ) : (
           <div className="agent-callout agent-callout--empty" role="status" aria-label="空结果状态">

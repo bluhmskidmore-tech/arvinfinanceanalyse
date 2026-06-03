@@ -329,7 +329,7 @@ button.risk-tensor-brief__tile:focus-visible {
 }
 
 .risk-tensor-prior-change__header span,
-.risk-tensor-prior-change__metric span {
+.risk-tensor-prior-change__metric-label {
   color: var(--moss-color-text-muted);
   font-size: 12px;
   font-weight: 700;
@@ -376,6 +376,25 @@ button.risk-tensor-brief__tile:focus-visible {
   background: var(--moss-color-card-bg);
 }
 
+button.risk-tensor-prior-change__metric {
+  appearance: none;
+  width: 100%;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+button.risk-tensor-prior-change__metric:hover {
+  border-color: var(--moss-color-info-300);
+  box-shadow: var(--moss-shadow-card);
+}
+
+button.risk-tensor-prior-change__metric:focus-visible {
+  outline: 2px solid var(--moss-color-info-600);
+  outline-offset: 2px;
+}
+
 .risk-tensor-prior-change__metric strong {
   color: var(--moss-color-text-primary);
   font-size: 19px;
@@ -391,8 +410,9 @@ button.risk-tensor-brief__tile:focus-visible {
   color: var(--moss-color-success-600);
 }
 
-.risk-tensor-prior-change__metric p,
-.risk-tensor-prior-change__metric small {
+.risk-tensor-prior-change__metric-detail,
+.risk-tensor-prior-change__metric-values {
+  display: block;
   margin: 0;
   color: var(--moss-color-text-muted);
   font-size: 12px;
@@ -524,6 +544,30 @@ button.risk-tensor-brief__tile:focus-visible {
 
 .risk-tensor-dv01-controls__scenario strong {
   color: var(--moss-color-danger-600);
+}
+
+.risk-tensor-dv01-controls__empty {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-neutral-50);
+}
+
+.risk-tensor-dv01-controls__empty span {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.risk-tensor-dv01-controls__empty p {
+  margin: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .risk-tensor-dv01-controls__judgement {

@@ -750,6 +750,9 @@ export function localizeStockBackendText(
   if (lower.includes("concept membership table pending")) {
     return "概念归属表待确认。";
   }
+  if (lower.includes("signal confluence diagnostic") && lower.includes("pending") && lower.includes("detail")) {
+    return "联动诊断待确认。";
+  }
   if (
     lower.includes("livermore_position_snapshot") ||
     (lower.includes("position snapshot") && (lower.includes("active a-share") || lower.includes("missing")))
@@ -1636,7 +1639,7 @@ export function buildStockAnalysisEventMonitorRows(
       level: eventLevelFromSeverity(row.severity),
       event: row.code,
       impact: "signal_confluence",
-      detail: row.message,
+      detail: localizeStockBackendText(row.message, "signal_confluence"),
     });
   }
 

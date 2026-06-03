@@ -1501,7 +1501,16 @@ describe("stockAnalysisPageModel", () => {
       rule_version: "rv_livermore_market_gate_v1",
       fallback_mode: "latest_snapshot",
     });
-    const events = buildStockAnalysisEventMonitorRows(payload, confluencePayload);
+    const events = buildStockAnalysisEventMonitorRows(payload, {
+      ...confluencePayload,
+      diagnostics: [
+        {
+          severity: "warning",
+          code: "pending_signal_confluence",
+          message: "Signal confluence diagnostic pending detail.",
+        },
+      ],
+    });
 
     expect(evidence.map((item) => item.key)).toEqual([
       "as-of-date",
@@ -1531,10 +1540,17 @@ describe("stockAnalysisPageModel", () => {
           impact: "theme_breakout",
           detail: "概念归属表待确认。",
         }),
+        expect.objectContaining({
+          source: "signal_confluence",
+          level: "warning",
+          impact: "signal_confluence",
+          detail: "联动诊断待确认。",
+        }),
       ]),
     );
     expect(events.map((event) => event.event).join(" ")).not.toContain("theme_breakout");
     expect(events.map((event) => event.detail).join(" ")).not.toContain("concept membership table pending");
+    expect(events.map((event) => event.detail).join(" ")).not.toContain("Signal confluence diagnostic pending detail");
   });
 
   it("localizes real theme breakout overheat blocker in event details", () => {

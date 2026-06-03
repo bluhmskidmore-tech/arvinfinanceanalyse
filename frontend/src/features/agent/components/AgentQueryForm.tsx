@@ -1,7 +1,5 @@
 import { useEffect, useRef, type FormEvent, type KeyboardEvent, type MutableRefObject, type Ref } from "react";
 
-import { shellTokens as t } from "../../../theme/tokens";
-
 type AgentQueryFormProps = {
   compact?: boolean;
   showAdvancedTools?: boolean;
@@ -215,7 +213,6 @@ export function AgentQueryForm({
             data-testid="agent-panel-submit"
             disabled={loading || !hasQuery}
             className="agent-chat-composer__send"
-            style={{ background: t.colorAccent }}
           >
             {loading ? "发送中..." : "发送"}
           </button>

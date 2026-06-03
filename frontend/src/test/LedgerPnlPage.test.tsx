@@ -369,6 +369,33 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("暂无正式财务指标源契约数据");
   });
 
+  it("does not mark the formal financial indicator contract as read before a report month exists", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn();
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: [] },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators,
+      },
+      "/ledger-pnl",
+    );
+
+    const panel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+    expect(panel).toHaveTextContent("等待正式财务指标契约");
+    expect(panel).not.toHaveTextContent("正式财务指标契约已读取");
+    expect(getLedgerPnlFormalFinancialIndicators).not.toHaveBeenCalled();
+  });
+
   it("renders all ledger money fields in yi units", async () => {
     const base = createApiClient({ mode: "mock" });
     const datesPayload: LedgerPnlDatesPayload = {

@@ -41,6 +41,13 @@ const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
   liq_ratio: "risk-tensor-liquidity-gap-detail",
 };
 
+const PRIOR_CHANGE_NAVIGATION_TARGETS: Record<string, string> = {
+  dominant_krd_bucket: "risk-tensor-tenor-drill",
+  liquidity_gap_30d_ratio: "risk-tensor-liquidity-gap-detail",
+};
+
+const PRIOR_CHANGE_DV01_KEYS = new Set(["regulatory_dv01", "portfolio_dv01"]);
+
 const chartRowStyle = {
   display: "flex",
   flexWrap: "wrap" as const,
@@ -617,6 +624,12 @@ export default function RiskTensorPage() {
         };
       })
     : [];
+  const priorChangeTargetFor = (metricKey: string) => {
+    if (PRIOR_CHANGE_DV01_KEYS.has(metricKey)) {
+      return result?.dv01_controls ? "risk-tensor-dv01-controls" : "risk-tensor-kpi-grid";
+    }
+    return PRIOR_CHANGE_NAVIGATION_TARGETS[metricKey];
+  };
   const topLineSummary = result
     ? [
         `主风险桶 ${primaryTenor}`,
@@ -659,7 +672,7 @@ export default function RiskTensorPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  const handleRadarDimensionJump = (targetTestId: string) => {
+  const handleSectionJump = (targetTestId: string) => {
     document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`)?.scrollIntoView({
       behavior: "smooth",
       block: "center",
@@ -1127,20 +1140,42 @@ export default function RiskTensorPage() {
                 <p className="risk-tensor-prior-change__summary">{result.prior_period_change.summary}</p>
                 {result.prior_period_change.metrics.length > 0 ? (
                   <div className="risk-tensor-prior-change__metrics">
-                    {result.prior_period_change.metrics.map((metric) => (
-                      <article
-                        className="risk-tensor-prior-change__metric"
-                        data-tone={priorMetricTone(metric.tone)}
-                        key={metric.key}
-                      >
-                        <span>{metric.label}</span>
-                        <strong>{priorMetricDisplay(metric, "delta")}</strong>
-                        <p>{metric.interpretation}</p>
-                        <small>
-                          当前 {priorMetricDisplay(metric, "current")} / 上期 {priorMetricDisplay(metric, "previous")}
-                        </small>
-                      </article>
-                    ))}
+                    {result.prior_period_change.metrics.map((metric) => {
+                      const targetTestId = priorChangeTargetFor(metric.key);
+                      const metricContent = (
+                        <>
+                          <span className="risk-tensor-prior-change__metric-label">{metric.label}</span>
+                          <strong>{priorMetricDisplay(metric, "delta")}</strong>
+                          <span className="risk-tensor-prior-change__metric-detail">{metric.interpretation}</span>
+                          <span className="risk-tensor-prior-change__metric-values">
+                            当前 {priorMetricDisplay(metric, "current")} / 上期 {priorMetricDisplay(metric, "previous")}
+                          </span>
+                        </>
+                      );
+                      if (!targetTestId) {
+                        return (
+                          <article
+                            className="risk-tensor-prior-change__metric"
+                            data-tone={priorMetricTone(metric.tone)}
+                            key={metric.key}
+                          >
+                            {metricContent}
+                          </article>
+                        );
+                      }
+                      return (
+                        <button
+                          className="risk-tensor-prior-change__metric"
+                          data-testid={`risk-tensor-prior-change-action-${metric.key}`}
+                          data-tone={priorMetricTone(metric.tone)}
+                          key={metric.key}
+                          type="button"
+                          onClick={() => handleSectionJump(targetTestId)}
+                        >
+                          {metricContent}
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : null}
               </section>
@@ -1187,14 +1222,25 @@ export default function RiskTensorPage() {
                   </div>
                 </div>
 
-                <div className="risk-tensor-dv01-controls__stress" aria-label="DV01 stress scenarios">
-                  {result.dv01_controls.stress_scenarios.map((scenario) => (
-                    <div className="risk-tensor-dv01-controls__scenario" key={scenario.scenario_key}>
-                      <span>{scenario.label}</span>
-                      <strong>{yuanAsWanWithUnit(scenario.estimated_pnl_impact)}</strong>
-                      <p>{displayStr(scenario.shock_bp)} 平行冲击</p>
+                <div
+                  className="risk-tensor-dv01-controls__stress"
+                  data-testid="risk-tensor-dv01-stress-scenarios"
+                  aria-label="DV01 stress scenarios"
+                >
+                  {result.dv01_controls.stress_scenarios.length > 0 ? (
+                    result.dv01_controls.stress_scenarios.map((scenario) => (
+                      <div className="risk-tensor-dv01-controls__scenario" key={scenario.scenario_key}>
+                        <span>{scenario.label}</span>
+                        <strong>{yuanAsWanWithUnit(scenario.estimated_pnl_impact)}</strong>
+                        <p>{displayStr(scenario.shock_bp)} 平行冲击</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="risk-tensor-dv01-controls__empty" data-testid="risk-tensor-dv01-stress-empty">
+                      <span>暂无压力情景</span>
+                      <p>后端 stress_scenarios 为空，请补充正式压力情景后再判断 DV01 冲击损益。</p>
                     </div>
-                  ))}
+                  )}
                 </div>
 
                 <div className="risk-tensor-dv01-controls__judgement">
@@ -1251,7 +1297,7 @@ export default function RiskTensorPage() {
                           key={item.key}
                           type="button"
                           data-testid={`risk-tensor-radar-action-${item.key}`}
-                          onClick={() => handleRadarDimensionJump(item.targetTestId)}
+                          onClick={() => handleSectionJump(item.targetTestId)}
                         >
                           {item.name}
                         </button>

@@ -45,6 +45,22 @@ function openShortcutDrawer() {
   return details;
 }
 
+function mockNarrowAgentViewport() {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: query.includes("max-width: 720px"),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    })),
+  );
+}
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -599,6 +615,41 @@ describe("AgentWorkbenchPage", () => {
     expect(resultDetails).toHaveTextContent("运行信息");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/agent/query");
+  });
+
+  it("keeps result evidence collapsed behind a compact drawer on narrow screens", async () => {
+    const user = userEvent.setup();
+    mockNarrowAgentViewport();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()));
+
+    render(
+      <AgentWorkbenchPage
+        pageContext={{
+          page_id: "dashboard",
+          current_filters: { report_date: "2026-03-31" },
+          selected_rows: [{ portfolio_id: "core" }],
+        }}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("agent-question-input"), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+    const resultDrawer = screen.getByText("依据与运行信息 · 2 项").closest("details");
+    expect(resultDrawer).not.toBeNull();
+    if (!resultDrawer) {
+      throw new Error("Expected compact result details drawer to exist");
+    }
+    const resultDetails = screen.getByLabelText("assistant-result-details");
+    expect(resultDrawer).not.toHaveAttribute("open");
+    expect(resultDetails).not.toBeVisible();
+
+    fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
+    expect(resultDrawer).toHaveAttribute("open");
+    expect(resultDetails).toBeVisible();
+    expect(resultDetails).toHaveTextContent("回答依据");
+    expect(resultDetails).toHaveTextContent("运行信息");
   });
 
   it("executes an analysis-chat suggested governed intent in the same conversation", async () => {
@@ -1777,11 +1828,14 @@ describe("AgentWorkbenchPage", () => {
     const user = userEvent.setup();
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(sendButton).toBeDisabled();
+    expect(sendButton).not.toHaveAttribute("style");
     screen.getByLabelText("agent-question-input").focus();
     await user.keyboard("{Enter}");
 
-    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    expect(sendButton).toBeDisabled();
+    expect(sendButton).not.toHaveAttribute("style");
     expect(screen.queryByText("请输入查询问题。")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });

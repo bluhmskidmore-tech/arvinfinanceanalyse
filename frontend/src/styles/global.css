@@ -2396,6 +2396,59 @@ select {
   box-shadow: none;
 }
 
+.agent-result-side-drawer {
+  min-width: 0;
+}
+
+.agent-result-side-drawer > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--moss-color-card-bg) 90%, var(--moss-color-neutral-50));
+  color: var(--moss-color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 760;
+  list-style: none;
+}
+
+.agent-result-side-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-result-side-drawer > summary::after {
+  content: "+";
+  color: var(--moss-color-text-muted);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.agent-result-side-drawer[open] > summary::after {
+  content: "-";
+}
+
+.agent-result-side-drawer > summary:hover {
+  color: var(--moss-color-link);
+  background: color-mix(in srgb, var(--moss-color-info-50) 60%, var(--moss-color-card-bg));
+}
+
+.agent-result-side-drawer > summary:focus-visible {
+  outline: 2px solid var(--moss-color-link);
+  outline-offset: 2px;
+}
+
+.agent-result-side-drawer:not([open]) .agent-result-side {
+  display: none;
+}
+
+.agent-result-side-drawer[open] .agent-result-side {
+  margin-top: 8px;
+}
+
 .agent-side-panel {
   min-width: 0;
   padding: 12px 14px;
@@ -2751,11 +2804,16 @@ select {
   padding: 11px 18px;
   border: none;
   border-radius: 8px;
+  background: var(--moss-color-primary-600);
   color: #fff;
   cursor: pointer;
   font-size: 15px;
   font-weight: 760;
   box-shadow: 0 10px 22px rgba(var(--moss-color-primary-rgb), 0.22);
+}
+
+.agent-chat-composer__send:hover:not(:disabled) {
+  background: var(--moss-color-primary-700);
 }
 
 .agent-chat-composer__action-stack {
@@ -2798,6 +2856,14 @@ select {
 .agent-chat-composer__secondary-action:disabled {
   cursor: default;
   opacity: 0.62;
+}
+
+.agent-chat-composer__send:disabled {
+  border: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-text-muted);
+  box-shadow: none;
+  opacity: 1;
 }
 
 .agent-chat-composer__advanced {

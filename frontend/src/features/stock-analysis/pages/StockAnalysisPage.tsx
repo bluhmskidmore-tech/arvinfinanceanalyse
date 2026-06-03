@@ -2620,7 +2620,7 @@ export default function StockAnalysisPage() {
                               <span>阻断</span>
                               <strong>{backendSupplyOverview.unsupportedValueLabel}</strong>
                               {primaryUnsupportedOutput ? (
-                                <small title={primaryUnsupportedOutput.reason}>
+                                <small title={localizeStockBackendText(primaryUnsupportedOutput.reason, primaryUnsupportedOutput.key)}>
                                   {outputKeyLabel(primaryUnsupportedOutput.key)}
                                 </small>
                               ) : null}

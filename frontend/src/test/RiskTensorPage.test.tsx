@@ -979,6 +979,93 @@ describe("RiskTensorPage", () => {
     expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
   });
 
+  it("lets users jump from prior-period liquidity change to liquidity gap detail", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_liquidity_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_liquidity_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const liquidityAction = within(priorChange).getByTestId(
+        "risk-tensor-prior-change-action-liquidity_gap_30d_ratio",
+      );
+      const liquidityGapDetail = await screen.findByTestId("risk-tensor-liquidity-gap-detail");
+
+      await user.click(liquidityAction);
+
+      expect(scrollTargets).toContain(liquidityGapDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("falls back from prior-period DV01 change to the KPI grid when controls are absent", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_dv01_fallback_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_dv01_fallback_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const regulatoryDv01Action = within(priorChange).getByTestId(
+        "risk-tensor-prior-change-action-regulatory_dv01",
+      );
+      const kpiGrid = await screen.findByTestId("risk-tensor-kpi-grid");
+
+      expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
+      expect(regulatoryDv01Action.querySelector("p, small")).toBeNull();
+
+      await user.click(regulatoryDv01Action);
+
+      expect(scrollTargets).toContain(kpiGrid);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("renders governed Numeric tensor values using backend display and raw ratio", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -1051,6 +1138,31 @@ describe("RiskTensorPage", () => {
     expect(kpi).toHaveTextContent("监管口径 DV01");
     expect(kpi).toHaveTextContent(new RegExp(`0\\.01\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).not.toHaveTextContent("待接入");
+  });
+
+  it("surfaces a DV01 stress scenario no-data state when backend scenarios are empty", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_empty_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_empty_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
+    expect(stressScenarios).toHaveTextContent("暂无压力情景");
+    expect(stressScenarios).toHaveTextContent("stress_scenarios");
   });
 
   it("shows the backend DV01 limit and volatility control deck", async () => {

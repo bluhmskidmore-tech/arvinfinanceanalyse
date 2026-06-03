@@ -238,6 +238,13 @@ function buildFormalContractDecision(
       detail: "正式值不可用于展示，分析候选值不会回填。",
     };
   }
+  if (!contract) {
+    return {
+      tone: "pending",
+      title: "等待正式财务指标契约",
+      detail: "选择报告日并解析出月份后读取契约状态。",
+    };
+  }
   if (contract && !contract.formal_use_allowed) {
     return {
       tone: "warning",
