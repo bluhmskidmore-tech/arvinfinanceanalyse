@@ -519,6 +519,7 @@ def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) ->
     assert payload["ops_gap"]["immediate_stage"] == "pre-enable"
     assert payload["ops_gap"]["deferred_stage"] == "post-enable"
     assert payload["ops_gap"]["deferred_until"] == "pre-enable pass and first scheduled run finishes"
+    assert payload["ops_gap"]["ready_to_create_timer"] is True
     assert [
         action["gate"] for action in payload["ops_gap"]["immediate_next_actions"]
     ] == []
@@ -548,6 +549,11 @@ def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path
     assert "Blocking stages: `post-enable`" in output
     assert "Pre-enable summary: `11 pass / 0 blocked`" in output
     assert "Post-enable summary: `11 pass / 2 blocked`" in output
+    assert "Machine-readable JSON `ops_gap`:" in output
+    assert "`ops_gap.ready_to_create_timer`" in output
+    assert "`ops_gap.immediate_next_actions`" in output
+    assert "`ops_gap.deferred_post_enable_next_actions`" in output
+    assert "`ops_gap.deferred_until`" in output
     assert "Operator Fill Order" in output
     assert "Fill owner fields first" in output
     assert "After the first scheduled run, attach timer evidence" in output
@@ -562,6 +568,17 @@ def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path
     assert "Homepage read path remains `/ui/news/choice-events/latest`." in output
     assert "`timer_evidence_filled`" in output
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in output
+
+    post_enable_section = output.split("## Post-Enable Status", maxsplit=1)[1]
+    post_enable_section = post_enable_section.split("## Already Verified Evidence Gates", maxsplit=1)[0]
+    assert "Additional post-enable `next_actions`:" in post_enable_section
+    assert "`timer_evidence_filled`" in post_enable_section
+    assert "`post_enable_evidence_confirms_timer_enabled`" in post_enable_section
+    assert "`owners_filled`" not in post_enable_section
+    assert "`boundary_confirmation_filled`" not in post_enable_section
+    assert "`timer_enablement_packet_filled`" not in post_enable_section
+    assert "`page_acceptance_signoff_filled`" not in post_enable_section
+    assert "`enable_timer_decision_yes`" not in post_enable_section
 
 
 def test_timer_preflight_cli_can_render_single_stage_markdown_status(tmp_path: Path, capsys) -> None:

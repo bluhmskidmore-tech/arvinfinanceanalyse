@@ -22,11 +22,14 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all
 
 This prints both the `pre-enable` and `post-enable` reports in one read-only
 bundle. It is for review only and does not enable the timer.
-Automation should consume the JSON `ops_gap` grouping from this command:
-`ops_gap.immediate_next_actions` contains the current `pre-enable` items,
-`ops_gap.deferred_post_enable_next_actions` contains only first-scheduled-run
-evidence items, and `ops_gap.deferred_until` records when deferred items become
-actionable.
+
+Machine-readable JSON `ops_gap`:
+
+- `ops_gap.ready_to_create_timer` is true only after `pre-enable` passes.
+- `ops_gap.immediate_next_actions` contains the current `pre-enable` items.
+- `ops_gap.deferred_post_enable_next_actions` contains only first-scheduled-run
+  evidence items.
+- `ops_gap.deferred_until` records when deferred items become actionable.
 
 Markdown handoff command:
 

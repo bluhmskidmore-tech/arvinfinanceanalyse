@@ -63,6 +63,7 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "Go-live evidence must no longer say `not enabled`" in runbook
     assert "Timer evidence in go-live bundle" in runbook
     assert "next_actions" in runbook
+    assert "ops_gap.ready_to_create_timer" in runbook
     assert "ops_gap.immediate_next_actions" in runbook
     assert "ops_gap.deferred_post_enable_next_actions" in runbook
     assert "ops_gap.deferred_until" in runbook
@@ -251,6 +252,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "timer_evidence_filled" in status
     assert "post_enable_evidence_confirms_timer_enabled" in status
     assert "next_actions" in status
+    assert "ops_gap.ready_to_create_timer" in status
     assert "ops_gap.immediate_next_actions" in status
     assert "ops_gap.deferred_post_enable_next_actions" in status
     assert "ops_gap.deferred_until" in status

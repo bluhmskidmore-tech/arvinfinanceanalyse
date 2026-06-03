@@ -425,6 +425,7 @@ def build_timer_preflight_bundle(*, repo_root: str | Path = ROOT) -> dict[str, o
             "immediate_stage": "pre-enable",
             "deferred_stage": "post-enable",
             "deferred_until": "pre-enable pass and first scheduled run finishes",
+            "ready_to_create_timer": reports["pre-enable"]["verdict"] == "pass",
             "immediate_next_actions": _filter_next_actions(
                 reports["pre-enable"]["next_actions"],
             ),
@@ -630,6 +631,13 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
         "",
         "Post-enable summary: " + _format_summary(post_enable),
         "",
+        "Machine-readable JSON `ops_gap`:",
+        "",
+        "- `ops_gap.ready_to_create_timer` is true only after `pre-enable` passes.",
+        "- `ops_gap.immediate_next_actions` contains the current `pre-enable` items.",
+        "- `ops_gap.deferred_post_enable_next_actions` contains only first-scheduled-run evidence items.",
+        "- `ops_gap.deferred_until` records when deferred items become actionable.",
+        "",
         "## Operator Fill Order",
         "",
         "1. Fill owner fields first in `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`.",
@@ -659,16 +667,13 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
             rows.extend(f"- `{item}`" for item in blocking_items)
         else:
             rows.append("- `none`")
-        rows.extend(
-            (
-                "",
-                "Current `next_actions`:",
-                "",
-                "| Gate | Path | Action |",
-                "| --- | --- | --- |",
-            )
-        )
-        next_actions = stage_report["next_actions"]
+        if stage == "post-enable":
+            action_heading = "Additional post-enable `next_actions`:"
+            next_actions = report["ops_gap"]["deferred_post_enable_next_actions"]
+        else:
+            action_heading = "Current `next_actions`:"
+            next_actions = stage_report["next_actions"]
+        rows.extend(("", action_heading, "", "| Gate | Path | Action |", "| --- | --- | --- |"))
         if next_actions:
             rows.extend(
                 f"| `{action['gate']}` | `{action['path']}` | {action['action']} |"

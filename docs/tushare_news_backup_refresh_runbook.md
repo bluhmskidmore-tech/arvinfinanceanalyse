@@ -179,6 +179,7 @@ When a preflight returns `blocked`, read `next_actions` in the JSON output. Each
 entry points to the document path and field group that operations must fill
 before rerunning the same preflight stage. For the combined `--stage all`
 output, automation should prefer the machine-readable `ops_gap` grouping:
+`ops_gap.ready_to_create_timer` is true only after `pre-enable` passes,
 `ops_gap.immediate_next_actions` lists the current `pre-enable` items to fill
 now, `ops_gap.deferred_post_enable_next_actions` lists the first-scheduled-run
 evidence to fill later, and `ops_gap.deferred_until` records the handoff point.
