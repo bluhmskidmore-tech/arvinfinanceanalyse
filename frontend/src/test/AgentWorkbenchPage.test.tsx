@@ -4172,6 +4172,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("stop this pending answer");
     await user.click(screen.getByRole("button", { name: "编辑这句" }));
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("stop this pending answer");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
@@ -4442,7 +4443,7 @@ describe("AgentWorkbenchPage", () => {
     unmount();
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByText("stop and refresh this answer")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("stop and refresh this answer");
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.queryByText("undefined")).not.toBeInTheDocument();
 
@@ -4516,7 +4517,7 @@ describe("AgentWorkbenchPage", () => {
     unmount();
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByText("stop after run id exists")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("stop after run id exists");
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });

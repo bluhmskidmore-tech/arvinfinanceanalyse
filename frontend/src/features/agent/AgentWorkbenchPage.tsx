@@ -2174,6 +2174,9 @@ export function EmbeddedAgentCopilot({
     setError(null);
     setAgentRun(null);
     setResult(null);
+    if (query.trim() === turn.question.trim()) {
+      clearComposerQuery();
+    }
     shouldFocusComposerRef.current = true;
     updateConversationTurn(turn.id, (currentTurn) => ({
       ...currentTurn,
@@ -2219,6 +2222,8 @@ export function EmbeddedAgentCopilot({
     if (queuedQuery.trim()) {
       updateComposerQuery(queuedQuery);
       clearQueuedQueries();
+    } else if (!query.trim()) {
+      updateComposerQuery(latestConversationTurn.question);
     }
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
