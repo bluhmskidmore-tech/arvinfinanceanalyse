@@ -154,6 +154,43 @@ describe("AgentPanel", () => {
     expect(input).toHaveFocus();
   });
 
+  it("announces page context changes in the embedded panel", () => {
+    const { rerender } = render(
+      <AgentPanel
+        pageId="test-page"
+        reportDate="2026-03-31"
+        currentFilters={{ desk: "bond" }}
+        selectedRows={[{ instrument_id: "bond-1" }]}
+      />,
+    );
+
+    expect(screen.queryByRole("status", { name: "agent-page-context-change" })).not.toBeInTheDocument();
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        reportDate="2026-04-30"
+        currentFilters={{ desk: "bond" }}
+        selectedRows={[{ instrument_id: "bond-2" }]}
+      />,
+    );
+
+    const contextNotice = screen.getByRole("status", { name: "agent-page-context-change" });
+    expect(contextNotice).toHaveTextContent("页面上下文已更新");
+    expect(contextNotice).toHaveTextContent("下一问将使用当前页面选择");
+
+    rerender(
+      <AgentPanel
+        pageId="test-page"
+        reportDate="2026-04-30"
+        currentFilters={{ desk: "bond" }}
+        selectedRows={[{ instrument_id: "bond-2" }]}
+      />,
+    );
+
+    expect(screen.getAllByRole("status", { name: "agent-page-context-change" })).toHaveLength(1);
+  });
+
   it("auto-expands and resets the composer textarea height as draft length changes", async () => {
     const user = userEvent.setup();
     renderAgentPanel();

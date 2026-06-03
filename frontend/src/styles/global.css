@@ -1532,6 +1532,26 @@ select {
   white-space: pre-wrap;
 }
 
+.agent-context-change-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #badbcc;
+  border-radius: 8px;
+  background: #f0fbf5;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-context-change-notice strong {
+  color: #1f7a4d;
+  font-weight: 780;
+}
+
 @keyframes agentPulse {
   0%,
   100% {

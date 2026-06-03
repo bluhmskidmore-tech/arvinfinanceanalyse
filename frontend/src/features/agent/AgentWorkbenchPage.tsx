@@ -1356,10 +1356,12 @@ export function EmbeddedAgentCopilot({
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
   const [queuedQueries, setQueuedQueries] = useState<string[]>([]);
+  const [pageContextChangeNotice, setPageContextChangeNotice] = useState(false);
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const conversationBottomRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const pageContextSummaryRef = useRef(pageContext ? formatPageContextSummary(pageContext) : "");
   const lastAppliedDefaultQuestionRef = useRef(defaultQuestion.trim());
   const shouldFocusRestoredDraftRef = useRef(
     shouldPersistConversation && !defaultQuestion.trim() && query.trim().length > 0,
@@ -1578,6 +1580,21 @@ export function EmbeddedAgentCopilot({
     }
     persistStoredConversationTurns(conversationTurns);
   }, [conversationTurns, shouldPersistConversation]);
+
+  useEffect(() => {
+    const nextPageContextSummary = pageContext ? formatPageContextSummary(pageContext) : "";
+    if (!pageContextSummaryRef.current) {
+      pageContextSummaryRef.current = nextPageContextSummary;
+      return;
+    }
+    if (nextPageContextSummary === pageContextSummaryRef.current) {
+      return;
+    }
+    pageContextSummaryRef.current = nextPageContextSummary;
+    if (isEmbedded) {
+      setPageContextChangeNotice(true);
+    }
+  }, [isEmbedded, pageContext]);
 
   useEffect(() => {
     if (!filteredProcesses.length) {
@@ -3144,6 +3161,17 @@ export function EmbeddedAgentCopilot({
           <summary>{getPageContextSummaryLabel(pageContext)}</summary>
           <code className="agent-page-context__code">{formatPageContextSummary(pageContext)}</code>
         </details>
+      ) : null}
+
+      {isEmbedded && pageContextChangeNotice ? (
+        <div
+          className="agent-context-change-notice"
+          role="status"
+          aria-label="agent-page-context-change"
+        >
+          <strong>页面上下文已更新</strong>
+          <span>下一问将使用当前页面选择</span>
+        </div>
       ) : null}
 
       {!isEmbedded ? renderShortcutDrawer() : null}
