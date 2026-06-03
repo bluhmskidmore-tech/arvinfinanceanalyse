@@ -1367,6 +1367,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
     expect(screen.getByText("读取 GitNexus 流程失败 · 可修改仓库路径后重试")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("loads process selector options from GitNexus processes response", async () => {

@@ -2639,6 +2639,8 @@ export function EmbeddedAgentCopilot({
           message: buildErrorMessage(requestError),
         });
         setComposerAssistHint("读取 GitNexus 流程失败 · 可修改仓库路径后重试");
+        shouldFocusComposerRef.current = true;
+        focusComposerInput();
       }
     } finally {
       if (processStateRequestVersionRef.current === activeRequestVersion) {
