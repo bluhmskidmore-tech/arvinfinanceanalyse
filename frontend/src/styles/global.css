@@ -1468,6 +1468,45 @@ select {
   white-space: nowrap;
 }
 
+.agent-restore-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #c7d8ef;
+  border-radius: 8px;
+  background: #f6f9fe;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-restore-status > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-restore-status strong {
+  color: var(--moss-color-link);
+  font-weight: 780;
+}
+
+.agent-restore-status code {
+  max-width: min(100%, 320px);
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--moss-color-text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
 .agent-page-context {
   margin-top: 8px;
   padding: 0;

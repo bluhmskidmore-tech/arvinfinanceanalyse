@@ -1400,6 +1400,9 @@ export function EmbeddedAgentCopilot({
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
+  const [restoringRunId, setRestoringRunId] = useState(() =>
+    shouldPersistConversation ? loadLatestAgentRunId() : "",
+  );
   const [queuedQueries, setQueuedQueries] = useState<string[]>(() =>
     shouldPersistConversation ? loadQueuedQueries() : [],
   );
@@ -1732,6 +1735,7 @@ export function EmbeddedAgentCopilot({
 
     let cancelled = false;
     const restoreSession = currentConversationSession();
+    setRestoringRunId(latestRunId);
     let restoreRequest = latestAgentRunStatusRequests.get(latestRunId);
     if (!restoreRequest) {
       restoreRequest = fetchAgentRunStatus(latestRunId).finally(() => {
@@ -1744,6 +1748,7 @@ export function EmbeddedAgentCopilot({
         if (cancelled || !isCurrentConversationSession(restoreSession)) {
           return;
         }
+        setRestoringRunId("");
         setOrdinaryConversationMode("managed");
         setAgentRun(payload);
         setConversationTurns((currentTurns) => mergeRestoredManagedTurn(currentTurns, payload));
@@ -1759,6 +1764,7 @@ export function EmbeddedAgentCopilot({
       })
       .catch(() => {
         if (!cancelled) {
+          setRestoringRunId("");
           clearLatestAgentRunId();
         }
       });
@@ -2629,6 +2635,7 @@ export function EmbeddedAgentCopilot({
     setResult(null);
     setAgentRun(null);
     setError(null);
+    setRestoringRunId("");
     clearQueuedQueries();
     clearComposerQuery();
     if (shouldPersistConversation) {
@@ -3219,6 +3226,21 @@ export function EmbeddedAgentCopilot({
           </div>
         </details>
       </div>
+
+      {!isEmbedded && restoringRunId ? (
+        <div
+          className="agent-restore-status"
+          role="status"
+          aria-live="polite"
+          aria-label="agent-run-restore-status"
+        >
+          <div>
+            <strong>正在恢复上一轮 Agent 状态</strong>
+            <span>刷新后正在接回托管运行结果，恢复完成前可以继续查看本地历史。</span>
+          </div>
+          <code>{restoringRunId}</code>
+        </div>
+      ) : null}
 
       {pageContext ? (
         <details className="agent-page-context">

@@ -4556,6 +4556,21 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("shows a restore status while reconnecting to the latest run after refresh", () => {
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-pending");
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByRole("status", { name: "agent-run-restore-status" })).toHaveTextContent(
+      "agent_run:restore-pending",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/agent/runs/agent_run%3Arestore-pending",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("shows elapsed managed-runtime wait status while the agent request is still running", async () => {
     vi.useFakeTimers();
     fetchMock.mockReturnValue(new Promise(() => undefined));
