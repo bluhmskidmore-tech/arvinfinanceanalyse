@@ -3144,7 +3144,28 @@ select {
   gap: 3px;
 }
 
+.agent-queued-draft__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .agent-queued-draft__label {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.agent-queued-draft__count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border: 1px solid #cfe0f4;
+  border-radius: 999px;
+  background: #ffffff;
   color: var(--moss-color-text-secondary);
   font-size: 12px;
   font-weight: 760;

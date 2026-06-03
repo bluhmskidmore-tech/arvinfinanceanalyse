@@ -2870,7 +2870,10 @@ export function EmbeddedAgentCopilot({
         aria-label="待发送的下一句"
       >
         <div className="agent-queued-draft__copy">
-          <span className="agent-queued-draft__label">下一句</span>
+          <div className="agent-queued-draft__header">
+            <span className="agent-queued-draft__label">下一句</span>
+            <span className="agent-queued-draft__count">{queuedQueries.length} 句待发送</span>
+          </div>
           <span className="agent-queued-draft__text">{queuedQuery}</span>
           {queuedQueries.length > 1 ? (
             <ol className="agent-queued-draft__queue" aria-label="待发送的后续问题">
