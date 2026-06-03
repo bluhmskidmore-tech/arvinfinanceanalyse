@@ -12,7 +12,7 @@ vi.mock("../lib/echarts", () => ({
     option,
   }: {
     onEvents?: Record<string, (params: { name?: string }) => void>;
-    option?: { series?: Array<{ data?: unknown[] }> };
+    option?: { radar?: { indicator?: unknown[] }; series?: Array<{ data?: unknown[] }> };
   }) => {
     const data = option?.series?.[0]?.data ?? [];
     const first = data[0];
@@ -23,6 +23,7 @@ vi.mock("../lib/echarts", () => ({
         type="button"
         data-testid="risk-tensor-echarts-stub"
         data-series={JSON.stringify(chartData)}
+        data-indicator={JSON.stringify(option?.radar?.indicator ?? [])}
         onClick={() => onEvents?.click?.({ name: "1Y" })}
       />
     );
@@ -1939,6 +1940,36 @@ describe("RiskTensorPage", () => {
     const radarQualityNote = within(radarCard).getByTestId("risk-tensor-radar-quality-note");
     expect(radarQualityNote).toHaveTextContent("portfolio_modified_duration");
     expect(radarQualityNote).toHaveTextContent("liquidity_gap_30d_ratio");
+  });
+
+  it("uses readable dynamic max values for radar axes", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_axis_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_radar_axis_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        portfolio_dv01: "120000",
+        cs01: "18000",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    await screen.findByTestId("risk-tensor-radar-card");
+    const radarChart = screen.getAllByTestId("risk-tensor-echarts-stub")[0]!;
+    const indicator = JSON.parse(radarChart.getAttribute("data-indicator") ?? "[]");
+
+    expect(indicator[1]).toMatchObject({ max: 25, interval: 5 });
+    expect(indicator[2]).toMatchObject({ max: 250, interval: 50 });
+    expect(indicator[3]).toMatchObject({ max: 5, interval: 1 });
   });
 
   it("copies a supplement request for missing or unparseable main payload fields", async () => {

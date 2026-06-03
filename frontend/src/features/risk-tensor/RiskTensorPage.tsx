@@ -125,6 +125,7 @@ const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
 const WAN_YUAN_UNIT = "\u4e07\u5143";
 const YI_YUAN_UNIT = "\u4ebf\u5143";
+const RADAR_SPLIT_NUMBER = 5;
 const MAIN_PAYLOAD_NUMERIC_FIELDS = [
   { key: "portfolio_dv01", label: "portfolio_dv01" },
   { key: "krd_1y", label: "krd_1y" },
@@ -453,7 +454,23 @@ function dynamicAxisMax(raw: number, fallback: number) {
   if (!Number.isFinite(base) || base === 0) {
     return fallback;
   }
-  return base;
+  return readableRadarAxisMax(base);
+}
+
+function readableRadarAxisMax(max: number) {
+  const intervalBase = max / RADAR_SPLIT_NUMBER;
+  if (!Number.isFinite(intervalBase) || intervalBase <= 0) {
+    return max;
+  }
+  const magnitude = 10 ** Math.floor(Math.log10(intervalBase));
+  const normalized = intervalBase / magnitude;
+  const niceNormalized = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 3 ? 3 : normalized <= 5 ? 5 : 10;
+  return niceNormalized * magnitude * RADAR_SPLIT_NUMBER;
+}
+
+function radarIndicator(name: string, max: number) {
+  const readableMax = readableRadarAxisMax(max);
+  return { name, min: 0, max: readableMax, interval: readableMax / RADAR_SPLIT_NUMBER };
 }
 
 function regulatoryDv01Display(value: RiskTensorPayload["regulatory_dv01"]) {
@@ -1014,12 +1031,12 @@ export default function RiskTensorPage() {
 
     const indicator = RADAR_META.map((m) => {
       if (m.max === "dynamic_dv01") {
-        return { name: m.name, max: dv01Max };
+        return radarIndicator(m.name, dv01Max);
       }
       if (m.max === "dynamic_cs01") {
-        return { name: m.name, max: cs01Max };
+        return radarIndicator(m.name, cs01Max);
       }
-      return { name: m.name, max: m.max };
+      return radarIndicator(m.name, m.max);
     });
 
     const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
