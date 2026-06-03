@@ -2457,6 +2457,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByRole("button", { name: "复制失败" })).toBeInTheDocument();
     expect(screen.getByText("这段回答暂时复制不了。")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(screen.getByText("复制失败 · 可手动选择回答文本")).toBeInTheDocument();
   });
 
   it("shows accessible copy failure feedback when clipboard is unavailable", async () => {
