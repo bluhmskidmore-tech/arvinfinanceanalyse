@@ -2651,6 +2651,7 @@ export function EmbeddedAgentCopilot({
     setAgentRun(pendingSyncRun);
     setLoading(true);
     setError(null);
+    setComposerAssistHint("正在查看 GitNexus 流程 · 可继续输入");
     try {
       const payload = await executeAgentQuery(question, "query", turn.id);
       if (payload) {
@@ -2673,6 +2674,9 @@ export function EmbeddedAgentCopilot({
         }));
       }
     } finally {
+      setComposerAssistHint((currentHint) =>
+        currentHint === "正在查看 GitNexus 流程 · 可继续输入" ? null : currentHint,
+      );
       setLoading(false);
     }
   }
