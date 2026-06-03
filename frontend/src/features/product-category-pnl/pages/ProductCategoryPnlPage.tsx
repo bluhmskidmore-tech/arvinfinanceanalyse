@@ -1031,6 +1031,21 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                   </tbody>
                 </table>
               </div>
+              <div className="product-category-financial-analysis__scenario-path">
+                <div className="product-category-financial-analysis__scenario-kicker">FTP 压力路径</div>
+                <div className="product-category-financial-analysis__path-rail">
+                  {props.scenarioSensitivity.pathPoints.map((point) => (
+                    <div
+                      className={`product-category-financial-analysis__path-point is-${point.tone} ${point.positionClassName}`}
+                      key={point.rateLabel}
+                    >
+                      <span>{point.rateLabel}</span>
+                      <strong>{point.grandNetIncomeLabel}</strong>
+                      <small>{point.grandDeltaLabel}</small>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="product-category-financial-analysis__scenario-brief">
                 <div className="product-category-financial-analysis__scenario-summary">
                   <div className="product-category-financial-analysis__scenario-kicker">情景解读</div>
@@ -1044,6 +1059,18 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                       </div>
                     ))}
                   </div>
+                </div>
+                <div className="product-category-financial-analysis__scenario-actions">
+                  <div className="product-category-financial-analysis__scenario-kicker">管理动作</div>
+                  {props.scenarioSensitivity.actionItems.map((item) => (
+                    <div className="product-category-financial-analysis__action-row" key={item.title}>
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{item.detailLabel}</span>
+                      </div>
+                      <b className={`is-${item.tone}`}>{item.valueLabel}</b>
+                    </div>
+                  ))}
                 </div>
                 <div className="product-category-financial-analysis__scenario-risks">
                   <div className="product-category-financial-analysis__scenario-kicker">关键变动行排行</div>
@@ -1062,6 +1089,22 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                       ))}
                     </div>
                   )}
+                </div>
+                <div className="product-category-financial-analysis__scenario-heat">
+                  <div className="product-category-financial-analysis__scenario-kicker">产品行热力条</div>
+                  {props.scenarioSensitivity.heatRows.map((row) => (
+                    <div className="product-category-financial-analysis__heat-row" key={row.categoryLabel}>
+                      <div className="product-category-financial-analysis__heat-row-head">
+                        <span>{row.categoryLabel}</span>
+                        <b className={`is-${row.tone}`}>{row.exposureLabel}</b>
+                      </div>
+                      <div className="product-category-financial-analysis__heat-track">
+                        <span
+                          className={`product-category-financial-analysis__heat-bar is-${row.tone} ${row.widthClassName}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </>

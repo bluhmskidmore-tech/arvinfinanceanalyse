@@ -327,11 +327,38 @@ export type ProductCategoryScenarioRiskRow = {
   tone: "positive" | "negative" | "neutral";
 };
 
+export type ProductCategoryScenarioPathPoint = {
+  rateLabel: string;
+  grandNetIncomeLabel: string;
+  grandDeltaLabel: string;
+  positionPct: number;
+  positionClassName: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioActionItem = {
+  title: string;
+  valueLabel: string;
+  detailLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioHeatRow = {
+  categoryLabel: string;
+  exposureLabel: string;
+  widthPct: number;
+  widthClassName: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
 export type ProductCategoryScenarioSensitivitySurface = {
   baselineGrandTotalLabel: string | null;
   rows: ProductCategoryScenarioSensitivityRow[];
   insightCards: ProductCategoryScenarioInsightCard[];
   riskRows: ProductCategoryScenarioRiskRow[];
+  pathPoints: ProductCategoryScenarioPathPoint[];
+  actionItems: ProductCategoryScenarioActionItem[];
+  heatRows: ProductCategoryScenarioHeatRow[];
   analysisCopy: string | null;
   emptyCopy: string | null;
 };
@@ -988,6 +1015,22 @@ function hasComparableScenarioGrandTotal(
   return row.grandNetIncome !== null && row.grandDelta !== null;
 }
 
+function productCategoryBucketPct(value: number): 0 | 25 | 50 | 75 | 100 {
+  if (value <= 12.5) {
+    return 0;
+  }
+  if (value <= 37.5) {
+    return 25;
+  }
+  if (value <= 62.5) {
+    return 50;
+  }
+  if (value <= 87.5) {
+    return 75;
+  }
+  return 100;
+}
+
 function selectProductCategoryScenarioInsightCards(
   rows: ProductCategoryScenarioSensitivityRow[],
 ): ProductCategoryScenarioInsightCard[] {
@@ -1084,6 +1127,99 @@ function selectProductCategoryScenarioRiskRows(
     }));
 }
 
+function selectProductCategoryScenarioPathPoints(
+  rows: ProductCategoryScenarioSensitivityRow[],
+): ProductCategoryScenarioPathPoint[] {
+  const comparableRows = rows.filter(hasComparableScenarioGrandTotal);
+  if (comparableRows.length === 0) {
+    return [];
+  }
+  const minRate = Math.min(...comparableRows.map((row) => row.ratePct));
+  const maxRate = Math.max(...comparableRows.map((row) => row.ratePct));
+  const span = maxRate - minRate;
+  return comparableRows.map((row) => ({
+    rateLabel: row.rateLabel,
+    grandNetIncomeLabel: row.grandNetIncomeLabel,
+    grandDeltaLabel: row.grandDeltaLabel,
+    positionPct: span === 0 ? 50 : Math.round(((row.ratePct - minRate) / span) * 100),
+    positionClassName: `is-position-${productCategoryBucketPct(
+      span === 0 ? 50 : Math.round(((row.ratePct - minRate) / span) * 100),
+    )}`,
+    tone: row.tone,
+  }));
+}
+
+function selectProductCategoryScenarioActionItems(input: {
+  best?: ProductCategoryComparableScenarioRow;
+  worst?: ProductCategoryComparableScenarioRow;
+  riskRows: ProductCategoryScenarioRiskRow[];
+}): ProductCategoryScenarioActionItem[] {
+  const items: ProductCategoryScenarioActionItem[] = [];
+  if (input.worst?.grandDelta !== null && input.worst?.grandDelta !== undefined) {
+    const absoluteDelta = Math.abs(input.worst.grandDelta).toFixed(2);
+    items.push({
+      title: input.worst.grandDelta < 0 ? "锁定下行情景敞口" : "确认上行情景弹性",
+      valueLabel: input.worst.grandDeltaLabel,
+      detailLabel: `${input.worst.rateLabel} 情景较基线${input.worst.grandDelta < 0 ? "少" : "多"} ${absoluteDelta} 亿元`,
+      tone: productCategoryDeltaTone(input.worst.grandDelta),
+    });
+  }
+  const topRisk = input.riskRows[0];
+  if (topRisk) {
+    items.push({
+      title: `优先复核 ${topRisk.categoryLabel}`,
+      valueLabel: topRisk.worstDeltaLabel,
+      detailLabel: `最大产品行变动出现在 ${topRisk.worstRateLabel}`,
+      tone: topRisk.tone,
+    });
+  }
+  if (input.best && input.worst && input.best.grandNetIncome !== input.worst.grandNetIncome) {
+    const range = Number((input.best.grandNetIncome - input.worst.grandNetIncome).toFixed(2));
+    items.push({
+      title: "设置情景监控阈值",
+      valueLabel: productCategoryYiNumberLabel(range),
+      detailLabel: "覆盖最佳到最差情景净营收区间",
+      tone: "neutral",
+    });
+  }
+  return items.slice(0, 3);
+}
+
+function selectProductCategoryScenarioHeatRows(input: {
+  baselineRowsById: Map<string, ProductCategoryPnlRow>;
+  scenarios: ProductCategoryPnlPayload[];
+}): ProductCategoryScenarioHeatRow[] {
+  const exposures = new Map<string, { categoryLabel: string; exposure: number }>();
+  for (const scenario of input.scenarios) {
+    for (const row of leafProductCategoryRows(scenario.rows)) {
+      const delta = productCategoryRowDeltaYi(input.baselineRowsById, row);
+      if (delta === null || delta === 0) {
+        continue;
+      }
+      const current = exposures.get(row.category_id);
+      if (!current || Math.abs(delta) > Math.abs(current.exposure)) {
+        exposures.set(row.category_id, {
+          categoryLabel: row.category_name || row.category_id,
+          exposure: delta,
+        });
+      }
+    }
+  }
+  const sorted = [...exposures.values()]
+    .sort((left, right) => Math.abs(right.exposure) - Math.abs(left.exposure))
+    .slice(0, 4);
+  const maxAbs = Math.max(...sorted.map((row) => Math.abs(row.exposure)), 0);
+  return sorted.map((row) => ({
+    categoryLabel: row.categoryLabel,
+    exposureLabel: formatSignedProductCategoryYi(row.exposure),
+    widthPct: maxAbs === 0 ? 0 : Math.round((Math.abs(row.exposure) / maxAbs) * 100),
+    widthClassName: `is-width-${productCategoryBucketPct(
+      maxAbs === 0 ? 0 : Math.round((Math.abs(row.exposure) / maxAbs) * 100),
+    )}`,
+    tone: productCategoryDeltaTone(row.exposure),
+  }));
+}
+
 export function selectProductCategoryScenarioSensitivitySurface(input: {
   baseline?: ProductCategoryPnlPayload | null;
   scenarios: ProductCategoryPnlPayload[];
@@ -1096,6 +1232,9 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       rows: [],
       insightCards: [],
       riskRows: [],
+      pathPoints: [],
+      actionItems: [],
+      heatRows: [],
       analysisCopy: null,
       emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
     };
@@ -1104,70 +1243,76 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
   const baselineAssetTotal = yiNumber(input.baseline.asset_total.business_net_income);
   const baselineLiabilityTotal = yiNumber(input.baseline.liability_total.business_net_income);
   const baselineGrandTotal = yiNumber(input.baseline.grand_total.business_net_income);
-  const rows: ProductCategoryScenarioSensitivityRow[] = input.scenarios
-    .map((scenario) => {
-      const scenarioRate = scenario.scenario_rate_pct;
-      if (scenarioRate === null || scenarioRate === undefined) {
-        return null;
-      }
-      const ratePct = Number(scenarioRate);
-      const assetValue = yiNumber(scenario.asset_total.business_net_income);
-      const liabilityValue = yiNumber(scenario.liability_total.business_net_income);
-      const grandValue = yiNumber(scenario.grand_total.business_net_income);
-      const assetDelta =
-        assetValue === null || baselineAssetTotal === null
-          ? null
-          : Number((assetValue - baselineAssetTotal).toFixed(2));
-      const liabilityDelta =
-        liabilityValue === null || baselineLiabilityTotal === null
-          ? null
-          : Number((liabilityValue - baselineLiabilityTotal).toFixed(2));
-      const grandDelta =
-        grandValue === null || baselineGrandTotal === null
-          ? null
-          : Number((grandValue - baselineGrandTotal).toFixed(2));
-      const topMover = leafProductCategoryRows(scenario.rows)
-        .map((row) => ({
-          row,
-          delta: productCategoryRowDeltaYi(baselineRowsById, row),
-        }))
-        .filter((item): item is { row: ProductCategoryPnlRow; delta: number } => item.delta !== null)
-        .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
-      return {
-        rate: String(scenarioRate),
-        ratePct,
-        rateLabel: `${ratePct.toFixed(2)}%`,
-        assetDelta,
-        assetNetIncomeLabel: productCategoryYiNumberLabel(assetValue),
-        assetDeltaLabel: formatSignedProductCategoryYi(assetDelta),
-        liabilityDelta,
-        liabilityNetIncomeLabel: productCategoryYiNumberLabel(
-          liabilityValue === null ? null : Math.abs(liabilityValue),
-        ),
-        liabilityDeltaLabel: formatSignedProductCategoryYi(liabilityDelta),
-        grandNetIncome: grandValue,
-        grandDelta,
-        grandNetIncomeLabel: productCategoryYiNumberLabel(grandValue),
-        grandDeltaLabel: formatSignedProductCategoryYi(grandDelta),
-        topMoverCategoryLabel: topMover?.row.category_name || topMover?.row.category_id || "-",
-        topMoverDelta: topMover?.delta ?? null,
-        topMoverDeltaLabel: formatSignedProductCategoryYi(topMover?.delta ?? null),
-        tone: productCategoryDeltaTone(grandDelta),
-      };
-    })
-    .filter((row): row is ProductCategoryScenarioSensitivityRow => row !== null)
-    .sort((left, right) => Number(left.rate) - Number(right.rate));
+  const rows: ProductCategoryScenarioSensitivityRow[] = [];
+  for (const scenario of input.scenarios) {
+    const scenarioRate = scenario.scenario_rate_pct;
+    if (scenarioRate === null || scenarioRate === undefined) {
+      continue;
+    }
+    const ratePct = Number(scenarioRate);
+    const assetValue = yiNumber(scenario.asset_total.business_net_income);
+    const liabilityValue = yiNumber(scenario.liability_total.business_net_income);
+    const grandValue = yiNumber(scenario.grand_total.business_net_income);
+    const assetDelta =
+      assetValue === null || baselineAssetTotal === null
+        ? null
+        : Number((assetValue - baselineAssetTotal).toFixed(2));
+    const liabilityDelta =
+      liabilityValue === null || baselineLiabilityTotal === null
+        ? null
+        : Number((liabilityValue - baselineLiabilityTotal).toFixed(2));
+    const grandDelta =
+      grandValue === null || baselineGrandTotal === null
+        ? null
+        : Number((grandValue - baselineGrandTotal).toFixed(2));
+    const topMover = leafProductCategoryRows(scenario.rows)
+      .map((row) => ({
+        row,
+        delta: productCategoryRowDeltaYi(baselineRowsById, row),
+      }))
+      .filter((item): item is { row: ProductCategoryPnlRow; delta: number } => item.delta !== null)
+      .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
+    rows.push({
+      rate: String(scenarioRate),
+      ratePct,
+      rateLabel: `${ratePct.toFixed(2)}%`,
+      assetDelta,
+      assetNetIncomeLabel: productCategoryYiNumberLabel(assetValue),
+      assetDeltaLabel: formatSignedProductCategoryYi(assetDelta),
+      liabilityDelta,
+      liabilityNetIncomeLabel: productCategoryYiNumberLabel(
+        liabilityValue === null ? null : Math.abs(liabilityValue),
+      ),
+      liabilityDeltaLabel: formatSignedProductCategoryYi(liabilityDelta),
+      grandNetIncome: grandValue,
+      grandDelta,
+      grandNetIncomeLabel: productCategoryYiNumberLabel(grandValue),
+      grandDeltaLabel: formatSignedProductCategoryYi(grandDelta),
+      topMoverCategoryLabel: topMover?.row.category_name || topMover?.row.category_id || "-",
+      topMoverDelta: topMover?.delta ?? null,
+      topMoverDeltaLabel: formatSignedProductCategoryYi(topMover?.delta ?? null),
+      tone: productCategoryDeltaTone(grandDelta),
+    });
+  }
+  rows.sort((left, right) => Number(left.rate) - Number(right.rate));
   const comparableRows = rows.filter(hasComparableScenarioGrandTotal);
   const sortedByGrand = [...comparableRows].sort(
     (left, right) => right.grandNetIncome - left.grandNetIncome,
   );
   const best = sortedByGrand[0];
   const worst = sortedByGrand[sortedByGrand.length - 1];
+  const riskRows = selectProductCategoryScenarioRiskRows(rows);
   return {
     baselineGrandTotalLabel: formatProductCategoryValue(input.baseline.grand_total.business_net_income),
     rows,
     insightCards: selectProductCategoryScenarioInsightCards(rows),
-    riskRows: selectProductCategoryScenarioRiskRows(rows),
+    riskRows,
+    pathPoints: selectProductCategoryScenarioPathPoints(rows),
+    actionItems: selectProductCategoryScenarioActionItems({ best, worst, riskRows }),
+    heatRows: selectProductCategoryScenarioHeatRows({
+      baselineRowsById,
+      scenarios: input.scenarios,
+    }),
     analysisCopy: productCategoryScenarioAnalysisCopy(worst, best),
     emptyCopy: rows.length === 0 ? "当前尚未返回可比较的 FTP 情景结果。" : null,
   };

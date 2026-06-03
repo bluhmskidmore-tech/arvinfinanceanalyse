@@ -461,6 +461,60 @@ describe("productCategoryPnlPageModel", () => {
         tone: "negative",
       }),
     ]);
+    expect(surface.pathPoints).toEqual([
+      expect.objectContaining({
+        rateLabel: "1.50%",
+        grandNetIncomeLabel: "5.30",
+        grandDeltaLabel: "+0.50",
+        positionPct: 0,
+        positionClassName: "is-position-0",
+        tone: "positive",
+      }),
+      expect.objectContaining({
+        rateLabel: "2.00%",
+        grandNetIncomeLabel: "3.90",
+        grandDeltaLabel: "-0.90",
+        positionPct: 100,
+        positionClassName: "is-position-100",
+        tone: "negative",
+      }),
+    ]);
+    expect(surface.actionItems).toEqual([
+      expect.objectContaining({
+        title: "锁定下行情景敞口",
+        valueLabel: "-0.90",
+        detailLabel: "2.00% 情景较基线少 0.90 亿元",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        title: "优先复核 AC债券投资",
+        valueLabel: "-0.80",
+        detailLabel: "最大产品行变动出现在 2.00%",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        title: "设置情景监控阈值",
+        valueLabel: "1.40",
+        detailLabel: "覆盖最佳到最差情景净营收区间",
+        tone: "neutral",
+      }),
+    ]);
+    expect(surface.heatRows).toEqual([
+      expect.objectContaining({
+        categoryLabel: "AC债券投资",
+        exposureLabel: "-0.80",
+        widthPct: 100,
+        widthClassName: "is-width-100",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        categoryLabel: "买入返售",
+        exposureLabel: "+0.20",
+        widthPct: 25,
+        widthClassName: "is-width-25",
+        tone: "positive",
+      }),
+    ]);
     expect(surface.analysisCopy).toBe("FTP 上行时全表净营收承压，最差情景较基线 -0.90 亿元。");
     expect(surface.emptyCopy).toBeNull();
   });

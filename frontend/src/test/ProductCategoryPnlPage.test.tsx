@@ -400,6 +400,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("情景解读");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("关键变动行排行");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("每 1bp");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 压力路径");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("管理动作");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("产品行热力条");
   });
 
   it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {
