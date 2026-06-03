@@ -18,6 +18,7 @@ const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
 const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
 const AGENT_COMPOSER_DRAFT_KEY = "moss.agent.composerDraft.v1";
+const AGENT_QUEUED_QUERIES_KEY = "moss.agent.queuedQueries.v1";
 const MAX_PINNED_REPO_PATHS = 5;
 
 function openGitNexusTools() {
@@ -3229,6 +3230,32 @@ describe("AgentWorkbenchPage", () => {
     expect(JSON.parse(String(runPostCalls[2]?.[1]?.body))).toMatchObject({
       question: "multi queue third turn",
     });
+    expect(window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY)).toBeNull();
+  });
+
+  it("restores queued follow-up drafts after remount", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    const { unmount } = render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "remount queue first turn");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("remount queue first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued draft after remount");
+    await user.click(screen.getByTestId("agent-panel-queue-submit"));
+
+    expect(window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY)).toBe(
+      JSON.stringify(["queued draft after remount"]),
+    );
+
+    unmount();
+    render(<AgentWorkbenchPage />);
+
+    expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft after remount");
+    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued draft after remount");
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
   });
 
   it("keeps the docked composer action slot stable while a follow-up is running", async () => {

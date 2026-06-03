@@ -156,8 +156,10 @@ const AGENT_RUN_STATUSES = new Set<AgentRunStatus>([
 
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
 const AGENT_CONVERSATION_TURNS_KEY = "moss.agent.conversationTurns.v1";
+const AGENT_QUEUED_QUERIES_KEY = "moss.agent.queuedQueries.v1";
 const MAX_AGENT_CONTEXT_TURNS = 4;
 const MAX_AGENT_STORED_TURNS = 4;
+const MAX_AGENT_QUEUED_QUERIES = 4;
 const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
@@ -1236,6 +1238,49 @@ function clearComposerDraft() {
   window.localStorage.removeItem(AGENT_COMPOSER_DRAFT_KEY);
 }
 
+function normalizeQueuedQueries(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as string[];
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, MAX_AGENT_QUEUED_QUERIES);
+}
+
+function loadQueuedQueries() {
+  if (typeof window === "undefined") {
+    return [] as string[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY);
+    return normalizeQueuedQueries(raw ? (JSON.parse(raw) as unknown) : []);
+  } catch {
+    return [];
+  }
+}
+
+function persistQueuedQueries(queries: string[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const nextQueries = normalizeQueuedQueries(queries);
+  if (nextQueries.length === 0) {
+    window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
+    return;
+  }
+  window.localStorage.setItem(AGENT_QUEUED_QUERIES_KEY, JSON.stringify(nextQueries));
+}
+
+function clearStoredQueuedQueries() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(AGENT_QUEUED_QUERIES_KEY);
+}
+
 function isGitNexusCard(card: AgentResultCard) {
   return card.title.startsWith("GitNexus ");
 }
@@ -1355,7 +1400,9 @@ export function EmbeddedAgentCopilot({
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
-  const [queuedQueries, setQueuedQueries] = useState<string[]>([]);
+  const [queuedQueries, setQueuedQueries] = useState<string[]>(() =>
+    shouldPersistConversation ? loadQueuedQueries() : [],
+  );
   const [pageContextChangeNotice, setPageContextChangeNotice] = useState(false);
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
@@ -1530,9 +1577,18 @@ export function EmbeddedAgentCopilot({
   }
 
   const queuedQuery = queuedQueries[0] ?? "";
+  const latestConversationTurnIsUnresolved = Boolean(
+    latestConversationTurn &&
+      !latestConversationTurn.result &&
+      !latestConversationTurn.error &&
+      !latestConversationTurn.stopped,
+  );
 
   function clearQueuedQueries() {
     setQueuedQueries([]);
+    if (shouldPersistConversation) {
+      clearStoredQueuedQueries();
+    }
   }
 
   function cancelQueuedQuery() {
@@ -1580,6 +1636,13 @@ export function EmbeddedAgentCopilot({
     }
     persistStoredConversationTurns(conversationTurns);
   }, [conversationTurns, shouldPersistConversation]);
+
+  useEffect(() => {
+    if (!shouldPersistConversation) {
+      return;
+    }
+    persistQueuedQueries(queuedQueries);
+  }, [queuedQueries, shouldPersistConversation]);
 
   useEffect(() => {
     const nextPageContextSummary = pageContext ? formatPageContextSummary(pageContext) : "";
@@ -2224,13 +2287,13 @@ export function EmbeddedAgentCopilot({
   submitQueuedQueryRef.current = submitQueuedQuery;
 
   useEffect(() => {
-    if (loading || !queuedQuery.trim()) {
+    if (loading || latestConversationTurnIsUnresolved || !queuedQuery.trim()) {
       return;
     }
     const nextQueuedQuery = queuedQuery.trim();
     setQueuedQueries((currentQueries) => currentQueries.slice(1));
     void submitQueuedQueryRef.current(nextQueuedQuery);
-  }, [loading, queuedQuery]);
+  }, [latestConversationTurnIsUnresolved, loading, queuedQuery]);
 
   async function executeFinancialWorkflow(workflow: FinancialWorkflowShortcut) {
     if (loading) {
@@ -2571,6 +2634,7 @@ export function EmbeddedAgentCopilot({
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
       persistStoredConversationTurns([]);
+      clearStoredQueuedQueries();
     }
     shouldFocusComposerRef.current = true;
     window.setTimeout(focusComposerInput, 0);
