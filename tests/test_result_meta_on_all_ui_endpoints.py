@@ -28,6 +28,13 @@ MACRO_VENDOR_READ_PATHS = {
     "/ui/market-data/fx/analytical",
 }
 MACRO_TOOLKIT_READ_HEADERS = {"X-User-Id": "macro-toolkit-read-user", "X-User-Role": "viewer"}
+MACRO_TOOLKIT_READ_PATHS = {
+    "/ui/macro/toolkit/scripts",
+    "/ui/macro/toolkit/analysis",
+    "/ui/macro/toolkit/analysis/strategy-summaries",
+    "/ui/macro/toolkit/adversarial-signal",
+    "/ui/macro/toolkit/choice-stock/refresh-status",
+}
 
 
 def _required_result_meta_keys() -> frozenset[str]:
@@ -280,7 +287,11 @@ def _grant_macro_toolkit_read_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         ("/ui/balance-movement-analysis/dates", {}),
         ("/ui/balance-analysis/dates", {}),
         ("/ui/preview/macro-foundation", {}),
+        ("/ui/macro/toolkit/scripts", {}),
+        ("/ui/macro/toolkit/analysis", {"detail": "core"}),
+        ("/ui/macro/toolkit/analysis/strategy-summaries", {}),
         ("/ui/macro/toolkit/adversarial-signal", {}),
+        ("/ui/macro/toolkit/choice-stock/refresh-status", {}),
         ("/ui/macro/choice-series/latest", {}),
         ("/ui/market-data/fx/formal-status", {}),
         ("/ui/market-data/fx/analytical", {}),
@@ -304,7 +315,7 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
         _grant_livermore_read_scope(tmp_path, monkeypatch)
     if path in MACRO_VENDOR_READ_PATHS:
         _grant_macro_vendor_read_scope(tmp_path, monkeypatch)
-    if path == "/ui/macro/toolkit/adversarial-signal":
+    if path in MACRO_TOOLKIT_READ_PATHS:
         _grant_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
@@ -325,7 +336,7 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
             MACRO_VENDOR_READ_HEADERS
             if path in MACRO_VENDOR_READ_PATHS
             else MACRO_TOOLKIT_READ_HEADERS
-            if path == "/ui/macro/toolkit/adversarial-signal"
+            if path in MACRO_TOOLKIT_READ_PATHS
             else None
         ),
     )

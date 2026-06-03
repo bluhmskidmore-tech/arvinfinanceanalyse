@@ -47,6 +47,78 @@ from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services import cffex_member_rank_service, macro_toolkit_service
 
+MACRO_TOOLKIT_READ_HEADERS = {"X-User-Id": "macro-toolkit-read-user", "X-User-Role": "viewer"}
+
+
+def _configure_macro_toolkit_scope_store(tmp_path: Path, monkeypatch):
+    sqlite_path = tmp_path / "macro-toolkit-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.delenv("MOSS_GOVERNANCE_SQL_DSN", raising=False)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(auth_dsn)
+
+
+def _seed_macro_toolkit_read_scope(tmp_path: Path, monkeypatch) -> None:
+    _configure_macro_toolkit_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _seed_macro_toolkit_read_scope_for_existing_http_tests(request, tmp_path: Path, monkeypatch):
+    if request.node.name.startswith("test_macro_toolkit_read_surfaces_require_explicit_read_scope"):
+        yield
+        return
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/ui/macro/toolkit/scripts", {}),
+        ("/ui/macro/toolkit/analysis", {"detail": "core"}),
+        ("/ui/macro/toolkit/analysis/strategy-summaries", {}),
+        ("/ui/macro/toolkit/adversarial-signal", {}),
+        ("/ui/macro/toolkit/choice-stock/refresh-status", {}),
+    ],
+)
+def test_macro_toolkit_read_surfaces_require_explicit_read_scope(
+    path: str,
+    params: dict[str, object],
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _configure_macro_toolkit_scope_store(tmp_path, monkeypatch)
+    macro_toolkit_route.market_home_response_cache.invalidate()
+
+    def _unexpected_service_call(*_args, **_kwargs):
+        raise AssertionError("Macro toolkit read service should not run without macro_toolkit/read.")
+
+    monkeypatch.setattr(macro_toolkit_route, "_source_checks", _unexpected_service_call)
+    monkeypatch.setattr(macro_toolkit_route, "_build_macro_toolkit_analysis", _unexpected_service_call)
+    monkeypatch.setattr(macro_toolkit_route, "_build_macro_toolkit_strategy_summaries", _unexpected_service_call)
+    monkeypatch.setattr(macro_toolkit_route, "_choice_stock_refresh_status", _unexpected_service_call)
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_adversarial_signal_service,
+        "load_macro_adversarial_signal_payload",
+        _unexpected_service_call,
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get(path, params=params, headers=MACRO_TOOLKIT_READ_HEADERS)
+
+    assert response.status_code == 403, f"Expected 403 for {path}, got {response.status_code}: {response.text}"
+
 
 def test_macro_toolkit_registry_points_to_migrated_scripts() -> None:
     scripts = {script.name: script for script in iter_toolkit_scripts()}
@@ -624,7 +696,7 @@ def test_macro_toolkit_api_exposes_frontend_payload() -> None:
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
-    response = client.get("/ui/macro/toolkit/scripts")
+    response = client.get("/ui/macro/toolkit/scripts", headers=MACRO_TOOLKIT_READ_HEADERS)
 
     assert response.status_code == 200
     payload = response.json()
@@ -666,7 +738,14 @@ def test_macro_toolkit_scripts_surfaces_granted_commodity_futures_permission_for
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
     get_settings.cache_clear()
-    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+    repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id="anonymous",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+    repo.grant_scope(
         user_id="anonymous",
         role=None,
         resource="macro_toolkit.commodity_futures",
@@ -694,7 +773,7 @@ def test_macro_toolkit_scripts_surfaces_empty_commodity_futures_status(tmp_path,
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
-    missing_response = client.get("/ui/macro/toolkit/scripts")
+    missing_response = client.get("/ui/macro/toolkit/scripts", headers=MACRO_TOOLKIT_READ_HEADERS)
     assert missing_response.status_code == 200, missing_response.text
     missing_status = missing_response.json()["result"]["commodity_futures_refresh"]["status"]
     assert missing_status["status"] == "missing_table"
@@ -730,7 +809,7 @@ def test_macro_toolkit_scripts_surfaces_empty_commodity_futures_status(tmp_path,
     finally:
         conn.close()
 
-    empty_response = client.get("/ui/macro/toolkit/scripts")
+    empty_response = client.get("/ui/macro/toolkit/scripts", headers=MACRO_TOOLKIT_READ_HEADERS)
     assert empty_response.status_code == 200, empty_response.text
     empty_status = empty_response.json()["result"]["commodity_futures_refresh"]["status"]
     assert empty_status["status"] == "empty_table"
@@ -2469,7 +2548,14 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
     get_settings.cache_clear()
-    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    scope_repo.grant_scope(
+        user_id="stock-refresh-user",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+    scope_repo.grant_scope(
         user_id="stock-refresh-user",
         role=None,
         resource="macro_toolkit.choice_stock",
@@ -2506,6 +2592,7 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
+    headers = {"X-User-Id": "stock-refresh-user", "X-User-Role": "viewer"}
 
     try:
         response = client.post(
@@ -2516,12 +2603,13 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
                 "refresh_factors": True,
                 "factor_max_stock_count": None,
             },
-            headers={"X-User-Id": "stock-refresh-user"},
+            headers=headers,
         )
         payload = response.json()
         status_response = _wait_for_choice_stock_refresh_status(
             client,
             run_id=payload["result"]["refresh"]["run_id"],
+            headers=headers,
         )
     finally:
         get_settings.cache_clear()
@@ -3225,6 +3313,7 @@ def _wait_for_choice_stock_refresh_status(
     client: TestClient,
     *,
     run_id: str,
+    headers: dict[str, str] | None = None,
     timeout_seconds: float = 5.0,
 ):
     deadline = time.monotonic() + timeout_seconds
@@ -3233,6 +3322,7 @@ def _wait_for_choice_stock_refresh_status(
         last_response = client.get(
             "/ui/macro/toolkit/choice-stock/refresh-status",
             params={"run_id": run_id},
+            headers=headers,
         )
         if last_response.status_code == 200:
             status = last_response.json()["result"]["refresh"]["status"]

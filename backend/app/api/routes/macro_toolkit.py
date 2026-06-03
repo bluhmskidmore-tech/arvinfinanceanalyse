@@ -273,6 +273,7 @@ def macro_toolkit_scripts(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
     scripts = [_script_payload(script) for script in iter_toolkit_scripts()]
     source_checks = _source_checks(settings.duckdb_path)
     source_check_cache = {str(check["alias"]): check for check in source_checks}
@@ -314,9 +315,11 @@ def macro_toolkit_scripts(
 
 @router.get("/analysis")
 def macro_toolkit_analysis(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     detail: Annotated[str, Query(pattern="^(full|core)$")] = "full",
 ) -> dict[str, object]:
     settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
     return market_home_response_cache.get_or_build(
         market_home_macro_analysis_cache_key(settings.duckdb_path, detail),
         lambda: _build_macro_toolkit_analysis(detail),
@@ -406,8 +409,11 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
 
 
 @router.get("/analysis/strategy-summaries")
-def macro_toolkit_strategy_summaries() -> dict[str, object]:
+def macro_toolkit_strategy_summaries(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
     settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
     return market_home_response_cache.get_or_build(
         market_home_strategy_summaries_cache_key(settings.duckdb_path),
         _build_macro_toolkit_strategy_summaries,
@@ -436,7 +442,10 @@ def _build_macro_toolkit_strategy_summaries() -> dict[str, object]:
 
 
 @router.get("/adversarial-signal")
-def macro_toolkit_adversarial_signal() -> dict[str, object]:
+def macro_toolkit_adversarial_signal(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_macro_toolkit_read_allowed(auth, get_settings())
     payload, meta = macro_adversarial_signal_service.load_macro_adversarial_signal_payload(
         output_dir=OUTPUT_DIR
     )
@@ -536,8 +545,12 @@ def macro_toolkit_refresh_choice_stock(
 
 
 @router.get("/choice-stock/refresh-status")
-def macro_toolkit_choice_stock_refresh_status(run_id: str = Query(default="")) -> dict[str, object]:
+def macro_toolkit_choice_stock_refresh_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    run_id: str = Query(default=""),
+) -> dict[str, object]:
     settings = get_settings()
+    _ensure_macro_toolkit_read_allowed(auth, settings)
     try:
         status = _choice_stock_refresh_status(settings.governance_path, run_id=run_id)
     except ValueError as exc:
@@ -700,6 +713,20 @@ def macro_toolkit_run(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _ensure_macro_toolkit_read_allowed(auth: AuthContext, settings: object) -> None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="macro_toolkit",
+            action="read",
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 def _ensure_cffex_member_rank_refresh_allowed(auth: AuthContext, settings: object) -> None:
