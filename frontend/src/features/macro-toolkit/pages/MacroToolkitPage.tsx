@@ -1207,6 +1207,15 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           {crisisScoreResult ? (
             <CrisisScoreEvidencePanel
               result={crisisScoreResult}
+              repairItems={analysis.data_health?.repair_items ?? []}
+              refreshingSourceAlias={refreshingSourceAlias}
+              commodityRefreshResult={commodityRefreshResult}
+              commodityShortfallEstimates={commodityShortfallEstimates}
+              sourceBackfillResult={sourceBackfillResult}
+              sourceBackfillError={sourceBackfillError}
+              onRepairSourceBackfill={(item) => {
+                void refreshMacroSourceBackfill(item);
+              }}
               onApplyCommodityRefreshProducts={(products) => {
                 setSelectedCommodityProducts(products);
                 setCommoditySuggestedSelection(products);
@@ -1845,6 +1854,71 @@ function CapabilityResultCard({ result }: { result: MacroToolkitCapabilityResult
   );
 }
 
+function CrisisGapAction({
+  group,
+  repairItems,
+  commodityRefreshProducts,
+  refreshingSourceAlias,
+  commodityRefreshResult,
+  commodityShortfallEstimates,
+  sourceBackfillResult,
+  sourceBackfillError,
+  onPreviewCommodityRefreshProducts,
+  onRepairSourceBackfill,
+}: {
+  group: CrisisGapGroup;
+  repairItems: MacroToolkitRepairItem[];
+  commodityRefreshProducts: string[];
+  refreshingSourceAlias: string | null;
+  commodityRefreshResult: string | null;
+  commodityShortfallEstimates: CommodityShortfallEstimate[];
+  sourceBackfillResult: string | null;
+  sourceBackfillError: string | null;
+  onPreviewCommodityRefreshProducts?: (products: string[]) => void;
+  onRepairSourceBackfill?: (item: MacroToolkitRepairItem) => void;
+}) {
+  if (group.key === "commodity" && commodityRefreshProducts.length && onPreviewCommodityRefreshProducts) {
+    return (
+      <div className="macro-toolkit-crisis-gap-action">
+        <Button
+          size="small"
+          type="primary"
+          icon={<InfoCircleOutlined />}
+          aria-label="按建议预估"
+          onClick={() => onPreviewCommodityRefreshProducts(commodityRefreshProducts)}
+        >
+          按建议预估
+        </Button>
+        {commodityRefreshResult ? <small>{commodityRefreshResult}</small> : null}
+        {commodityShortfallEstimates.length ? (
+          <small>{formatCommodityShortfallEstimateList(commodityShortfallEstimates)}</small>
+        ) : null}
+      </div>
+    );
+  }
+
+  const repairItem = findCrisisGapRepairItem(group, repairItems);
+  if (!repairItem || !onRepairSourceBackfill) {
+    return null;
+  }
+  const alias = normalizeMacroSourceBackfillAlias(repairItem.alias);
+  return (
+    <div className="macro-toolkit-crisis-gap-action">
+      <Button
+        size="small"
+        icon={<ReloadOutlined />}
+        loading={refreshingSourceAlias === alias}
+        aria-label={repairItem.action?.label ?? "需要补齐来源数据"}
+        onClick={() => onRepairSourceBackfill(repairItem)}
+      >
+        {repairItem.action?.label ?? "需要补齐来源数据"}
+      </Button>
+      {sourceBackfillResult ? <small>{sourceBackfillResult}</small> : null}
+      {sourceBackfillError ? <small>{sourceBackfillError}</small> : null}
+    </div>
+  );
+}
+
 type CommodityRefreshProductRow = {
   key: string;
   productCode: string;
@@ -1963,10 +2037,24 @@ function CommodityRefreshSummaryStrip({
 
 function CrisisScoreEvidencePanel({
   result,
+  repairItems = [],
+  refreshingSourceAlias = null,
+  commodityRefreshResult = null,
+  commodityShortfallEstimates = [],
+  sourceBackfillResult = null,
+  sourceBackfillError = null,
+  onRepairSourceBackfill,
   onApplyCommodityRefreshProducts,
   onPreviewCommodityRefreshProducts,
 }: {
   result: MacroToolkitCapabilityResult;
+  repairItems?: MacroToolkitRepairItem[];
+  refreshingSourceAlias?: string | null;
+  commodityRefreshResult?: string | null;
+  commodityShortfallEstimates?: CommodityShortfallEstimate[];
+  sourceBackfillResult?: string | null;
+  sourceBackfillError?: string | null;
+  onRepairSourceBackfill?: (item: MacroToolkitRepairItem) => void;
   onApplyCommodityRefreshProducts?: (products: string[]) => void;
   onPreviewCommodityRefreshProducts?: (products: string[]) => void;
 }) {
@@ -1979,15 +2067,14 @@ function CrisisScoreEvidencePanel({
     ? rawResult.components.filter(isCrisisComponent)
     : [];
   const weights = isRecord(rawResult.weights) ? rawResult.weights : {};
-  const commodityInput = inputEvidence.find(
-    (item) => item.field === "nanhua" || item.aliases?.includes("NH0100.NHF"),
-  );
+  const commodityInput = inputEvidence.find(isNanhuaCrisisInput);
   const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
   const commodityShortRefreshProducts = commodityCoverage?.candidate_summary
     ? commodityShadowRefreshProducts(commodityCoverage.candidate_summary)
     : [];
   const commodityShortRefreshHint = formatCommodityShadowRefreshHint(commodityShortRefreshProducts);
-  const warnings = result.warnings.length ? result.warnings : normalizedEvidence?.missingInputs ?? [];
+  const warnings = uniqueDisplayParts([...result.warnings, ...(normalizedEvidence?.missingInputs ?? [])]);
+  const crisisGapGroups = buildCrisisGapGroups(inputEvidence, warnings);
 
   return (
     <section
@@ -2014,6 +2101,7 @@ function CrisisScoreEvidencePanel({
           value={commodityInput?.available ? "已命中" : "缺失"}
           detail={formatCrisisInputDetail(commodityInput)}
           tone={commodityInput?.available ? "positive" : "missing"}
+          detailMaxLength={72}
         />
         <MetricTile
           icon={<WarningOutlined />}
@@ -2023,6 +2111,39 @@ function CrisisScoreEvidencePanel({
           tone={warnings.length ? "neutral" : "positive"}
         />
       </div>
+
+      {crisisGapGroups.length ? (
+        <div className="macro-toolkit-crisis-gap-list" aria-label="Crisis Score 缺口清单">
+          <div className="macro-toolkit-crisis-gap-list__head">
+            <strong>Crisis Score 缺口清单</strong>
+            <small>缺失不按 0 处理；补齐后重新运行完整分析确认分数。</small>
+          </div>
+          <div className="macro-toolkit-crisis-gap-list__grid">
+            {crisisGapGroups.map((group) => (
+              <div className="macro-toolkit-crisis-gap-group" key={group.key}>
+                <span>{group.label}</span>
+                {group.items.map((item) => (
+                  <small key={`${item.label}-${item.warning}`}>
+                    {item.label} · {item.warning} · {item.detail}
+                  </small>
+                ))}
+                <CrisisGapAction
+                  group={group}
+                  repairItems={repairItems}
+                  commodityRefreshProducts={commodityShortRefreshProducts}
+                  refreshingSourceAlias={refreshingSourceAlias}
+                  commodityRefreshResult={commodityRefreshResult}
+                  commodityShortfallEstimates={commodityShortfallEstimates}
+                  sourceBackfillResult={sourceBackfillResult}
+                  sourceBackfillError={sourceBackfillError}
+                  onPreviewCommodityRefreshProducts={onPreviewCommodityRefreshProducts}
+                  onRepairSourceBackfill={onRepairSourceBackfill}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="macro-toolkit-crisis-evidence__components">
         {components.map((component) => (
@@ -2142,7 +2263,7 @@ function CrisisScoreEvidencePanel({
                   <span>{item.label || item.field}</span>
                   <Tag color={item.available ? "green" : "red"}>{item.available ? "命中" : "缺失"}</Tag>
                 </div>
-                <strong>{item.aliases.join(" / ") || item.series_id || "alias missing"}</strong>
+                <strong>{formatCommodityCoverageIdentifiers(item)}</strong>
                 <small>
                   {item.field} · {formatCrisisRowCount(item.row_count)} · {item.latest_date ?? "日期缺失"} ·{" "}
                   {formatCommodityCoverageDateStatus(item.date_alignment_status)}
@@ -2796,6 +2917,18 @@ type CrisisCommodityCoverage = {
 };
 
 type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
+type CrisisGapGroupKey = "equity" | "liquidity" | "commodity" | "curve_credit" | "fx" | "other";
+type CrisisGapItem = {
+  label: string;
+  warning: string;
+  detail: string;
+  identifiers: string[];
+};
+type CrisisGapGroup = {
+  key: CrisisGapGroupKey;
+  label: string;
+  items: CrisisGapItem[];
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -3136,11 +3269,140 @@ function formatSignedDecimal(value: number | null | undefined) {
   return typeof value === "number" ? value.toFixed(2) : "缺失";
 }
 
+const CRISIS_GAP_GROUP_LABELS: Record<CrisisGapGroupKey, string> = {
+  equity: "股票风险输入",
+  liquidity: "利率与流动性输入",
+  commodity: "商品期货输入",
+  curve_credit: "曲线与信用输入",
+  fx: "汇率输入",
+  other: "其他输入",
+};
+
+function uniqueDisplayParts(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
+}
+
+function buildCrisisGapGroups(inputEvidence: MacroToolkitInputEvidenceItem[], warnings: string[]): CrisisGapGroup[] {
+  const warningSet = new Set(warnings);
+  const itemsByGroup = new Map<CrisisGapGroupKey, CrisisGapItem[]>();
+  const pushItem = (groupKey: CrisisGapGroupKey, item: CrisisGapItem) => {
+    const items = itemsByGroup.get(groupKey) ?? [];
+    if (!items.some((candidate) => candidate.warning === item.warning && candidate.label === item.label)) {
+      items.push(item);
+    }
+    itemsByGroup.set(groupKey, items);
+  };
+
+  for (const input of inputEvidence) {
+    const warning = input.warning;
+    const isMissing = input.available === false || (warning ? warningSet.has(warning) : false);
+    if (!isMissing || !warning) {
+      continue;
+    }
+    pushItem(crisisGapGroupKey(input.field, warning), {
+      label: input.label || input.field,
+      warning,
+      detail: crisisGapInputDetail(input),
+      identifiers: crisisGapInputIdentifiers(input),
+    });
+    warningSet.delete(warning);
+  }
+
+  for (const warning of warningSet) {
+    pushItem(crisisGapGroupKey("", warning), {
+      label: warning.replace(/_MISSING$/, "").toLowerCase(),
+      warning,
+      detail: "输入证据缺失，缺失不按 0 处理",
+      identifiers: [warning],
+    });
+  }
+
+  return (["equity", "liquidity", "commodity", "curve_credit", "fx", "other"] as CrisisGapGroupKey[])
+    .map((key) => ({ key, label: CRISIS_GAP_GROUP_LABELS[key], items: itemsByGroup.get(key) ?? [] }))
+    .filter((group) => group.items.length);
+}
+
+function crisisGapGroupKey(field: string, warning: string): CrisisGapGroupKey {
+  const token = `${field} ${warning}`.toUpperCase();
+  if (token.includes("HS300") || token.includes("EQUITY") || token.includes("STOCK")) {
+    return "equity";
+  }
+  if (token.includes("DR007") || token.includes("REVERSE_REPO") || token.includes("LIQUIDITY")) {
+    return "liquidity";
+  }
+  if (token.includes("NANHUA") || token.includes("COMMODITY")) {
+    return "commodity";
+  }
+  if (token.includes("AA_") || token.includes("GOV_") || token.includes("CREDIT") || token.includes("CURVE")) {
+    return "curve_credit";
+  }
+  if (token.includes("USDCNY") || token.includes("FX")) {
+    return "fx";
+  }
+  return "other";
+}
+
+function crisisGapInputDetail(input: MacroToolkitInputEvidenceItem) {
+  const rowText = formatCrisisRowCount(input.row_count);
+  const dateText = input.latest_date ?? "日期缺失";
+  const sourceText = input.source ?? "source missing";
+  return `${rowText} · ${dateText} · ${sourceText} · 缺失不按 0 处理`;
+}
+
+function crisisGapInputIdentifiers(input: MacroToolkitInputEvidenceItem) {
+  return uniqueDisplayParts([input.field, input.warning, ...(input.aliases ?? []), input.series_id]);
+}
+
+function findCrisisGapRepairItem(group: CrisisGapGroup, repairItems: MacroToolkitRepairItem[]) {
+  const groupIdentifiers = new Set(
+    group.items.flatMap((item) => item.identifiers).map((identifier) => identifier.toUpperCase()),
+  );
+  return repairItems.find((item) => {
+    if (!canRefreshMacroSourceBackfill(item)) {
+      return false;
+    }
+    const itemIdentifiers = uniqueDisplayParts([item.alias, item.key, item.label]).map((identifier) =>
+      identifier.toUpperCase(),
+    );
+    return itemIdentifiers.some((identifier) => groupIdentifiers.has(identifier));
+  });
+}
+
+function isNanhuaCrisisInput(input: MacroToolkitInputEvidenceItem) {
+  const identifiers = uniqueDisplayParts([input.field, ...(input.aliases ?? []), input.series_id]).map((item) =>
+    item.toUpperCase(),
+  );
+  return (
+    identifiers.includes("NANHUA") ||
+    identifiers.includes(NANHUA_CRISIS_ALIAS) ||
+    identifiers.includes(NANHUA_SYSTEM_SERIES_ID)
+  );
+}
+
+function formatCrisisInputIdentifiers(input: MacroToolkitInputEvidenceItem) {
+  const identifiers = uniqueDisplayParts([
+    ...(input.aliases ?? []),
+    ...(isNanhuaCrisisInput(input) ? [NANHUA_CRISIS_ALIAS, NANHUA_SYSTEM_SERIES_ID] : []),
+    input.series_id,
+  ]);
+  return identifiers.join(" / ") || "alias missing";
+}
+
+function formatCommodityCoverageIdentifiers(item: CrisisCommodityCoverageItem) {
+  const identifiers = uniqueDisplayParts([
+    ...item.aliases,
+    item.matched_alias,
+    ...(item.field === "nanhua" || item.used_in_formula ? [NANHUA_CRISIS_ALIAS, NANHUA_SYSTEM_SERIES_ID] : []),
+    item.series_id,
+  ]);
+  return identifiers.join(" / ") || "alias missing";
+}
+
 function formatCrisisInputDetail(input: MacroToolkitInputEvidenceItem | undefined) {
   if (!input) {
     return "Nanhua commodity index / NH0100.NHF 未命中";
   }
-  return `${input.label || input.field} · ${input.aliases?.join(" / ") || input.series_id || "alias missing"} · ${
+  return `${input.label || input.field} · ${formatCrisisInputIdentifiers(input)} · ${
     input.latest_date ?? "日期缺失"
   }`;
 }
@@ -4285,6 +4547,7 @@ function MetricTile({
   detail,
   tone = "neutral",
   testId,
+  detailMaxLength = 26,
 }: {
   icon?: ReactNode;
   label: string;
@@ -4292,6 +4555,7 @@ function MetricTile({
   detail: string;
   tone?: "neutral" | "positive" | "missing";
   testId?: string;
+  detailMaxLength?: number;
 }) {
   return (
     <div className={`macro-toolkit-metric macro-toolkit-metric--${tone}`} data-testid={testId}>
@@ -4300,7 +4564,7 @@ function MetricTile({
         {label}
       </span>
       <strong>{value}</strong>
-      <small title={detail}>{compactText(detail, 26)}</small>
+      <small title={detail}>{compactText(detail, detailMaxLength)}</small>
     </div>
   );
 }

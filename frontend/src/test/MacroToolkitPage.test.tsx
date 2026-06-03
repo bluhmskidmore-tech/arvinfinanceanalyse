@@ -20,6 +20,30 @@ const MACRO_TOOLKIT_PAGE_PATH = resolve(
   "src/features/macro-toolkit/pages/MacroToolkitPage.tsx",
 );
 
+type MacroToolkitAnalysisEnvelope = Awaited<ReturnType<ApiClient["getMacroToolkitAnalysis"]>>;
+type MacroToolkitCapabilityResultFixture =
+  MacroToolkitAnalysisEnvelope["result"]["capability_results"][number];
+type MacroToolkitInputEvidenceFixture = NonNullable<
+  NonNullable<MacroToolkitCapabilityResultFixture["input_evidence"]>["inputs"]
+>[number];
+
+function requireInputEvidenceInputs(
+  result: MacroToolkitCapabilityResultFixture,
+): MacroToolkitInputEvidenceFixture[] {
+  const inputs = result.input_evidence?.inputs;
+  if (!inputs) {
+    throw new Error(`Missing input evidence for ${result.key}`);
+  }
+  return inputs;
+}
+
+function requireClosestElement<T extends Element>(element: T | null, label: string): T {
+  if (!element) {
+    throw new Error(`Missing ${label}`);
+  }
+  return element;
+}
+
 describe("MacroToolkitPage", () => {
   it("keeps the macro toolkit page off the monolithic API client entrypoint", () => {
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
@@ -850,7 +874,7 @@ describe("MacroToolkitPage", () => {
           if (result.key !== "crisis_score_cn") {
             return result;
           }
-          const systemInputs = result.input_evidence?.inputs.map((input) =>
+          const systemInputs = requireInputEvidenceInputs(result).map((input) =>
             input.field === "nanhua"
               ? {
                   ...input,
@@ -869,7 +893,7 @@ describe("MacroToolkitPage", () => {
             input_evidence: result.input_evidence
               ? {
                   ...result.input_evidence,
-                  inputs: systemInputs ?? result.input_evidence.inputs,
+                  inputs: systemInputs,
                   sources: ["fact_commodity_futures_daily"],
                 }
               : result.input_evidence,
@@ -877,7 +901,7 @@ describe("MacroToolkitPage", () => {
               ...result.result,
               input_evidence: {
                 ...rawInputEvidence,
-                inputs: systemInputs ?? result.input_evidence?.inputs ?? [],
+                inputs: systemInputs,
                 sources: ["fact_commodity_futures_daily"],
               },
             },
@@ -893,12 +917,233 @@ describe("MacroToolkitPage", () => {
     renderWorkbenchApp(["/macro-toolkit"], { client });
 
     const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
-    const commodityInputTile = within(crisisEvidence).getByText("商品期货输入").closest(".macro-toolkit-metric");
+    const commodityInputTile = requireClosestElement(
+      within(crisisEvidence).getByText("商品期货输入").closest(".macro-toolkit-metric"),
+      "commodity input tile",
+    );
     expect(commodityInputTile).toHaveTextContent("Nanhua commodity index");
     expect(commodityInputTile).toHaveTextContent("NH0100.NHF");
     expect(commodityInputTile).toHaveTextContent("NHCI.NH");
     expect(commodityInputTile.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NH0100.NHF"));
     expect(commodityInputTile.querySelector("small")).toHaveAttribute("title", expect.stringContaining("NHCI.NH"));
+  });
+
+  it("groups Crisis Score warning and missing inputs into actionable gaps", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const missingWarnings = ["HS300_MISSING", "DR007_MISSING", "NANHUA_MISSING", "AA_5Y_MISSING"];
+    const missingFields = new Set(["hs300", "dr007", "nanhua", "aa_5y"]);
+    const envelopeWithCrisisGaps = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        capability_results: analysisEnvelope.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const gapInputs = requireInputEvidenceInputs(result).map((input) =>
+            missingFields.has(input.field)
+              ? {
+                  ...input,
+                  available: false,
+                  row_count: 0,
+                  latest_date: null,
+                  source: null,
+                  value: null,
+                }
+              : input,
+          );
+          const rawInputEvidence =
+            result.result.input_evidence && typeof result.result.input_evidence === "object"
+              ? result.result.input_evidence
+              : {};
+          return {
+            ...result,
+            status: "degraded" as const,
+            warnings: missingWarnings,
+            input_evidence: result.input_evidence
+              ? {
+                  ...result.input_evidence,
+                  inputs: gapInputs,
+                  missing_inputs: missingWarnings,
+                }
+              : result.input_evidence,
+            result: {
+              ...result.result,
+              input_evidence: {
+                ...rawInputEvidence,
+                inputs: gapInputs,
+                missing_inputs: missingWarnings,
+              },
+            },
+          };
+        }),
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => envelopeWithCrisisGaps,
+    } as ApiClient;
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    expect(gapList).toHaveTextContent("股票风险输入");
+    expect(gapList).toHaveTextContent("HS300 close");
+    expect(gapList).toHaveTextContent("HS300_MISSING");
+    expect(gapList).toHaveTextContent("利率与流动性输入");
+    expect(gapList).toHaveTextContent("DR007");
+    expect(gapList).toHaveTextContent("DR007_MISSING");
+    expect(gapList).toHaveTextContent("商品期货输入");
+    expect(gapList).toHaveTextContent("Nanhua commodity index");
+    expect(gapList).toHaveTextContent("NANHUA_MISSING");
+    expect(gapList).toHaveTextContent("曲线与信用输入");
+    expect(gapList).toHaveTextContent("AA credit yield 5Y");
+    expect(gapList).toHaveTextContent("AA_5Y_MISSING");
+    expect(gapList).toHaveTextContent("缺失不按 0 处理");
+  });
+
+  it("offers available refresh actions from the Crisis Score gap list", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    const sourceBackfillCalls: Array<Parameters<ApiClient["refreshMacroSourceBackfill"]>[0]> = [];
+    const missingWarnings = ["NANHUA_MISSING", "NCD_3M_MISSING"];
+    const envelopeWithActionableGaps = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        data_health: {
+          ...analysisEnvelope.result.data_health!,
+          repair_items: (analysisEnvelope.result.data_health?.repair_items ?? []).map((item) =>
+            item.alias === "M0041813"
+              ? {
+                  ...item,
+                  scope: "full",
+                  reference_date: "2026-04-30",
+                  action: {
+                    kind: "source_backfill_required",
+                    label: "需要补齐来源数据",
+                    enabled: true,
+                    reason: "可触发宏观来源补齐；完成后重新运行完整分析确认。",
+                    analysis_detail: "full",
+                  },
+                }
+              : item,
+          ),
+        },
+        capability_results: analysisEnvelope.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const baseInputs = requireInputEvidenceInputs(result);
+          const gapInputs = [
+            ...baseInputs.map((input) =>
+              input.field === "nanhua"
+                ? {
+                    ...input,
+                    available: false,
+                    row_count: 0,
+                    latest_date: null,
+                    source: null,
+                    value: null,
+                }
+                : input,
+            ),
+            {
+              field: "ncd_3m",
+              label: "3M NCD",
+              aliases: ["M0041813"],
+              warning: "NCD_3M_MISSING",
+              required: true,
+              available: false,
+              row_count: 0,
+              latest_date: null,
+              series_id: "NCD.SHIBOR.3M",
+              source: null,
+              value: null,
+            },
+          ];
+          const rawInputEvidence =
+            result.result.input_evidence && typeof result.result.input_evidence === "object"
+              ? result.result.input_evidence
+              : {};
+          return {
+            ...result,
+            status: "degraded" as const,
+            warnings: missingWarnings,
+            input_evidence: result.input_evidence
+              ? {
+                  ...result.input_evidence,
+                  inputs: gapInputs,
+                  missing_inputs: missingWarnings,
+                }
+              : result.input_evidence,
+            result: {
+              ...result.result,
+              input_evidence: {
+                ...rawInputEvidence,
+                inputs: gapInputs,
+                missing_inputs: missingWarnings,
+              },
+            },
+          };
+        }),
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => envelopeWithActionableGaps,
+      refreshCommodityFutures: async (options) => {
+        refreshCalls.push(options);
+        return baseClient.refreshCommodityFutures(options);
+      },
+      refreshMacroSourceBackfill: async (options) => {
+        sourceBackfillCalls.push(options);
+        return {
+          result_meta: {
+            ...analysisEnvelope.result_meta,
+            result_kind: "macro_toolkit.source_backfill_refresh",
+          },
+          result: {
+            refresh: {
+              status: "completed",
+              alias: options.alias,
+              series_ids: ["NCD.SHIBOR.3M"],
+              total_added: 42,
+            },
+          },
+        };
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    await user.click(within(gapList).getByRole("button", { name: "按建议预估" }));
+    expect(refreshCalls[0]).toEqual({
+      endDate: "2026-04-30",
+      products: ["RB", "I", "AL", "AU"],
+      dryRun: true,
+    });
+    await waitFor(() => expect(gapList).toHaveTextContent("商品期货预估完成"));
+    expect(gapList).toHaveTextContent("预计可补齐最低样本");
+
+    await user.click(within(gapList).getByRole("button", { name: "需要补齐来源数据" }));
+    await waitFor(() =>
+      expect(sourceBackfillCalls).toEqual([
+        {
+          alias: "M0041813",
+          startDate: undefined,
+          endDate: "2026-04-30",
+          sources: undefined,
+        },
+      ]),
+    );
+    await waitFor(() => expect(gapList).toHaveTextContent("来源补齐完成：M0041813 新增 42 行"));
   });
 
   it("previews Crisis Score suggested commodity futures from the evidence panel", async () => {
@@ -914,7 +1159,7 @@ describe("MacroToolkitPage", () => {
           if (result.key !== "crisis_score_cn") {
             return result;
           }
-          const updatedInputs = result.input_evidence?.inputs.map((input) =>
+          const updatedInputs = requireInputEvidenceInputs(result).map((input) =>
             input.field === "nanhua"
               ? {
                   ...input,
@@ -944,7 +1189,7 @@ describe("MacroToolkitPage", () => {
             input_evidence: result.input_evidence
               ? {
                   ...result.input_evidence,
-                  inputs: updatedInputs ?? result.input_evidence.inputs,
+                  inputs: updatedInputs,
                   latest_dates: ["2026-06-01"],
                   sources: ["tushare"],
                 }
@@ -953,7 +1198,7 @@ describe("MacroToolkitPage", () => {
               ...result.result,
               input_evidence: {
                 ...rawInputEvidence,
-                inputs: updatedInputs ?? result.input_evidence?.inputs ?? [],
+                inputs: updatedInputs,
                 latest_dates: ["2026-06-01"],
                 sources: ["tushare"],
               },
