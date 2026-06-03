@@ -77,7 +77,9 @@ entry points. Before enabling any recurring timer, run the read-only
 `scripts/tushare_news_backup_timer_preflight.py --stage all` to review both
 pre-enable and post-enable gates in one report. Use
 `scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown`
-when the operator handoff needs Markdown text. A
+when the operator handoff needs Markdown text, or
+`scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap`
+when operations needs the external input gap packet. A
 `blocked` verdict means an owner, scheduler, write-window, rollback, page
 evidence, or enablement-packet gate is still open. Use
 `scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` before

@@ -177,7 +177,11 @@ Record that scheduler/job proof as `Timer evidence in go-live bundle`.
 
 When a preflight returns `blocked`, read `next_actions` in the JSON output. Each
 entry points to the document path and field group that operations must fill
-before rerunning the same preflight stage.
+before rerunning the same preflight stage. For the combined `--stage all`
+output, automation should prefer the machine-readable `ops_gap` grouping:
+`ops_gap.immediate_next_actions` lists the current `pre-enable` items to fill
+now, `ops_gap.deferred_post_enable_next_actions` lists the first-scheduled-run
+evidence to fill later, and `ops_gap.deferred_until` records the handoff point.
 
 ## Post-Refresh Validation
 

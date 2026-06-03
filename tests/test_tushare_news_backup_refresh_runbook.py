@@ -63,6 +63,9 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "Go-live evidence must no longer say `not enabled`" in runbook
     assert "Timer evidence in go-live bundle" in runbook
     assert "next_actions" in runbook
+    assert "ops_gap.immediate_next_actions" in runbook
+    assert "ops_gap.deferred_post_enable_next_actions" in runbook
+    assert "ops_gap.deferred_until" in runbook
 
 
 def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_page_path() -> None:
@@ -82,6 +85,7 @@ def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_p
     assert "scripts/tushare_news_backup_timer_preflight.py" in handoff
     assert "--stage all" in handoff
     assert "--format markdown" in handoff
+    assert "--format ops-gap" in handoff
     assert "--stage pre-enable" in handoff
     assert "--stage post-enable" in handoff
     assert "preflight returns `blocked`" in handoff
@@ -109,6 +113,7 @@ def test_tushare_news_backup_refresh_go_live_checklist_requires_evidence_before_
     assert "scripts/tushare_news_backup_timer_preflight.py" in checklist
     assert "--stage all" in checklist
     assert "--format markdown" in checklist
+    assert "--format ops-gap" in checklist
     assert "--stage pre-enable" in checklist
     assert "--stage post-enable" in checklist
     assert "returns `pass`" in checklist
@@ -226,6 +231,11 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "Set Enable timer to yes after pre-enable evidence is accepted" in status
     assert "rerun `--stage pre-enable` before creating the external timer" in status
     assert "After the first scheduled run, attach timer evidence" in status
+    assert "Activation Sequence" in status
+    assert "Immediate stage: `pre-enable`" in status
+    status_words = " ".join(status.split())
+    assert "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes." in status_words
+    assert "Do not create the external timer while `pre-enable` is blocked." in status
     assert "Already Verified Evidence Gates" in status
     assert "`checklist_exists`" in status
     assert "`page_evidence_json_confirms_read_only_fallback`" in status
@@ -241,6 +251,9 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "timer_evidence_filled" in status
     assert "post_enable_evidence_confirms_timer_enabled" in status
     assert "next_actions" in status
+    assert "ops_gap.immediate_next_actions" in status
+    assert "ops_gap.deferred_post_enable_next_actions" in status
+    assert "ops_gap.deferred_until" in status
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in status
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
     assert "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md" in status
@@ -281,6 +294,21 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         assert f"`{action['gate']}`" in status
         assert f"`{action['path']}`" in status
         assert action["action"] in status
+
+    assert [action["gate"] for action in all_stage["ops_gap"]["immediate_next_actions"]] == [
+        "owners_filled",
+        "boundary_confirmation_filled",
+        "timer_enablement_packet_filled",
+        "page_acceptance_signoff_filled",
+        "enable_timer_decision_yes",
+    ]
+    assert [
+        action["gate"]
+        for action in all_stage["ops_gap"]["deferred_post_enable_next_actions"]
+    ] == [
+        "timer_evidence_filled",
+        "post_enable_evidence_confirms_timer_enabled",
+    ]
 
 
 def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_enabling_timer() -> None:
@@ -325,3 +353,70 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
     ):
         assert marker in generated
         assert marker in packet
+
+
+def test_tushare_news_backup_timer_ops_gap_packet_matches_current_blockers_and_actions() -> None:
+    packet = TIMER_OPS_GAP_PACKET_PATH.read_text(encoding="utf-8")
+    module = _load_preflight_module()
+    report = module.build_timer_preflight_bundle(repo_root=ROOT)
+    generated = module.render_timer_ops_gap_markdown(report)
+
+    for marker in (
+        "## Current Blocking Items",
+        "### Pre-Enable",
+        "### Post-Enable",
+        "## Immediate `next_actions`",
+        "## Deferred Post-Enable `next_actions`",
+        "## Activation Sequence",
+        "Immediate stage: `pre-enable`",
+        "Do not create the external timer while `pre-enable` is blocked.",
+    ):
+        assert marker in generated
+        assert marker in packet
+
+    generated_words = " ".join(generated.split())
+    packet_words = " ".join(packet.split())
+    for marker in (
+        "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes.",
+        "After `pre-enable` passes, create the external timer outside this packet and collect first-run evidence.",
+    ):
+        assert marker in generated_words
+        assert marker in packet_words
+
+    assert "Blocking stages: `pre-enable`, `post-enable`" in generated
+    assert "Blocking stages: `pre-enable`, `post-enable`" in packet
+
+    pre_enable = report["reports"]["pre-enable"]
+    post_enable = report["reports"]["post-enable"]
+    for marker in (
+        f"Pre-enable summary: `{pre_enable['summary']['pass']} pass / {pre_enable['summary']['blocked']} blocked`",
+        f"Post-enable summary: `{post_enable['summary']['pass']} pass / {post_enable['summary']['blocked']} blocked`",
+    ):
+        assert marker in generated
+        assert marker in packet
+
+    for stage, stage_report in report["reports"].items():
+        for item in stage_report["blocking_items"]:
+            assert f"- `{item}`" in generated
+            assert f"- `{item}`" in packet
+
+        for action in stage_report["next_actions"]:
+            row = f"| `{action['gate']}` | `{action['path']}` | {action['action']} |"
+            assert row in generated
+            assert row in packet
+
+    generated_deferred = generated.split(
+        "## Deferred Post-Enable `next_actions`", maxsplit=1
+    )[1].split("## Required External Inputs", maxsplit=1)[0]
+    packet_deferred = packet.split(
+        "## Deferred Post-Enable `next_actions`", maxsplit=1
+    )[1].split("## Required External Inputs", maxsplit=1)[0]
+    for marker in (
+        "`owners_filled`",
+        "`boundary_confirmation_filled`",
+        "`timer_enablement_packet_filled`",
+        "`page_acceptance_signoff_filled`",
+        "`enable_timer_decision_yes`",
+    ):
+        assert marker not in generated_deferred
+        assert marker not in packet_deferred

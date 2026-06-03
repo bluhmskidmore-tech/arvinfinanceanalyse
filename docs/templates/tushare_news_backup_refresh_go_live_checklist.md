@@ -166,6 +166,12 @@ For operator handoff Markdown, run:
 python scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown
 ```
 
+For the external operations input gap packet, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
+```
+
 Decision:
 
 - Enable timer: `<yes/no>`

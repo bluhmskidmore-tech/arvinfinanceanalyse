@@ -128,5 +128,6 @@ def test_maintenance_doc_records_cleanup_and_parallelism_boundaries():
     assert "scripts/refresh_tushare_news_backup.py --dry-run" in doc
     assert "scripts/tushare_news_backup_timer_preflight.py --stage all" in doc
     assert "scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown" in doc
+    assert "scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap" in doc
     assert "/ui/news/choice-events/latest" in doc
     assert "reserved ingest routes remain reserved" in doc

@@ -516,6 +516,18 @@ def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) ->
     assert payload["reports"]["pre-enable"]["verdict"] == "pass"
     assert payload["reports"]["post-enable"]["verdict"] == "blocked"
     assert "timer_evidence_filled" in payload["reports"]["post-enable"]["blocking_items"]
+    assert payload["ops_gap"]["immediate_stage"] == "pre-enable"
+    assert payload["ops_gap"]["deferred_stage"] == "post-enable"
+    assert payload["ops_gap"]["deferred_until"] == "pre-enable pass and first scheduled run finishes"
+    assert [
+        action["gate"] for action in payload["ops_gap"]["immediate_next_actions"]
+    ] == []
+    assert [
+        action["gate"] for action in payload["ops_gap"]["deferred_post_enable_next_actions"]
+    ] == [
+        "timer_evidence_filled",
+        "post_enable_evidence_confirms_timer_enabled",
+    ]
 
 
 def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path, capsys) -> None:
@@ -539,6 +551,9 @@ def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path
     assert "Operator Fill Order" in output
     assert "Fill owner fields first" in output
     assert "After the first scheduled run, attach timer evidence" in output
+    assert "Activation Sequence" in output
+    assert "Immediate stage: `pre-enable`" in output
+    assert "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes." in output
     assert "Status timestamp:" in output
     assert "Already Verified Evidence Gates" in output
     assert "`checklist_exists`" in output
@@ -581,6 +596,12 @@ def test_timer_preflight_cli_can_render_ops_gap_packet(tmp_path: Path, capsys) -
     assert "Do not run a real Tushare refresh from this packet" in output
     assert "External timer remains disabled" in output
     assert "Current verdict: `blocked`" in output
+    assert "Blocking stages: `pre-enable`, `post-enable`" in output
+    assert "Pre-enable summary:" in output
+    assert "Post-enable summary:" in output
+    assert "## Activation Sequence" in output
+    assert "Immediate stage: `pre-enable`" in output
+    assert "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes." in output
     assert "Required External Inputs" in output
     assert "Credential owner" in output
     assert "Timer host" in output
@@ -591,3 +612,33 @@ def test_timer_preflight_cli_can_render_ops_gap_packet(tmp_path: Path, capsys) -
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in output
     assert "POST /ui/news/tushare-npr/ingest" in output
     assert "/ui/news/choice-events/latest" in output
+
+
+def test_timer_preflight_ops_gap_packet_lists_current_blockers_and_actions(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "all", "--format", "ops-gap"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "## Current Blocking Items" in output
+    assert "### Pre-Enable" in output
+    assert "- `owners_filled`" in output
+    assert "- `boundary_confirmation_filled`" in output
+    assert "### Post-Enable" in output
+    assert "- `timer_evidence_filled`" in output
+    assert "## Immediate `next_actions`" in output
+    assert "| `owners_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Credential owner" in output
+    assert "## Deferred Post-Enable `next_actions`" in output
+    assert "| `timer_evidence_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Enabled by, Enabled at, and Timer evidence after the first scheduled run. |" in output
+
+    deferred = output.split("## Deferred Post-Enable `next_actions`", maxsplit=1)[1]
+    deferred = deferred.split("## Required External Inputs", maxsplit=1)[0]
+    assert "`owners_filled`" not in deferred
+    assert "`boundary_confirmation_filled`" not in deferred
+    assert "`timer_enablement_packet_filled`" not in deferred
+    assert "`page_acceptance_signoff_filled`" not in deferred
+    assert "`enable_timer_decision_yes`" not in deferred

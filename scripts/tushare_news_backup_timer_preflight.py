@@ -24,6 +24,10 @@ DISALLOWED_INSTALL_COMMANDS = (
 PREFLIGHT_STAGES = ("pre-enable", "post-enable")
 CLI_STAGES = (*PREFLIGHT_STAGES, "all")
 OUTPUT_FORMATS = ("json", "markdown", "ops-gap")
+POST_ENABLE_ONLY_GATES = (
+    "timer_evidence_filled",
+    "post_enable_evidence_confirms_timer_enabled",
+)
 
 
 @dataclass(frozen=True)
@@ -296,6 +300,16 @@ def _next_actions(blocking_items: list[str]) -> list[dict[str, str]]:
     ]
 
 
+def _filter_next_actions(
+    next_actions: list[dict[str, str]],
+    *,
+    allowed_gates: set[str] | None = None,
+) -> list[dict[str, str]]:
+    if allowed_gates is None:
+        return list(next_actions)
+    return [action for action in next_actions if action["gate"] in allowed_gates]
+
+
 def build_timer_preflight_report(
     *,
     repo_root: str | Path = ROOT,
@@ -407,6 +421,18 @@ def build_timer_preflight_bundle(*, repo_root: str | Path = ROOT) -> dict[str, o
         "verdict": "pass" if not blocking_stages else "blocked",
         "blocking_stages": blocking_stages,
         "reports": reports,
+        "ops_gap": {
+            "immediate_stage": "pre-enable",
+            "deferred_stage": "post-enable",
+            "deferred_until": "pre-enable pass and first scheduled run finishes",
+            "immediate_next_actions": _filter_next_actions(
+                reports["pre-enable"]["next_actions"],
+            ),
+            "deferred_post_enable_next_actions": _filter_next_actions(
+                reports["post-enable"]["next_actions"],
+                allowed_gates=set(POST_ENABLE_ONLY_GATES),
+            ),
+        },
     }
 
 
@@ -450,6 +476,114 @@ def _passed_gate_names(reports: dict[str, object]) -> list[str]:
         if isinstance(gate, dict) and gate.get("name") in common
     ]
     return first_stage_order
+
+
+def _stage_title(stage: str) -> str:
+    return stage.replace("-", " ").title().replace(" ", "-")
+
+
+def _stage_reports_for_ops_gap(report: dict[str, object]) -> list[tuple[str, dict[str, object]]]:
+    if report.get("stage") == "all":
+        reports = report["reports"]
+        if not isinstance(reports, dict):
+            raise TypeError("all-stage preflight report must contain reports")
+        return [
+            (stage, reports[stage])
+            for stage in PREFLIGHT_STAGES
+            if isinstance(reports.get(stage), dict)
+        ]
+    return [(str(report["stage"]), report)]
+
+
+def _format_ops_gap_blocking_items(report: dict[str, object]) -> list[str]:
+    rows = ["## Current Blocking Items", ""]
+    for stage, stage_report in _stage_reports_for_ops_gap(report):
+        rows.extend((f"### {_stage_title(stage)}", ""))
+        blocking_items = stage_report["blocking_items"]
+        if blocking_items:
+            rows.extend(f"- `{item}`" for item in blocking_items)
+        else:
+            rows.append("- `none`")
+        rows.append("")
+    return rows
+
+
+def _format_ops_gap_summary(report: dict[str, object]) -> list[str]:
+    if report.get("stage") != "all":
+        return []
+    reports = report["reports"]
+    if not isinstance(reports, dict):
+        raise TypeError("all-stage preflight report must contain reports")
+    pre_enable = reports["pre-enable"]
+    post_enable = reports["post-enable"]
+    return [
+        "Blocking stages: " + _format_blocking_stages(report["blocking_stages"]),
+        "",
+        "Pre-enable summary: " + _format_summary(pre_enable),
+        "",
+        "Post-enable summary: " + _format_summary(post_enable),
+        "",
+    ]
+
+
+def _format_ops_gap_next_actions(report: dict[str, object]) -> list[str]:
+    if report.get("stage") == "all":
+        ops_gap = report["ops_gap"]
+        if not isinstance(ops_gap, dict):
+            raise TypeError("all-stage preflight report must contain ops_gap")
+        rows = []
+        for title, key in (
+            ("## Immediate `next_actions`", "immediate_next_actions"),
+            ("## Deferred Post-Enable `next_actions`", "deferred_post_enable_next_actions"),
+        ):
+            rows.extend((title, "", "| Gate | Path | Action |", "| --- | --- | --- |"))
+            next_actions = ops_gap[key]
+            if next_actions:
+                rows.extend(
+                    f"| `{action['gate']}` | `{action['path']}` | {action['action']} |"
+                    for action in next_actions
+                )
+            else:
+                rows.append("| `none` | `none` | No action required. |")
+            rows.append("")
+        return rows
+
+    rows = [
+        "## Current `next_actions`",
+        "",
+        "| Gate | Path | Action |",
+        "| --- | --- | --- |",
+    ]
+    next_actions = report["next_actions"]
+    if next_actions:
+        rows.extend(
+            f"| `{action['gate']}` | `{action['path']}` | {action['action']} |"
+            for action in next_actions
+        )
+    else:
+        rows.append("| `none` | `none` | No action required. |")
+    rows.append("")
+    return rows
+
+
+def _format_ops_gap_activation_sequence(report: dict[str, object]) -> list[str]:
+    rows = [
+        "## Activation Sequence",
+        "",
+        "Immediate stage: `pre-enable`",
+        "",
+        "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes.",
+        "",
+    ]
+    if report.get("stage") == "all":
+        rows.extend(
+            (
+                "Do not create the external timer while `pre-enable` is blocked.",
+                "After `pre-enable` passes, create the external timer outside this packet and collect first-run evidence.",
+                "",
+            )
+        )
+    return rows
 
 
 def render_timer_preflight_markdown(report: dict[str, object]) -> str:
@@ -505,6 +639,7 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
         "5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.",
         "6. After the first scheduled run, attach timer evidence and rerun `--stage post-enable`.",
         "",
+        *_format_ops_gap_activation_sequence(report),
     ]
 
     for stage in PREFLIGHT_STAGES:
@@ -583,6 +718,10 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             "",
             f"Current verdict: `{report['verdict']}`",
             "",
+            *_format_ops_gap_summary(report),
+            *_format_ops_gap_activation_sequence(report),
+            *_format_ops_gap_blocking_items(report),
+            *_format_ops_gap_next_actions(report),
             "## Required External Inputs",
             "",
             "Fill these before rerunning `pre-enable`:",

@@ -17,6 +17,60 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-g
 
 Current verdict: `blocked`
 
+Blocking stages: `pre-enable`, `post-enable`
+
+Pre-enable summary: `6 pass / 5 blocked`
+
+Post-enable summary: `6 pass / 7 blocked`
+
+## Activation Sequence
+
+Immediate stage: `pre-enable`
+
+Post-enable inputs remain deferred until `pre-enable` returns `pass` and the
+first scheduled run finishes.
+
+Do not create the external timer while `pre-enable` is blocked.
+After `pre-enable` passes, create the external timer outside this packet and
+collect first-run evidence.
+
+## Current Blocking Items
+
+### Pre-Enable
+
+- `owners_filled`
+- `boundary_confirmation_filled`
+- `timer_enablement_packet_filled`
+- `page_acceptance_signoff_filled`
+- `enable_timer_decision_yes`
+
+### Post-Enable
+
+- `owners_filled`
+- `boundary_confirmation_filled`
+- `timer_enablement_packet_filled`
+- `page_acceptance_signoff_filled`
+- `enable_timer_decision_yes`
+- `timer_evidence_filled`
+- `post_enable_evidence_confirms_timer_enabled`
+
+## Immediate `next_actions`
+
+| Gate | Path | Action |
+| --- | --- | --- |
+| `owners_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Credential owner, Schedule owner, Page acceptance owner, Rollback owner, and Evidence location. |
+| `boundary_confirmation_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Mark each boundary row yes and attach evidence without secrets. |
+| `timer_enablement_packet_filled` | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Fill timer host, repository root, Python executable, log path, refresh window, write-window note, and packet owners. |
+| `page_acceptance_signoff_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Page evidence owner sign-off. |
+| `enable_timer_decision_yes` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set Enable timer to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
+
+## Deferred Post-Enable `next_actions`
+
+| Gate | Path | Action |
+| --- | --- | --- |
+| `timer_evidence_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Enabled by, Enabled at, and Timer evidence after the first scheduled run. |
+| `post_enable_evidence_confirms_timer_enabled` | `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md` | Update External timer enablement to enabled and fill Timer evidence in go-live bundle. |
+
 ## Required External Inputs
 
 Fill these before rerunning `pre-enable`:

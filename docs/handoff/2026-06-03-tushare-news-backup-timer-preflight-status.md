@@ -22,6 +22,11 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all
 
 This prints both the `pre-enable` and `post-enable` reports in one read-only
 bundle. It is for review only and does not enable the timer.
+Automation should consume the JSON `ops_gap` grouping from this command:
+`ops_gap.immediate_next_actions` contains the current `pre-enable` items,
+`ops_gap.deferred_post_enable_next_actions` contains only first-scheduled-run
+evidence items, and `ops_gap.deferred_until` records when deferred items become
+actionable.
 
 Markdown handoff command:
 
@@ -54,6 +59,17 @@ Post-enable summary: `6 pass / 7 blocked`
 5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.
 6. After the first scheduled run, attach timer evidence and rerun
    `--stage post-enable`.
+
+## Activation Sequence
+
+Immediate stage: `pre-enable`
+
+Post-enable inputs remain deferred until `pre-enable` returns `pass` and the
+first scheduled run finishes.
+
+Do not create the external timer while `pre-enable` is blocked.
+After `pre-enable` passes, create the external timer outside this packet and
+collect first-run evidence.
 
 ## Pre-Enable Status
 
