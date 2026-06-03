@@ -5061,6 +5061,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "查看血缘" }));
     expect(screen.getByText("已选择的参数")).toBeInTheDocument();
+    expect(screen.getByText("已选择建议动作 · 可继续提问")).toBeInTheDocument();
     expect(screen.getAllByText(/fact_risk_tensor/).length).toBeGreaterThanOrEqual(2);
     expect(moreSuggestedActions).not.toHaveAttribute("open");
     expect(lineageActionButton).not.toBeVisible();

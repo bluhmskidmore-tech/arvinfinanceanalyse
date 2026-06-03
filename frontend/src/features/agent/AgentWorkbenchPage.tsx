@@ -2764,6 +2764,7 @@ export function EmbeddedAgentCopilot({
       ...turn,
       activeSuggestedActionPayload: action.payload,
     }));
+    setComposerAssistHint("已选择建议动作 · 可继续提问");
   }
 
   async function copyAgentAnswer(turn: AgentConversationTurn) {
