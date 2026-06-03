@@ -246,6 +246,57 @@ function buildLedgerResidualDiagnosticRows(props: {
   });
 }
 
+function buildDetailResidualAccountRows(props: {
+  byAccount: LedgerPnlSummaryByAccount[];
+  detailRows: LedgerPnlDataItem[];
+}) {
+  const detailByAccount = new Map<string, { yuan: number; hasValue: boolean }>();
+  for (const row of props.detailRows) {
+    const key = row.account_code;
+    const yuan = ledgerMoneyYuan(row.monthly_pnl);
+    if (!key || yuan === null) {
+      continue;
+    }
+    const current = detailByAccount.get(key) ?? { yuan: 0, hasValue: false };
+    current.yuan += yuan;
+    current.hasValue = true;
+    detailByAccount.set(key, current);
+  }
+
+  return props.byAccount
+    .map((row) => {
+      const summaryYuan = ledgerMoneyYuan(row.total_pnl);
+      const detail = detailByAccount.get(row.account_code);
+      const detailYuan = detail?.hasValue ? detail.yuan : 0;
+      const diff = summaryYuan === null ? null : summaryYuan - detailYuan;
+      return {
+        accountCode: row.account_code,
+        accountName: row.account_name,
+        summaryYuan,
+        detailYuan,
+        diff,
+        judgment:
+          diff === null
+            ? "待校验"
+            : Math.abs(diff) < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+              ? "已闭合"
+              : diff > 0
+                ? `缺明细 ${formatYuanAsYi(diff)}`
+                : `明细多 ${formatYuanAsYi(Math.abs(diff))}`,
+      };
+    })
+    .filter((row): row is {
+      accountCode: string;
+      accountName: string;
+      summaryYuan: number | null;
+      detailYuan: number;
+      diff: number | null;
+      judgment: string;
+    } => row.diff === null || Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN)
+    .sort((left, right) => Math.abs(right.diff ?? 0) - Math.abs(left.diff ?? 0))
+    .slice(0, 5);
+}
+
 function buildLedgerExplainabilityModel(props: {
   totalPnl: LedgerMoneyValue | null | undefined;
   byCurrency: LedgerPnlSummaryByCurrency[];
@@ -297,6 +348,10 @@ function buildLedgerExplainabilityModel(props: {
       currencyYuan,
       accountYuan,
       detailYuan,
+    }),
+    detailResidualAccountRows: buildDetailResidualAccountRows({
+      byAccount: props.byAccount,
+      detailRows: props.detailRows,
     }),
     residualYuan,
     formalBoundary:
@@ -395,6 +450,41 @@ function LedgerExplainabilityPanel(props: {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div
+            data-testid="ledger-pnl-detail-residual-account-table"
+            className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
+          >
+            <div className="ledger-pnl-analysis__table-title">明细残差候选科目</div>
+            {props.model.detailResidualAccountRows.length > 0 ? (
+              <table className="ledger-pnl-analysis__residual-table">
+                <thead>
+                  <tr>
+                    <th>科目</th>
+                    <th>科目汇总金额</th>
+                    <th>明细合计金额</th>
+                    <th>差异金额</th>
+                    <th>诊断判断</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.model.detailResidualAccountRows.map((row) => (
+                    <tr key={row.accountCode}>
+                      <td>
+                        {row.accountCode} {row.accountName}
+                      </td>
+                      <td>{formatYuanAsYi(row.summaryYuan)}</td>
+                      <td>{formatYuanAsYi(row.detailYuan)}</td>
+                      <td>{formatYuanAsYi(row.diff)}</td>
+                      <td>{row.judgment}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="ledger-pnl-analysis__empty">暂无科目级明细残差候选</div>
+            )}
           </div>
 
           <div className="ledger-pnl-analysis__tables">

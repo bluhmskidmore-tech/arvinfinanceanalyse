@@ -365,6 +365,11 @@
   white-space: nowrap;
 }
 
+.ledger-pnl-analysis__residual-table td:first-child {
+  min-width: 160px;
+  overflow-wrap: anywhere;
+}
+
 .ledger-pnl-analysis__table-head-row {
   background: var(--moss-color-neutral-50);
 }
