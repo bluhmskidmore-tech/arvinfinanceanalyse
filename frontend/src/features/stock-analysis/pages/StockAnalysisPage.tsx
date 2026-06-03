@@ -1052,6 +1052,18 @@ function resolveStrategyBacktestSignalStats(payload: LivermoreCandidateHistoryPa
   );
 }
 
+function strategyDisplayLabel(label: string | null | undefined, signalKind?: string | null): string {
+  const value = label?.trim() || signalKind?.trim() || "";
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  if (strategyBacktestLabels[normalized]) return strategyBacktestLabels[normalized];
+  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "策略待确认";
+  return value || "策略待确认";
+}
+
+function strategyBacktestKindLabel(kind: string): string {
+  return strategyDisplayLabel(kind);
+}
+
 function buildStrategyBacktestRows(payload: LivermoreCandidateHistoryPayload | null) {
   const summary = payload?.summary ?? null;
   const decisionStats = summary?.decision_usable_stats ?? null;
@@ -1064,7 +1076,7 @@ function buildStrategyBacktestRows(payload: LivermoreCandidateHistoryPayload | n
     const statsByHorizon = bySignalStats[kind] ?? {};
     return {
       kind,
-      label: strategyBacktestLabels[kind] ?? kind,
+      label: strategyBacktestKindLabel(kind),
       count: bySignalKind[kind] ?? 0,
       stats: {
         return_1d: backtestStatsText(statsByHorizon.return_1d),
@@ -1125,7 +1137,7 @@ function buildStrategyBacktestMarketStateRows(payload: LivermoreCandidateHistory
         return {
           marketState,
           kind,
-          label: strategyBacktestLabels[kind] ?? kind,
+          label: strategyBacktestKindLabel(kind),
           stats: {
             return_1d: backtestStatsText(statsByHorizon.return_1d),
             return_5d: backtestStatsText(statsByHorizon.return_5d),
@@ -1159,17 +1171,19 @@ function resolvePanelQueryState(input: {
 function buildStrategyPriorityHeadline(rows: StrategyPriorityRow[]): string {
   const sufficientRows = rows.filter((row) => row.sample_status === "sufficient");
   if (rows.length === 0 || sufficientRows.length === 0) {
-    return "当前状态样本不足";
+    return "样本不足";
   }
   const priorityCandidates = sufficientRows.filter(
     (row) => row.priority_label === "优先复核" && (row.diagnostics?.risk_flags ?? []).length === 0,
   );
   const priorityRows = priorityCandidates.filter((row) => row.diagnostics?.maturity?.status !== "narrow");
   if (priorityRows.length > 0) {
-    return `优先复核：${priorityRows.map((row) => row.strategy_label).join("、")}`;
+    return `优先复核：${priorityRows.map((row) => strategyDisplayLabel(row.strategy_label, row.signal_kind)).join("、")}`;
   }
   if (priorityCandidates.length > 0) {
-    return `优先观察：${priorityCandidates.map((row) => row.strategy_label).join("、")}`;
+    return `优先观察：${priorityCandidates
+      .map((row) => strategyDisplayLabel(row.strategy_label, row.signal_kind))
+      .join("、")}`;
   }
   return "当前状态降权观察";
 }
@@ -1201,6 +1215,18 @@ function localizeRankRangeLabel(
   return value || fallback;
 }
 
+function strategyRiskFlagLabel(label: string | null | undefined) {
+  const value = label?.trim();
+  if (!value) return "风险待确认";
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    long_window_risk: "长窗口风险",
+  };
+  if (labels[normalized]) return labels[normalized];
+  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "风险待确认";
+  return value;
+}
+
 function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
   const diagnostics = row.diagnostics;
   if (!diagnostics) return [];
@@ -1220,7 +1246,7 @@ function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
   }
   for (const flag of diagnostics.risk_flags ?? []) {
     if (flag.label) {
-      labels.push(flag.label);
+      labels.push(strategyRiskFlagLabel(flag.label));
     }
   }
   return Array.from(new Set(labels)).slice(0, 4);
@@ -1301,6 +1327,18 @@ function strategyOptimizationReasonLabel(row: StrategyOptimizationSummary | Stra
 function strategyOptimizationSliceLabel(slice: StrategyOptimizationSlice): string {
   const dimension = slice.dimension.trim().toLowerCase();
   const bucket = slice.bucket.trim();
+  const normalizedBucket = bucket.toLowerCase().replace(/[\s-]+/g, "_");
+  const normalizedLabel = slice.label.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (
+    dimension.includes("external_vendor") ||
+    dimension.includes("vendor_") ||
+    normalizedBucket.includes("external_vendor") ||
+    normalizedBucket.includes("vendor_") ||
+    normalizedLabel.includes("external_vendor") ||
+    normalizedLabel.includes("vendor_")
+  ) {
+    return "切片待确认";
+  }
   if (dimension === "rank" && /^\d+\s*-\s*\d+$/.test(bucket)) {
     return localizeRankRangeLabel(bucket, null, null, "切片待补");
   }
@@ -2277,7 +2315,9 @@ export default function StockAnalysisPage() {
     return buildDeepAnalysisGateSummary({
       gateState,
       themeUnsupportedReason: themeBreakoutUnsupported?.reason,
-      priorityStrategyLabel: topPriority?.strategy_label ?? null,
+      priorityStrategyLabel: topPriority
+        ? strategyDisplayLabel(topPriority.strategy_label, topPriority.signal_kind)
+        : null,
     });
   }, [gateState, themeBreakoutUnsupported?.reason, strategyPriorityRows]);
 
@@ -3404,7 +3444,7 @@ export default function StockAnalysisPage() {
                     </div>
 
                     {!consensusSummary.hasAnyStrategy ? (
-                      <p className="stock-analysis-page__empty">{consensusReviewPanelSummary?.detail ?? "策略池暂无候选。"}</p>
+                      <p className="stock-analysis-page__empty">{consensusReviewPanelSummary?.detail ?? "候选 0"}</p>
                     ) : consensusFirstScreenItems.length === 0 ? (
                       <div
                         className="grid gap-2 sm:grid-cols-3"
@@ -4036,7 +4076,7 @@ export default function StockAnalysisPage() {
                                       key={`${row.market_state}:${row.signal_kind}`}
                                       data-testid={`first-screen-priority-row-${row.market_state}-${row.signal_kind}`}
                                     >
-                                      <td>{row.strategy_label}</td>
+                                      <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                                       <td>{row.priority_label}</td>
                                       <td className="stock-analysis-page__table-number">
                                         {formatPriorityScore(row.priority_score)}
@@ -4095,7 +4135,7 @@ export default function StockAnalysisPage() {
                                       key={row.summary_key}
                                       data-testid={`first-screen-optimization-row-${row.summary_key}`}
                                     >
-                                      <td>{row.strategy_label}</td>
+                                      <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                                       <td>{row.recommendation.priority_label}</td>
                                       <td className="stock-analysis-page__table-number">
                                         {backtestStatsText(
@@ -5554,7 +5594,7 @@ export default function StockAnalysisPage() {
                                   key={`${row.market_state}:${row.signal_kind}`}
                                   data-testid={`stock-analysis-market-priority-row-${row.market_state}-${row.signal_kind}`}
                                 >
-                                  <td>{row.strategy_label}</td>
+                                  <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                                   <td>{row.priority_label}</td>
                                   <td className="stock-analysis-page__table-number" data-testid="stock-analysis-market-priority-score">
                                     {formatPriorityScore(row.priority_score)}
@@ -5581,14 +5621,14 @@ export default function StockAnalysisPage() {
                         </table>
                       </div>
                     ) : (
-                      <p className="stock-analysis-page__empty">当前状态样本不足。</p>
+                      <p className="stock-analysis-page__empty">样本不足</p>
                     )}
                     {strategyMaturityRow && strategyMaturity && strategyMaturitySnapshots.length > 0 ? (
                       <div data-testid="stock-analysis-candidate-maturity">
                         <div className="stock-analysis-page__filter-status">
                           <span>当前候选成熟进度</span>
                           <strong>
-                            {strategyMaturityRow.strategy_label}
+                            {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
                             {strategyMaturityRow.diagnostics?.priority_scope_label
                               ? ` / ${strategyMaturityRow.diagnostics.priority_scope_label}`
                               : ""}
@@ -5628,7 +5668,9 @@ export default function StockAnalysisPage() {
                         </div>
                         <div className="stock-analysis-page__filter-status">
                           <span>候选明细</span>
-                          <strong>{strategyMaturityRow.strategy_label}</strong>
+                          <strong>
+                            {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
+                          </strong>
                           <small>仅展开当前成熟进度表内可见快照，按快照日期和候选排名排序。</small>
                         </div>
                         {strategyMaturityDetailQuery.isLoading ? (
@@ -5862,7 +5904,7 @@ export default function StockAnalysisPage() {
                           <tbody>
                             {strategyOptimizationRows.map((row) => (
                               <tr key={row.summary_key}>
-                                <td>{row.strategy_label}</td>
+                                <td>{strategyDisplayLabel(row.strategy_label, row.signal_kind)}</td>
                                 <td>{row.recommendation.priority_label}</td>
                                 <td className="stock-analysis-page__table-number">
                                   {backtestStatsText(strategyOptimizationPrimaryStats(row, strategyOptimizationPayload))}
@@ -5892,7 +5934,10 @@ export default function StockAnalysisPage() {
                       </strong>
                       <small>
                         {strategyOptimizationSlices.weakest
-                          ? `${strategyOptimizationSlices.weakest.strategy_label} ${strategyOptimizationSliceLabel(
+                          ? `${strategyDisplayLabel(
+                              strategyOptimizationSlices.weakest.strategy_label,
+                              strategyOptimizationSlices.weakest.signal_kind,
+                            )} ${strategyOptimizationSliceLabel(
                               strategyOptimizationSlices.weakest,
                             )}：${strategyOptimizationSlices.weakest.recommendation.priority_label}`
                           : "切片样本不足，暂不做降权判断。"}
@@ -5919,7 +5964,7 @@ export default function StockAnalysisPage() {
                                   <td>
                                     {label}：{strategyOptimizationSliceLabel(slice)}
                                   </td>
-                                  <td>{slice.strategy_label}</td>
+                                  <td>{strategyDisplayLabel(slice.strategy_label, slice.signal_kind)}</td>
                                   <td>{slice.recommendation.priority_label}</td>
                                   <td className="stock-analysis-page__table-number">
                                     {backtestStatsText(strategyOptimizationPrimaryStats(slice, strategyOptimizationPayload))}

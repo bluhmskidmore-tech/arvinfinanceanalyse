@@ -745,6 +745,9 @@ export function localizeStockBackendText(
   const familyLabel = inputFamily ? localizeStockDataFamily(inputFamily) : "";
   const displayValue = scrubUnknownBackendFamily(value, inputFamily, familyLabel);
   if (isUnknownBackendCodeOnly(value, familyLabel)) return "说明待确认";
+  if ((lower.includes("external_vendor") || lower.includes("vendor_")) && /pending|guard|unavailable/.test(lower)) {
+    return "风险待确认";
+  }
   const availableSample = value.match(/\b(T\+\d+)\s+available\s+(\d+)\s*\/\s*(\d+)/i);
   const matureSnapshotSample = value.match(/\b(T\+\d+)\s+matured?\s+snapshots?\s+(\d+)\s*\/\s*(\d+)/i);
   const optimizationSample = value.match(/\b(T\+\d+)\s+sample\s+(\d+)/i);
@@ -752,9 +755,9 @@ export function localizeStockBackendText(
   const optimizationWinRate = value.match(/\bwin\s+rate\s*([+-]?\d+(?:\.\d+)?%)/i);
   if (lower.includes("current market sample") && lower.includes("insufficient")) {
     const sampleText = availableSample
-      ? `${availableSample[1].toUpperCase()} 可用样本 ${availableSample[2]}/${availableSample[3]}，`
+      ? `${availableSample[1].toUpperCase()} ${availableSample[2]}/${availableSample[3]}`
       : "";
-    return `当前状态样本不足：${sampleText}仅作观察。`;
+    return sampleText ? `样本不足 ${sampleText}` : "样本不足";
   }
   if (matureSnapshotSample) {
     const suffix = lower.includes("waiting for more mature days") ? "等待更多成熟日。" : "可作为强优先复核。";

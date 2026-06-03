@@ -1245,6 +1245,7 @@ describe("StockAnalysisPage", () => {
     expect(sectorStrip).toHaveTextContent("首位");
     expect(sectorStrip).toHaveTextContent("尾部");
     expect(sectorStrip).toHaveTextContent("成分");
+    expect(within(sectorPanel).getByTestId("stock-analysis-sector-strength-chart")).toBeInTheDocument();
 
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("复核队列");
@@ -1256,6 +1257,12 @@ describe("StockAnalysisPage", () => {
     expect(await screen.findByTestId("stock-analysis-observation-preview")).toHaveTextContent("多策略观察池");
     expect(await screen.findByTestId("stock-analysis-strategy-lens")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-review-queue-ranking-chart")).toHaveTextContent("队列排序");
+    expect(await screen.findByTestId("stock-analysis-risk-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-deep-zone")).toBeInTheDocument();
+    expect(await screen.findByTestId("stock-analysis-deep-zone-gate-summary")).toBeInTheDocument();
+    expect(page).not.toHaveTextContent("策略池暂无候选");
+    expect(page).not.toHaveTextContent("当前状态样本不足");
+    expect(page).not.toHaveTextContent("暂无优化诊断结果");
 
     const user = userEvent.setup();
     await user.click(screen.getByTestId("stock-analysis-supply-details-toggle"));
@@ -3322,7 +3329,17 @@ describe("StockAnalysisPage", () => {
             state: "HOT",
           },
         }),
-        strategyOptimization: buildStrategyOptimizationPayload(),
+        strategyOptimization: buildStrategyOptimizationPayload({
+          slices: [
+            {
+              ...buildStrategyOptimizationPayload().slices[0],
+              slice_key: "factor_screen:vendor:alpha",
+              dimension: "external_vendor_dimension",
+              bucket: "external_vendor_alpha_bucket",
+              label: "external_vendor_alpha_bucket",
+            },
+          ],
+        }),
       }),
     });
 
@@ -3336,8 +3353,9 @@ describe("StockAnalysisPage", () => {
     expect(card).not.toHaveTextContent("priority review ranking");
     expect(card).toHaveTextContent("题材突变");
     expect(card).toHaveTextContent("样本不足");
-    expect(card).toHaveTextContent("第 21-30 名");
+    expect(card).toHaveTextContent("切片待确认");
     expect(card).not.toHaveTextContent("rank 21-30");
+    expect(card).not.toHaveTextContent("external_vendor_alpha_bucket");
     expect(card).toHaveTextContent("降权观察");
     expect(card).toHaveTextContent("当前最新日期收益");
     expect(card).toHaveTextContent("待成熟");
@@ -3404,9 +3422,9 @@ describe("StockAnalysisPage", () => {
 
     const summary = await screen.findByTestId("stock-analysis-market-priority-summary");
     await waitFor(() => expect(summary).toHaveTextContent("T+1"), { timeout: 3_000 });
-    expect(summary).toHaveTextContent("当前状态样本不足");
     expect(summary).toHaveTextContent("样本不足");
-    expect(summary).toHaveTextContent("T+5 可用样本 6/20，仅作观察");
+    expect(summary).toHaveTextContent("样本不足");
+    expect(summary).toHaveTextContent("样本不足 T+5 6/20");
     expect(summary).not.toHaveTextContent("Current market sample is insufficient");
     expect(summary).not.toHaveTextContent("observation only");
     expect(summary).not.toHaveTextContent("优先复核");
@@ -3483,6 +3501,32 @@ describe("StockAnalysisPage", () => {
                     win_rate: null,
                   },
                 },
+                external_vendor_alpha_signal: {
+                  return_1d: {
+                    available_count: 3,
+                    missing_count: 0,
+                    positive_count: 2,
+                    non_positive_count: 1,
+                    avg_return: 0.0123,
+                    win_rate: 0.666667,
+                  },
+                  return_5d: {
+                    available_count: 2,
+                    missing_count: 1,
+                    positive_count: 1,
+                    non_positive_count: 1,
+                    avg_return: -0.004,
+                    win_rate: 0.5,
+                  },
+                  return_20d: {
+                    available_count: 0,
+                    missing_count: 3,
+                    positive_count: 0,
+                    non_positive_count: 0,
+                    avg_return: null,
+                    win_rate: null,
+                  },
+                },
               },
               by_market_state_signal_kind_horizon_stats: {
                 WARM: {
@@ -3506,6 +3550,32 @@ describe("StockAnalysisPage", () => {
                     return_20d: {
                       available_count: 0,
                       missing_count: 36,
+                      positive_count: 0,
+                      non_positive_count: 0,
+                      avg_return: null,
+                      win_rate: null,
+                    },
+                  },
+                  external_vendor_alpha_signal: {
+                    return_1d: {
+                      available_count: 3,
+                      missing_count: 0,
+                      positive_count: 2,
+                      non_positive_count: 1,
+                      avg_return: 0.0123,
+                      win_rate: 0.666667,
+                    },
+                    return_5d: {
+                      available_count: 2,
+                      missing_count: 1,
+                      positive_count: 1,
+                      non_positive_count: 1,
+                      avg_return: -0.004,
+                      win_rate: 0.5,
+                    },
+                    return_20d: {
+                      available_count: 0,
+                      missing_count: 3,
                       positive_count: 0,
                       non_positive_count: 0,
                       avg_return: null,
@@ -3555,6 +3625,9 @@ describe("StockAnalysisPage", () => {
     const stockCandidateRow = screen.getByTestId("stock-analysis-strategy-backtest-stock_candidate");
     expect(stockCandidateRow).toHaveTextContent("50.0% / -1.11% / 4条");
     expect(stockCandidateRow).toHaveTextContent("待补");
+    const externalSignalRow = screen.getByTestId("stock-analysis-strategy-backtest-external_vendor_alpha_signal");
+    expect(externalSignalRow).toHaveTextContent("策略待确认");
+    expect(externalSignalRow).not.toHaveTextContent("external_vendor_alpha_signal");
 
     const marketStateTable = await screen.findByTestId("stock-analysis-strategy-backtest-market-state");
     expect(marketStateTable).toHaveTextContent(/市场状态/);
@@ -3565,6 +3638,11 @@ describe("StockAnalysisPage", () => {
     expect(warmRow.getByText("趋势突破")).toBeInTheDocument();
     expect(warmRow.getByText("75.0% / +3.21% / 12条")).toBeInTheDocument();
     expect(warmRow.getByText("50.0% / -1.11% / 4条")).toBeInTheDocument();
+    const externalWarmRow = within(
+      screen.getByTestId("stock-analysis-strategy-backtest-market-state-WARM-external_vendor_alpha_signal"),
+    );
+    expect(externalWarmRow.getByText("策略待确认")).toBeInTheDocument();
+    expect(externalWarmRow.queryByText("external_vendor_alpha_signal")).not.toBeInTheDocument();
 
     const hotRow = within(screen.getByTestId("stock-analysis-strategy-backtest-market-state-HOT-factor_screen"));
     expect(hotRow.getByText(/偏热/)).toBeInTheDocument();
