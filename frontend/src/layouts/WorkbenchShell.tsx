@@ -473,57 +473,17 @@ export function WorkbenchShell() {
       }}
     >
       <aside
-        className="workbench-shell-aside"
-        style={{
-          display: "grid",
-          alignContent: "start",
-          gap: 12,
-          padding: isMinimalMainChrome ? "12px" : "14px",
-          border: `1px solid ${shellTokens.railBorder}`,
-          borderRadius: 20,
-          boxShadow: shellTokens.shadowRail,
-          background: shellTokens.railBg,
-        }}
+        className={`workbench-shell-aside workbench-shell-rail${
+          isMinimalMainChrome ? " workbench-shell-rail--minimal" : ""
+        }`}
       >
-        <div
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: "4px 2px 12px",
-            borderBottom: `1px solid ${shellTokens.railBorder}`,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                placeItems: "center",
-                width: 36,
-                height: 36,
-                borderRadius: 12,
-                background: shellTokens.railSurfaceTint,
-                color: shellTokens.railBrandText,
-                fontWeight: 700,
-                boxShadow: "none",
-              }}
-            >
+        <div className="workbench-shell-rail-brand-wrap">
+          <div className="workbench-shell-rail-brand-row">
+            <div className="workbench-shell-rail-mark">
               M
             </div>
-            <div style={{ display: "grid", gap: 0, minWidth: 0 }}>
-              <span
-                style={{
-                  color: shellTokens.railBrandText,
-                  fontWeight: 700,
-                  fontSize: 16,
-                  letterSpacing: "-0.02em",
-                }}
-              >
+            <div className="workbench-shell-rail-title-stack">
+              <span className="workbench-shell-rail-product-name">
                 MOSS
               </span>
             </div>
@@ -703,90 +663,26 @@ export function WorkbenchShell() {
         {showShellTerminalBar ? (
         <header
           data-testid="workbench-terminal-bar"
-          style={{
-            display: "grid",
-            gap: 10,
-            padding: "14px 18px",
-            border: `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: 22,
-            background:
-              "linear-gradient(180deg, rgba(250,252,253,0.96) 0%, rgba(242,246,249,0.98) 100%)",
-            boxShadow: "0 10px 22px rgba(15, 23, 42, 0.06)",
-          }}
+          className="workbench-terminal-bar"
         >
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
+          <div className="workbench-terminal-bar-split">
             <section
               data-testid="workbench-page-context"
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: 10,
-                minWidth: 0,
-              }}
+              className="workbench-page-context-shell"
             >
-              <div
-                style={{
-                  color: shellTokens.colorTextPrimary,
-                  fontSize: "clamp(28px, 3.2vw, 36px)",
-                  lineHeight: 1.02,
-                  fontWeight: 700,
-                  letterSpacing: "-0.045em",
-                }}
-              >
+              <div className="workbench-page-title-display">
                 {currentSection.label}
               </div>
-              <span
-                style={{
-                  color: shellTokens.colorTextSecondary,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "rgba(255,255,255,0.82)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
+              <span className="workbench-shell-report-chip">
                 {"\u62a5\u544a\u65e5"} {shellReportDate}
               </span>
             </section>
 
             <section
               data-testid="workbench-operator-zone"
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                justifyContent: "flex-end",
-                gap: 8,
-                minWidth: 0,
-              }}
+              className="workbench-operator-zone-shell"
             >
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "5px 10px",
-                  borderRadius: 999,
-                  border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "rgba(241, 245, 249, 0.92)",
-                  color: shellTokens.colorTextSecondary,
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}
-              >
+              <span className="workbench-operator-pill-quiet">
                 <UserOutlined />
                 <span>{"\u7ba1\u7406\u89c6\u89d2"}</span>
               </span>
@@ -800,20 +696,9 @@ export function WorkbenchShell() {
                       key={`terminal-${item.key}`}
                       to={item.to}
                       data-active={active ? "true" : "false"}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "4px 2px",
-                        color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        borderBottom: active
-                          ? `1px solid ${shellTokens.colorBorderStrong}`
-                          : "1px solid transparent",
-                      }}
+                      className="workbench-terminal-utility-navlink"
                     >
-                      <span style={{ fontSize: 11 }}>{item.icon}</span>
+                      <span className="workbench-terminal-utility-icon">{item.icon}</span>
                       <span>{item.label}</span>
                     </NavLink>
                   );
@@ -824,55 +709,20 @@ export function WorkbenchShell() {
           {showShellMarketTicker ? (
             <section
               data-testid="workbench-market-ticker"
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: 10,
-                minWidth: 0,
-                paddingTop: 2,
-              }}
+              className="workbench-market-ticker-shell"
             >
-              <span
-                style={{
-                  color: shellTokens.colorTextMuted,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                }}
-              >
+              <span className="workbench-market-ticker-label">
                 市场快讯
               </span>
               {shellTickerItems.map((item, index) => (
                 <div
                   key={item.key}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "baseline",
-                    gap: 5,
-                    minWidth: 0,
-                  }}
+                  className="workbench-market-ticker-item"
                 >
-                  <span
-                    style={{
-                      color: shellTokens.colorTextMuted,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      letterSpacing: "0.03em",
-                    }}
-                  >
+                  <span className="workbench-market-ticker-meta">
                     {item.label}
                   </span>
-                  <strong
-                    style={{
-                      color: shellTokens.colorTextPrimary,
-                      fontSize: 15,
-                      lineHeight: 1,
-                      fontWeight: 700,
-                      fontVariantNumeric: "tabular-nums",
-                    }}
-                  >
+                  <strong className="workbench-market-ticker-strong">
                     {item.value}
                   </strong>
                   <span
@@ -885,13 +735,7 @@ export function WorkbenchShell() {
                     {item.delta}
                   </span>
                   {index < shellTickerItems.length - 1 ? (
-                    <span
-                      style={{
-                        width: 1,
-                        height: 10,
-                        background: shellTokens.colorBorderSoft,
-                      }}
-                    />
+                    <span className="workbench-market-ticker-rule" />
                   ) : null}
                 </div>
               ))}
@@ -951,55 +795,21 @@ export function WorkbenchShell() {
               <>
                 <section
                   data-testid="portfolio-workbench-lead"
-                  style={{
-                    flex: "1 1 0",
-                    display: "grid",
-                    gap: 18,
-                    minWidth: 0,
-                  }}
+                  className="portfolio-workbench-lead"
                 >
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <span
-                      style={{
-                        color: shellTokens.colorTextMuted,
-                        fontSize: 12,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}
-                    >
+                  <div className="portfolio-workbench-lead__copy-stack">
+                    <span className="portfolio-workbench-lead__eyebrow">
                       组合工作台
                     </span>
-                    <div
-                      style={{
-                        fontSize: "clamp(24px, 2.6vw, 30px)",
-                        lineHeight: 1.18,
-                        fontWeight: 700,
-                        letterSpacing: "-0.03em",
-                        color: shellTokens.colorTextPrimary,
-                        maxWidth: 700,
-                      }}
-                    >
+                    <div className="portfolio-workbench-lead__title">
                       组合状态先看错配，再看损益，最后定位仓位与归因
                     </div>
-                    <div
-                      style={{
-                        maxWidth: 760,
-                        color: shellTokens.colorTextSecondary,
-                        fontSize: 14,
-                        lineHeight: 1.8,
-                      }}
-                    >
+                    <div className="portfolio-workbench-lead__description">
                       当前工作台聚合 {currentGroup.label} 的核心页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把占位页或分析口径结果误读成正式结论。
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                      gap: 8,
-                    }}
-                  >
+                  <div className="portfolio-workbench-lead__stats-grid">
                     {[
                       {
                         label: "可访问页面",
@@ -1019,28 +829,20 @@ export function WorkbenchShell() {
                     ].map((item) => (
                       <div
                         key={item.label}
-                        style={{
-                          display: "grid",
-                          gap: 4,
-                          padding: "12px 14px",
-                          borderRadius: 16,
-                          border: `1px solid ${shellTokens.colorBorderSoft}`,
-                          background: "rgba(255,255,255,0.84)",
-                        }}
+                        className="portfolio-workbench-lead__stat-card"
                       >
-                        <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
+                        <span className="portfolio-workbench-lead__stat-label">
                           {item.label}
                         </span>
                         <strong
+                          className="portfolio-workbench-lead__stat-value"
                           style={{
-                            color: shellTokens.colorTextPrimary,
                             fontSize: item.value.length > 8 ? 16 : 24,
-                            lineHeight: 1.2,
                           }}
                         >
                           {item.value}
                         </strong>
-                        <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
+                        <span className="portfolio-workbench-lead__stat-detail">
                           {item.detail}
                         </span>
                       </div>
@@ -1050,41 +852,18 @@ export function WorkbenchShell() {
 
                 <aside
                   data-testid="portfolio-workbench-flow"
-                  style={{
-                    flex: "0 0 min(360px, 100%)",
-                    display: "grid",
-                    gap: 10,
-                    padding: 16,
-                    borderRadius: 20,
-                    border: `1px solid ${shellTokens.colorBorderSoft}`,
-                    background:
-                      "linear-gradient(180deg, rgba(235, 241, 246, 0.84) 0%, rgba(255,255,255,0.9) 100%)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.78)",
-                  }}
+                  className="portfolio-workbench-flow"
                 >
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <span
-                      style={{
-                        color: shellTokens.colorTextMuted,
-                        fontSize: 12,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}
-                    >
+                  <div className="portfolio-workbench-flow__header">
+                    <span className="portfolio-workbench-flow__eyebrow">
                       Suggested Flow
                     </span>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 700,
-                        color: shellTokens.colorTextPrimary,
-                      }}
-                    >
+                    <div className="portfolio-workbench-flow__title">
                       先用正式结果做结论，再下钻解释原因
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gap: 10 }}>
+                  <div className="portfolio-workbench-flow__list">
                     {portfolioLeadSections.map((item, index) => {
                       const active = pathMatchesWorkbenchSection(item.section.path, pathnameResolved);
 
@@ -1092,51 +871,27 @@ export function WorkbenchShell() {
                         <NavLink
                           key={item.section.key}
                           to={item.section.path}
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            padding: "12px 14px",
-                            borderRadius: 16,
-                            background: active ? shellTokens.colorAccentSoft : "rgba(255,255,255,0.76)",
-                            border: active
-                              ? `1px solid ${shellTokens.colorBorderStrong}`
-                              : `1px solid ${shellTokens.colorBorderSoft}`,
-                            color: shellTokens.colorTextPrimary,
-                          }}
+                          className="portfolio-workbench-flow__link"
+                          data-active={active ? "true" : "false"}
                         >
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <span
-                              style={{
-                                display: "grid",
-                                placeItems: "center",
-                                width: 28,
-                                height: 28,
-                                borderRadius: 999,
-                                background: active ? shellTokens.colorAccent : shellTokens.colorBgMuted,
-                                color: active ? "#ffffff" : shellTokens.colorTextSecondary,
-                                fontSize: 12,
-                                fontWeight: 700,
-                              }}
-                            >
+                          <div className="portfolio-workbench-flow__row">
+                            <span className="portfolio-workbench-flow__step">
                               {index + 1}
                             </span>
-                            <span style={{ flex: 1, fontWeight: 700 }}>{item.title}</span>
+                            <span className="portfolio-workbench-flow__link-title">{item.title}</span>
                             <span
+                              className="portfolio-workbench-flow__badge"
                               style={{
                                 ...sectionBadgeStyle(item.section),
-                                borderRadius: 999,
-                                padding: "2px 8px",
-                                fontSize: 11,
-                                fontWeight: 700,
                               }}
                             >
                               {item.section.readinessLabel}
                             </span>
                           </div>
-                          <div style={{ color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.6 }}>
+                          <div className="portfolio-workbench-flow__detail">
                             {item.detail}
                           </div>
-                          <div style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
+                          <div className="portfolio-workbench-flow__meta">
                             {item.section.label} · {item.section.readinessNote}
                           </div>
                         </NavLink>
@@ -1147,54 +902,28 @@ export function WorkbenchShell() {
               </>
             ) : (
               <>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <span
-                    style={{
-                      color: shellTokens.colorTextMuted,
-                      fontSize: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                    }}
-                  >
+                <div className="workbench-shell-status-summary">
+                  <span className="workbench-shell-status-summary__eyebrow">
                     一期状态
                   </span>
-                  <div
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 700,
-                      color: shellTokens.colorTextPrimary,
-                    }}
-                  >
+                  <div className="workbench-shell-status-summary__title">
                     当前只突出可验证的真实读链路
                   </div>
-                  <div style={{ color: shellTokens.colorTextSecondary, fontSize: 14, lineHeight: 1.7 }}>
+                  <div className="workbench-shell-status-summary__description">
                     当前工作台：{currentGroup.label}。页面切换收进组内导航，避免在壳层堆满入口。
                   </div>
                 </div>
 
-                <div
-                  style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}
-                >
+                <div className="workbench-shell-status-meta">
                   <span
+                    className="workbench-shell-status-meta__badge"
                     style={{
                       ...sectionBadgeStyle(currentSection),
-                      borderRadius: 999,
-                      padding: "6px 12px",
-                      fontSize: 12,
-                      fontWeight: 700,
                     }}
                   >
                     {currentSection.label} · {currentSection.readinessLabel}
                   </span>
-                  <span
-                    style={{
-                      maxWidth: 420,
-                      color: shellTokens.colorTextSecondary,
-                      fontSize: 13,
-                      lineHeight: 1.6,
-                      textAlign: "right",
-                    }}
-                  >
+                  <span className="workbench-shell-status-meta__note">
                     {currentSection.readinessNote}
                   </span>
                 </div>
@@ -1220,49 +949,23 @@ export function WorkbenchShell() {
           {showPortfolioDecisionBoard ? (
             <section
               data-testid="portfolio-workbench-board"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 14,
-                paddingBottom: 18,
-                borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
-              }}
+              className="portfolio-workbench-board"
             >
               {portfolioBoard.map((stage) => (
                 <article
                   key={stage.title}
-                  style={{
-                    display: "grid",
-                    gap: 14,
-                    padding: "18px 18px 16px",
-                    borderRadius: 24,
-                    border: `1px solid ${shellTokens.colorBorderSoft}`,
-                    background: "linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(245,247,244,0.92) 100%)",
-                  }}
+                  className="portfolio-workbench-board__stage"
                 >
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <span
-                      style={{
-                        color: shellTokens.colorTextMuted,
-                        fontSize: 12,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}
-                    >
+                  <div className="portfolio-workbench-board__stage-header">
+                    <span className="portfolio-workbench-board__stage-title">
                       {stage.title}
                     </span>
-                    <div
-                      style={{
-                        color: shellTokens.colorTextSecondary,
-                        fontSize: 13,
-                        lineHeight: 1.7,
-                      }}
-                    >
+                    <div className="portfolio-workbench-board__stage-description">
                       {stage.description}
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gap: 10 }}>
+                  <div className="portfolio-workbench-board__section-list">
                     {stage.sections.map((section) => {
                       const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
 
@@ -1270,30 +973,23 @@ export function WorkbenchShell() {
                         <NavLink
                           key={section.key}
                           to={section.path}
-                          style={{
-                            display: "grid",
-                            gap: 4,
-                            paddingBottom: 10,
-                            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
-                            color: shellTokens.colorTextPrimary,
-                          }}
+                          className="portfolio-workbench-board__section-link"
                         >
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontSize: 15 }}>{iconMap[section.icon]}</span>
-                            <span style={{ flex: 1, fontWeight: 700 }}>{section.label}</span>
+                          <div className="portfolio-workbench-board__section-row">
+                            <span className="portfolio-workbench-board__section-icon">
+                              {iconMap[section.icon]}
+                            </span>
+                            <span className="portfolio-workbench-board__section-title">{section.label}</span>
                             <span
+                              className="portfolio-workbench-board__section-badge"
                               style={{
                                 ...sectionBadgeStyle(section),
-                                borderRadius: 999,
-                                padding: "2px 8px",
-                                fontSize: 11,
-                                fontWeight: 700,
                               }}
                             >
                               {active ? "当前页" : section.readinessLabel}
                             </span>
                           </div>
-                          <div style={{ color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.6 }}>
+                          <div className="portfolio-workbench-board__section-description">
                             {section.description}
                           </div>
                         </NavLink>
@@ -1311,37 +1007,18 @@ export function WorkbenchShell() {
           !isModuleHomePage ? (
             <section
               data-testid="workbench-section-subnav"
-              style={{
-                display: "grid",
-                gap: 12,
-                paddingBottom: 18,
-                borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
-              }}
+              className="workbench-section-subnav"
             >
-              <div style={{ display: "grid", gap: 4 }}>
-                <span
-                  style={{
-                    color: shellTokens.colorTextMuted,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                  }}
-                >
+              <div className="workbench-section-subnav__header">
+                <span className="workbench-section-subnav__eyebrow">
                   {isPortfolioGroup ? "全部已开放页面" : "当前工作台页面"}
                 </span>
-                <div
-                  style={{
-                    color: shellTokens.colorTextPrimary,
-                    fontSize: 18,
-                    fontWeight: 700,
-                  }}
-                >
+                <div className="workbench-section-subnav__title">
                   {currentGroup.label}
                 </div>
               </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <div className="workbench-section-subnav__links">
                 {currentGroupSections.map((section) => {
                   const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
 
@@ -1351,7 +1028,7 @@ export function WorkbenchShell() {
                       to={section.path}
                       style={groupSectionPillStyle(active)}
                     >
-                      <span style={{ fontSize: 14 }}>{iconMap[section.icon]}</span>
+                      <span className="workbench-section-subnav__icon">{iconMap[section.icon]}</span>
                       <span>{section.label}</span>
                     </NavLink>
                   );
@@ -1363,24 +1040,21 @@ export function WorkbenchShell() {
           {currentSection.readiness !== "live" ? (
             <section
               data-testid="workbench-readiness-banner"
+              className="workbench-notice"
               style={{
-                borderRadius: 18,
                 border: `1px solid ${shellTokens.colorBorderSoft}`,
                 background:
                   currentSection.readiness === "placeholder" ? "#faf7ff" : "#fff8f1",
                 color: shellTokens.colorTextPrimary,
-                padding: 18,
-                display: "grid",
-                gap: 8,
               }}
             >
-              <div style={{ fontWeight: 700 }}>
+              <div className="workbench-notice__title">
                 {currentSection.readiness === "placeholder"
                   ? "当前页面仍是占位壳层"
                   : "当前页面尚未物化真实数据链路"}
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.6 }}>{currentSection.readinessNote}</div>
-              <div style={{ fontSize: 13, color: shellTokens.colorTextMuted }}>
+              <div className="workbench-notice__body">{currentSection.readinessNote}</div>
+              <div className="workbench-notice__hint">
                 如需先查看可验证的数据页面，请优先使用当前工作台中的已开放子页面。
               </div>
             </section>
@@ -1389,21 +1063,18 @@ export function WorkbenchShell() {
           {currentSection.governanceStatus === "temporary-exception" ? (
             <section
               data-testid="workbench-governance-banner"
+              className="workbench-notice"
               style={{
-                borderRadius: 18,
                 border: `1px solid ${shellTokens.colorBorderWarning}`,
                 background: shellTokens.colorBgWarningSoft,
                 color: shellTokens.colorTextPrimary,
-                padding: 18,
-                display: "grid",
-                gap: 8,
               }}
             >
-              <div style={{ fontWeight: 700 }}>临时例外</div>
-              <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+              <div className="workbench-notice__title">临时例外</div>
+              <div className="workbench-notice__body">
                 {currentSection.governanceBanner ?? currentSection.readinessNote}
               </div>
-              <div style={{ fontSize: 13, color: shellTokens.colorTextMuted }}>
+              <div className="workbench-notice__hint">
                 第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为已完全治理的页面。
               </div>
             </section>
