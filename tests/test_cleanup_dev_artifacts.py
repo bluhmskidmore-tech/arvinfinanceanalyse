@@ -122,3 +122,9 @@ def test_maintenance_doc_records_cleanup_and_parallelism_boundaries():
     assert "MOSS_DEV_WORKER_PROCESSES" in doc
     assert "read/vendor queue" in doc
     assert "materialize/write queue" in doc
+    assert "docs/tushare_news_backup_refresh_runbook.md" in doc
+    assert "docs/templates/tushare_news_backup_refresh_scheduler_handoff.md" in doc
+    assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in doc
+    assert "scripts/refresh_tushare_news_backup.py --dry-run" in doc
+    assert "/ui/news/choice-events/latest" in doc
+    assert "reserved ingest routes remain reserved" in doc

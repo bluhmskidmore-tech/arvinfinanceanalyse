@@ -56,3 +56,19 @@ Serial or explicitly locked lanes:
 Future throughput work should use queue separation instead of global worker
 expansion: a `read/vendor queue` may scale out, while the
 `materialize/write queue` stays single-writer or uses an explicit write lock.
+
+## Operator Runbooks
+
+Tushare news backup refresh for the homepage policy/funding card is documented
+as an operator workflow, not a homepage write path:
+
+- Runbook: `docs/tushare_news_backup_refresh_runbook.md`
+- Scheduler handoff template:
+  `docs/templates/tushare_news_backup_refresh_scheduler_handoff.md`
+- Go-live checklist:
+  `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`
+
+Keep the homepage read-only on `/ui/news/choice-events/latest`; use
+`scripts/refresh_tushare_news_backup.py --dry-run` before any trusted operator
+refresh. The reserved ingest routes remain reserved and are not maintenance
+entry points.

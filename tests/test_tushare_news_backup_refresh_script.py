@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import duckdb
@@ -171,5 +172,37 @@ def test_refresh_tushare_news_backup_dry_run_profiles_current_backup_without_act
             "blank_payload_rows": 0,
         },
     ]
+    assert actor.fn_calls == []
+    assert actor.send_calls == []
+
+
+def test_refresh_tushare_news_backup_cli_dry_run_emits_json_without_actor_call(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = _load_script_module()
+    actor = _FakeActor()
+    monkeypatch.setattr(module, "ingest_tushare_news_to_choice_news", actor)
+    missing_db = tmp_path / "missing.duckdb"
+
+    exit_code = module.main(
+        [
+            "--duckdb-path",
+            str(missing_db),
+            "--news-src",
+            "sina",
+            "--dry-run",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["status"] == "dry_run"
+    assert payload["would_call"]["duckdb_path"] == str(missing_db)
+    assert payload["would_call"]["news_src"] == "sina"
+    assert payload["current_backup_state"] == {
+        "status": "missing_database",
+        "duckdb_path": str(missing_db),
+        "topics": [],
+    }
     assert actor.fn_calls == []
     assert actor.send_calls == []

@@ -100,6 +100,22 @@ Expected output:
 
 Then check worker logs and rerun dry-run to verify landed rows.
 
+## Scheduling Handoff
+
+If operations wants a recurring refresh, use
+`docs/templates/tushare_news_backup_refresh_scheduler_handoff.md` as the
+handoff checklist.
+
+The timer should run this script or enqueue the same actor from trusted
+operations automation. It must not schedule the homepage, open the reserved
+ingest routes, or change scheduler/cache/auth/database base layers as part of
+this page closure.
+
+Before enabling a recurring timer, complete
+`docs/templates/tushare_news_backup_refresh_go_live_checklist.md` and attach the
+dry-run, first-run, post-run dry-run, and homepage evidence to the operations
+ticket or log bundle.
+
 ## Post-Refresh Validation
 
 Run dry-run again:
