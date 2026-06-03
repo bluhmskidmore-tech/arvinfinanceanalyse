@@ -304,9 +304,32 @@ def _period_returns_by_period(
     factors_by_date: dict[str, pd.DataFrame],
 ) -> dict[tuple[str, str], pd.Series]:
     returns_by_period: dict[tuple[str, str], pd.Series] = {}
+    if not periods:
+        return returns_by_period
+
+    stock_codes_by_period: dict[tuple[str, str], list[str]] = {}
+    boundary_dates: set[str] = set()
+    stock_codes: set[str] = set()
     for start_date, end_date in periods:
         universe = factors_by_date[start_date]
-        returns_by_period[(start_date, end_date)] = _simple_returns(conn, start_date, end_date, list(universe.index))
+        period_codes = [str(stock_code) for stock_code in universe.index]
+        stock_codes_by_period[(start_date, end_date)] = period_codes
+        boundary_dates.update((start_date, end_date))
+        stock_codes.update(period_codes)
+
+    price_frame = _period_boundary_price_frame(
+        conn,
+        sorted(boundary_dates),
+        sorted(stock_codes),
+    )
+    price_pivot = _period_boundary_price_pivot(price_frame)
+    for start_date, end_date in periods:
+        returns_by_period[(start_date, end_date)] = _simple_returns_from_price_pivot(
+            price_pivot,
+            start_date,
+            end_date,
+            stock_codes_by_period[(start_date, end_date)],
+        )
     return returns_by_period
 
 
@@ -572,22 +595,52 @@ def _simple_returns(
 ) -> pd.Series:
     if not stock_codes:
         return pd.Series(dtype="float64")
-    frame = conn.execute(
+    price_frame = _period_boundary_price_frame(conn, [start_date, end_date], stock_codes)
+    return _simple_returns_from_price_pivot(
+        _period_boundary_price_pivot(price_frame),
+        start_date,
+        end_date,
+        stock_codes,
+    )
+
+
+def _period_boundary_price_frame(
+    conn: duckdb.DuckDBPyConnection,
+    trade_dates: list[str],
+    stock_codes: list[str],
+) -> pd.DataFrame:
+    if not trade_dates or not stock_codes:
+        return pd.DataFrame(columns=["stock_code", "trade_date", "close_value"])
+    return conn.execute(
         """
         select stock_code, trade_date, close_value
         from choice_stock_daily_observation
-        where trade_date in (?, ?)
+        where trade_date = any(?)
           and stock_code = any(?)
         """,
-        [start_date, end_date, stock_codes],
+        [trade_dates, stock_codes],
     ).df()
+
+
+def _period_boundary_price_pivot(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
-        return pd.Series(dtype="float64")
+        return pd.DataFrame()
     pivot = frame.pivot(index="stock_code", columns="trade_date", values="close_value")
     pivot.columns = [str(column)[:10] for column in pivot.columns]
-    if start_date not in pivot.columns or end_date not in pivot.columns:
+    return pivot
+
+
+def _simple_returns_from_price_pivot(
+    frame: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+    stock_codes: list[str],
+) -> pd.Series:
+    if not stock_codes or frame.empty:
         return pd.Series(dtype="float64")
-    returns = pivot[end_date] / pivot[start_date] - 1.0
+    if start_date not in frame.columns or end_date not in frame.columns:
+        return pd.Series(dtype="float64")
+    returns = frame[end_date].reindex(stock_codes) / frame[start_date].reindex(stock_codes) - 1.0
     return pd.to_numeric(returns, errors="coerce").replace([math.inf, -math.inf], pd.NA).dropna()
 
 
