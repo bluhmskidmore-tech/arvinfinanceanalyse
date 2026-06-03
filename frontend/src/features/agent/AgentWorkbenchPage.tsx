@@ -1508,6 +1508,8 @@ export function EmbeddedAgentCopilot({
       return nextPaths;
     });
     setComposerAssistHint("已调整固定仓库顺序 · 可继续提问");
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
   }
 
   function updateConversationTurn(
