@@ -2785,6 +2785,9 @@ export function EmbeddedAgentCopilot({
     }
 
     setCopyFeedback({ turnId: turn.id, status });
+    if (status === "success") {
+      setComposerAssistHint("已复制回答 · 可以继续追问");
+    }
     focusComposerInput();
     if (copyFeedbackTimerRef.current !== null) {
       window.clearTimeout(copyFeedbackTimerRef.current);

@@ -2370,6 +2370,7 @@ describe("AgentWorkbenchPage", () => {
       (answerPanel?.compareDocumentPosition(toolbar as Element) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(screen.getByText("已复制回答 · 可以继续追问")).toBeInTheDocument();
   });
 
   it("returns the copy action to idle after feedback expires", async () => {
