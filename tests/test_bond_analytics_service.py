@@ -1019,6 +1019,12 @@ def test_bond_analytics_dv01_limit_config_status_reports_ready_missing_and_inval
     assert result["missing_count"] == 2
     assert result["invalid_count"] == 1
     assert result["overall_status"] == "incomplete"
+    assert result["config_stream"] == "bond_dv01_limit_config"
+    assert result["required_accounting_classes"] == ["AC", "OCI", "TPL", "all"]
+    assert "limit_dv01" in result["required_fields"]
+    assert "limit_source_version" in result["required_fields"]
+    assert result["missing_accounting_classes"] == ["AC", "all"]
+    assert result["invalid_accounting_classes"] == ["TPL"]
     assert rows_by_class["OCI"]["status"] == "ready"
     assert _numeric_raw(rows_by_class["OCI"]["limit_dv01"]) == Decimal("1200")
     assert rows_by_class["OCI"]["limit_source"] == "risk_committee_minutes"

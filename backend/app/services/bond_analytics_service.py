@@ -2193,6 +2193,16 @@ DEFAULT_DV01_HEDGE_UNIT = Decimal("100000")
 DEFAULT_DV01_HEDGE_TARGET = Decimal("4000000")
 DV01_ACTION_SHOCKS = (Decimal("10"), Decimal("25"))
 DV01_LIMIT_CONFIG_STREAM = "bond_dv01_limit_config"
+DV01_LIMIT_CONFIG_REQUIRED_FIELDS = (
+    "accounting_class",
+    "limit_dv01",
+    "warning_dv01",
+    "hedge_target_dv01",
+    "limit_source",
+    "limit_source_version",
+    "limit_rule_version",
+    "limit_effective_date",
+)
 DV01_ACTION_FORMAL_LIMIT_NOTE = "已接入正式 DV01 限额；按限额配置计算使用率、剩余额度和动作建议。"
 DV01_ACTION_THRESHOLD_NOTE = "页面预警阈值，不代表正式限额；未接入正式限额源时仅作参考。"
 DV01_PAGE_THRESHOLD_RULE_VERSION = "rv_dv01_page_threshold_v3"
@@ -2372,6 +2382,8 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
     configured_count = sum(1 for row in rows if row.status == "ready")
     missing_count = sum(1 for row in rows if row.status == "missing")
     invalid_count = sum(1 for row in rows if row.status == "invalid")
+    missing_accounting_classes = [row.accounting_class for row in rows if row.status == "missing"]
+    invalid_accounting_classes = [row.accounting_class for row in rows if row.status == "invalid"]
     warnings: list[str] = []
     if missing_count:
         warnings.append("部分会计分类未配置正式 DV01 限额。")
@@ -2381,6 +2393,11 @@ def get_dv01_limit_config_status(report_date: date) -> dict:
         {
             "report_date": report_date,
             "overall_status": "ready" if configured_count == len(DV01_LIMIT_CONFIG_CLASSES) else "incomplete",
+            "config_stream": DV01_LIMIT_CONFIG_STREAM,
+            "required_accounting_classes": list(DV01_LIMIT_CONFIG_CLASSES),
+            "required_fields": list(DV01_LIMIT_CONFIG_REQUIRED_FIELDS),
+            "missing_accounting_classes": missing_accounting_classes,
+            "invalid_accounting_classes": invalid_accounting_classes,
             "configured_count": configured_count,
             "missing_count": missing_count,
             "invalid_count": invalid_count,

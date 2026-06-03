@@ -86,6 +86,10 @@ function nullableText(value: string | null | undefined): string {
   return value?.trim() || "—";
 }
 
+function joinDisplayList(values: string[] | null | undefined): string {
+  return values && values.length > 0 ? values.join("、") : "无";
+}
+
 function hasDv01RiskData(data: DV01RiskResponse): boolean {
   return (
     data.position_count > 0 ||
@@ -763,6 +767,9 @@ function DV01LimitConfigStatusPanel({
             />
           ) : null}
           <div className={styles.movementSummaryGrid}>
+            <KpiCard label="正式配置流" value={nullableText(data.config_stream)} />
+            <KpiCard label="待补分类" value={joinDisplayList(data.missing_accounting_classes)} />
+            <KpiCard label="无效分类" value={joinDisplayList(data.invalid_accounting_classes)} />
             <KpiCard label="会计分类" value={selectedRow.accounting_class} />
             <KpiCard label="配置状态" value={limitConfigStatusLabel(selectedRow.status)} />
             <KpiCard label="正式限额 DV01" value={formatNumeric(selectedRow.limit_dv01)} />
@@ -772,6 +779,9 @@ function DV01LimitConfigStatusPanel({
             <KpiCard label="来源版本" value={nullableText(selectedRow.limit_source_version)} />
             <KpiCard label="规则版本" value={nullableText(selectedRow.limit_rule_version)} />
             <KpiCard label="生效日" value={limitEffectiveDateLabel(selectedRow.limit_effective_date)} />
+          </div>
+          <div className={styles.reconciliationMeta}>
+            必填字段 {joinDisplayList(data.required_fields)}
           </div>
           <div className={styles.reconciliationMeta}>{selectedRow.message}</div>
         </>

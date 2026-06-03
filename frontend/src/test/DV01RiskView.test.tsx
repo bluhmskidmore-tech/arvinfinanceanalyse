@@ -383,6 +383,20 @@ function limitConfigStatusPayload(
     configured_count: 1,
     missing_count: 3,
     invalid_count: 0,
+    config_stream: "bond_dv01_limit_config",
+    required_accounting_classes: ["AC", "OCI", "TPL", "all"],
+    required_fields: [
+      "accounting_class",
+      "limit_dv01",
+      "warning_dv01",
+      "hedge_target_dv01",
+      "limit_source",
+      "limit_source_version",
+      "limit_rule_version",
+      "limit_effective_date",
+    ],
+    missing_accounting_classes: ["AC", "TPL", "all"],
+    invalid_accounting_classes: [],
     rows: [
       {
         accounting_class: "AC",
@@ -651,6 +665,13 @@ describe("DV01RiskView", () => {
     expect(panel).toHaveTextContent("risk_committee_minutes");
     expect(panel).toHaveTextContent("risk_minutes_2026_03");
     expect(panel).toHaveTextContent("1,200,000");
+    expect(panel).toHaveTextContent("正式配置流");
+    expect(panel).toHaveTextContent("bond_dv01_limit_config");
+    expect(panel).toHaveTextContent("待补分类");
+    expect(panel).toHaveTextContent("AC、TPL、all");
+    expect(panel).toHaveTextContent("必填字段");
+    expect(panel).toHaveTextContent("limit_dv01");
+    expect(panel).toHaveTextContent("limit_effective_date");
   });
 
   it("renders formal DV01 limit source version and effective date", async () => {
