@@ -2141,9 +2141,16 @@ function CrisisCommodityShadowDecisionPanel({ coverage }: { coverage: CrisisComm
         </div>
         <div className="macro-toolkit-crisis-promotion-rule-pack__grid">
           {promotionItems.map((item) => (
-            <small key={item.field}>
-              {item.label} · {commodityPromotionRuleStatusLabel(item.status)} · {item.reason}
-            </small>
+            <div className="macro-toolkit-crisis-promotion-rule-pack__item" key={item.field}>
+              <small>
+                {item.label} · {commodityPromotionRuleStatusLabel(item.status)} · {item.reason}
+              </small>
+              {item.checks.map((check) => (
+                <small key={`${item.field}-${check.name}`}>
+                  {item.label} · {check.name} {commodityPromotionRuleCheckStatusLabel(check.status)} {check.value}
+                </small>
+              ))}
+            </div>
           ))}
         </div>
       </div>
@@ -3407,11 +3414,17 @@ function formatCommodityShadowDecisionMetrics(evaluation: CrisisCommodityShadowE
 }
 
 type CommodityPromotionRuleStatus = "ready_for_review" | "manual_review" | "not_recommended";
+type CommodityPromotionRuleCheck = {
+  name: string;
+  status: CommodityPromotionRuleStatus;
+  value: string;
+};
 type CommodityPromotionRuleItem = {
   field: string;
   label: string;
   status: CommodityPromotionRuleStatus;
   reason: string;
+  checks: CommodityPromotionRuleCheck[];
 };
 
 function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): CommodityPromotionRuleItem {
@@ -3422,6 +3435,7 @@ function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): Commodit
       label: item.label || item.field,
       status: "not_recommended",
       reason: "样本不足，先补齐历史数据",
+      checks: commodityPromotionRuleChecks(evaluation),
     };
   }
   const hasEnoughSamples = (evaluation.sample_count ?? 0) >= (evaluation.minimum_sample_count ?? 20);
@@ -3438,6 +3452,7 @@ function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): Commodit
       label: item.label || item.field,
       status: "not_recommended",
       reason: "准入样本或危机期指标不足",
+      checks: commodityPromotionRuleChecks(evaluation),
     };
   }
   if (!hasReadableMetrics || correlation < 0.2) {
@@ -3446,6 +3461,7 @@ function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): Commodit
       label: item.label || item.field,
       status: "manual_review",
       reason: "相关性偏弱，需人工复核",
+      checks: commodityPromotionRuleChecks(evaluation),
     };
   }
   return {
@@ -3453,7 +3469,55 @@ function commodityPromotionRuleItem(item: CrisisCommodityCoverageItem): Commodit
     label: item.label || item.field,
     status: "ready_for_review",
     reason: "影子指标满足准入检查，仍需审批确认",
+    checks: commodityPromotionRuleChecks(evaluation),
   };
+}
+
+function commodityPromotionRuleChecks(
+  evaluation: CrisisCommodityShadowEvaluation | null,
+): CommodityPromotionRuleCheck[] {
+  const isReviewReady = evaluation?.status === "review_ready";
+  const sampleCount = evaluation?.sample_count ?? null;
+  const minimumSampleCount = evaluation?.minimum_sample_count ?? 20;
+  const crisisSampleCount = isReviewReady ? (evaluation.crisis_sample_count ?? null) : null;
+  const correlation = isReviewReady
+    ? Math.max(
+        Math.abs(evaluation.same_day_correlation ?? 0),
+        Math.abs(evaluation.lead_1d_correlation ?? 0),
+        Math.abs(evaluation.lag_1d_correlation ?? 0),
+      )
+    : null;
+  return [
+    {
+      name: "样本检查",
+      status:
+        typeof sampleCount === "number" && sampleCount >= minimumSampleCount
+          ? "ready_for_review"
+          : "not_recommended",
+      value: `${sampleCount ?? "缺失"}/${minimumSampleCount}`,
+    },
+    {
+      name: "危机样本检查",
+      status:
+        typeof crisisSampleCount === "number" && crisisSampleCount >= 5 ? "ready_for_review" : "not_recommended",
+      value: `${crisisSampleCount ?? "缺失"}/5`,
+    },
+    {
+      name: "相关性检查",
+      status:
+        correlation == null
+          ? "not_recommended"
+          : correlation >= 0.2
+            ? "ready_for_review"
+            : "manual_review",
+      value: typeof correlation === "number" ? formatSignedDecimal(correlation) : "缺失",
+    },
+    {
+      name: "命中率检查",
+      status: evaluation?.crisis_hit_rate == null ? "not_recommended" : "ready_for_review",
+      value: formatPercent(evaluation?.crisis_hit_rate),
+    },
+  ];
 }
 
 function commodityPromotionRuleStatusLabel(status: CommodityPromotionRuleStatus) {
@@ -3464,6 +3528,16 @@ function commodityPromotionRuleStatusLabel(status: CommodityPromotionRuleStatus)
     return "待人工判断";
   }
   return "不建议进入公式";
+}
+
+function commodityPromotionRuleCheckStatusLabel(status: CommodityPromotionRuleStatus) {
+  if (status === "ready_for_review") {
+    return "通过";
+  }
+  if (status === "manual_review") {
+    return "待人工判断";
+  }
+  return "未通过";
 }
 
 function commodityShadowStatusColor(status: string | null | undefined) {

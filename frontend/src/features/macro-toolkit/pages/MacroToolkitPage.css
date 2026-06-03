@@ -1246,10 +1246,23 @@
 
 .macro-toolkit-crisis-promotion-rule-pack__head,
 .macro-toolkit-crisis-promotion-rule-pack__head > div:first-child,
-.macro-toolkit-crisis-promotion-rule-pack__grid {
+.macro-toolkit-crisis-promotion-rule-pack__grid,
+.macro-toolkit-crisis-promotion-rule-pack__item {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.macro-toolkit-crisis-promotion-rule-pack__grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+}
+
+.macro-toolkit-crisis-promotion-rule-pack__item {
+  padding: 8px 9px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.56);
 }
 
 .macro-toolkit-crisis-promotion-rule-pack__head span {

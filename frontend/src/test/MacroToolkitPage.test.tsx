@@ -835,6 +835,14 @@ describe("MacroToolkitPage", () => {
     expect(promotionRulePack).toHaveTextContent("Rebar futures");
     expect(promotionRulePack).toHaveTextContent("不建议进入公式");
     expect(promotionRulePack).toHaveTextContent("样本不足，先补齐历史数据");
+    expect(promotionRulePack).toHaveTextContent("Copper futures · 样本检查 通过 41/20");
+    expect(promotionRulePack).toHaveTextContent("Copper futures · 危机样本检查 通过 11/5");
+    expect(promotionRulePack).toHaveTextContent("Copper futures · 相关性检查 待人工判断 0.00");
+    expect(promotionRulePack).toHaveTextContent("Copper futures · 命中率检查 通过 55.0%");
+    expect(promotionRulePack).toHaveTextContent("Rebar futures · 样本检查 未通过 17/20");
+    expect(promotionRulePack).toHaveTextContent("Rebar futures · 危机样本检查 未通过 缺失/5");
+    expect(promotionRulePack).toHaveTextContent("Rebar futures · 相关性检查 未通过 缺失");
+    expect(promotionRulePack).toHaveTextContent("Rebar futures · 命中率检查 未通过 缺失");
     expect(crisisEvidence).toHaveTextContent("先补齐样本不足品种的历史数据");
     expect(crisisEvidence).toHaveTextContent("样本不足：Rebar futures 17/20，还差 3");
     expect(crisisEvidence).toHaveTextContent("建议刷新品种：RB / I / AL / AU");
