@@ -499,6 +499,47 @@ describe("productCategoryPnlPageModel", () => {
         tone: "neutral",
       }),
     ]);
+    expect(surface.pressureSummary.breakeven).toEqual(
+      expect.objectContaining({
+        label: "临界 FTP",
+        valueLabel: "约 1.68%",
+        detailLabel: "线性插值：1.50% 高于基线 +0.50，2.00% 低于基线 -0.90",
+        tone: "warning",
+      }),
+    );
+    expect(surface.pressureSummary.sideOffset).toEqual(
+      expect.objectContaining({
+        rateLabel: "2.00%",
+        totalDeltaLabel: "-0.90",
+        assetDeltaLabel: "-0.70",
+        liabilityDeltaLabel: "-0.20",
+        offsetLabel: "0.00",
+        conclusionLabel: "资产端与负债端同向承压，未形成冲抵。",
+        assetWidthClassName: "is-width-75",
+        liabilityWidthClassName: "is-width-25",
+        tone: "negative",
+      }),
+    );
+    expect(surface.pressureSummary.reviewRows).toEqual([
+      expect.objectContaining({
+        priorityLabel: "复核 1",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        triggerRateLabel: "2.00%",
+        deltaLabel: "-0.80",
+        actionLabel: "复核 FTP 敞口、规模与收益率输入",
+        tone: "negative",
+      }),
+      expect.objectContaining({
+        priorityLabel: "复核 2",
+        categoryLabel: "买入返售",
+        sideLabel: "资产端",
+        triggerRateLabel: "1.50%",
+        deltaLabel: "+0.20",
+        actionLabel: "确认情景收益改善来源可持续",
+        tone: "positive",
+      }),
+    ]);
     expect(surface.heatRows).toEqual([
       expect.objectContaining({
         categoryLabel: "AC债券投资",

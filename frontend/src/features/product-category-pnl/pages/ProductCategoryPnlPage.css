@@ -8,7 +8,7 @@
 }
 
 .product-category-branch-switcher {
-  margin-bottom: 0 !important;
+  margin-bottom: 16px !important;
 }
 
 .product-category-branch-switcher button {
@@ -611,6 +611,179 @@
   font-weight: 800;
 }
 
+.product-category-financial-analysis__pressure-pack {
+  display: grid;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-radius-sm);
+  background:
+    linear-gradient(135deg, rgba(232, 241, 251, 0.7), rgba(255, 255, 255, 0.94) 46%),
+    #ffffff;
+}
+
+.product-category-financial-analysis__pressure-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  align-items: flex-start;
+}
+
+.product-category-financial-analysis__pressure-head p,
+.product-category-financial-analysis__pressure-offset small {
+  margin: 4px 0 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.product-category-financial-analysis__pressure-chip {
+  white-space: nowrap;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--moss-color-primary-700);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.product-category-financial-analysis__pressure-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+  gap: var(--moss-space-3);
+}
+
+.product-category-financial-analysis__pressure-metric,
+.product-category-financial-analysis__pressure-offset,
+.product-category-financial-analysis__review-board {
+  display: grid;
+  align-content: start;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-3);
+  border: 1px solid rgba(168, 201, 236, 0.72);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.product-category-financial-analysis__pressure-metric span,
+.product-category-financial-analysis__pressure-offset-head span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.product-category-financial-analysis__pressure-metric b {
+  color: var(--moss-color-neutral-900);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.product-category-financial-analysis__pressure-metric small {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.product-category-financial-analysis__pressure-offset-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--moss-space-2);
+  align-items: center;
+}
+
+.product-category-financial-analysis__offset-bars {
+  display: grid;
+  gap: var(--moss-space-2);
+}
+
+.product-category-financial-analysis__offset-bar-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.34fr) minmax(0, 1fr);
+  gap: var(--moss-space-2);
+  align-items: center;
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+}
+
+.product-category-financial-analysis__offset-track {
+  overflow: hidden;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--moss-color-neutral-100);
+}
+
+.product-category-financial-analysis__offset-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.product-category-financial-analysis__offset-bar.is-asset {
+  background: var(--moss-color-primary-600);
+}
+
+.product-category-financial-analysis__offset-bar.is-liability {
+  background: var(--moss-color-warning-500);
+}
+
+.product-category-financial-analysis__offset-bar.is-width-0 {
+  width: 0;
+}
+
+.product-category-financial-analysis__offset-bar.is-width-25 {
+  width: 25%;
+}
+
+.product-category-financial-analysis__offset-bar.is-width-50 {
+  width: 50%;
+}
+
+.product-category-financial-analysis__offset-bar.is-width-75 {
+  width: 75%;
+}
+
+.product-category-financial-analysis__offset-bar.is-width-100 {
+  width: 100%;
+}
+
+.product-category-financial-analysis__review-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.product-category-financial-analysis__review-row {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-financial-analysis__review-row span {
+  color: var(--moss-color-primary-700);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.product-category-financial-analysis__review-row strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.product-category-financial-analysis__review-row small {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.product-category-financial-analysis__review-row b {
+  font-size: 13px;
+  font-weight: 850;
+}
+
 .product-category-financial-analysis__scenario-path {
   display: grid;
   gap: var(--moss-space-2);
@@ -905,6 +1078,10 @@
 
 .product-category-financial-analysis .is-neutral {
   color: var(--moss-color-neutral-700);
+}
+
+.product-category-financial-analysis .is-warning {
+  color: var(--moss-color-warning-700);
 }
 
 .product-category-diagnostics__watchlist {
@@ -1686,6 +1863,18 @@
   }
 
   .product-category-financial-analysis__load-button {
+    width: fit-content;
+  }
+
+  .product-category-financial-analysis__pressure-head,
+  .product-category-financial-analysis__pressure-grid,
+  .product-category-financial-analysis__review-list,
+  .product-category-financial-analysis__offset-bar-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .product-category-financial-analysis__pressure-chip {
     width: fit-content;
   }
 }

@@ -6,6 +6,7 @@ import type {
   LivermoreStrategyOptimizationPayload,
   LivermoreStrategyScorePayload,
   LivermoreStrategyPayload,
+  ResultMeta,
 } from "../api/contracts";
 import {
   buildCandidateReviewQueue,
@@ -561,7 +562,7 @@ describe("stockAnalysisPageModel", () => {
             attention_score: 0.55,
             price_confirm_score: 0.8,
             crowding_penalty: 0.1,
-            confidence: "medium",
+            confidence: "external_vendor_confidence",
             reason: "Fusion observation-only candidate",
             evidence: { source_kinds: ["factor_screen", "theme_breakout", "external_vendor_signal"] },
           },
@@ -579,6 +580,10 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].counterEvidence.join(" ")).toContain("代理信号");
     expect(cards[0].counterEvidence.join(" ")).toContain("来源待确认");
     expect(cards[0].counterEvidence.join(" ")).not.toContain("external_vendor_signal");
+    expect(cards[0].rawFields.find((row) => row.key === "confidence")?.value).toBe("置信度待确认");
+    expect(cards[0].rawFields.find((row) => row.key === "confidence")?.value).not.toContain(
+      "external_vendor_confidence",
+    );
     expect(queue[0].stockName).toBe("Fusion Alpha");
     expect(summary.candidateCountLabel).toBe("候选 1");
     expect(summary.nextReviewAction).toContain("Fusion Alpha");
@@ -600,6 +605,21 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 通道正常 / 回退快照");
     expect(purpose.dataStatusLine).toContain("回退快照");
     expect(purpose.dataStatusLine).not.toContain("latest_snapshot");
+  });
+
+  it("keeps unknown fallback modes as business labels", () => {
+    const unknownFallbackMeta = {
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "external_vendor_snapshot",
+    } as Record<string, unknown> as Partial<Pick<ResultMeta, "quality_flag" | "vendor_status" | "fallback_mode">>;
+    const summary = buildDecisionSummary(strategyPayload, unknownFallbackMeta);
+    const purpose = buildStockAnalysisPagePurpose(strategyPayload, unknownFallbackMeta);
+
+    expect(summary.dataFreshnessLabel).toContain("回退待确认");
+    expect(purpose.dataStatusLine).toContain("回退待确认");
+    expect(summary.dataFreshnessLabel).not.toContain("external_vendor_snapshot");
+    expect(purpose.dataStatusLine).not.toContain("external_vendor_snapshot");
   });
 
   it("builds page purpose and review-queue empty guidance in Chinese", () => {

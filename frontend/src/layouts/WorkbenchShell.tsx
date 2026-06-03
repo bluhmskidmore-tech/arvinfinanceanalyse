@@ -83,58 +83,6 @@ function sectionBadgeStyle(section: Pick<WorkbenchSection, "readiness" | "govern
   return readinessBadgeStyle(section.readiness);
 }
 
-function groupButtonStyle(active: boolean) {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
-    borderRadius: 12,
-    background: active ? shellTokens.railNavActiveBg : "transparent",
-    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextNavIdle,
-    border: "none",
-    boxShadow: active ? `inset 4px 0 0 ${shellTokens.colorAccent}` : "none",
-    transition:
-      "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
-  } as const;
-}
-
-function groupSectionPillStyle(active: boolean) {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 12px",
-    borderRadius: 14,
-    background: active ? shellTokens.colorAccentSoft : shellTokens.colorBgSurface,
-    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
-    border: active
-      ? `1px solid ${shellTokens.colorBorderStrong}`
-      : `1px solid ${shellTokens.colorBorderSoft}`,
-    fontSize: 12,
-    fontWeight: 600,
-    boxShadow: active ? "inset 0 1px 0 rgba(255,255,255,0.64)" : "none",
-    transition:
-      "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
-  } as const;
-}
-
-function supportLinkStyle(active: boolean) {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "7px 10px",
-    borderRadius: 10,
-    background: active ? shellTokens.railNavActiveBg : "transparent",
-    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextSupportIdle,
-    border: "none",
-    fontSize: 11,
-    fontWeight: 600,
-    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
-  } as const;
-}
-
 type ShellTickerTone = "up" | "down";
 
 type ShellTickerItem = {
@@ -461,16 +409,11 @@ export function WorkbenchShell() {
     <>
     <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
     <div
-      className={`workbench-shell-grid${
+      className={`workbench-shell-root workbench-shell-grid${
         useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"
       }${isBondAnalysisMinimalShell ? " workbench-shell-grid--bond-analysis" : ""}${
         isStockAnalysisShell ? " workbench-shell-grid--stock-analysis" : ""
       }`}
-      style={{
-        minHeight: "100vh",
-        padding: "14px clamp(14px, 1.6vw, 24px)",
-        background: shellTokens.appBackdrop,
-      }}
     >
       <aside
         className={`workbench-shell-aside workbench-shell-rail${
@@ -507,33 +450,16 @@ export function WorkbenchShell() {
                 <NavLink
                   key={group.key}
                   to={group.defaultPath}
+                  className="workbench-shell-group-link"
                   data-active={active ? "true" : "false"}
-                  style={groupButtonStyle(active)}
                 >
-                  <span
-                    className="workbench-shell-group-icon"
-                    style={{
-                      border: active ? `1px solid ${shellTokens.railIconBorderActive}` : "none",
-                      color: active ? shellTokens.railIconFgActive : shellTokens.railIconFgIdle,
-                      background: active ? shellTokens.railSurfaceTint : "transparent",
-                    }}
-                  >
+                  <span className="workbench-shell-group-icon">
                     {iconMap[group.icon]}
                   </span>
-                  <span
-                    className="workbench-shell-group-label"
-                    style={{
-                      fontWeight: active ? 700 : 600,
-                    }}
-                  >
+                  <span className="workbench-shell-group-label">
                     {group.label}
                   </span>
-                  <span
-                    className="workbench-shell-group-count"
-                    style={{
-                      color: active ? shellTokens.railCountFgActive : shellTokens.railCountFgIdle,
-                    }}
-                  >
+                  <span className="workbench-shell-group-count">
                     {String(group.sections.length).padStart(2, "0")}
                   </span>
                 </NavLink>
@@ -554,12 +480,6 @@ export function WorkbenchShell() {
               to={agentWorkbenchSection.path}
               className="workbench-shell-agent-nav__link"
               data-active={agentWorkbenchActive ? "true" : "false"}
-              style={{
-                background: agentWorkbenchActive ? shellTokens.railNavActiveBg : "transparent",
-                color: agentWorkbenchActive
-                  ? shellTokens.railTextOnNavActive
-                  : shellTokens.railTextSectionIdle,
-              }}
             >
               <div className="workbench-shell-agent-nav__main">
                 <span className="workbench-shell-agent-nav__icon">
@@ -577,12 +497,7 @@ export function WorkbenchShell() {
                   {agentNavBadgeLabel}
                 </span>
               </div>
-              <span
-                className="workbench-shell-agent-nav__hint"
-                style={{
-                  color: shellTokens.railTextSupportIdle,
-                }}
-              >
+              <span className="workbench-shell-agent-nav__hint">
                 {agentNavHint}
               </span>
             </NavLink>
@@ -603,26 +518,16 @@ export function WorkbenchShell() {
                 <NavLink
                   key={item.key}
                   to={item.path}
-                  style={{
-                    display: "grid",
-                    gap: 2,
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    background: active ? shellTokens.railNavActiveBg : "transparent",
-                    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextSectionIdle,
-                    border: "none",
-                  }}
+                  className="workbench-shell-secondary-link"
+                  data-active={active ? "true" : "false"}
                 >
                   <div className="workbench-shell-secondary-row">
                     <span className="workbench-shell-secondary-icon">{iconMap[item.icon]}</span>
                     <span className="workbench-shell-secondary-label">{item.label}</span>
                     <span
+                      className="workbench-shell-secondary-badge"
                       style={{
                         ...sectionBadgeStyle(item),
-                        borderRadius: 999,
-                        padding: "1px 6px",
-                        fontSize: 10,
-                        fontWeight: 700,
                       }}
                     >
                       {item.readinessLabel}
@@ -648,8 +553,8 @@ export function WorkbenchShell() {
               <NavLink
                 key={item.key}
                 to={item.to}
+                className="workbench-shell-support-link"
                 data-active={active ? "true" : "false"}
-                style={supportLinkStyle(active)}
               >
                 <span className="workbench-shell-support-icon">{item.icon}</span>
                 <span className="workbench-shell-support-label">{item.label}</span>
@@ -1026,7 +931,8 @@ export function WorkbenchShell() {
                     <NavLink
                       key={section.key}
                       to={section.path}
-                      style={groupSectionPillStyle(active)}
+                      className="workbench-section-subnav__link"
+                      data-active={active ? "true" : "false"}
                     >
                       <span className="workbench-section-subnav__icon">{iconMap[section.icon]}</span>
                       <span>{section.label}</span>

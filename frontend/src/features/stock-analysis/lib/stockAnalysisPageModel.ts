@@ -487,10 +487,12 @@ function formatDistanceToBreakoutPct(item: LivermoreStockCandidateItem): string 
 }
 
 function fusionConfidenceLabel(value: string | null | undefined): string {
-  if (value === "high") return "高";
-  if (value === "medium") return "中";
-  if (value === "low") return "低";
-  return value?.trim() || "待补";
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return "待补";
+  if (normalized === "high") return "高";
+  if (normalized === "medium") return "中";
+  if (normalized === "low") return "低";
+  return "置信度待确认";
 }
 
 function buildHybridFusionEvidenceCards(
@@ -667,7 +669,7 @@ function localizeFallbackMode(value: string | undefined): string {
     cache: "缓存回退",
     mock: "模拟回退",
   };
-  return labels[normalized] ?? `回退 ${value}`;
+  return labels[normalized] ?? "回退待确认";
 }
 
 export function localizeStockDataFamily(inputFamily: string | null | undefined): string {

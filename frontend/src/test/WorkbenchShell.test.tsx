@@ -9,7 +9,6 @@ import {
   primaryWorkbenchNavigationGroups,
   secondaryWorkbenchNavigation,
 } from "../mocks/navigation";
-import { shellTokens } from "../theme/tokens";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
@@ -628,9 +627,7 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
     const layoutRoot = screen.getByTestId("workbench-group-nav").closest(".workbench-shell-grid--cockpit");
     expect(layoutRoot).not.toBeNull();
-    expect(screen.getByText("MOSS").closest("aside")).toHaveStyle({
-      background: shellTokens.railBg,
-    });
+    expect(screen.getByText("MOSS").closest("aside")).toHaveClass("workbench-shell-rail");
     expect(screen.getByTestId("workbench-support-nav")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
   });

@@ -351,6 +351,42 @@ export type ProductCategoryScenarioHeatRow = {
   tone: "positive" | "negative" | "neutral";
 };
 
+export type ProductCategoryScenarioBreakeven = {
+  label: string;
+  valueLabel: string;
+  detailLabel: string;
+  tone: "positive" | "negative" | "neutral" | "warning";
+};
+
+export type ProductCategoryScenarioSideOffset = {
+  rateLabel: string;
+  totalDeltaLabel: string;
+  assetDeltaLabel: string;
+  liabilityDeltaLabel: string;
+  offsetLabel: string;
+  conclusionLabel: string;
+  assetWidthClassName: string;
+  liabilityWidthClassName: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioReviewRow = {
+  priorityLabel: string;
+  categoryLabel: string;
+  sideLabel: string;
+  triggerRateLabel: string;
+  delta: number;
+  deltaLabel: string;
+  actionLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryScenarioPressureSummary = {
+  breakeven: ProductCategoryScenarioBreakeven;
+  sideOffset: ProductCategoryScenarioSideOffset;
+  reviewRows: ProductCategoryScenarioReviewRow[];
+};
+
 export type ProductCategoryScenarioSensitivitySurface = {
   baselineGrandTotalLabel: string | null;
   rows: ProductCategoryScenarioSensitivityRow[];
@@ -359,6 +395,7 @@ export type ProductCategoryScenarioSensitivitySurface = {
   pathPoints: ProductCategoryScenarioPathPoint[];
   actionItems: ProductCategoryScenarioActionItem[];
   heatRows: ProductCategoryScenarioHeatRow[];
+  pressureSummary: ProductCategoryScenarioPressureSummary;
   analysisCopy: string | null;
   emptyCopy: string | null;
 };
@@ -1009,6 +1046,27 @@ type ProductCategoryComparableScenarioRow = ProductCategoryScenarioSensitivityRo
   grandDelta: number;
 };
 
+const EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY: ProductCategoryScenarioPressureSummary = {
+  breakeven: {
+    label: "临界 FTP",
+    valueLabel: "-",
+    detailLabel: "待加载可比较情景后估算；此处仅做线性插值辅助判断。",
+    tone: "neutral",
+  },
+  sideOffset: {
+    rateLabel: "-",
+    totalDeltaLabel: "-",
+    assetDeltaLabel: "-",
+    liabilityDeltaLabel: "-",
+    offsetLabel: "-",
+    conclusionLabel: "待加载情景矩阵后拆分资产端与负债端冲抵关系。",
+    assetWidthClassName: "is-width-0",
+    liabilityWidthClassName: "is-width-0",
+    tone: "neutral",
+  },
+  reviewRows: [],
+};
+
 function hasComparableScenarioGrandTotal(
   row: ProductCategoryScenarioSensitivityRow,
 ): row is ProductCategoryComparableScenarioRow {
@@ -1220,6 +1278,194 @@ function selectProductCategoryScenarioHeatRows(input: {
   }));
 }
 
+function productCategoryScenarioBaselineRelation(delta: number): string {
+  if (delta > 0) {
+    return `高于基线 ${formatSignedProductCategoryYi(delta)}`;
+  }
+  if (delta < 0) {
+    return `低于基线 ${formatSignedProductCategoryYi(delta)}`;
+  }
+  return "与基线持平 0.00";
+}
+
+function selectProductCategoryScenarioBreakeven(
+  comparableRows: ProductCategoryComparableScenarioRow[],
+): ProductCategoryScenarioBreakeven {
+  if (comparableRows.length === 0) {
+    return EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY.breakeven;
+  }
+  const sortedByRate = [...comparableRows].sort((left, right) => left.ratePct - right.ratePct);
+  const exact = sortedByRate.find((row) => row.grandDelta === 0);
+  if (exact) {
+    return {
+      label: "临界 FTP",
+      valueLabel: `约 ${exact.ratePct.toFixed(2)}%`,
+      detailLabel: `${exact.rateLabel} 情景与正式基线持平；此处仅做情景辅助判断。`,
+      tone: "neutral",
+    };
+  }
+  for (let index = 1; index < sortedByRate.length; index += 1) {
+    const left = sortedByRate[index - 1];
+    const right = sortedByRate[index];
+    if (!left || !right || left.grandDelta * right.grandDelta > 0) {
+      continue;
+    }
+    const deltaSpan = right.grandDelta - left.grandDelta;
+    if (deltaSpan === 0) {
+      continue;
+    }
+    const rate = left.ratePct + ((0 - left.grandDelta) / deltaSpan) * (right.ratePct - left.ratePct);
+    return {
+      label: "临界 FTP",
+      valueLabel: `约 ${rate.toFixed(2)}%`,
+      detailLabel: `线性插值：${left.rateLabel} ${productCategoryScenarioBaselineRelation(
+        left.grandDelta,
+      )}，${right.rateLabel} ${productCategoryScenarioBaselineRelation(right.grandDelta)}`,
+      tone: "warning",
+    };
+  }
+  const best = [...sortedByRate].sort((left, right) => right.grandDelta - left.grandDelta)[0];
+  const worst = [...sortedByRate].sort((left, right) => left.grandDelta - right.grandDelta)[0];
+  if (worst && worst.grandDelta > 0) {
+    return {
+      label: "临界 FTP",
+      valueLabel: `高于 ${sortedByRate[sortedByRate.length - 1]?.rateLabel ?? "-"}`,
+      detailLabel: `已加载情景均高于基线，最低差额 ${worst.grandDeltaLabel}；未在当前区间触发临界点。`,
+      tone: "positive",
+    };
+  }
+  if (best && best.grandDelta < 0) {
+    return {
+      label: "临界 FTP",
+      valueLabel: `低于 ${sortedByRate[0]?.rateLabel ?? "-"}`,
+      detailLabel: `已加载情景均低于基线，最高差额 ${best.grandDeltaLabel}；需复核情景输入或基线安全垫。`,
+      tone: "negative",
+    };
+  }
+  return EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY.breakeven;
+}
+
+function selectProductCategoryScenarioSideOffset(
+  worst: ProductCategoryComparableScenarioRow | undefined,
+): ProductCategoryScenarioSideOffset {
+  if (!worst || worst.assetDelta === null || worst.liabilityDelta === null) {
+    return EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY.sideOffset;
+  }
+  const totalAbs = Math.abs(worst.assetDelta) + Math.abs(worst.liabilityDelta);
+  const assetWidth = totalAbs === 0 ? 0 : Math.round((Math.abs(worst.assetDelta) / totalAbs) * 100);
+  const liabilityWidth =
+    totalAbs === 0 ? 0 : Math.round((Math.abs(worst.liabilityDelta) / totalAbs) * 100);
+  const hasOffset = worst.assetDelta * worst.liabilityDelta < 0;
+  const offset = hasOffset ? Math.min(Math.abs(worst.assetDelta), Math.abs(worst.liabilityDelta)) : 0;
+  let conclusionLabel = "资产端与负债端变化较小，当前情景未形成显著冲抵。";
+  if (hasOffset) {
+    conclusionLabel = `资产端与负债端形成 ${productCategoryYiNumberLabel(
+      offset,
+    )} 亿元冲抵，净影响 ${worst.grandDeltaLabel}。`;
+  } else if (worst.grandDelta < 0) {
+    conclusionLabel = "资产端与负债端同向承压，未形成冲抵。";
+  } else if (worst.grandDelta > 0) {
+    conclusionLabel = "资产端与负债端同向改善，未形成冲抵。";
+  }
+  return {
+    rateLabel: worst.rateLabel,
+    totalDeltaLabel: worst.grandDeltaLabel,
+    assetDeltaLabel: formatSignedProductCategoryYi(worst.assetDelta),
+    liabilityDeltaLabel: formatSignedProductCategoryYi(worst.liabilityDelta),
+    offsetLabel: productCategoryYiNumberLabel(offset),
+    conclusionLabel,
+    assetWidthClassName: `is-width-${productCategoryBucketPct(assetWidth)}`,
+    liabilityWidthClassName: `is-width-${productCategoryBucketPct(liabilityWidth)}`,
+    tone: productCategoryDeltaTone(worst.grandDelta),
+  };
+}
+
+function productCategoryScenarioSideLabel(side: string): string {
+  if (side === "asset") {
+    return "资产端";
+  }
+  if (side === "liability") {
+    return "负债端";
+  }
+  return side || "-";
+}
+
+function productCategoryScenarioReviewAction(tone: "positive" | "negative" | "neutral"): string {
+  if (tone === "negative") {
+    return "复核 FTP 敞口、规模与收益率输入";
+  }
+  if (tone === "positive") {
+    return "确认情景收益改善来源可持续";
+  }
+  return "核对情景输入与产品行映射";
+}
+
+function selectProductCategoryScenarioReviewRows(input: {
+  baselineRowsById: Map<string, ProductCategoryPnlRow>;
+  scenarios: ProductCategoryPnlPayload[];
+}): ProductCategoryScenarioReviewRow[] {
+  const reviewByCategory = new Map<
+    string,
+    {
+      categoryLabel: string;
+      sideLabel: string;
+      triggerRateLabel: string;
+      delta: number;
+    }
+  >();
+  for (const scenario of input.scenarios) {
+    const scenarioRate = decimalNumber(scenario.scenario_rate_pct);
+    const triggerRateLabel = scenarioRate === null ? "-" : `${scenarioRate.toFixed(2)}%`;
+    for (const row of leafProductCategoryRows(scenario.rows)) {
+      const delta = productCategoryRowDeltaYi(input.baselineRowsById, row);
+      if (delta === null || delta === 0) {
+        continue;
+      }
+      const existing = reviewByCategory.get(row.category_id);
+      if (!existing || Math.abs(delta) > Math.abs(existing.delta)) {
+        reviewByCategory.set(row.category_id, {
+          categoryLabel: row.category_name || row.category_id,
+          sideLabel: productCategoryScenarioSideLabel(row.side),
+          triggerRateLabel,
+          delta,
+        });
+      }
+    }
+  }
+  return [...reviewByCategory.values()]
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))
+    .slice(0, 3)
+    .map((row, index) => {
+      const tone = productCategoryDeltaTone(row.delta);
+      return {
+        priorityLabel: `复核 ${index + 1}`,
+        categoryLabel: row.categoryLabel,
+        sideLabel: row.sideLabel,
+        triggerRateLabel: row.triggerRateLabel,
+        delta: row.delta,
+        deltaLabel: formatSignedProductCategoryYi(row.delta),
+        actionLabel: productCategoryScenarioReviewAction(tone),
+        tone,
+      };
+    });
+}
+
+function selectProductCategoryScenarioPressureSummary(input: {
+  baselineRowsById: Map<string, ProductCategoryPnlRow>;
+  comparableRows: ProductCategoryComparableScenarioRow[];
+  scenarios: ProductCategoryPnlPayload[];
+  worst?: ProductCategoryComparableScenarioRow;
+}): ProductCategoryScenarioPressureSummary {
+  return {
+    breakeven: selectProductCategoryScenarioBreakeven(input.comparableRows),
+    sideOffset: selectProductCategoryScenarioSideOffset(input.worst),
+    reviewRows: selectProductCategoryScenarioReviewRows({
+      baselineRowsById: input.baselineRowsById,
+      scenarios: input.scenarios,
+    }),
+  };
+}
+
 export function selectProductCategoryScenarioSensitivitySurface(input: {
   baseline?: ProductCategoryPnlPayload | null;
   scenarios: ProductCategoryPnlPayload[];
@@ -1235,6 +1481,7 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       pathPoints: [],
       actionItems: [],
       heatRows: [],
+      pressureSummary: EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY,
       analysisCopy: null,
       emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
     };
@@ -1312,6 +1559,12 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
     heatRows: selectProductCategoryScenarioHeatRows({
       baselineRowsById,
       scenarios: input.scenarios,
+    }),
+    pressureSummary: selectProductCategoryScenarioPressureSummary({
+      baselineRowsById,
+      comparableRows,
+      scenarios: input.scenarios,
+      worst,
     }),
     analysisCopy: productCategoryScenarioAnalysisCopy(worst, best),
     emptyCopy: rows.length === 0 ? "当前尚未返回可比较的 FTP 情景结果。" : null,

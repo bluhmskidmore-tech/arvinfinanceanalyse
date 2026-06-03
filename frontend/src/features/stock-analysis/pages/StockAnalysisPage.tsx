@@ -1476,6 +1476,9 @@ export default function StockAnalysisPage() {
     () => (strategyPayload ? buildSectorRows(strategyPayload) : []),
     [strategyPayload],
   );
+  const sectorLeaderRow = sectorRowsFull[0] ?? null;
+  const sectorTailRow = sectorRowsFull.length > 0 ? sectorRowsFull[sectorRowsFull.length - 1] : null;
+  const sectorCoverageCount = sectorRowsFull.reduce((sum, row) => sum + row.constituentCount, 0);
 
   const sectorViewRows = useMemo(
     () => (strategyPayload ? buildSectorViewModel(strategyPayload, sectorView) : []),
@@ -2966,6 +2969,40 @@ export default function StockAnalysisPage() {
                   </span>
                 </div>
 
+                <div
+                  className="stock-analysis-page__review-workbench-strip"
+                  data-testid="stock-analysis-review-workbench-strip"
+                  aria-label="复核工作台摘要"
+                >
+                  <div>
+                    <DatabaseOutlined aria-hidden="true" />
+                    <span>队列</span>
+                    <strong className="stock-analysis-page__tabular">{filteredCandidates.length}/{reviewQueue.length}</strong>
+                  </div>
+                  <div>
+                    <StockOutlined aria-hidden="true" />
+                    <span>首位</span>
+                    <strong>{selectedSectorLeadCandidate?.stockName ?? "待补"}</strong>
+                  </div>
+                  <div>
+                    <BarChartOutlined aria-hidden="true" />
+                    <span>距观察</span>
+                    <strong className="stock-analysis-page__tabular">
+                      {selectedSectorLeadCandidate?.distanceToBreakoutPct ?? "-"}
+                    </strong>
+                  </div>
+                  <div>
+                    <SafetyCertificateOutlined aria-hidden="true" />
+                    <span>证据</span>
+                    <strong className="stock-analysis-page__tabular">
+                      {selectedSectorLeadCandidate
+                        ? selectedSectorLeadCandidate.primaryEvidence.length +
+                          selectedSectorLeadCandidate.supportingEvidence.length
+                        : 0}
+                    </strong>
+                  </div>
+                </div>
+
                 {reviewQueue.length > 0 ? (
                   <div
                     className="mb-2 flex flex-wrap items-center gap-1.5 rounded-md border border-neutral-100 bg-neutral-50 px-2 py-1.5"
@@ -3108,23 +3145,19 @@ export default function StockAnalysisPage() {
                           }
                           key={card.stockCode}
                         >
-                          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                          <div className="stock-analysis-page__review-row-head">
+                            <strong className="stock-analysis-page__review-row-rank stock-analysis-page__tabular">
+                              #{card.rank}
+                            </strong>
                             <div className="min-w-0">
                               <h3 className="m-0 text-sm font-semibold text-neutral-900">{card.headline}</h3>
                               <p className="mt-0.5 text-[11px] text-neutral-500">
-                                {card.stockCode} / {card.stockName} / {card.sectorName}
+                                {card.stockName} · {card.stockCode} · {card.sectorName}
                               </p>
-                              <div
-                                className="mt-1 inline-block rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-semibold text-neutral-500"
-                                title={card.patternNote}
-                              >
-                                形态：{card.pattern} / 距观察位 {card.distanceToBreakoutPct}
-                              </div>
                             </div>
-                            <div className="flex shrink-0 flex-wrap items-center gap-1.5 md:justify-end">
-                              <strong className="text-lg text-primary-700" style={tabularNumStyle}>
-                                #{card.rank}
-                              </strong>
+                            <div className="stock-analysis-page__review-row-metrics">
+                              <span title={card.patternNote}>距 {card.distanceToBreakoutPct}</span>
+                              <span>{card.primaryEvidence.length + card.supportingEvidence.length} 证据</span>
                               <Button
                                 type="default"
                                 size="small"
@@ -3299,6 +3332,33 @@ export default function StockAnalysisPage() {
                       <span className={SA_PILL}>
                         共振 {consensusHitCount} · 去重 {consensusSummary.totalUnion}
                       </span>
+                    </div>
+
+                    <div
+                      className="stock-analysis-page__consensus-workbench-strip"
+                      data-testid="stock-analysis-consensus-workbench-strip"
+                      aria-label="策略共振摘要"
+                    >
+                      <div data-tone={consensusHitCount > 0 ? "positive" : "neutral"}>
+                        <ThunderboltOutlined aria-hidden="true" />
+                        <span>共振</span>
+                        <strong className="stock-analysis-page__tabular">{consensusHitCount}</strong>
+                      </div>
+                      <div>
+                        <DatabaseOutlined aria-hidden="true" />
+                        <span>去重</span>
+                        <strong className="stock-analysis-page__tabular">{consensusSummary.totalUnion}</strong>
+                      </div>
+                      <div>
+                        <LineChartOutlined aria-hidden="true" />
+                        <span>趋势</span>
+                        <strong className="stock-analysis-page__tabular">{consensusSummary.strategyCounts.livermore}</strong>
+                      </div>
+                      <div>
+                        <BarChartOutlined aria-hidden="true" />
+                        <span>多因子</span>
+                        <strong className="stock-analysis-page__tabular">{consensusSummary.strategyCounts.factor_screen}</strong>
+                      </div>
                     </div>
 
                     {!consensusSummary.hasAnyStrategy ? (
@@ -4033,6 +4093,32 @@ export default function StockAnalysisPage() {
 
                 {!sectorRankUnavailable(strategyPayload) ? (
                   <>
+                    <div
+                      className="stock-analysis-page__sector-workbench-strip"
+                      data-testid="stock-analysis-sector-workbench-strip"
+                      aria-label="板块强弱摘要"
+                    >
+                      <div>
+                        <DatabaseOutlined aria-hidden="true" />
+                        <span>板块</span>
+                        <strong className="stock-analysis-page__tabular">{sectorRowsFull.length}</strong>
+                      </div>
+                      <div>
+                        <LineChartOutlined aria-hidden="true" />
+                        <span>首位</span>
+                        <strong>{sectorLeaderRow?.sectorName ?? "待补"}</strong>
+                      </div>
+                      <div>
+                        <FireOutlined aria-hidden="true" />
+                        <span>尾部</span>
+                        <strong>{sectorTailRow?.sectorName ?? "待补"}</strong>
+                      </div>
+                      <div>
+                        <StockOutlined aria-hidden="true" />
+                        <span>成分</span>
+                        <strong className="stock-analysis-page__tabular">{sectorCoverageCount}</strong>
+                      </div>
+                    </div>
                     <Tabs
                       className="stock-analysis-page__sector-tabs"
                       size="small"
@@ -4079,10 +4165,10 @@ export default function StockAnalysisPage() {
                               data-testid={`sector-bar-${row.sectorCode}`}
                               onClick={() => toggleSectorFilter(row.sectorCode)}
                             >
-                              <div className="flex items-baseline justify-between gap-2 text-xs text-neutral-900" style={tabularNumStyle}>
+                              <div className="stock-analysis-page__sector-rank-row-head stock-analysis-page__tabular">
                                 <span className="min-w-0 truncate">
                                   {row.rank}. {row.sectorName}{" "}
-                                  <small style={tabularNumStyle}>{row.sectorCode}</small>
+                                  <small>{row.sectorCode}</small>
                                 </span>
                                 <span>{row.score}</span>
                               </div>
@@ -4094,8 +4180,7 @@ export default function StockAnalysisPage() {
                                   }}
                                 />
                                 <div
-                                  className="pointer-events-none absolute inset-0 flex items-center gap-1.5 px-2 text-[11px] font-semibold"
-                                  style={tabularNumStyle}
+                                  className="stock-analysis-page__sector-rank-bar-label stock-analysis-page__tabular"
                                 >
                                   <span>{row.pctChange}</span>
                                   <small className="text-neutral-500">成分 {row.constituentCount}</small>
@@ -4121,10 +4206,10 @@ export default function StockAnalysisPage() {
                               data-testid={`sector-bar-bottom-${row.sectorCode}`}
                               onClick={() => toggleSectorFilter(row.sectorCode)}
                             >
-                              <div className="flex items-baseline justify-between gap-2 text-xs text-neutral-900" style={tabularNumStyle}>
+                              <div className="stock-analysis-page__sector-rank-row-head stock-analysis-page__tabular">
                                 <span className="min-w-0 truncate">
                                   {row.rank}. {row.sectorName}{" "}
-                                  <small style={tabularNumStyle}>{row.sectorCode}</small>
+                                  <small>{row.sectorCode}</small>
                                 </span>
                                 <span>{row.pctChange}</span>
                               </div>
@@ -4136,8 +4221,7 @@ export default function StockAnalysisPage() {
                                   }}
                                 />
                                 <div
-                                  className="pointer-events-none absolute inset-0 flex items-center gap-1.5 px-2 text-[11px] font-semibold"
-                                  style={tabularNumStyle}
+                                  className="stock-analysis-page__sector-rank-bar-label stock-analysis-page__tabular"
                                 >
                                   <span>{row.pctChange}</span>
                                   <small className="text-neutral-500">成分 {row.constituentCount}</small>
@@ -4430,11 +4514,11 @@ export default function StockAnalysisPage() {
                           <div className="stock-analysis-page__rail-verdict-kpis">
                             <div className="stock-analysis-page__rail-kpi">
                               <span>边界</span>
-                              <strong style={tabularNumStyle}>{closedLoopSummary.boundaryCount}</strong>
+                              <strong>{closedLoopSummary.boundaryCount}</strong>
                             </div>
                             <div className="stock-analysis-page__rail-kpi">
                               <span>依据</span>
-                              <strong style={tabularNumStyle}>{closedLoopSummary.verdict.evidence.length}</strong>
+                              <strong>{closedLoopSummary.verdict.evidence.length}</strong>
                             </div>
                           </div>
                           <Collapse
@@ -4480,7 +4564,7 @@ export default function StockAnalysisPage() {
                             </span>
                             <span>
                               <span>风险</span>
-                              <strong style={tabularNumStyle}>{riskTriggeredCount} 触发</strong>
+                              <strong>{riskTriggeredCount} 触发</strong>
                             </span>
                           </div>
                           <div data-tone={boundaryRailIssueCount > 0 ? "warning" : "positive"}>
@@ -4489,7 +4573,7 @@ export default function StockAnalysisPage() {
                             </span>
                             <span>
                               <span>边界</span>
-                              <strong style={tabularNumStyle}>{boundaryRailIssueCount}</strong>
+                              <strong>{boundaryRailIssueCount}</strong>
                             </span>
                           </div>
                           <div data-tone={reviewQueue.length > 0 ? "positive" : "warning"}>
@@ -4498,7 +4582,7 @@ export default function StockAnalysisPage() {
                             </span>
                             <span>
                               <span>复核</span>
-                              <strong style={tabularNumStyle}>{reviewQueue.length}</strong>
+                              <strong>{reviewQueue.length}</strong>
                             </span>
                           </div>
                         </div>
@@ -4579,12 +4663,12 @@ export default function StockAnalysisPage() {
                         <div data-tone={riskTriggeredCount > 0 ? "negative" : "positive"}>
                           <FireOutlined aria-hidden="true" />
                           <span>触发</span>
-                          <strong style={tabularNumStyle}>{riskTriggeredCount}</strong>
+                          <strong>{riskTriggeredCount}</strong>
                         </div>
                         <div data-tone={riskWatchCount > 0 ? "warning" : "positive"}>
                           <LineChartOutlined aria-hidden="true" />
                           <span>观察</span>
-                          <strong style={tabularNumStyle}>{riskWatchCount}</strong>
+                          <strong>{riskWatchCount}</strong>
                         </div>
                         <div data-tone={riskExitUnsupported ? "warning" : "positive"}>
                           <DatabaseOutlined aria-hidden="true" />

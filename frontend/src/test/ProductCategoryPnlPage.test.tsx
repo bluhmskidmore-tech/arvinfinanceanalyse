@@ -401,6 +401,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("关键变动行排行");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("每 1bp");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 压力路径");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("压力复核包");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("临界 FTP");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("资产/负债冲抵");
+    expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("复核顺序");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("管理动作");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("产品行热力条");
   });

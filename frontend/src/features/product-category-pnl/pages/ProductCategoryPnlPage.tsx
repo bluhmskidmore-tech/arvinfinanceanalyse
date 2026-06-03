@@ -1007,6 +1007,73 @@ function ProductCategoryFinancialAnalysisPanel(props: {
             <div className="product-category-financial-analysis__empty">{props.scenarioSensitivity.emptyCopy}</div>
           ) : (
             <>
+              <div className="product-category-financial-analysis__pressure-pack">
+                <div className="product-category-financial-analysis__pressure-head">
+                  <div>
+                    <div className="product-category-financial-analysis__scenario-kicker">压力复核包</div>
+                    <p>先看临界点、资产/负债冲抵，再决定复核顺序；以下均为情景辅助分析。</p>
+                  </div>
+                  <div className="product-category-financial-analysis__pressure-chip">
+                    {props.scenarioSensitivity.pressureSummary.sideOffset.rateLabel}
+                  </div>
+                </div>
+                <div className="product-category-financial-analysis__pressure-grid">
+                  <div className="product-category-financial-analysis__pressure-metric">
+                    <span>{props.scenarioSensitivity.pressureSummary.breakeven.label}</span>
+                    <b className={`is-${props.scenarioSensitivity.pressureSummary.breakeven.tone}`}>
+                      {props.scenarioSensitivity.pressureSummary.breakeven.valueLabel}
+                    </b>
+                    <small>{props.scenarioSensitivity.pressureSummary.breakeven.detailLabel}</small>
+                  </div>
+                  <div className="product-category-financial-analysis__pressure-offset">
+                    <div className="product-category-financial-analysis__pressure-offset-head">
+                      <span>资产/负债冲抵</span>
+                      <b className={`is-${props.scenarioSensitivity.pressureSummary.sideOffset.tone}`}>
+                        {props.scenarioSensitivity.pressureSummary.sideOffset.totalDeltaLabel}
+                      </b>
+                    </div>
+                    <div className="product-category-financial-analysis__offset-bars">
+                      <div className="product-category-financial-analysis__offset-bar-row">
+                        <span>资产端 {props.scenarioSensitivity.pressureSummary.sideOffset.assetDeltaLabel}</span>
+                        <div className="product-category-financial-analysis__offset-track">
+                          <i
+                            className={`product-category-financial-analysis__offset-bar is-asset ${props.scenarioSensitivity.pressureSummary.sideOffset.assetWidthClassName}`}
+                          />
+                        </div>
+                      </div>
+                      <div className="product-category-financial-analysis__offset-bar-row">
+                        <span>负债端 {props.scenarioSensitivity.pressureSummary.sideOffset.liabilityDeltaLabel}</span>
+                        <div className="product-category-financial-analysis__offset-track">
+                          <i
+                            className={`product-category-financial-analysis__offset-bar is-liability ${props.scenarioSensitivity.pressureSummary.sideOffset.liabilityWidthClassName}`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <small>
+                      冲抵 {props.scenarioSensitivity.pressureSummary.sideOffset.offsetLabel} 亿元 ·{" "}
+                      {props.scenarioSensitivity.pressureSummary.sideOffset.conclusionLabel}
+                    </small>
+                  </div>
+                </div>
+                <div className="product-category-financial-analysis__review-board">
+                  <div className="product-category-financial-analysis__scenario-kicker">复核顺序</div>
+                  {props.scenarioSensitivity.pressureSummary.reviewRows.length === 0 ? (
+                    <div className="product-category-financial-analysis__empty">暂无可排序的复核产品行。</div>
+                  ) : (
+                    <div className="product-category-financial-analysis__review-list">
+                      {props.scenarioSensitivity.pressureSummary.reviewRows.map((row) => (
+                        <div className="product-category-financial-analysis__review-row" key={row.categoryLabel}>
+                          <span>{row.priorityLabel}</span>
+                          <strong>{row.categoryLabel}</strong>
+                          <small>{row.sideLabel} · {row.triggerRateLabel} · {row.actionLabel}</small>
+                          <b className={`is-${row.tone}`}>{row.deltaLabel}</b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="product-category-financial-analysis__table-wrap">
                 <table className="product-category-financial-analysis__table">
                   <thead>
@@ -2113,7 +2180,7 @@ export default function ProductCategoryPnlPage() {
   if (selectedBranch === "monthly_operating_analysis") {
     return (
       <section data-testid="product-category-page">
-        <FilterBar className="product-category-branch-switcher" style={{ marginBottom: 16 }}>
+        <FilterBar className="product-category-branch-switcher">
           <button
             type="button"
             data-testid="product-category-branch-product-category-pnl"
@@ -2138,7 +2205,7 @@ export default function ProductCategoryPnlPage() {
 
   return (
     <section data-testid="product-category-page" className="product-category-page-shell">
-      <FilterBar className="product-category-branch-switcher" style={{ marginBottom: 16 }}>
+      <FilterBar className="product-category-branch-switcher">
         <button
           type="button"
           data-testid="product-category-branch-product-category-pnl"

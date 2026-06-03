@@ -1239,9 +1239,20 @@ describe("StockAnalysisPage", () => {
     expect(screen.getByTestId("stock-analysis-kpi-market-state")).toHaveAttribute("data-equity-kpi-card");
     expect(screen.getByTestId("stock-analysis-kpi-review-queue")).toHaveAttribute("data-equity-kpi-card");
 
+    const sectorPanel = await screen.findByTestId("stock-analysis-sector-strength-panel");
+    const sectorStrip = within(sectorPanel).getByTestId("stock-analysis-sector-workbench-strip");
+    expect(sectorStrip).toHaveTextContent("板块");
+    expect(sectorStrip).toHaveTextContent("首位");
+    expect(sectorStrip).toHaveTextContent("尾部");
+    expect(sectorStrip).toHaveTextContent("成分");
+
     const selection = await screen.findByTestId("stock-analysis-stock-selection");
     expect(selection).toHaveTextContent("复核队列");
     expect(selection).toHaveTextContent("策略共振选股");
+    expect(screen.getByTestId("stock-analysis-review-workbench-strip")).toHaveTextContent("队列");
+    expect(screen.getByTestId("stock-analysis-review-workbench-strip")).toHaveTextContent("距观察");
+    expect(screen.getByTestId("stock-analysis-consensus-workbench-strip")).toHaveTextContent("共振");
+    expect(screen.getByTestId("stock-analysis-consensus-workbench-strip")).toHaveTextContent("多因子");
     expect(await screen.findByTestId("stock-analysis-observation-preview")).toHaveTextContent("多策略观察池");
     expect(await screen.findByTestId("stock-analysis-strategy-lens")).toBeInTheDocument();
     expect(await screen.findByTestId("stock-analysis-review-queue-ranking-chart")).toHaveTextContent("队列排序");
