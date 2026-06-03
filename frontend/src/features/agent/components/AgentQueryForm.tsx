@@ -21,6 +21,7 @@ type AgentQueryFormProps = {
   onViewSelectedProcess: () => void;
   loading: boolean;
   query: string;
+  composerHint?: string | null;
   onQueryChange: (value: string) => void;
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
   onQueueSubmit?: () => void;
@@ -89,6 +90,7 @@ export function AgentQueryForm({
   onViewSelectedProcess,
   loading,
   query,
+  composerHint,
   onQueryChange,
   onSubmit,
   onQueueSubmit,
@@ -104,6 +106,7 @@ export function AgentQueryForm({
       ? "Enter 发送下一句 · Shift+Enter 换行"
       : "正在回答 · Shift+Enter 换行"
     : "Enter 发送 · Shift+Enter 换行";
+  const visibleComposerHint = composerHint ?? submitHint;
   const quickExampleRow =
     primaryQuickExamples.length > 0 ? (
       <div
@@ -160,7 +163,7 @@ export function AgentQueryForm({
             <div>
               <div className="agent-chat-composer__title">问 Agent</div>
             </div>
-            <div className="agent-chat-composer__hint">{submitHint}</div>
+            <div className="agent-chat-composer__hint">{visibleComposerHint}</div>
           </div>
 
           {quickExampleRow}
@@ -206,7 +209,7 @@ export function AgentQueryForm({
             </button>
           ) : null}
         </div>
-        {compact ? <div className="agent-chat-composer__hint">{submitHint}</div> : null}
+        {compact ? <div className="agent-chat-composer__hint">{visibleComposerHint}</div> : null}
         <div
           className={
             loading && onStop

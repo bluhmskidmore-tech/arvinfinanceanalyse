@@ -1407,6 +1407,7 @@ export function EmbeddedAgentCopilot({
     shouldPersistConversation ? loadQueuedQueries() : [],
   );
   const [pageContextChangeNotice, setPageContextChangeNotice] = useState(false);
+  const [composerAssistHint, setComposerAssistHint] = useState<string | null>(null);
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const conversationBottomRef = useRef<HTMLDivElement | null>(null);
@@ -1566,6 +1567,7 @@ export function EmbeddedAgentCopilot({
   }
 
   function updateComposerQuery(nextQuery: string) {
+    setComposerAssistHint(null);
     setQuery(nextQuery);
     if (shouldPersistConversation) {
       persistComposerDraft(nextQuery);
@@ -1573,6 +1575,7 @@ export function EmbeddedAgentCopilot({
   }
 
   function clearComposerQuery() {
+    setComposerAssistHint(null);
     setQuery("");
     if (shouldPersistConversation) {
       clearComposerDraft();
@@ -2757,6 +2760,7 @@ export function EmbeddedAgentCopilot({
 
   function focusComposerFromFollowUp(sourceElement: HTMLElement) {
     closeFollowUpDetails(sourceElement);
+    setComposerAssistHint("可以继续追问 · Enter 发送");
     focusComposerInput();
   }
 
@@ -3357,6 +3361,7 @@ export function EmbeddedAgentCopilot({
           onViewSelectedProcess={() => void viewSelectedProcess()}
           loading={loading}
           query={query}
+          composerHint={composerAssistHint}
           onQueryChange={updateComposerQuery}
           onSubmit={handleSubmit}
           onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}
@@ -3531,6 +3536,7 @@ export function EmbeddedAgentCopilot({
             onViewSelectedProcess={() => void viewSelectedProcess()}
             loading={loading}
             query={query}
+            composerHint={composerAssistHint}
             onQueryChange={updateComposerQuery}
             onSubmit={handleSubmit}
             onQueueSubmit={isEmbedded ? undefined : queueCurrentQuery}

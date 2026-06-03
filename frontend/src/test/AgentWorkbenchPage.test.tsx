@@ -2652,6 +2652,7 @@ describe("AgentWorkbenchPage", () => {
 
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);
+      expect(screen.getByText("可以继续追问 · Enter 发送")).toBeInTheDocument();
       expect(scrollTargets).toContain(input);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
       expect(resultDrawer).not.toHaveAttribute("open");
