@@ -242,6 +242,7 @@ function buildLedgerResidualDiagnosticRows(props: {
   currencyYuan: number | null;
   accountYuan: number | null;
   detailYuan: number | null;
+  detailComparabilityReason: string | null;
 }) {
   return [
     {
@@ -249,20 +250,31 @@ function buildLedgerResidualDiagnosticRows(props: {
       reconciliationYuan: props.currencyYuan,
       diff: differenceYuan(props.totalYuan, props.currencyYuan),
       evidenceWhenMissing: "补币种汇总或确认币种口径",
+      comparabilityReason: null,
     },
     {
       layer: "科目层",
       reconciliationYuan: props.accountYuan,
       diff: differenceYuan(props.totalYuan, props.accountYuan),
       evidenceWhenMissing: "补科目汇总或确认科目范围",
+      comparabilityReason: null,
     },
     {
       layer: "明细层",
       reconciliationYuan: props.detailYuan,
       diff: differenceYuan(props.totalYuan, props.detailYuan),
       evidenceWhenMissing: "补明细或确认过滤口径",
+      comparabilityReason: props.detailComparabilityReason,
     },
   ].map((row) => {
+    if (row.comparabilityReason) {
+      return {
+        ...row,
+        ledgerYuan: props.totalYuan,
+        judgment: `${row.layer}可比性待核`,
+        evidence: row.comparabilityReason,
+      };
+    }
     if (row.diff === null) {
       return {
         ...row,
@@ -627,6 +639,7 @@ function buildLedgerExplainabilityModel(props: {
       currencyYuan,
       accountYuan,
       detailYuan,
+      detailComparabilityReason: summaryDetailComparabilityReason,
     }),
     currencyResidualRows: buildCurrencyResidualRows({
       byCurrency: props.byCurrency,
