@@ -1669,6 +1669,8 @@ describe("LedgerPnlPage", () => {
 
     const panel = await screen.findByTestId("ledger-pnl-explainability-panel");
     expect(panel).toHaveTextContent("解释链待校验");
+    expect(panel).toHaveTextContent("口径状态");
+    expect(panel).toHaveTextContent("汇总/明细口径待核");
     expect(panel).toHaveTextContent("解释覆盖率--");
     expect(panel).toHaveTextContent("最大卡点汇总 resolved_report_date=2026-05-31，明细 resolved_report_date=缺失");
     expect(panel).not.toHaveTextContent("最大卡点明细差异 5.00 亿元");

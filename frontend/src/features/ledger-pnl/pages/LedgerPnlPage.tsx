@@ -650,6 +650,7 @@ function buildLedgerExplainabilityModel(props: {
         : hasPendingCheck
           ? "解释链待校验"
           : "解释链闭合",
+    comparabilityStatus: summaryDetailComparabilityReason ? "汇总/明细口径待核" : "当前切片可比",
     explanationCoveragePct,
     bottleneck,
     driverRows: buildLedgerDriverRows(props.byAccount),
@@ -709,6 +710,10 @@ function LedgerExplainabilityPanel(props: {
             <div className="ledger-pnl-analysis__kpi">
               <div className="ledger-pnl-analysis__kpi-label">结论等级</div>
               <div className="ledger-pnl-analysis__kpi-value">{props.model.verdict}</div>
+            </div>
+            <div className="ledger-pnl-analysis__kpi">
+              <div className="ledger-pnl-analysis__kpi-label">口径状态</div>
+              <div className="ledger-pnl-analysis__kpi-value">{props.model.comparabilityStatus}</div>
             </div>
             <div className="ledger-pnl-analysis__kpi">
               <div className="ledger-pnl-analysis__kpi-label">解释覆盖率</div>
