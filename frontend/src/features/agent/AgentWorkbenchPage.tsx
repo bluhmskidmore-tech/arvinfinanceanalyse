@@ -162,6 +162,7 @@ const MAX_AGENT_CONTEXT_QUESTION_LENGTH = 800;
 const MAX_AGENT_CONTEXT_ANSWER_LENGTH = 1400;
 const AGENT_RUN_POLL_MAX_ATTEMPTS = 240;
 const AGENT_NARROW_VIEWPORT_QUERY = "(max-width: 720px)";
+const AGENT_STICKY_BOTTOM_THRESHOLD_PX = 96;
 const latestAgentRunStatusRequests = new Map<string, Promise<AgentRunPayload>>();
 const ANALYSIS_CHAT_PATTERNS = [
   "analysis",
@@ -1351,7 +1352,7 @@ export function EmbeddedAgentCopilot({
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [agentRun, setAgentRun] = useState<AgentRunPayload | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
-  const [queuedQuery, setQueuedQuery] = useState("");
+  const [queuedQueries, setQueuedQueries] = useState<string[]>([]);
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const conversationBottomRef = useRef<HTMLDivElement | null>(null);
@@ -1364,6 +1365,7 @@ export function EmbeddedAgentCopilot({
   const processStateRequestVersionRef = useRef(0);
   const conversationSessionRef = useRef(0);
   const copyFeedbackTimerRef = useRef<number | null>(null);
+  const shouldStickConversationToBottomRef = useRef(true);
   const stopActiveAgentTurnRef = useRef<() => void>(() => undefined);
   const submitQueuedQueryRef = useRef<(question: string) => Promise<void>>(async () => undefined);
   const [copyFeedback, setCopyFeedback] = useState<AgentCopyFeedback | null>(null);
@@ -1498,6 +1500,16 @@ export function EmbeddedAgentCopilot({
     }
   }
 
+  function syncConversationStickiness() {
+    const conversation = conversationRef.current;
+    if (!conversation) {
+      shouldStickConversationToBottomRef.current = true;
+      return;
+    }
+    const distanceFromBottom = conversation.scrollHeight - conversation.scrollTop - conversation.clientHeight;
+    shouldStickConversationToBottomRef.current = distanceFromBottom <= AGENT_STICKY_BOTTOM_THRESHOLD_PX;
+  }
+
   function updateComposerQuery(nextQuery: string) {
     setQuery(nextQuery);
     if (shouldPersistConversation) {
@@ -1512,12 +1524,14 @@ export function EmbeddedAgentCopilot({
     }
   }
 
-  function clearQueuedQuery() {
-    setQueuedQuery("");
+  const queuedQuery = queuedQueries[0] ?? "";
+
+  function clearQueuedQueries() {
+    setQueuedQueries([]);
   }
 
   function cancelQueuedQuery() {
-    clearQueuedQuery();
+    setQueuedQueries((currentQueries) => currentQueries.slice(1));
     focusComposerInput();
   }
 
@@ -1526,7 +1540,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
     updateComposerQuery(queuedQuery);
-    clearQueuedQuery();
+    setQueuedQueries((currentQueries) => currentQueries.slice(1));
     shouldFocusComposerRef.current = true;
     focusComposerInput();
   }
@@ -1586,6 +1600,9 @@ export function EmbeddedAgentCopilot({
     if (!hasConversation) {
       return;
     }
+    if (!shouldStickConversationToBottomRef.current) {
+      return;
+    }
     scrollConversationToBottom();
   }, [
     hasConversation,
@@ -1594,6 +1611,17 @@ export function EmbeddedAgentCopilot({
     latestConversationTurn?.result,
     latestConversationTurn?.error,
   ]);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+    if (!conversation) {
+      shouldStickConversationToBottomRef.current = true;
+      return;
+    }
+    syncConversationStickiness();
+    conversation.addEventListener("scroll", syncConversationStickiness, { passive: true });
+    return () => conversation.removeEventListener("scroll", syncConversationStickiness);
+  }, [hasConversation]);
 
   useEffect(() => {
     if (!hasConversation || !shouldFocusComposerRef.current) {
@@ -2082,7 +2110,7 @@ export function EmbeddedAgentCopilot({
     setError(null);
     if (queuedQuery.trim()) {
       updateComposerQuery(queuedQuery);
-      clearQueuedQuery();
+      clearQueuedQueries();
     }
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
@@ -2153,7 +2181,7 @@ export function EmbeddedAgentCopilot({
     if (!nextQueuedQuery) {
       return;
     }
-    setQueuedQuery(nextQueuedQuery);
+    setQueuedQueries((currentQueries) => [...currentQueries, nextQueuedQuery]);
     clearComposerQuery();
     shouldFocusComposerRef.current = true;
     focusComposerInput();
@@ -2180,7 +2208,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
     const nextQueuedQuery = queuedQuery.trim();
-    clearQueuedQuery();
+    setQueuedQueries((currentQueries) => currentQueries.slice(1));
     void submitQueuedQueryRef.current(nextQueuedQuery);
   }, [loading, queuedQuery]);
 
@@ -2505,7 +2533,7 @@ export function EmbeddedAgentCopilot({
 
   function replaceComposerQuery(nextQuery: string) {
     updateComposerQuery(nextQuery);
-    clearQueuedQuery();
+    clearQueuedQueries();
     setError(null);
     focusComposerInput();
   }
@@ -2518,7 +2546,7 @@ export function EmbeddedAgentCopilot({
     setResult(null);
     setAgentRun(null);
     setError(null);
-    clearQueuedQuery();
+    clearQueuedQueries();
     clearComposerQuery();
     if (shouldPersistConversation) {
       clearLatestAgentRunId();
@@ -2720,6 +2748,16 @@ export function EmbeddedAgentCopilot({
         <div className="agent-queued-draft__copy">
           <span className="agent-queued-draft__label">下一句</span>
           <span className="agent-queued-draft__text">{queuedQuery}</span>
+          {queuedQueries.length > 1 ? (
+            <ol className="agent-queued-draft__queue" aria-label="待发送的后续问题">
+              {queuedQueries.slice(1).map((queuedItem, index) => (
+                <li key={`${queuedItem}-${index}`}>
+                  <span>#{index + 2}</span>
+                  <span>{queuedItem}</span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
           <span className="agent-queued-draft__hint">当前回答完成后发送</span>
         </div>
         <div className="agent-queued-draft__actions">

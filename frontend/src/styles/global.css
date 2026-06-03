@@ -3091,6 +3091,29 @@ select {
   line-height: 1.35;
 }
 
+.agent-queued-draft__queue {
+  display: grid;
+  gap: 4px;
+  margin: 5px 0 0;
+  padding: 0;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  list-style: none;
+}
+
+.agent-queued-draft__queue li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-queued-draft__queue li span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .agent-queued-draft__actions {
   display: flex;
   flex-wrap: wrap;
@@ -3207,6 +3230,16 @@ select {
   }
 
   .agent-chat-composer__send {
+    width: 100%;
+  }
+
+  .agent-chat-composer__actions--running {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .agent-chat-composer__actions--running > .agent-chat-composer__send,
+  .agent-chat-composer__actions--running > .agent-chat-composer__queue {
     width: 100%;
   }
 

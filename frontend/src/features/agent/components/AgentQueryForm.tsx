@@ -217,6 +217,7 @@ export function AgentQueryForm({
                 <button
                   type="button"
                   className="agent-chat-composer__queue"
+                  data-testid="agent-panel-queue-submit"
                   disabled={!hasQuery}
                   onClick={onQueueSubmit}
                 >

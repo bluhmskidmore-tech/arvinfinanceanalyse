@@ -1,4 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -3080,6 +3082,134 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
+  it("sends multiple queued follow-ups one by one after the active answer completes", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRun!: (value: Response) => void;
+    const firstRunResponse = new Promise<Response>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(firstRunResponse);
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "multi queue second answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_multi_queue_second",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:multi-queue-second",
+    );
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "multi queue third answer",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_multi_queue_third",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:multi-queue-third",
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "multi queue first turn");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("multi queue first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "multi queue second turn");
+    await user.click(screen.getByTestId("agent-panel-queue-submit"));
+    expect(getQueuedFollowUpStatus()).toHaveTextContent("multi queue second turn");
+
+    await user.type(screen.getByLabelText("agent-question-input"), "multi queue third turn");
+    await user.click(screen.getByTestId("agent-panel-queue-submit"));
+    const queuedPreview = getQueuedFollowUpStatus();
+    expect(queuedPreview).toHaveTextContent("multi queue second turn");
+    expect(queuedPreview).toHaveTextContent("multi queue third turn");
+    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("multi queue third turn");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+
+    await act(async () => {
+      resolveFirstRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "multi queue first answer",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_multi_queue_first",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:multi-queue-first",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("multi queue second turn")).toBeInTheDocument();
+    expect(await screen.findByText("multi queue second answer")).toBeInTheDocument();
+    expect(await screen.findByText("multi queue third turn")).toBeInTheDocument();
+    expect(await screen.findByText("multi queue third answer")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(3);
+    });
+
+    const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
+    expect(JSON.parse(String(runPostCalls[1]?.[1]?.body))).toMatchObject({
+      question: "multi queue second turn",
+    });
+    expect(JSON.parse(String(runPostCalls[2]?.[1]?.body))).toMatchObject({
+      question: "multi queue third turn",
+    });
+  });
+
   it("keeps the docked composer action slot stable while a follow-up is running", async () => {
     const user = userEvent.setup();
     mockManagedRunResult(
@@ -3139,6 +3269,15 @@ describe("AgentWorkbenchPage", () => {
     expect(runningActionSlot).toHaveClass("agent-chat-composer__actions--running");
     expect(within(runningActionSlot).getByRole("button", { name: "发送下一句" })).toBeDisabled();
     expect(within(runningActionSlot).getByTestId("agent-panel-submit")).toHaveTextContent("停止");
+  });
+
+  it("keeps running composer controls full-width on mobile", () => {
+    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+
+    expect(cssText).toContain(".agent-chat-composer__actions--running");
+    expect(cssText).toContain(".agent-chat-composer__actions--running > .agent-chat-composer__queue");
+    expect(cssText).toContain(".agent-chat-composer__actions--running > .agent-chat-composer__send");
+    expect(cssText).toContain("grid-template-columns: 1fr");
   });
 
   it("queues a typed follow-up with Enter while the current answer is still running", async () => {
@@ -3866,6 +4005,80 @@ describe("AgentWorkbenchPage", () => {
       );
       expect(bottomScrollIndex).toBeGreaterThanOrEqual(0);
       expect(scrollOptions[bottomScrollIndex]).toMatchObject({ behavior: "smooth", block: "end" });
+    } finally {
+      scrollIntoViewSpy.restore();
+    }
+  });
+
+  it("does not force-scroll to the latest turn while the user is reading earlier history", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    const scrollTargets: HTMLElement[] = [];
+    const scrollIntoViewSpy = mockScrollIntoView(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    try {
+      render(<AgentWorkbenchPage />);
+
+      await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "read history without jumping");
+      await user.click(screen.getByTestId("agent-panel-submit"));
+
+      const conversation = await screen.findByLabelText("agent-conversation");
+      Object.defineProperty(conversation, "scrollHeight", {
+        configurable: true,
+        value: 1800,
+      });
+      Object.defineProperty(conversation, "clientHeight", {
+        configurable: true,
+        value: 600,
+      });
+      Object.defineProperty(conversation, "scrollTop", {
+        configurable: true,
+        value: 120,
+      });
+      fireEvent.scroll(conversation);
+      scrollTargets.length = 0;
+
+      await act(async () => {
+        resolveCreateRun(
+          buildJsonResponse(
+            buildManagedRunPayload(
+              {
+                answer: "history read answer returned",
+                cards: [],
+                evidence: {
+                  tables_used: ["hermes_cli"],
+                  filters_applied: {
+                    provider: "hermes",
+                    model: "gpt-5.5",
+                    transport: "bridge",
+                    toolsets: "file",
+                  },
+                  evidence_rows: 1,
+                  quality_flag: "ok",
+                },
+                result_meta: {
+                  trace_id: "tr_history_read_no_jump",
+                  basis: "formal",
+                  result_kind: "agent.hermes",
+                },
+                next_drill: [],
+                suggested_actions: [],
+              },
+              "agent_run:history-read-no-jump",
+            ),
+          ),
+        );
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText("history read answer returned")).toBeInTheDocument();
+      expect(scrollTargets.some((target) => target.dataset.testid === "agent-conversation-bottom")).toBe(false);
     } finally {
       scrollIntoViewSpy.restore();
     }
