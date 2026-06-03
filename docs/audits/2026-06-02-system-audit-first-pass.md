@@ -11,8 +11,9 @@ Release posture: **core automated gates are now green**, but do not call this re
 Current top blockers:
 
 1. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
-2. **P2 - Direct business MCP evidence tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass, but direct `moss-*` tool calls were unavailable through this session's deferred tool surface.
-3. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green, but every governed metric page has not yet been re-audited with direct catalog/lineage/contract evidence.
+2. **P2 - Page-level MCP trace bundle coverage is incomplete.** Local MCP fallback evidence now directly reads the MOSS metric-contract, data-catalog, data-quality, and lineage providers, but the seeded page trace bundles only cover `product-category-pnl` and `dashboard-home`; `risk-tensor` is still rejected as an unknown page slug.
+3. **P2 - Direct business MCP tools were not exposed in the current Codex App tool surface.** `codex mcp list` confirms the MOSS MCP servers are registered and enabled, and MCP server tests pass. This continuation used the equivalent local JSON-RPC MCP process instead of direct deferred `moss-*` tool calls.
+4. **P2 - Full data-catalog/date-lineage review is still incomplete.** Automated tests are green and `PAGE-RISK-001` was sampled, but every governed metric page has not yet been re-audited with contract/catalog/lineage evidence.
 
 ## Audit Health Score
 
@@ -175,10 +176,33 @@ Impact: no evidence of a real leaked production secret in this pass, but default
 
 Recommendation: ensure deployment docs and startup validation reject default credentials outside local/dev mode.
 
+### P2 - `PAGE-RISK-001` risk tensor contract is documented but not page-bundle closed
+
+Evidence from the 2026-06-03 local MCP fallback deep dive:
+
+- `moss-metric-contracts` resources were read through the repository's local JSON-RPC MCP process. The provider exposes `page_contracts`, `calc_rules`, `metric_dictionary`, `product_category_truth`, and `golden_sample_catalog`; all five documents exist, and the summary reports 13 golden samples.
+- `search_contract_docs` finds `PAGE-RISK-001` in `docs/page_contracts.md` and `GS-RISK-A` / `GS-RISK-WARN-B` in `docs/metric_dictionary.md`.
+- `get_page_trace_bundle` succeeds for `product-category-pnl` and `dashboard-home`, but `get_page_trace_bundle({"page_slug": "risk-tensor"})` returns: `Unknown page_slug: risk-tensor. Supported pages: dashboard-home, product-category-pnl`.
+- `moss-data-catalog` confirms `data/moss.duckdb` exists, the catalog has 63 tables, the DuckDB schema registry has 28 files, and `fact_formal_risk_tensor_daily` exists as a base table with 32 columns matching `backend/app/schema_registry/duckdb/04_risk_tensor.sql`.
+- Available `fact_formal_risk_tensor_daily.report_date` values include `2026-04-30` through `2026-04-21` in the latest 10-date sample. A direct read-only aggregate found 486 rows and no nulls across the 32 governed columns.
+- `moss-data-quality` reports `fact_formal_risk_tensor_daily` as a quality target with 486 rows, date coverage from `2024-01-01` to `2026-04-30`, and zero nulls in the profiled columns.
+- A latest-row read for `2026-04-30` shows `quality_flag='warning'`, `bond_count=1740`, `source_version='sv_risk_tensor__sv_9fb22785cd6d__sv_6fc58f4138f3'`, `upstream_source_version='sv_9fb22785cd6d'`, `liability_source_version='sv_6fc58f4138f3'`, `liability_rule_version='rv_snapshot_zqtz_tyw_v1'`, `rule_version='rv_risk_tensor_formal_materialize_v2'`, `cache_version='cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2'`, `trace_id='trace_risk_tensor_20260430'`, and non-null `regulatory_dv01`.
+- The same row carries explicit warnings: non-standard tenor buckets remapped, unsupported `6M` tenor excluded, 128 market-value rows excluded from the portfolio duration denominator, 123 rows without maturity date excluded from liquidity gap calculation, and 1397 liability rows without maturity date excluded from liquidity gap calculation.
+- Code path evidence is present: `/api/risk/tensor/dates` and `/api/risk/tensor` route through `backend/app/api/routes/risk_tensor.py`; `risk_tensor_envelope()` reads `RiskTensorRepository.fetch_risk_tensor_row()`, promotes values into `RiskTensorPayload`, and builds a formal result envelope with lineage metadata; the frontend consumes `getRiskTensorDates()` and `getRiskTensor(reportDate)` through `frontend/src/api/executiveClient.ts` and displays quality/source/rule metadata in `frontend/src/features/risk-tensor/RiskTensorPage.tsx`.
+
+Impact: `risk-tensor` has a real contract, formal table, quality profile, service path, frontend consumer, and tests, but it is not yet first-class in the MCP page trace bundle workflow. That means a page-level audit cannot yet get one canonical bundle containing route, API, source lineage, metrics, golden samples, code touchpoints, tests, and guardrails. The latest data also has `warning` quality, so release messaging must preserve warning visibility.
+
+Recommendation: add a seeded `PAGE-RISK-001` / `risk-tensor` trace bundle to `scripts/mcp/moss_project_mcp.py` and require it to include the page contract, metric dictionary rows, `GS-RISK-A` / `GS-RISK-WARN-B`, `fact_formal_risk_tensor_daily`, the route/service/repository/schema/frontend/test touchpoints, latest-warning semantics, and blocked/fallback date expectations.
+
 ## Positive Evidence
 
 - `codex mcp list` confirms `gitnexus`, `moss-data-catalog`, `moss-data-quality`, `moss-lineage-evidence`, and `moss-metric-contracts` are registered and enabled.
 - `python -m pytest tests/test_project_mcp_servers.py -q`: included in the API/MCP run below and passed.
+- Local MCP fallback evidence:
+  - `moss-metric-contracts`: resources and tools are callable through the repository's JSON-RPC MCP process; contract docs exist; seeded trace bundles are available for `product-category-pnl` and `dashboard-home`.
+  - `moss-data-catalog`: `data/moss.duckdb` exists; 63 tables were inventoried; `fact_formal_risk_tensor_daily` is present with latest sampled dates through `2026-04-30`.
+  - `moss-data-quality`: `fact_formal_risk_tensor_daily` is a quality target with 486 rows and date coverage from `2024-01-01` to `2026-04-30`.
+  - `moss-lineage-evidence`: governance streams exist and are readable; direct search found `risk_tensor` / `fact_formal_risk_tensor_daily` agent-audit records, but no `PAGE-RISK-001` page-level lineage record.
 - Frontend gates:
   - `npm run build`: passed.
   - `npm run test`: `200 passed`, `1619 tests passed`.
@@ -211,13 +235,14 @@ Recommendation: ensure deployment docs and startup validation reject default cre
 
 ## Evidence Gaps
 
-- Direct `moss-*` MCP tools were not exposed in the current Codex App tool surface, although MCP registration and MCP server tests passed. `tool_search` exposed Playwright/GitHub/Canva/Node tools, but not `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, or `gitnexus` callable tools. This pass used local commands, tests, docs, and generated Playwright evidence instead of direct MCP resource reads.
+- Direct `moss-*` MCP tools were not exposed in the current Codex App deferred tool surface. `tool_search` exposed Playwright/GitHub/Canva/Node tools, but not `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, `moss-data-quality`, or `gitnexus` callable tools. This continuation used the local JSON-RPC MCP process as a read-only fallback and records that distinction.
+- `PAGE-RISK-001` / `risk-tensor` now has sampled contract/catalog/data-quality evidence, but it still lacks a seeded MCP page trace bundle and a direct `PAGE-RISK-001` lineage hit.
 - No full data-catalog/date lineage review was completed for every metric page.
 - Browser axe now completes for the four covered smoke pages, but broader page coverage is not complete.
 
 ## Recommended Next Pass
 
-1. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, risk-tensor, agent workbench, and commodity ingest.
+1. Add a seeded `PAGE-RISK-001` / `risk-tensor` page trace bundle, then re-run the MCP server tests and a risk-tensor page evidence check.
 2. Decide whether the broad backend Ruff backlog is a release blocker or a separately tracked cleanup stream.
-3. Continue page-specific business evidence checks for the modified business surfaces before considering release.
+3. Use direct MOSS MCP contract/lineage/catalog tools when exposed, or invoke the equivalent project scripts, to audit source lineage and date semantics for ledger-pnl, stock-analysis, agent workbench, commodity ingest, and the remaining governed metric pages.
 4. Keep the updated a11y smoke in the release gate, and add page-specific ready selectors as new browser smoke pages are covered.
