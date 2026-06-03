@@ -154,7 +154,9 @@ describe("AgentPanel", () => {
     expect(input).toHaveFocus();
   });
 
-  it("announces page context changes in the embedded panel", () => {
+  it("announces page context changes in the embedded panel", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
     const { rerender } = render(
       <AgentPanel
         pageId="test-page"
@@ -189,6 +191,22 @@ describe("AgentPanel", () => {
     );
 
     expect(screen.getAllByRole("status", { name: "agent-page-context-change" })).toHaveLength(1);
+
+    await user.type(screen.getByLabelText("agent-question-input"), "review the updated selection");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("Embedded Agent answered.")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "agent-page-context-change" })).not.toBeInTheDocument();
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
+      question: "review the updated selection",
+      page_context: {
+        current_filters: {
+          report_date: "2026-04-30",
+        },
+        selected_rows: [{ instrument_id: "bond-2" }],
+      },
+    });
   });
 
   it("auto-expands and resets the composer textarea height as draft length changes", async () => {
