@@ -13,8 +13,44 @@ import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
 from backend.app.main import app as default_app
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
+
+
+AGENT_READ_HEADERS = {"X-User-Id": "agent-read-user", "X-User-Role": "viewer"}
+
+
+def _agent_scope_dsn(tmp_path) -> str:
+    return f"sqlite:///{(tmp_path / 'agent-read-scope.db').as_posix()}"
+
+
+def _configure_agent_scope_store(tmp_path, monkeypatch):
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    auth_dsn = _agent_scope_dsn(tmp_path)
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.delenv("MOSS_GOVERNANCE_SQL_DSN", raising=False)
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    return UserScopeRepository(auth_dsn)
+
+
+def _agent_auth_fields(tmp_path) -> dict[str, str]:
+    return {
+        "postgres_dsn": f"sqlite:///{(tmp_path / 'agent-read-scope.db').as_posix()}",
+        "governance_sql_dsn": "",
+    }
+
+
+def _seed_agent_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    _configure_agent_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="agent",
+        action="read",
+    )
 
 
 def _sample_agent_envelope():
@@ -88,6 +124,55 @@ def _client_with_stubbed_agent(monkeypatch):
     app = FastAPI()
     app.include_router(route_module.router)
     return TestClient(app)
+
+
+def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _configure_agent_scope_store(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_transport": "bridge",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_toolsets": "file",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                "postgres_dsn": f"sqlite:///{(tmp_path / 'agent-read-scope.db').as_posix()}",
+                "governance_sql_dsn": "",
+            },
+        )(),
+    )
+    calls: list[str] = []
+
+    def unexpected_agent_call(*_args, **_kwargs):
+        calls.append("called")
+        raise AssertionError("Agent service should not run without agent/read.")
+
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", unexpected_agent_call)
+    monkeypatch.setattr(route_module, "create_agent_run", unexpected_agent_call)
+    monkeypatch.setattr(route_module, "get_agent_run_owner", unexpected_agent_call)
+
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    query_response = client.post("/api/agent/query", json={"question": "ping"}, headers=AGENT_READ_HEADERS)
+    create_response = client.post("/api/agent/runs", json={"question": "ping"}, headers=AGENT_READ_HEADERS)
+    status_response = client.get("/api/agent/runs/agent_run:nope", headers=AGENT_READ_HEADERS)
+
+    assert query_response.status_code == 403
+    assert create_response.status_code == 403
+    assert status_response.status_code == 403
+    assert calls == []
 
 
 def test_default_app_agent_query_is_disabled_503(monkeypatch, tmp_path):
@@ -186,6 +271,7 @@ def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -197,6 +283,7 @@ def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
                 "agent_provider": "local",
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -283,11 +370,12 @@ def test_disabled_agent_query_appends_disabled_audit_log(monkeypatch, tmp_path):
     assert audit_payload["result_meta"]["formal_use_allowed"] is False
 
 
-def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch):
+def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -299,6 +387,7 @@ def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch):
                 "agent_provider": "local",
                 "duckdb_path": "test.duckdb",
                 "governance_path": "test-governance",
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -319,11 +408,12 @@ def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch):
     assert response.json()["detail"] == "No agent data found."
 
 
-def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch):
+def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -335,6 +425,7 @@ def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch):
                 "agent_provider": "local",
                 "duckdb_path": "test.duckdb",
                 "governance_path": "test-governance",
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -360,6 +451,7 @@ def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -375,6 +467,7 @@ def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_
                 "agent_hermes_timeout_seconds": 9.0,
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -416,6 +509,7 @@ def test_agent_query_keeps_plain_analysis_chat_local_when_hermes_configured(monk
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -431,6 +525,7 @@ def test_agent_query_keeps_plain_analysis_chat_local_when_hermes_configured(monk
                 "agent_hermes_timeout_seconds": 9.0,
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -477,6 +572,7 @@ def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -492,6 +588,7 @@ def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured
                 "agent_hermes_timeout_seconds": 9.0,
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )
@@ -588,6 +685,7 @@ def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     monkeypatch.setattr(
         route_module,
         "get_settings",
@@ -604,6 +702,7 @@ def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_
                 "agent_dexter_timeout_seconds": 11.0,
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
             },
         )(),
     )

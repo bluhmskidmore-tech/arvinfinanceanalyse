@@ -13,7 +13,7 @@ from backend.app.agent.tools.analysis_view_tool import (
     is_plain_analysis_chat_question,
 )
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.agent_run_service import (
     create_agent_run,
     get_agent_run_owner,
@@ -117,6 +117,15 @@ def _apply_auth_context(
     )
 
 
+def _ensure_agent_read_allowed(auth: AuthContext, settings: object) -> None:
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="agent", action="read")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/query", response_model=AgentEnvelope | AgentDisabledResponse)
 def query_agent(
     request: AgentQueryRequest,
@@ -134,6 +143,8 @@ def query_agent(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=phase1_disabled_response().model_dump(mode="json"),
         )
+
+    _ensure_agent_read_allowed(auth, settings)
 
     try:
         if _should_execute_local_query(request):
@@ -184,6 +195,7 @@ def create_agent_run_endpoint(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=phase1_disabled_response().model_dump(mode="json"),
         )
+    _ensure_agent_read_allowed(auth, settings)
     executor = _run_executor_for_provider(settings)
     if executor is None:
         raise HTTPException(status_code=400, detail="Agent runs require MOSS_AGENT_PROVIDER=hermes or dexter.")
@@ -214,6 +226,7 @@ def get_agent_run_endpoint(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AgentRunStatusResponse:
     settings = get_settings()
+    _ensure_agent_read_allowed(auth, settings)
     try:
         owner = get_agent_run_owner(run_id=run_id, settings=settings)
         if owner is not None and owner != auth.user_id:
