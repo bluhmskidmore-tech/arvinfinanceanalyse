@@ -2923,7 +2923,7 @@ export default function StockAnalysisPage() {
                     <p className={SA_SECTION_EYEBROW}>今日待复核</p>
                     <h2 className={SA_CARD_TITLE}>复核队列</h2>
                     <p className={SA_SECTION_DESC}>
-                      {reviewQueueUsesHybridFusion ? "融合策略优先 · 边界同步复核" : "候选排序 · 边界同步复核"}
+                      {reviewQueueUsesHybridFusion ? "融合优先 · 边界复核" : "候选排序 · 边界复核"}
                     </p>
                   </div>
                   <span className={SA_PILL}>
@@ -3239,7 +3239,7 @@ export default function StockAnalysisPage() {
                         <p className={SA_SECTION_EYEBROW}>多策略共振</p>
                         <h2 className={SA_CARD_TITLE}>策略共振选股</h2>
                         <p className={SA_SECTION_DESC}>
-                          趋势 / 融合 / 多因子 / 超跌反弹 交叉命中；三重共振优先。
+                          共振命中 · 三重优先
                         </p>
                       </div>
                       <span className={SA_PILL}>
@@ -3968,7 +3968,7 @@ export default function StockAnalysisPage() {
                       板块强弱
                     </h2>
                     <p className={SA_SECTION_DESC}>
-                      {sectorRowsFull.length} 个板块 / 强弱对比 / 点击筛选候选。
+                      {sectorRowsFull.length} 个板块 · 强弱对比
                     </p>
                   </div>
                   <span className={SA_PILL}>
