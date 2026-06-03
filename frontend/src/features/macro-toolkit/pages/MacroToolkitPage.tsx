@@ -1289,6 +1289,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               onPreviewCommodityRefreshProducts={(products) => {
                 void refreshCommodityFutures({ dryRun: true, products, suggestedSelection: products });
               }}
+              onRefreshCommodityProducts={(products) => {
+                void refreshCommodityFutures({ dryRun: false, products, suggestedSelection: products });
+              }}
             />
           ) : null}
 
@@ -1922,6 +1925,7 @@ function CrisisGapAction({
   commodityShortfallEstimates,
   sourceBackfillResult,
   sourceBackfillError,
+  onRefreshCommodityProducts,
   onPreviewCommodityRefreshProducts,
   onRepairSourceBackfill,
 }: {
@@ -1933,9 +1937,16 @@ function CrisisGapAction({
   commodityShortfallEstimates: CommodityShortfallEstimate[];
   sourceBackfillResult: string | null;
   sourceBackfillError: string | null;
+  onRefreshCommodityProducts?: (products: string[]) => void;
   onPreviewCommodityRefreshProducts?: (products: string[]) => void;
   onRepairSourceBackfill?: (item: MacroToolkitRepairItem, group: CrisisGapGroup) => void;
 }) {
+  const canRefreshSuggestedCommodities =
+    group.key === "commodity" &&
+    commodityRefreshProducts.length > 0 &&
+    commodityShortfallEstimates.length > 0 &&
+    commodityShortfallEstimates.every((item) => item.canFill) &&
+    Boolean(onRefreshCommodityProducts);
   if (group.key === "commodity" && commodityRefreshProducts.length && onPreviewCommodityRefreshProducts) {
     return (
       <div className="macro-toolkit-crisis-gap-action">
@@ -1951,6 +1962,16 @@ function CrisisGapAction({
         {commodityRefreshResult ? <small>{commodityRefreshResult}</small> : null}
         {commodityShortfallEstimates.length ? (
           <small>{formatCommodityShortfallEstimateList(commodityShortfallEstimates)}</small>
+        ) : null}
+        {canRefreshSuggestedCommodities ? (
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            aria-label="按建议刷新并重读"
+            onClick={() => onRefreshCommodityProducts?.(commodityRefreshProducts)}
+          >
+            按建议刷新并重读
+          </Button>
         ) : null}
       </div>
     );
@@ -2119,6 +2140,7 @@ function CrisisScoreEvidencePanel({
   onRepairSourceBackfill,
   onApplyCommodityRefreshProducts,
   onPreviewCommodityRefreshProducts,
+  onRefreshCommodityProducts,
 }: {
   result: MacroToolkitCapabilityResult;
   repairItems?: MacroToolkitRepairItem[];
@@ -2131,6 +2153,7 @@ function CrisisScoreEvidencePanel({
   onRepairSourceBackfill?: (item: MacroToolkitRepairItem, group: CrisisGapGroup) => void;
   onApplyCommodityRefreshProducts?: (products: string[]) => void;
   onPreviewCommodityRefreshProducts?: (products: string[]) => void;
+  onRefreshCommodityProducts?: (products: string[]) => void;
 }) {
   const normalizedEvidence = normalizeInputEvidence(result);
   const inputEvidence = normalizedEvidence?.inputs ?? [];
@@ -2213,6 +2236,7 @@ function CrisisScoreEvidencePanel({
                   commodityShortfallEstimates={commodityShortfallEstimates}
                   sourceBackfillResult={sourceBackfillResult}
                   sourceBackfillError={sourceBackfillError}
+                  onRefreshCommodityProducts={onRefreshCommodityProducts}
                   onPreviewCommodityRefreshProducts={onPreviewCommodityRefreshProducts}
                   onRepairSourceBackfill={onRepairSourceBackfill}
                 />

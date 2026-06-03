@@ -1478,12 +1478,15 @@ describe("MacroToolkitPage", () => {
     expect(
       within(commodityPanel).getByRole("button", { name: "刷新商品期货：刷新并重算证据" }),
     ).toBeEnabled();
+    const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
+    const gapRefreshButton = within(gapList).getByRole("button", { name: "按建议刷新并重读" });
+    expect(gapRefreshButton).toBeEnabled();
     expect(within(commodityPanel).getByRole("checkbox", { name: /螺纹钢/ })).toBeChecked();
     expect(within(commodityPanel).getByRole("checkbox", { name: /^铁矿石/ })).toBeChecked();
     expect(within(commodityPanel).getByRole("checkbox", { name: /铝/ })).toBeChecked();
     expect(within(commodityPanel).getByRole("checkbox", { name: /黄金/ })).toBeChecked();
 
-    await user.click(within(commodityPanel).getByRole("button", { name: "刷新商品期货：刷新并重算证据" }));
+    await user.click(gapRefreshButton);
 
     expect(refreshCalls[1]).toEqual({
       endDate: "2026-04-30",
@@ -1552,6 +1555,7 @@ describe("MacroToolkitPage", () => {
     expect(commodityPanel).toHaveTextContent("Crisis Score 样本预估");
     expect(commodityPanel).toHaveTextContent("预计仍有样本缺口");
     expect(commodityPanel).toHaveTextContent("刷新后仍不会闭环");
+    expect(gapList).not.toHaveTextContent("按建议刷新并重读");
     expect(commodityPanel).toHaveTextContent("Rebar futures 17/20，预计 +1，预计到 18/20，还差 2");
     expect(commodityPanel).toHaveTextContent("Iron ore futures 17/20，预计 +1，预计到 18/20，还差 2");
     expect(
