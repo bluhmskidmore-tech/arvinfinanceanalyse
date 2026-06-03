@@ -23,9 +23,9 @@ type MacroBondLinkagePartial = Partial<MacroBondLinkagePayload>;
 export type MarketDataMacroDepthTabsProps = {
   macroDepthTab: "curve" | "spreads" | "linkage";
   onMacroDepthTabChange: (key: "curve" | "spreads" | "linkage") => void;
-  latestQuery: UseQueryResult<ApiEnvelope<ChoiceMacroLatestPayload>, Error>;
+  latestQuery: UseQueryResult<ApiEnvelope<ChoiceMacroLatestPayload>, unknown>;
   rateTrendChartOption: EChartsOption | null;
-  macroBondLinkageQuery: UseQueryResult<ApiEnvelope<MacroBondLinkagePayload>, Error>;
+  macroBondLinkageQuery: UseQueryResult<ApiEnvelope<MacroBondLinkagePayload>, unknown>;
   spreadSlots: SpreadTenorSlot[];
   macroBondLinkage: MacroBondLinkagePartial;
 };

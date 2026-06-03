@@ -7,6 +7,8 @@ import type {
   PnlByBusinessAnalysisRow,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessManualAdjustmentRequest,
+  PnlByBusinessMonthlyBucket,
+  PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
 } from "../../api/contracts";
@@ -804,8 +806,6 @@ function PnlByBusinessManualAdjustmentPanel({
     </section>
   );
 }
-
-type PnlByBusinessViewMode = "monthly" | "ytd" | "formal";
 
 const ANALYSIS_DIMENSION_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
   monthly: "月份",

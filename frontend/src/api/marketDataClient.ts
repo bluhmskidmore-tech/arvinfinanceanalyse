@@ -8,10 +8,14 @@ import type {
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   LivermoreManualPositionInput,
+  LivermoreCandidateHistoryPortfolioBacktestPayload,
   LivermoreCandidateHistoryPayload,
+  LivermoreCycleProxyBacktestPayload,
   LivermorePositionSnapshotPayload,
   LivermoreSectorRankSeriesPayload,
   LivermoreSignalConfluencePayload,
+  LivermoreStrategyOptimizationPayload,
+  LivermoreStrategyScoreHorizonKey,
   LivermoreStrategyScorePayload,
   LivermoreStockDetailPayload,
   LivermoreStrategyPayload,
@@ -37,6 +41,19 @@ type FetchLike = typeof fetch;
 type MarketDataClientFactoryOptions = {
   fetchImpl: FetchLike;
   baseUrl: string;
+};
+
+type LivermoreStrategyAnalysisOptions = {
+  snapshotFrom?: string;
+  snapshotTo?: string;
+  currentMarketState?: string;
+  minSample?: number;
+  primaryHorizon?: LivermoreStrategyScoreHorizonKey;
+};
+
+type LivermoreSnapshotWindowOptions = {
+  snapshotFrom?: string;
+  snapshotTo?: string;
 };
 
 /**
@@ -92,8 +109,17 @@ export type MarketDataClientMethods = {
     snapshotTo?: string;
     currentMarketState?: string;
     minSample?: number;
-    primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+    primaryHorizon?: LivermoreStrategyScoreHorizonKey;
   }) => Promise<ApiEnvelope<LivermoreStrategyScorePayload>>;
+  getLivermoreStrategyOptimization: (
+    options?: LivermoreStrategyAnalysisOptions,
+  ) => Promise<ApiEnvelope<LivermoreStrategyOptimizationPayload>>;
+  getLivermoreCycleProxyBacktest: (
+    options?: LivermoreSnapshotWindowOptions,
+  ) => Promise<ApiEnvelope<LivermoreCycleProxyBacktestPayload>>;
+  getLivermoreCandidateHistoryPortfolioBacktest: (
+    options?: LivermoreSnapshotWindowOptions,
+  ) => Promise<ApiEnvelope<LivermoreCandidateHistoryPortfolioBacktestPayload>>;
   getLivermoreSectorRankSeries: (options?: {
     asOfDate?: string;
     windowDays?: number;
@@ -1217,7 +1243,7 @@ function buildStrategyScoreQuery(options?: {
   snapshotTo?: string;
   currentMarketState?: string;
   minSample?: number;
-  primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+  primaryHorizon?: LivermoreStrategyScoreHorizonKey;
 }) {
   const params = new URLSearchParams();
   const sf = options?.snapshotFrom?.trim();
@@ -1237,6 +1263,20 @@ function buildStrategyScoreQuery(options?: {
   }
   if (options?.primaryHorizon) {
     params.set("primary_horizon", options.primaryHorizon);
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
+function buildSnapshotWindowQuery(options?: LivermoreSnapshotWindowOptions) {
+  const params = new URLSearchParams();
+  const sf = options?.snapshotFrom?.trim();
+  if (sf) {
+    params.set("snapshot_from", sf);
+  }
+  const st = options?.snapshotTo?.trim();
+  if (st) {
+    params.set("snapshot_to", st);
   }
   const q = params.toString();
   return q ? `?${q}` : "";
@@ -1762,7 +1802,7 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
       snapshotTo?: string;
       currentMarketState?: string;
       minSample?: number;
-      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+      primaryHorizon?: LivermoreStrategyScoreHorizonKey;
     }) {
       await delay();
       const state = options?.currentMarketState?.trim() || "WARM";
@@ -1792,6 +1832,14 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           non_positive_count: 8,
           avg_return: 0.031,
           win_rate: 0.6,
+        },
+        return_10d: {
+          available_count: 0,
+          missing_count: 24,
+          positive_count: 0,
+          non_positive_count: 0,
+          avg_return: null,
+          win_rate: null,
         },
       };
       const row: LivermoreStrategyScorePayload["rows"][number] = {
@@ -1837,6 +1885,95 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
           fallback_mode: "none",
         },
       );
+    },
+    async getLivermoreStrategyOptimization(options?: LivermoreStrategyAnalysisOptions) {
+      await delay();
+      const primaryHorizon = options?.primaryHorizon ?? "return_5d";
+      const payload: LivermoreStrategyOptimizationPayload = {
+        as_of_date: options?.snapshotTo?.trim() ?? null,
+        snapshot_from: options?.snapshotFrom?.trim() ?? null,
+        snapshot_to: options?.snapshotTo?.trim() ?? null,
+        primary_horizon: primaryHorizon,
+        min_sample: options?.minSample ?? 20,
+        current_market_state: options?.currentMarketState?.trim() ?? null,
+        backtest_window_summary: null,
+        strategy_summaries: [],
+        slices: [],
+        recommendations: [],
+        pending_summary: {
+          primary_horizon: primaryHorizon,
+          pending_rows: 0,
+          pending_dates: [],
+          latest_pending_date: null,
+          message: "Mock strategy optimization has no evidence rows.",
+        },
+        sample_maturity: null,
+      };
+      return buildMockApiEnvelope("market_data.livermore.strategy_optimization", payload, {
+        basis: "analytical",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_strategy_optimization_mock",
+        vendor_version: "vv_livermore_strategy_optimization_mock",
+        rule_version: "rv_livermore_strategy_optimization_v1",
+        cache_version: "cv_livermore_strategy_optimization_v1",
+        quality_flag: "warning",
+        vendor_status: "ok",
+        fallback_mode: "none",
+      });
+    },
+    async getLivermoreCycleProxyBacktest(options?: LivermoreSnapshotWindowOptions) {
+      await delay();
+      const payload: LivermoreCycleProxyBacktestPayload = {
+        status: "unsupported",
+        full_strategy_status: "blocked_missing_inputs",
+        proxy_signal_kind: "stock_candidate",
+        proxy_rule: "Mock cycle proxy backtest has no evidence rows.",
+        snapshot_from: options?.snapshotFrom?.trim() ?? null,
+        snapshot_to: options?.snapshotTo?.trim() ?? null,
+        missing_full_strategy_inputs: ["PMI", "credit_impulse"],
+        warnings: ["Mock cycle proxy backtest has no evidence rows."],
+        summary: null,
+        nav_series: [],
+      };
+      return buildMockApiEnvelope("market_data.livermore.cycle_proxy_backtest", payload, {
+        basis: "analytical",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_cycle_proxy_backtest_mock",
+        vendor_version: "vv_livermore_cycle_proxy_backtest_mock",
+        rule_version: "rv_livermore_cycle_proxy_backtest_v1",
+        cache_version: "cv_livermore_cycle_proxy_backtest_v1",
+        quality_flag: "warning",
+        vendor_status: "ok",
+        fallback_mode: "none",
+      });
+    },
+    async getLivermoreCandidateHistoryPortfolioBacktest(options?: LivermoreSnapshotWindowOptions) {
+      await delay();
+      const payload: LivermoreCandidateHistoryPortfolioBacktestPayload = {
+        status: "unsupported",
+        full_strategy_status: "blocked_missing_inputs",
+        signal_kind: "stock_candidate",
+        rebalance_rule: "first_available_monthly_snapshot",
+        weighting_rule: "equal_weight_top_6",
+        snapshot_from: options?.snapshotFrom?.trim() ?? null,
+        snapshot_to: options?.snapshotTo?.trim() ?? null,
+        missing_full_strategy_inputs: ["PMI", "credit_impulse"],
+        warnings: ["Mock portfolio backtest has no evidence rows."],
+        summary: null,
+        nav_series: [],
+        rebalance_log: [],
+      };
+      return buildMockApiEnvelope("market_data.livermore.candidate_history_portfolio_backtest", payload, {
+        basis: "analytical",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_candidate_history_portfolio_backtest_mock",
+        vendor_version: "vv_livermore_candidate_history_portfolio_backtest_mock",
+        rule_version: "rv_livermore_candidate_history_portfolio_backtest_v1",
+        cache_version: "cv_livermore_candidate_history_portfolio_backtest_v1",
+        quality_flag: "warning",
+        vendor_status: "ok",
+        fallback_mode: "none",
+      });
     },
     async getLivermoreSignalConfluence(options?: { asOfDate?: string }) {
       await delay();
@@ -2074,12 +2211,30 @@ export function createRealMarketDataClient({
       snapshotTo?: string;
       currentMarketState?: string;
       minSample?: number;
-      primaryHorizon?: "return_1d" | "return_5d" | "return_20d";
+      primaryHorizon?: LivermoreStrategyScoreHorizonKey;
     }) =>
       requestJson<LivermoreStrategyScorePayload>(
         fetchImpl,
         baseUrl,
         `/ui/market-data/livermore/strategy-score${buildStrategyScoreQuery(options)}`,
+      ),
+    getLivermoreStrategyOptimization: (options?: LivermoreStrategyAnalysisOptions) =>
+      requestJson<LivermoreStrategyOptimizationPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/strategy-optimization${buildStrategyScoreQuery(options)}`,
+      ),
+    getLivermoreCycleProxyBacktest: (options?: LivermoreSnapshotWindowOptions) =>
+      requestJson<LivermoreCycleProxyBacktestPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/cycle-proxy-backtest${buildSnapshotWindowQuery(options)}`,
+      ),
+    getLivermoreCandidateHistoryPortfolioBacktest: (options?: LivermoreSnapshotWindowOptions) =>
+      requestJson<LivermoreCandidateHistoryPortfolioBacktestPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/market-data/livermore/candidate-history-portfolio-backtest${buildSnapshotWindowQuery(options)}`,
       ),
     getLivermoreSectorRankSeries: (options?: {
       asOfDate?: string;

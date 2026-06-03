@@ -5,6 +5,7 @@ import "./DashboardCockpitSections.css";
 
 import type {
   DashboardCockpitAnalysisCard,
+  DashboardCockpitAccountRow,
   DashboardCockpitCalendarItem,
   DashboardCockpitMetricItem,
   DashboardCockpitPortfolioItem,
@@ -755,6 +756,68 @@ function DashboardCockpitWatchTable({ rows }: { rows: readonly DashboardCockpitW
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+export function DashboardCockpitAccountTable({ rows }: { rows: readonly DashboardCockpitAccountRow[] }) {
+  return (
+    <section
+      data-testid="dashboard-cockpit-account-table"
+      className="dashboard-cockpit-card dashboard-cockpit-panel dashboard-cockpit-watch"
+    >
+      <div className="dashboard-cockpit-panel-head">
+        <div>
+          <span className="dashboard-cockpit-eyebrow">账户 / 资产类</span>
+          <h2 className="dashboard-cockpit-title">账户风险账本</h2>
+        </div>
+      </div>
+      <div className="dashboard-cockpit-watch__table" role="table">
+        <div className="dashboard-cockpit-watch__row dashboard-cockpit-watch__row--head" role="row">
+          <span role="columnheader">账户</span>
+          <span role="columnheader">口径</span>
+          <span role="columnheader">敞口</span>
+          <span role="columnheader">权重</span>
+          <span role="columnheader">久期 / YTM</span>
+          <span role="columnheader">日变动</span>
+          <span role="columnheader">动作</span>
+        </div>
+        {rows.length === 0 ? (
+          <div className="dashboard-cockpit-watch__row" role="row">
+            <span role="cell">暂无账户读面</span>
+            <span role="cell">--</span>
+            <span role="cell">--</span>
+            <span role="cell">--</span>
+            <span role="cell">--</span>
+            <span role="cell">--</span>
+            <span role="cell">等待同日报告日数据</span>
+          </div>
+        ) : (
+          rows.map((row) => (
+            <div
+              key={row.id}
+              data-testid={`dashboard-cockpit-account-row-${row.id}`}
+              className={cx("dashboard-cockpit-watch__row", statusClass(row.status), toneClass(row.tone))}
+              role="row"
+            >
+              <strong role="cell">{row.accountName}</strong>
+              <span role="cell">{row.segment}</span>
+              <span role="cell">{row.exposure}</span>
+              <span role="cell">{row.weight}</span>
+              <span role="cell">
+                {row.duration} / {row.ytm}
+              </span>
+              <span role="cell">{row.dailyChange}</span>
+              <span className="dashboard-cockpit-watch__reason" role="cell" title={row.source}>
+                <span>{row.risk}</span>
+                <Link className="dashboard-cockpit-watch__action" to={row.route}>
+                  {row.actionLabel}
+                </Link>
+              </span>
+            </div>
+          ))
+        )}
       </div>
     </section>
   );

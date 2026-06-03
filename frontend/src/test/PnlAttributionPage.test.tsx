@@ -180,7 +180,7 @@ describe("PnlAttributionPage", () => {
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Campisi/i }));
+    await user.click(screen.getByRole("button", { name: /Campisi|高级归因/i }));
 
     expect(await screen.findByTestId("campisi-decision-headline")).toHaveTextContent("主要来自");
     expect(screen.getByTestId("campisi-decision-formal-view")).toHaveTextContent("正式 PnL 视图");
@@ -213,7 +213,7 @@ describe("PnlAttributionPage", () => {
       </QueryClientProvider>,
     );
 
-    await user.click(await screen.findByRole("button", { name: /Campisi/i }));
+    await user.click(await screen.findByRole("button", { name: /Campisi|高级归因/i }));
 
     expect(await screen.findByTestId("campisi-formal-closure-warning")).toHaveTextContent("PnL");
     expect(screen.getByText("decision-grade 404")).toBeInTheDocument();

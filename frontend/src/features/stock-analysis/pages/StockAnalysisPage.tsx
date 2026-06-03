@@ -12,6 +12,7 @@ import type {
   LivermoreSectorRankSeriesPoint,
   LivermoreSignalConfluencePayload,
   LivermoreStrategyOptimizationPayload,
+  LivermoreStrategyScoreHorizonKey,
   LivermoreStrategyScorePayload,
 } from "../../../api/contracts";
 import {
@@ -127,17 +128,26 @@ const strategyBacktestLabels: Record<string, string> = {
 };
 
 const strategyBacktestHorizons: LivermoreCandidateHistoryHorizonKey[] = ["return_1d", "return_5d", "return_20d"];
-const strategyBacktestHorizonLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = {
+const strategyScoreHorizonLabels: Record<LivermoreStrategyScoreHorizonKey, string> = {
   return_1d: "T+1 胜率 / 均值 / 样本",
   return_5d: "T+5 胜率 / 均值 / 样本",
+  return_10d: "T+10 胜率 / 均值 / 样本",
   return_20d: "T+20 胜率 / 均值 / 样本",
 };
-const strategyBacktestHorizonShortLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = {
+const strategyScoreHorizonShortLabels: Record<LivermoreStrategyScoreHorizonKey, string> = {
   return_1d: "T+1",
   return_5d: "T+5",
+  return_10d: "T+10",
   return_20d: "T+20",
 };
+const strategyBacktestHorizonLabels: Record<LivermoreCandidateHistoryHorizonKey, string> = strategyScoreHorizonLabels;
+const strategyBacktestHorizonShortLabels: Record<LivermoreCandidateHistoryHorizonKey, string> =
+  strategyScoreHorizonShortLabels;
 const strategyBacktestMarketStateOrder = ["OFF", "WARM", "HOT", "OVERHEAT", "PENDING_DATA", "NO_DATA", "STALE"] as const;
+
+function strategyScorePrimaryHorizonLabel(horizon: LivermoreStrategyScoreHorizonKey | null | undefined): string {
+  return strategyScoreHorizonShortLabels[horizon ?? "return_5d"];
+}
 
 function formatBacktestPercent(value: number | null | undefined, digits = 1): string {
   if (value == null || Number.isNaN(value)) return "待补";
@@ -330,10 +340,10 @@ function strategyMaturityRemainingText(maturity: StrategyMaturity): string {
 
 function strategyMaturityHorizonText(
   snapshot: StrategyTrackedSnapshot,
-  horizon: LivermoreCandidateHistoryHorizonKey,
+  horizon: LivermoreStrategyScoreHorizonKey,
 ): string {
   const stats = snapshot.horizons[horizon];
-  const label = strategyBacktestHorizonShortLabels[horizon];
+  const label = strategyScoreHorizonShortLabels[horizon];
   if (!stats || stats.status === "pending" || stats.available_count <= 0) {
     return `${label} 待成熟`;
   }
@@ -2071,11 +2081,7 @@ export default function StockAnalysisPage() {
                   </div>
                   <span className="stock-analysis-page__pill">
                     {(strategyScorePayload?.current_market_state ?? currentMarketState ?? "状态待补")} /{" "}
-                    {strategyScorePayload?.primary_horizon === "return_1d"
-                      ? "T+1"
-                      : strategyScorePayload?.primary_horizon === "return_20d"
-                        ? "T+20"
-                        : "T+5"}
+                    {strategyScorePrimaryHorizonLabel(strategyScorePayload?.primary_horizon)}
                   </span>
                 </div>
                 {strategyScoreQuery.isLoading ? (
@@ -2375,13 +2381,7 @@ export default function StockAnalysisPage() {
                     <p>基于候选历史切片回测 T+5 收益，只输出复核排序建议。</p>
                   </div>
                   <span className="stock-analysis-page__pill">
-                    {strategyOptimizationPayload?.primary_horizon === "return_1d"
-                      ? "T+1"
-                      : strategyOptimizationPayload?.primary_horizon === "return_10d"
-                        ? "T+10"
-                        : strategyOptimizationPayload?.primary_horizon === "return_20d"
-                          ? "T+20"
-                          : "T+5"}
+                    {strategyScorePrimaryHorizonLabel(strategyOptimizationPayload?.primary_horizon)}
                   </span>
                 </div>
                 {strategyOptimizationQuery.isLoading ? (
@@ -2469,10 +2469,12 @@ export default function StockAnalysisPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {[
-                              ["最强", strategyOptimizationSlices.strongest],
-                              ["最弱", strategyOptimizationSlices.weakest],
-                            ].map(([label, slice]) =>
+                            {(
+                              [
+                                ["最强", strategyOptimizationSlices.strongest],
+                                ["最弱", strategyOptimizationSlices.weakest],
+                              ] satisfies Array<[string, StrategyOptimizationSlice | null]>
+                            ).map(([label, slice]) =>
                               slice ? (
                                 <tr key={`${label}:${slice.slice_key}`}>
                                   <td>

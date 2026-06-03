@@ -103,6 +103,7 @@ function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
 
 type RiskTensorDisplayValue = Parameters<typeof bondNumericDisplay>[0];
 type PriorMetricValueKey = "current" | "previous" | "delta";
+type PriorPeriodMetric = NonNullable<RiskTensorPayload["prior_period_change"]>["metrics"][number];
 
 const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
@@ -178,7 +179,7 @@ function isWanAmountMetric(key: string) {
   return key === "portfolio_dv01" || key === "regulatory_dv01" || key === "cs01" || key.startsWith("krd_");
 }
 
-function priorMetricDisplay(metric: RiskTensorPayload["prior_period_change"]["metrics"][number], key: PriorMetricValueKey) {
+function priorMetricDisplay(metric: PriorPeriodMetric, key: PriorMetricValueKey) {
   if (!isWanAmountMetric(metric.key)) {
     const displayKey = `${key}_display` as const;
     return metric[displayKey];
@@ -253,14 +254,8 @@ function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | undefined) {
   if (mode === "none") {
     return "未降级";
   }
-  if (mode === "latest") {
-    return "latest fallback";
-  }
-  if (mode === "mock") {
-    return "mock fallback";
-  }
-  if (mode === "degraded") {
-    return "降级";
+  if (mode === "latest_snapshot") {
+    return "最新快照降级";
   }
   return mode || "未提供";
 }

@@ -382,8 +382,8 @@ describe("BalanceMovementAnalysisPage", () => {
 
   it("exports the current evidence view as a local csv without adding an API call", async () => {
     const user = userEvent.setup();
-    const createObjectUrl = vi.fn(() => "blob:balance-movement-analysis");
-    const revokeObjectUrl = vi.fn();
+    const createObjectUrl = vi.fn<(obj: Blob | MediaSource) => string>(() => "blob:balance-movement-analysis");
+    const revokeObjectUrl = vi.fn<(url: string) => void>();
     const clickSpy = vi.fn();
     const originalCreateObjectURL = globalThis.URL.createObjectURL;
     const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
@@ -413,7 +413,11 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(createObjectUrl).toHaveBeenCalledTimes(1);
       expect(clickSpy).toHaveBeenCalledTimes(1);
       expect(revokeObjectUrl).toHaveBeenCalledWith("blob:balance-movement-analysis");
-      const blob = createObjectUrl.mock.calls[0]?.[0] as Blob;
+      const blob = createObjectUrl.mock.calls.at(0)?.[0];
+      expect(blob).toBeInstanceOf(Blob);
+      if (!(blob instanceof Blob)) {
+        throw new Error("Expected export to create a Blob URL");
+      }
       const csv = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result ?? ""));

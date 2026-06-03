@@ -1,4 +1,4 @@
-import type { Query, RefetchOptions } from "@tanstack/react-query";
+import type { RefetchOptions } from "@tanstack/react-query";
 
 import type { ApiEnvelope, ResultMeta } from "../api/contracts";
 
@@ -11,6 +11,13 @@ type ExternalRefreshSignal = {
   refresh_tier?: "stable" | "fallback" | "isolated" | string | null;
   fetch_mode?: "date_slice" | "latest" | string | null;
   quality_flag?: ResultMeta["quality_flag"] | string | null;
+};
+
+type ExternalDataRefreshQuery = {
+  state: {
+    data: unknown;
+    fetchFailureCount: number;
+  };
 };
 
 export const EXTERNAL_REFRESH_INTERVALS_MS = {
@@ -48,7 +55,7 @@ export function readFreshnessMeta(value: unknown): FreshnessMeta | undefined {
 }
 
 export function externalDataRefetchInterval(
-  query: Query<unknown, Error, unknown, readonly unknown[]>,
+  query: ExternalDataRefreshQuery,
   sectionSignal?: ExternalRefreshSignal | null,
 ): number | false {
   const meta = readFreshnessMeta(query.state.data);
@@ -80,7 +87,7 @@ export function externalDataQueryOptions(sectionSignal?: ExternalRefreshSignal |
     staleTime: stableDateSlice
       ? EXTERNAL_REFRESH_INTERVALS_MS.stableStaleTime
       : EXTERNAL_REFRESH_INTERVALS_MS.defaultStaleTime,
-    refetchInterval: (query: Query<unknown, Error, unknown, readonly unknown[]>) =>
+    refetchInterval: (query: ExternalDataRefreshQuery) =>
       externalDataRefetchInterval(query, sectionSignal),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
@@ -89,7 +96,7 @@ export function externalDataQueryOptions(sectionSignal?: ExternalRefreshSignal |
 
 function applyFailureBackoff(
   baseIntervalMs: number,
-  query: Query<unknown, Error, unknown, readonly unknown[]>,
+  query: ExternalDataRefreshQuery,
 ) {
   const failureCount = Math.max(0, query.state.fetchFailureCount);
   if (failureCount === 0) {

@@ -466,7 +466,7 @@ describe("DashboardPage", () => {
     expect(mainGrid).toContainElement(screen.getByTestId("dashboard-cockpit-waterfall"));
     expect(mainGrid.querySelector(".dashboard-cockpit-curve-list")).toBeInTheDocument();
     expect(mainGrid.querySelectorAll(".dashboard-cockpit-curve-row").length).toBeGreaterThan(0);
-    expect(mainGrid.querySelector(".dashboard-cockpit-mini-chart")).not.toBeInTheDocument();
+    expect(mainGrid.querySelector(".dashboard-cockpit-mini-chart")).toBeInTheDocument();
     expect(mainGrid.querySelectorAll(".dashboard-cockpit-waterfall__bar").length).toBeGreaterThan(0);
     expect(
       within(businessDetailStrip).queryByTestId("dashboard-core-metrics-section") ??
@@ -1584,7 +1584,8 @@ describe("DashboardPage", () => {
     businessDetail.scrollIntoView = businessDetailScroll;
     riskReviewRow.scrollIntoView = riskReviewScroll;
     await waitFor(() => {
-      expect(riskReviewRow).toHaveTextContent("Top5");
+      const sourceCell = riskReviewRow.querySelector(".dashboard-cockpit-watch__reason");
+      expect(sourceCell).toHaveAttribute("title", expect.stringContaining("Top5"));
     });
     expect(riskReviewRow).toHaveTextContent("DV01 8,800.00");
 
@@ -1605,7 +1606,10 @@ describe("DashboardPage", () => {
       );
       expect(riskReviewScroll).toHaveBeenCalled();
       expect(riskReviewRow).toHaveAttribute("data-drilldown-active", "true");
-      expect(riskReviewRow).toHaveTextContent("Top5");
+      expect(riskReviewRow.querySelector(".dashboard-cockpit-watch__reason")).toHaveAttribute(
+        "title",
+        expect.stringContaining("Top5"),
+      );
       expect(riskReviewRow).toHaveTextContent("DV01 8,800.00");
       expect(supplement).not.toHaveAttribute("open");
 

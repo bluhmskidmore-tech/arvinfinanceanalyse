@@ -151,6 +151,7 @@ const outputLabels: Record<LivermoreOutputKey, string> = {
   mean_reversion_candidates: "超跌反弹观察池",
   factor_screen_candidates: "多因子选股",
   theme_breakout: "题材突变",
+  hybrid_fusion: "混合融合",
   risk_exit: "风险退出",
 };
 

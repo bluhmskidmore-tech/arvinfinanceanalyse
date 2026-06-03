@@ -1205,7 +1205,6 @@ export default function DashboardPage() {
         <DashboardCockpitMetricRail
           className="dashboard-warm-kpi-ledger"
           items={dashboardCockpit.metricRail}
-          omitHeader
         />
         <DashboardCockpitMainGrid
           className="dashboard-warm-cockpit-main"

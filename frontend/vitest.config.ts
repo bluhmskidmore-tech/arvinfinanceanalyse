@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    exclude: ["**/node_modules/**", "**/dist/**", "tests/playwright/**"],
+    fileParallelism: false,
     setupFiles: "./src/test/setup.ts",
     globals: true,
     testTimeout: 15000,

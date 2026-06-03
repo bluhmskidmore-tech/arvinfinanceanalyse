@@ -3433,18 +3433,40 @@ def test_strategy_optimization_api_happy_path_and_query_validation(monkeypatch, 
     assert envelope["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
 
     client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/strategy-optimization",
+        params={
+            "snapshot_from": "2026-05-01",
+            "snapshot_to": "2026-05-01",
+            "current_market_state": "HOT",
+            "min_sample": 2,
+            "primary_horizon": "return_5d",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["rule_version"] == "rv_livermore_strategy_optimization_v1"
+    assert body["result"]["strategy_summaries"][0]["signal_kind"] == "factor_screen"
+
+    response_10d = client.get(
+        "/ui/market-data/livermore/strategy-optimization",
+        params={
+            "snapshot_from": "2026-05-01",
+            "snapshot_to": "2026-05-01",
+            "current_market_state": "HOT",
+            "min_sample": 2,
+            "primary_horizon": "return_10d",
+        },
+    )
+    assert response_10d.status_code == 200
+    assert response_10d.json()["result"]["primary_horizon"] == "return_10d"
+
     assert (
         client.get(
             "/ui/market-data/livermore/strategy-optimization",
-            params={
-                "snapshot_from": "2026-05-01",
-                "snapshot_to": "2026-05-01",
-                "current_market_state": "HOT",
-                "min_sample": 2,
-                "primary_horizon": "return_5d",
-            },
+            params={"primary_horizon": "return_30d"},
         ).status_code
-        == 404
+        == 422
     )
     get_settings.cache_clear()
 
@@ -3494,11 +3516,18 @@ def test_strategy_score_api_happy_path_and_query_validation(monkeypatch, tmp_pat
             "primary_horizon": "return_10d",
         },
     )
-    assert response_10d.status_code == 422
-    assert response_10d.json()["detail"] == "Invalid primary_horizon. Expected return_1d, return_5d, or return_20d."
+    assert response_10d.status_code == 200
+    assert response_10d.json()["result"]["primary_horizon"] == "return_10d"
 
     assert (
         client.get("/ui/market-data/livermore/strategy-score", params={"snapshot_from": "not-a-date"}).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            "/ui/market-data/livermore/strategy-score",
+            params={"snapshot_from": "2026-05-01extra"},
+        ).status_code
         == 422
     )
     assert client.get("/ui/market-data/livermore/strategy-score", params={"min_sample": 0}).status_code == 422
@@ -3512,8 +3541,8 @@ def test_strategy_score_api_happy_path_and_query_validation(monkeypatch, tmp_pat
     get_settings.cache_clear()
 
 
-def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) -> None:
-    db_path = tmp_path / "cycle-proxy.duckdb"
+def test_cycle_proxy_backtest_api_reports_nav_gain_and_drawdown_intervals(monkeypatch, tmp_path) -> None:
+    db_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
         _insert_strategy_score_rows(
@@ -3570,6 +3599,26 @@ def test_cycle_proxy_backtest_reports_nav_gain_and_drawdown_intervals(tmp_path) 
     assert body["nav_series"][-1]["nav"] == 1.12
     assert "PMI" in body["missing_full_strategy_inputs"]
 
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/cycle-proxy-backtest",
+        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-05-04"},
+    )
+    assert response.status_code == 200
+    api_body = response.json()
+    assert api_body["result_meta"]["result_kind"] == "market_data.livermore.cycle_proxy_backtest"
+    assert api_body["result"]["status"] == "proxy"
+    assert api_body["result"]["summary"]["cumulative_return"] == 0.12
+
+    assert (
+        client.get(
+            "/ui/market-data/livermore/cycle-proxy-backtest",
+            params={"snapshot_from": "not-a-date"},
+        ).status_code
+        == 422
+    )
+    get_settings.cache_clear()
+
 
 def test_cycle_proxy_backtest_marks_unsupported_when_no_completed_proxy_rows(tmp_path) -> None:
     db_path = tmp_path / "cycle-proxy-empty.duckdb"
@@ -3598,8 +3647,11 @@ def test_cycle_proxy_backtest_marks_unsupported_when_no_completed_proxy_rows(tmp
     assert body["nav_series"] == []
 
 
-def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_gate_and_costs(tmp_path) -> None:
-    db_path = tmp_path / "candidate-history-portfolio.duckdb"
+def test_candidate_history_portfolio_backtest_api_marks_to_market_with_monthly_cash_gate_and_costs(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "moss.duckdb"
     conn = duckdb.connect(str(db_path), read_only=False)
     try:
         _minimal_observation_schema(conn)
@@ -3664,6 +3716,26 @@ def test_candidate_history_portfolio_backtest_marks_to_market_with_monthly_cash_
     assert body["rebalance_log"][1]["target_count"] == 0
     assert body["rebalance_log"][1]["sell_turnover"] == 1.0
     assert "equal-weight top-6 replay rows" in body["warnings"][1]
+
+    client = _build_client(tmp_path, monkeypatch)
+    response = client.get(
+        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+        params={"snapshot_from": "2026-05-01", "snapshot_to": "2026-07-02"},
+    )
+    assert response.status_code == 200
+    api_body = response.json()
+    assert api_body["result_meta"]["result_kind"] == "market_data.livermore.candidate_history_portfolio_backtest"
+    assert api_body["result"]["status"] == "portfolio_proxy"
+    assert api_body["result"]["summary"]["rebalance_count"] == 3
+
+    assert (
+        client.get(
+            "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+            params={"snapshot_to": "not-a-date"},
+        ).status_code
+        == 422
+    )
+    get_settings.cache_clear()
 
 
 def test_candidate_history_portfolio_backtest_marks_unsupported_without_replay_rows(tmp_path) -> None:

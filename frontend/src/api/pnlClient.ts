@@ -3,6 +3,7 @@
  * Imported and re-exported by client.ts for backward compatibility.
  */
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { mockCampisiDecisionGrade } from "../mocks/campisiMocks";
 import { readHttpJsonDetail } from "./httpResponseError";
 import type {
   ApiEnvelope,
@@ -250,9 +251,30 @@ type PnlBusinessClientMethods = Pick<
   | "restorePnlByBusinessManualAdjustment"
   | "getPnlByBusinessManualAdjustments"
   | "getPnlYearlyBusinessSummary"
+  | "getPnlCampisiDecisionGrade"
 >;
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+
+function buildCampisiQuery(options?: {
+  startDate?: string;
+  endDate?: string;
+  lookbackDays?: number;
+}) {
+  const query = new URLSearchParams();
+  if (options?.startDate?.trim()) {
+    query.set("start_date", options.startDate.trim());
+  }
+  if (options?.endDate?.trim()) {
+    query.set("end_date", options.endDate.trim());
+  }
+  const lookbackDays = options?.lookbackDays;
+  if (Number.isFinite(lookbackDays)) {
+    query.set("lookback_days", String(lookbackDays));
+  }
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
 
 export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
   return {
@@ -422,6 +444,13 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getPnlCampisiDecisionGrade(_options) {
+      await delay();
+      return buildMockApiEnvelope("campisi.decision_grade", mockCampisiDecisionGrade, {
+        basis: "formal",
+        formal_use_allowed: true,
+      });
+    },
   };
 }
 
@@ -520,6 +549,12 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/yearly-summary?year=${encodeURIComponent(String(year))}`,
+      ),
+    getPnlCampisiDecisionGrade: (options) =>
+      requestJson<CampisiDecisionGradePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/campisi/decision-grade${buildCampisiQuery(options)}`,
       ),
   };
 }

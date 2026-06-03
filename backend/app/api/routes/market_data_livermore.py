@@ -19,6 +19,9 @@ from backend.app.services.livermore_signal_confluence_service import (
 from backend.app.services.macro_bond_linkage_service import get_macro_bond_linkage
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_envelope,
+    livermore_candidate_history_cycle_proxy_backtest_envelope,
+    livermore_candidate_history_portfolio_backtest_envelope,
+    livermore_candidate_history_strategy_optimization_envelope,
     livermore_candidate_history_strategy_score_envelope,
 )
 from backend.app.services.livermore_sector_rank_series_service import livermore_sector_rank_series_envelope
@@ -34,6 +37,7 @@ from backend.app.api.perf_logging import timed_api_call
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
 _STOCK_CODE_LIVERMORE_PATTERN = re.compile(r"^[0-9A-Za-z.\-]{1,16}$")
+_SNAPSHOT_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 LIVERMORE_SIGNAL_CONFLUENCE_RESULT_KIND = "market_data.livermore.signal_confluence"
 LIVERMORE_SIGNAL_CONFLUENCE_RULE_VERSION = "rv_livermore_signal_confluence_v1"
 LIVERMORE_SIGNAL_CONFLUENCE_CACHE_VERSION = "cv_livermore_signal_confluence_v1"
@@ -172,6 +176,33 @@ def _unsupported_replay_summary() -> dict[str, object]:
         "excluded_from_completed_stats_dates": [],
         "date_reasons": [],
     }
+
+
+def _validate_snapshot_window(snapshot_from: str | None, snapshot_to: str | None) -> None:
+    for label, value in (("snapshot_from", snapshot_from), ("snapshot_to", snapshot_to)):
+        if value is None or not str(value).strip():
+            continue
+        text = str(value).strip()
+        if not _SNAPSHOT_DATE_PATTERN.fullmatch(text):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {label}. Expected YYYY-MM-DD.",
+            )
+        try:
+            date.fromisoformat(text)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {label}. Expected YYYY-MM-DD.",
+            ) from exc
+
+
+def _validate_livermore_primary_horizon(primary_horizon: str) -> None:
+    if primary_horizon not in {"return_1d", "return_5d", "return_10d", "return_20d"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid primary_horizon. Expected return_1d, return_5d, return_10d, or return_20d.",
+        )
 
 
 def _replay_window_candidate_row_count(summary: dict[str, object]) -> int:
@@ -514,17 +545,7 @@ def livermore_candidate_history(
                 status_code=422,
                 detail="Invalid stock_code. Allowed characters: letters, digits, '.', '-'.",
             )
-    for label, value in (("snapshot_from", snapshot_from), ("snapshot_to", snapshot_to)):
-        if value is None or not str(value).strip():
-            continue
-        text = str(value).strip()
-        try:
-            date.fromisoformat(text[:10])
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid {label}. Expected YYYY-MM-DD.",
-            ) from exc
+    _validate_snapshot_window(snapshot_from, snapshot_to)
 
     settings = get_settings()
     return timed_api_call(
@@ -547,22 +568,8 @@ def livermore_strategy_score(
     min_sample: int = Query(default=20, ge=1, le=10000),
     primary_horizon: str = Query(default="return_5d"),
 ) -> dict[str, object]:
-    for label, value in (("snapshot_from", snapshot_from), ("snapshot_to", snapshot_to)):
-        if value is None or not str(value).strip():
-            continue
-        text = str(value).strip()
-        try:
-            date.fromisoformat(text[:10])
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid {label}. Expected YYYY-MM-DD.",
-            ) from exc
-    if primary_horizon not in {"return_1d", "return_5d", "return_20d"}:
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid primary_horizon. Expected return_1d, return_5d, or return_20d.",
-        )
+    _validate_snapshot_window(snapshot_from, snapshot_to)
+    _validate_livermore_primary_horizon(primary_horizon)
 
     settings = get_settings()
     return timed_api_call(
@@ -574,6 +581,67 @@ def livermore_strategy_score(
             current_market_state=current_market_state,
             min_sample=min_sample,
             primary_horizon=primary_horizon,
+        ),
+    )
+
+
+@router.get("/livermore/strategy-optimization")
+def livermore_strategy_optimization(
+    snapshot_from: str | None = Query(default=None),
+    snapshot_to: str | None = Query(default=None),
+    current_market_state: str | None = Query(default=None, max_length=32),
+    min_sample: int = Query(default=20, ge=1, le=10000),
+    primary_horizon: str = Query(default="return_5d"),
+) -> dict[str, object]:
+    _validate_snapshot_window(snapshot_from, snapshot_to)
+    _validate_livermore_primary_horizon(primary_horizon)
+
+    settings = get_settings()
+    return timed_api_call(
+        "/ui/market-data/livermore/strategy-optimization",
+        lambda: livermore_candidate_history_strategy_optimization_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            current_market_state=current_market_state,
+            min_sample=min_sample,
+            primary_horizon=primary_horizon,
+        ),
+    )
+
+
+@router.get("/livermore/cycle-proxy-backtest")
+def livermore_cycle_proxy_backtest(
+    snapshot_from: str | None = Query(default=None),
+    snapshot_to: str | None = Query(default=None),
+) -> dict[str, object]:
+    _validate_snapshot_window(snapshot_from, snapshot_to)
+
+    settings = get_settings()
+    return timed_api_call(
+        "/ui/market-data/livermore/cycle-proxy-backtest",
+        lambda: livermore_candidate_history_cycle_proxy_backtest_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+        ),
+    )
+
+
+@router.get("/livermore/candidate-history-portfolio-backtest")
+def livermore_candidate_history_portfolio_backtest(
+    snapshot_from: str | None = Query(default=None),
+    snapshot_to: str | None = Query(default=None),
+) -> dict[str, object]:
+    _validate_snapshot_window(snapshot_from, snapshot_to)
+
+    settings = get_settings()
+    return timed_api_call(
+        "/ui/market-data/livermore/candidate-history-portfolio-backtest",
+        lambda: livermore_candidate_history_portfolio_backtest_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
         ),
     )
 

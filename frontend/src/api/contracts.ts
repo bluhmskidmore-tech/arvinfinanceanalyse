@@ -1749,6 +1749,11 @@ export type LivermoreStrategyScoreSampleStatus = "sufficient" | "insufficient" |
 
 export type LivermoreStrategyScorePriorityLabel = "优先复核" | "降权观察" | "样本不足" | string;
 
+export type LivermoreStrategyScoreHorizonKey = LivermoreCandidateHistoryHorizonKey | "return_10d";
+
+export type LivermoreStrategyScoreHorizonStatsByKey = LivermoreCandidateHistoryHorizonStatsByKey &
+  Partial<Record<"return_10d", LivermoreCandidateHistoryHorizonStats>>;
+
 export type LivermoreStrategyScoreRankBucket = {
   label: string;
   rank_from: number;
@@ -1757,7 +1762,7 @@ export type LivermoreStrategyScoreRankBucket = {
   priority_label: LivermoreStrategyScorePriorityLabel;
   included_in_priority: boolean;
   reason: string;
-  stats: LivermoreCandidateHistoryHorizonStatsByKey;
+  stats: LivermoreStrategyScoreHorizonStatsByKey;
 };
 
 export type LivermoreStrategyScoreRiskFlag = {
@@ -1784,7 +1789,8 @@ export type LivermoreStrategyScoreHorizonMaturity = LivermoreCandidateHistoryHor
 export type LivermoreStrategyScoreTrackedSnapshot = {
   snapshot_as_of_date: string;
   candidate_count: number;
-  horizons: Record<LivermoreCandidateHistoryHorizonKey, LivermoreStrategyScoreHorizonMaturity>;
+  horizons: Record<LivermoreCandidateHistoryHorizonKey, LivermoreStrategyScoreHorizonMaturity> &
+    Partial<Record<"return_10d", LivermoreStrategyScoreHorizonMaturity>>;
 };
 
 export type LivermoreStrategyScoreMaturity = {
@@ -1801,7 +1807,7 @@ export type LivermoreStrategyScoreMaturity = {
 export type LivermoreStrategyScoreDiagnostics = {
   priority_scope: string | null;
   priority_scope_label: string | null;
-  priority_scope_stats?: LivermoreCandidateHistoryHorizonStatsByKey | null;
+  priority_scope_stats?: LivermoreStrategyScoreHorizonStatsByKey | null;
   maturity?: LivermoreStrategyScoreMaturity | null;
   rank_buckets: LivermoreStrategyScoreRankBucket[];
   risk_flags: LivermoreStrategyScoreRiskFlag[];
@@ -1816,7 +1822,7 @@ export type LivermoreStrategyScoreRow = {
   priority_rank: number | null;
   priority_label: LivermoreStrategyScorePriorityLabel;
   reason: string;
-  stats: LivermoreCandidateHistoryHorizonStatsByKey;
+  stats: LivermoreStrategyScoreHorizonStatsByKey;
   diagnostics?: LivermoreStrategyScoreDiagnostics;
 };
 
@@ -1824,7 +1830,7 @@ export type LivermoreStrategyScorePayload = {
   as_of_date: string | null;
   snapshot_from: string | null;
   snapshot_to: string | null;
-  primary_horizon: LivermoreCandidateHistoryHorizonKey;
+  primary_horizon: LivermoreStrategyScoreHorizonKey;
   min_sample: number;
   current_market_state: string | null;
   backtest_window_summary?: BacktestWindowSummary | null;
@@ -1832,9 +1838,7 @@ export type LivermoreStrategyScorePayload = {
   current_market_state_rows: LivermoreStrategyScoreRow[];
 };
 
-export type LivermoreStrategyOptimizationHorizonKey =
-  | LivermoreCandidateHistoryHorizonKey
-  | "return_10d";
+export type LivermoreStrategyOptimizationHorizonKey = LivermoreStrategyScoreHorizonKey;
 
 export type LivermoreStrategyOptimizationAction =
   | "promote"

@@ -2257,8 +2257,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "pnl.dates",
         {
-          report_dates: [],
-          formal_fi_report_dates: [],
+          report_dates: ["2026-03-31", "2026-02-28"],
+          formal_fi_report_dates: ["2026-03-31", "2026-02-28"],
           nonstd_bridge_report_dates: [],
         },
         { basis, formal_use_allowed: basis === "formal" },
@@ -2488,6 +2488,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           portfolio_modified_duration: zero,
           issuer_concentration_hhi: zero,
           issuer_top5_weight: zero,
+          asset_cashflow_30d: zero,
+          asset_cashflow_90d: zero,
+          liability_cashflow_30d: zero,
+          liability_cashflow_90d: zero,
           liquidity_gap_30d: zero,
           liquidity_gap_90d: zero,
           liquidity_gap_30d_ratio: zero,
