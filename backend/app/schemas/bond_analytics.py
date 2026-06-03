@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from enum import Enum
+from enum import StrEnum
 from typing import Any, ClassVar, Literal
 
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
@@ -52,7 +52,7 @@ def _apply_numeric_coercion(
     return out
 
 
-class PeriodType(str, Enum):
+class PeriodType(StrEnum):
     """Analysis period granularity."""
 
     MOM = "MoM"
