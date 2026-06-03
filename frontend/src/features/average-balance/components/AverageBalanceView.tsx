@@ -373,12 +373,18 @@ function ResultMetaNotice(props: {
       type={hasQualityIssue ? "warning" : "info"}
       showIcon
       message={[
+        "候选指标",
+        "PAGE-CONTRACT-PENDING:/average-balance",
+        `正式可用: ${props.meta.formal_use_allowed ? "是" : "否"}`,
         `日均余额后端链路：${props.meta.result_kind}`,
-        props.meta.basis,
+        `口径 ${props.meta.basis}`,
         `来源=${props.meta.source_version}`,
         `规则=${props.meta.rule_version}`,
         `质量=${qualityLabel}`,
         `降级=${fallbackLabel}`,
+        `日期基准 ${props.meta.date_basis ?? "—"}`,
+        `使用表 ${props.meta.tables_used?.join(", ") || "—"}`,
+        `证据行 ${props.meta.evidence_rows ?? "—"}`,
       ].join(" · ")}
     />
   );

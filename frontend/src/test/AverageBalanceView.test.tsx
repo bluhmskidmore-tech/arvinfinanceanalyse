@@ -612,6 +612,17 @@ describe("AverageBalanceView", () => {
             vendor_status: "ok" as const,
             fallback_mode: "latest_snapshot" as const,
             scenario_flag: false,
+            requested_report_date: "2026-01-01",
+            resolved_report_date: "2026-04-14",
+            as_of_date: "2026-04-14",
+            date_basis: "adb_comparison_report_date",
+            tables_used: ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            filters_applied: {
+              start_date: "2026-01-01",
+              end_date: "2026-04-14",
+              top_n: 20,
+            },
+            evidence_rows: 104,
             generated_at: "2026-04-14T08:00:00+08:00",
           },
         };
@@ -622,6 +633,15 @@ describe("AverageBalanceView", () => {
     expect(meta).toHaveTextContent("adb.comparison");
     expect(meta).toHaveTextContent("来源=sv_live_adb");
     expect(meta).toHaveTextContent("降级=最新快照降级");
+    expect(meta).toHaveTextContent("候选指标");
+    expect(meta).toHaveTextContent("PAGE-CONTRACT-PENDING:/average-balance");
+    expect(meta).toHaveTextContent("正式可用: 否");
+    expect(meta).toHaveTextContent("口径 analytical");
+    expect(meta).toHaveTextContent("质量=预警");
+    expect(meta).toHaveTextContent("日期基准 adb_comparison_report_date");
+    expect(meta).toHaveTextContent("fact_formal_zqtz_balance_daily");
+    expect(meta).toHaveTextContent("fact_formal_tyw_balance_daily");
+    expect(meta).toHaveTextContent("证据行 104");
   });
 });
 
