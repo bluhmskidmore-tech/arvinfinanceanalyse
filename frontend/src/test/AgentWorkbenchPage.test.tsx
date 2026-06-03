@@ -4630,6 +4630,43 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("clears restore status when a fresh question starts after refresh", async () => {
+    const user = userEvent.setup();
+    let resolveRestore!: (value: Response) => void;
+    const restoreResponse = new Promise<Response>((resolve) => {
+      resolveRestore = resolve;
+    });
+    window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-pending-fresh-question");
+    fetchMock
+      .mockReturnValueOnce(restoreResponse)
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalOrdinaryTextResult("fresh answer while restore was pending")));
+
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByRole("status", { name: "agent-run-restore-status" })).toHaveTextContent(
+      "agent_run:restore-pending-fresh-question",
+    );
+
+    await user.type(screen.getByLabelText("agent-question-input"), "fresh question while restore pending");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("fresh answer while restore was pending")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "agent-run-restore-status" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveRestore(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            buildLocalOrdinaryTextResult("late restored answer after fresh question"),
+            "agent_run:restore-pending-fresh-question",
+          ),
+        ),
+      );
+    });
+
+    expect(screen.queryByText("late restored answer after fresh question")).not.toBeInTheDocument();
+  });
+
   it("clears restore failure status after the next successful question", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(LATEST_AGENT_RUN_ID_KEY, "agent_run:restore-failed");

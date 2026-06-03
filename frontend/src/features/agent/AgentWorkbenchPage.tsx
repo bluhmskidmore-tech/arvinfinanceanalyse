@@ -2269,9 +2269,11 @@ export function EmbeddedAgentCopilot({
     const context = buildConversationContext(conversationTurns);
     const turn = createAgentConversationTurn(question, context, "ordinary");
     setAgentWaitSeconds(0);
+    resetConversationSession();
     if (isEmbedded) {
       setPageContextChangeNotice(false);
     }
+    setRestoringRunId("");
     setRestoreErrorRunId("");
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
     clearComposerQuery();
