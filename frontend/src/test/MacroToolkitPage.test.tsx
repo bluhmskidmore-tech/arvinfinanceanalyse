@@ -740,6 +740,21 @@ describe("MacroToolkitPage", () => {
     expect(crisisEvidence).toHaveTextContent("危机期命中率 55.0%");
     expect(crisisEvidence).toHaveTextContent("先补齐样本不足品种的历史数据");
     expect(crisisEvidence).toHaveTextContent("样本不足：Rebar futures 17/20，还差 3");
+    expect(crisisEvidence).toHaveTextContent("建议刷新品种：RB / I / AL / AU");
+    await user.click(within(crisisEvidence).getByRole("button", { name: "按建议选择" }));
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    expect(commodityPanel).toHaveTextContent("已按 Crisis Score 建议选择：RB / I / AL / AU");
+    expect(commodityPanel).toHaveTextContent("下一步先预估商品期货");
+    expect(commodityPanel).toHaveTextContent("4/7");
+    expect(within(commodityPanel).getByRole("checkbox", { name: /螺纹钢/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /^铁矿石/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /铝/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /黄金/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /铜/ })).not.toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /原油/ })).not.toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /南华指数/ })).not.toBeChecked();
+    await user.click(within(commodityPanel).getByRole("button", { name: /预估商品期货/ }));
+    expect(commodityPanel).toHaveTextContent("商品期货预估完成：4 个品种，88 行");
     expect(crisisEvidence).toHaveTextContent("最低样本 20");
     expect(screen.queryByRole("button", { name: "查看完整分析" })).not.toBeInTheDocument();
   });
@@ -822,6 +837,109 @@ describe("MacroToolkitPage", () => {
       },
     ]);
     await waitFor(() => expect(calls.filter((item) => item?.detail === "full")).toHaveLength(2));
+  });
+
+  it("previews Crisis Score suggested commodity futures from the evidence panel", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
+    const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
+    let completedRefreshCount = 0;
+    const refreshedAnalysisEnvelope = {
+      ...analysisEnvelope,
+      result: {
+        ...analysisEnvelope.result,
+        capability_results: analysisEnvelope.result.capability_results.map((result) => {
+          if (result.key !== "crisis_score_cn") {
+            return result;
+          }
+          const updatedInputs = result.input_evidence?.inputs.map((input) =>
+            input.field === "nanhua"
+              ? {
+                  ...input,
+                  row_count: 22,
+                  latest_date: "2026-06-01",
+                  source: "tushare",
+                  value: 3187.42,
+                }
+              : input,
+          );
+          const rawInputEvidence =
+            result.result.input_evidence && typeof result.result.input_evidence === "object"
+              ? result.result.input_evidence
+              : {};
+          return {
+            ...result,
+            input_evidence: result.input_evidence
+              ? {
+                  ...result.input_evidence,
+                  inputs: updatedInputs ?? result.input_evidence.inputs,
+                  latest_dates: ["2026-06-01"],
+                  sources: ["tushare"],
+                }
+              : result.input_evidence,
+            result: {
+              ...result.result,
+              input_evidence: {
+                ...rawInputEvidence,
+                inputs: updatedInputs ?? result.input_evidence?.inputs ?? [],
+                latest_dates: ["2026-06-01"],
+                sources: ["tushare"],
+              },
+            },
+          };
+        }),
+      },
+    };
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async (options) => {
+        if (options?.detail === "full" && completedRefreshCount > 0) {
+          return refreshedAnalysisEnvelope;
+        }
+        return analysisEnvelope;
+      },
+      refreshCommodityFutures: async (options) => {
+        refreshCalls.push(options);
+        if (!options?.dryRun) {
+          completedRefreshCount += 1;
+        }
+        return baseClient.refreshCommodityFutures(options);
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+    expect(crisisEvidence).toHaveTextContent("建议刷新品种：RB / I / AL / AU");
+
+    await user.click(within(crisisEvidence).getByRole("button", { name: "按建议预估" }));
+
+    expect(refreshCalls).toHaveLength(1);
+    expect(refreshCalls[0]).toEqual({
+      endDate: "2026-04-30",
+      products: ["RB", "I", "AL", "AU"],
+      dryRun: true,
+    });
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    expect(commodityPanel).toHaveTextContent("已按 Crisis Score 建议选择：RB / I / AL / AU");
+    expect(commodityPanel).toHaveTextContent("商品期货预估完成：4 个品种，88 行");
+    expect(within(commodityPanel).getByRole("checkbox", { name: /螺纹钢/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /^铁矿石/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /铝/ })).toBeChecked();
+    expect(within(commodityPanel).getByRole("checkbox", { name: /黄金/ })).toBeChecked();
+
+    await user.click(within(commodityPanel).getByRole("button", { name: /刷新商品期货/ }));
+
+    expect(refreshCalls[1]).toEqual({
+      endDate: "2026-04-30",
+      products: ["RB", "I", "AL", "AU"],
+      dryRun: false,
+    });
+    expect(commodityPanel).toHaveTextContent("商品期货刷新完成：4 个品种，88 行");
+    expect(commodityPanel).toHaveTextContent("完整分析证据已重新读取");
+    await waitFor(() => expect(crisisEvidence).toHaveTextContent("2026-06-01"));
+    expect(crisisEvidence).toHaveTextContent("3187.42");
   });
 
   it("previews selected commodity futures before refreshing full evidence", async () => {

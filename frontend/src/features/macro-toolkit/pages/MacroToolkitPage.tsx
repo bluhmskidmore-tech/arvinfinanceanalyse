@@ -82,12 +82,25 @@ const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "NHCI", label: "南华指数", description: "Crisis Score 输入" },
 ] as const;
 const DEFAULT_MACRO_COMMODITY_PRODUCTS = MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => option.value);
+const MACRO_COMMODITY_FIELD_TO_PRODUCT: Record<string, string> = {
+  rebar: "RB",
+  iron_ore: "I",
+  copper: "CU",
+  aluminum: "AL",
+  crude_oil: "SC",
+  gold: "AU",
+};
 const NANHUA_COMMODITY_PRODUCT_CODE = "NHCI";
 const NANHUA_CRISIS_ALIAS = "NH0100.NHF";
 const NANHUA_SYSTEM_SERIES_ID = "NHCI.NH";
 
 type MacroToolkitPageMode = "toolkit" | "observation";
 type MacroToolkitRepairItem = NonNullable<MacroToolkitDataHealth["repair_items"]>[number];
+type CommodityRefreshOptions = {
+  dryRun?: boolean;
+  products?: string[];
+  suggestedSelection?: string[];
+};
 
 const MACRO_SOURCE_BACKFILL_ALIASES = new Set(["M0041813"]);
 
@@ -104,6 +117,10 @@ function canRefreshMacroSourceBackfill(item: MacroToolkitRepairItem) {
     item.action?.kind === "source_backfill_required" &&
     MACRO_SOURCE_BACKFILL_ALIASES.has(normalizeMacroSourceBackfillAlias(item.alias))
   );
+}
+
+function sameCommodityProducts(left: string[], right: string[]) {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 function groupLabel(group: string) {
@@ -325,6 +342,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [commodityRefreshResult, setCommodityRefreshResult] = useState<string | null>(null);
   const [commodityRefreshError, setCommodityRefreshError] = useState<string | null>(null);
   const [commodityRefreshRun, setCommodityRefreshRun] = useState<MacroToolkitCommodityFuturesRefreshRun | null>(null);
+  const [commoditySuggestedSelection, setCommoditySuggestedSelection] = useState<string[]>([]);
+  const [commodityEvidenceReloadMessage, setCommodityEvidenceReloadMessage] = useState<string | null>(null);
   const [isRefreshingCommodity, setIsRefreshingCommodity] = useState(false);
   const [selectedCommodityProducts, setSelectedCommodityProducts] = useState<string[]>([
     ...DEFAULT_MACRO_COMMODITY_PRODUCTS,
@@ -505,8 +524,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         staleTime: MACRO_TOOLKIT_READ_STALE_MS,
       });
       setFullAnalysisEnvelope(response);
+      return true;
     } catch (error) {
       setFullAnalysisError(formatQueryError(error));
+      return false;
     } finally {
       setIsLoadingFullAnalysis(false);
     }
@@ -623,29 +644,37 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     }
   }, [analysis?.as_of_date, analysisQuery, clearFullAnalysisCache, client, scriptsQuery, strategyQuery]);
 
-  const refreshCommodityFutures = useCallback(async (options?: { dryRun?: boolean }) => {
+  const refreshCommodityFutures = useCallback(async (options?: CommodityRefreshOptions) => {
     const dryRun = options?.dryRun ?? false;
-    if (selectedCommodityProducts.length === 0) {
+    const products = options?.products ?? selectedCommodityProducts;
+    if (products.length === 0) {
       setCommodityRefreshError("请至少选择一个商品期货品种");
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
+      setCommodityEvidenceReloadMessage(null);
       return;
+    }
+    if (options?.products && !sameCommodityProducts(selectedCommodityProducts, options.products)) {
+      setSelectedCommodityProducts(options.products);
     }
     if (!isCommodityRefreshAllowed) {
       setCommodityRefreshError(commodityFuturesPermissionBlockMessage(commodityPermission));
       setCommodityRefreshResult(null);
       setCommodityRefreshRun(null);
+      setCommodityEvidenceReloadMessage(null);
       return;
     }
     setIsRefreshingCommodity(true);
     setCommodityRefreshError(null);
     setCommodityRefreshResult(null);
     setCommodityRefreshRun(null);
+    setCommoditySuggestedSelection(options?.suggestedSelection ?? []);
+    setCommodityEvidenceReloadMessage(null);
     const shouldReloadFullAnalysis = !dryRun && !isCoreAnalysis;
     try {
       const response = await client.refreshCommodityFutures({
         endDate: analysis?.as_of_date ?? undefined,
-        products: selectedCommodityProducts,
+        products,
         dryRun,
       });
       const refresh = response.result.refresh;
@@ -657,11 +686,16 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       if (shouldReloadFullAnalysis) {
-        await loadFullAnalysis({ force: true });
+        setCommodityEvidenceReloadMessage("正在重新读取完整分析证据");
+        const reloaded = await loadFullAnalysis({ force: true });
+        setCommodityEvidenceReloadMessage(
+          reloaded ? "完整分析证据已重新读取" : "完整分析证据重新读取失败，请重新完整分析",
+        );
       }
     } catch (error) {
       setCommodityRefreshError(formatCommodityFuturesRefreshError(error));
       setCommodityRefreshRun(null);
+      setCommodityEvidenceReloadMessage(null);
     } finally {
       setIsRefreshingCommodity(false);
     }
@@ -1142,7 +1176,22 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             </div>
           </section>
 
-          {crisisScoreResult ? <CrisisScoreEvidencePanel result={crisisScoreResult} /> : null}
+          {crisisScoreResult ? (
+            <CrisisScoreEvidencePanel
+              result={crisisScoreResult}
+              onApplyCommodityRefreshProducts={(products) => {
+                setSelectedCommodityProducts(products);
+                setCommoditySuggestedSelection(products);
+                setCommodityRefreshResult(null);
+                setCommodityRefreshError(null);
+                setCommodityRefreshRun(null);
+                setCommodityEvidenceReloadMessage(null);
+              }}
+              onPreviewCommodityRefreshProducts={(products) => {
+                void refreshCommodityFutures({ dryRun: true, products, suggestedSelection: products });
+              }}
+            />
+          ) : null}
 
           <section className="macro-toolkit-section">
             <PageSectionLead
@@ -1514,9 +1563,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   value={selectedCommodityProducts}
                   onChange={(values) => {
                     setSelectedCommodityProducts(values.map(String));
+                    setCommoditySuggestedSelection([]);
                     setCommodityRefreshResult(null);
                     setCommodityRefreshError(null);
                     setCommodityRefreshRun(null);
+                    setCommodityEvidenceReloadMessage(null);
                   }}
                 >
                   {MACRO_COMMODITY_PRODUCT_OPTIONS.map((option) => (
@@ -1531,6 +1582,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   ))}
                 </Checkbox.Group>
               </div>
+              {commoditySuggestedSelection.length ? (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={`已按 Crisis Score 建议选择：${commoditySuggestedSelection.join(" / ")}`}
+                  description="下一步先预估商品期货，再根据预计行数决定是否刷新。"
+                />
+              ) : null}
               {shouldShowCommodityPermissionNotice ? (
                 <Alert
                   type="warning"
@@ -1557,6 +1616,13 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   刷新商品期货
                 </Button>
                 {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
+                {commodityEvidenceReloadMessage ? (
+                  <Alert
+                    type={commodityEvidenceReloadMessage.includes("失败") ? "error" : "success"}
+                    showIcon
+                    message={commodityEvidenceReloadMessage}
+                  />
+                ) : null}
                 {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
               </div>
               {commodityRefreshRun ? <CommodityRefreshResultPanel refresh={commodityRefreshRun} /> : null}
@@ -1844,7 +1910,15 @@ function CommodityRefreshSummaryStrip({
   );
 }
 
-function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityResult }) {
+function CrisisScoreEvidencePanel({
+  result,
+  onApplyCommodityRefreshProducts,
+  onPreviewCommodityRefreshProducts,
+}: {
+  result: MacroToolkitCapabilityResult;
+  onApplyCommodityRefreshProducts?: (products: string[]) => void;
+  onPreviewCommodityRefreshProducts?: (products: string[]) => void;
+}) {
   const normalizedEvidence = normalizeInputEvidence(result);
   const inputEvidence = normalizedEvidence?.inputs ?? [];
   const rawResult = result.result;
@@ -1858,6 +1932,10 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
     (item) => item.field === "nanhua" || item.aliases?.includes("NH0100.NHF"),
   );
   const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
+  const commodityShortRefreshProducts = commodityCoverage?.candidate_summary
+    ? commodityShadowRefreshProducts(commodityCoverage.candidate_summary)
+    : [];
+  const commodityShortRefreshHint = formatCommodityShadowRefreshHint(commodityShortRefreshProducts);
   const warnings = result.warnings.length ? result.warnings : normalizedEvidence?.missingInputs ?? [];
 
   return (
@@ -1969,6 +2047,32 @@ function CrisisScoreEvidencePanel({ result }: { result: MacroToolkitCapabilityRe
                 <small className="macro-toolkit-crisis-coverage-note">
                   {formatCommodityShadowShortfallList(commodityCoverage.candidate_summary)}
                 </small>
+              ) : null}
+              {commodityShortRefreshHint ? (
+                <div className="macro-toolkit-crisis-coverage-action">
+                  <small className="macro-toolkit-crisis-coverage-note">{commodityShortRefreshHint}</small>
+                  {onApplyCommodityRefreshProducts ? (
+                    <Button
+                      size="small"
+                      icon={<ToolOutlined />}
+                      aria-label="按建议选择"
+                      onClick={() => onApplyCommodityRefreshProducts(commodityShortRefreshProducts)}
+                    >
+                      按建议选择
+                    </Button>
+                  ) : null}
+                  {onPreviewCommodityRefreshProducts ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      icon={<InfoCircleOutlined />}
+                      aria-label="按建议预估"
+                      onClick={() => onPreviewCommodityRefreshProducts(commodityShortRefreshProducts)}
+                    >
+                      按建议预估
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </>
           ) : null}
@@ -2860,6 +2964,16 @@ function formatCommodityShadowShortfallList(summary: CrisisCommodityCandidateSum
     return `${item.label || item.field} ${sampleText}，${gapText}${dateText}`;
   });
   return `样本不足：${items.join("；")}`;
+}
+
+function commodityShadowRefreshProducts(summary: CrisisCommodityCandidateSummary) {
+  return summary.shadow_evaluation_short_items
+    .map((item) => MACRO_COMMODITY_FIELD_TO_PRODUCT[item.field])
+    .filter((item, index, array): item is string => Boolean(item) && array.indexOf(item) === index);
+}
+
+function formatCommodityShadowRefreshHint(products: string[]) {
+  return products.length ? `建议刷新品种：${products.join(" / ")}` : "";
 }
 
 function formatSignedDecimal(value: number | null | undefined) {

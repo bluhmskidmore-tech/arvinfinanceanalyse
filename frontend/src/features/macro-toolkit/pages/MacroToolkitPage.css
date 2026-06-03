@@ -1162,6 +1162,13 @@
   line-height: 1.5;
 }
 
+.macro-toolkit-crisis-coverage-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .macro-toolkit-crisis-evidence__components {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
