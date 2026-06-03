@@ -2174,7 +2174,7 @@ export function EmbeddedAgentCopilot({
     return turn.retryMode === "ordinary" && turn.question.trim().length > 0 && Boolean(turn.result);
   }
 
-  async function rerunOrdinaryTurn(turn: AgentConversationTurn) {
+  async function rerunOrdinaryTurn(turn: AgentConversationTurn, rerunComposerHint = "正在重新发送 · 可继续输入下一句") {
     if (loading) {
       return;
     }
@@ -2187,6 +2187,7 @@ export function EmbeddedAgentCopilot({
     if (query.trim() === turn.question.trim()) {
       clearComposerQuery();
     }
+    setComposerAssistHint(rerunComposerHint);
     shouldFocusComposerRef.current = true;
     updateConversationTurn(turn.id, (currentTurn) => ({
       ...currentTurn,
@@ -2200,6 +2201,7 @@ export function EmbeddedAgentCopilot({
     try {
       await executeOrdinaryConversation(turn.question, turn.id, turn.conversationContext);
     } finally {
+      setComposerAssistHint((currentHint) => (currentHint === rerunComposerHint ? null : currentHint));
       setLoading(false);
     }
   }
@@ -2208,14 +2210,14 @@ export function EmbeddedAgentCopilot({
     if (!canRetryAgentTurn(turn)) {
       return;
     }
-    await rerunOrdinaryTurn(turn);
+    await rerunOrdinaryTurn(turn, "正在重试这一轮 · 可继续输入下一句");
   }
 
   async function regenerateAgentTurn(turn: AgentConversationTurn) {
     if (!canRegenerateAgentTurn(turn)) {
       return;
     }
-    await rerunOrdinaryTurn(turn);
+    await rerunOrdinaryTurn(turn, "正在重新生成 · 可继续输入下一句");
   }
 
   function stopActiveAgentTurn() {

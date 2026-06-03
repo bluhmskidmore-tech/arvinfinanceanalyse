@@ -876,6 +876,32 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
+  it("cues an in-place retry while the retry request is pending", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse(
+          {
+            detail: "temporary managed run outage",
+          },
+          500,
+        ),
+      )
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ordinary retry cue question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+
+    expect(await screen.findByText("正在重试这一轮 · 可继续输入下一句")).toBeInTheDocument();
+    expect(screen.queryByText("智能体查询失败（500）")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+  });
+
   it("retries a failed follow-up with its captured conversation context", async () => {
     const user = userEvent.setup();
     mockManagedRunResult(
@@ -2742,6 +2768,49 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByText("第一版回答。")).not.toBeInTheDocument();
     expect(screen.getAllByText("regenerate this")).toHaveLength(1);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
+  });
+
+  it("cues answer regeneration while the regenerate request is pending", async () => {
+    const user = userEvent.setup();
+    mockManagedRunResult(
+      fetchMock,
+      {
+        answer: "第一版待重新生成回答。",
+        cards: [],
+        evidence: {
+          tables_used: ["hermes_cli"],
+          filters_applied: {
+            provider: "hermes",
+            model: "gpt-5.5",
+            transport: "bridge",
+            toolsets: "file",
+          },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_regenerate_cue_first",
+          basis: "formal",
+          result_kind: "agent.hermes",
+        },
+        next_drill: [],
+        suggested_actions: [],
+      },
+      "agent_run:regenerate-cue-first",
+    );
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "regenerate cue question");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("第一版待重新生成回答。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "重新生成" }));
+
+    expect(await screen.findByText("正在重新生成 · 可继续输入下一句")).toBeInTheDocument();
+    expect(screen.queryByText("第一版待重新生成回答。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
   });
 
   it("edits a completed ordinary question into the composer for a revised turn", async () => {
