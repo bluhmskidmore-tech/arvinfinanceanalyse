@@ -1548,6 +1548,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: /读取流程/ }));
     expect(screen.getByText("正在读取 GitNexus 流程 · 可继续输入")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
 
     await act(async () => {
       resolveProcesses(
@@ -1582,6 +1583,7 @@ describe("AgentWorkbenchPage", () => {
     await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
     await user.click(screen.getByRole("button", { name: /查看所选流程/ }));
     expect(screen.getByText("正在查看 GitNexus 流程 · 可继续输入")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
 
     await screen.findByText("本地同步查询正在准备，本页会直接显示结果。");
     const status = getAgentTurnStatus();

@@ -2565,6 +2565,7 @@ export function EmbeddedAgentCopilot({
 
     setProcessLoading(true);
     setComposerAssistHint("正在读取 GitNexus 流程 · 可继续输入");
+    focusComposerInput();
     setError(null);
     try {
       const requestBody: AgentQueryRequest = {
@@ -2670,6 +2671,7 @@ export function EmbeddedAgentCopilot({
     setLoading(true);
     setError(null);
     setComposerAssistHint("正在查看 GitNexus 流程 · 可继续输入");
+    shouldFocusComposerRef.current = true;
     try {
       const payload = await executeAgentQuery(question, "query", turn.id);
       if (!payload) {
