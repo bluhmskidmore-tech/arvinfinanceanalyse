@@ -2407,7 +2407,16 @@ export function buildCandidateEvidenceCards(
 function localizeRiskExitReason(reason: string | null | undefined): string {
   const value = reason?.trim();
   if (!value) return "原因待补";
+  const lower = value.toLowerCase();
   const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    lower.includes("external vendor") ||
+    lower.includes("vendor ")
+  ) {
+    return "风险退出证据待确认";
+  }
   const labels: Record<string, string> = {
     "2d_below_ema10": "连续 2 日收盘低于 10 日均线",
     "2d_below_ema10_with_volume": "连续 2 日收盘低于 10 日均线且放量",

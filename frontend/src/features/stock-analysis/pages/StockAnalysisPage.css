@@ -6150,10 +6150,41 @@
     border-bottom: 0;
   }
 
-  [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-risk-section"],
-  [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-boundary-rail"],
   .stock-analysis-page__rail-check-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .stock-analysis-page__rail-check-row {
+    min-height: 48px;
+    padding: 6px;
+  }
+
+  .stock-analysis-page__rail-check-row .stock-analysis-page__rail-collapse,
+  .stock-analysis-page__rail-check-row .stock-analysis-page__visually-hidden {
     display: none !important;
+  }
+
+  .stock-analysis-page__rail-check-main {
+    display: grid;
+    gap: 4px;
+  }
+
+  .stock-analysis-page__rail-check-main > span {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .stock-analysis-page__rail-check-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+  }
+
+  .stock-analysis-page__rail-check-main strong {
+    max-width: none;
+    text-align: left;
   }
 
   [data-testid="stock-analysis-sector-strength-panel"] .stock-analysis-page__sector-rank-grid,

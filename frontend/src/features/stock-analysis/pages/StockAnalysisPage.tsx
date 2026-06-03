@@ -118,6 +118,9 @@ function localizeStockErrorMessage(message: string) {
   if (exactMessages[normalized]) {
     return exactMessages[normalized];
   }
+  if (normalized.includes("not allowed") || normalized.includes("permission") || normalized.includes("forbidden")) {
+    return "数据权限待确认，请联系管理员。";
+  }
   return localizeStockBackendText(value);
 }
 

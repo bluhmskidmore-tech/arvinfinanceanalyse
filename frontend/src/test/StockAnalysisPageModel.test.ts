@@ -1693,6 +1693,28 @@ describe("stockAnalysisPageModel", () => {
     expect(watch?.reason).not.toContain("position snapshot");
   });
 
+  it("keeps unknown vendor confluence risk exit evidence out of row reasons", () => {
+    const rows = buildRiskExitRows(strategyPayload, {
+      ...confluencePayload,
+      exit_observations: [
+        {
+          stock_code: "000999.SZ",
+          stock_name: "Vendor Exit",
+          action: "observe_exit_watch",
+          current_price: 18.6,
+          exit_watch_price: 18.4,
+          triggered: false,
+          evidence: ["external_vendor_exit_signal_ready"],
+        },
+      ],
+    });
+
+    const watch = rows.find((row) => row.stockCode === "000999.SZ");
+    expect(watch?.reason).toBe("风险退出证据待确认");
+    expect(watch?.reason).not.toContain("external_vendor_exit_signal_ready");
+    expect(watch?.reason).not.toContain("external vendor exit signal ready");
+  });
+
   it("surfaces data boundary notes and missing evidence", () => {
     const notes = buildDataBoundaryNotes(strategyPayload);
     const blockedNotes = buildDataBoundaryNotes({

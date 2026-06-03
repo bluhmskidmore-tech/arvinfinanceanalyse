@@ -2680,6 +2680,19 @@ describe("StockAnalysisPage", () => {
     expect(screen.queryByText("股票分析结果加载失败。")).not.toBeInTheDocument();
   });
 
+  it("localizes permission failures without exposing backend table names", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyError: new Error("User is not allowed to read market_data.livermore."),
+      }),
+    });
+
+    const errorPanel = await screen.findByTestId("stock-analysis-error-workbench");
+    expect(errorPanel).toHaveTextContent("数据权限待确认，请联系管理员。");
+    expect(errorPanel).not.toHaveTextContent("User is not allowed");
+    expect(errorPanel).not.toHaveTextContent("market_data.livermore");
+  });
+
   it("keeps the page usable when signal confluence fails", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ confluenceError: new Error("confluence unavailable") }),
