@@ -8,7 +8,6 @@ from typing import Any
 
 import duckdb
 import pandas as pd
-
 from backend.app.core_finance.factor_screen_candidates import (
     MAX_CANDIDATES,
     MAX_CANDIDATES_PER_INDUSTRY,
@@ -30,6 +29,7 @@ ADMISSION_MIN_PERIODS = 12
 ADMISSION_MIN_AVERAGE_COUNT = 15
 ADMISSION_DRAWDOWN_TOLERANCE = 0.01
 NON_BLOCKING_ADMISSION_WARNINGS = {"READ_ONLY_SHADOW_NOT_PRODUCTION"}
+RANKED_UNIVERSE_SIZE_ATTR = "shadow_ranked_universe_size"
 DEEP_VALUE_QUALITY_WEIGHTS = {
     "value": 0.45,
     "quality": 0.25,
@@ -283,7 +283,11 @@ def _portfolio_result(
 
     for start_date, end_date in periods:
         universe = factors_by_date[start_date]
-        ranked = _ranked_frame(_apply_constraints(universe, spec), spec.weights)
+        ranked = _ranked_frame(
+            _apply_constraints(universe, spec),
+            spec.weights,
+            candidate_pool_only=spec.turnover_cap is None,
+        )
         selected = _select_with_caps(ranked, previous_codes=previous_codes, turnover_cap=spec.turnover_cap)
         selected_codes = list(selected.index)
         gross_return = _selection_return(returns_by_period, start_date, end_date, selected_codes)
@@ -345,7 +349,15 @@ def _portfolio_result(
         }
         for cost_bps in COST_BPS
     ]
-    latest_ranked = _ranked_frame(_apply_constraints(factors_by_date[periods[-1][1]], spec), spec.weights) if periods else pd.DataFrame()
+    latest_ranked = (
+        _ranked_frame(
+            _apply_constraints(factors_by_date[periods[-1][1]], spec),
+            spec.weights,
+            candidate_pool_only=True,
+        )
+        if periods
+        else pd.DataFrame()
+    )
     latest_selected = _select_with_caps(latest_ranked, previous_codes=None, turnover_cap=None)
     return (
         {
@@ -377,19 +389,30 @@ def _portfolio_result(
     )
 
 
-def _ranked_frame(frame: pd.DataFrame, weights: dict[str, float]) -> pd.DataFrame:
+def _ranked_frame(
+    frame: pd.DataFrame,
+    weights: dict[str, float],
+    *,
+    candidate_pool_only: bool = False,
+) -> pd.DataFrame:
     if frame.empty:
         result = frame.copy()
         result["score"] = pd.Series(dtype="float64")
+        result.attrs[RANKED_UNIVERSE_SIZE_ATTR] = 0
         return result
     factors = compute_factors(frame)
     factors = _industry_neutralize_factors(factors, frame["industry"])
     score = pd.Series(0.0, index=factors.index, dtype="float64")
     for column, weight in weights.items():
         score = score.add(factors[column] * float(weight), fill_value=0.0)
-    ranked = frame.copy()
-    ranked["score"] = score
-    return ranked.sort_values("score", ascending=False)
+    ordered_score = score.sort_values(ascending=False)
+    if candidate_pool_only:
+        top_pool_size = max(int(len(frame) * TOP_PCT), 1)
+        ordered_score = ordered_score.head(top_pool_size)
+    ranked = frame.loc[ordered_score.index].copy()
+    ranked["score"] = ordered_score
+    ranked.attrs[RANKED_UNIVERSE_SIZE_ATTR] = len(frame)
+    return ranked
 
 
 def _apply_constraints(frame: pd.DataFrame, spec: PortfolioSpec) -> pd.DataFrame:
@@ -409,7 +432,8 @@ def _select_with_caps(
 ) -> pd.DataFrame:
     if ranked.empty:
         return ranked.head(0)
-    top_pool_size = max(int(len(ranked) * TOP_PCT), 1)
+    ranked_universe_size = int(ranked.attrs.get(RANKED_UNIVERSE_SIZE_ATTR) or len(ranked))
+    top_pool_size = min(max(int(ranked_universe_size * TOP_PCT), 1), len(ranked))
     selected_codes: list[str] = []
     industry_counts: Counter[str] = Counter()
     if previous_codes and turnover_cap is not None:

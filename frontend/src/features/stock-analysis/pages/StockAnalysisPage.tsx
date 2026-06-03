@@ -1495,6 +1495,9 @@ export default function StockAnalysisPage() {
   const meanReversionPayload = strategyPayload?.mean_reversion_candidates;
   const meanReversionMarketActive = gateState === "WARM";
   const factorScreenPayload = strategyPayload?.factor_screen_candidates;
+  const factorScreenCoverageNote = factorScreenPayload?.coverage_note
+    ? localizeStockBackendText(factorScreenPayload.coverage_note, "factor_screen_candidates")
+    : null;
   const hybridFusionPayload = strategyPayload?.hybrid_fusion_candidates;
   const reviewQueueUsesHybridFusion = (hybridFusionPayload?.items?.length ?? 0) > 0;
   const cycleRotationFramework = strategyPayload?.cycle_rotation_framework;
@@ -3409,8 +3412,8 @@ export default function StockAnalysisPage() {
                             </table>
                           </div>
                         )}
-                        {factorScreenPayload?.coverage_note ? (
-                          <p className="stock-analysis-page__footnote">{factorScreenPayload.coverage_note}</p>
+                        {factorScreenCoverageNote ? (
+                          <p className="stock-analysis-page__footnote">{factorScreenCoverageNote}</p>
                         ) : null}
                       </div>
 
@@ -5751,7 +5754,7 @@ export default function StockAnalysisPage() {
                     <strong>多因子选股</strong>
                     <span className={SA_PILL}>
                       {factorScreenPayload?.candidate_count ?? 0} 只 ·{" "}
-                      {factorScreenPayload?.coverage_note ?? "数据未就绪"}
+                      {factorScreenCoverageNote ?? "数据未就绪"}
                     </span>
                   </div>
                           {!factorScreenPayload ? (
@@ -5841,12 +5844,12 @@ export default function StockAnalysisPage() {
                                 <DatabaseOutlined aria-hidden="true" /> {label}
                               </span>
                             ))}
-                            {factorScreenPayload?.coverage_note ? (
+                            {factorScreenCoverageNote ? (
                               <span
                                 className="inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-[11px] font-bold text-primary-700"
-                                title={factorScreenPayload.coverage_note}
+                                title={factorScreenCoverageNote}
                               >
-                                覆盖 {compactText(factorScreenPayload.coverage_note, 14)}
+                                覆盖 {compactText(factorScreenCoverageNote, 14)}
                               </span>
                             ) : null}
                           </div>

@@ -1680,6 +1680,35 @@ describe("StockAnalysisPage", () => {
     expect(page).not.toHaveTextContent("调仓指令");
   });
 
+  it("localizes factor screen coverage notes on the observation preview", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: [
+            "market_gate",
+            "sector_rank",
+            "stock_candidates",
+            "factor_screen_candidates",
+            "risk_exit",
+          ],
+          factor_screen_candidates: {
+            as_of_date: "2026-04-30",
+            formula_version: "rv_factor_screen_candidates_v1",
+            market_state: "WARM",
+            input_stock_count: 0,
+            candidate_count: 0,
+            coverage_note: "factor_snapshot 无数据",
+            items: [],
+          },
+        }),
+      }),
+    });
+
+    const preview = await screen.findByTestId("stock-analysis-observation-preview");
+    expect(preview).toHaveTextContent("因子快照无数据");
+    expect(preview).not.toHaveTextContent("factor_snapshot");
+  });
+
   it("renders hybrid fusion candidates as the primary review queue", async () => {
     const user = userEvent.setup();
     renderWorkbenchApp(["/stock-analysis"], {

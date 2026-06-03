@@ -849,6 +849,30 @@ describe("RiskTensorPage", () => {
     expect(qualityDetail).toHaveTextContent("desk=FI");
   });
 
+  it("explicitly marks missing backend evidence fields in quality evidence", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_missing_meta_evidence_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_missing_meta_evidence_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+    expect(qualityDetail).toHaveTextContent("evidence_rows 未提供");
+    expect(qualityDetail).toHaveTextContent("tables_used 未提供");
+    expect(qualityDetail).toHaveTextContent("filters_applied 未提供");
+  });
+
   it("surfaces issuer concentration detail from backend fields", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

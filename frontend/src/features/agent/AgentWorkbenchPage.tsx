@@ -2575,7 +2575,11 @@ export function EmbeddedAgentCopilot({
     }, 1800);
   }
 
-  function applyFollowUpChip(question: string) {
+  function applyFollowUpChip(question: string, sourceElement?: HTMLElement) {
+    const followUpDetails = sourceElement?.closest(".agent-follow-up-chips__details");
+    if (followUpDetails instanceof HTMLDetailsElement) {
+      followUpDetails.open = false;
+    }
     replaceComposerQuery(question);
   }
 
@@ -2818,7 +2822,7 @@ export function EmbeddedAgentCopilot({
                         key={chip.label}
                         type="button"
                         className="agent-follow-up-chips__button"
-                        onClick={() => applyFollowUpChip(chip.question)}
+                        onClick={(event) => applyFollowUpChip(chip.question, event.currentTarget)}
                         disabled={loading}
                       >
                         {chip.label}

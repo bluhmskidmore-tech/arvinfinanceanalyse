@@ -186,6 +186,34 @@ def test_multi_factor_selection_ranks_and_filters_industry() -> None:
     assert selected["score"].iloc[0] == financials.assign(score=selected["score"]).loc["AAA", "score"]
 
 
+def test_compute_factors_winsorizes_without_per_column_series_quantiles(monkeypatch) -> None:
+    financials = pd.DataFrame(
+        {
+            "pe": [8.0, 12.0, 20.0, 120.0],
+            "pb": [0.8, 1.1, 2.0, 8.0],
+            "ps": [1.0, 1.4, 2.5, 12.0],
+            "roe": [0.22, 0.18, 0.11, -0.03],
+            "gross_margin": [0.45, 0.38, 0.30, 0.08],
+            "three_month_return": [0.18, 0.08, -0.04, -0.20],
+            "twelve_month_return": [0.42, 0.18, -0.12, -0.50],
+            "volatility": [0.16, 0.20, 0.28, 0.60],
+            "dividend_yield": [0.06, 0.04, 0.02, 0.00],
+            "industry": ["technology", "consumer", "industrial", "energy"],
+        },
+        index=["AAA", "BBB", "CCC", "DDD"],
+    )
+
+    def fail_series_quantile(*args: object, **kwargs: object) -> float:
+        raise AssertionError("compute_factors should winsorize the whole frame at once")
+
+    monkeypatch.setattr(pd.Series, "quantile", fail_series_quantile)
+
+    factors = compute_factors(financials)
+
+    assert factors.index.tolist() == financials.index.tolist()
+    assert factors.columns.tolist() == list(equity_strategies_module.FACTOR_COLUMNS)
+
+
 def test_multi_factor_selection_caps_extreme_value_outlier() -> None:
     financials = pd.DataFrame(
         {

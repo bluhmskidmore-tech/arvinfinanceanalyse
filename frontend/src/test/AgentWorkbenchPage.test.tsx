@@ -2426,6 +2426,8 @@ describe("AgentWorkbenchPage", () => {
     expect(document.activeElement).toBe(input);
     expect(input).toHaveProperty("selectionStart", input.value.length);
     expect(input).toHaveProperty("selectionEnd", input.value.length);
+    expect(followUpDetails).not.toHaveAttribute("open");
+    expect(followUpOptions).not.toBeVisible();
   });
 
   it("focuses the composer from the assistant continue input action", async () => {

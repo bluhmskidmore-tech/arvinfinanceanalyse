@@ -1871,6 +1871,7 @@ describe("stockAnalysisPageModel", () => {
       "T+5 sample 30, avg return +2.33%, win rate 66.7%, priority review ranking.",
       "factor_screen",
     );
+    const coverage = localizeStockBackendText("factor_snapshot 无数据", "factor_screen_candidates");
 
     expect(insufficient).toBe("当前状态样本不足：T+5 可用样本 6/20，仅作观察。");
     expect(insufficient).not.toContain("Current market sample");
@@ -1880,6 +1881,8 @@ describe("stockAnalysisPageModel", () => {
     expect(maturity).not.toContain("matured snapshots");
     expect(optimization).toBe("T+5 样本 30，均值 +2.33%，胜率 66.7%，优先复核排序。");
     expect(optimization).not.toContain("priority review ranking");
+    expect(coverage).toBe("因子快照无数据。");
+    expect(coverage).not.toContain("factor_snapshot");
   });
 
 });

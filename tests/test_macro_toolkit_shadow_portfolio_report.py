@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
+from backend.app.core_finance.macro import equity_shadow_portfolio as shadow_portfolio_module
 from backend.app.core_finance.macro.equity_shadow_portfolio import compute_equity_shadow_portfolio_report
 from backend.app.governance.settings import get_settings
 
@@ -166,6 +168,34 @@ def test_shadow_portfolio_reuses_period_returns_per_period(
     assert query_counts["daily_observation"] == report["completed_periods"]
 
 
+def test_shadow_ranked_candidate_pool_matches_full_selection() -> None:
+    frame = _shadow_factor_frame(row_count=120)
+
+    full_ranked = shadow_portfolio_module._ranked_frame(
+        frame,
+        shadow_portfolio_module.DEFAULT_FACTOR_WEIGHTS,
+    )
+    full_selected = shadow_portfolio_module._select_with_caps(
+        full_ranked,
+        previous_codes=None,
+        turnover_cap=None,
+    )
+
+    pooled_ranked = shadow_portfolio_module._ranked_frame(
+        frame,
+        shadow_portfolio_module.DEFAULT_FACTOR_WEIGHTS,
+        candidate_pool_only=True,
+    )
+    pooled_selected = shadow_portfolio_module._select_with_caps(
+        pooled_ranked,
+        previous_codes=None,
+        turnover_cap=None,
+    )
+
+    assert len(pooled_ranked) == max(int(len(frame) * shadow_portfolio_module.TOP_PCT), 1)
+    assert pooled_selected.index.tolist() == full_selected.index.tolist()
+
+
 def _seed_shadow_report_db(path: Path) -> None:
     conn = duckdb.connect(str(path), read_only=False)
     try:
@@ -266,3 +296,25 @@ def _seed_shadow_report_db(path: Path) -> None:
         )
     finally:
         conn.close()
+
+
+def _shadow_factor_frame(*, row_count: int) -> pd.DataFrame:
+    industries = ["Technology", "Financials", "Health Care", "Industrials", "Consumer", "Materials"]
+    rows = []
+    for idx in range(row_count):
+        rows.append(
+            {
+                "stock_code": f"{idx + 1:06d}.SZ",
+                "pe": 8.0 + (idx % 37) * 0.7,
+                "pb": 0.8 + (idx % 29) * 0.03,
+                "ps": 1.0 + (idx % 31) * 0.04,
+                "roe": 0.05 + (idx % 23) * 0.006,
+                "gross_margin": 0.20 + (idx % 19) * 0.009,
+                "three_month_return": -0.08 + idx * 0.0017,
+                "twelve_month_return": -0.15 + idx * 0.0023,
+                "volatility": 0.12 + (idx % 17) * 0.007,
+                "dividend_yield": 0.01 + (idx % 13) * 0.002,
+                "industry": industries[idx % len(industries)],
+            }
+        )
+    return pd.DataFrame(rows).set_index("stock_code")

@@ -1502,11 +1502,9 @@ export default function RiskTensorPage() {
                 <span>{fallbackStatus}</span>
                 {tensorMeta?.fallback_date ? <span>fallback_date {tensorMeta.fallback_date}</span> : null}
                 <span>{blockedReportDateSummary}</span>
-                {typeof tensorMeta?.evidence_rows === "number" ? (
-                  <span>evidence_rows {tensorMeta.evidence_rows}</span>
-                ) : null}
-                {metadataTablesUsed ? <span>tables_used {metadataTablesUsed}</span> : null}
-                {metadataFiltersApplied ? <span>filters_applied {metadataFiltersApplied}</span> : null}
+                <span>evidence_rows {typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"}</span>
+                <span>tables_used {metadataTablesUsed || "未提供"}</span>
+                <span>filters_applied {metadataFiltersApplied || "未提供"}</span>
               </div>
               {highlightedBlockedReportDate ? (
                 <div className="risk-tensor-quality-detail__blocked" data-testid="risk-tensor-quality-blocked-date">

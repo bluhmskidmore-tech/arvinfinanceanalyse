@@ -202,30 +202,31 @@ def compute_factors(
     if missing:
         raise ValueError(f"missing factor input columns: {', '.join(missing)}")
 
-    numeric = financial_df.loc[:, REQUIRED_FACTOR_INPUTS].apply(pd.to_numeric, errors="coerce")
+    numeric = financial_df.loc[:, REQUIRED_FACTOR_INPUTS].apply(pd.to_numeric, errors="coerce").astype("float64")
     numeric = _winsorize_frame(numeric, winsor_limits)
-    value = pd.concat(
+    raw_factors = np.column_stack(
         [
-            _safe_inverse(numeric["pe"]),
-            _safe_inverse(numeric["pb"]),
-            _safe_inverse(numeric["ps"]),
-        ],
-        axis=1,
-    ).mean(axis=1)
-    quality = numeric[["roe", "gross_margin"]].mean(axis=1)
-    momentum = numeric[["three_month_return", "twelve_month_return"]].mean(axis=1)
-    low_vol = _safe_inverse(numeric["volatility"])
-    dividend = numeric["dividend_yield"]
-
+            _row_nanmean(
+                _safe_inverse_array(numeric["pe"].to_numpy(dtype="float64")),
+                _safe_inverse_array(numeric["pb"].to_numpy(dtype="float64")),
+                _safe_inverse_array(numeric["ps"].to_numpy(dtype="float64")),
+            ),
+            _row_nanmean(
+                numeric["roe"].to_numpy(dtype="float64"),
+                numeric["gross_margin"].to_numpy(dtype="float64"),
+            ),
+            _row_nanmean(
+                numeric["three_month_return"].to_numpy(dtype="float64"),
+                numeric["twelve_month_return"].to_numpy(dtype="float64"),
+            ),
+            _safe_inverse_array(numeric["volatility"].to_numpy(dtype="float64")),
+            numeric["dividend_yield"].to_numpy(dtype="float64"),
+        ]
+    )
     return pd.DataFrame(
-        {
-            "value": _zscore(value),
-            "quality": _zscore(quality),
-            "momentum": _zscore(momentum),
-            "low_vol": _zscore(low_vol),
-            "dividend": _zscore(dividend),
-        },
+        _zscore_array(raw_factors),
         index=financial_df.index,
+        columns=FACTOR_COLUMNS,
     )
 
 
@@ -464,20 +465,51 @@ def _safe_inverse(series: pd.Series) -> pd.Series:
     return pd.Series(np.where(clean > 0, 1 / clean, np.nan), index=series.index, dtype="float64")
 
 
+def _safe_inverse_array(values: np.ndarray) -> np.ndarray:
+    return np.divide(1.0, values, out=np.full_like(values, np.nan, dtype="float64"), where=values > 0)
+
+
+def _row_nanmean(*columns: np.ndarray) -> np.ndarray:
+    values = np.column_stack(columns)
+    finite = np.isfinite(values)
+    counts = finite.sum(axis=1)
+    sums = np.where(finite, values, 0.0).sum(axis=1)
+    return np.divide(sums, counts, out=np.full(len(counts), np.nan, dtype="float64"), where=counts > 0)
+
+
+def _zscore_array(values: np.ndarray) -> np.ndarray:
+    finite = np.isfinite(values)
+    counts = finite.sum(axis=0)
+    sums = np.where(finite, values, 0.0).sum(axis=0)
+    means = np.divide(sums, counts, out=np.full(values.shape[1], np.nan, dtype="float64"), where=counts > 0)
+    centered = values - means
+    variances = np.divide(
+        np.where(finite, centered * centered, 0.0).sum(axis=0),
+        counts,
+        out=np.full(values.shape[1], np.nan, dtype="float64"),
+        where=counts > 0,
+    )
+    stds = np.sqrt(variances)
+    valid_columns = np.isfinite(stds) & (stds != 0)
+    return np.divide(
+        centered,
+        stds,
+        out=np.zeros_like(values, dtype="float64"),
+        where=finite & valid_columns.reshape(1, -1),
+    )
+
+
 def _winsorize_frame(frame: pd.DataFrame, limits: tuple[float, float] | None) -> pd.DataFrame:
     if limits is None:
         return frame
     lower, upper = limits
     if not 0 <= lower < upper <= 1:
         raise ValueError("winsor_limits must satisfy 0 <= lower < upper <= 1")
-    clipped = frame.copy()
-    for column in clipped.columns:
-        series = pd.to_numeric(clipped[column], errors="coerce")
-        lo = series.quantile(lower)
-        hi = series.quantile(upper)
-        if pd.notna(lo) and pd.notna(hi):
-            clipped[column] = series.clip(lower=lo, upper=hi)
-    return clipped
+    values = frame.to_numpy(dtype="float64", copy=True)
+    bounds = np.nanquantile(values, [lower, upper], axis=0)
+    valid_bounds = np.isfinite(bounds[0]) & np.isfinite(bounds[1])
+    values[:, valid_bounds] = np.clip(values[:, valid_bounds], bounds[0, valid_bounds], bounds[1, valid_bounds])
+    return pd.DataFrame(values, index=frame.index, columns=frame.columns)
 
 
 def _industry_neutralize_factors(factors: pd.DataFrame, industries: pd.Series) -> pd.DataFrame:
