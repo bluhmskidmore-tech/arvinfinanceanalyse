@@ -88,6 +88,7 @@ def get_ledger_pnl_by_date(
     if not facts:
         return {
             "report_date": report_date.isoformat(),
+            "source_version": source_version,
             "items": [],
             "summary": {
                 "total_pnl_cnx": fmt_money(Decimal("0")),
@@ -128,6 +129,7 @@ def get_ledger_pnl_by_date(
 
     return {
         "report_date": report_date.isoformat(),
+        "source_version": source_version,
         "items": items,
         "summary": {
             "total_pnl_cnx": fmt_money(total_pnl_cnx),
@@ -252,16 +254,24 @@ def ledger_pnl_data_envelope(
     from datetime import datetime
     rd = datetime.strptime(report_date.strip(), "%Y-%m-%d").date()
     payload = get_ledger_pnl_by_date(source_dir, rd, currency)
+    items = payload.get("items")
     return build_result_envelope(
-        basis="formal",
+        basis="ledger",
         trace_id="tr_ledger_pnl_data",
         result_kind="ledger_pnl.data",
         cache_version=CACHE_VERSION,
-        source_version="sv_ledger_pnl_data",
+        source_version=payload.get("source_version", "sv_ledger_pnl_data"),
         rule_version=RULE_VERSION,
         quality_flag="ok",
         vendor_version="vv_none",
         result_payload=payload,
+        requested_report_date=report_date.strip(),
+        resolved_report_date=payload["report_date"],
+        as_of_date=payload["report_date"],
+        date_basis="ledger_report_date",
+        filters_applied={"report_date": payload["report_date"], "currency": currency or "ALL"},
+        tables_used=["qdb_general_ledger_workbook"],
+        evidence_rows=len(items) if isinstance(items, list) else None,
     )
 
 
@@ -273,8 +283,14 @@ def ledger_pnl_summary_envelope(
     from datetime import datetime
     rd = datetime.strptime(report_date.strip(), "%Y-%m-%d").date()
     payload = get_ledger_pnl_summary(source_dir, rd, currency)
+    by_account = payload.get("by_account")
+    evidence_rows = (
+        sum(int(item.get("count") or 0) for item in by_account if isinstance(item, dict))
+        if isinstance(by_account, list)
+        else None
+    )
     return build_result_envelope(
-        basis="formal",
+        basis="ledger",
         trace_id="tr_ledger_pnl_summary",
         result_kind="ledger_pnl.summary",
         cache_version=CACHE_VERSION,
@@ -283,6 +299,13 @@ def ledger_pnl_summary_envelope(
         quality_flag="ok",
         vendor_version="vv_none",
         result_payload=payload,
+        requested_report_date=report_date.strip(),
+        resolved_report_date=payload["report_date"],
+        as_of_date=payload["report_date"],
+        date_basis="ledger_report_date",
+        filters_applied={"report_date": payload["report_date"], "currency": currency or "ALL"},
+        tables_used=["qdb_general_ledger_workbook"],
+        evidence_rows=evidence_rows,
     )
 
 
