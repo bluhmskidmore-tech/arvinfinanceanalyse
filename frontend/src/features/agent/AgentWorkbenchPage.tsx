@@ -2391,6 +2391,7 @@ export function EmbeddedAgentCopilot({
     setResult(null);
     setError(null);
     setComposerAssistHint("正在执行 Workflow · 可继续输入下一句");
+    shouldFocusComposerRef.current = true;
 
     try {
       const response = await fetch("/api/agent/query", {
@@ -2482,6 +2483,7 @@ export function EmbeddedAgentCopilot({
     setResult(null);
     setError(null);
     setComposerAssistHint("正在读取研究上下文 · 可继续输入下一句");
+    shouldFocusComposerRef.current = true;
 
     try {
       const response = await fetch("/api/agent/query", {

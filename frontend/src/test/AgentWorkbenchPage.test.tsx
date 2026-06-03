@@ -455,12 +455,36 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByRole("button", { name: /Market Brief/ })).toBeInTheDocument();
   });
 
+  it("focuses the composer after launching a financial workflow", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+  });
+
   it("renders stock and macro research shortcut buttons", () => {
     render(<AgentWorkbenchPage />);
     openShortcutDrawer();
 
     expect(screen.getByRole("button", { name: /Stock Research/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Macro Research/ })).toBeInTheDocument();
+  });
+
+  it("focuses the composer after launching a research shortcut", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("submits the stock research shortcut with the stock research domain filter", async () => {
