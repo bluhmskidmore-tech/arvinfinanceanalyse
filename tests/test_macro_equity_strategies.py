@@ -475,6 +475,60 @@ def test_low_crowding_multifactor_selection_combines_factor_and_crowding_scores(
     assert int(selected["crowding_excluded_count"].iloc[0]) == 1
 
 
+def test_low_crowding_multifactor_selection_reuses_precomputed_crowding_scores(monkeypatch) -> None:
+    financials = pd.DataFrame(
+        {
+            "pe": [8.0, 5.0, 20.0],
+            "pb": [0.8, 0.5, 2.0],
+            "ps": [1.0, 0.6, 3.0],
+            "roe": [0.22, 0.30, 0.08],
+            "gross_margin": [0.45, 0.55, 0.20],
+            "three_month_return": [0.18, 0.50, 0.03],
+            "twelve_month_return": [0.42, 0.90, 0.08],
+            "volatility": [0.16, 0.40, 0.25],
+            "dividend_yield": [0.06, 0.02, 0.03],
+            "industry": ["technology", "technology", "consumer"],
+        },
+        index=["quiet", "hot", "middle"],
+    )
+    observations = _low_crowding_observations(
+        {
+            "quiet": [10, 10.1, 10.2, 10.3, 10.4, 10.5],
+            "hot": [10, 11, 12, 13, 14, 16],
+            "middle": [10, 10.2, 10.3, 10.4, 10.5, 10.6],
+        },
+        turn={"quiet": 1.0, "hot": 7.0, "middle": 2.0},
+        amount={"quiet": 100.0, "hot": 900.0, "middle": 180.0},
+        amplitude={"quiet": 1.0, "hot": 12.0, "middle": 2.0},
+    )
+    expected = low_crowding_multifactor_selection(
+        financials,
+        observations,
+        top_pct=1 / 3,
+        min_names_for_exclusion=3,
+    )
+    crowding_scores = compute_low_crowding_scores(observations)
+
+    def fail_compute_low_crowding_scores(_observations: pd.DataFrame) -> pd.DataFrame:
+        raise AssertionError("precomputed crowding scores should be reused")
+
+    monkeypatch.setattr(
+        equity_strategies_module,
+        "compute_low_crowding_scores",
+        fail_compute_low_crowding_scores,
+    )
+
+    selected = low_crowding_multifactor_selection(
+        financials,
+        observations,
+        top_pct=1 / 3,
+        min_names_for_exclusion=3,
+        crowding_scores=crowding_scores,
+    )
+
+    pd.testing.assert_frame_equal(selected, expected)
+
+
 def test_macro_toolkit_registers_equity_strategies_script(capsys) -> None:
     script = get_toolkit_script("equity_strategies")
 

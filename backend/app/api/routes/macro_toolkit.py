@@ -21,6 +21,7 @@ from backend.app.core_finance.macro import (
     compute_economic_cycle,
     compute_leading_indicator,
     compute_liquidity_stress_test,
+    compute_low_crowding_scores,
     compute_macro_portfolio_impact,
     compute_monetary_policy_stance,
     compute_rate_turning_point,
@@ -1853,6 +1854,7 @@ def _real_low_crowding_regime_multifactor_summary(
             "result": {"data_status": "unavailable"},
         }
 
+    crowding_scores = compute_low_crowding_scores(observations)
     regime = classify_low_crowding_market_regime(prices, observations)
     base_result = {
         "data_status": "complete",
@@ -1891,7 +1893,11 @@ def _real_low_crowding_regime_multifactor_summary(
             },
         }
 
-    selected = low_crowding_multifactor_selection(financials, observations)
+    selected = low_crowding_multifactor_selection(
+        financials,
+        observations,
+        crowding_scores=crowding_scores,
+    )
     selected_stock_codes = [str(stock_code) for stock_code in selected.index.tolist()]
     factor_provenance = _factor_snapshot_provenance(financials)
     factor_as_of_date = _factor_snapshot_as_of_date(financials)

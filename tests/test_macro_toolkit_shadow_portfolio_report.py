@@ -184,7 +184,11 @@ def test_shadow_portfolio_batches_factor_snapshot_history_loads(
 
         def execute(self, query: str, parameters: object | None = None) -> duckdb.DuckDBPyConnection:
             normalized = " ".join(query.casefold().split())
-            if "select stock_code" in normalized and "from choice_stock_factor_snapshot" in normalized:
+            if (
+                "from choice_stock_factor_snapshot" in normalized
+                and "stock_code" in normalized
+                and "pe" in normalized
+            ):
                 query_counts["factor_snapshot_history"] += 1
             if parameters is None:
                 return self._inner.execute(query)

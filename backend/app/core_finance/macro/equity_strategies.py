@@ -394,11 +394,12 @@ def low_crowding_multifactor_selection(
     weights: Mapping[str, float] | None = None,
     top_pct: float = 0.1,
     min_names_for_exclusion: int = 5,
+    crowding_scores: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     if not 0 < top_pct <= 1:
         raise ValueError("top_pct must be in the (0, 1] range")
     scored = multi_factor_selection(financial_df, weights=weights, top_pct=1.0)
-    crowding = compute_low_crowding_scores(observations)
+    crowding = crowding_scores if crowding_scores is not None else compute_low_crowding_scores(observations)
     joined = scored.join(crowding, how="inner")
     if joined.empty:
         return joined
