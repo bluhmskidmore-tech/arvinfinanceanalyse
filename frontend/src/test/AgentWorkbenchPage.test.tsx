@@ -1979,6 +1979,9 @@ describe("AgentWorkbenchPage", () => {
     expect(
       await screen.findByText("智能体查询失败（500）"),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑这句" }));
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("q");
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("shows request error when fetch throws", async () => {

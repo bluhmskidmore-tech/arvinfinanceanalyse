@@ -3140,14 +3140,24 @@ export function EmbeddedAgentCopilot({
           <strong>请求没有送达</strong>
           <span>{turn.error.message}</span>
           {canRetryAgentTurn(turn) ? (
-            <button
-              type="button"
-              className="agent-callout__action"
-              onClick={() => void retryAgentTurn(turn)}
-              disabled={loading}
-            >
-              重试这一轮
-            </button>
+            <div className="agent-callout__actions">
+              <button
+                type="button"
+                className="agent-callout__action"
+                onClick={() => editAgentQuestion(turn)}
+                disabled={loading}
+              >
+                编辑这句
+              </button>
+              <button
+                type="button"
+                className="agent-callout__action"
+                onClick={() => void retryAgentTurn(turn)}
+                disabled={loading}
+              >
+                重试这一轮
+              </button>
+            </div>
           ) : null}
         </div>
       );
