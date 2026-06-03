@@ -3267,6 +3267,52 @@ describe("StockAnalysisPage", () => {
     expect(page).not.toHaveTextContent("调仓");
   });
 
+  it("renders unknown strategy priority risk labels as pending business copy", async () => {
+    const scorePayload = buildStrategyScorePayload();
+    const rowsWithVendorRisk: LivermoreStrategyScorePayload["rows"] = scorePayload.rows.map((row) => {
+      if (row.signal_kind !== "stock_candidate") {
+        return row;
+      }
+
+      const diagnostics = row.diagnostics ?? {
+        priority_scope: null,
+        priority_scope_label: null,
+        rank_buckets: [],
+        risk_flags: [],
+      };
+
+      return {
+        ...row,
+        diagnostics: {
+          ...diagnostics,
+          risk_flags: [
+            {
+              kind: "vendor_liquidity_guard",
+              label: "external_vendor_liquidity_guard",
+              horizon: "return_20d",
+              reason: "vendor_liquidity_guard pending.",
+              stats: row.diagnostics?.risk_flags[0]?.stats,
+            },
+          ],
+        },
+      };
+    });
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyScore: buildStrategyScorePayload({
+          rows: rowsWithVendorRisk,
+          current_market_state_rows: rowsWithVendorRisk,
+        }),
+      }),
+    });
+
+    const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-stock_candidate");
+    expect(row).toHaveTextContent("风险待确认");
+    expect(row).not.toHaveTextContent("external_vendor_liquidity_guard");
+    expect(row).not.toHaveTextContent("vendor liquidity guard");
+  });
+
   it("shows the T+5 optimization diagnosis without turning it into trading rules", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
