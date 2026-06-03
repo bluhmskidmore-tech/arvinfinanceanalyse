@@ -1338,6 +1338,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "读取流程" }));
 
     expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再读取流程")).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
 
   it("cues the process selection requirement when viewing without a selected GitNexus process", async () => {

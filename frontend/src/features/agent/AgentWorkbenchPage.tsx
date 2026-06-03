@@ -2562,6 +2562,8 @@ export function EmbeddedAgentCopilot({
         message: "请先输入 GitNexus 仓库路径。",
       });
       setComposerAssistHint("请先输入 GitNexus 仓库路径 · 再读取流程");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
       return;
     }
 
