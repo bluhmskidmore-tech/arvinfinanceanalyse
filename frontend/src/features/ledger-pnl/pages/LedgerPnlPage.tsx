@@ -175,16 +175,52 @@ function classifyLedgerDriver(row: Pick<LedgerPnlSummaryByAccount, "account_code
   return "其他总账科目";
 }
 
+function offsetRatioPct(positiveYuan: number, negativeYuan: number) {
+  const contributionYuan = Math.abs(positiveYuan);
+  const dragYuan = Math.abs(negativeYuan);
+  if (
+    contributionYuan < LEDGER_RECONCILIATION_TOLERANCE_YUAN ||
+    dragYuan < LEDGER_RECONCILIATION_TOLERANCE_YUAN
+  ) {
+    return 0;
+  }
+  return (Math.min(contributionYuan, dragYuan) / Math.max(contributionYuan, dragYuan)) * 100;
+}
+
 function buildLedgerDriverRows(rows: LedgerPnlSummaryByAccount[]) {
-  const buckets = new Map<string, { label: string; yuan: number; count: number; topAccount: string; topAbsYuan: number }>();
+  const buckets = new Map<
+    string,
+    {
+      label: string;
+      yuan: number;
+      positiveYuan: number;
+      negativeYuan: number;
+      count: number;
+      topAccount: string;
+      topAbsYuan: number;
+    }
+  >();
   for (const row of rows) {
     const yuan = ledgerMoneyYuan(row.total_pnl);
     if (yuan === null) {
       continue;
     }
     const label = classifyLedgerDriver(row);
-    const bucket = buckets.get(label) ?? { label, yuan: 0, count: 0, topAccount: "", topAbsYuan: -1 };
+    const bucket = buckets.get(label) ?? {
+      label,
+      yuan: 0,
+      positiveYuan: 0,
+      negativeYuan: 0,
+      count: 0,
+      topAccount: "",
+      topAbsYuan: -1,
+    };
     bucket.yuan += yuan;
+    if (yuan > 0) {
+      bucket.positiveYuan += yuan;
+    } else {
+      bucket.negativeYuan += yuan;
+    }
     bucket.count += 1;
     if (Math.abs(yuan) > bucket.topAbsYuan) {
       bucket.topAccount = `${row.account_code} ${row.account_name}`;
@@ -192,7 +228,12 @@ function buildLedgerDriverRows(rows: LedgerPnlSummaryByAccount[]) {
     }
     buckets.set(label, bucket);
   }
-  return Array.from(buckets.values()).sort((left, right) => Math.abs(right.yuan) - Math.abs(left.yuan));
+  return Array.from(buckets.values())
+    .map((row) => ({
+      ...row,
+      offsetRatioPct: offsetRatioPct(row.positiveYuan, row.negativeYuan),
+    }))
+    .sort((left, right) => Math.abs(right.yuan) - Math.abs(left.yuan));
 }
 
 function buildLedgerResidualDiagnosticRows(props: {
@@ -506,6 +547,41 @@ function LedgerExplainabilityPanel(props: {
               </table>
             ) : (
               <div className="ledger-pnl-analysis__empty">暂无科目级明细残差候选</div>
+            )}
+          </div>
+
+          <div
+            data-testid="ledger-pnl-driver-direction-table"
+            className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
+          >
+            <div className="ledger-pnl-analysis__table-title">损益方向拆解</div>
+            {props.model.driverRows.length > 0 ? (
+              <table className="ledger-pnl-analysis__residual-table ledger-pnl-analysis__direction-table">
+                <thead>
+                  <tr>
+                    <th>经济驱动</th>
+                    <th>净额金额</th>
+                    <th>毛贡献金额</th>
+                    <th>毛拖累金额</th>
+                    <th>净额抵消率</th>
+                    <th>最大科目</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.model.driverRows.map((row) => (
+                    <tr key={row.label}>
+                      <td>{row.label}</td>
+                      <td>{formatYuanAsYi(row.yuan)}</td>
+                      <td>{formatYuanAsYi(row.positiveYuan)}</td>
+                      <td>{formatYuanAsYi(row.negativeYuan)}</td>
+                      <td>{formatPercent(row.offsetRatioPct)}</td>
+                      <td>{row.topAccount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="ledger-pnl-analysis__empty">暂无可拆解的损益方向数据</div>
             )}
           </div>
 
