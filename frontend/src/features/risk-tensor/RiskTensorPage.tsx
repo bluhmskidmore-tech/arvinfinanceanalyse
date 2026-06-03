@@ -590,6 +590,7 @@ export default function RiskTensorPage() {
     : undefined;
   const latestBlockedReportDate = [...blockedReportDates].sort((a, b) => b.report_date.localeCompare(a.report_date))[0];
   const highlightedBlockedReportDate = selectedBlockedReportDate ?? latestBlockedReportDate;
+  const latestAvailableReportDate = datesQuery.data?.result.report_dates[0] ?? "";
 
   const reportDate = useMemo(() => {
     if (explicitReportDate) {
@@ -1215,6 +1216,17 @@ export default function RiskTensorPage() {
       .catch(() => setBlockedDateCopyStatus("failed"));
   };
 
+  const handleUseLatestAvailableReportDate = () => {
+    if (!latestAvailableReportDate) {
+      return;
+    }
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("report_date", latestAvailableReportDate);
+      return next;
+    });
+  };
+
   const handleCopyDatesError = () => {
     if (!navigator.clipboard?.writeText) {
       setDatesErrorCopyStatus("failed");
@@ -1451,6 +1463,15 @@ export default function RiskTensorPage() {
             <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyBlockedDate}>
               复制拦截信息
             </button>
+            {latestAvailableReportDate ? (
+              <button
+                type="button"
+                className="risk-tensor-quality-detail__trace-action"
+                onClick={handleUseLatestAvailableReportDate}
+              >
+                切换到最新可用报告日
+              </button>
+            ) : null}
           </div>
           {blockedDateCopyMessage ? (
             <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">

@@ -3698,6 +3698,46 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users recover from a backend-blocked report date by switching to the latest available date", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_recovery_dates"),
+      result: {
+        report_dates: ["2026-02-28", "2026-01-31"],
+        blocked_report_dates: [
+          {
+            report_date: "2026-02-27",
+            reason: "risk tensor source lineage is stale",
+          },
+        ],
+      },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_recovered_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日已被新鲜度校验拦截");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+
+    await user.click(within(errorContext).getByRole("button", { name: "切换到最新可用报告日" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-02-28");
+    expect(screen.getByLabelText("风险报告日")).toHaveValue("2026-02-28");
+    expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
+  });
+
   it("does not surface cached tensor data for a backend-blocked report date", async () => {
     const base = createApiClient({ mode: "mock" });
     const blockedReportDate = "2026-02-27";
