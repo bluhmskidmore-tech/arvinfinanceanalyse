@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import { AlertList } from "../components/AlertList";
+import { CalibrationBadge } from "../components/CalibrationBadge";
 import { DataModeRibbon } from "../components/DataModeRibbon";
 import { StatusPill } from "../components/StatusPill";
 import { SummaryBlock } from "../components/SummaryBlock";
@@ -31,6 +32,24 @@ describe("shared display components style governance", () => {
     expect(pill).toHaveClass("status-pill");
     expect(pill).toHaveAttribute("data-status", "warning");
     expect(pill).not.toHaveAttribute("style");
+  });
+
+  it("renders calibration badges with extracted token-backed classes", () => {
+    render(
+      <CalibrationBadge
+        calibration={{
+          position_scope: "all",
+          currency_basis: "CNY",
+          source_families: ["ledger"],
+          data_basis: "book",
+          calibration_note: "已校准",
+        }}
+      />,
+    );
+
+    const badge = screen.getByText("已校准");
+    expect(badge).toHaveClass("calibration-badge");
+    expect(badge).not.toHaveAttribute("style");
   });
 
   it("marks the mock data ribbon with the global governance class", () => {

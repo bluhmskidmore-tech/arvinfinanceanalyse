@@ -1,7 +1,7 @@
 import { Tag, Tooltip } from "antd";
 
 import type { BalancePageCalibration } from "../api/contracts";
-import { designTokens } from "../theme/designSystem";
+import "./CalibrationBadge.css";
 
 export type CalibrationBadgeProps = {
   calibration?: BalancePageCalibration | null;
@@ -32,15 +32,8 @@ export function CalibrationBadge({ calibration }: CalibrationBadgeProps) {
   return (
     <Tooltip title={title}>
       <Tag
+        className="calibration-badge"
         color="default"
-        style={{
-          margin: 0,
-          fontSize: 11,
-          fontWeight: 500,
-          borderColor: designTokens.color.neutral[200],
-          color: designTokens.color.neutral[700],
-          background: designTokens.color.neutral[50],
-        }}
       >
         {calibration.calibration_note}
       </Tag>
