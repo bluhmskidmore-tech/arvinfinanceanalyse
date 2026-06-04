@@ -1631,6 +1631,77 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("ignores stale quality evidence copy results after report date changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stale_quality_copy_dates"),
+        result: { report_dates: ["2026-02-28", "2026-01-31"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", "tr_tensor_stale_quality_copy"),
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          evidence_rows: reportDate === "2026-01-31" ? 96 : 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: reportDate,
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const tracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+      await user.selectOptions(screen.getByLabelText("风险报告日"), "2026-01-31");
+
+      const nextTracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await waitFor(() => {
+        expect(nextTracePriority).toHaveTextContent("evidence_rows 96");
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      expect(nextTracePriority).toHaveTextContent("复核状态：待复核");
+      expect(nextTracePriority).not.toHaveTextContent("已复制证据摘要");
+      expect(within(nextTracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("shows manual quality evidence text when clipboard copy fails", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {
@@ -2450,6 +2521,153 @@ describe("RiskTensorPage", () => {
         expect(screen.getByTestId("risk-tensor-data-status-action")).toHaveTextContent("陈旧");
       });
       expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent("已复制上期排查信息");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("resets prior-period diagnostic copy feedback when metric evidence changes", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_metric_feedback_reset_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const changedPriorPeriod = {
+        ...tensorResult("2026-02-28").prior_period_change!,
+        metrics: tensorResult("2026-02-28").prior_period_change!.metrics.map((metric) =>
+          metric.key === "regulatory_dv01"
+            ? {
+                ...metric,
+                delta_display: "+9.99",
+                interpretation: "监管口径 DV01 显著扩大",
+              }
+            : metric,
+        ),
+      };
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_feedback_reset"),
+          result: tensorResult("2026-02-28"),
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            prior_period_change: changedPriorPeriod,
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
+
+      await waitFor(() => {
+        expect(priorChange).toHaveTextContent("已复制上期排查信息");
+      });
+
+      await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01 显著扩大");
+      });
+      expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent("已复制上期排查信息");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("ignores stale prior-period copy failures after metric evidence changes", async () => {
+    const user = userEvent.setup();
+    let rejectCopy: ((error: Error) => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCopy = reject;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_metric_stale_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const changedPriorPeriod = {
+        ...tensorResult("2026-02-28").prior_period_change!,
+        metrics: tensorResult("2026-02-28").prior_period_change!.metrics.map((metric) =>
+          metric.key === "regulatory_dv01"
+            ? {
+                ...metric,
+                delta_display: "+9.99",
+                interpretation: "监管口径 DV01 显著扩大",
+              }
+            : metric,
+        ),
+      };
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_stale_failure"),
+          result: tensorResult("2026-02-28"),
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_stale_failure"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            prior_period_change: changedPriorPeriod,
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
+      await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01 显著扩大");
+      });
+
+      await act(async () => {
+        rejectCopy?.(new Error("clipboard unavailable"));
+      });
+
+      expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent(
+        "复制失败，请手动选择上期排查信息",
+      );
+      expect(screen.queryByTestId("risk-tensor-prior-period-manual-copy")).not.toBeInTheDocument();
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);

@@ -615,6 +615,7 @@ export default function RiskTensorPage() {
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [priorPeriodCopyStatus, setPriorPeriodCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [priorPeriodCopiedStateKey, setPriorPeriodCopiedStateKey] = useState("");
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -790,6 +791,21 @@ export default function RiskTensorPage() {
   const firstRequiredAction = requiredActions[0];
   const priorPeriodChange = result?.prior_period_change ?? null;
   const priorPeriodMetrics = priorPeriodChange?.metrics ?? [];
+  const priorPeriodMetricsStateKey = JSON.stringify(
+    priorPeriodMetrics.map((metric) => ({
+      key: metric.key,
+      label: metric.label,
+      current: metric.current,
+      previous: metric.previous,
+      delta: metric.delta,
+      current_display: metric.current_display,
+      previous_display: metric.previous_display,
+      delta_display: metric.delta_display,
+      direction: metric.direction,
+      tone: metric.tone,
+      interpretation: metric.interpretation,
+    })),
+  );
   const priorPeriodSummary =
     priorPeriodChange?.summary ?? `后端未返回上期变化载荷；trace_id ${tensorMeta?.trace_id ?? "未提供"}。`;
   const priorPeriodDiagnosticsStatus = priorPeriodChange?.status ?? "missing";
@@ -1277,10 +1293,13 @@ export default function RiskTensorPage() {
     "页面不会在前端补算较上期变化指标",
     "请核对正式风险张量主读载荷和上期报告日物化结果",
   ].join("\n");
+  const priorPeriodCopyStateKey = priorPeriodCopyText;
+  const priorPeriodCopyStatusForCurrentState =
+    priorPeriodCopiedStateKey === priorPeriodCopyStateKey ? priorPeriodCopyStatus : "idle";
   const priorPeriodCopyMessage =
-    priorPeriodCopyStatus === "copied"
+    priorPeriodCopyStatusForCurrentState === "copied"
       ? "已复制上期排查信息"
-      : priorPeriodCopyStatus === "failed"
+      : priorPeriodCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择上期排查信息"
         : "";
 
@@ -1329,12 +1348,13 @@ export default function RiskTensorPage() {
 
   useEffect(() => {
     setPriorPeriodCopyStatus("idle");
+    setPriorPeriodCopiedStateKey("");
   }, [
     result?.report_date,
     priorPeriodDiagnosticsStatus,
     priorPeriodChange?.comparison_report_date,
     priorPeriodSummary,
-    priorPeriodMetrics.length,
+    priorPeriodMetricsStateKey,
     result?.quality_flag,
     tensorMeta?.quality_flag,
     tensorMeta?.trace_id,
@@ -1604,14 +1624,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyPriorPeriodDiagnostics = () => {
+    const copiedStateKey = priorPeriodCopyStateKey;
     if (!navigator.clipboard?.writeText) {
+      setPriorPeriodCopiedStateKey(copiedStateKey);
       setPriorPeriodCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(priorPeriodCopyText)
-      .then(() => setPriorPeriodCopyStatus("copied"))
-      .catch(() => setPriorPeriodCopyStatus("failed"));
+      .then(() => {
+        setPriorPeriodCopiedStateKey(copiedStateKey);
+        setPriorPeriodCopyStatus("copied");
+      })
+      .catch(() => {
+        setPriorPeriodCopiedStateKey(copiedStateKey);
+        setPriorPeriodCopyStatus("failed");
+      });
   };
 
   const handleKrdTenorSelect = (row: (typeof tenorRows)[number], options?: { scrollToDrill?: boolean }) => {
@@ -2577,7 +2605,7 @@ export default function RiskTensorPage() {
                     {priorPeriodCopyMessage}
                   </small>
                 ) : null}
-                {priorPeriodCopyStatus === "failed" ? (
+                {priorPeriodCopyStatusForCurrentState === "failed" ? (
                   <pre
                     className="risk-tensor-quality-detail__manual-copy"
                     data-testid="risk-tensor-prior-period-manual-copy"
