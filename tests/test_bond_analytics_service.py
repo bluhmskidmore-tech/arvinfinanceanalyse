@@ -173,6 +173,100 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
     get_settings.cache_clear()
 
 
+def test_action_attribution_success_response_uses_core_payload_builder(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    service_mod._action_attribution_cache.clear()
+
+    class FakeBondAnalyticsRepository:
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-03-31"]
+
+        def fetch_bond_analytics_rows(self, *, report_date, **_kwargs):
+            common = {
+                "instrument_code": "BOND-001",
+                "portfolio_name": "Portfolio A",
+                "cost_center": "Desk 7",
+                "asset_class_std": "OCI",
+                "accounting_class": "TPL",
+                "source_version": "sv_bond_test",
+            }
+            if report_date == "2026-02-28":
+                return [
+                    {
+                        **common,
+                        "market_value": Decimal("100"),
+                        "modified_duration": Decimal("3.00"),
+                    }
+                ]
+            return [
+                {
+                    **common,
+                    "market_value": Decimal("120"),
+                    "modified_duration": Decimal("3.20"),
+                }
+            ]
+
+    class FakePnlRepository:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def merged_capital_gain_517_by_position_for_dates(self, dates):
+            assert dates == ["2026-03-31"]
+            return {"BOND-001::Portfolio A::Desk 7": Decimal("12.50")}
+
+    captured: dict[str, object] = {}
+
+    def fake_payload_builder(**kwargs):
+        captured.update(kwargs)
+        return {
+            "report_date": kwargs["report_date"],
+            "period_type": kwargs["period_type"],
+            "period_start": date(2026, 3, 1),
+            "period_end": date(2026, 3, 31),
+            "total_actions": 1,
+            "total_pnl_from_actions": 12.5,
+            "by_action_type": [],
+            "action_details": [],
+            "period_start_duration": 3.0,
+            "period_end_duration": 3.2,
+            "duration_change_from_actions": 0.2,
+            "period_start_dv01": 0.0,
+            "period_end_dv01": 0.0,
+            "status": "ready",
+            "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
+            "missing_inputs": [],
+            "blocked_components": [],
+            "computed_at": "2026-03-31T10:00:00+00:00",
+            "warnings": ["CORE_WARNING"],
+            "warnings_detail": [
+                {"code": "CORE_WARNING", "level": "warning", "message": "CORE_WARNING"}
+            ],
+        }
+
+    monkeypatch.setattr(service_mod, "BondAnalyticsRepository", lambda *_args, **_kwargs: FakeBondAnalyticsRepository())
+    monkeypatch.setattr(service_mod, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(service_mod, "build_action_attribution_success_payload", fake_payload_builder)
+
+    payload = service_mod.get_action_attribution(date(2026, 3, 31), "MoM")
+
+    assert captured["prior_snapshot_date"] == "2026-02-28"
+    assert captured["pnl_by_key"] == {"BOND-001::Portfolio A::Desk 7": Decimal("12.50")}
+    assert captured["pnl_warning_codes"] == []
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"]["status"] == "ready"
+    assert payload["result"]["warnings"] == ["CORE_WARNING"]
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_service_uses_shared_formal_result_runtime_helper():
     path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "bond_analytics_service.py"
     src = path.read_text(encoding="utf-8")
