@@ -727,6 +727,7 @@ describe("productCategoryPnlPageModel", () => {
         reasonLabel: "历史回测建议收紧触发条件：命中率 0.0%，主因收益率未改善",
         impactLabel: "历史均值：净营收 -0.05 亿元 · 收益率 -10.0bp · 规模 +100.00 亿元",
         releaseConditionLabel: "放行条件：收益率转正改善且净营收不恶化",
+        watchReportDateLabel: "观察月份：2026-03-31",
         observationLabel: "观察口径：下一期收益率改善且净营收不恶化",
         gapLabel: "判定缺口：当前收益率 1.10%，需下一期收益率转正改善",
         currentEvidenceItems: [

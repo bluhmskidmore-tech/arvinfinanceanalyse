@@ -840,6 +840,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("历史均值");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("当前证据");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规模 1013.32 亿元");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("观察月份");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("观察口径");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("判定缺口");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("确认最新收益率改善证据");
