@@ -1183,8 +1183,6 @@ function LedgerFunctionalAuditStrip(props: {
     props.isFormalContractLoading,
     props.isFormalContractError,
   );
-  const candidateEvidencePath = props.explainabilityModel.evidenceEntryPoint;
-  const formalEvidencePath = nextDrills[0]?.label ?? "无正式契约补证路径";
   const materialChecklist = buildFormalContractMaterialChecklist(
     props.formalIndicatorSourceContract?.remediation,
   );
@@ -1200,6 +1198,8 @@ function LedgerFunctionalAuditStrip(props: {
     isError: props.isFormalContractError,
     materialChecklist,
   });
+  const candidateEvidencePath = props.explainabilityModel.evidenceEntryPoint;
+  const formalEvidencePath = nextDrills[0]?.label ?? shortFormalContractReadbackAction(readbackAction);
   const materialSummary = formalContractMaterialSummary({
     contract: props.formalIndicatorSourceContract,
     isLoading: props.isFormalContractLoading,

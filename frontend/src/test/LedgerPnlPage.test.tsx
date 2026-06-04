@@ -1414,6 +1414,9 @@ describe("LedgerPnlPage", () => {
     const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
     expect(strip).toHaveTextContent("正式契约缺口");
     expect(strip).toHaveTextContent("正式契约读取失败");
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("正式补证路径恢复读取后重新查询正式契约");
+    expect(decisionPath).not.toHaveTextContent("正式补证路径无正式契约补证路径");
     expect(strip).not.toHaveTextContent("无正式契约明细");
     expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
   });
