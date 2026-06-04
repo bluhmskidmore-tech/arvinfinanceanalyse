@@ -12,7 +12,7 @@ import {
 } from "../lib/bondAnalyticsHomeCalculations";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type { ActionAttributionResponse } from "../types";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { formatPct, formatWan, formatYi } from "../utils/formatters";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
@@ -970,7 +970,7 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.footerMetricPanel}>
-              <strong style={tabularNumsStyle}>{unrealizedPnlDisplay}</strong>
+              <strong>{unrealizedPnlDisplay}</strong>
               <span>{Number.isFinite(unrealizedPnlMomPct) ? `较上期 ${formatSignedPct(unrealizedPnlMomPct)}` : "收益走势明细待读面返回"}</span>
               <div className={styles.footerSparkline} aria-hidden="true">
                 {[18, 42, 28, 56, 44, 68, 50, 76, 62, 84].map((height, index) => (
@@ -992,7 +992,7 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.footerMetricPanel}>
-              <strong style={tabularNumsStyle}>{actionPnlDisplay}</strong>
+              <strong>{actionPnlDisplay}</strong>
               <span>{actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待返回"}</span>
               <div className={styles.footerChangeSplit}>
                 <span>市值 {formatSignedPct(marketValueMomPct)}</span>
@@ -1016,7 +1016,7 @@ export function BondAnalyticsInstitutionalCockpit({
               {riskRows.slice(0, 3).map((row) => (
                 <div key={row.label}>
                   <span>{row.label}</span>
-                  <strong style={tabularNumsStyle}>{row.value}</strong>
+                  <strong>{row.value}</strong>
                 </div>
               ))}
               <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread" onClick={() => onOpenModuleDetail?.("credit-spread")}>

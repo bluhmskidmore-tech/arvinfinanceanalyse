@@ -727,6 +727,7 @@
 .footerMetricPanel strong {
   color: var(--moss-color-primary-900);
   font-size: 18px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 
@@ -750,6 +751,7 @@
 .footerRiskList strong {
   color: var(--moss-color-primary-800);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .footerSparkline {
