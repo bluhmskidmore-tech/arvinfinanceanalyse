@@ -2514,8 +2514,7 @@ export default function RiskTensorPage() {
                     })}
                   </div>
                 ) : null}
-                {priorPeriodMetrics.length === 0 && (
-                  <div className="risk-tensor-quality-detail__trace-actions">
+                <div className="risk-tensor-quality-detail__trace-actions">
                     <button
                       type="button"
                       className="risk-tensor-quality-detail__trace-action"
@@ -2537,8 +2536,7 @@ export default function RiskTensorPage() {
                     >
                       复制上期排查信息
                     </button>
-                  </div>
-                )}
+                </div>
                 {priorPeriodCopyMessage ? (
                   <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
                     {priorPeriodCopyMessage}

@@ -2191,6 +2191,54 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("copies prior-period diagnostic context when comparison metrics are available", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_available_copy_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_available_copy_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      expect(priorChange).toHaveTextContent("监管口径 DV01");
+
+      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量较上期变化排查信息"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_prior_available_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("状态 available"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("对比日期 2026-02-27"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metrics_count 2"));
+      await waitFor(() => {
+        expect(priorChange).toHaveTextContent("已复制上期排查信息");
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("shows manual prior-period diagnostic text when clipboard copy fails", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {

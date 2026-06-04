@@ -2071,6 +2071,348 @@ def test_lineage_evidence_mcp_maps_bond_dashboard_page_to_candidate_bond_analyti
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_positions_page_to_candidate_snapshot_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_key": "positions:bonds:list",
+                "result_kind": "positions.bonds.list",
+                "source_surface": "positions_snapshot",
+                "basis": "analytical",
+                "formal_use_allowed": False,
+                "quality_flag": "warning",
+                "date_basis": "positions_snapshot_report_date",
+                "tables_used": ["zqtz_bond_daily_snapshot"],
+                "rule_version": "rv_positions_snapshot_read_v1",
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "cache_key": "positions:interbank:list",
+                "result_kind": "positions.interbank.list",
+                "source_surface": "positions_snapshot",
+                "basis": "analytical",
+                "formal_use_allowed": False,
+                "quality_flag": "warning",
+                "date_basis": "positions_snapshot_report_date",
+                "tables_used": ["tyw_interbank_daily_snapshot"],
+                "rule_version": "rv_positions_snapshot_read_v1",
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-POS-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-POS-001"
+        assert "/api/positions/bonds" in found_payload["expanded_queries"]
+        assert "/api/positions/interbank" in found_payload["expanded_queries"]
+        assert "/api/positions/bonds/sub_types" in found_payload["expanded_queries"]
+        assert "/api/positions/interbank/product_types" in found_payload["expanded_queries"]
+        assert "/api/positions/counterparty/bonds" in found_payload["expanded_queries"]
+        assert "/api/positions/counterparty/interbank/split" in found_payload["expanded_queries"]
+        assert "/api/positions/stats/rating" in found_payload["expanded_queries"]
+        assert "/api/positions/stats/industry" in found_payload["expanded_queries"]
+        assert "/api/positions/customer/details" in found_payload["expanded_queries"]
+        assert "/api/positions/customer/trend" in found_payload["expanded_queries"]
+        assert "positions.bonds.list" in found_payload["expanded_queries"]
+        assert "positions.interbank.list" in found_payload["expanded_queries"]
+        assert "positions.counterparty.bonds" in found_payload["expanded_queries"]
+        assert "positions.counterparty.interbank.split" in found_payload["expanded_queries"]
+        assert "positions.stats.rating" in found_payload["expanded_queries"]
+        assert "positions.stats.industry" in found_payload["expanded_queries"]
+        assert "positions.customer.details" in found_payload["expanded_queries"]
+        assert "positions.customer.trend" in found_payload["expanded_queries"]
+        assert "positions_snapshot" in found_payload["expanded_queries"]
+        assert "zqtz_bond_daily_snapshot" in found_payload["expanded_queries"]
+        assert "tyw_interbank_daily_snapshot" in found_payload["expanded_queries"]
+        assert "MTR-POS-001" in found_payload["expanded_queries"]
+        assert "MTR-POS-002" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" not in found_payload["expanded_queries"]
+        assert "bond_dashboard.headline_kpis" not in found_payload["expanded_queries"]
+        assert "fact_formal_bond_analytics_daily" not in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "MTR-BAL-001" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "positions.bonds.list"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["basis"] == "analytical"
+        assert found_payload["records"][0]["record"]["formal_use_allowed"] is False
+        assert found_payload["records"][0]["record"]["quality_flag"] == "warning"
+        assert found_payload["records"][0]["record"]["tables_used"] == ["zqtz_bond_daily_snapshot"]
+        assert found_payload["records"][1]["matched_query"] == "positions.interbank.list"
+        assert found_payload["records"][1]["record"]["tables_used"] == ["tyw_interbank_daily_snapshot"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_market_data_page_to_mixed_source_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "market_data:preview:macro_foundation",
+            "result_kind": "preview.macro-foundation",
+            "source_surface": "macro_preview",
+            "basis": "analytical",
+            "tables_used": ["fact_choice_macro_daily", "market_data_series_category"],
+            "rule_version": "rv_phase1_macro_vendor_v1",
+        },
+        {
+            "cache_key": "market_data:rates:formal_fragment",
+            "result_kind": "market_data.rates",
+            "source_surface": "market_data",
+            "basis": "formal",
+            "formal_use_allowed": True,
+            "tables_used": ["fact_choice_macro_daily", "market_data_series_category"],
+            "rule_version": "rv_market_data_rates_formal_v1",
+        },
+        {
+            "cache_key": "market_data:fx:formal_status",
+            "result_kind": "fx.formal.status",
+            "source_surface": "formal_fx_status",
+            "basis": "formal",
+            "tables_used": ["fx_daily_mid"],
+            "rule_version": "rv_fx_formal_mid_v1",
+        },
+        {
+            "cache_key": "market_data:fx:analytical",
+            "result_kind": "fx.analytical.groups",
+            "source_surface": "fx_analytical",
+            "basis": "analytical",
+            "tables_used": ["fact_choice_macro_daily", "fx_daily_mid"],
+            "rule_version": "rv_fx_analytical_v1",
+        },
+        {
+            "cache_key": "market_data:ncd:proxy",
+            "result_kind": "market_data.ncd_proxy",
+            "source_surface": "ncd_funding_proxy",
+            "basis": "analytical",
+            "is_actual_ncd_matrix": False,
+            "tables_used": ["fact_choice_macro_daily"],
+            "rule_version": "rv_ncd_proxy_v1",
+        },
+        {
+            "cache_key": "market_data:livermore:strategy",
+            "result_kind": "market_data.livermore",
+            "source_surface": "livermore_analytical",
+            "basis": "analytical",
+            "tables_used": [
+                "fact_choice_macro_daily",
+                "livermore_position_snapshot",
+                "choice_stock_daily_observation",
+                "fact_livermore_gate_supplement_daily",
+            ],
+            "rule_version": "rv_livermore_strategy_v1",
+        },
+        {
+            "cache_key": "market_data:macro_bond_linkage",
+            "result_kind": "macro_bond_linkage.analysis",
+            "source_surface": "macro_bond_linkage",
+            "basis": "analytical",
+            "tables_used": ["fact_choice_macro_daily", "yield_curve_daily"],
+            "rule_version": "rv_macro_bond_linkage_v1",
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-MKT-001", "max_results": 10}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-MKT-001"
+        assert "/ui/preview/macro-foundation" in found_payload["expanded_queries"]
+        assert "/ui/market-data/rates" in found_payload["expanded_queries"]
+        assert "/ui/market-data/fx/formal-status" in found_payload["expanded_queries"]
+        assert "/ui/market-data/fx/analytical" in found_payload["expanded_queries"]
+        assert "/ui/market-data/ncd-funding-proxy" in found_payload["expanded_queries"]
+        assert "/api/macro-bond-linkage" in found_payload["expanded_queries"]
+        assert "/ui/market-data/livermore" in found_payload["expanded_queries"]
+        assert "preview.macro-foundation" in found_payload["expanded_queries"]
+        assert "market_data.rates" in found_payload["expanded_queries"]
+        assert "market_data.catalog" in found_payload["expanded_queries"]
+        assert "macro.choice.latest" in found_payload["expanded_queries"]
+        assert "fx.formal.status" in found_payload["expanded_queries"]
+        assert "fx.analytical.groups" in found_payload["expanded_queries"]
+        assert "market_data.ncd_proxy" in found_payload["expanded_queries"]
+        assert "market_data.livermore" in found_payload["expanded_queries"]
+        assert "macro_bond_linkage.analysis" in found_payload["expanded_queries"]
+        assert "fact_choice_macro_daily" in found_payload["expanded_queries"]
+        assert "market_data_series_category" in found_payload["expanded_queries"]
+        assert "fx_daily_mid" in found_payload["expanded_queries"]
+        assert "livermore_position_snapshot" in found_payload["expanded_queries"]
+        assert "choice_stock_daily_observation" in found_payload["expanded_queries"]
+        assert "fact_livermore_gate_supplement_daily" in found_payload["expanded_queries"]
+        assert "MTR-MKT-001" in found_payload["expanded_queries"]
+        assert "GAP-MKT-DATA" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" not in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" not in found_payload["expanded_queries"]
+        assert "positions.bonds.list" not in found_payload["expanded_queries"]
+        assert "bond_dashboard.headline_kpis" not in found_payload["expanded_queries"]
+        assert "GS-BOND-HEADLINE-A" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "preview.macro-foundation"
+        assert found_payload["records"][0]["record"]["basis"] == "analytical"
+        assert found_payload["records"][1]["matched_query"] == "market_data.rates"
+        assert found_payload["records"][1]["record"]["basis"] == "formal"
+        assert found_payload["records"][2]["matched_query"] == "fx.formal.status"
+        assert found_payload["records"][3]["matched_query"] == "fx.analytical.groups"
+        assert found_payload["records"][4]["matched_query"] == "market_data.ncd_proxy"
+        assert found_payload["records"][4]["record"]["is_actual_ncd_matrix"] is False
+        assert found_payload["records"][5]["matched_query"] == "market_data.livermore"
+        assert "livermore_position_snapshot" in found_payload["records"][5]["record"]["tables_used"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_operations_page_to_mixed_source_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "operations:product-category-headline",
+            "result_kind": "product_category_pnl.detail",
+            "source_surface": "product_category_pnl",
+            "basis": "formal",
+            "tables_used": [
+                "product_category_pnl_formal_read_model",
+                "product_category_pnl_canonical_fact",
+            ],
+            "golden_sample": "GS-PROD-CAT-PNL-A",
+            "metric_ids": ["MTR-PCP-001", "MTR-PCP-002", "MTR-PCP-003"],
+        },
+        {
+            "cache_key": "operations:balance-overview-supplemental",
+            "result_kind": "balance-analysis.overview",
+            "source_surface": "formal_balance",
+            "basis": "formal",
+            "role": "supplemental_topic_entry",
+            "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+            "golden_sample": "GS-BAL-OVERVIEW-A",
+        },
+        {
+            "cache_key": "operations:source-preview",
+            "result_kind": "preview.source-foundation",
+            "source_surface": "source_preview",
+            "basis": "preview",
+            "tables_used": ["source_preview_manifest"],
+        },
+        {
+            "cache_key": "operations:macro-preview",
+            "result_kind": "preview.macro-foundation",
+            "source_surface": "macro_preview",
+            "basis": "analytical",
+            "tables_used": ["fact_choice_macro_daily"],
+        },
+        {
+            "cache_key": "operations:fx-status",
+            "result_kind": "fx.formal.status",
+            "source_surface": "formal_fx_status",
+            "basis": "formal",
+            "tables_used": ["fx_daily_mid"],
+        },
+        {
+            "cache_key": "operations:choice-news",
+            "result_kind": "news.choice.latest",
+            "source_surface": "choice_news",
+            "basis": "analytical",
+            "tables_used": ["choice_news_event"],
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-OPS-001", "max_results": 10}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-OPS-001"
+        assert "/ui/pnl/product-category" in found_payload["expanded_queries"]
+        assert "/ui/pnl/product-category/dates" in found_payload["expanded_queries"]
+        assert "/ui/balance-analysis/overview" in found_payload["expanded_queries"]
+        assert "/ui/preview/source-foundation" in found_payload["expanded_queries"]
+        assert "/ui/preview/macro-foundation" in found_payload["expanded_queries"]
+        assert "/ui/macro/choice-series/latest" in found_payload["expanded_queries"]
+        assert "/ui/market-data/fx/formal-status" in found_payload["expanded_queries"]
+        assert "/ui/news/choice-events/latest" in found_payload["expanded_queries"]
+        assert "product_category_pnl.detail" in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" in found_payload["expanded_queries"]
+        assert "product_category_pnl_canonical_fact" in found_payload["expanded_queries"]
+        assert "GS-PROD-CAT-PNL-A" in found_payload["expanded_queries"]
+        assert "MTR-PCP-001" in found_payload["expanded_queries"]
+        assert "MTR-PCP-003" in found_payload["expanded_queries"]
+        assert "balance-analysis.overview" in found_payload["expanded_queries"]
+        assert "formal_balance" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_tyw_balance_daily" in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" in found_payload["expanded_queries"]
+        assert "MTR-BAL-001" in found_payload["expanded_queries"]
+        assert "MTR-BAL-102" in found_payload["expanded_queries"]
+        assert "preview.source-foundation" in found_payload["expanded_queries"]
+        assert "preview.macro-foundation" in found_payload["expanded_queries"]
+        assert "macro.choice.latest" in found_payload["expanded_queries"]
+        assert "fx.formal.status" in found_payload["expanded_queries"]
+        assert "news.choice.latest" in found_payload["expanded_queries"]
+        assert "choice_news_event" in found_payload["expanded_queries"]
+        assert "GAP-OPS-MACRO-FX" in found_payload["expanded_queries"]
+        assert "MTR-OPS-001" not in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+        assert "balance-analysis.workbook" not in found_payload["expanded_queries"]
+        assert "GS-BAL-WORKBOOK-A" not in found_payload["expanded_queries"]
+        assert "bond_dashboard.headline_kpis" not in found_payload["expanded_queries"]
+        assert "positions.bonds.list" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "product_category_pnl.detail"
+        assert found_payload["records"][0]["record"]["basis"] == "formal"
+        assert found_payload["records"][1]["matched_query"] == "balance-analysis.overview"
+        assert found_payload["records"][1]["record"]["role"] == "supplemental_topic_entry"
+        assert found_payload["records"][2]["matched_query"] == "preview.source-foundation"
+        assert found_payload["records"][3]["matched_query"] == "preview.macro-foundation"
+        assert found_payload["records"][4]["matched_query"] == "fx.formal.status"
+        assert found_payload["records"][5]["matched_query"] == "news.choice.latest"
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tmp_path: Path) -> None:
     governance = tmp_path / "governance"
     governance.mkdir()
