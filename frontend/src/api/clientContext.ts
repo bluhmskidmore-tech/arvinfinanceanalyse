@@ -7,6 +7,8 @@ import {
 } from "react";
 
 import type { ApiClient, ApiClientOptions, DataSourceMode } from "./client";
+import type { HomeExecutiveClientMethods } from "./homeExecutiveClient";
+import type { HomeSupplementalClientMethods } from "./homeSupplementalClient";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
 
@@ -60,8 +62,37 @@ const MACRO_TOOLKIT_METHODS = new Set<keyof MacroToolkitClientMethods>([
   "getChoiceStockRefreshStatus",
 ]);
 
+const HOME_EXECUTIVE_METHODS = new Set<keyof HomeExecutiveClientMethods>([
+  "getHomeSnapshot",
+  "getHomeResearchReports",
+  "getHomeIncomeTrend",
+]);
+
+const HOME_SUPPLEMENTAL_METHODS = new Set<keyof HomeSupplementalClientMethods>([
+  "getCoreMetrics",
+  "getDailyChanges",
+  "getBondDashboardHeadlineKpis",
+  "getBondAnalyticsPortfolioHeadlines",
+  "getBondDashboardPortfolioComparison",
+  "getBondAnalyticsCreditSpreadMigration",
+  "getBondAnalyticsReturnDecomposition",
+  "getPnlCampisiFourEffects",
+  "getBondAnalyticsYieldCurveTermStructure",
+  "getBalanceAnalysisDecisionItems",
+  "getBondDashboardAssetStructure",
+  "getBondDashboardMaturityStructure",
+  "getBondDashboardIndustryDistribution",
+  "getBondDashboardRiskIndicators",
+  "getBondAnalyticsTopHoldings",
+  "getBondAnalyticsPositionChanges",
+  "getCockpitWarnings",
+]);
+
 const MARKET_TICKER_METHODS = new Set<keyof MarketDataClientMethods>([
   "getChoiceMacroLatest",
+  "getMarketDataRates",
+  "getChoiceNewsEvents",
+  "getResearchCalendarEvents",
 ]);
 
 export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClient {
@@ -69,6 +100,8 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? parseDeferredBaseUrl());
   const fetchImpl = options.fetchImpl ?? defaultFetch;
   let clientPromise: Promise<ApiClient> | null = null;
+  let homeExecutiveClientPromise: Promise<HomeExecutiveClientMethods> | null = null;
+  let homeSupplementalClientPromise: Promise<HomeSupplementalClientMethods> | null = null;
   let macroToolkitClientPromise: Promise<MacroToolkitClientMethods> | null = null;
   let marketDataClientPromise: Promise<MarketDataClientMethods> | null = null;
 
@@ -91,6 +124,30 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
       );
     }
     return macroToolkitClientPromise;
+  };
+
+  const loadHomeExecutiveClient = () => {
+    if (!homeExecutiveClientPromise) {
+      homeExecutiveClientPromise = import("./homeExecutiveClient").then(
+        ({ createMockHomeExecutiveClient, createRealHomeExecutiveClient }) =>
+          mode === "mock"
+            ? createMockHomeExecutiveClient()
+            : createRealHomeExecutiveClient({ fetchImpl, baseUrl }),
+      );
+    }
+    return homeExecutiveClientPromise;
+  };
+
+  const loadHomeSupplementalClient = () => {
+    if (!homeSupplementalClientPromise) {
+      homeSupplementalClientPromise = import("./homeSupplementalClient").then(
+        ({ createMockHomeSupplementalClient, createRealHomeSupplementalClient }) =>
+          mode === "mock"
+            ? createMockHomeSupplementalClient()
+            : createRealHomeSupplementalClient({ fetchImpl, baseUrl }),
+      );
+    }
+    return homeSupplementalClientPromise;
   };
 
   const loadMarketDataClient = () => {
@@ -120,6 +177,16 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
         }
 
         return async (...args: unknown[]) => {
+          if (HOME_EXECUTIVE_METHODS.has(property as keyof HomeExecutiveClientMethods)) {
+            const client = await loadHomeExecutiveClient();
+            const method = client[property as keyof HomeExecutiveClientMethods] as (...methodArgs: unknown[]) => unknown;
+            return method(...args);
+          }
+          if (HOME_SUPPLEMENTAL_METHODS.has(property as keyof HomeSupplementalClientMethods)) {
+            const client = await loadHomeSupplementalClient();
+            const method = client[property as keyof HomeSupplementalClientMethods] as (...methodArgs: unknown[]) => unknown;
+            return method(...args);
+          }
           if (MACRO_TOOLKIT_METHODS.has(property as keyof MacroToolkitClientMethods)) {
             const client = await loadMacroToolkitClient();
             const method = client[property as keyof MacroToolkitClientMethods] as (...methodArgs: unknown[]) => unknown;

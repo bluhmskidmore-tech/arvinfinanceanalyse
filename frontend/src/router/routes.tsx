@@ -10,6 +10,7 @@ import {
 } from "../mocks/navigation";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
 
+const ThemedRouteBoundary = lazy(() => import("../app/ThemedRouteBoundary"));
 const DashboardHomePage = lazy(
   () => import("../features/workbench/dashboard-home/DashboardHomePage"),
 );
@@ -112,6 +113,10 @@ function routeElement(element: ReactNode) {
   );
 }
 
+function themedRouteElement(element: ReactNode) {
+  return routeElement(<ThemedRouteBoundary>{element}</ThemedRouteBoundary>);
+}
+
 function parseEnvDataSourceMode() {
   const raw = import.meta.env.VITE_DATA_SOURCE;
   return typeof raw === "string" ? raw.trim().toLowerCase() : "";
@@ -123,7 +128,7 @@ const equityPrototypeRouteEnabled =
 function placeholderRoute(section: WorkbenchSection): RouteObject {
   return {
     path: section.path.slice(1),
-    element: routeElement(<WorkbenchPlaceholderPage />),
+    element: themedRouteElement(<WorkbenchPlaceholderPage />),
   };
 }
 
@@ -143,244 +148,244 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/operations-analysis") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<OperationsAnalysisPage />),
+        element: themedRouteElement(<OperationsAnalysisPage />),
       };
     }
 
     if (section.path === "/portfolio") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<PortfolioHomePage />),
+        element: themedRouteElement(<PortfolioHomePage />),
       };
     }
 
     if (section.path === "/market-overview") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<MarketHomePage />),
+        element: themedRouteElement(<MarketHomePage />),
       };
     }
 
     if (section.path === "/risk-overview") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<ModuleWorkbenchHomePage kind="risk" />),
+        element: themedRouteElement(<ModuleWorkbenchHomePage kind="risk" />),
       };
     }
 
     if (section.path === "/performance") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<ModuleWorkbenchHomePage kind="performance" />),
+        element: themedRouteElement(<ModuleWorkbenchHomePage kind="performance" />),
       };
     }
 
     if (section.path === "/reports") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<ModuleWorkbenchHomePage kind="governance" />),
+        element: themedRouteElement(<ModuleWorkbenchHomePage kind="governance" />),
       };
     }
 
     if (section.path === "/balance-analysis") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<BalanceAnalysisPage />),
+        element: themedRouteElement(<BalanceAnalysisPage />),
       };
     }
 
     if (section.path === "/balance-movement-analysis") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<BalanceMovementAnalysisPage />),
+        element: themedRouteElement(<BalanceMovementAnalysisPage />),
       };
     }
 
     if (section.path === "/decision-items") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<DecisionItemsPage />),
+        element: themedRouteElement(<DecisionItemsPage />),
       };
     }
 
     if (section.path === "/liability-analytics") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<LiabilityAnalyticsPage />),
+        element: themedRouteElement(<LiabilityAnalyticsPage />),
       };
     }
 
     if (section.path === "/pnl") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<PnlPage />),
+        element: themedRouteElement(<PnlPage />),
       };
     }
 
     if (section.path === "/pnl-bridge") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<PnlBridgePage />),
+        element: themedRouteElement(<PnlBridgePage />),
       };
     }
 
     if (section.path === "/pnl-attribution") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<PnlAttributionPage />),
+        element: themedRouteElement(<PnlAttributionPage />),
       };
     }
 
     if (section.path === "/product-category-pnl") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<ProductCategoryPnlPage />),
+        element: themedRouteElement(<ProductCategoryPnlPage />),
       };
     }
 
     if (section.path === "/risk-tensor") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<RiskTensorPage />),
+        element: themedRouteElement(<RiskTensorPage />),
       };
     }
 
     if (section.path === "/concentration-monitor") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<ConcentrationMonitorPage />),
+        element: themedRouteElement(<ConcentrationMonitorPage />),
       };
     }
 
     if (section.path === "/cashflow-projection") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<CashflowProjectionPage />),
+        element: themedRouteElement(<CashflowProjectionPage />),
       };
     }
 
     if (section.path === "/bond-dashboard") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<BondDashboardPage />),
+        element: themedRouteElement(<BondDashboardPage />),
       };
     }
 
     if (section.path === "/bond-analysis") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<BondAnalyticsView />),
+        element: themedRouteElement(<BondAnalyticsView />),
       };
     }
 
     if (section.path === "/cross-asset") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<CrossAssetPage />),
+        element: themedRouteElement(<CrossAssetPage />),
       };
     }
 
     if (section.path === "/market-data") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<MarketDataPage />),
+        element: themedRouteElement(<MarketDataPage />),
       };
     }
 
     if (section.path === "/macro-observation") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<MacroToolkitPage mode="observation" />),
+        element: themedRouteElement(<MacroToolkitPage mode="observation" />),
       };
     }
 
     if (section.path === "/macro-toolkit") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<MacroToolkitPage />),
+        element: themedRouteElement(<MacroToolkitPage />),
       };
     }
 
     if (section.path === "/cube-query") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<CubeQueryPage />),
+        element: themedRouteElement(<CubeQueryPage />),
       };
     }
 
     if (section.path === "/stock-analysis") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<StockAnalysisPage />),
+        element: themedRouteElement(<StockAnalysisPage />),
       };
     }
 
     if (section.path === "/news-events") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<NewsEventsPage />),
+        element: themedRouteElement(<NewsEventsPage />),
       };
     }
 
     if (section.path === "/agent") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<AgentWorkbenchPage />),
+        element: themedRouteElement(<AgentWorkbenchPage />),
       };
     }
 
     if (section.path === "/positions") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<PositionsPage />),
+        element: themedRouteElement(<PositionsPage />),
       };
     }
 
     if (section.path === "/average-balance") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<AverageBalancePage />),
+        element: themedRouteElement(<AverageBalancePage />),
       };
     }
 
     if (section.path === "/ledger-pnl") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<LedgerPnlPage />),
+        element: themedRouteElement(<LedgerPnlPage />),
       };
     }
 
     if (section.path === "/bank-ledger-dashboard") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<LedgerDashboardPage />),
+        element: themedRouteElement(<LedgerDashboardPage />),
       };
     }
 
     if (section.path === "/kpi") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<KpiPerformancePage />),
+        element: themedRouteElement(<KpiPerformancePage />),
       };
     }
 
     if (section.path === "/team-performance") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<TeamPerformancePage />),
+        element: themedRouteElement(<TeamPerformancePage />),
       };
     }
 
     if (section.path === "/platform-config") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<PlatformConfigPage />),
+        element: themedRouteElement(<PlatformConfigPage />),
       };
     }
 
     return {
       path: section.path.slice(1),
-      element: routeElement(<WorkbenchPlaceholderPage />),
+      element: themedRouteElement(<WorkbenchPlaceholderPage />),
     };
   });
 }
@@ -402,11 +407,11 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "pnl-by-business",
-        element: routeElement(<PnlByBusinessPage />),
+        element: themedRouteElement(<PnlByBusinessPage />),
       },
       {
         path: "pnl-formal-v1",
-        element: routeElement(<FormalPnlV1Page />),
+        element: themedRouteElement(<FormalPnlV1Page />),
       },
       {
         path: "liabilities",
@@ -426,7 +431,7 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "cross-asset-drivers",
-        element: routeElement(<CrossAssetPage />),
+        element: themedRouteElement(<CrossAssetPage />),
       },
       {
         path: "assets",
@@ -439,7 +444,7 @@ export const workbenchRoutes: RouteObject[] = [
       },
       {
         path: "product-category-pnl/audit",
-        element: routeElement(<ProductCategoryAdjustmentAuditPage />),
+        element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
       },
     ],
   },
@@ -447,7 +452,7 @@ export const workbenchRoutes: RouteObject[] = [
     ? [
         {
           path: "/prototype/equity-cockpit",
-          element: routeElement(<EquityCockpitPrototypePage />),
+          element: themedRouteElement(<EquityCockpitPrototypePage />),
         } satisfies RouteObject,
       ]
     : []),

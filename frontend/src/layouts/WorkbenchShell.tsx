@@ -1,23 +1,10 @@
-import {
-  AlertOutlined,
-  ApartmentOutlined,
-  AppstoreOutlined,
-  BankOutlined,
-  BarChartOutlined,
-  FileTextOutlined,
-  FundOutlined,
-  QuestionCircleOutlined,
-  SettingOutlined,
-  TeamOutlined,
-  TrophyOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { useApiClient } from "../api/clientContext";
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
+import { LightIcon } from "../components/LightIcon";
 import {
   findWorkbenchSectionByPath,
   pathMatchesWorkbenchSection,
@@ -33,17 +20,17 @@ import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceM
 import { DataModeRibbon } from "../components/DataModeRibbon";
 
 const iconMap: Record<string, ReactNode> = {
-  dashboard: <AppstoreOutlined />,
-  analysis: <BarChartOutlined />,
-  risk: <AlertOutlined />,
-  team: <TeamOutlined />,
-  kpi: <TrophyOutlined />,
-  decision: <ApartmentOutlined />,
-  bond: <BankOutlined />,
-  settings: <SettingOutlined />,
-  market: <FundOutlined />,
-  reports: <FileTextOutlined />,
-  agent: <ApartmentOutlined />,
+  dashboard: <LightIcon name="appstore" />,
+  analysis: <LightIcon name="bar-chart" />,
+  risk: <LightIcon name="alert" />,
+  team: <LightIcon name="team" />,
+  kpi: <LightIcon name="trophy" />,
+  decision: <LightIcon name="apartment" />,
+  bond: <LightIcon name="bank" />,
+  settings: <LightIcon name="settings" />,
+  market: <LightIcon name="fund" />,
+  reports: <LightIcon name="file-text" />,
+  agent: <LightIcon name="apartment" />,
 };
 
 type ReadinessTone = WorkbenchSection["readiness"] | "warning";
@@ -180,19 +167,19 @@ const shellSupportEntries = [
     key: "reports",
     label: "报表中心",
     to: "/reports",
-    icon: <FileTextOutlined />,
+    icon: <LightIcon name="file-text" />,
   },
   {
     key: "platform",
     label: "中台配置",
     to: "/platform-config",
-    icon: <SettingOutlined />,
+    icon: <LightIcon name="settings" />,
   },
   {
     key: "help",
     label: "帮助文档",
     to: "/",
-    icon: <QuestionCircleOutlined />,
+    icon: <LightIcon name="question-circle" />,
   },
 ] as const;
 
@@ -554,7 +541,7 @@ export function WorkbenchShell() {
               className="workbench-operator-zone-shell"
             >
               <span className="workbench-operator-pill-quiet">
-                <UserOutlined />
+                <LightIcon name="user" />
                 <span>{"\u7ba1\u7406\u89c6\u89d2"}</span>
               </span>
               {shellSupportEntries

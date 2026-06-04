@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiQueryKeys } from "../../../api/queryKeys";
@@ -8,10 +8,17 @@ import { todayIsoDate } from "../pages/dashboardPageHelpers";
 import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import { mapToHomeView } from "./dashboardHomeView";
 
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
 export function useDashboardHomeViewModel() {
   const [reportDate, setReportDate] = useState("");
   const [toolbarSearch, setToolbarSearch] = useState("");
   const [allowPartial, setAllowPartial] = useState(false);
+  const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
+  const [formalContextReportDate, setFormalContextReportDate] = useState<string | null>(null);
 
   const {
     dataClient,
@@ -30,6 +37,51 @@ export function useDashboardHomeViewModel() {
   });
 
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  const requestedReportDate = reportDate.trim();
+  const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
+  const hasInitialEffectiveReportDate = Boolean(initialEffectiveReportDate);
+  const hasDeferredSupplementalData =
+    hasInitialEffectiveReportDate &&
+    supplementalDataReportDate === initialEffectiveReportDate;
+  const hasSupplementalReportDate = Boolean(supplementalReportDate);
+  const hasDeferredSupplementalReportDate =
+    hasDeferredSupplementalData && hasSupplementalReportDate;
+  const hasDeferredFormalContext =
+    hasDeferredSupplementalReportDate &&
+    Boolean(supplementalReportDate) &&
+    formalContextReportDate === supplementalReportDate;
+
+  useEffect(() => {
+    setSupplementalDataReportDate(null);
+    setFormalContextReportDate(null);
+    if (!initialEffectiveReportDate) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const markSupplementalReady = () => {
+      if (isActive) {
+        setSupplementalDataReportDate(initialEffectiveReportDate);
+      }
+    };
+    const idleWindow = window as IdleWindow;
+    if (idleWindow.requestIdleCallback) {
+      const idleHandle = idleWindow.requestIdleCallback(
+        markSupplementalReady,
+        { timeout: 1_200 },
+      );
+      return () => {
+        isActive = false;
+        idleWindow.cancelIdleCallback?.(idleHandle);
+      };
+    }
+
+    const timeoutHandle = window.setTimeout(markSupplementalReady, 250);
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutHandle);
+    };
+  }, [initialEffectiveReportDate]);
 
   const {
     coreMetricsQuery,
@@ -53,14 +105,14 @@ export function useDashboardHomeViewModel() {
     dataClient,
     supplementalReportDate,
     effectiveReportDate: initialEffectiveReportDate,
-    loadCalendarData: true,
+    loadSupplementalData: hasDeferredSupplementalData,
+    loadCalendarData: hasDeferredSupplementalReportDate,
+    loadEventFeedsData: hasDeferredSupplementalReportDate,
     loadBondBucketYieldData: false,
     loadBondBucketMonthlyData: false,
-    loadPortfolioSupplementData: true,
-    loadDecisionItemsData: Boolean(initialEffectiveReportDate),
+    loadPortfolioSupplementData: hasDeferredFormalContext,
+    loadDecisionItemsData: hasDeferredSupplementalData,
   });
-
-  const hasSupplementalReportDate = Boolean(supplementalReportDate);
 
   const assetStructureQuery = useQuery({
     queryKey: apiQueryKeys.bondDashboardAssetStructure(
@@ -71,7 +123,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondDashboardAssetStructure(supplementalReportDate ?? "", "bond_type"),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const ratingStructureQuery = useQuery({
@@ -83,7 +135,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondDashboardAssetStructure(supplementalReportDate ?? "", "rating"),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const maturityStructureQuery = useQuery({
@@ -91,7 +143,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondDashboardMaturityStructure(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const industryDistributionQuery = useQuery({
@@ -99,7 +151,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondDashboardIndustryDistribution(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const riskIndicatorsQuery = useQuery({
@@ -107,7 +159,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondDashboardRiskIndicators(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const topHoldingsQuery = useQuery({
@@ -115,7 +167,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", 8),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const positionChangesQuery = useQuery({
@@ -123,15 +175,26 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getBondAnalyticsPositionChanges(supplementalReportDate ?? "", 5),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
+  const heavyBondListsSettled = !topHoldingsQuery.isLoading && !positionChangesQuery.isLoading;
+
+  useEffect(() => {
+    if (!hasDeferredSupplementalReportDate || !supplementalReportDate) {
+      setFormalContextReportDate(null);
+      return;
+    }
+    if (heavyBondListsSettled) {
+      setFormalContextReportDate(supplementalReportDate);
+    }
+  }, [hasDeferredSupplementalReportDate, heavyBondListsSettled, supplementalReportDate]);
 
   const researchReportsQuery = useQuery({
     queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, supplementalReportDate, 5),
     queryFn: () => dataClient.getHomeResearchReports(supplementalReportDate ?? "", 5),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate,
   });
 
   const incomeTrendQuery = useQuery({
@@ -139,7 +202,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getHomeIncomeTrend(supplementalReportDate ?? "", 7),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: hasDeferredFormalContext,
   });
 
   const cockpitWarningsQuery = useQuery({
@@ -147,7 +210,7 @@ export function useDashboardHomeViewModel() {
     queryFn: () => dataClient.getCockpitWarnings(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate && dataClient.mode === "real",
+    enabled: hasDeferredFormalContext && dataClient.mode === "real",
   });
 
   const sanitizedMetrics = useMemo(
@@ -178,7 +241,7 @@ export function useDashboardHomeViewModel() {
     macroNewsFallbackQueries.every((query) => query.isError);
 
   const effectiveReportDate =
-    snapshotResult?.report_date?.trim() || initialEffectiveReportDate || reportDate.trim();
+    snapshotReportDate || initialEffectiveReportDate || requestedReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
   const snapshotStale =

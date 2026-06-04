@@ -1,16 +1,4 @@
-import {
-  ArrowRightOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  BulbOutlined,
-  CheckCircleFilled,
-  CheckSquareOutlined,
-  ExclamationCircleFilled,
-  FileTextOutlined,
-  ThunderboltFilled,
-  UnorderedListOutlined,
-} from "@ant-design/icons";
-
+import { LightIcon, type LightIconName } from "../../../../components/LightIcon";
 import type { DashboardHomeView } from "../dashboardHomeView";
 import styles from "../dashboardHome.module.css";
 
@@ -41,7 +29,7 @@ export function DecisionRailSection({
   dataSyncPrefix,
   dataStatusKind,
 }: DecisionRailSectionProps) {
-  const SyncStatusIcon = dataStatusKind === "ok" ? CheckCircleFilled : ExclamationCircleFilled;
+  const syncStatusIcon: LightIconName = dataStatusKind === "ok" ? "check-circle" : "warning";
   const railUpdatedAt = formatRailUpdatedAt(
     dataStatusKind,
     reportDate,
@@ -53,14 +41,14 @@ export function DecisionRailSection({
       <article className={`${styles.dhCard} ${styles.dhDecision}`}>
         <div className={styles.dhDecisionTitle}>
           <span className={styles.dhDecisionIcon}>
-            <ThunderboltFilled />
+            <LightIcon name="thunderbolt" />
           </span>
           <span>AI 决策舱</span>
         </div>
 
         <div className={styles.dhAiCard}>
           <div className={styles.dhAiCardHead}>
-            <BulbOutlined />
+            <LightIcon name="bulb" />
             <span>今日结论</span>
           </div>
           <p>{decisionRail.conclusion}</p>
@@ -68,7 +56,7 @@ export function DecisionRailSection({
 
         <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
           <span className={`${styles.dhRailIcon} ${styles.dhUpRed}`}>
-            <ArrowDownOutlined />
+            <LightIcon name="arrow-down" />
           </span>
           <div>
             <b>最大拖累</b>
@@ -81,7 +69,7 @@ export function DecisionRailSection({
 
         <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
           <span className={`${styles.dhRailIcon} ${styles.dhDownGreen}`}>
-            <ArrowUpOutlined />
+            <LightIcon name="arrow-up" />
           </span>
           <div>
             <b>最大贡献</b>
@@ -96,7 +84,7 @@ export function DecisionRailSection({
 
         <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
           <span className={`${styles.dhRailIcon} ${styles.dhRailIconBlue}`}>
-            <ExclamationCircleFilled />
+            <LightIcon name="warning" />
           </span>
           <div>
             <b>关键风险</b>
@@ -106,7 +94,7 @@ export function DecisionRailSection({
 
         <div className={styles.dhAiCard}>
           <div className={styles.dhAiCardHead}>
-            <CheckSquareOutlined />
+            <LightIcon name="check-square" />
             <span>建议动作</span>
           </div>
           <ol className={styles.dhSuggestionList}>
@@ -118,7 +106,7 @@ export function DecisionRailSection({
 
         <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
           <span className={`${styles.dhRailIcon} ${styles.dhRailIconBlue}`}>
-            <UnorderedListOutlined />
+            <LightIcon name="unordered-list" />
           </span>
           <div>
             <b>待处理事项</b>
@@ -127,7 +115,7 @@ export function DecisionRailSection({
         </div>
 
         <button type="button" className={styles.dhReportBtn}>
-          <FileTextOutlined /> 生成完整经营报告 <ArrowRightOutlined />
+          <LightIcon name="file-text" /> 生成完整经营报告 <LightIcon name="arrow-right" />
         </button>
       </article>
 
@@ -145,7 +133,7 @@ export function DecisionRailSection({
           data-status-kind={dataStatusKind}
           className={dataStatusKind === "ok" ? styles.dhDataNoteOk : styles.dhDataNoteWarning}
         >
-          <SyncStatusIcon /> {dataSyncPrefix} · 页面数据以后端 API 为准
+          <LightIcon name={syncStatusIcon} /> {dataSyncPrefix} · 页面数据以后端 API 为准
         </p>
       </article>
     </aside>
