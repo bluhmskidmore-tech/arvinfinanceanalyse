@@ -2239,6 +2239,7 @@ function CrisisCommodityShadowDecisionPanel({
         shortItems={shortQueueItems}
         summary={summary}
       />
+      <CommodityCandidateReviewConclusion items={coverage.items} promotionItems={promotionItems} />
       <div className="macro-toolkit-crisis-shadow-decision__grid">
         {coverage.items.map((item) => (
           <div className="macro-toolkit-crisis-shadow-decision__item" key={item.field}>
@@ -2349,6 +2350,126 @@ function CrisisCommodityShadowDecisionPanel({
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CrisisCommodityShadowImpactPanel({
+  currentScore,
+  coverage,
+}: {
+  currentScore: number | null;
+  coverage: CrisisCommodityCoverage;
+}) {
+  const promotionItems = coverage.items.map(commodityPromotionRuleItem);
+  const driverItems = promotionItems.filter((item) => item.status !== "not_recommended");
+  const driverFields = new Set(driverItems.map((item) => item.field));
+  const driverCoverageItems = coverage.items.filter((item) => driverFields.has(item.field));
+  const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
+  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
+  return (
+    <div className="macro-toolkit-crisis-shadow-impact" aria-label="Crisis Score v2 影子影响评估">
+      <div className="macro-toolkit-crisis-shadow-impact__head">
+        <div>
+          <span>Crisis Score v2 影子影响评估</span>
+          <strong>影子分数待公式确认</strong>
+        </div>
+        <small>商品候选当前只做影子影响判断；不改变正式 Crisis Score。</small>
+      </div>
+      <div className="macro-toolkit-crisis-shadow-impact__metrics">
+        <MetricTile
+          icon={<SafetyCertificateOutlined />}
+          label="正式 Crisis Score"
+          value={currentScore ?? "缺失"}
+          detail="不改变正式 Crisis Score"
+          tone={currentScore == null ? "missing" : "neutral"}
+        />
+        <MetricTile
+          icon={<LineChartOutlined />}
+          label="v2 shadow score"
+          value="影子分数待公式确认"
+          detail="不能直接换算为分数"
+          tone="neutral"
+        />
+        <MetricTile
+          icon={<ArrowUpOutlined />}
+          label="影响方向"
+          value="待公式/权重确认"
+          detail={formatCommodityShadowImpactDirectionDetail(driverCoverageItems)}
+          tone="neutral"
+        />
+        <MetricTile
+          icon={<ToolOutlined />}
+          label="候选驱动"
+          value={`${driverItems.length} 个待复核`}
+          detail={`可进入人工复核 ${readyCount} / 继续观察 ${manualCount}`}
+          tone="neutral"
+        />
+      </div>
+      <div className="macro-toolkit-crisis-shadow-impact__grid">
+        {driverCoverageItems.map((item) => {
+          const promotionItem = promotionItems.find((candidate) => candidate.field === item.field);
+          return (
+            <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
+              <div className="macro-toolkit-capability-result-head">
+                <span>{item.label || item.field}</span>
+                <Tag color={commodityReviewConclusionColor(promotionItem?.status ?? "not_recommended")}>
+                  {commodityReviewConclusionLabel(promotionItem?.status ?? "not_recommended")}
+                </Tag>
+              </div>
+              <small>{formatCommodityShadowImpactDriverDetail(item)}</small>
+              <small>不能直接换算为分数</small>
+            </div>
+          );
+        })}
+      </div>
+      <small className="macro-toolkit-crisis-shadow-impact__note">
+        审批建议：先复核候选相关性，再确认 v2 权重
+      </small>
+    </div>
+  );
+}
+
+function CommodityCandidateReviewConclusion({
+  items,
+  promotionItems,
+}: {
+  items: CrisisCommodityCoverageItem[];
+  promotionItems: CommodityPromotionRuleItem[];
+}) {
+  const promotionByField = new Map(promotionItems.map((item) => [item.field, item]));
+  const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
+  const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
+  const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
+  return (
+    <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选复核结论">
+      <div className="macro-toolkit-crisis-review-conclusion__head">
+        <div>
+          <span>商品候选复核结论</span>
+          <strong>
+            可进入人工复核 {readyCount} · 继续观察 {manualCount} · 不建议纳入 {rejectedCount}
+          </strong>
+        </div>
+        <small>复用 shadow_rule_v1 判断，只做展示，不改变 Crisis Score 公式或权重</small>
+      </div>
+      <div className="macro-toolkit-crisis-review-conclusion__grid">
+        {items.map((item) => {
+          const promotionItem = promotionByField.get(item.field) ?? commodityPromotionRuleItem(item);
+          return (
+            <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
+              <div className="macro-toolkit-capability-result-head">
+                <span>{item.label || item.field}</span>
+                <Tag color={commodityReviewConclusionColor(promotionItem.status)}>
+                  {commodityReviewConclusionLabel(promotionItem.status)}
+                </Tag>
+              </div>
+              <strong>{promotionItem.reason}</strong>
+              <small>{formatCommodityReviewConclusionMetrics(item)}</small>
+              <small>{formatCommodityReviewConclusionNextStep(promotionItem.status, item)}</small>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2697,6 +2818,10 @@ function CrisisScoreEvidencePanel({
                   tone="neutral"
                 />
               </div>
+              <CrisisCommodityShadowImpactPanel
+                currentScore={result.score}
+                coverage={commodityCoverage}
+              />
               <CrisisCommodityShadowDecisionPanel
                 coverage={commodityCoverage}
                 commodityInput={commodityInput ?? null}
@@ -3775,6 +3900,85 @@ function commodityPromotionRuleCheckStatusLabel(status: CommodityPromotionRuleSt
     return "待人工判断";
   }
   return "未通过";
+}
+
+function commodityReviewConclusionLabel(status: CommodityPromotionRuleStatus) {
+  if (status === "ready_for_review") {
+    return "可进入人工复核";
+  }
+  if (status === "manual_review") {
+    return "继续观察";
+  }
+  return "不建议纳入";
+}
+
+function commodityReviewConclusionColor(status: CommodityPromotionRuleStatus) {
+  if (status === "ready_for_review") {
+    return "green";
+  }
+  if (status === "manual_review") {
+    return "gold";
+  }
+  return "red";
+}
+
+function formatCommodityReviewConclusionMetrics(item: CrisisCommodityCoverageItem) {
+  const evaluation = item.shadow_evaluation;
+  if (!evaluation) {
+    return "影子评估缺失";
+  }
+  const minimumSampleCount = evaluation.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES;
+  const sampleText =
+    evaluation.status === "history_short" || evaluation.sample_count == null
+      ? `样本 ${evaluation.sample_count ?? "缺失"}/${minimumSampleCount}`
+      : `样本 ${evaluation.sample_count}`;
+  return [
+    sampleText,
+    `危机样本 ${evaluation.crisis_sample_count ?? "缺失"}`,
+    `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
+    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
+    item.latest_date ? `最新 ${item.latest_date}` : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+}
+
+function formatCommodityReviewConclusionNextStep(
+  status: CommodityPromotionRuleStatus,
+  item: CrisisCommodityCoverageItem,
+) {
+  if (status === "ready_for_review") {
+    return "下一步：提交人工复核与权重审批";
+  }
+  if (status === "manual_review") {
+    return "下一步：复核相关性与危机期命中率";
+  }
+  const sampleGap = item.shadow_evaluation?.sample_gap;
+  return typeof sampleGap === "number"
+    ? `下一步：先补齐历史数据，还差 ${sampleGap} 个样本`
+    : "下一步：先补齐历史数据";
+}
+
+function formatCommodityShadowImpactDirectionDetail(items: CrisisCommodityCoverageItem[]) {
+  if (!items.length) {
+    return "暂无可复核商品候选";
+  }
+  return `${formatCommodityActionQueueLabels(items)} 需要 v2 权重后确认方向`;
+}
+
+function formatCommodityShadowImpactDriverDetail(item: CrisisCommodityCoverageItem) {
+  const evaluation = item.shadow_evaluation;
+  if (!evaluation) {
+    return "影子评估缺失";
+  }
+  return [
+    `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
+    `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
+    `样本 ${evaluation.sample_count ?? "缺失"}`,
+    item.latest_date ? `最新 ${item.latest_date}` : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 }
 
 function buildCommodityPromotionAuditPackCopyText(

@@ -111,6 +111,9 @@ describe("MacroToolkitPage", () => {
     expect(css).toContain("var(--moss-color-success-600)");
     expect(css).toContain("var(--moss-color-danger-600)");
     expect(css).toContain("var(--moss-color-warning-600)");
+    expect(css).toContain(".macro-toolkit-crisis-shadow-impact");
+    expect(css).toContain(".macro-toolkit-crisis-shadow-impact__metrics");
+    expect(css).toContain(".macro-toolkit-crisis-shadow-impact__grid");
   });
 
   it("renders from the workbench route", async () => {
@@ -819,6 +822,35 @@ describe("MacroToolkitPage", () => {
     );
     expect(commodityActionQueue).toHaveTextContent("当前未计入 Crisis Score");
     expect(commodityActionQueue).toHaveTextContent("下一步：先补齐样本不足品种，再复核铜、原油的相关性与命中率");
+    const commodityReviewConclusion = within(commodityDecisionPanel).getByLabelText("商品候选复核结论");
+    expect(commodityReviewConclusion).toHaveTextContent("商品候选复核结论");
+    expect(commodityReviewConclusion).toHaveTextContent("Copper futures");
+    expect(commodityReviewConclusion).toHaveTextContent("继续观察");
+    expect(commodityReviewConclusion).toHaveTextContent("相关性偏弱，需人工复核");
+    expect(commodityReviewConclusion).toHaveTextContent("样本 41");
+    expect(commodityReviewConclusion).toHaveTextContent("危机样本 11");
+    expect(commodityReviewConclusion).toHaveTextContent("命中率 55.0%");
+    expect(commodityReviewConclusion).toHaveTextContent("下一步：复核相关性与危机期命中率");
+    expect(commodityReviewConclusion).toHaveTextContent("Rebar futures");
+    expect(commodityReviewConclusion).toHaveTextContent("不建议纳入");
+    expect(commodityReviewConclusion).toHaveTextContent("样本不足，先补齐历史数据");
+    expect(commodityReviewConclusion).toHaveTextContent("样本 17/20");
+    expect(commodityReviewConclusion).toHaveTextContent("下一步：先补齐历史数据");
+    const crisisShadowImpact = within(crisisEvidence).getByLabelText("Crisis Score v2 影子影响评估");
+    expect(crisisShadowImpact).toHaveTextContent("Crisis Score v2 影子影响评估");
+    expect(crisisShadowImpact).toHaveTextContent("正式 Crisis Score");
+    expect(crisisShadowImpact).toHaveTextContent("-0.57");
+    expect(crisisShadowImpact).toHaveTextContent("影子分数待公式确认");
+    expect(crisisShadowImpact).toHaveTextContent("影响方向");
+    expect(crisisShadowImpact).toHaveTextContent("待公式/权重确认");
+    expect(crisisShadowImpact).toHaveTextContent("候选驱动");
+    expect(crisisShadowImpact).toHaveTextContent("2 个待复核");
+    expect(crisisShadowImpact).toHaveTextContent("不改变正式 Crisis Score");
+    expect(crisisShadowImpact).toHaveTextContent("Copper futures");
+    expect(crisisShadowImpact).toHaveTextContent("继续观察");
+    expect(crisisShadowImpact).toHaveTextContent("命中率 55.0%");
+    expect(crisisShadowImpact).toHaveTextContent("不能直接换算为分数");
+    expect(crisisShadowImpact).toHaveTextContent("审批建议：先复核候选相关性，再确认 v2 权重");
     expect(commodityDecisionPanel).toHaveTextContent("Copper futures");
     expect(commodityDecisionPanel).toHaveTextContent("影子评估可读");
     expect(commodityDecisionPanel).toHaveTextContent("样本 41");
