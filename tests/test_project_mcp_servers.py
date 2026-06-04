@@ -1663,6 +1663,59 @@ def test_lineage_evidence_mcp_maps_cube_query_page_to_allowed_source_tables(tmp_
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_formal_pnl_page_to_formal_fact_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "source_manifest_latest.jsonl").write_text(
+        json.dumps(
+            {
+                "source_version": "fi-shared-v1__nonstd-shared-v1",
+                "rule_version": "rv_pnl_phase2_materialize_v1",
+                "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v1",
+                "tables_used": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
+                "golden_samples": ["GS-PNL-OVERVIEW-A", "GS-PNL-DATA-A"],
+                "result_kind": "pnl.overview",
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-PNL-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-PNL-001"
+        assert "/api/pnl/overview" in found_payload["expanded_queries"]
+        assert "/api/pnl/data" in found_payload["expanded_queries"]
+        assert "pnl.overview" in found_payload["expanded_queries"]
+        assert "pnl.data" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" in found_payload["expanded_queries"]
+        assert "GS-PNL-OVERVIEW-A" in found_payload["expanded_queries"]
+        assert "GS-PNL-DATA-A" in found_payload["expanded_queries"]
+        assert "MTR-PNL-001" in found_payload["expanded_queries"]
+        assert "MTR-PNL-104" in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "pnl.overview"
+        assert found_payload["records"][0]["stream"] == "source_manifest_latest"
+        assert found_payload["records"][0]["record"]["tables_used"] == [
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+        ]
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tmp_path: Path) -> None:
     governance = tmp_path / "governance"
     governance.mkdir()
