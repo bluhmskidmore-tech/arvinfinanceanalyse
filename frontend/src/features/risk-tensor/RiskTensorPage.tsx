@@ -589,12 +589,15 @@ export default function RiskTensorPage() {
   const [qualityEvidenceRequestCopyStatus, setQualityEvidenceRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [qualityEvidenceRequestCopiedStateKey, setQualityEvidenceRequestCopiedStateKey] = useState("");
   const [payloadQualityRequestCopyStatus, setPayloadQualityRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [payloadQualityRequestCopiedStateKey, setPayloadQualityRequestCopiedStateKey] = useState("");
   const [combinedQualityRequestCopyStatus, setCombinedQualityRequestCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [combinedQualityRequestCopiedStateKey, setCombinedQualityRequestCopiedStateKey] = useState("");
   const [dv01MissingControlsCopyStatus, setDv01MissingControlsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -927,8 +930,11 @@ export default function RiskTensorPage() {
     setQualityEvidenceReviewConfirmed(false);
     setQualityEvidenceReviewRecordCopyStatus("idle");
     setQualityEvidenceRequestCopyStatus("idle");
+    setQualityEvidenceRequestCopiedStateKey("");
     setPayloadQualityRequestCopyStatus("idle");
+    setPayloadQualityRequestCopiedStateKey("");
     setCombinedQualityRequestCopyStatus("idle");
+    setCombinedQualityRequestCopiedStateKey("");
     setDv01MissingControlsCopyStatus("idle");
     setQualityWarningsCopyStatus("idle");
   }, [qualityStateKey]);
@@ -1136,10 +1142,12 @@ export default function RiskTensorPage() {
       : qualityEvidenceCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择证据"
         : "";
+  const qualityEvidenceRequestCopyStatusForCurrentState =
+    qualityEvidenceRequestCopiedStateKey === qualityStateKey ? qualityEvidenceRequestCopyStatus : "idle";
   const qualityEvidenceRequestCopyMessage =
-    qualityEvidenceRequestCopyStatus === "copied"
+    qualityEvidenceRequestCopyStatusForCurrentState === "copied"
       ? "已复制补证请求"
-      : qualityEvidenceRequestCopyStatus === "failed"
+      : qualityEvidenceRequestCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择补证请求"
         : "";
   const qualityEvidenceReviewRecordCopyMessage =
@@ -1148,16 +1156,20 @@ export default function RiskTensorPage() {
       : qualityEvidenceReviewRecordCopyStatus === "failed"
         ? "复制失败，请手动选择确认记录"
         : "";
+  const payloadQualityRequestCopyStatusForCurrentState =
+    payloadQualityRequestCopiedStateKey === qualityStateKey ? payloadQualityRequestCopyStatus : "idle";
   const payloadQualityRequestCopyMessage =
-    payloadQualityRequestCopyStatus === "copied"
+    payloadQualityRequestCopyStatusForCurrentState === "copied"
       ? "已复制字段补证请求"
-      : payloadQualityRequestCopyStatus === "failed"
+      : payloadQualityRequestCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择字段补证请求"
         : "";
+  const combinedQualityRequestCopyStatusForCurrentState =
+    combinedQualityRequestCopiedStateKey === qualityStateKey ? combinedQualityRequestCopyStatus : "idle";
   const combinedQualityRequestCopyMessage =
-    combinedQualityRequestCopyStatus === "copied"
+    combinedQualityRequestCopyStatusForCurrentState === "copied"
       ? "已复制完整补证包"
-      : combinedQualityRequestCopyStatus === "failed"
+      : combinedQualityRequestCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择完整补证包"
         : "";
   const dv01MissingControlsCopyStatusForCurrentState =
@@ -1438,36 +1450,60 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyQualityEvidenceRequest = () => {
+    const copiedStateKey = qualityStateKey;
     if (!navigator.clipboard?.writeText) {
+      setQualityEvidenceRequestCopiedStateKey(copiedStateKey);
       setQualityEvidenceRequestCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(qualityEvidenceRequestCopyText)
-      .then(() => setQualityEvidenceRequestCopyStatus("copied"))
-      .catch(() => setQualityEvidenceRequestCopyStatus("failed"));
+      .then(() => {
+        setQualityEvidenceRequestCopiedStateKey(copiedStateKey);
+        setQualityEvidenceRequestCopyStatus("copied");
+      })
+      .catch(() => {
+        setQualityEvidenceRequestCopiedStateKey(copiedStateKey);
+        setQualityEvidenceRequestCopyStatus("failed");
+      });
   };
 
   const handleCopyPayloadQualityRequest = () => {
+    const copiedStateKey = qualityStateKey;
     if (!navigator.clipboard?.writeText) {
+      setPayloadQualityRequestCopiedStateKey(copiedStateKey);
       setPayloadQualityRequestCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(payloadQualityRequestCopyText)
-      .then(() => setPayloadQualityRequestCopyStatus("copied"))
-      .catch(() => setPayloadQualityRequestCopyStatus("failed"));
+      .then(() => {
+        setPayloadQualityRequestCopiedStateKey(copiedStateKey);
+        setPayloadQualityRequestCopyStatus("copied");
+      })
+      .catch(() => {
+        setPayloadQualityRequestCopiedStateKey(copiedStateKey);
+        setPayloadQualityRequestCopyStatus("failed");
+      });
   };
 
   const handleCopyCombinedQualityRequest = () => {
+    const copiedStateKey = qualityStateKey;
     if (!navigator.clipboard?.writeText) {
+      setCombinedQualityRequestCopiedStateKey(copiedStateKey);
       setCombinedQualityRequestCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(combinedQualityRequestCopyText)
-      .then(() => setCombinedQualityRequestCopyStatus("copied"))
-      .catch(() => setCombinedQualityRequestCopyStatus("failed"));
+      .then(() => {
+        setCombinedQualityRequestCopiedStateKey(copiedStateKey);
+        setCombinedQualityRequestCopyStatus("copied");
+      })
+      .catch(() => {
+        setCombinedQualityRequestCopiedStateKey(copiedStateKey);
+        setCombinedQualityRequestCopyStatus("failed");
+      });
   };
 
   const handleCopyDv01ControlActions = () => {
@@ -2379,7 +2415,7 @@ export default function RiskTensorPage() {
                     {combinedQualityRequestCopyMessage}
                   </small>
                 ) : null}
-                {qualityEvidenceRequestCopyStatus === "failed" ? (
+                {qualityEvidenceRequestCopyStatusForCurrentState === "failed" ? (
                   <pre
                     className="risk-tensor-quality-detail__manual-copy"
                     data-testid="risk-tensor-quality-evidence-warning-request-manual-copy"
@@ -2388,7 +2424,7 @@ export default function RiskTensorPage() {
                     {qualityEvidenceRequestCopyText}
                   </pre>
                 ) : null}
-                {combinedQualityRequestCopyStatus === "failed" ? (
+                {combinedQualityRequestCopyStatusForCurrentState === "failed" ? (
                   <pre
                     className="risk-tensor-quality-detail__manual-copy"
                     data-testid="risk-tensor-combined-quality-warning-request-manual-copy"
@@ -2397,7 +2433,7 @@ export default function RiskTensorPage() {
                     {combinedQualityRequestCopyText}
                   </pre>
                 ) : null}
-                {payloadQualityRequestCopyStatus === "failed" ? (
+                {payloadQualityRequestCopyStatusForCurrentState === "failed" ? (
                   <pre
                     className="risk-tensor-quality-detail__manual-copy"
                     data-testid="risk-tensor-payload-quality-warning-manual-copy"
@@ -3236,7 +3272,7 @@ export default function RiskTensorPage() {
                               {qualityEvidenceRequestCopyMessage}
                             </small>
                           ) : null}
-                          {qualityEvidenceRequestCopyStatus === "failed" ? (
+                          {qualityEvidenceRequestCopyStatusForCurrentState === "failed" ? (
                             <pre
                               className="risk-tensor-quality-detail__manual-copy"
                               data-testid="risk-tensor-quality-evidence-request-manual-copy"
@@ -3276,7 +3312,7 @@ export default function RiskTensorPage() {
                               {payloadQualityRequestCopyMessage}
                             </small>
                           ) : null}
-                          {payloadQualityRequestCopyStatus === "failed" ? (
+                          {payloadQualityRequestCopyStatusForCurrentState === "failed" ? (
                             <pre
                               className="risk-tensor-quality-detail__manual-copy"
                               data-testid="risk-tensor-payload-quality-request-manual-copy"

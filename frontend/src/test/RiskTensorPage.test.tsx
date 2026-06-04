@@ -4455,6 +4455,65 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("ignores stale combined supplement package copy results after report date changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_payload_warning_stale_combined_dates"),
+        result: { report_dates: ["2026-02-28", "2026-01-31"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_payload_warning_stale_combined"),
+        result: {
+          ...tensorResult(reportDate),
+          portfolio_dv01: null as unknown as RiskTensorPayload["portfolio_dv01"],
+          liquidity_gap_30d_ratio: "bad-ratio",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const warning = await screen.findByTestId("risk-tensor-payload-quality-warning");
+      await user.click(within(warning).getByRole("button", { name: "复制完整补证包" }));
+      await user.selectOptions(screen.getByLabelText("风险报告日"), "2026-01-31");
+
+      const nextWarning = await screen.findByTestId("risk-tensor-payload-quality-warning");
+      await waitFor(() => {
+        expect(nextWarning).toHaveTextContent("报告日 2026-01-31");
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      expect(nextWarning).not.toHaveTextContent("已复制完整补证包");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("shows manual combined supplement package text in the first-screen warning when clipboard copy fails", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {
@@ -5732,6 +5791,96 @@ describe("RiskTensorPage", () => {
       expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_stress_copy_failure_2026-02-28");
       expect(manualCopy).toHaveTextContent("stress_scenarios_count 0");
       expect(manualCopy).toHaveTextContent("页面不会在前端补算 DV01 压力情景");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("ignores stale DV01 stress scenario copy results after scenarios refresh", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_stale_copy_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_stale_copy_initial"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
+          } as RiskTensorPayload,
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_stale_copy_refreshed"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({
+              stress_scenarios: [
+                {
+                  scenario_key: "parallel_up_10bp",
+                  label: "+10bp",
+                  shock_bp: {
+                    raw: 10,
+                    unit: "bp" as const,
+                    display: "+10 bp",
+                    precision: 0,
+                    sign_aware: true,
+                  },
+                  estimated_pnl_impact: {
+                    raw: -1200,
+                    unit: "yuan" as const,
+                    display: "-1,200.00",
+                    precision: 2,
+                    sign_aware: true,
+                  },
+                },
+              ],
+            }),
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const stressEmpty = await screen.findByTestId("risk-tensor-dv01-stress-empty");
+      await user.click(within(stressEmpty).getByRole("button", { name: "复制压力情景排查信息" }));
+      await user.click(within(stressEmpty).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("risk-tensor-dv01-stress-empty")).not.toBeInTheDocument();
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
+      expect(stressScenarios).toHaveTextContent("+10bp");
+      expect(stressScenarios).not.toHaveTextContent("已复制压力情景排查信息");
+      expect(screen.queryByTestId("risk-tensor-dv01-stress-manual-copy")).not.toBeInTheDocument();
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);
