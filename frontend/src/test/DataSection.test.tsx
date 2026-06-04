@@ -48,6 +48,18 @@ describe("DataSection · error", () => {
     renderWith({ kind: "error" });
     expect(screen.getByTestId("data-section-error")).toBeInTheDocument();
   });
+
+  it("uses extracted classes for error layout and title", () => {
+    renderWith({ kind: "error", message: "fetch failed" });
+
+    const errorBlock = screen.getByTestId("data-section-error");
+    const errorTitle = errorBlock.querySelector(".data-section__error-title");
+
+    expect(errorBlock).toHaveClass("data-section__state-stack");
+    expect(errorBlock).not.toHaveAttribute("style");
+    expect(errorTitle).toBeInTheDocument();
+    expect(errorTitle).not.toHaveAttribute("style");
+  });
 });
 
 describe("DataSection · empty", () => {

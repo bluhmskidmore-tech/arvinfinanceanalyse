@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { displayTokens } from "../theme/displayTokens";
 import type { DataSectionState } from "./DataSection.types";
+import "./DataSection.css";
 
 type DataSectionProps = {
   title: string;
@@ -110,9 +111,9 @@ function renderBody(opts: {
 
   if (state.kind === "error") {
     return (
-      <div data-testid="data-section-error" style={{ display: "grid", gap: 12, alignItems: "start" }}>
-        <span style={{ color: displayTokens.text.error, fontWeight: 600 }}>数据载入失败。</span>
-        <span style={{ color: displayTokens.text.secondary }}>
+      <div data-testid="data-section-error" className="data-section__state-stack">
+        <span className="data-section__error-title">数据载入失败。</span>
+        <span className="data-section__secondary-text">
           {state.message ?? "当前页面保留重试入口，不在浏览器端自行拼接正式口径。"}
         </span>
         <button type="button" onClick={onRetry} style={RETRY_BTN_STYLE}>
