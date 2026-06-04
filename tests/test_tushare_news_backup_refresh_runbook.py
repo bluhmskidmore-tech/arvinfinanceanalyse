@@ -90,6 +90,7 @@ def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_p
     assert "--format markdown" in handoff
     assert "--format ops-gap" in handoff
     assert "--stage pre-enable" in handoff
+    assert "--stage pre-enable --format markdown" in handoff
     assert "--stage post-enable" in handoff
     assert "preflight returns `blocked`" in handoff
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in handoff
@@ -118,6 +119,7 @@ def test_tushare_news_backup_refresh_go_live_checklist_requires_evidence_before_
     assert "--format markdown" in checklist
     assert "--format ops-gap" in checklist
     assert "--stage pre-enable" in checklist
+    assert "--stage pre-enable --format markdown" in checklist
     assert "--stage post-enable" in checklist
     assert "returns `pass`" in checklist
     assert "External timer enablement: enabled" in checklist
@@ -147,6 +149,7 @@ def test_tushare_news_backup_timer_enablement_packet_is_ops_fillable_not_executa
     assert "--format markdown" in packet
     assert "--format ops-gap" in packet
     assert "--stage pre-enable" in packet
+    assert "--stage pre-enable --format markdown" in packet
     assert "--stage post-enable" in packet
     assert "preflight must return `pass` before enablement" in packet
     assert "External timer enablement: enabled" in packet
@@ -346,6 +349,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
     assert "Timer evidence" in packet
     assert "Post-Enable Inputs" in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs." in packet
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status." in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in packet
     assert "POST /ui/news/tushare-npr/ingest" in packet
     assert "POST /api/news/tushare-npr/ingest" in packet
@@ -354,6 +358,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
     for marker in (
         "Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.",
+        "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
     ):
         assert marker in generated

@@ -93,6 +93,7 @@ Fill these before rerunning `pre-enable`:
 | Enable timer decision | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
 
 Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.
+Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status.
 
 ## Post-Enable Inputs
 
