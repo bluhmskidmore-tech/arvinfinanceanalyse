@@ -349,7 +349,7 @@ export function AgentQueryForm({
                 <label className="agent-chat-composer__field">
                   <span>流程名称</span>
                   <select
-                    aria-label="process-name-select"
+                    aria-label="流程名称"
                     value={selectedProcess}
                     onChange={(event) => onSelectedProcessChange(event.target.value)}
                   >

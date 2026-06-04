@@ -18,6 +18,7 @@ const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
 const PROCESS_SEARCH_LABEL = "流程搜索";
+const PROCESS_NAME_LABEL = "流程名称";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
@@ -441,7 +442,7 @@ describe("AgentWorkbenchPage", () => {
     expect(processDetails).toHaveAttribute("open");
     expect(screen.getByRole("textbox", { name: PROCESS_SEARCH_LABEL })).toBeVisible();
     expect(viewProcessButton).toBeVisible();
-    expect(screen.getByLabelText("process-name-select")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: PROCESS_NAME_LABEL })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解释当前页面的主要结论和风险点" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /组合概览/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_STATUS_BUTTON })).toBeInTheDocument();
@@ -1591,7 +1592,7 @@ describe("AgentWorkbenchPage", () => {
     openProcessTools();
 
     await waitFor(() => {
-      const select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
+      const select = screen.getByLabelText(PROCESS_NAME_LABEL) as HTMLSelectElement;
       expect(Array.from(select.options).map((option) => option.value)).toEqual([
         "",
         "CheckoutFlow",
@@ -1667,7 +1668,7 @@ describe("AgentWorkbenchPage", () => {
     openProcessTools();
     await waitFor(() => expect(screen.getByRole("option", { name: "CheckoutFlow" })).toBeInTheDocument());
 
-    const processSelect = screen.getByLabelText("process-name-select");
+    const processSelect = screen.getByLabelText(PROCESS_NAME_LABEL);
     const viewProcessButton = screen.getByRole("button", { name: "查看所选流程" });
     await waitFor(() => expect(processSelect).toHaveValue("CheckoutFlow"));
     expect(viewProcessButton).not.toBeDisabled();
@@ -1743,7 +1744,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
     openProcessTools();
-    await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
+    await waitFor(() => expect(screen.getByLabelText(PROCESS_NAME_LABEL)).toHaveValue("CheckoutFlow"));
 
     await user.click(screen.getByRole("button", { name: "查看所选流程" }));
     screen.getByLabelText(PROCESS_SEARCH_LABEL).focus();
@@ -1805,7 +1806,7 @@ describe("AgentWorkbenchPage", () => {
     });
 
     openProcessTools();
-    await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
+    await waitFor(() => expect(screen.getByLabelText(PROCESS_NAME_LABEL)).toHaveValue("CheckoutFlow"));
     await user.click(screen.getByRole("button", { name: /查看所选流程/ }));
     expect(screen.getByText("正在查看 GitNexus 流程 · 可继续输入")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
@@ -1860,7 +1861,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(screen.getByLabelText(PROCESS_SEARCH_LABEL), "Audit");
 
-    const select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
+    const select = screen.getByLabelText(PROCESS_NAME_LABEL) as HTMLSelectElement;
     expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "AuditFlow"]);
   });
 
@@ -1933,7 +1934,7 @@ describe("AgentWorkbenchPage", () => {
     });
 
     openProcessTools();
-    let select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
+    let select = screen.getByLabelText(PROCESS_NAME_LABEL) as HTMLSelectElement;
     expect(select).toHaveValue("NewestManualFlow");
     expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "NewestManualFlow"]);
 
@@ -1966,7 +1967,7 @@ describe("AgentWorkbenchPage", () => {
       await Promise.resolve()
     });
 
-    select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
+    select = screen.getByLabelText(PROCESS_NAME_LABEL) as HTMLSelectElement;
     expect(select).toHaveValue("NewestManualFlow");
     expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "NewestManualFlow"]);
   });
