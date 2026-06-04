@@ -4519,7 +4519,9 @@ describe("AgentWorkbenchPage", () => {
       expect(window.localStorage.getItem(AGENT_COMPOSER_DRAFT_KEY)).toBe("draft to clear");
       scrollTargets.length = 0;
 
-      await user.click(screen.getByRole("button", { name: "清空输入" }));
+      const clearButton = screen.getByRole("button", { name: /清空输入/ });
+      expect(clearButton).toHaveAccessibleName(/draft to clear/);
+      await user.click(clearButton);
 
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);

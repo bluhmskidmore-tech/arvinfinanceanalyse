@@ -222,6 +222,7 @@ export function AgentQueryForm({
             <button
               type="button"
               className="agent-chat-composer__clear"
+              aria-label={`清空输入：${query}`}
               onClick={() => {
                 if (onClearQuery) {
                   onClearQuery();

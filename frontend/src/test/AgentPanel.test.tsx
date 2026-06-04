@@ -295,7 +295,9 @@ describe("AgentPanel", () => {
         }),
       });
       await user.type(input, "draft to clear in place");
-      await user.click(screen.getByRole("button", { name: "清空输入" }));
+      const clearButton = screen.getByRole("button", { name: /清空输入/ });
+      expect(clearButton).toHaveAccessibleName(/draft to clear in place/);
+      await user.click(clearButton);
 
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);
