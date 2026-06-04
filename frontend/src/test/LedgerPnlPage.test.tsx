@@ -1078,6 +1078,12 @@ describe("LedgerPnlPage", () => {
             as_of_date: "2026-05-31",
             evidence_rows: 665,
             quality_flag: "ok" as const,
+            next_drill: [
+              {
+                label: "补科目汇总或确认科目范围",
+                detail: "旧候选补证动作不应覆盖已闭合候选链路或正式契约补证路径。",
+              },
+            ],
           },
           result: {
             report_date: "2026-05-31",
@@ -1168,6 +1174,15 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
     });
+
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("候选解释可信度已闭合 · 覆盖率 100.00%");
+    expect(decisionPath).toHaveTextContent("候选补证路径候选链路已闭合，无需补证");
+    expect(decisionPath).toHaveTextContent("正式补证路径补齐 202605 正式财务指标 Excel 冻结样本");
+    expect(decisionPath).not.toHaveTextContent("正式补证路径补科目汇总或确认科目范围");
+    expect(
+      within(decisionPath).queryByRole("button", { name: /候选补证路径/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("lifts the explainability model summary into the first screen", async () => {

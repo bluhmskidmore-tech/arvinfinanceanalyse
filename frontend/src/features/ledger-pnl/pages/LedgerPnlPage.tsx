@@ -1184,10 +1184,12 @@ function LedgerFunctionalAuditStrip(props: {
   explainabilityModel: ReturnType<typeof buildLedgerExplainabilityModel>;
 }) {
   const state = buildLedgerFunctionalAuditState(props);
-  const nextDrills = appendLedgerDrill(
-    collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta),
-    formalContractRemediationDrill(props.formalIndicatorSourceContract),
-  );
+  const candidateExplainabilityClosed = props.explainabilityModel.verdict === "解释链闭合";
+  const candidateNextDrills = candidateExplainabilityClosed
+    ? []
+    : collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta);
+  const formalNextDrill = formalContractRemediationDrill(props.formalIndicatorSourceContract);
+  const nextDrills = appendLedgerDrill(candidateNextDrills, formalNextDrill);
   const formalGapSummary = summarizeFormalIndicatorContractGaps(
     props.formalIndicatorSourceContract,
     props.isFormalContractLoading,
@@ -1208,9 +1210,11 @@ function LedgerFunctionalAuditStrip(props: {
     isError: props.isFormalContractError,
     materialChecklist,
   });
-  const candidateEvidencePath = props.explainabilityModel.evidenceEntryPoint;
+  const candidateEvidencePath = candidateExplainabilityClosed
+    ? "候选链路已闭合，无需补证"
+    : props.explainabilityModel.evidenceEntryPoint;
   const formalEvidencePath = props.requestedReportMonth
-    ? nextDrills[0]?.label ?? shortFormalContractReadbackAction(readbackAction)
+    ? formalNextDrill?.label ?? shortFormalContractReadbackAction(readbackAction)
     : "先选择报告日生成 report_month";
   const materialSummary = formalContractMaterialSummary({
     contract: props.formalIndicatorSourceContract,
@@ -1299,14 +1303,18 @@ function LedgerFunctionalAuditStrip(props: {
           </div>
           <div>
             <span>候选补证路径</span>
-            <button
-              type="button"
-              className="ledger-pnl-functional-strip__evidence-button"
-              aria-label={`候选补证路径 ${candidateEvidencePath}`}
-              onClick={focusLedgerResidualEvidenceTarget}
-            >
-              {candidateEvidencePath}
-            </button>
+            {candidateExplainabilityClosed ? (
+              <strong>{candidateEvidencePath}</strong>
+            ) : (
+              <button
+                type="button"
+                className="ledger-pnl-functional-strip__evidence-button"
+                aria-label={`候选补证路径 ${candidateEvidencePath}`}
+                onClick={focusLedgerResidualEvidenceTarget}
+              >
+                {candidateEvidencePath}
+              </button>
+            )}
           </div>
           <div>
             <span>正式补证路径</span>
