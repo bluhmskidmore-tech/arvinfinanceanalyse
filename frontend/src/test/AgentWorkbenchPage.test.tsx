@@ -2633,13 +2633,15 @@ describe("AgentWorkbenchPage", () => {
     expect(progress).toHaveTextContent("排队中");
     expect(progress).toHaveTextContent("分析中");
     expect(progress).toBeVisible();
-    const runtimeDetails = screen.getByText("运行细节").closest("details");
+    const runtimeDetailsSummary = screen.getByText("运行细节");
+    expect(runtimeDetailsSummary).toHaveAccessibleName("运行细节：show progress while running");
+    const runtimeDetails = runtimeDetailsSummary.closest("details");
     expect(runtimeDetails).not.toBeNull();
     expect(runtimeDetails).not.toHaveAttribute("open");
     await waitFor(() => {
       expect(progress.querySelector('[data-current="true"]')).toHaveTextContent("分析中");
     });
-    fireEvent.click(screen.getByText("运行细节"));
+    fireEvent.click(runtimeDetailsSummary);
     expect(runtimeDetails).toHaveAttribute("open");
     expect(progress).toBeVisible();
     expect(getAgentTurnStatus()).toHaveTextContent("Hermes 正在分析");

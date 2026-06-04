@@ -3584,7 +3584,7 @@ export function EmbeddedAgentCopilot({
                         </div>
                         <div className="agent-wait-status__detail">
                           <details className="agent-wait-status__details">
-                            <summary>运行细节</summary>
+                            <summary aria-label={`运行细节：${turn.question}`}>运行细节</summary>
                             <div className="agent-wait-status__detail-list">
                               <span>{formatAgentWaitPhase(turn.agentRun)}</span>
                               <span>已等待 {waitElapsedSeconds} 秒</span>
