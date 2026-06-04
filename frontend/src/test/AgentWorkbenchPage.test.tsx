@@ -3244,7 +3244,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("第一版回答。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "重新生成" }));
+    const regenerateButton = screen.getByRole("button", { name: /重新生成/ });
+    expect(regenerateButton).toHaveAccessibleName(/regenerate this/);
+    await user.click(regenerateButton);
     const regenerateStopAction = screen.getByTestId("agent-panel-submit");
     expect(regenerateStopAction).toHaveTextContent("停止");
     expect(regenerateStopAction).toHaveAccessibleName(/regenerate this/);
@@ -3297,7 +3299,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("第一版待重新生成回答。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "重新生成" }));
+    const regenerateButton = screen.getByRole("button", { name: /重新生成/ });
+    expect(regenerateButton).toHaveAccessibleName(/regenerate cue question/);
+    await user.click(regenerateButton);
 
     expect(await screen.findByText("正在重新生成 · 可继续输入下一句")).toBeInTheDocument();
     expect(screen.queryByText("第一版待重新生成回答。")).not.toBeInTheDocument();

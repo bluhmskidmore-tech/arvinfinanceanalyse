@@ -3122,6 +3122,7 @@ export function EmbeddedAgentCopilot({
                     <button
                       type="button"
                       className="agent-result-toolbar__button"
+                      aria-label={`重新生成：${turn.question}`}
                       onClick={() => void regenerateAgentTurn(turn)}
                       disabled={loading}
                     >
