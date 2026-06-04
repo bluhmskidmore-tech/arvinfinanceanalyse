@@ -2891,9 +2891,11 @@ function productCategoryBacktestLatestReviewRows(input: {
   actionRows: ProductCategoryOperatingBacktestActionRow[];
   calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[];
   latestReportDate: string | null;
+  backtestGateTone: "positive" | "negative" | "neutral";
 }): ProductCategoryOperatingBacktestLatestReviewRow[] {
   const actionRowsByAction = new Map(input.actionRows.map((row) => [row.actionKind, row]));
   const watchReportDate = input.latestReportDate ? productCategoryNextMonthEndDate(input.latestReportDate) : null;
+  const reviewLabel = input.backtestGateTone === "negative" ? "补样本后复核" : "复核后执行";
   const riskRankForCalibration = (calibration: ProductCategoryOperatingBacktestCalibrationRow) => {
     if (calibration.confidenceLabel === "高置信") {
       return "P1 高置信复核";
@@ -2987,7 +2989,7 @@ function productCategoryBacktestLatestReviewRows(input: {
       categoryLabel: row.categoryLabel,
       actionKind: row.actionKind,
       actionLabel: row.actionLabel,
-      reviewLabel: "复核后执行",
+      reviewLabel,
       riskRankLabel: riskRankForCalibration(calibration),
       riskReasonLabel: `${calibration.confidenceLabel}；${calibration.reasonLabel.replace(/^命中率 [^，]+，/, "")}`,
       reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
@@ -3079,6 +3081,17 @@ function productCategoryNextMonthEndDate(reportDate: string): string | null {
 
 function productCategoryReportDatesAreConsecutiveMonths(current: string, next: string): boolean {
   return productCategoryNextMonthEndDate(current) === next;
+}
+
+function productCategoryBacktestEmptyCopy(
+  coverageRows: ProductCategoryOperatingBacktestSurface["coverageRows"],
+): string {
+  const skippedRow = coverageRows.find((row) => row.statusLabel === "跳过：非连续月份");
+  if (skippedRow?.nextReportDate) {
+    const expectedNextReportDate = productCategoryNextMonthEndDate(skippedRow.reportDate);
+    return `需要至少两个连续月度正式 payload 才能回测行动信号；${skippedRow.reportDate} 后缺少 ${expectedNextReportDate ?? "-"}，实际下一期为 ${skippedRow.nextReportDate}。`;
+  }
+  return "需要至少两个连续月度正式 payload 才能回测行动信号。";
 }
 
 function productCategoryAttributionCoverage(input: {
@@ -3329,18 +3342,19 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     actionRows,
     missReasonRows,
   });
+  const backtestGate = productCategoryBacktestGate({
+    evaluatedMonthCount: evaluatedDates.length,
+    signalCount: samples.length,
+  });
   const latestReviewRows = productCategoryBacktestLatestReviewRows({
     latestActionRows,
     actionRows,
     calibrationRows,
     latestReportDate: latestPayload?.report_date ?? null,
+    backtestGateTone: backtestGate.backtestGateTone,
   });
   const reviewWorkload = productCategoryBacktestReviewWorkload(latestReviewRows);
   const ruleDisposition = productCategoryBacktestRuleDisposition(calibrationRows);
-  const backtestGate = productCategoryBacktestGate({
-    evaluatedMonthCount: evaluatedDates.length,
-    signalCount: samples.length,
-  });
 
   return {
     summary: {
@@ -3370,7 +3384,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       .slice()
       .sort((left, right) => Math.abs(right.netIncomeDelta ?? 0) - Math.abs(left.netIncomeDelta ?? 0))
       .slice(0, 6),
-    emptyCopy: samples.length === 0 ? "需要至少两个连续月度正式 payload 才能回测行动信号。" : null,
+    emptyCopy: samples.length === 0 ? productCategoryBacktestEmptyCopy(coverageRows) : null,
   };
 }
 

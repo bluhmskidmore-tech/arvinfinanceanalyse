@@ -724,7 +724,7 @@ describe("productCategoryPnlPageModel", () => {
         categoryId: "scale_asset",
         categoryLabel: "高规模低收益",
         actionLabel: "重定价/提效",
-        reviewLabel: "复核后执行",
+        reviewLabel: "补样本后复核",
         riskRankLabel: "P3 低样本复核",
         riskReasonLabel: "低置信；主因收益率未改善",
         reasonLabel: "历史回测建议收紧触发条件：命中率 0.0%，主因收益率未改善",
@@ -834,7 +834,9 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.missReasonRows).toEqual([]);
     expect(surface.calibrationRows).toEqual([]);
     expect(surface.latestReviewRows).toEqual([]);
-    expect(surface.emptyCopy).toBe("需要至少两个连续月度正式 payload 才能回测行动信号。");
+    expect(surface.emptyCopy).toBe(
+      "需要至少两个连续月度正式 payload 才能回测行动信号；2026-01-31 后缺少 2026-02-28，实际下一期为 2026-03-31。",
+    );
   });
 
   it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
