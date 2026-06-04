@@ -148,6 +148,11 @@ def _load_system_macro_alias_index_cache(path: str, mtime_ns: int, size: int) ->
     return _build_alias_row_index(frame)
 
 
+def clear_system_macro_source_cache() -> None:
+    _load_system_macro_frame_for_alias_cache.cache_clear()
+    _load_system_macro_alias_index_cache.cache_clear()
+
+
 def load_series_by_alias(
     alias: str,
     *,

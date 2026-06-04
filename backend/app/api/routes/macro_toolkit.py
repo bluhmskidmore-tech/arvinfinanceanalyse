@@ -53,7 +53,7 @@ from backend.app.core_finance.macro.toolkit.runner import (
     MacroToolkitScript,
     iter_toolkit_scripts,
 )
-from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
+from backend.app.core_finance.macro.toolkit.system_sources import clear_system_macro_source_cache, load_series_by_alias
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRACTS, table_stats
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -604,6 +604,7 @@ def macro_toolkit_refresh_source_backfill(
         "errors": payload.get("errors") or {},
     }
     market_home_response_cache.invalidate()
+    clear_system_macro_source_cache()
     return _envelope(
         "macro_toolkit.source_backfill_refresh",
         {"refresh": refresh},
@@ -643,6 +644,7 @@ def macro_toolkit_refresh_commodity_futures(
         ) from exc
     if not refresh_request.dry_run:
         market_home_response_cache.invalidate()
+        clear_system_macro_source_cache()
     status = str(refresh.get("status") or "")
     after_status = before_status if refresh_request.dry_run else _commodity_futures_status(settings.duckdb_path)
     summary = _commodity_futures_refresh_summary(

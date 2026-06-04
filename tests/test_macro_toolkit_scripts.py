@@ -2731,6 +2731,12 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
         }
 
     monkeypatch.setattr(macro_toolkit_route, "backfill_macro_series", fake_backfill_macro_series)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "clear_system_macro_source_cache",
+        lambda: source_cache_clears.append("cleared"),
+        raising=False,
+    )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app, raise_server_exceptions=False)
@@ -2798,6 +2804,8 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     calls: list[dict[str, object]] = []
+    source_cache_clears: list[str] = []
+    source_cache_clears: list[str] = []
 
     def fake_run_commodity_daily_ingest(**kwargs: object) -> dict[str, object]:
         calls.append(dict(kwargs))
@@ -2818,6 +2826,12 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
         }
 
     monkeypatch.setattr(macro_toolkit_route, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "clear_system_macro_source_cache",
+        lambda: source_cache_clears.append("cleared"),
+        raising=False,
+    )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app, raise_server_exceptions=False)
@@ -2835,6 +2849,8 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
     )
     assert denied.status_code == 403, denied.text
     assert calls == []
+    assert source_cache_clears == []
+    assert source_cache_clears == []
 
     UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
         user_id="commodity-refresh-user",
@@ -2869,6 +2885,7 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
             "dry_run": False,
         }
     ]
+    assert source_cache_clears == ["cleared"]
     get_settings.cache_clear()
 
 
