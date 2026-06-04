@@ -1372,8 +1372,12 @@ describe("AgentWorkbenchPage", () => {
 
   it("loads process selector options from GitNexus processes response", async () => {
     const user = userEvent.setup();
-    fetchMock.mockResolvedValueOnce(
-      buildJsonResponse({
+    let resolveProcessesResponse!: (value: Response) => void;
+    const processesResponse = new Promise<Response>((resolve) => {
+      resolveProcessesResponse = resolve;
+    });
+    fetchMock.mockReturnValueOnce(processesResponse);
+    const processesPayload = buildJsonResponse({
         answer: "GitNexus processes ready.",
         cards: [
           {
@@ -1398,14 +1402,18 @@ describe("AgentWorkbenchPage", () => {
           generated_at: "2026-04-12T09:00:00Z",
         },
         next_drill: [],
-      }),
-    );
+      });
 
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
+    screen.getByRole("button", { name: "查看所选流程" }).focus();
+    await act(async () => {
+      resolveProcessesResponse(processesPayload);
+      await Promise.resolve();
+    });
     openProcessTools();
 
     await waitFor(() => {
@@ -1417,6 +1425,7 @@ describe("AgentWorkbenchPage", () => {
       ]);
     });
     expect(screen.getByText("已读取 GitNexus 流程 · 可选择流程查看")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
   });
 
   it("submits selected process_name when viewing a chosen process", async () => {

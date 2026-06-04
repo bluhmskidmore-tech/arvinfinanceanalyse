@@ -1010,6 +1010,50 @@
   align-items: start;
 }
 
+.balance-analysis-detail-drilldown {
+  margin-top: 18px;
+}
+
+.balance-analysis-detail-drilldown__eyebrow {
+  margin-bottom: var(--moss-space-2);
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.balance-analysis-detail-drilldown__summary {
+  margin-bottom: 14px;
+}
+
+.balance-analysis-detail-drilldown__error {
+  padding: 14px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: 14px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-700);
+  font-size: 13px;
+}
+
+.balance-analysis-detail-drilldown__loading {
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.balance-analysis-advanced-attribution-summary {
+  display: grid;
+  gap: 10px;
+  color: var(--moss-color-neutral-800);
+  font-size: 13px;
+}
+
+.balance-analysis-advanced-attribution-summary__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.balance-analysis-governance-workbench-section {
+  margin-top: var(--moss-space-6);
+}
+
 .balance-analysis-workbook-cockpit {
   display: grid;
   grid-template-columns: 1fr;
@@ -1247,6 +1291,59 @@
   min-width: 0;
 }
 
+.balance-analysis-workbook-panel {
+  padding: var(--moss-space-4);
+  border: 1px solid #e4e9f0;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.035);
+}
+
+.balance-analysis-workbook-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  margin-bottom: var(--moss-space-4);
+}
+
+.balance-analysis-workbook-panel__title {
+  color: var(--moss-color-neutral-900);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.balance-analysis-workbook-panel__note {
+  margin: 6px 0 0;
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.balance-analysis-workbook-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--moss-space-1) var(--moss-space-2);
+  border: 1px solid #e4e9f0;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.balance-analysis-workbook-secondary-grid {
+  display: grid;
+  gap: var(--moss-space-5);
+  margin-top: var(--moss-space-5);
+}
+
+.balance-analysis-workbook-secondary-grid__title {
+  margin-bottom: var(--moss-space-2);
+  color: var(--moss-color-neutral-900);
+  font-weight: 600;
+}
+
 .balance-analysis-right-rail {
   order: 1;
   display: grid;
@@ -1474,6 +1571,50 @@
   min-width: 0;
 }
 
+.balance-analysis-right-rail-drilldown-detail {
+  display: grid;
+  gap: 8px;
+}
+
+.balance-analysis-right-rail-drilldown-detail__title {
+  color: var(--moss-color-neutral-900);
+  font-weight: 700;
+}
+
+.balance-analysis-right-rail-drilldown-detail__status {
+  color: var(--moss-color-info-600);
+  font-size: 13px;
+}
+
+.balance-analysis-right-rail-drilldown-detail__body {
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+}
+
+.balance-analysis-right-rail-drilldown-detail__body--relaxed {
+  line-height: 1.6;
+}
+
+.balance-analysis-right-rail-drilldown-detail__body--warning,
+.balance-analysis-right-rail-drilldown-detail__meta--warning {
+  color: var(--moss-color-warning-700);
+}
+
+.balance-analysis-right-rail-drilldown-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.balance-analysis-right-rail-drilldown-detail__audit {
+  display: grid;
+  gap: 4px;
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+}
+
 [data-testid^="balance-analysis-workbook-panel-"],
 [data-testid="balance-analysis-right-rail-drilldown"] {
   position: relative;
@@ -1556,7 +1697,7 @@
   border-bottom: 1px solid var(--moss-color-neutral-200);
 }
 
-.balance-analysis-workbook-full-details > [data-testid="balance-analysis-workbook-secondary-grid"],
+.balance-analysis-workbook-full-details > .balance-analysis-workbook-secondary-grid,
 .balance-analysis-stage-details__content {
   padding: 0 var(--moss-space-4) var(--moss-space-4);
 }

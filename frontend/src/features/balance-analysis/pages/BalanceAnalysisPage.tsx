@@ -41,10 +41,6 @@ import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import {
   actionButtonStyle,
   tableShellStyle,
-  workbookPanelStyle,
-  workbookPanelHeaderStyle,
-  workbookPanelBadgeStyle,
-  workbookSecondaryGridStyle,
 } from "./BalanceAnalysisPage.styles";
 import {
   buildBalanceAnalysisPageModel,
@@ -1859,15 +1855,15 @@ export default function BalanceAnalysisPage() {
               下一页
             </button>
           </div>
-          <div style={{ marginTop: 18 }}>
-            <div style={{ color: designTokens.color.neutral[600], fontSize: 12, marginBottom: 8 }}>明细下钻预留</div>
+          <div className="balance-analysis-detail-drilldown">
+            <div className="balance-analysis-detail-drilldown__eyebrow">明细下钻预留</div>
             {deferredAnalysisQueriesPending ? (
               <div>明细下钻等待首屏数据完成…</div>
             ) : !detailQuery.isLoading &&
             !detailQuery.isError &&
             (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ color: designTokens.color.neutral[600], fontSize: 12, marginBottom: 8 }}>
+              <div className="balance-analysis-detail-drilldown__summary">
+                <div className="balance-analysis-detail-drilldown__eyebrow">
                   明细底稿返回的汇总切片
                 </div>
                 <div
@@ -1887,20 +1883,11 @@ export default function BalanceAnalysisPage() {
               </div>
             ) : null}
             {deferredAnalysisQueriesPending ? null : detailQuery.isError ? (
-              <div
-                style={{
-                  borderRadius: 14,
-                  border: `1px solid ${designTokens.color.warning[200]}`,
-                  background: designTokens.color.warning[50],
-                  color: designTokens.color.warning[700],
-                  padding: 14,
-                  fontSize: 13,
-                }}
-              >
+              <div className="balance-analysis-detail-drilldown__error">
                 明细下钻暂时不可用，汇总驾驶舱仍可继续使用。
               </div>
             ) : detailQuery.isLoading ? (
-              <div style={{ color: designTokens.color.neutral[600], fontSize: 13 }}>明细下钻加载中…</div>
+              <div className="balance-analysis-detail-drilldown__loading">明细下钻加载中…</div>
             ) : (
               <div
                 className="ag-theme-alpine"
@@ -1983,7 +1970,7 @@ export default function BalanceAnalysisPage() {
                 );
 
                 return (
-                  <div style={{ display: "grid", gap: 10, fontSize: 13, color: designTokens.color.neutral[800] }}>
+                  <div className="balance-analysis-advanced-attribution-summary">
                     <div>
                       <strong>归因可用性</strong>：
                       {formatAdvancedAttributionStatusDisplay(attribution.status)} ·{" "}
@@ -1992,7 +1979,7 @@ export default function BalanceAnalysisPage() {
                     <div>
                       <strong>缺口材料</strong>：缺 {attribution.missing_inputs.length} 项输入
                       {inputLabels.length > 0 ? (
-                        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                        <ul className="balance-analysis-advanced-attribution-summary__list">
                           {inputLabels.slice(0, 4).map((label) => (
                             <li key={label}>{label}</li>
                           ))}
@@ -2004,7 +1991,7 @@ export default function BalanceAnalysisPage() {
                     <div>
                       <strong>提示</strong>：{attribution.warnings.length} 条
                       {warningLabels.length > 0 ? (
-                        <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                        <ul className="balance-analysis-advanced-attribution-summary__list">
                           {warningLabels.slice(0, 4).map((label) => (
                             <li key={label}>{label}</li>
                           ))}
@@ -2021,7 +2008,7 @@ export default function BalanceAnalysisPage() {
         </div>
       </details>
 
-      <div style={{ marginTop: 24 }}>
+      <div className="balance-analysis-governance-workbench-section">
         <PageSectionLead
           eyebrow="工作台"
           title="治理闭环与工作簿底稿"
@@ -2066,26 +2053,18 @@ export default function BalanceAnalysisPage() {
                     <article
                       key={table.key}
                       data-testid={`balance-analysis-workbook-panel-${table.key}`}
-                      style={workbookPanelStyle}
+                      className="balance-analysis-workbook-panel"
                     >
-                      <div style={workbookPanelHeaderStyle}>
+                      <div className="balance-analysis-workbook-panel__header">
                         <div>
-                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>
+                          <div className="balance-analysis-workbook-panel__title">
                             {formatBalanceBusinessTextDisplay(table.title)}
                           </div>
-                          <p
-                            style={{
-                              marginTop: 6,
-                              marginBottom: 0,
-                              color: designTokens.color.neutral[700],
-                              fontSize: 13,
-                              lineHeight: 1.6,
-                            }}
-                          >
+                          <p className="balance-analysis-workbook-panel__note">
                             {workbookPanelNotes[table.key as (typeof primaryWorkbookTableKeys)[number]]}
                           </p>
                         </div>
-                        <span style={workbookPanelBadgeStyle}>
+                        <span className="balance-analysis-workbook-panel__badge">
                           {table.key === "bond_business_types" && isBondBusinessLinkedToMovement ? "movement" : "workbook"}
                         </span>
                       </div>
@@ -2102,26 +2081,18 @@ export default function BalanceAnalysisPage() {
                     <article
                       key={table.key}
                       data-testid={`balance-analysis-workbook-panel-${table.key}`}
-                      style={workbookPanelStyle}
+                      className="balance-analysis-workbook-panel"
                     >
-                      <div style={workbookPanelHeaderStyle}>
+                      <div className="balance-analysis-workbook-panel__header">
                         <div>
-                          <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>
+                          <div className="balance-analysis-workbook-panel__title">
                             {formatBalanceBusinessTextDisplay(table.title)}
                           </div>
-                          <p
-                            style={{
-                              marginTop: 6,
-                              marginBottom: 0,
-                              color: designTokens.color.neutral[700],
-                              fontSize: 13,
-                              lineHeight: 1.6,
-                            }}
-                          >
+                          <p className="balance-analysis-workbook-panel__note">
                             {workbookSecondaryPanelNotes[table.key as (typeof secondaryWorkbookPanelKeys)[number]]}
                           </p>
                         </div>
-                        <span style={workbookPanelBadgeStyle}>
+                        <span className="balance-analysis-workbook-panel__badge">
                           {table.key === "industry_distribution" && isIndustryLinkedToMovement ? "movement" : "supporting"}
                         </span>
                       </div>
@@ -2308,22 +2279,25 @@ export default function BalanceAnalysisPage() {
                   <span className="balance-analysis-governance-panel__badge">详情</span>
                 </div>
                 {selectedDecision ? (
-                  <div data-testid="balance-analysis-right-rail-drilldown-decision" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+                  <div
+                    data-testid="balance-analysis-right-rail-drilldown-decision"
+                    className="balance-analysis-right-rail-drilldown-detail"
+                  >
+                    <div className="balance-analysis-right-rail-drilldown-detail__title">
                       {formatBalanceBusinessTextDisplay(selectedDecision.title)}
                     </div>
-                    <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__status">
                       处理进度：{formatBalanceDecisionWorkflowStatusDisplay(selectedDecision.latest_status.status)}
                     </div>
-                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__body balance-analysis-right-rail-drilldown-detail__body--relaxed">
                       {formatBalanceBusinessTextDisplay(selectedDecision.reason)}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__meta">
                       <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(selectedDecision.source_section)}</span>
                       <span>{selectedDecision.rule_id}</span>
                       <span>{selectedDecision.rule_version}</span>
                     </div>
-                    <div style={{ display: "grid", gap: 4, fontSize: 12, color: designTokens.color.neutral[700] }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__audit">
                       <span>
                         更新人：{" "}
                         {selectedDecision.latest_status.updated_by
@@ -2342,30 +2316,40 @@ export default function BalanceAnalysisPage() {
                     </div>
                   </div>
                 ) : selectedEventCalendar ? (
-                  <div data-testid="balance-analysis-right-rail-drilldown-event" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+                  <div
+                    data-testid="balance-analysis-right-rail-drilldown-event"
+                    className="balance-analysis-right-rail-drilldown-detail"
+                  >
+                    <div className="balance-analysis-right-rail-drilldown-detail__title">
                       {formatBalanceBusinessTextDisplay(selectedEventCalendar.title)}
                     </div>
-                    <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>{selectedEventCalendar.event_date}</div>
-                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__status">
+                      {selectedEventCalendar.event_date}
+                    </div>
+                    <div className="balance-analysis-right-rail-drilldown-detail__body">
                       {formatBalanceBusinessTextDisplay(selectedEventCalendar.impact_hint)}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__meta">
                       <span>{formatBalanceBusinessTextDisplay(selectedEventCalendar.event_type)}</span>
                       <span>{formatBalanceBusinessTextDisplay(selectedEventCalendar.source)}</span>
                       <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(selectedEventCalendar.source_section)}</span>
                     </div>
                   </div>
                 ) : selectedRiskAlert ? (
-                  <div data-testid="balance-analysis-right-rail-drilldown-risk" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
+                  <div
+                    data-testid="balance-analysis-right-rail-drilldown-risk"
+                    className="balance-analysis-right-rail-drilldown-detail"
+                  >
+                    <div className="balance-analysis-right-rail-drilldown-detail__title">
                       {formatBalanceBusinessTextDisplay(selectedRiskAlert.title)}
                     </div>
-                    <div style={{ color: designTokens.color.warning[600], fontSize: 13 }}>{formatBalanceGovernedSeverityDisplay(selectedRiskAlert.severity)}</div>
-                    <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__status balance-analysis-right-rail-drilldown-detail__body--warning">
+                      {formatBalanceGovernedSeverityDisplay(selectedRiskAlert.severity)}
+                    </div>
+                    <div className="balance-analysis-right-rail-drilldown-detail__body balance-analysis-right-rail-drilldown-detail__body--relaxed balance-analysis-right-rail-drilldown-detail__body--warning">
                       {formatBalanceBusinessTextDisplay(selectedRiskAlert.reason)}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
+                    <div className="balance-analysis-right-rail-drilldown-detail__meta balance-analysis-right-rail-drilldown-detail__meta--warning">
                       <span>{formatBalanceWorkbookOperationalSectionKeyDisplay(selectedRiskAlert.source_section)}</span>
                       <span>{selectedRiskAlert.rule_id}</span>
                       <span>{selectedRiskAlert.rule_version}</span>
@@ -2389,10 +2373,13 @@ export default function BalanceAnalysisPage() {
               <strong>完整工作簿明细</strong>
               <span>展开查看工作簿宽表，默认收起以保持结论和治理证据优先。</span>
             </summary>
-            <div data-testid="balance-analysis-workbook-secondary-grid" style={workbookSecondaryGridStyle}>
+            <div
+              data-testid="balance-analysis-workbook-secondary-grid"
+              className="balance-analysis-workbook-secondary-grid"
+            >
               {secondaryWorkbookTables.map((table) => (
                 <div key={table.key} data-testid={`balance-analysis-workbook-table-${table.key}`}>
-                  <div style={{ marginBottom: 8, color: designTokens.color.neutral[900], fontWeight: 600 }}>
+                  <div className="balance-analysis-workbook-secondary-grid__title">
                     {formatBalanceBusinessTextDisplay(table.title)}
                   </div>
                   <div

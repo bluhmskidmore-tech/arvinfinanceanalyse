@@ -2608,6 +2608,8 @@ export function EmbeddedAgentCopilot({
         setProcessSearch("");
         setSelectedProcess(nextProcesses[0] ?? "");
         setComposerAssistHint("已读取 GitNexus 流程 · 可选择流程查看");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
         rememberRepoPath(normalizedRepoPath);
         setResult(payload);
         setConversationTurns((currentTurns) => [

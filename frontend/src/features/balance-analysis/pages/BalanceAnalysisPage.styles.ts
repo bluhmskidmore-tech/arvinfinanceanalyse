@@ -120,40 +120,6 @@ export const tableShellStyle = {
   background: c.primary[50],
 } as const;
 
-export const workbookPanelStyle = {
-  borderRadius: r.sm,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: shellTokens.colorBgSurface,
-  padding: s[4],
-  boxShadow: "0 8px 18px rgba(15, 37, 68, 0.035)",
-} as const;
-
-export const workbookPanelHeaderStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: s[3],
-  marginBottom: s[3] + s[1],
-} as const;
-
-export const workbookPanelBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: `${s[1]}px ${s[2]}px`,
-  borderRadius: r.sm,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: shellTokens.colorBgMuted,
-  color: shellTokens.colorTextSecondary,
-  fontSize: fs[12],
-  fontWeight: 600,
-} as const;
-
-export const workbookSecondaryGridStyle = {
-  display: "grid",
-  gap: s[5],
-  marginTop: s[5],
-} as const;
-
 export const rightRailFilterRowStyle = {
   display: "flex",
   flexWrap: "wrap",

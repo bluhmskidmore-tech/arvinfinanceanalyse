@@ -31,6 +31,8 @@ Machine-readable JSON `ops_gap`:
   evidence items.
 - `ops_gap.deferred_until` records when deferred items become actionable.
 
+Ready to create timer: `false`
+
 Markdown handoff command:
 
 ```powershell
