@@ -2418,6 +2418,100 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("selects the current KRD bucket when users open the prior-period bucket change", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_krd_select_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_krd_select_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          prior_period_change: {
+            ...tensorResult(reportDate).prior_period_change,
+            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
+            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
+            summary: tensorResult(reportDate).prior_period_change?.summary ?? "主风险桶切换",
+            dominant_krd_bucket: tensorResult(reportDate).prior_period_change?.dominant_krd_bucket ?? "5Y",
+            previous_dominant_krd_bucket:
+              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
+            dominant_krd_shifted: tensorResult(reportDate).prior_period_change?.dominant_krd_shifted ?? true,
+            metrics: [
+              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
+              {
+                key: "dominant_krd_bucket",
+                label: "主风险桶",
+                current: {
+                  raw: null,
+                  unit: "count" as const,
+                  display: "5Y",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                previous: {
+                  raw: null,
+                  unit: "count" as const,
+                  display: "3Y",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                delta: {
+                  raw: null,
+                  unit: "count" as const,
+                  display: "5Y - 3Y",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                current_display: "5Y",
+                previous_display: "3Y",
+                delta_display: "5Y - 3Y",
+                direction: "changed",
+                tone: "warning",
+                interpretation: "主风险桶切换",
+              },
+            ],
+          },
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const tenorDrill = await screen.findByTestId("risk-tensor-tenor-drill");
+      await user.click(within(tenorDrill).getByRole("button", { name: "1Y" }));
+      await waitFor(() => {
+        expect(within(tenorDrill).getByText("1Y", { selector: "strong" })).toBeInTheDocument();
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const krdAction = within(priorChange).getByTestId("risk-tensor-prior-change-action-dominant_krd_bucket");
+      await user.click(krdAction);
+
+      expect(scrollTargets).toContain(tenorDrill);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+      await waitFor(() => {
+        expect(within(tenorDrill).getByText("5Y", { selector: "strong" })).toBeInTheDocument();
+        expect(within(tenorDrill).getByRole("button", { name: "5Y" })).toHaveAttribute("aria-pressed", "true");
+      });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("falls back from prior-period KRD bucket change to KRD quality review when every bucket is unparseable", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];

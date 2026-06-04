@@ -317,6 +317,7 @@ export type ProductCategoryOperatingBacktestActionRow = {
   actionKind: ProductCategoryOperatingActionKind;
   actionLabel: string;
   signalCount: number;
+  comparableCount: number;
   hitCount: number;
   hitRate: number | null;
   hitRateLabel: string;
@@ -365,6 +366,8 @@ export type ProductCategoryOperatingBacktestCalibrationRow = {
   recommendationLabel: string;
   reasonLabel: string;
   evidenceLabel: string;
+  confidenceLabel: string;
+  confidenceDetailLabel: string;
   tone: "positive" | "negative" | "neutral";
 };
 
@@ -376,6 +379,7 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   actionLabel: string;
   reviewLabel: string;
   reasonLabel: string;
+  impactLabel: string;
   evidenceLabel: string;
   tone: "positive" | "negative" | "neutral";
 };
@@ -2820,9 +2824,14 @@ function productCategoryBacktestCalibrationRows(input: {
   missReasonRows: ProductCategoryOperatingBacktestMissActionRow[];
 }): ProductCategoryOperatingBacktestCalibrationRow[] {
   const missRowsByAction = new Map(input.missReasonRows.map((row) => [row.actionKind, row]));
+  const confidenceForCount = (count: number) => ({
+    confidenceLabel: count >= 6 ? "高置信" : count >= 3 ? "中置信" : "低置信",
+    confidenceDetailLabel: `${count} 条可评价样本`,
+  });
   return input.actionRows
     .map((row) => {
       const missRow = missRowsByAction.get(row.actionKind);
+      const confidence = confidenceForCount(row.comparableCount);
       if (row.hitRate !== null && row.hitRate >= 0.5) {
         return {
           actionKind: row.actionKind,
@@ -2830,6 +2839,7 @@ function productCategoryBacktestCalibrationRows(input: {
           recommendationLabel: "保留规则",
           reasonLabel: `命中率 ${row.hitRateLabel}，样本方向可继续复用`,
           evidenceLabel: `${row.signalCount} 条信号 · ${row.evidenceLabel}`,
+          ...confidence,
           tone: "positive" as const,
         };
       }
@@ -2840,6 +2850,7 @@ function productCategoryBacktestCalibrationRows(input: {
           recommendationLabel: "收紧触发条件",
           reasonLabel: `命中率 ${row.hitRateLabel}，主因${missRow.primaryReasonLabel}`,
           evidenceLabel: `${missRow.missCount}/${missRow.comparableCount} 未命中 · ${row.evidenceLabel}`,
+          ...confidence,
           tone: "negative" as const,
         };
       }
@@ -2849,6 +2860,7 @@ function productCategoryBacktestCalibrationRows(input: {
         recommendationLabel: "继续观察",
         reasonLabel: `命中率 ${row.hitRateLabel}，样本仍需累积`,
         evidenceLabel: `${row.signalCount} 条信号 · ${row.evidenceLabel}`,
+        ...confidence,
         tone: "neutral" as const,
       };
     })
@@ -2860,8 +2872,10 @@ function productCategoryBacktestCalibrationRows(input: {
 
 function productCategoryBacktestLatestReviewRows(input: {
   latestActionRows: ProductCategoryOperatingActionQueueRow[];
+  actionRows: ProductCategoryOperatingBacktestActionRow[];
   calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[];
 }): ProductCategoryOperatingBacktestLatestReviewRow[] {
+  const actionRowsByAction = new Map(input.actionRows.map((row) => [row.actionKind, row]));
   const tightenRowsByAction = new Map(
     input.calibrationRows
       .filter((row) => row.recommendationLabel === "收紧触发条件")
@@ -2872,6 +2886,7 @@ function productCategoryBacktestLatestReviewRows(input: {
     if (!calibration) {
       return [];
     }
+    const actionRow = actionRowsByAction.get(row.actionKind);
     return [{
       priorityLabel: row.priorityLabel,
       categoryId: row.categoryId,
@@ -2880,7 +2895,10 @@ function productCategoryBacktestLatestReviewRows(input: {
       actionLabel: row.actionLabel,
       reviewLabel: "复核后执行",
       reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
-      evidenceLabel: `${row.triggerLabel} · ${calibration.evidenceLabel}`,
+      impactLabel: actionRow
+        ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
+        : "历史均值：-",
+      evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
       tone: "negative" as const,
     }];
   });
@@ -3078,6 +3096,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       actionKind,
       actionLabel: productCategoryActionLabel(actionKind),
       signalCount: rows.length,
+      comparableCount,
       hitCount,
       hitRate,
       hitRateLabel: productCategoryRateLabel(hitRate),
@@ -3147,6 +3166,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
   });
   const latestReviewRows = productCategoryBacktestLatestReviewRows({
     latestActionRows,
+    actionRows,
     calibrationRows,
   });
 

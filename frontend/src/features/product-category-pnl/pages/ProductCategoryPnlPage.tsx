@@ -1120,7 +1120,7 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                       <span>{row.reasonLabel}</span>
                     </div>
                     <b>{row.recommendationLabel}</b>
-                    <small>{row.evidenceLabel}</small>
+                    <small>{row.confidenceLabel} · {row.confidenceDetailLabel} · {row.evidenceLabel}</small>
                   </div>
                 ))}
               </div>
@@ -1140,7 +1140,7 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                       <span>{row.actionLabel} · {row.reasonLabel}</span>
                     </div>
                     <b>{row.reviewLabel}</b>
-                    <small>{row.evidenceLabel}</small>
+                    <small>{row.impactLabel} · {row.evidenceLabel}</small>
                   </div>
                 ))}
               </div>

@@ -1578,6 +1578,18 @@ export default function RiskTensorPage() {
     handleKrdTenorSelect(row, { scrollToDrill: true });
   };
 
+  const handlePriorChangeMetricJump = (metric: RiskTensorChangeMetric, targetTestId: string) => {
+    if (metric.key === "dominant_krd_bucket") {
+      const tenor = metric.current_display || metric.current.display;
+      const row = tenorRows.find((item) => item.tenor === tenor);
+      if (row) {
+        handleKrdTenorSelect(row, { scrollToDrill: true });
+        return;
+      }
+    }
+    handleSectionJump(targetTestId);
+  };
+
   const handleRequiredInformationJump = () => {
     const targetTestId =
       requiredActions.length > 0
@@ -2458,7 +2470,7 @@ export default function RiskTensorPage() {
                           data-tone={priorMetricTone(metric.tone)}
                           key={metric.key}
                           type="button"
-                          onClick={() => handleSectionJump(targetTestId)}
+                          onClick={() => handlePriorChangeMetricJump(metric, targetTestId)}
                         >
                           {metricContent}
                         </button>
