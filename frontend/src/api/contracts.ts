@@ -4506,6 +4506,15 @@ export type LedgerPnlFormalFinancialIndicatorMetric = {
   missing_reason: string;
 };
 
+export type LedgerPnlFormalFinancialIndicatorRemediation = {
+  required: boolean;
+  action_label: string;
+  action_detail: string;
+  required_artifact: string;
+  registration_target: string;
+  verification: string;
+};
+
 export type LedgerPnlFormalFinancialIndicatorContractPayload = {
   sample_id: string;
   sample_status: string;
@@ -4520,6 +4529,7 @@ export type LedgerPnlFormalFinancialIndicatorContractPayload = {
   formal_use_allowed: boolean;
   contract_note: string;
   status_semantics: Record<LedgerPnlFormalIndicatorSourceStatus, string>;
+  remediation?: LedgerPnlFormalFinancialIndicatorRemediation;
   metrics: LedgerPnlFormalFinancialIndicatorMetric[];
 };
 

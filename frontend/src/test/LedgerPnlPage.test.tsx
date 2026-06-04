@@ -278,6 +278,14 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
     formal_use_allowed: false,
     contract_note:
       "No frozen formal financial indicator contract is registered for requested report_month. Formal values remain unavailable and must not be backfilled from analytical candidates.",
+    remediation: {
+      required: true,
+      action_label: "登记 202605 正式财务指标契约",
+      action_detail: "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
+      required_artifact: "202605 正式财务指标 Excel 冻结样本",
+      registration_target: "backend/app/core_finance/formal_financial_indicators.py",
+      verification: "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+    },
     status_semantics: {
       formal_pending:
         "Excel has the formal indicator value, but the governed production source is not connected.",
@@ -648,6 +656,11 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("缺契约补证动作");
     expect(panel).toHaveTextContent("登记 202605 正式财务指标契约");
     expect(panel).toHaveTextContent("从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。");
+    expect(panel).toHaveTextContent("需要物料 202605 正式财务指标 Excel 冻结样本");
+    expect(panel).toHaveTextContent("登记位置 backend/app/core_finance/formal_financial_indicators.py");
+    expect(panel).toHaveTextContent(
+      "验证 python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+    );
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
     expect(strip).toHaveTextContent("正式契约缺口");

@@ -1790,13 +1790,28 @@ function FormalIndicatorSourceContractPanel(props: {
         <div className="ledger-pnl-analysis__source-contract-actions">
           <div className="ledger-pnl-analysis__source-contract-actions-header">
             <strong>缺契约补证动作</strong>
-            <span>登记 {props.contract.report_month || props.requestedReportMonth || "-"} 正式财务指标契约</span>
+            <span>
+              {props.contract.remediation?.action_label ??
+                `登记 ${props.contract.report_month || props.requestedReportMonth || "-"} 正式财务指标契约`}
+            </span>
           </div>
           <div className="ledger-pnl-analysis__source-contract-action-list">
             <article className="ledger-pnl-analysis__source-contract-action-item">
               <strong>1</strong>
               <div>
-                <span>从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。</span>
+                <span>
+                  {props.contract.remediation?.action_detail ??
+                    "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。"}
+                </span>
+                {props.contract.remediation?.required_artifact ? (
+                  <small>需要物料 {props.contract.remediation.required_artifact}</small>
+                ) : null}
+                {props.contract.remediation?.registration_target ? (
+                  <small>登记位置 {props.contract.remediation.registration_target}</small>
+                ) : null}
+                {props.contract.remediation?.verification ? (
+                  <small>验证 {props.contract.remediation.verification}</small>
+                ) : null}
                 <small>正式值保持未接入，不能用分析候选值补齐。</small>
               </div>
             </article>

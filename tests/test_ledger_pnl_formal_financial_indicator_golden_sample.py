@@ -145,6 +145,14 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
     assert contract["source_version"] == "sv_formal_financial_indicators_contract_unavailable"
     assert contract["formal_use_allowed"] is False
     assert contract["metrics"] == []
+    assert contract["remediation"] == {
+        "required": True,
+        "action_label": "登记 202605 正式财务指标契约",
+        "action_detail": "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
+        "required_artifact": "202605 正式财务指标 Excel 冻结样本",
+        "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
+        "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+    }
 
 
 def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_envelope():
@@ -185,6 +193,9 @@ def test_ledger_pnl_service_wraps_unregistered_month_as_empty_warning_envelope()
     assert envelope["result_meta"]["evidence_rows"] == 0
     assert envelope["result"]["report_month"] == "202605"
     assert envelope["result"]["metrics"] == []
+    assert envelope["result"]["remediation"]["registration_target"] == (
+        "backend/app/core_finance/formal_financial_indicators.py"
+    )
 
 
 def test_ledger_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
@@ -272,6 +283,8 @@ def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month(tmp_path, 
     assert payload["result"]["sample_status"] == "missing_contract"
     assert payload["result"]["report_month"] == "202605"
     assert payload["result"]["metrics"] == []
+    assert payload["result"]["remediation"]["required"] is True
+    assert payload["result"]["remediation"]["action_label"] == "登记 202605 正式财务指标契约"
 
 
 def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():
