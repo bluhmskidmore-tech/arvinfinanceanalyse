@@ -21,16 +21,6 @@ const SECTION_STYLE = {
   boxShadow: displayTokens.surface.sectionShadow,
 } as const;
 
-const RETRY_BTN_STYLE = {
-  width: "fit-content",
-  border: displayTokens.interactive.retryBorder,
-  background: displayTokens.interactive.retryBg,
-  borderRadius: 12,
-  padding: "10px 16px",
-  color: displayTokens.interactive.retryText,
-  cursor: "pointer",
-} as const;
-
 export function DataSection({ title, extra, state, onRetry, children }: DataSectionProps) {
   const header = renderHeader(title, extra);
   const body = renderBody({ state, onRetry, children });
@@ -86,7 +76,7 @@ function renderBody(opts: {
         <span className="data-section__secondary-text">
           {state.message ?? "当前页面保留重试入口，不在浏览器端自行拼接正式口径。"}
         </span>
-        <button type="button" onClick={onRetry} style={RETRY_BTN_STYLE}>
+        <button type="button" onClick={onRetry} className="data-section__retry-button">
           重试
         </button>
       </div>
