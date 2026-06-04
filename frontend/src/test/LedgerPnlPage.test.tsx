@@ -575,6 +575,28 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).not.toHaveTextContent("待登记正式契约");
     expect(decisionPath).not.toHaveTextContent("补证材料待补 0/3");
 
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollTargets: HTMLElement[] = [];
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+
+    try {
+      const releaseGate = await screen.findByTestId(
+        "ledger-pnl-formal-indicator-source-contract-release-gate",
+      );
+      const formalPathButton = within(decisionPath).getByRole("button", {
+        name: "正式补证路径 登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+      });
+
+      await userEvent.click(formalPathButton);
+
+      expect(scrollTargets).toEqual([releaseGate]);
+      expect(releaseGate).toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+
     const decision = screen.getByTestId("ledger-pnl-formal-indicator-source-contract-decision");
     expect(decision).toHaveTextContent("正式财务指标已登记待放行");
     expect(decision).toHaveTextContent(

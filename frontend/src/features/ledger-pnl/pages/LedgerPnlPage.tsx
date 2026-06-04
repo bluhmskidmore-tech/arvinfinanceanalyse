@@ -47,6 +47,8 @@ const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_TABLE_ID = "ledger-pnl-residual-diagnostic-
 const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID =
   "ledger-pnl-residual-diagnostic-bottleneck-row";
 const LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID = "ledger-pnl-formal-indicator-source-contract-panel";
+const LEDGER_PNL_FORMAL_CONTRACT_RELEASE_GATE_ID =
+  "ledger-pnl-formal-indicator-source-contract-release-gate";
 const LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID =
   "ledger-pnl-formal-indicator-source-contract-material-checklist";
 const LEDGER_PNL_REPORT_DATE_SELECT_ID = "ledger-pnl-report-date-select";
@@ -689,7 +691,11 @@ function focusLedgerResidualEvidenceTarget() {
   target?.focus({ preventScroll: true });
 }
 
-function focusLedgerFormalContractTarget(requestedReportMonth?: string) {
+function focusLedgerFormalContractTarget(props: {
+  requestedReportMonth?: string;
+  formalIndicatorSourceContract?: LedgerPnlFormalFinancialIndicatorContractPayload;
+}) {
+  const { requestedReportMonth, formalIndicatorSourceContract } = props;
   if (!requestedReportMonth) {
     const reportDateSelect = document.getElementById(LEDGER_PNL_REPORT_DATE_SELECT_ID);
     reportDateSelect?.scrollIntoView?.({ block: "center", inline: "nearest" });
@@ -697,6 +703,9 @@ function focusLedgerFormalContractTarget(requestedReportMonth?: string) {
     return;
   }
   const target =
+    (registeredPendingReleaseGate(formalIndicatorSourceContract)
+      ? document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_RELEASE_GATE_ID)
+      : null) ??
     document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID) ??
     document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID);
 
@@ -1457,7 +1466,12 @@ function LedgerFunctionalAuditStrip(props: {
                 type="button"
                 className="ledger-pnl-functional-strip__evidence-button"
                 aria-label={`正式补证路径 ${formalEvidencePath}`}
-                onClick={() => focusLedgerFormalContractTarget(props.requestedReportMonth)}
+                onClick={() =>
+                  focusLedgerFormalContractTarget({
+                    requestedReportMonth: props.requestedReportMonth,
+                    formalIndicatorSourceContract: props.formalIndicatorSourceContract,
+                  })
+                }
               >
                 {formalEvidencePath}
               </button>
@@ -1494,7 +1508,12 @@ function LedgerFunctionalAuditStrip(props: {
                     type="button"
                     className="ledger-pnl-functional-strip__evidence-button"
                     aria-label={`下一步补证 ${drill.label}`}
-                    onClick={() => focusLedgerFormalContractTarget(props.requestedReportMonth)}
+                    onClick={() =>
+                      focusLedgerFormalContractTarget({
+                        requestedReportMonth: props.requestedReportMonth,
+                        formalIndicatorSourceContract: props.formalIndicatorSourceContract,
+                      })
+                    }
                   >
                     {drill.label}
                   </button>
@@ -2391,7 +2410,9 @@ function FormalIndicatorSourceContractPanel(props: {
 
       {releaseGate ? (
         <div
+          id={LEDGER_PNL_FORMAL_CONTRACT_RELEASE_GATE_ID}
           data-testid="ledger-pnl-formal-indicator-source-contract-release-gate"
+          tabIndex={-1}
           className="ledger-pnl-analysis__source-contract-release-gate"
         >
           <strong>release_gate {releaseGate.status}</strong>
