@@ -1361,6 +1361,26 @@ describe("StockAnalysisPage", () => {
     expect(css).toContain("white-space: nowrap");
   });
 
+  it("keeps tablet toolbar dates readable and commands icon-led", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const tabletTopbarStart = css.indexOf("Tablet topbar pass");
+    const tabletTopbarCss = css.slice(tabletTopbarStart);
+
+    expect(tabletTopbarStart).toBeGreaterThan(-1);
+    expect(tabletTopbarCss).toMatch(
+      /\.stock-analysis-page__toolbar-info\s*\{[\s\S]*?grid-template-columns:\s*minmax\(176px,\s*2fr\)\s*minmax\(104px,\s*1fr\)\s*minmax\(92px,\s*1fr\)/,
+    );
+    expect(tabletTopbarCss).toMatch(
+      /\.stock-analysis-page__toolbar-pill:nth-of-type\(2\)\s*\{[\s\S]*?min-width:\s*176px/,
+    );
+    expect(tabletTopbarCss).toMatch(
+      /\.stock-analysis-page__dh-topbar-btn\.ant-btn\s*>\s*span:not\(\.ant-btn-icon\):not\(\.anticon\)\s*\{[\s\S]*?clip:\s*rect\(0 0 0 0\)/,
+    );
+    expect(tabletTopbarCss).toMatch(
+      /\.stock-analysis-page__toolbar-pill:nth-of-type\(5\),[\s\S]*?\.stock-analysis-page__generated-at\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+  });
+
   it("keeps the narrow first screen focused on summary, KPI, and sector chart", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const finalRailStart = css.indexOf("Right rail final polish");
@@ -1551,6 +1571,24 @@ describe("StockAnalysisPage", () => {
     expect(decisionPanel).not.toHaveTextContent("quality_vendor_unknown");
     expect(decisionPanel).not.toHaveTextContent("vendor_paused");
     expect(decisionPanel).not.toHaveTextContent("external_vendor_snapshot");
+  });
+
+  it("localizes unknown strategy basis before showing supply details", async () => {
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          basis: "external_vendor_basis" as LivermoreStrategyPayload["basis"],
+        }),
+      }),
+    });
+
+    await user.click(await screen.findByTestId("stock-analysis-supply-details-toggle"));
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    expect(decisionPanel).toHaveTextContent("口径待确认");
+    expect(decisionPanel).not.toHaveTextContent("external_vendor_basis");
   });
 
   it("does not show a requested date as the backend supply data date when no data date is resolved", async () => {

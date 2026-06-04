@@ -6964,3 +6964,52 @@
     min-height: 316px;
   }
 }
+
+/* Tablet topbar pass: preserve full dates and keep commands icon-led. */
+@media (max-width: 900px) and (min-width: 721px) {
+  .stock-analysis-page__toolbar-info {
+    grid-template-columns: minmax(176px, 2fr) minmax(104px, 1fr) minmax(92px, 1fr);
+  }
+
+  .stock-analysis-page__toolbar-title {
+    display: none;
+  }
+
+  .stock-analysis-page__toolbar-pill {
+    justify-content: flex-start;
+    max-width: none;
+    min-width: 0;
+    text-overflow: clip;
+  }
+
+  .stock-analysis-page__toolbar-pill:nth-of-type(2) {
+    grid-column: span 1;
+    min-width: 176px;
+  }
+
+  .stock-analysis-page__toolbar-info > .stock-analysis-page__toolbar-pill:nth-of-type(4) {
+    display: inline-flex;
+  }
+
+  .stock-analysis-page__toolbar-pill:nth-of-type(5),
+  .stock-analysis-page__generated-at {
+    display: none !important;
+  }
+
+  .stock-analysis-page__header-controls {
+    grid-template-columns: 42px minmax(132px, 1fr) 42px;
+  }
+
+  .stock-analysis-page__dh-topbar-btn.ant-btn {
+    padding-inline: 0;
+  }
+
+  .stock-analysis-page__dh-topbar-btn.ant-btn > span:not(.ant-btn-icon):not(.anticon) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}

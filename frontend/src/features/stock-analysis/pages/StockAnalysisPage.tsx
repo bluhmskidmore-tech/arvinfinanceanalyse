@@ -205,7 +205,7 @@ function supplyBasisLabel(value: string | null | undefined) {
   const normalized = (value ?? "").trim().toLowerCase();
   if (normalized === "analytical") return "分析口径";
   if (normalized === "formal") return "正式口径";
-  return value ?? "口径待补";
+  return "口径待确认";
 }
 
 function compactText(text: string | null | undefined, maxLength = 28) {
