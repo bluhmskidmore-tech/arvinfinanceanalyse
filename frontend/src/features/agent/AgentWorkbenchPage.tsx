@@ -3190,6 +3190,7 @@ export function EmbeddedAgentCopilot({
                 <button
                   type="button"
                   className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
+                  aria-label={`继续输入：${turn.question}`}
                   onClick={(event) => focusComposerFromFollowUp(event.currentTarget)}
                   disabled={loading}
                 >
@@ -3203,6 +3204,7 @@ export function EmbeddedAgentCopilot({
                         key={chip.label}
                         type="button"
                         className="agent-follow-up-chips__button"
+                        aria-label={`${chip.label}：${turn.question}`}
                         onClick={(event) => applyFollowUpChip(chip.question, event.currentTarget)}
                         disabled={loading}
                       >

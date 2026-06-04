@@ -3031,7 +3031,9 @@ describe("AgentWorkbenchPage", () => {
     expect(followUpDetails).toHaveAttribute("open");
     expect(followUpOptions).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "展开依据" }));
+    const evidenceFollowUpChip = screen.getByRole("button", { name: /展开依据/ });
+    expect(evidenceFollowUpChip).toHaveAccessibleName(/need a follow-up chip/);
+    await user.click(evidenceFollowUpChip);
 
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("请基于上一轮回答展开证据依据和关键假设。");
@@ -3175,7 +3177,9 @@ describe("AgentWorkbenchPage", () => {
           toJSON: () => ({}),
         }),
       });
-      await user.click(screen.getByRole("button", { name: "继续输入" }));
+      const continueFollowUpChip = screen.getByRole("button", { name: /继续输入/ });
+      expect(continueFollowUpChip).toHaveAccessibleName(/duration risk follow-up check/);
+      await user.click(continueFollowUpChip);
 
       expect(input).toHaveValue(draft);
       expect(document.activeElement).toBe(input);
