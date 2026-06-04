@@ -920,6 +920,17 @@ describe("LedgerPnlPage", () => {
     });
 
     try {
+      const formalContractPanel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+      const shortestPathButton = within(decisionPath).getByRole("button", {
+        name: "最短补证路径 登记 202605 正式财务指标契约",
+      });
+      await userEvent.click(shortestPathButton);
+
+      expect(scrollTargets).toEqual([formalContractPanel]);
+      expect(formalContractPanel).toHaveFocus();
+
+      scrollTargets.length = 0;
+
       const locatorButton = within(strip).getByRole("button", {
         name: "定位证据 残差诊断表 · 科目层",
       });

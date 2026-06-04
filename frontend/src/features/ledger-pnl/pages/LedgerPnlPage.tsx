@@ -45,6 +45,7 @@ const summaryGridStyleWithBottom = { ...summaryGridStyle, marginBottom: designTo
 const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_TABLE_ID = "ledger-pnl-residual-diagnostic-table";
 const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID =
   "ledger-pnl-residual-diagnostic-bottleneck-row";
+const LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID = "ledger-pnl-formal-indicator-source-contract-panel";
 
 const summaryCardStyle = {
   border: `1px solid ${designTokens.color.neutral[200]}`,
@@ -684,6 +685,13 @@ function focusLedgerResidualEvidenceTarget() {
   target?.focus({ preventScroll: true });
 }
 
+function focusLedgerFormalContractTarget() {
+  const target = document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID);
+
+  target?.scrollIntoView?.({ block: "center", inline: "nearest" });
+  target?.focus({ preventScroll: true });
+}
+
 function formatCandidateExplainabilityConfidence(
   model: ReturnType<typeof buildLedgerExplainabilityModel>,
 ) {
@@ -1003,7 +1011,14 @@ function LedgerFunctionalAuditStrip(props: {
           </div>
           <div>
             <span>最短补证路径</span>
-            <strong>{shortestEvidencePath}</strong>
+            <button
+              type="button"
+              className="ledger-pnl-functional-strip__evidence-button"
+              aria-label={`最短补证路径 ${shortestEvidencePath}`}
+              onClick={focusLedgerFormalContractTarget}
+            >
+              {shortestEvidencePath}
+            </button>
           </div>
         </div>
       </div>
@@ -1826,7 +1841,9 @@ function FormalIndicatorSourceContractPanel(props: {
 
   return (
     <section
+      id={LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID}
       data-testid="ledger-pnl-formal-indicator-source-contract-panel"
+      tabIndex={-1}
       className="ledger-pnl-analysis__status-panel ledger-pnl-analysis__status-panel--source-contract"
     >
       <div className="ledger-pnl-analysis__status-header">

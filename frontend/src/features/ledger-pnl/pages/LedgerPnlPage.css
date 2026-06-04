@@ -683,6 +683,12 @@
   overflow-wrap: anywhere;
 }
 
+.ledger-pnl-functional-strip__decision-list .ledger-pnl-functional-strip__evidence-button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
 .ledger-pnl-functional-strip__drill {
   grid-column: 1 / -1;
   display: grid;
