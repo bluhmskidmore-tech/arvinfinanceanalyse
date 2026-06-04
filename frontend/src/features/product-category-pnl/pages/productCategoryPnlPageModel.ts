@@ -382,6 +382,7 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   riskReasonLabel: string;
   reasonLabel: string;
   impactLabel: string;
+  watchReportDateLabel: string;
   releaseConditionLabel: string;
   observationLabel: string;
   gapLabel: string;
@@ -2885,8 +2886,10 @@ function productCategoryBacktestLatestReviewRows(input: {
   latestActionRows: ProductCategoryOperatingActionQueueRow[];
   actionRows: ProductCategoryOperatingBacktestActionRow[];
   calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[];
+  latestReportDate: string | null;
 }): ProductCategoryOperatingBacktestLatestReviewRow[] {
   const actionRowsByAction = new Map(input.actionRows.map((row) => [row.actionKind, row]));
+  const watchReportDate = input.latestReportDate ? productCategoryNextMonthEndDate(input.latestReportDate) : null;
   const riskRankForCalibration = (calibration: ProductCategoryOperatingBacktestCalibrationRow) => {
     if (calibration.confidenceLabel === "高置信") {
       return "P1 高置信复核";
@@ -2987,6 +2990,7 @@ function productCategoryBacktestLatestReviewRows(input: {
       impactLabel: actionRow
         ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
         : "历史均值：-",
+      watchReportDateLabel: `观察月份：${watchReportDate ?? "-"}`,
       releaseConditionLabel: releaseConditionForAction(row.actionKind),
       observationLabel: observationForAction(row.actionKind),
       gapLabel: gapForAction(row),
@@ -3296,6 +3300,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     latestActionRows,
     actionRows,
     calibrationRows,
+    latestReportDate: latestPayload?.report_date ?? null,
   });
   const reviewWorkload = productCategoryBacktestReviewWorkload(latestReviewRows);
   const ruleDisposition = productCategoryBacktestRuleDisposition(calibrationRows);

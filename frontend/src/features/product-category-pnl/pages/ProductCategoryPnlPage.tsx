@@ -1152,6 +1152,7 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                     <b>{row.reviewLabel} · {row.riskRankLabel}</b>
                     <small>{row.riskReasonLabel} · {row.impactLabel} · {row.evidenceLabel}</small>
                     <small>当前证据：{row.currentEvidenceItems.join(" · ")}</small>
+                    <small>{row.watchReportDateLabel}</small>
                     <small>{row.observationLabel}</small>
                     <small>{row.gapLabel}</small>
                     <small>{row.releaseConditionLabel}</small>
