@@ -431,6 +431,73 @@
   line-height: 1.5;
 }
 
+.pnl-by-business-drilldown-recommendation {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--moss-color-primary-100);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-primary-50);
+}
+
+.pnl-by-business-drilldown-recommendation__lead {
+  display: grid;
+  gap: 4px;
+}
+
+.pnl-by-business-drilldown-recommendation__lead span {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-primary-800);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pnl-by-business-drilldown-recommendation__lead strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.pnl-by-business-drilldown-recommendation__lead small {
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pnl-by-business-drilldown-recommendation__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pnl-by-business-drilldown-recommendation__grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--moss-color-primary-100);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.pnl-by-business-drilldown-recommendation__grid small {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.pnl-by-business-drilldown-recommendation__grid strong {
+  overflow: hidden;
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pnl-by-business-driver-grid,
 .pnl-by-business-analysis-kpis {
   display: grid;
@@ -833,6 +900,10 @@
 
   .pnl-by-business-insight-strip__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pnl-by-business-drilldown-recommendation__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pnl-by-business-selected-drilldown__summary,

@@ -591,6 +591,13 @@ describe("pnlByBusinessPageModel", () => {
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     });
     expect(model.insight.totalPnlDisplay).toBe("500 万元");
+    expect(model.insight.recommendedDrilldown).toMatchObject({
+      targetBusinessLabel: "非底层投资资产",
+      priorityLabel: "补日均",
+      dimensionLabel: "日均映射",
+      actionLabel: "先补齐 ADB 再判断 FTP 后收益",
+      evidenceLabel: "缺日均 2 项",
+    });
   });
 
   it("does not mark YTD ADB missing when parent rows resolve from rollup children", () => {
@@ -618,6 +625,13 @@ describe("pnlByBusinessPageModel", () => {
       ftpAvailable: true,
       formalUntracedValueDisplay: "未读取",
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
+    });
+    expect(model.insight.recommendedDrilldown).toMatchObject({
+      targetBusinessLabel: "非底层投资资产",
+      priorityLabel: "FTP 后仍有效",
+      dimensionLabel: "证券级下钻",
+      actionLabel: "看 Top 贡献券、Top 拖累券、FTP 后为负",
+      evidenceLabel: "ADB 已覆盖",
     });
   });
 
@@ -667,6 +681,7 @@ describe("pnlByBusinessPageModel", () => {
       formalUntracedValueDisplay: "未读取",
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
     });
+    expect(model.insight.recommendedDrilldown.evidenceLabel).toBe("ADB 已覆盖");
   });
 
   it("surfaces formal reconciliation insight without promoting it to YTD analysis", () => {

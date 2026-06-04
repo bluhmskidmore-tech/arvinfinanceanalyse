@@ -904,6 +904,13 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("可分析");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("Top 贡献");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("FTP 可分析");
+      expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("下一步下钻");
+      expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("证券级下钻");
+      expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent(
+        "看 Top 贡献券、Top 拖累券、FTP 后为负",
+      );
+      expect(screen.getByTestId("pnl-by-business-drilldown-recommendation")).toHaveTextContent("ADB 已覆盖");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-summary-cards")).toHaveTextContent("13 万元");
       expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");

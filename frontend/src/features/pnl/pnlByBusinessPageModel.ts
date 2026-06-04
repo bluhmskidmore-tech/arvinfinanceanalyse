@@ -81,6 +81,15 @@ export type PnlSummaryCard = Pick<
 
 export type PnlByBusinessInsightConfidence = "可分析" | "缺日均" | "仅对账" | "预警/降级";
 
+export type PnlByBusinessDrilldownRecommendation = {
+  targetBusinessLabel: string;
+  priorityLabel: string;
+  dimensionLabel: string;
+  actionLabel: string;
+  evidenceLabel: string;
+  reasonLabel: string;
+};
+
 export type PnlByBusinessInsightModel = {
   confidenceLabel: PnlByBusinessInsightConfidence;
   totalPnlDisplay: string;
@@ -98,6 +107,7 @@ export type PnlByBusinessInsightModel = {
   formalUntracedDisplay: string;
   formalTriageDisplay: string;
   nextStep: string;
+  recommendedDrilldown: PnlByBusinessDrilldownRecommendation;
 };
 
 export type PnlDataStatusStripModel = {
@@ -785,6 +795,54 @@ function buildFormalSummaryCards(input: {
   ];
 }
 
+function buildYtdDrilldownRecommendation(input: {
+  isWarning: boolean;
+  topContribution?: PnlByBusinessYtdItem;
+  topDrag?: PnlByBusinessYtdItem;
+  topShare?: PnlByBusinessYtdItem;
+  missingAdbCount: number;
+  ftpAvailable: boolean;
+}): PnlByBusinessDrilldownRecommendation {
+  const targetBusinessLabel =
+    input.topContribution?.business_type ??
+    input.topDrag?.business_type ??
+    input.topShare?.business_type ??
+    "暂无明细";
+
+  if (input.isWarning) {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "预警/降级",
+      dimensionLabel: "证据状态",
+      actionLabel: "先核对质量、fallback、trace 后再下钻",
+      evidenceLabel: "结果质量待复核",
+      reasonLabel: "当前 meta 存在 warning/stale/fallback/vendor 降级信号，业务结论先降级为证据复核。",
+    };
+  }
+
+  if (!input.ftpAvailable || input.missingAdbCount > 0) {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "补日均",
+      dimensionLabel: "日均映射",
+      actionLabel: "先补齐 ADB 再判断 FTP 后收益",
+      evidenceLabel: `缺日均 ${input.missingAdbCount} 项`,
+      reasonLabel: "父级业务仍有损益或余额活动，但 ADB 未全覆盖；年化收益率和 FTP 后收益先不作为决策结论。",
+    };
+  }
+
+  return {
+    targetBusinessLabel,
+    priorityLabel: input.topDrag ? "先看拖累" : "FTP 后仍有效",
+    dimensionLabel: "证券级下钻",
+    actionLabel: "看 Top 贡献券、Top 拖累券、FTP 后为负",
+    evidenceLabel: "ADB 已覆盖",
+    reasonLabel: input.topDrag
+      ? `贡献来自 ${input.topContribution?.business_type ?? "暂无正贡献"}，拖累来自 ${input.topDrag.business_type}；先用证券级明细确认是否为个券或 FTP 后转负。`
+      : `贡献集中在 ${targetBusinessLabel}；ADB 已覆盖，可继续检查证券级贡献、拖累和 FTP 后为负资产。`,
+  };
+}
+
 function buildPnlByBusinessInsight(input: {
   viewMode: PnlByBusinessViewMode;
   activeResultMeta?: ResultMeta;
@@ -825,6 +883,14 @@ function buildPnlByBusinessInsight(input: {
         formalUntracedCount > 0
           ? `用于对账证据和未追溯行排查，不作为业务贡献主分析。优先核对：${formalUntracedDisplay}。`
           : "用于对账证据，不作为业务贡献主分析；当前无未追溯行。",
+      recommendedDrilldown: {
+        targetBusinessLabel: input.topFormalRow?.business_type_primary ?? "formal primary",
+        priorityLabel: "仅对账",
+        dimensionLabel: "未追溯对账",
+        actionLabel: formalUntracedCount > 0 ? "核对未追溯行和 breakdown" : "保留为 formal 对账证据",
+        evidenceLabel: `${formalUntracedCount} 条未追溯`,
+        reasonLabel: "formal primary 只用于追溯 fact_formal_pnl_fi / bridge / balance join，不与月报或 YTD 结论混加。",
+      },
     };
   }
 
@@ -847,6 +913,14 @@ function buildPnlByBusinessInsight(input: {
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
       formalTriageDisplay: "",
       nextStep: "先看当月贡献，再切到年累计核对趋势与 FTP 后收益。",
+      recommendedDrilldown: {
+        targetBusinessLabel: input.topMonthlyRow?.business_type ?? "暂无明细",
+        priorityLabel: input.topMonthlyDragRow ? "月度拖累" : "月度贡献",
+        dimensionLabel: "月度明细",
+        actionLabel: "先看当月贡献/拖累，再切 YTD 验证趋势",
+        evidenceLabel: numeric(input.activeMonthlyBucket?.summary.ftp_net_pnl) !== null ? "月度 FTP 已返回" : "月度 FTP 未返回",
+        reasonLabel: "月报视图只回答当月口径；需要判断持续性时，应切到 YTD 并结合 FTP/ADB。",
+      },
     };
   }
 
@@ -888,6 +962,14 @@ function buildPnlByBusinessInsight(input: {
     nextStep: ftpAvailable
       ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
       : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",
+    recommendedDrilldown: buildYtdDrilldownRecommendation({
+      isWarning,
+      topContribution,
+      topDrag,
+      topShare,
+      missingAdbCount,
+      ftpAvailable,
+    }),
   };
 }
 

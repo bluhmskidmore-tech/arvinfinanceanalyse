@@ -35,6 +35,7 @@ import {
   VIEW_MODE_SUBTITLES,
   buildPnlByBusinessSelectedDrilldownModel,
   buildPnlByBusinessPageModel,
+  type PnlByBusinessDrilldownRecommendation,
   type PnlByBusinessInsightModel,
   formatAnalysisYieldPct,
   formatAvgBalanceYi,
@@ -111,6 +112,43 @@ function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightM
       {insight.formalTriageDisplay ? (
         <div className="pnl-by-business-insight-strip__triage">{insight.formalTriageDisplay}</div>
       ) : null}
+    </section>
+  );
+}
+
+function PnlByBusinessDrilldownRecommendationStrip({
+  recommendation,
+}: {
+  recommendation: PnlByBusinessDrilldownRecommendation;
+}) {
+  return (
+    <section
+      className="pnl-by-business-drilldown-recommendation"
+      data-testid="pnl-by-business-drilldown-recommendation"
+    >
+      <div className="pnl-by-business-drilldown-recommendation__lead">
+        <span>{recommendation.priorityLabel}</span>
+        <strong>下一步下钻</strong>
+        <small>{recommendation.reasonLabel}</small>
+      </div>
+      <div className="pnl-by-business-drilldown-recommendation__grid">
+        <div>
+          <small>目标业务</small>
+          <strong>{recommendation.targetBusinessLabel}</strong>
+        </div>
+        <div>
+          <small>优先维度</small>
+          <strong>{recommendation.dimensionLabel}</strong>
+        </div>
+        <div>
+          <small>动作</small>
+          <strong>{recommendation.actionLabel}</strong>
+        </div>
+        <div>
+          <small>证据限制</small>
+          <strong>{recommendation.evidenceLabel}</strong>
+        </div>
+      </div>
     </section>
   );
 }
@@ -2133,6 +2171,7 @@ export default function PnlByBusinessPage() {
           </KpiBand>
 
           <PnlByBusinessInsightStrip insight={insight} />
+          <PnlByBusinessDrilldownRecommendationStrip recommendation={insight.recommendedDrilldown} />
 
           <AnalysisGrid columns={1} testId="pnl-by-business-analysis-grid" className="pnl-by-business-analysis-grid">
             {viewMode === "monthly" ? (
