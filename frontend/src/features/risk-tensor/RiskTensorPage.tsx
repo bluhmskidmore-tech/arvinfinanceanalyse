@@ -597,6 +597,7 @@ export default function RiskTensorPage() {
   const [dv01MissingControlsCopyStatus, setDv01MissingControlsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [dv01MissingControlsCopiedStateKey, setDv01MissingControlsCopiedStateKey] = useState("");
   const [dv01PendingInputsCopyStatus, setDv01PendingInputsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -805,7 +806,9 @@ export default function RiskTensorPage() {
   const radarNavigationItems = result
     ? RADAR_META.map((item) => {
         const targetTestId =
-          (item.key === "duration" && !showDurationScope) || (item.key === "dv01" && !result.dv01_controls)
+          item.key === "dv01" && !result.dv01_controls
+            ? "risk-tensor-dv01-missing-controls"
+            : item.key === "duration" && !showDurationScope
             ? "risk-tensor-kpi-grid"
             : RADAR_NAVIGATION_TARGETS[item.key];
         return {
@@ -881,6 +884,7 @@ export default function RiskTensorPage() {
   const qualityResultKindStateKey = `result_kind:${tensorMeta?.result_kind ?? "missing"}`;
   const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityIssuanceStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}|${qualityFlagStateKey}|${qualityResultKindStateKey}`;
   const dv01ControlsStateKey = [
+    `regulatory_dv01:${displayStr(result?.regulatory_dv01 ?? undefined)}`,
     `limit_status:${result?.dv01_controls?.limit_status ?? "missing"}`,
     `approved_limit_dv01:${displayStr(result?.dv01_controls?.approved_limit_dv01 ?? undefined)}`,
     `limit_usage_ratio:${displayStr(result?.dv01_controls?.limit_usage_ratio ?? undefined)}`,
@@ -912,6 +916,8 @@ export default function RiskTensorPage() {
   }, [qualityStateKey]);
 
   useEffect(() => {
+    setDv01MissingControlsCopyStatus("idle");
+    setDv01MissingControlsCopiedStateKey("");
     setDv01PendingInputsCopyStatus("idle");
     setDv01StressScenariosCopyStatus("idle");
     setDv01ControlActionsCopyStatus("idle");
@@ -1132,10 +1138,12 @@ export default function RiskTensorPage() {
       : combinedQualityRequestCopyStatus === "failed"
         ? "复制失败，请手动选择完整补证包"
         : "";
+  const dv01MissingControlsCopyStatusForCurrentState =
+    dv01MissingControlsCopiedStateKey === dv01ControlsStateKey ? dv01MissingControlsCopyStatus : "idle";
   const dv01MissingControlsCopyMessage =
-    dv01MissingControlsCopyStatus === "copied"
+    dv01MissingControlsCopyStatusForCurrentState === "copied"
       ? "已复制控制排查信息"
-      : dv01MissingControlsCopyStatus === "failed"
+      : dv01MissingControlsCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择控制排查信息"
         : "";
   const dv01PendingInputsCopyMessage =
@@ -1320,6 +1328,8 @@ export default function RiskTensorPage() {
     priorPeriodChange?.comparison_report_date,
     priorPeriodSummary,
     priorPeriodMetrics.length,
+    result?.quality_flag,
+    tensorMeta?.quality_flag,
     tensorMeta?.trace_id,
     tensorMeta?.basis,
     tensorMeta?.cache_version,
@@ -1439,14 +1449,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyDv01MissingControls = () => {
+    const copiedStateKey = dv01ControlsStateKey;
     if (!navigator.clipboard?.writeText) {
+      setDv01MissingControlsCopiedStateKey(copiedStateKey);
       setDv01MissingControlsCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(dv01MissingControlsCopyText)
-      .then(() => setDv01MissingControlsCopyStatus("copied"))
-      .catch(() => setDv01MissingControlsCopyStatus("failed"));
+      .then(() => {
+        setDv01MissingControlsCopiedStateKey(copiedStateKey);
+        setDv01MissingControlsCopyStatus("copied");
+      })
+      .catch(() => {
+        setDv01MissingControlsCopiedStateKey(copiedStateKey);
+        setDv01MissingControlsCopyStatus("failed");
+      });
   };
 
   const handleCopyDv01PendingInputs = () => {
@@ -2165,7 +2183,7 @@ export default function RiskTensorPage() {
                         {dv01MissingControlsCopyMessage}
                       </small>
                     ) : null}
-                    {dv01MissingControlsCopyStatus === "failed" ? (
+                    {dv01MissingControlsCopyStatusForCurrentState === "failed" ? (
                       <pre
                         className="risk-tensor-quality-detail__manual-copy"
                         data-testid="risk-tensor-dv01-missing-controls-manual-copy"

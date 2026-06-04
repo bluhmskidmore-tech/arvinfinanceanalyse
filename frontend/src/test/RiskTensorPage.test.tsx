@@ -914,6 +914,68 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("resets missing DV01 control copy feedback when regulatory DV01 changes", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_feedback_reset_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            regulatory_dv01: "120000",
+            dv01_controls: null,
+          } as RiskTensorPayload,
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            regulatory_dv01: "240000",
+            dv01_controls: null,
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      await user.click(within(brief).getByRole("button", { name: "复制控制排查信息" }));
+
+      await waitFor(() => {
+        expect(brief).toHaveTextContent("已复制控制排查信息");
+      });
+
+      await user.click(within(brief).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(brief).toHaveTextContent("24.00 万元");
+      });
+      expect(brief).not.toHaveTextContent("已复制控制排查信息");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("lets users jump from the first-screen required information tile to DV01 actions", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -1969,6 +2031,50 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users jump from the radar DV01 dimension to missing control diagnostics", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_dv01_missing_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_dv01_missing_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: [],
+          dv01_controls: null,
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const missingControls = within(brief).getByTestId("risk-tensor-dv01-missing-controls");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-dv01");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(missingControls);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("lets users jump from the first-screen issuer concentration tile to issuer detail", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -2274,6 +2380,66 @@ describe("RiskTensorPage", () => {
       await waitFor(() => {
         expect(priorChange).toHaveTextContent("已复制上期排查信息");
       });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("resets prior-period diagnostic copy feedback when quality flag changes", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_feedback_reset_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            quality_flag: "warning",
+          } as RiskTensorPayload,
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            quality_flag: "stale",
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
+
+      await waitFor(() => {
+        expect(priorChange).toHaveTextContent("已复制上期排查信息");
+      });
+
+      await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-data-status-action")).toHaveTextContent("陈旧");
+      });
+      expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent("已复制上期排查信息");
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);
