@@ -791,20 +791,21 @@ def _format_ops_gap_activation_sequence(report: dict[str, object]) -> list[str]:
 
 def render_timer_preflight_markdown(report: dict[str, object]) -> str:
     if report.get("stage") != "all":
-        return "\n".join(
+        rows = [
+            "# Tushare News Backup Timer Preflight Status",
+            "",
+            f"Current verdict: `{report['verdict']}`",
+            "",
+        ]
+        if report.get("stage") == "pre-enable":
+            rows.extend(
+                (
+                    f"Ready to create timer: `{str(report['verdict'] == 'pass').lower()}`",
+                    "",
+                )
+            )
+        rows.extend(
             (
-                "# Tushare News Backup Timer Preflight Status",
-                "",
-                f"Current verdict: `{report['verdict']}`",
-                "",
-                *(
-                    (
-                        f"Ready to create timer: `{str(report['verdict'] == 'pass').lower()}`",
-                        "",
-                    )
-                    if report.get("stage") == "pre-enable"
-                    else ()
-                ),
                 "Current blocking items:",
                 "",
                 *[f"- `{item}`" for item in report["blocking_items"]],
@@ -820,6 +821,35 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
                 "",
             )
         )
+        if report.get("stage") == "pre-enable":
+            rows.extend(
+                (
+                    "## Required Boundary Confirmations",
+                    "",
+                    "Mark these checklist boundary rows `yes` with evidence before rerunning `pre-enable`:",
+                    "",
+                    *_format_required_boundary_confirmations_table(),
+                    "",
+                    "## Required External Inputs",
+                    "",
+                    "Fill these before rerunning `pre-enable`:",
+                    "",
+                    *_format_required_inputs_table(REQUIRED_PRE_ENABLE_INPUTS),
+                    "",
+                )
+            )
+        if report.get("stage") == "post-enable":
+            rows.extend(
+                (
+                    "## Post-Enable Inputs",
+                    "",
+                    "Fill these only after the first scheduled run:",
+                    "",
+                    *_format_required_inputs_table(REQUIRED_POST_ENABLE_INPUTS),
+                    "",
+                )
+            )
+        return "\n".join(rows)
 
     reports = report["reports"]
     if not isinstance(reports, dict):

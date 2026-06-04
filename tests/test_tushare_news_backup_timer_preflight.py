@@ -737,6 +737,31 @@ def test_timer_preflight_cli_can_render_single_stage_markdown_status(tmp_path: P
     assert "`owners_filled`" in output
     assert "Current `next_actions`:" in output
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in output
+    assert "## Required Boundary Confirmations" in output
+    assert "## Required External Inputs" in output
+    assert "DuckDB path points to intended target." in output
+    assert "Alert/log retention owner" in output
+    assert "Post-Enable Inputs" not in output
+
+
+def test_timer_preflight_cli_can_render_post_enable_markdown_inputs(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "post-enable", "--format", "markdown"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Current verdict: `blocked`" in output
+    assert "Ready to create timer" not in output
+    assert "Current blocking items:" in output
+    assert "`timer_evidence_filled`" in output
+    assert "## Post-Enable Inputs" in output
+    assert "Enabled by" in output
+    assert "Timer evidence in go-live bundle" in output
+    assert "Required Boundary Confirmations" not in output
 
 
 def test_timer_preflight_cli_can_render_ops_gap_packet(tmp_path: Path, capsys) -> None:

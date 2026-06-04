@@ -51,6 +51,7 @@ class RouteAuthSurface:
     path: str
     function: str
     reaches_authz: bool
+    authz_scopes: frozenset[tuple[str, str]]
 
     @property
     def key(self) -> tuple[str, str, str, str]:
@@ -185,6 +186,81 @@ def _call_names(node: ast.AST) -> set[str]:
     return names
 
 
+def _literal_keyword(call: ast.Call, name: str) -> str | None:
+    for keyword in call.keywords:
+        if keyword.arg == name and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+            return keyword.value.value
+    return None
+
+
+def _name_keyword(call: ast.Call, name: str) -> str | None:
+    for keyword in call.keywords:
+        if keyword.arg == name and isinstance(keyword.value, ast.Name):
+            return keyword.value.id
+    return None
+
+
+def _ensure_user_allowed_scopes(node: ast.AST) -> frozenset[tuple[str, str]]:
+    scopes: set[tuple[str, str]] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        func_name = ""
+        if isinstance(child.func, ast.Name):
+            func_name = child.func.id
+        elif isinstance(child.func, ast.Attribute):
+            func_name = child.func.attr
+        if func_name != "ensure_user_allowed":
+            continue
+        resource = _literal_keyword(child, "resource")
+        action = _literal_keyword(child, "action")
+        if resource and action:
+            scopes.add((resource, action))
+    return frozenset(scopes)
+
+
+def _ensure_user_allowed_parameterized_actions(node: ast.AST) -> dict[str, str]:
+    actions: dict[str, str] = {}
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        func_name = ""
+        if isinstance(child.func, ast.Name):
+            func_name = child.func.id
+        elif isinstance(child.func, ast.Attribute):
+            func_name = child.func.attr
+        if func_name != "ensure_user_allowed":
+            continue
+        resource = _literal_keyword(child, "resource")
+        action_name = _name_keyword(child, "action")
+        if resource and action_name:
+            actions[action_name] = resource
+    return actions
+
+
+def _scopes_from_parameterized_helper_calls(
+    node: ast.AST,
+    parameterized_actions_by_function: dict[str, dict[str, str]],
+) -> frozenset[tuple[str, str]]:
+    scopes: set[tuple[str, str]] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        func_name = ""
+        if isinstance(child.func, ast.Name):
+            func_name = child.func.id
+        elif isinstance(child.func, ast.Attribute):
+            func_name = child.func.attr
+        action_resources = parameterized_actions_by_function.get(func_name)
+        if not action_resources:
+            continue
+        for action_param, resource in action_resources.items():
+            action = _literal_keyword(child, action_param)
+            if action:
+                scopes.add((resource, action))
+    return frozenset(scopes)
+
+
 def _route_method(decorator: ast.expr) -> str | None:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     if isinstance(target, ast.Attribute) and target.attr in {"get", "post", "put", "patch", "delete"}:
@@ -208,12 +284,25 @@ def _route_auth_surfaces() -> list[RouteAuthSurface]:
             for node in tree.body
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         }
-        direct_authz = {
-            name
-            for name, node in functions.items()
-            if "ensure_user_allowed" in _call_names(node)
-        }
+        direct_authz = {name for name, node in functions.items() if "ensure_user_allowed" in _call_names(node)}
         authz_closure = set(direct_authz)
+        authz_scopes_by_function = {
+            name: _ensure_user_allowed_scopes(node)
+            for name, node in functions.items()
+        }
+        parameterized_actions_by_function = {
+            name: _ensure_user_allowed_parameterized_actions(node)
+            for name, node in functions.items()
+        }
+        for name, node in functions.items():
+            helper_scopes = _scopes_from_parameterized_helper_calls(
+                node,
+                parameterized_actions_by_function,
+            )
+            if helper_scopes:
+                authz_scopes_by_function[name] = frozenset(
+                    set(authz_scopes_by_function[name]) | set(helper_scopes)
+                )
         changed = True
         while changed:
             changed = False
@@ -222,6 +311,16 @@ def _route_auth_surfaces() -> list[RouteAuthSurface]:
                     continue
                 if _call_names(node) & authz_closure:
                     authz_closure.add(name)
+                    changed = True
+                called_scopes = frozenset(
+                    scope
+                    for called_name in _call_names(node)
+                    for scope in authz_scopes_by_function.get(called_name, frozenset())
+                )
+                if called_scopes and not called_scopes <= authz_scopes_by_function[name]:
+                    authz_scopes_by_function[name] = frozenset(
+                        set(authz_scopes_by_function[name]) | set(called_scopes)
+                    )
                     changed = True
 
         file_path = path.as_posix()
@@ -240,6 +339,7 @@ def _route_auth_surfaces() -> list[RouteAuthSurface]:
                         path=_route_path(decorator),
                         function=name,
                         reaches_authz=reaches_authz,
+                        authz_scopes=authz_scopes_by_function[name],
                     )
                 )
     return surfaces
@@ -293,6 +393,40 @@ def test_backend_mutation_routes_are_authorized_or_explicitly_reserved() -> None
     ]
 
     assert missing == []
+
+
+def test_backend_authorized_routes_expose_stable_resource_action_policy() -> None:
+    missing_policy = [
+        surface
+        for surface in _route_auth_surfaces()
+        if surface.reaches_authz
+        and surface.key not in PUBLIC_OR_ECHO_READ_SURFACES
+        and surface.key not in RESERVED_WRITE_SURFACES
+        and not surface.authz_scopes
+    ]
+
+    assert missing_policy == []
+
+
+def test_backend_read_and_mutation_routes_use_expected_policy_actions() -> None:
+    read_like_wrong_action = [
+        surface
+        for surface in _route_auth_surfaces()
+        if (surface.method == "GET" or surface.key in READ_LIKE_POST_SURFACES)
+        and surface.key not in PUBLIC_OR_ECHO_READ_SURFACES
+        and "read" not in {action for _resource, action in surface.authz_scopes}
+    ]
+    mutation_wrong_action = [
+        surface
+        for surface in _route_auth_surfaces()
+        if surface.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and surface.key not in READ_LIKE_POST_SURFACES
+        and surface.key not in RESERVED_WRITE_SURFACES
+        and not ({action for _resource, action in surface.authz_scopes} - {"read"})
+    ]
+
+    assert read_like_wrong_action == []
+    assert mutation_wrong_action == []
 
 
 @pytest.mark.parametrize("case", BACKEND_BOUNDARY_CASES, ids=lambda case: case.slug)
