@@ -1,11 +1,6 @@
 import { Link } from "react-router-dom";
-import {
-  CalendarOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  WarningFilled,
-} from "@ant-design/icons";
 
+import { LightIcon } from "../../../../components/LightIcon";
 import type { DashboardHomeView } from "../dashboardHomeView";
 import styles from "../dashboardHome.module.css";
 
@@ -54,7 +49,7 @@ export function DashboardHomeToolbar({
         </div>
         <span className={styles.dhDateLabel}>报告日</span>
         <label className={styles.dhDateSelect}>
-          <CalendarOutlined className={styles.dhDateSelectIcon} />
+          <LightIcon className={styles.dhDateSelectIcon} name="calendar" />
           <input
             aria-label="报告日"
             type="date"
@@ -65,7 +60,7 @@ export function DashboardHomeToolbar({
           />
         </label>
         <label className={styles.dhSearch}>
-          <SearchOutlined className={styles.dhSearchIcon} />
+          <LightIcon className={styles.dhSearchIcon} name="search" />
           <input
             aria-label="搜索指标 / 报表 / 功能"
             placeholder="搜索指标 / 报表 / 功能"
@@ -102,7 +97,7 @@ export function DashboardHomeToolbar({
               to="/decision-items"
               className={`${styles.dhStatusPill} ${styles.dhStatusPillAlert}`}
             >
-              <WarningFilled />
+              <LightIcon name="warning" />
               风险待复核
               <strong className={styles.dhNum}>{headerStatus.riskReviewCount}</strong>
             </Link>
@@ -117,7 +112,7 @@ export function DashboardHomeToolbar({
           <span>{allowPartial ? "显示部分数据" : "仅完整数据"}</span>
         </label>
         <button type="button" className={styles.dhRefreshBtn} onClick={onRefresh}>
-          <ReloadOutlined />
+          <LightIcon name="reload" />
           {refreshLabel}
         </button>
       </div>

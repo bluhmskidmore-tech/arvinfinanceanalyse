@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
-import { useApiClient, type ApiClient } from "../../../api/client";
+import { useApiClient, type ApiClient } from "../../../api/clientContext";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 
 type HomeSnapshotEnvelope = Awaited<ReturnType<ApiClient["getHomeSnapshot"]>>;
@@ -113,7 +113,16 @@ export function useDashboardSnapshotBoundary({
   const overviewMeta = adapterOutput.overview.meta;
   const attributionMeta = adapterOutput.attribution.meta;
   const snapshotMeta = displayedSnapshot?.result_meta ?? null;
-  const initialEffectiveReportDate = snapshotResult?.report_date?.trim() || reportDate.trim();
+  const requestedReportDate = reportDate.trim();
+  const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
+  const activeSnapshotReportDate = snapshotQuery.data?.result.report_date?.trim() || "";
+  const reportDateSnapshotPending =
+    Boolean(requestedReportDate) &&
+    snapshotQuery.isFetching &&
+    activeSnapshotReportDate !== requestedReportDate;
+  const initialEffectiveReportDate = reportDateSnapshotPending
+    ? ""
+    : snapshotReportDate || (snapshotResult ? requestedReportDate : "");
   const supplementalReportDate = initialEffectiveReportDate || undefined;
 
   const refreshSnapshot = async () => {

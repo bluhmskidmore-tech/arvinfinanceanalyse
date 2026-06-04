@@ -31,6 +31,8 @@ export type UseDashboardDataOptions = {
   supplementalReportDate: string | undefined;
   effectiveReportDate: string;
   loadCalendarData: boolean;
+  loadEventFeedsData?: boolean;
+  loadSupplementalData?: boolean;
   loadBondBucketYieldData: boolean;
   loadBondBucketMonthlyData: boolean;
   loadPortfolioSupplementData: boolean;
@@ -43,6 +45,8 @@ export function useDashboardData({
   supplementalReportDate,
   effectiveReportDate,
   loadCalendarData,
+  loadEventFeedsData = loadCalendarData,
+  loadSupplementalData = true,
   loadBondBucketYieldData,
   loadBondBucketMonthlyData,
   loadPortfolioSupplementData,
@@ -58,7 +62,7 @@ export function useDashboardData({
     queryFn: () => getDashboardOverview(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: loadSupplementalData && hasSupplementalReportDate,
   });
 
   const dailyChangesQuery = useQuery({
@@ -66,14 +70,15 @@ export function useDashboardData({
     queryFn: () => getDashboardDailyChanges(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: loadSupplementalData && hasSupplementalReportDate,
   });
 
   const marketRatesQuery = useQuery({
-    queryKey: apiQueryKeys.marketRates(dataClient.mode, supplementalReportDate),
+    queryKey: apiQueryKeys.marketRates(dataClient.mode),
     queryFn: () => getMarketTape(dataClient),
     retry: false,
     staleTime: 60_000,
+    enabled: loadSupplementalData,
   });
 
   const bondHeadlineQuery = useQuery({
@@ -81,7 +86,7 @@ export function useDashboardData({
     queryFn: () => getAssetIncomeOverview(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: loadSupplementalData && hasSupplementalReportDate,
   });
 
   const portfolioHeadlinesQuery = useQuery({
@@ -89,7 +94,7 @@ export function useDashboardData({
     queryFn: () => getPortfolioHeadlines(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasSupplementalReportDate,
+    enabled: loadSupplementalData && hasSupplementalReportDate,
   });
 
   const portfolioComparisonQuery = useQuery({
@@ -97,7 +102,7 @@ export function useDashboardData({
     queryFn: () => getExposureSummary(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+    enabled: loadSupplementalData && loadPortfolioSupplementData && hasSupplementalReportDate,
   });
 
   const creditSpreadMigrationQuery = useQuery({
@@ -105,7 +110,7 @@ export function useDashboardData({
     queryFn: () => getCreditRiskOverview(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+    enabled: loadSupplementalData && loadPortfolioSupplementData && hasSupplementalReportDate,
   });
 
   const returnDecompositionQuery = useQuery({
@@ -119,7 +124,7 @@ export function useDashboardData({
     queryFn: () => getReturnDecompositionContext(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+    enabled: loadSupplementalData && loadPortfolioSupplementData && hasSupplementalReportDate,
   });
 
   const campisiFourEffectsQuery = useQuery({
@@ -131,7 +136,7 @@ export function useDashboardData({
     queryFn: () => getCampisiAttributionContext(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+    enabled: loadSupplementalData && loadPortfolioSupplementData && hasSupplementalReportDate,
   });
 
   const yieldCurveTermStructureQuery = useQuery({
@@ -143,7 +148,7 @@ export function useDashboardData({
     queryFn: () => getYieldCurveContext(dataClient, supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: loadPortfolioSupplementData && hasSupplementalReportDate,
+    enabled: loadSupplementalData && loadPortfolioSupplementData && hasSupplementalReportDate,
   });
 
   const bondBucketYieldQuery = useQuery({
@@ -157,7 +162,11 @@ export function useDashboardData({
       getBondBucketYield(dataClient, supplementalReportDate ?? "", bondBucketAnalysisYear),
     retry: false,
     staleTime: 60_000,
-    enabled: loadBondBucketYieldData && hasSupplementalReportDate && hasBondBucketYear,
+    enabled:
+      loadSupplementalData &&
+      loadBondBucketYieldData &&
+      hasSupplementalReportDate &&
+      hasBondBucketYear,
   });
 
   const bondBucketMonthlyTrendQuery = useQuery({
@@ -182,6 +191,7 @@ export function useDashboardData({
     enabled:
       hasSupplementalReportDate &&
       hasBondBucketYear &&
+      loadSupplementalData &&
       loadBondBucketMonthlyData &&
       dataClient.mode === "real",
   });
@@ -196,12 +206,12 @@ export function useDashboardData({
     queryFn: () => getRiskControlOverview(dataClient, effectiveReportDate),
     retry: false,
     staleTime: 60_000,
-    enabled: loadDecisionItemsData && Boolean(effectiveReportDate),
+    enabled: loadSupplementalData && loadDecisionItemsData && Boolean(effectiveReportDate),
   });
 
   const researchCalendar = useDashboardResearchCalendarQuery({
     dataClient,
-    enabled: loadCalendarData,
+    enabled: loadSupplementalData && loadCalendarData,
   });
 
   const macroNewsQueries = useQueries({
@@ -212,9 +222,10 @@ export function useDashboardData({
           limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
           offset: 0,
           topicCode: topic.code,
-        }),
+      }),
       retry: false,
       staleTime: 60_000,
+      enabled: loadSupplementalData && loadEventFeedsData,
     })),
   });
 
@@ -226,9 +237,10 @@ export function useDashboardData({
           limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
           offset: 0,
           topicCode: topic.code,
-        }),
+      }),
       retry: false,
       staleTime: 60_000,
+      enabled: loadSupplementalData && loadEventFeedsData,
     })),
   });
 

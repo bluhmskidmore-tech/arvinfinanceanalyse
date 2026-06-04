@@ -1,30 +1,20 @@
 import { Link } from "react-router-dom";
-import {
-  ApartmentOutlined,
-  ArrowRightOutlined,
-  BarChartOutlined,
-  DatabaseOutlined,
-  DotChartOutlined,
-  FileSearchOutlined,
-  FundProjectionScreenOutlined,
-  LineChartOutlined,
-  TableOutlined,
-} from "@ant-design/icons";
 import type { ReactNode } from "react";
 
+import { LightIcon } from "../../../../components/LightIcon";
 import type { DashboardHomeView } from "../dashboardHomeView";
 import { resolveDeltaClass } from "../dashboardHomeView";
 import styles from "../dashboardHome.module.css";
 
 const QUICK_ICON_MAP: Record<string, ReactNode> = {
-  positions: <TableOutlined />,
-  attribution: <BarChartOutlined />,
-  duration: <LineChartOutlined />,
-  credit: <DotChartOutlined />,
-  industry: <ApartmentOutlined />,
-  trades: <FundProjectionScreenOutlined />,
-  reports: <DatabaseOutlined />,
-  cube: <FileSearchOutlined />,
+  positions: <LightIcon name="table" />,
+  attribution: <LightIcon name="bar-chart" />,
+  duration: <LightIcon name="line-chart" />,
+  credit: <LightIcon name="dot-chart" />,
+  industry: <LightIcon name="apartment" />,
+  trades: <LightIcon name="fund-projection" />,
+  reports: <LightIcon name="database" />,
+  cube: <LightIcon name="file-search" />,
 };
 
 type BottomGridSectionProps = {
@@ -131,7 +121,7 @@ export function BottomGridSection({
           {quickDrilldowns.map((item) => (
             <Link key={item.id} to={item.path} className={styles.dhQuick}>
               <span className={styles.dhQuickIcon}>
-                {QUICK_ICON_MAP[item.icon] ?? <ArrowRightOutlined />}
+                {QUICK_ICON_MAP[item.icon] ?? <LightIcon name="arrow-right" />}
               </span>
               <span>{item.label}</span>
             </Link>
