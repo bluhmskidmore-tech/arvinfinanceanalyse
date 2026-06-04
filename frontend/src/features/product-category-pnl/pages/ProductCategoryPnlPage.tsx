@@ -3403,49 +3403,27 @@ export default function ProductCategoryPnlPage() {
           <div
             role="group"
             aria-label="视图模式"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 6,
-            }}
+            className="product-category-scenario-controls__view-group"
           >
             <button
               type="button"
               onClick={() => setSelectedView("monthly")}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${designTokens.color.neutral[200]}`,
-                background:
-                  selectedView === "monthly"
-                    ? designTokens.color.neutral[900]
-                    : designTokens.color.neutral[50],
-                color:
-                  selectedView === "monthly"
-                    ? designTokens.color.neutral[50]
-                    : designTokens.color.neutral[900],
-                fontWeight: 600,
-              }}
+              className={
+                selectedView === "monthly"
+                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
+                  : "product-category-scenario-controls__view-button"
+              }
             >
               月度视图
             </button>
             <button
               type="button"
               onClick={() => setSelectedView("ytd")}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: `1px solid ${designTokens.color.neutral[200]}`,
-                background:
-                  selectedView === "ytd"
-                    ? designTokens.color.neutral[900]
-                    : designTokens.color.neutral[50],
-                color:
-                  selectedView === "ytd"
-                    ? designTokens.color.neutral[50]
-                    : designTokens.color.neutral[900],
-                fontWeight: 600,
-              }}
+              className={
+                selectedView === "ytd"
+                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
+                  : "product-category-scenario-controls__view-button"
+              }
             >
               汇总视图
             </button>
@@ -3472,20 +3450,12 @@ export default function ProductCategoryPnlPage() {
         </label>
       </div>
 
-      <div style={{ marginBottom: 18 }}>
+      <div className="product-category-scenario-controls__actions">
         <button
           type="button"
           data-testid="product-category-apply-scenario-button"
           onClick={() => setAppliedScenarioRate(scenarioRate.trim())}
-          style={{
-            padding: "11px 14px",
-            borderRadius: 12,
-            border: `1px solid ${designTokens.color.primary[200]}`,
-            background: designTokens.color.primary[100],
-            color: designTokens.color.primary[600],
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          className="product-category-scenario-controls__apply"
         >
           应用场景
         </button>

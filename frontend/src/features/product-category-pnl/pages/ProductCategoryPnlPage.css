@@ -116,6 +116,65 @@
   gap: 4px;
 }
 
+.product-category-scenario-controls {
+  display: grid;
+  grid-template-columns: 1.3fr 1.3fr 1.3fr;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 18px;
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-scenario-controls__field {
+  display: grid;
+  gap: 8px;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+}
+
+.product-category-scenario-controls__select,
+.product-category-scenario-controls__view-button,
+.product-category-scenario-controls__apply {
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.product-category-scenario-controls__select,
+.product-category-scenario-controls__view-button {
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+}
+
+.product-category-scenario-controls__view-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.product-category-scenario-controls__view-button {
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-900);
+}
+
+.product-category-scenario-controls__view-button--active {
+  background: var(--moss-color-neutral-900);
+  color: var(--moss-color-neutral-50);
+}
+
+.product-category-scenario-controls__actions {
+  margin-bottom: 18px;
+}
+
+.product-category-scenario-controls__apply {
+  padding: 11px 14px;
+  border: 1px solid var(--moss-color-primary-200);
+  background: var(--moss-color-primary-100);
+  color: var(--moss-color-primary-600);
+  cursor: pointer;
+}
+
 .product-category-branch-switcher {
   margin-bottom: 16px !important;
 }
