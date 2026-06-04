@@ -3979,7 +3979,7 @@ describe("AgentWorkbenchPage", () => {
     expect(queuedPreview).toHaveTextContent("multi queue second turn");
     expect(queuedPreview).toHaveTextContent("multi queue third turn");
     expect(queuedPreview).toHaveTextContent("2 句待发送");
-    expect(screen.getByText("2 句已排队 · 下一句：multi queue third turn")).toBeInTheDocument();
+    expect(screen.getByText("2 句已排队 · 刚加入：multi queue third turn")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("multi queue third turn");
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
 

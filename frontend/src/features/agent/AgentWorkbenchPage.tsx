@@ -473,7 +473,7 @@ function trimAgentContextText(value: string, limit: number) {
 
 function formatQueuedComposerHint(queuedQuery: string, queuedCount: number) {
   const preview = trimAgentContextText(queuedQuery.replace(/\s+/g, " "), 48);
-  return queuedCount > 1 ? `${queuedCount} 句已排队 · 下一句：${preview}` : `已接住下一句：${preview} · 回答完自动发送`;
+  return queuedCount > 1 ? `${queuedCount} 句已排队 · 刚加入：${preview}` : `已接住下一句：${preview} · 回答完自动发送`;
 }
 
 function buildConversationContext(turns: AgentConversationTurn[]): AgentConversationContext | undefined {
