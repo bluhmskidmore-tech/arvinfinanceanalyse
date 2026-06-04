@@ -149,6 +149,18 @@ def _grant_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, resource: s
     )
 
 
+def _create_empty_scope_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sqlite_path = tmp_path / "boundary-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+
+
 def _call_case(client: TestClient, case: SurfaceCase):
     if case.method == "GET":
         return client.get(case.path, params=case.params)
@@ -435,6 +447,8 @@ def test_backend_boundary_surfaces_fail_closed_without_governed_result_meta(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    if case.expected_status == 403:
+        _create_empty_scope_store(tmp_path, monkeypatch)
     client = _build_client(tmp_path, monkeypatch)
 
     response = _call_case(client, case)

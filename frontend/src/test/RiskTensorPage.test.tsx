@@ -3401,7 +3401,7 @@ describe("RiskTensorPage", () => {
     }
   });
 
-  it("falls back from prior-period DV01 change to the KPI grid when controls are absent", async () => {
+  it("falls back from prior-period regulatory DV01 change to the regulatory DV01 KPI card when controls are absent", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
     const scrollOptions: unknown[] = [];
@@ -3432,14 +3432,99 @@ describe("RiskTensorPage", () => {
       const regulatoryDv01Action = within(priorChange).getByTestId(
         "risk-tensor-prior-change-action-regulatory_dv01",
       );
-      const kpiGrid = await screen.findByTestId("risk-tensor-kpi-grid");
+      const regulatoryDv01Card = await screen.findByTestId("risk-tensor-regulatory-dv01-kpi");
 
       expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
       expect(regulatoryDv01Action.querySelector("p, small")).toBeNull();
 
       await user.click(regulatoryDv01Action);
 
-      expect(scrollTargets).toContain(kpiGrid);
+      expect(scrollTargets).toContain(regulatoryDv01Card);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("falls back from prior-period portfolio DV01 change to the portfolio DV01 KPI card when controls are absent", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_portfolio_dv01_fallback_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_portfolio_dv01_fallback_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          prior_period_change: {
+            ...tensorResult(reportDate).prior_period_change,
+            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
+            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
+            summary: tensorResult(reportDate).prior_period_change?.summary ?? "估值 DV01 变动",
+            metrics: [
+              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
+              {
+                key: "portfolio_dv01",
+                label: "估值口径 DV01",
+                current: {
+                  raw: 12.34,
+                  unit: "dv01" as const,
+                  display: "12.34",
+                  precision: 2,
+                  sign_aware: false,
+                },
+                previous: {
+                  raw: 8,
+                  unit: "dv01" as const,
+                  display: "8.00",
+                  precision: 2,
+                  sign_aware: false,
+                },
+                delta: {
+                  raw: 4.34,
+                  unit: "dv01" as const,
+                  display: "+4.34",
+                  precision: 2,
+                  sign_aware: true,
+                },
+                current_display: "12.34",
+                previous_display: "8.00",
+                delta_display: "+4.34",
+                direction: "up",
+                tone: "warning",
+                interpretation: "估值口径 DV01 扩大",
+              },
+            ],
+          },
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const portfolioDv01Action = within(priorChange).getByTestId("risk-tensor-prior-change-action-portfolio_dv01");
+      const portfolioDv01Card = await screen.findByTestId("risk-tensor-portfolio-dv01-kpi");
+
+      expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
+      expect(portfolioDv01Action.querySelector("p, small")).toBeNull();
+
+      await user.click(portfolioDv01Action);
+
+      expect(scrollTargets).toContain(portfolioDv01Card);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

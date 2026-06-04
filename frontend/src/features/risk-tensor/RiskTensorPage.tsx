@@ -850,7 +850,10 @@ export default function RiskTensorPage() {
     : [];
   const priorChangeTargetFor = (metricKey: string) => {
     if (PRIOR_CHANGE_DV01_KEYS.has(metricKey)) {
-      return result?.dv01_controls ? "risk-tensor-dv01-controls" : "risk-tensor-kpi-grid";
+      if (result?.dv01_controls) {
+        return "risk-tensor-dv01-controls";
+      }
+      return metricKey === "regulatory_dv01" ? "risk-tensor-regulatory-dv01-kpi" : "risk-tensor-portfolio-dv01-kpi";
     }
     if (metricKey === "dominant_krd_bucket" && !selectedTenorRow && invalidKrdRows.length > 0) {
       return "risk-tensor-krd-quality-note";
@@ -2586,6 +2589,7 @@ export default function RiskTensorPage() {
                 detail="portfolio_dv01，持仓估值敏感性口径，非监管限额口径。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.portfolio_dv01))}
+                testId="risk-tensor-portfolio-dv01-kpi"
               />
               <KpiCard
                 title="监管口径 DV01"
@@ -2593,6 +2597,7 @@ export default function RiskTensorPage() {
                 detail="后端监管/限额口径字段；不得用估值 DV01 替代。"
                 unit={amountUnit(result.regulatory_dv01, WAN_YUAN_UNIT)}
                 tone={regulatoryDv01Tone(result.regulatory_dv01)}
+                testId="risk-tensor-regulatory-dv01-kpi"
               />
               <KpiCard
                 title="修正久期"
