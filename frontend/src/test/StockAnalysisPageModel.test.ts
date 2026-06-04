@@ -2433,6 +2433,68 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.detail).not.toContain("priority review ranking");
   });
 
+  it("keeps market priority insufficient-sample summaries read-only", () => {
+    const payload: LivermoreStrategyScorePayload = {
+      as_of_date: "2026-05-13",
+      snapshot_from: "2026-05-01",
+      snapshot_to: "2026-05-13",
+      primary_horizon: "return_5d",
+      min_sample: 20,
+      current_market_state: "HOT",
+      rows: [
+        {
+          market_state: "HOT",
+          signal_kind: "factor_screen",
+          strategy_label: "多因子",
+          sample_status: "insufficient",
+          priority_score: null,
+          priority_rank: null,
+          priority_label: "样本不足",
+          reason: "sample pending",
+          stats: {
+            return_1d: {
+              available_count: 0,
+              missing_count: 6,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+            return_5d: {
+              available_count: 0,
+              missing_count: 6,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+            return_20d: {
+              available_count: 0,
+              missing_count: 6,
+              positive_count: 0,
+              non_positive_count: 0,
+              avg_return: null,
+              win_rate: null,
+            },
+          },
+        },
+      ],
+      current_market_state_rows: [],
+    };
+
+    const summary = buildMarketPriorityPanelSummary({
+      payload,
+      rows: payload.rows,
+      marketState: "HOT",
+      queryState: "ready",
+    });
+
+    expect(summary.headline).toBe("样本不足");
+    expect(summary.detail).toBe("阈值 20 · 只读排序");
+    expect(summary.detail).not.toContain("交易动作");
+    expect(summary.detail).not.toContain("不输出");
+  });
+
   it("keeps unknown vendor strategy labels and statuses out of strategy panel headlines", () => {
     const stats = {
       return_1d: {

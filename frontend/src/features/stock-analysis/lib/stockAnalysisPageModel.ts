@@ -3524,7 +3524,7 @@ export function buildMarketPriorityPanelSummary(input: {
   if (!top || sufficientCount === 0) {
     return {
       headline: "样本不足",
-      detail: `样本阈值 ${input.payload?.min_sample ?? 20}，不输出交易动作。`,
+      detail: `阈值 ${input.payload?.min_sample ?? 20} · 只读排序`,
       badgeLabel: "待补",
       stats: [{ key: "rows", label: "策略", value: `${input.rows.length}`, tone: "neutral" }],
       tone: "warning",
