@@ -461,7 +461,8 @@
 .product-category-operating-analysis__rank-groups,
 .product-category-operating-analysis__rank-group,
 .product-category-operating-analysis__movement-list,
-.product-category-operating-analysis__quadrant-items {
+.product-category-operating-analysis__quadrant-items,
+.product-category-operating-analysis__action-list {
   display: grid;
   gap: var(--moss-space-2);
 }
@@ -571,6 +572,75 @@
 .product-category-operating-analysis__quadrant.is-shrink_or_reprice {
   border-color: var(--moss-color-danger-200);
   background: #fff5f5;
+}
+
+.product-category-operating-analysis__action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--moss-space-2);
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.product-category-operating-analysis__action-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--moss-space-2);
+  align-items: start;
+  min-width: 0;
+}
+
+.product-category-operating-analysis__action-priority {
+  min-width: 30px;
+  padding: 2px 6px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-100);
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.product-category-operating-analysis__action-main div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.product-category-operating-analysis__action-main strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.product-category-operating-analysis__action-main span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.product-category-operating-analysis__action-row b {
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.product-category-operating-analysis__action-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 6px;
+}
+
+.product-category-operating-analysis__action-evidence small {
+  padding: 3px 6px;
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
 }
 
 .product-category-operating-analysis__empty {

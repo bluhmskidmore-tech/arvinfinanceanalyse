@@ -264,9 +264,28 @@ export type ProductCategoryOperatingQuadrantRow = {
   scaleLabel: string;
   yieldPct: number;
   yieldLabel: string;
+  netIncome: number | null;
   netIncomeLabel: string;
   quadrant: ProductCategoryOperatingQuadrant;
   quadrantLabel: string;
+};
+
+export type ProductCategoryOperatingActionKind =
+  | "shrink_or_limit"
+  | "review_attribution"
+  | "reprice_or_improve"
+  | "selective_growth";
+
+export type ProductCategoryOperatingActionQueueRow = {
+  priorityLabel: string;
+  categoryId: string;
+  categoryLabel: string;
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  triggerLabel: string;
+  primaryMetricLabel: string;
+  evidenceItems: string[];
+  tone: "positive" | "negative" | "neutral";
 };
 
 export type ProductCategoryOperatingAnalysisSurface = {
@@ -286,6 +305,10 @@ export type ProductCategoryOperatingAnalysisSurface = {
     scaleBenchmarkLabel: string;
     yieldBenchmarkLabel: string;
     rows: ProductCategoryOperatingQuadrantRow[];
+    emptyCopy: string | null;
+  };
+  actionQueue: {
+    rows: ProductCategoryOperatingActionQueueRow[];
     emptyCopy: string | null;
   };
 };
@@ -987,15 +1010,12 @@ function selectProductCategoryOperatingContribution(input: {
   };
 }
 
-function selectProductCategoryOperatingMovement(
+function buildProductCategoryOperatingMovementRows(
   attribution: ProductCategoryAttributionPayload | null | undefined,
   parentCategoryIds: Set<string>,
-): ProductCategoryOperatingAnalysisSurface["movement"] {
+): ProductCategoryOperatingMovementRow[] {
   if (!attribution || attribution.state !== "complete") {
-    return {
-      rows: [],
-      emptyCopy: "当前缺少可用的月度经营差异归因。",
-    };
+    return [];
   }
   const rows: ProductCategoryOperatingMovementRow[] = [];
   for (const row of attribution.rows) {
@@ -1025,6 +1045,20 @@ function selectProductCategoryOperatingMovement(
     });
   }
   rows.sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
+  return rows;
+}
+
+function selectProductCategoryOperatingMovement(
+  attribution: ProductCategoryAttributionPayload | null | undefined,
+  parentCategoryIds: Set<string>,
+): ProductCategoryOperatingAnalysisSurface["movement"] {
+  if (!attribution || attribution.state !== "complete") {
+    return {
+      rows: [],
+      emptyCopy: "当前缺少可用的月度经营差异归因。",
+    };
+  }
+  const rows = buildProductCategoryOperatingMovementRows(attribution, parentCategoryIds);
   const topRows = rows.slice(0, 5);
   return {
     rows: topRows,
@@ -1034,6 +1068,7 @@ function selectProductCategoryOperatingMovement(
 
 function selectProductCategoryOperatingQuadrant(
   rows: ProductCategoryPnlRow[],
+  options: { limit?: number | null } = {},
 ): ProductCategoryOperatingAnalysisSurface["quadrant"] {
   const candidates = leafProductCategoryRows(rows)
     .map((row) => {
@@ -1047,6 +1082,7 @@ function selectProductCategoryOperatingQuadrant(
         row,
         scale,
         yieldPct,
+        netIncome,
         netIncomeLabel: netIncome !== null ? netIncome.toFixed(2) : "-",
       };
     })
@@ -1054,6 +1090,7 @@ function selectProductCategoryOperatingQuadrant(
       row: ProductCategoryPnlRow;
       scale: number;
       yieldPct: number;
+      netIncome: number | null;
       netIncomeLabel: string;
     } => row !== null);
   const scaleBenchmark = medianProductCategoryNumber(candidates.map((item) => item.scale));
@@ -1083,20 +1120,161 @@ function selectProductCategoryOperatingQuadrant(
         scaleLabel: item.scale.toFixed(2),
         yieldPct: item.yieldPct,
         yieldLabel: item.yieldPct.toFixed(2),
+        netIncome: item.netIncome,
         netIncomeLabel: item.netIncomeLabel,
         quadrant,
         quadrantLabel: productCategoryQuadrantLabel(quadrant),
       };
     })
-    .sort((left, right) => right.scale - left.scale)
-    .slice(0, 12);
+    .sort((left, right) => right.scale - left.scale);
+  const displayRows = options.limit === null ? quadrantRows : quadrantRows.slice(0, options.limit ?? 12);
   return {
     scaleBenchmark,
     yieldBenchmark,
     scaleBenchmarkLabel: scaleBenchmark.toFixed(2),
     yieldBenchmarkLabel: yieldBenchmark.toFixed(2),
-    rows: quadrantRows,
-    emptyCopy: quadrantRows.length === 0 ? "当前缺少可用于规模/收益率象限的产品行。" : null,
+    rows: displayRows,
+    emptyCopy: displayRows.length === 0 ? "当前缺少可用于规模/收益率象限的产品行。" : null,
+  };
+}
+
+function productCategoryOperatingActionRow(input: {
+  categoryId: string;
+  categoryLabel: string;
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  triggerLabel: string;
+  primaryMetricLabel: string;
+  evidenceItems: string[];
+  tone: "positive" | "negative" | "neutral";
+}): Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel"> {
+  return input;
+}
+
+function selectProductCategoryOperatingActionQueue(input: {
+  rows: ProductCategoryPnlRow[];
+  attribution?: ProductCategoryAttributionPayload | null;
+  parentCategoryIds: Set<string>;
+}): ProductCategoryOperatingAnalysisSurface["actionQueue"] {
+  const leafRows = leafProductCategoryRows(input.rows);
+  const actionRows: Array<Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel">> = [];
+  const seenCategoryIds = new Set<string>();
+  const movementRows = buildProductCategoryOperatingMovementRows(input.attribution, input.parentCategoryIds);
+  const quadrant = selectProductCategoryOperatingQuadrant(input.rows, { limit: null });
+  const quadrantByCategoryId = new Map(quadrant.rows.map((row) => [row.categoryId, row]));
+  const appendActionRow = (row: Omit<ProductCategoryOperatingActionQueueRow, "priorityLabel">) => {
+    if (seenCategoryIds.has(row.categoryId)) {
+      return;
+    }
+    seenCategoryIds.add(row.categoryId);
+    actionRows.push(row);
+  };
+
+  const lowYieldLoss = leafRows
+    .map((row) => {
+      const netIncome = yiNumber(row.business_net_income);
+      const scale = yiNumber(row.cnx_scale);
+      const yieldPct = percentNumber(row.weighted_yield);
+      const movement = movementRows.find((item) => item.categoryId === row.category_id);
+      const quadrantRow = quadrantByCategoryId.get(row.category_id);
+      const hasLowYield = quadrantRow?.quadrant === "scale_efficiency_watch" || quadrantRow?.quadrant === "shrink_or_reprice";
+      if (netIncome === null || netIncome >= 0 || yieldPct === null || scale === null || !hasLowYield) {
+        return null;
+      }
+      return { row, netIncome, scale, yieldPct, movement };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null)
+    .sort((left, right) => left.netIncome - right.netIncome)[0];
+
+  if (lowYieldLoss) {
+    appendActionRow(productCategoryOperatingActionRow({
+      categoryId: lowYieldLoss.row.category_id,
+      categoryLabel: lowYieldLoss.row.category_name || lowYieldLoss.row.category_id,
+      actionKind: "shrink_or_limit",
+      actionLabel: "压降或限额复核",
+      triggerLabel: "负贡献叠加收益偏低",
+      primaryMetricLabel: lowYieldLoss.netIncome.toFixed(2),
+      evidenceItems: [
+        `净营收 ${lowYieldLoss.netIncome.toFixed(2)} 亿元`,
+        `规模 ${lowYieldLoss.scale.toFixed(2)} 亿元`,
+        `收益率 ${lowYieldLoss.yieldPct.toFixed(2)}%`,
+        `变动 ${lowYieldLoss.movement?.deltaLabel ?? "-"} 亿元`,
+      ],
+      tone: "negative",
+    }));
+  }
+
+  const unexplainedReview = movementRows
+    .filter((row) => row.leadingDriverKey === "unexplained_effect" && Math.abs(row.leadingDriverValue) > 0)
+    .sort((left, right) => Math.abs(right.leadingDriverValue) - Math.abs(left.leadingDriverValue))[0];
+
+  if (unexplainedReview) {
+    appendActionRow(productCategoryOperatingActionRow({
+      categoryId: unexplainedReview.categoryId,
+      categoryLabel: unexplainedReview.categoryLabel,
+      actionKind: "review_attribution",
+      actionLabel: "归因复核",
+      triggerLabel: "未解释差异偏高",
+      primaryMetricLabel: unexplainedReview.leadingDriverValueLabel,
+      evidenceItems: [
+        `未解释 ${unexplainedReview.leadingDriverValueLabel} 亿元`,
+        `变动 ${unexplainedReview.deltaLabel} 亿元`,
+      ],
+      tone: "neutral",
+    }));
+  }
+
+  const reprice = quadrant.rows.find(
+    (row) => row.quadrant === "scale_efficiency_watch" && !seenCategoryIds.has(row.categoryId),
+  );
+  if (reprice) {
+    appendActionRow(productCategoryOperatingActionRow({
+      categoryId: reprice.categoryId,
+      categoryLabel: reprice.categoryLabel,
+      actionKind: "reprice_or_improve",
+      actionLabel: "重定价/提效",
+      triggerLabel: "高规模低收益",
+      primaryMetricLabel: `${reprice.yieldLabel}%`,
+      evidenceItems: [
+        `规模 ${reprice.scaleLabel} 亿元`,
+        `收益率 ${reprice.yieldLabel}%`,
+        `净营收 ${reprice.netIncomeLabel} 亿元`,
+      ],
+      tone: "negative",
+    }));
+  }
+
+  const selectiveGrowth = quadrant.rows.find(
+    (row) =>
+      row.quadrant === "selective_growth" &&
+      row.netIncome !== null &&
+      row.netIncome > 0 &&
+      !seenCategoryIds.has(row.categoryId),
+  );
+  if (selectiveGrowth) {
+    appendActionRow(productCategoryOperatingActionRow({
+      categoryId: selectiveGrowth.categoryId,
+      categoryLabel: selectiveGrowth.categoryLabel,
+      actionKind: "selective_growth",
+      actionLabel: "选择性扩张",
+      triggerLabel: "低规模高收益",
+      primaryMetricLabel: `${selectiveGrowth.yieldLabel}%`,
+      evidenceItems: [
+        `规模 ${selectiveGrowth.scaleLabel} 亿元`,
+        `收益率 ${selectiveGrowth.yieldLabel}%`,
+        `净营收 ${selectiveGrowth.netIncomeLabel} 亿元`,
+      ],
+      tone: "positive",
+    }));
+  }
+
+  const rows = actionRows.map((row, index) => ({
+    priorityLabel: `P${index + 1}`,
+    ...row,
+  }));
+  return {
+    rows,
+    emptyCopy: rows.length === 0 ? "当前没有需要进入经营动作队列的产品分类。" : null,
   };
 }
 
@@ -1113,6 +1291,11 @@ export function selectProductCategoryOperatingAnalysisSurface(input: {
     }),
     movement: selectProductCategoryOperatingMovement(input.attribution, parentCategoryIds),
     quadrant: selectProductCategoryOperatingQuadrant(input.rows),
+    actionQueue: selectProductCategoryOperatingActionQueue({
+      rows: input.rows,
+      attribution: input.attribution,
+      parentCategoryIds,
+    }),
   };
 }
 

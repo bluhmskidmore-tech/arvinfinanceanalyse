@@ -173,6 +173,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-profit-rank")).toHaveTextContent("1.45");
     expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
     expect(screen.getByTestId("product-category-operating-quadrant")).toHaveTextContent("2.57");
+    expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("动作优先级队列");
+    expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("选择性扩张");
+    expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("重定价/提效");
     expect(screen.getByTestId("product-category-financial-analysis")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");

@@ -945,6 +945,42 @@ function ProductCategoryOperatingAnalysisPanel(props: {
           </div>
         )}
       </article>
+      <article
+        className="product-category-operating-analysis__panel product-category-operating-analysis__panel--wide"
+        data-testid="product-category-operating-action-queue"
+      >
+        <div className="product-category-operating-analysis__quadrant-header">
+          <div>
+            <h3 className="product-category-operating-analysis__panel-title">动作优先级队列</h3>
+            <p className="product-category-operating-analysis__panel-note">
+              从盈利、规模、收益率和正式归因中抽取需要进入经营闭环的产品类别。
+            </p>
+          </div>
+        </div>
+        {props.surface.actionQueue.emptyCopy ? (
+          <div className="product-category-operating-analysis__empty">{props.surface.actionQueue.emptyCopy}</div>
+        ) : (
+          <div className="product-category-operating-analysis__action-list">
+            {props.surface.actionQueue.rows.map((row) => (
+              <div className="product-category-operating-analysis__action-row" key={`${row.priorityLabel}-${row.categoryId}`}>
+                <div className="product-category-operating-analysis__action-main">
+                  <span className="product-category-operating-analysis__action-priority">{row.priorityLabel}</span>
+                  <div>
+                    <strong>{row.categoryLabel}</strong>
+                    <span>{row.actionLabel} · {row.triggerLabel}</span>
+                  </div>
+                </div>
+                <b className={`is-${row.tone}`}>{row.primaryMetricLabel}</b>
+                <div className="product-category-operating-analysis__action-evidence">
+                  {row.evidenceItems.map((item) => (
+                    <small key={item}>{item}</small>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
     </section>
   );
 }

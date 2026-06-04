@@ -317,6 +317,242 @@ describe("productCategoryPnlPageModel", () => {
     ]);
   });
 
+  it("builds an operating action queue from profitability, scale, yield, and attribution evidence", () => {
+    const rows = [
+      row({
+        category_id: "selective_growth_asset",
+        category_name: "选择性增长资产",
+        cnx_scale: yi(120),
+        business_net_income: yi(0.8),
+        weighted_yield: "3.20",
+      }),
+      row({
+        category_id: "large_low_yield_asset",
+        category_name: "大规模低收益资产",
+        cnx_scale: yi(1000),
+        business_net_income: yi(0.3),
+        weighted_yield: "1.20",
+      }),
+      row({
+        category_id: "loss_asset",
+        category_name: "亏损资产",
+        cnx_scale: yi(550),
+        business_net_income: yi(-0.4),
+        weighted_yield: "1.10",
+      }),
+      row({
+        category_id: "unexplained_asset",
+        category_name: "未解释资产",
+        cnx_scale: yi(800),
+        business_net_income: yi(1.1),
+        weighted_yield: "2.40",
+      }),
+    ];
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows,
+      grandTotal: row({
+        category_id: "grand_total",
+        category_name: "全表合计",
+        side: "all",
+        business_net_income: yi(1.8),
+        is_total: true,
+      }),
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "large_low_yield_asset",
+            category_name: "大规模低收益资产",
+            effects: {
+              delta_business_net_income: yi(-0.2),
+              rate_effect: yi(-0.16),
+            },
+          }),
+          attributionRow({
+            category_id: "loss_asset",
+            category_name: "亏损资产",
+            effects: {
+              delta_business_net_income: yi(-0.5),
+              rate_effect: yi(-0.3),
+            },
+          }),
+          attributionRow({
+            category_id: "unexplained_asset",
+            category_name: "未解释资产",
+            effects: {
+              delta_business_net_income: yi(0.6),
+              unexplained_effect: yi(0.45),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.actionQueue.emptyCopy).toBeNull();
+    expect(surface.actionQueue.rows.map((item) => item.actionKind)).toEqual([
+      "shrink_or_limit",
+      "review_attribution",
+      "reprice_or_improve",
+      "selective_growth",
+    ]);
+    expect(surface.actionQueue.rows).toEqual([
+      expect.objectContaining({
+        priorityLabel: "P1",
+        categoryId: "loss_asset",
+        actionLabel: "压降或限额复核",
+        triggerLabel: "负贡献叠加收益偏低",
+        primaryMetricLabel: "-0.40",
+      }),
+      expect.objectContaining({
+        priorityLabel: "P2",
+        categoryId: "unexplained_asset",
+        actionLabel: "归因复核",
+        triggerLabel: "未解释差异偏高",
+        primaryMetricLabel: "+0.45",
+      }),
+      expect.objectContaining({
+        priorityLabel: "P3",
+        categoryId: "large_low_yield_asset",
+        actionLabel: "重定价/提效",
+        triggerLabel: "高规模低收益",
+        primaryMetricLabel: "1.20%",
+      }),
+      expect.objectContaining({
+        priorityLabel: "P4",
+        categoryId: "selective_growth_asset",
+        actionLabel: "选择性扩张",
+        triggerLabel: "低规模高收益",
+        primaryMetricLabel: "3.20%",
+      }),
+    ]);
+    expect(surface.actionQueue.rows[0]?.evidenceItems).toEqual([
+      "净营收 -0.40 亿元",
+      "规模 550.00 亿元",
+      "收益率 1.10%",
+      "变动 -0.50 亿元",
+    ]);
+  });
+
+  it("requires low-yield evidence before placing a loss row in the operating action queue", () => {
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows: [
+        row({
+          category_id: "high_yield_loss_asset",
+          category_name: "高收益亏损资产",
+          cnx_scale: yi(120),
+          business_net_income: yi(-0.4),
+          weighted_yield: "4.00",
+        }),
+        row({
+          category_id: "low_yield_scale_asset",
+          category_name: "高规模低收益资产",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.6),
+          weighted_yield: "1.10",
+        }),
+        row({
+          category_id: "core_asset",
+          category_name: "核心资产",
+          cnx_scale: yi(900),
+          business_net_income: yi(1.2),
+          weighted_yield: "3.00",
+        }),
+      ],
+      grandTotal: row({
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(1.4),
+        is_total: true,
+      }),
+      attribution: attributionPayload({ rows: [] }),
+    });
+
+    expect(surface.actionQueue.rows.map((item) => item.actionKind)).toEqual(["reprice_or_improve"]);
+    expect(surface.actionQueue.rows[0]).toEqual(expect.objectContaining({
+      categoryId: "low_yield_scale_asset",
+      actionLabel: "重定价/提效",
+      triggerLabel: "高规模低收益",
+    }));
+    expect(surface.actionQueue.rows.map((item) => item.categoryId)).not.toContain("high_yield_loss_asset");
+  });
+
+  it("uses absolute unexplained attribution and avoids duplicate action rows for the same category", () => {
+    const surface = selectProductCategoryOperatingAnalysisSurface({
+      rows: [
+        row({
+          category_id: "loss_reprice_asset",
+          category_name: "亏损低收益资产",
+          cnx_scale: yi(1200),
+          business_net_income: yi(-0.7),
+          weighted_yield: "1.00",
+        }),
+        row({
+          category_id: "next_reprice_asset",
+          category_name: "次级低收益资产",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.4),
+          weighted_yield: "1.10",
+        }),
+        row({
+          category_id: "negative_unexplained_asset",
+          category_name: "负向未解释资产",
+          cnx_scale: yi(800),
+          business_net_income: yi(0.5),
+          weighted_yield: "2.20",
+        }),
+        row({
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(120),
+          business_net_income: yi(0.8),
+          weighted_yield: "3.20",
+        }),
+      ],
+      grandTotal: row({
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(1),
+        is_total: true,
+      }),
+      attribution: attributionPayload({
+        rows: [
+          attributionRow({
+            category_id: "negative_unexplained_asset",
+            category_name: "负向未解释资产",
+            effects: {
+              delta_business_net_income: yi(-0.8),
+              unexplained_effect: yi(-0.65),
+            },
+          }),
+          attributionRow({
+            category_id: "loss_reprice_asset",
+            category_name: "亏损低收益资产",
+            effects: {
+              delta_business_net_income: yi(-0.7),
+              rate_effect: yi(-0.5),
+            },
+          }),
+        ],
+      }),
+    });
+
+    expect(surface.actionQueue.rows.map((item) => item.actionKind)).toEqual([
+      "shrink_or_limit",
+      "review_attribution",
+      "reprice_or_improve",
+      "selective_growth",
+    ]);
+    expect(surface.actionQueue.rows.map((item) => item.categoryId)).toEqual([
+      "loss_reprice_asset",
+      "negative_unexplained_asset",
+      "next_reprice_asset",
+      "growth_asset",
+    ]);
+    expect(surface.actionQueue.rows[1]).toEqual(expect.objectContaining({
+      actionLabel: "归因复核",
+      primaryMetricLabel: "-0.65",
+    }));
+  });
+
   it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
     const baseline = {
       report_date: "2026-02-28",
