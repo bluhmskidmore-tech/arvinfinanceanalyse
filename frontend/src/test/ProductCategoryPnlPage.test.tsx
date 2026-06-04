@@ -410,6 +410,19 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("多情景对比");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("仅承压");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("仅改善");
+    const closure = screen.getByTestId("product-category-scenario-action-closure");
+    expect(closure).toHaveTextContent("情景动作闭环");
+    expect(closure).toHaveTextContent("本期经营动作清单");
+    expect(closure).toHaveTextContent("待处理");
+    expect(closure).toHaveTextContent("建议动作");
+    expect(within(closure).queryByTestId("product-category-scenario-action-memo")).not.toBeInTheDocument();
+    await user.click(within(closure).getAllByRole("button", { name: "复核中" })[0]!);
+    expect(closure).toHaveTextContent("复核中 1");
+    expect(within(closure).queryByTestId("product-category-scenario-action-memo")).not.toBeInTheDocument();
+    await user.click(within(closure).getAllByRole("button", { name: "生成复核备忘" })[0]!);
+    const memo = within(closure).getByTestId("product-category-scenario-action-memo");
+    expect(memo).toHaveTextContent("复核备忘");
+    expect(memo).toHaveTextContent("状态：复核中");
 
     await user.click(screen.getByRole("button", { name: "仅改善" }));
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent(

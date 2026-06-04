@@ -381,6 +381,21 @@ export type ProductCategoryScenarioComparisonRow = {
   tone: "positive" | "negative" | "neutral";
 };
 
+export type ProductCategoryScenarioActionClosureRow = {
+  priorityLabel: string;
+  categoryId: string;
+  categoryLabel: string;
+  sideLabel: string;
+  triggerRateLabel: string;
+  exposure: number;
+  exposureLabel: string;
+  scenarioNetIncomeLabel: string;
+  recommendationLabel: string;
+  evidenceItems: string[];
+  memoLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
 export type ProductCategoryScenarioBreakeven = {
   label: string;
   valueLabel: string;
@@ -455,6 +470,7 @@ export type ProductCategoryScenarioSensitivitySurface = {
   actionItems: ProductCategoryScenarioActionItem[];
   heatRows: ProductCategoryScenarioHeatRow[];
   comparisonRows: ProductCategoryScenarioComparisonRow[];
+  actionClosureRows: ProductCategoryScenarioActionClosureRow[];
   pressureSummary: ProductCategoryScenarioPressureSummary;
   analysisCopy: string | null;
   emptyCopy: string | null;
@@ -1429,6 +1445,48 @@ function selectProductCategoryScenarioComparisonRows(input: {
     .sort((left, right) => right.maxAbsDelta - left.maxAbsDelta);
 }
 
+function productCategoryScenarioClosureRecommendation(row: ProductCategoryScenarioComparisonRow): string {
+  if (row.sideLabel === "负债端") {
+    return "复核负债成本、FTP 曲线与定价传导";
+  }
+  if (row.worstDelta !== null && row.worstDelta <= -0.5) {
+    return "压降 FTP 敞口并复核规模、收益率输入";
+  }
+  return "复核 FTP 敞口、规模与收益率输入";
+}
+
+function selectProductCategoryScenarioActionClosureRows(
+  comparisonRows: ProductCategoryScenarioComparisonRow[],
+): ProductCategoryScenarioActionClosureRow[] {
+  return comparisonRows
+    .filter((row) => row.worstDelta !== null && row.worstDelta < 0)
+    .sort((left, right) => Math.abs(right.worstDelta ?? 0) - Math.abs(left.worstDelta ?? 0))
+    .slice(0, 4)
+    .map((row, index) => {
+      const worstCell = row.cells.find((cell) => cell.rateLabel === row.worstRateLabel);
+      const scenarioNetIncomeLabel = worstCell?.netIncomeLabel ?? "-";
+      const recommendationLabel = productCategoryScenarioClosureRecommendation(row);
+      return {
+        priorityLabel: `动作 ${index + 1}`,
+        categoryId: row.categoryId,
+        categoryLabel: row.categoryLabel,
+        sideLabel: row.sideLabel,
+        triggerRateLabel: row.worstRateLabel,
+        exposure: row.worstDelta ?? 0,
+        exposureLabel: row.worstDeltaLabel,
+        scenarioNetIncomeLabel,
+        recommendationLabel,
+        evidenceItems: [
+          `正式基线净营收 ${row.baselineNetIncomeLabel} 亿元`,
+          `${row.worstRateLabel} 情景净营收 ${scenarioNetIncomeLabel} 亿元`,
+          `较基线 ${row.worstDeltaLabel} 亿元`,
+        ],
+        memoLabel: `${row.categoryLabel}在 ${row.worstRateLabel} 情景较基线 ${row.worstDeltaLabel} 亿元；${recommendationLabel}。`,
+        tone: row.tone,
+      };
+    });
+}
+
 function productCategoryScenarioBaselineRelation(delta: number): string {
   if (delta > 0) {
     return `高于基线 ${formatSignedProductCategoryYi(delta)}`;
@@ -1823,6 +1881,7 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       actionItems: [],
       heatRows: [],
       comparisonRows: [],
+      actionClosureRows: [],
       pressureSummary: EMPTY_PRODUCT_CATEGORY_SCENARIO_PRESSURE_SUMMARY,
       analysisCopy: null,
       emptyCopy: "当前尚未返回可比较的 FTP 情景结果。",
@@ -1891,6 +1950,10 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
   const best = sortedByGrand[0];
   const worst = sortedByGrand[sortedByGrand.length - 1];
   const riskRows = selectProductCategoryScenarioRiskRows(rows);
+  const comparisonRows = selectProductCategoryScenarioComparisonRows({
+    baselineRowsById,
+    scenarios: input.scenarios,
+  });
   return {
     baselineGrandTotalLabel: formatProductCategoryValue(input.baseline.grand_total.business_net_income),
     rows,
@@ -1902,10 +1965,8 @@ export function selectProductCategoryScenarioSensitivitySurface(input: {
       baselineRowsById,
       scenarios: input.scenarios,
     }),
-    comparisonRows: selectProductCategoryScenarioComparisonRows({
-      baselineRowsById,
-      scenarios: input.scenarios,
-    }),
+    comparisonRows,
+    actionClosureRows: selectProductCategoryScenarioActionClosureRows(comparisonRows),
     pressureSummary: selectProductCategoryScenarioPressureSummary({
       baselineRowsById,
       comparableRows,

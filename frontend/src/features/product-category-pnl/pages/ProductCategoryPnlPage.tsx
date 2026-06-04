@@ -94,6 +94,7 @@ const sectionDescriptionStyle = {
 type ScenarioReviewActionStatus = "pending" | "confirmed" | "issue";
 type ScenarioReviewIssueReason = "basis" | "ftp" | "attribution" | "data";
 type ScenarioComparisonFilter = "all" | "pressure" | "improvement";
+type ScenarioActionClosureStatus = "todo" | "reviewing" | "closed" | "issue";
 
 const SCENARIO_REVIEW_ACTION_STATUS_OPTIONS: ReadonlyArray<
   readonly [ScenarioReviewActionStatus, string]
@@ -118,6 +119,15 @@ const SCENARIO_COMPARISON_FILTER_OPTIONS: ReadonlyArray<
   ["all", "全部"],
   ["pressure", "仅承压"],
   ["improvement", "仅改善"],
+];
+
+const SCENARIO_ACTION_CLOSURE_STATUS_OPTIONS: ReadonlyArray<
+  readonly [ScenarioActionClosureStatus, string]
+> = [
+  ["todo", "待处理"],
+  ["reviewing", "复核中"],
+  ["closed", "已关闭"],
+  ["issue", "有差异"],
 ];
 
 function formatProductCategoryRefreshStatusLine(
@@ -1215,12 +1225,120 @@ function ProductCategoryScenarioComparisonPanel(props: {
   );
 }
 
+function ProductCategoryScenarioActionClosurePanel(props: {
+  rows: ProductCategoryScenarioSensitivitySurface["actionClosureRows"];
+  statuses: Record<string, ScenarioActionClosureStatus>;
+  memoCategoryId: string | null;
+  onSetStatus: (categoryId: string, status: ScenarioActionClosureStatus) => void;
+  onSelectMemo: (categoryId: string) => void;
+}) {
+  const statusCounts = SCENARIO_ACTION_CLOSURE_STATUS_OPTIONS.map(([status, label]) => ({
+    status,
+    label,
+    count: props.rows.filter((row) => (props.statuses[row.categoryId] ?? "todo") === status).length,
+  }));
+  const memoRow = props.memoCategoryId
+    ? (props.rows.find((row) => row.categoryId === props.memoCategoryId) ?? null)
+    : null;
+  const memoStatusLabel = memoRow
+    ? (SCENARIO_ACTION_CLOSURE_STATUS_OPTIONS.find(
+        ([status]) => status === (props.statuses[memoRow.categoryId] ?? "todo"),
+      )?.[1] ?? "待处理")
+    : "待处理";
+
+  return (
+    <div
+      className="product-category-financial-analysis__closure"
+      data-testid="product-category-scenario-action-closure"
+    >
+      <div className="product-category-financial-analysis__closure-head">
+        <div>
+          <div className="product-category-financial-analysis__scenario-kicker">情景动作闭环</div>
+          <h4>本期经营动作清单</h4>
+          <p>自动挑出承压产品，给出建议动作、复核证据和当前处理状态。</p>
+        </div>
+        <div className="product-category-financial-analysis__closure-totals">
+          {statusCounts.map((item) => (
+            <b key={item.status}>
+              {item.label} {item.count}
+            </b>
+          ))}
+        </div>
+      </div>
+      {props.rows.length === 0 ? (
+        <div className="product-category-financial-analysis__empty">当前情景暂无需要闭环的承压动作。</div>
+      ) : (
+        <>
+          <div className="product-category-financial-analysis__closure-list">
+            {props.rows.map((row) => {
+              const currentStatus = props.statuses[row.categoryId] ?? "todo";
+              return (
+                <article className="product-category-financial-analysis__closure-card" key={row.categoryId}>
+                  <div className="product-category-financial-analysis__closure-card-head">
+                    <span>{row.priorityLabel}</span>
+                    <strong>{row.categoryLabel}</strong>
+                    <b className={`is-${row.tone}`}>{row.exposureLabel}</b>
+                  </div>
+                  <p>
+                    {row.sideLabel} · {row.triggerRateLabel} 情景净营收 {row.scenarioNetIncomeLabel} 亿元
+                  </p>
+                  <div className="product-category-financial-analysis__closure-action">
+                    <span>建议动作</span>
+                    <b>{row.recommendationLabel}</b>
+                  </div>
+                  <div className="product-category-financial-analysis__closure-evidence">
+                    {row.evidenceItems.map((item) => (
+                      <small key={item}>{item}</small>
+                    ))}
+                  </div>
+                  <div className="product-category-financial-analysis__closure-status">
+                    {SCENARIO_ACTION_CLOSURE_STATUS_OPTIONS.map(([status, label]) => (
+                      <button
+                        aria-pressed={currentStatus === status}
+                        key={status}
+                        onClick={() => props.onSetStatus(row.categoryId, status)}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="product-category-financial-analysis__closure-memo-button"
+                    onClick={() => props.onSelectMemo(row.categoryId)}
+                    type="button"
+                  >
+                    生成复核备忘
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+          {memoRow ? (
+            <div
+              className="product-category-financial-analysis__closure-memo"
+              data-testid="product-category-scenario-action-memo"
+            >
+              <span>复核备忘</span>
+              <p>
+                {memoRow.memoLabel} 状态：{memoStatusLabel}。
+              </p>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ProductCategoryFinancialAnalysisPanel(props: {
   scenarioSensitivity: ProductCategoryScenarioSensitivitySurface;
   scenarioExplanation: ProductCategoryScenarioExplanation | null;
   selectedScenarioReviewCategoryId: string | null;
   scenarioReviewActionStatuses: Record<string, ScenarioReviewActionStatus>;
   scenarioReviewIssueReasons: Record<string, ScenarioReviewIssueReason>;
+  scenarioActionClosureStatuses: Record<string, ScenarioActionClosureStatus>;
+  scenarioActionClosureMemoCategoryId: string | null;
   scenarioSensitivityRequested: boolean;
   scenarioSensitivityLoading: boolean;
   scenarioSensitivityError: boolean;
@@ -1242,6 +1360,8 @@ function ProductCategoryFinancialAnalysisPanel(props: {
     status: ScenarioReviewActionStatus,
   ) => void;
   onResetScenarioReviewActions: (categoryId: string, actionCount: number) => void;
+  onSetScenarioActionClosureStatus: (categoryId: string, status: ScenarioActionClosureStatus) => void;
+  onSelectScenarioActionClosureMemo: (categoryId: string) => void;
   waterfall: ProductCategoryAttributionWaterfallSurface;
   decisionFocus: ProductCategoryDecisionFocusSurface;
 }) {
@@ -1376,6 +1496,13 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                   />
                 ) : null}
               </div>
+              <ProductCategoryScenarioActionClosurePanel
+                memoCategoryId={props.scenarioActionClosureMemoCategoryId}
+                onSelectMemo={props.onSelectScenarioActionClosureMemo}
+                onSetStatus={props.onSetScenarioActionClosureStatus}
+                rows={props.scenarioSensitivity.actionClosureRows}
+                statuses={props.scenarioActionClosureStatuses}
+              />
               <ProductCategoryScenarioComparisonPanel
                 filter={scenarioComparisonFilter}
                 onFilterChange={setScenarioComparisonFilter}
@@ -1777,6 +1904,10 @@ export default function ProductCategoryPnlPage() {
   const [scenarioReviewIssueReasons, setScenarioReviewIssueReasons] = useState<
     Record<string, ScenarioReviewIssueReason>
   >({});
+  const [scenarioActionClosureStatuses, setScenarioActionClosureStatuses] = useState<
+    Record<string, ScenarioActionClosureStatus>
+  >({});
+  const [scenarioActionClosureMemoCategoryId, setScenarioActionClosureMemoCategoryId] = useState<string | null>(null);
   const [loadedTrendDiagnosticsKey, setLoadedTrendDiagnosticsKey] = useState("");
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
@@ -2031,6 +2162,15 @@ export default function ProductCategoryPnlPage() {
       return next;
     });
   }, []);
+  const handleScenarioActionClosureStatus = useCallback(
+    (categoryId: string, status: ScenarioActionClosureStatus) => {
+      setScenarioActionClosureStatuses((current) => ({
+        ...current,
+        [categoryId]: status,
+      }));
+    },
+    [],
+  );
   const attributionWaterfallSurface = useMemo(
     () => selectProductCategoryAttributionWaterfallSurface(attributionQuery.data?.result),
     [attributionQuery.data?.result],
@@ -3149,6 +3289,8 @@ export default function ProductCategoryPnlPage() {
           selectedScenarioReviewCategoryId={selectedScenarioExplanationCategoryId}
           scenarioReviewActionStatuses={scenarioReviewActionStatuses}
           scenarioReviewIssueReasons={scenarioReviewIssueReasons}
+          scenarioActionClosureStatuses={scenarioActionClosureStatuses}
+          scenarioActionClosureMemoCategoryId={scenarioActionClosureMemoCategoryId}
           scenarioSensitivityRequested={scenarioSensitivityRequested}
           scenarioSensitivityLoading={scenarioSensitivityQueries.some((query) => query.isLoading)}
           scenarioSensitivityError={scenarioSensitivityQueries.some((query) => query.isError)}
@@ -3163,6 +3305,8 @@ export default function ProductCategoryPnlPage() {
           onResetScenarioReviewActions={handleResetScenarioReviewActions}
           onSetScenarioReviewActionStatus={handleScenarioReviewActionStatus}
           onSetScenarioReviewIssueReason={handleScenarioReviewIssueReason}
+          onSetScenarioActionClosureStatus={handleScenarioActionClosureStatus}
+          onSelectScenarioActionClosureMemo={setScenarioActionClosureMemoCategoryId}
           waterfall={attributionWaterfallSurface}
           decisionFocus={decisionFocusSurface}
         />

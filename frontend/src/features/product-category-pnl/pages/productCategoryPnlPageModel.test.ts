@@ -598,6 +598,31 @@ describe("productCategoryPnlPageModel", () => {
         rangeLabel: "0.30",
       }),
     ]);
+    expect(surface.actionClosureRows).toEqual([
+      expect.objectContaining({
+        priorityLabel: "动作 1",
+        categoryId: "bond_ac",
+        categoryLabel: "AC债券投资",
+        sideLabel: "资产端",
+        triggerRateLabel: "2.00%",
+        exposureLabel: "-0.80",
+        scenarioNetIncomeLabel: "4.20",
+        recommendationLabel: "压降 FTP 敞口并复核规模、收益率输入",
+        evidenceItems: [
+          "正式基线净营收 5.00 亿元",
+          "2.00% 情景净营收 4.20 亿元",
+          "较基线 -0.80 亿元",
+        ],
+        memoLabel: "AC债券投资在 2.00% 情景较基线 -0.80 亿元；压降 FTP 敞口并复核规模、收益率输入。",
+      }),
+      expect.objectContaining({
+        priorityLabel: "动作 2",
+        categoryId: "repo_assets",
+        categoryLabel: "买入返售",
+        triggerRateLabel: "2.00%",
+        exposureLabel: "-0.10",
+      }),
+    ]);
     expect(surface.analysisCopy).toBe("FTP 上行时全表净营收承压，最差情景较基线 -0.90 亿元。");
     expect(surface.emptyCopy).toBeNull();
   });

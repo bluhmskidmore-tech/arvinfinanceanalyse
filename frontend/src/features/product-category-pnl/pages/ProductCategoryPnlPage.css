@@ -779,6 +779,184 @@
   font-weight: 850;
 }
 
+.product-category-financial-analysis__closure {
+  display: grid;
+  gap: var(--moss-space-3);
+  padding: var(--moss-space-3);
+  border: 1px solid rgba(180, 83, 9, 0.22);
+  border-radius: var(--moss-radius-sm);
+  background: #fffaf0;
+}
+
+.product-category-financial-analysis__closure-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--moss-space-3);
+  align-items: flex-start;
+}
+
+.product-category-financial-analysis__closure-head h4 {
+  margin: 2px 0;
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.product-category-financial-analysis__closure-head p {
+  margin: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.product-category-financial-analysis__closure-totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 6px;
+  min-width: 160px;
+}
+
+.product-category-financial-analysis__closure-totals b {
+  padding: 6px 8px;
+  border: 1px solid rgba(180, 83, 9, 0.2);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-neutral-800);
+  font-size: 11px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.product-category-financial-analysis__closure-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--moss-space-2);
+}
+
+.product-category-financial-analysis__closure-card {
+  display: grid;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.product-category-financial-analysis__closure-card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--moss-space-2);
+  align-items: center;
+}
+
+.product-category-financial-analysis__closure-card-head span {
+  color: var(--moss-color-warning-700);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.product-category-financial-analysis__closure-card-head strong,
+.product-category-financial-analysis__closure-card-head b {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.product-category-financial-analysis__closure-card p {
+  margin: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.product-category-financial-analysis__closure-action {
+  display: grid;
+  gap: 3px;
+}
+
+.product-category-financial-analysis__closure-action span,
+.product-category-financial-analysis__closure-memo span {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.product-category-financial-analysis__closure-action b {
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.product-category-financial-analysis__closure-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.product-category-financial-analysis__closure-evidence small {
+  padding: 4px 7px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+}
+
+.product-category-financial-analysis__closure-status {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-financial-analysis__closure-status button {
+  min-height: 26px;
+  padding: 4px 5px;
+  border: 0;
+  border-right: 1px solid var(--moss-color-neutral-200);
+  background: transparent;
+  color: var(--moss-color-neutral-600);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.product-category-financial-analysis__closure-status button:last-child {
+  border-right: 0;
+}
+
+.product-category-financial-analysis__closure-status button[aria-pressed="true"] {
+  background: var(--moss-color-warning-600);
+  color: #ffffff;
+}
+
+.product-category-financial-analysis__closure-memo-button {
+  min-height: 28px;
+  border: 1px solid rgba(180, 83, 9, 0.3);
+  border-radius: 999px;
+  background: #fff7ed;
+  color: var(--moss-color-warning-700);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.product-category-financial-analysis__closure-memo {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--moss-color-warning-600);
+  background: #ffffff;
+}
+
+.product-category-financial-analysis__closure-memo p {
+  margin: 0;
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .product-category-financial-analysis__pressure-pack {
   display: grid;
   gap: var(--moss-space-3);
