@@ -16,6 +16,7 @@ from backend.app.core_finance.macro.equity_shadow_portfolio import (
     compute_equity_shadow_portfolio_report,
 )
 from backend.app.governance.settings import get_settings
+from tests.test_macro_toolkit_scripts import MACRO_TOOLKIT_READ_HEADERS, _seed_macro_toolkit_read_scope
 
 
 def test_shadow_portfolio_report_marks_duckdb_busy_when_file_is_locked(
@@ -44,13 +45,17 @@ def test_macro_toolkit_strategy_endpoint_exposes_read_only_shadow_portfolio_repo
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_shadow_report_db(duckdb_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
     try:
-        response = client.get("/ui/macro/toolkit/analysis/strategy-summaries")
+        response = client.get(
+            "/ui/macro/toolkit/analysis/strategy-summaries",
+            headers=MACRO_TOOLKIT_READ_HEADERS,
+        )
     finally:
         get_settings.cache_clear()
 
@@ -113,13 +118,17 @@ def test_macro_toolkit_strategy_endpoint_exposes_unavailable_shadow_portfolio_re
     duckdb_path = tmp_path / "moss.duckdb"
     duckdb.connect(str(duckdb_path), read_only=False).close()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
     try:
-        response = client.get("/ui/macro/toolkit/analysis/strategy-summaries")
+        response = client.get(
+            "/ui/macro/toolkit/analysis/strategy-summaries",
+            headers=MACRO_TOOLKIT_READ_HEADERS,
+        )
     finally:
         get_settings.cache_clear()
 

@@ -7,9 +7,11 @@ from fastapi.testclient import TestClient
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.governance.settings import get_settings
 from tests.test_macro_toolkit_scripts import (
+    MACRO_TOOLKIT_READ_HEADERS,
     _seed_choice_stock_factor_snapshot,
     _seed_choice_stock_strategy_db,
     _seed_choice_tushare_macro_db,
+    _seed_macro_toolkit_read_scope,
 )
 
 
@@ -58,13 +60,17 @@ def test_macro_toolkit_uses_latest_factor_snapshot_not_newer_than_price_date(tmp
     finally:
         conn.close()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
     try:
-        response = client.get("/ui/macro/toolkit/analysis/strategy-summaries")
+        response = client.get(
+            "/ui/macro/toolkit/analysis/strategy-summaries",
+            headers=MACRO_TOOLKIT_READ_HEADERS,
+        )
     finally:
         get_settings.cache_clear()
 
