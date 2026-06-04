@@ -7013,3 +7013,53 @@
     white-space: nowrap;
   }
 }
+
+/* Narrow hero pass: keep the conclusion strip numeric and remove long provenance text. */
+@media (max-width: 900px) {
+  .stock-analysis-page__dh-hero-status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+  }
+
+  .stock-analysis-page__dh-hero-status-strip span {
+    min-height: 32px;
+  }
+
+  .stock-analysis-page__dh-hero-status-strip span:nth-child(n + 5) {
+    display: none !important;
+  }
+}
+
+/* Narrow decision rail pass: turn the verdict sentence into a compact status row. */
+@media (max-width: 900px) {
+  .stock-analysis-page__rail-verdict {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 7px 8px;
+  }
+
+  .stock-analysis-page__rail-verdict-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .stock-analysis-page__rail-verdict-body {
+    align-content: center;
+    gap: 0;
+  }
+
+  .stock-analysis-page__rail-verdict-body strong {
+    display: none;
+  }
+
+  .stock-analysis-page__rail-verdict-label {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .stock-analysis-page__rail-verdict-kpis {
+    display: grid;
+    grid-template-columns: repeat(2, 46px);
+    margin: 0;
+  }
+}

@@ -15,6 +15,7 @@ import {
   buildCycleMacroLayerSummary,
   buildDataBoundarySummary,
   buildDecisionSummary,
+  buildDeepAnalysisGateSummary,
   buildStockAnalysisPagePurpose,
   buildReviewQueueEmptyState,
   localizeImplementationStage,
@@ -275,7 +276,7 @@ describe("stockAnalysisPageModel", () => {
     const sectors = buildSectorRows(strategyPayload);
 
     expect(card.title).toBe("市场状态");
-    expect(card.state).toBe("WARM");
+    expect(card.state).toBe("温和");
     expect(card.exposureLabel).toBe("40%");
     expect(card.passedLabel).toBe("2 / 4 条件通过");
     expect(card.warnings.join(" ")).toContain("市场宽度输入不可用");
@@ -306,6 +307,48 @@ describe("stockAnalysisPageModel", () => {
     expect(conditionText).not.toContain("Phase 1 slice");
     expect(sectors[0].sectorName).toBe("AI");
     expect(sectors[0].pctChange).toBe("4.80%");
+  });
+
+  it("localizes unknown vendor market gate states before building page copy", () => {
+    const vendorMarketState = "external_vendor_market_state";
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      market_gate: {
+        ...strategyPayload.market_gate,
+        state: vendorMarketState as LivermoreStrategyPayload["market_gate"]["state"],
+      },
+    };
+
+    const marketCard = buildMarketStateCard(payload);
+    const kpi = buildStockAnalysisKpiStrip(payload, confluencePayload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+    }).find((item) => item.key === "market-state");
+    const closedLoop = buildClosedLoopSummary(payload, {
+      ...confluencePayload,
+      closed_loop_state: {
+        entry_gate: "open",
+        exit_gate: "watch",
+        replay_status: "available",
+        lineage_status: "complete",
+      },
+    });
+    const entryGate = closedLoop.items.find((item) => item.key === "entry_gate");
+    const deepSummary = buildDeepAnalysisGateSummary({ gateState: vendorMarketState });
+    const copy = [
+      localizeMarketDataStatus(vendorMarketState),
+      marketCard.state,
+      kpi?.value,
+      entryGate?.detail,
+      deepSummary.line,
+    ].join(" ");
+
+    expect(localizeMarketDataStatus(vendorMarketState)).toBe("状态待确认");
+    expect(marketCard.state).toBe("状态待确认");
+    expect(kpi?.value).toBe("状态待确认");
+    expect(entryGate?.detail).toContain("市场门控 状态待确认");
+    expect(deepSummary.line).toContain("当前市场门控：状态待确认");
+    expect(copy).not.toContain(vendorMarketState);
   });
 
   it("builds candidate evidence with counter-evidence and invalidation rules", () => {

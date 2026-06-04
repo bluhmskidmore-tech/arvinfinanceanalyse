@@ -1381,6 +1381,37 @@ describe("StockAnalysisPage", () => {
     );
   });
 
+  it("keeps narrow hero status strip short and numeric", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const narrowHeroStart = css.indexOf("Narrow hero pass");
+    const narrowHeroCss = css.slice(narrowHeroStart);
+
+    expect(narrowHeroStart).toBeGreaterThan(-1);
+    expect(narrowHeroCss).toMatch(
+      /\.stock-analysis-page__dh-hero-status-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(narrowHeroCss).toMatch(
+      /\.stock-analysis-page__dh-hero-status-strip span:nth-child\(n \+ 5\)\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+  });
+
+  it("keeps narrow decision verdict compact instead of sentence-led", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const narrowRailStart = css.indexOf("Narrow decision rail pass");
+    const narrowRailCss = css.slice(narrowRailStart);
+
+    expect(narrowRailStart).toBeGreaterThan(-1);
+    expect(narrowRailCss).toMatch(
+      /\.stock-analysis-page__rail-verdict\s*\{[\s\S]*?grid-template-columns:\s*22px\s*minmax\(0,\s*1fr\)\s*auto/,
+    );
+    expect(narrowRailCss).toMatch(
+      /\.stock-analysis-page__rail-verdict-body strong\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(narrowRailCss).toMatch(
+      /\.stock-analysis-page__rail-verdict-kpis\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*46px\)/,
+    );
+  });
+
   it("keeps the narrow first screen focused on summary, KPI, and sector chart", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
     const finalRailStart = css.indexOf("Right rail final polish");

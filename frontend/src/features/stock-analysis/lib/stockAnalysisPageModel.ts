@@ -2118,7 +2118,7 @@ export function buildMarketStateCard(
 
   return {
     title: "市场状态",
-    state: gate.state,
+    state: localizeMarketDataStatus(gate.state),
     exposureLabel: formatRatioAsPercent(gate.exposure),
     passedLabel: `${gate.passed_conditions} / ${gate.required_conditions} 条件通过`,
     basisLabel: localizeBasisLabel(payload.basis),
@@ -3088,7 +3088,7 @@ export function localizeMarketDataStatus(status: string | null | undefined): str
     OVERHEAT: "过热",
     UNKNOWN: "状态待确认",
   };
-  return labels[normalized] ?? status ?? "状态待补";
+  return labels[normalized] ?? (normalized ? "状态待确认" : "状态待补");
 }
 
 function localizeThemeUnsupportedSummary(reason: string): { detail: string; gateHint?: string } {
