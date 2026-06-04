@@ -38,6 +38,7 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
+  selectProductCategoryOperatingActionBacktestSurface,
   selectProductCategoryRootCauseSurface,
   selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
@@ -550,6 +551,145 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.actionQueue.rows[1]).toEqual(expect.objectContaining({
       actionLabel: "归因复核",
       primaryMetricLabel: "-0.65",
+    }));
+  });
+
+  it("backtests operating action signals against the next monthly payload", () => {
+    const january: ProductCategoryPnlPayload = {
+      report_date: "2026-01-31",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          report_date: "2026-01-31",
+          category_id: "loss_asset",
+          category_name: "亏损资产",
+          cnx_scale: yi(600),
+          business_net_income: yi(-0.5),
+          weighted_yield: "1.00",
+        }),
+        row({
+          report_date: "2026-01-31",
+          category_id: "scale_asset",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.2),
+          weighted_yield: "1.20",
+        }),
+        row({
+          report_date: "2026-01-31",
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(100),
+          business_net_income: yi(0.4),
+          weighted_yield: "3.20",
+        }),
+      ],
+      asset_total: row({ report_date: "2026-01-31", category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: "2026-01-31",
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: "2026-01-31",
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.1),
+        is_total: true,
+      }),
+    };
+    const february: ProductCategoryPnlPayload = {
+      ...january,
+      report_date: "2026-02-28",
+      rows: [
+        row({
+          report_date: "2026-02-28",
+          category_id: "loss_asset",
+          category_name: "亏损资产",
+          cnx_scale: yi(500),
+          business_net_income: yi(-0.2),
+          weighted_yield: "1.40",
+        }),
+        row({
+          report_date: "2026-02-28",
+          category_id: "scale_asset",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1100),
+          business_net_income: yi(0.15),
+          weighted_yield: "1.10",
+        }),
+        row({
+          report_date: "2026-02-28",
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(150),
+          business_net_income: yi(0.5),
+          weighted_yield: "3.10",
+        }),
+      ],
+      asset_total: row({ report_date: "2026-02-28", category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: "2026-02-28",
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: "2026-02-28",
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.45),
+        is_total: true,
+      }),
+    };
+
+    const surface = selectProductCategoryOperatingActionBacktestSurface({
+      payloads: [january, february],
+      attributionsByReportDate: new Map([
+        ["2026-01-31", attributionPayload({ report_date: "2026-01-31", rows: [] })],
+      ]),
+    });
+
+    expect(surface.emptyCopy).toBeNull();
+    expect(surface.summary).toEqual(expect.objectContaining({
+      evaluatedMonthCount: 1,
+      signalCount: 3,
+      latestPendingCount: 3,
+      coverageLabel: "2026-01-31 至 2026-01-31",
+    }));
+    expect(surface.actionRows.map((item) => item.actionKind)).toEqual([
+      "shrink_or_limit",
+      "reprice_or_improve",
+      "selective_growth",
+    ]);
+    expect(surface.actionRows[0]).toEqual(expect.objectContaining({
+      actionLabel: "压降或限额复核",
+      signalCount: 1,
+      hitRateLabel: "100.0%",
+      averageNetIncomeDeltaLabel: "+0.30",
+      averageYieldDeltaBpLabel: "+40.0bp",
+      averageScaleDeltaLabel: "-100.00",
+    }));
+    expect(surface.actionRows[1]).toEqual(expect.objectContaining({
+      actionLabel: "重定价/提效",
+      hitRateLabel: "0.0%",
+      averageYieldDeltaBpLabel: "-10.0bp",
+    }));
+    expect(surface.actionRows[2]).toEqual(expect.objectContaining({
+      actionLabel: "选择性扩张",
+      hitRateLabel: "100.0%",
+      averageScaleDeltaLabel: "+50.00",
+    }));
+    expect(surface.examples[0]).toEqual(expect.objectContaining({
+      reportDate: "2026-01-31",
+      nextReportDate: "2026-02-28",
+      categoryLabel: "亏损资产",
+      actionLabel: "压降或限额复核",
+      outcomeLabel: "命中",
+      netIncomeDeltaLabel: "+0.30",
     }));
   });
 

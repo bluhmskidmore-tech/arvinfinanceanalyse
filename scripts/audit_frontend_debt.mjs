@@ -10,7 +10,7 @@ const baseline = {
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
   apiClientMockOccurrences: 55,
   dashboardStyleFiles: {},
-  totalTsxStyleProps: 2381,
+  totalTsxStyleProps: 2359,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 13,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
@@ -18,7 +18,7 @@ const baseline = {
     "frontend/src/layouts/WorkbenchShell.tsx": 0,
     "frontend/src/features/bond-analytics/components/BondAnalyticsInstitutionalCockpit.tsx": 18,
     "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx": 40,
-    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 38,
+    "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx": 16,
     "frontend/src/features/risk-overview/RiskOverviewPage.tsx": 0,
   },
 };

@@ -313,6 +313,54 @@ export type ProductCategoryOperatingAnalysisSurface = {
   };
 };
 
+export type ProductCategoryOperatingBacktestActionRow = {
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  signalCount: number;
+  hitCount: number;
+  hitRate: number | null;
+  hitRateLabel: string;
+  averageNetIncomeDelta: number | null;
+  averageNetIncomeDeltaLabel: string;
+  averageYieldDeltaBp: number | null;
+  averageYieldDeltaBpLabel: string;
+  averageScaleDelta: number | null;
+  averageScaleDeltaLabel: string;
+  evidenceLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryOperatingBacktestExample = {
+  reportDate: string;
+  nextReportDate: string;
+  categoryId: string;
+  categoryLabel: string;
+  priorityLabel: string;
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  outcomeLabel: string;
+  netIncomeDelta: number | null;
+  netIncomeDeltaLabel: string;
+  yieldDeltaBp: number | null;
+  yieldDeltaBpLabel: string;
+  scaleDelta: number | null;
+  scaleDeltaLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryOperatingBacktestSurface = {
+  summary: {
+    evaluatedMonthCount: number;
+    signalCount: number;
+    latestPendingCount: number;
+    coverageLabel: string;
+    evidenceLabel: string;
+  };
+  actionRows: ProductCategoryOperatingBacktestActionRow[];
+  examples: ProductCategoryOperatingBacktestExample[];
+  emptyCopy: string | null;
+};
+
 export type ProductCategoryScenarioSensitivityRow = {
   rate: string;
   ratePct: number;
@@ -2493,6 +2541,265 @@ function findProductCategoryRow(
   categoryId: string,
 ): ProductCategoryPnlRow | undefined {
   return rows.find((row) => row.category_id === categoryId);
+}
+
+function productCategoryActionLabel(kind: ProductCategoryOperatingActionKind): string {
+  if (kind === "shrink_or_limit") {
+    return "压降或限额复核";
+  }
+  if (kind === "review_attribution") {
+    return "归因复核";
+  }
+  if (kind === "reprice_or_improve") {
+    return "重定价/提效";
+  }
+  return "选择性扩张";
+}
+
+function averageProductCategoryNumber(values: Array<number | null>): number | null {
+  const candidates = values.filter((value): value is number => value !== null && Number.isFinite(value));
+  if (candidates.length === 0) {
+    return null;
+  }
+  return Number((candidates.reduce((total, value) => total + value, 0) / candidates.length).toFixed(2));
+}
+
+function productCategoryRateLabel(rate: number | null): string {
+  if (rate === null || !Number.isFinite(rate)) {
+    return "-";
+  }
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
+function signedProductCategoryBpDeltaLabel(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+  if (value === 0) {
+    return "0.0bp";
+  }
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(1)}bp`;
+}
+
+function productCategoryOutcomeHit(input: {
+  actionKind: ProductCategoryOperatingActionKind;
+  netIncomeDelta: number | null;
+  nextNetIncome: number | null;
+  yieldDeltaBp: number | null;
+  scaleDelta: number | null;
+  currentUnexplainedAbs: number | null;
+  nextUnexplainedAbs: number | null;
+}): boolean | null {
+  if (input.actionKind === "shrink_or_limit") {
+    return input.netIncomeDelta === null ? null : input.netIncomeDelta > 0;
+  }
+  if (input.actionKind === "reprice_or_improve") {
+    return input.yieldDeltaBp === null ? null : input.yieldDeltaBp > 0;
+  }
+  if (input.actionKind === "selective_growth") {
+    if (input.scaleDelta === null || input.nextNetIncome === null) {
+      return null;
+    }
+    return input.scaleDelta > 0 && input.nextNetIncome > 0;
+  }
+  if (input.currentUnexplainedAbs === null || input.nextUnexplainedAbs === null) {
+    return null;
+  }
+  return input.nextUnexplainedAbs < input.currentUnexplainedAbs;
+}
+
+function productCategoryBacktestCurrentUnexplainedAbs(
+  action: ProductCategoryOperatingActionQueueRow,
+): number | null {
+  if (action.actionKind !== "review_attribution") {
+    return null;
+  }
+  const parsed = Number(action.primaryMetricLabel);
+  return Number.isFinite(parsed) ? Math.abs(parsed) : null;
+}
+
+function productCategoryBacktestNextUnexplainedAbs(
+  attribution: ProductCategoryAttributionPayload | null | undefined,
+  rows: ProductCategoryPnlRow[],
+  categoryId: string,
+): number | null {
+  const parentCategoryIds = parentProductCategoryIds(rows);
+  const movement = buildProductCategoryOperatingMovementRows(attribution, parentCategoryIds)
+    .find((row) => row.categoryId === categoryId);
+  if (!movement) {
+    return 0;
+  }
+  return movement.leadingDriverKey === "unexplained_effect"
+    ? Math.abs(movement.leadingDriverValue)
+    : 0;
+}
+
+function productCategoryBacktestEvidenceLabel(kind: ProductCategoryOperatingActionKind): string {
+  if (kind === "shrink_or_limit") {
+    return "命中=次月净营收改善";
+  }
+  if (kind === "reprice_or_improve") {
+    return "命中=次月收益率改善";
+  }
+  if (kind === "selective_growth") {
+    return "命中=次月规模扩张且仍为正贡献";
+  }
+  return "命中=次月未解释差异下降";
+}
+
+function productCategoryBacktestTone(hitRate: number | null): "positive" | "negative" | "neutral" {
+  if (hitRate === null) {
+    return "neutral";
+  }
+  if (hitRate >= 0.5) {
+    return "positive";
+  }
+  if (hitRate < 0.3) {
+    return "negative";
+  }
+  return "neutral";
+}
+
+export function selectProductCategoryOperatingActionBacktestSurface(input: {
+  payloads: ProductCategoryPnlPayload[];
+  attributionsByReportDate?: Map<string, ProductCategoryAttributionPayload | null>;
+}): ProductCategoryOperatingBacktestSurface {
+  const payloads = input.payloads
+    .filter((payload) => payload.view === "monthly")
+    .slice()
+    .sort((left, right) => left.report_date.localeCompare(right.report_date));
+  const latestPayload = payloads[payloads.length - 1];
+  const latestPendingCount = latestPayload
+    ? selectProductCategoryOperatingActionQueue({
+        rows: latestPayload.rows,
+        attribution: input.attributionsByReportDate?.get(latestPayload.report_date),
+        parentCategoryIds: parentProductCategoryIds(latestPayload.rows),
+      }).rows.length
+    : 0;
+  const samples: ProductCategoryOperatingBacktestExample[] = [];
+
+  for (let index = 0; index < payloads.length - 1; index += 1) {
+    const current = payloads[index];
+    const next = payloads[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+    const currentRowsById = new Map(current.rows.map((row) => [row.category_id, row]));
+    const nextRowsById = new Map(next.rows.map((row) => [row.category_id, row]));
+    const currentActions = selectProductCategoryOperatingActionQueue({
+      rows: current.rows,
+      attribution: input.attributionsByReportDate?.get(current.report_date),
+      parentCategoryIds: parentProductCategoryIds(current.rows),
+    }).rows;
+    for (const action of currentActions) {
+      const currentRow = currentRowsById.get(action.categoryId);
+      const nextRow = nextRowsById.get(action.categoryId);
+      if (!currentRow || !nextRow) {
+        continue;
+      }
+      const currentNetIncome = yiNumber(currentRow.business_net_income);
+      const nextNetIncome = yiNumber(nextRow.business_net_income);
+      const netIncomeDelta =
+        currentNetIncome === null || nextNetIncome === null
+          ? null
+          : Number((nextNetIncome - currentNetIncome).toFixed(2));
+      const currentYield = percentNumber(currentRow.weighted_yield);
+      const nextYield = percentNumber(nextRow.weighted_yield);
+      const yieldDeltaBp =
+        currentYield === null || nextYield === null
+          ? null
+          : Number(((nextYield - currentYield) * 100).toFixed(1));
+      const currentScale = yiNumber(currentRow.cnx_scale);
+      const nextScale = yiNumber(nextRow.cnx_scale);
+      const scaleDelta =
+        currentScale === null || nextScale === null
+          ? null
+          : Number((nextScale - currentScale).toFixed(2));
+      const hit = productCategoryOutcomeHit({
+        actionKind: action.actionKind,
+        netIncomeDelta,
+        nextNetIncome,
+        yieldDeltaBp,
+        scaleDelta,
+        currentUnexplainedAbs: productCategoryBacktestCurrentUnexplainedAbs(action),
+        nextUnexplainedAbs: productCategoryBacktestNextUnexplainedAbs(
+          input.attributionsByReportDate?.get(next.report_date),
+          next.rows,
+          action.categoryId,
+        ),
+      });
+      samples.push({
+        reportDate: current.report_date,
+        nextReportDate: next.report_date,
+        categoryId: action.categoryId,
+        categoryLabel: action.categoryLabel,
+        priorityLabel: action.priorityLabel,
+        actionKind: action.actionKind,
+        actionLabel: action.actionLabel,
+        outcomeLabel: hit === null ? "待判定" : hit ? "命中" : "未命中",
+        netIncomeDelta,
+        netIncomeDeltaLabel: signedYiDeltaLabel(netIncomeDelta),
+        yieldDeltaBp,
+        yieldDeltaBpLabel: signedProductCategoryBpDeltaLabel(yieldDeltaBp),
+        scaleDelta,
+        scaleDeltaLabel: signedYiDeltaLabel(scaleDelta),
+        tone: hit === null ? "neutral" : hit ? "positive" : "negative",
+      });
+    }
+  }
+
+  const evaluatedDates = Array.from(new Set(samples.map((sample) => sample.reportDate))).sort();
+  const actionRows = ([
+    "shrink_or_limit",
+    "review_attribution",
+    "reprice_or_improve",
+    "selective_growth",
+  ] as const).flatMap((actionKind) => {
+    const rows = samples.filter((sample) => sample.actionKind === actionKind);
+    if (rows.length === 0) {
+      return [];
+    }
+    const hitCount = rows.filter((row) => row.outcomeLabel === "命中").length;
+    const comparableCount = rows.filter((row) => row.outcomeLabel !== "待判定").length;
+    const hitRate = comparableCount === 0 ? null : hitCount / comparableCount;
+    const averageNetIncomeDelta = averageProductCategoryNumber(rows.map((row) => row.netIncomeDelta));
+    const averageYieldDeltaBp = averageProductCategoryNumber(rows.map((row) => row.yieldDeltaBp));
+    const averageScaleDelta = averageProductCategoryNumber(rows.map((row) => row.scaleDelta));
+    return [{
+      actionKind,
+      actionLabel: productCategoryActionLabel(actionKind),
+      signalCount: rows.length,
+      hitCount,
+      hitRate,
+      hitRateLabel: productCategoryRateLabel(hitRate),
+      averageNetIncomeDelta,
+      averageNetIncomeDeltaLabel: signedYiDeltaLabel(averageNetIncomeDelta),
+      averageYieldDeltaBp,
+      averageYieldDeltaBpLabel: signedProductCategoryBpDeltaLabel(averageYieldDeltaBp),
+      averageScaleDelta,
+      averageScaleDeltaLabel: signedYiDeltaLabel(averageScaleDelta),
+      evidenceLabel: productCategoryBacktestEvidenceLabel(actionKind),
+      tone: productCategoryBacktestTone(hitRate),
+    }];
+  });
+
+  return {
+    summary: {
+      evaluatedMonthCount: evaluatedDates.length,
+      signalCount: samples.length,
+      latestPendingCount,
+      coverageLabel: evaluatedDates.length > 0
+        ? `${evaluatedDates[0]} 至 ${evaluatedDates[evaluatedDates.length - 1]}`
+        : "-",
+      evidenceLabel: "信号来自动作队列；结果使用下一期 monthly 正式口径验证。",
+    },
+    actionRows,
+    examples: samples
+      .slice()
+      .sort((left, right) => Math.abs(right.netIncomeDelta ?? 0) - Math.abs(left.netIncomeDelta ?? 0))
+      .slice(0, 6),
+    emptyCopy: samples.length === 0 ? "需要至少两个连续月度正式 payload 才能回测行动信号。" : null,
+  };
 }
 
 function buildSnapshotChart<T>(

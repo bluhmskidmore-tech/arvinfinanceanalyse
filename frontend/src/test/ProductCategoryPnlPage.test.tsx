@@ -176,6 +176,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("动作优先级队列");
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("选择性扩张");
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("重定价/提效");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作队列次月命中率");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("加载趋势诊断后");
     expect(screen.getByTestId("product-category-financial-analysis")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
@@ -817,6 +819,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
+    });
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
     expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
   });
 

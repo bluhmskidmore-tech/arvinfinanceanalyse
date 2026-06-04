@@ -49,6 +49,7 @@ import {
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestEarningIncomeScaleChart,
   selectProductCategoryOperatingAnalysisSurface,
+  selectProductCategoryOperatingActionBacktestSurface,
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
@@ -809,6 +810,10 @@ type ProductCategoryOperatingAnalysisSurface = ReturnType<
   typeof selectProductCategoryOperatingAnalysisSurface
 >;
 
+type ProductCategoryOperatingActionBacktestSurface = ReturnType<
+  typeof selectProductCategoryOperatingActionBacktestSurface
+>;
+
 type ProductCategoryOperatingActionQueueRow =
   ProductCategoryOperatingAnalysisSurface["actionQueue"]["rows"][number];
 
@@ -1011,6 +1016,114 @@ function ProductCategoryOperatingAnalysisPanel(props: {
           </aside>
         ) : null}
       </article>
+    </section>
+  );
+}
+
+function ProductCategoryOperatingActionBacktestPanel(props: {
+  surface: ProductCategoryOperatingActionBacktestSurface;
+  isHistoryLoaded: boolean;
+  historyLoading: boolean;
+}) {
+  return (
+    <section className="product-category-action-backtest" data-testid="product-category-operating-action-backtest">
+      <div className="product-category-action-backtest__header">
+        <div>
+          <span className="product-category-operating-analysis__eyebrow">信号回测</span>
+          <h2 className="product-category-action-backtest__title">动作队列次月命中率</h2>
+          <p className="product-category-action-backtest__description">
+            用历史月度正式 payload 复放动作队列，观察下一期净营收、收益率和规模是否沿建议方向改善。
+          </p>
+        </div>
+        <span className="product-category-action-backtest__badge">
+          待观察 {props.surface.summary.latestPendingCount} 条
+        </span>
+      </div>
+      {!props.isHistoryLoaded ? (
+        <div className="product-category-action-backtest__empty">
+          加载趋势诊断后，可用历史月度快照回测动作信号。
+        </div>
+      ) : props.historyLoading ? (
+        <div className="product-category-action-backtest__empty">正在加载历史月度快照。</div>
+      ) : props.surface.emptyCopy ? (
+        <div className="product-category-action-backtest__empty">{props.surface.emptyCopy}</div>
+      ) : (
+        <>
+          <div className="product-category-action-backtest__summary">
+            <div className="product-category-action-backtest__metric">
+              <span>覆盖月份</span>
+              <strong>{props.surface.summary.evaluatedMonthCount}</strong>
+              <small>{props.surface.summary.coverageLabel}</small>
+            </div>
+            <div className="product-category-action-backtest__metric">
+              <span>可评价信号</span>
+              <strong>{props.surface.summary.signalCount}</strong>
+              <small>{props.surface.summary.evidenceLabel}</small>
+            </div>
+            {props.surface.actionRows.map((row) => (
+              <div className={`product-category-action-backtest__metric is-${row.tone}`} key={row.actionKind}>
+                <span>{row.actionLabel}</span>
+                <strong>{row.hitRateLabel}</strong>
+                <small>{row.signalCount} 条 · {row.evidenceLabel}</small>
+              </div>
+            ))}
+          </div>
+          <div className="product-category-action-backtest__grid">
+            <article className="product-category-action-backtest__panel">
+              <h3>动作类型表现</h3>
+              <div className="product-category-action-backtest__table-wrap">
+                <table className="product-category-action-backtest__table">
+                  <thead>
+                    <tr>
+                      <th>动作</th>
+                      <th>信号</th>
+                      <th>命中率</th>
+                      <th>净营收变化</th>
+                      <th>收益率变化</th>
+                      <th>规模变化</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {props.surface.actionRows.map((row) => (
+                      <tr key={row.actionKind}>
+                        <td>{row.actionLabel}</td>
+                        <td>{row.signalCount}</td>
+                        <td>{row.hitRateLabel}</td>
+                        <td>{row.averageNetIncomeDeltaLabel}</td>
+                        <td>{row.averageYieldDeltaBpLabel}</td>
+                        <td>{row.averageScaleDeltaLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            <article className="product-category-action-backtest__panel">
+              <h3>典型样本</h3>
+              <div className="product-category-action-backtest__examples">
+                {props.surface.examples.map((example) => (
+                  <div
+                    className={`product-category-action-backtest__example is-${example.tone}`}
+                    key={`${example.reportDate}-${example.categoryId}-${example.actionKind}`}
+                  >
+                    <div>
+                      <strong>{example.categoryLabel}</strong>
+                      <span>
+                        {example.reportDate} → {example.nextReportDate} · {example.actionLabel}
+                      </span>
+                    </div>
+                    <b>{example.outcomeLabel}</b>
+                    <small>
+                      净营收 {example.netIncomeDeltaLabel} 亿元 · 收益率 {example.yieldDeltaBpLabel} · 规模{" "}
+                      {example.scaleDeltaLabel} 亿元
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -2393,6 +2506,33 @@ export default function ProductCategoryPnlPage() {
         : [],
     [currentSelectedPayload, currentTrendPoint?.label, trendDiagnosticsLoaded, trendHistoryPoints, trendHistoryQueries],
   );
+  const operatingActionBacktestPayloads = useMemo(
+    () =>
+      trendDiagnosticsLoaded
+        ? [
+            ...(baseline ? [baseline] : []),
+            ...trendHistoryQueries.flatMap((query) => (query.data?.result ? [query.data.result] : [])),
+          ]
+        : baseline
+          ? [baseline]
+          : [],
+    [baseline, trendDiagnosticsLoaded, trendHistoryQueries],
+  );
+  const operatingActionBacktestAttributions = useMemo(() => {
+    const byReportDate = new Map<string, ProductCategoryAttributionPayload | null>();
+    if (attributionQuery.data?.result && attributionCompare === "mom") {
+      byReportDate.set(attributionQuery.data.result.report_date, attributionQuery.data.result);
+    }
+    return byReportDate;
+  }, [attributionCompare, attributionQuery.data?.result]);
+  const operatingActionBacktestSurface = useMemo(
+    () =>
+      selectProductCategoryOperatingActionBacktestSurface({
+        payloads: operatingActionBacktestPayloads,
+        attributionsByReportDate: operatingActionBacktestAttributions,
+      }),
+    [operatingActionBacktestAttributions, operatingActionBacktestPayloads],
+  );
   const interestSpreadComparisonSnapshots = useMemo(
     () =>
       trendDiagnosticsLoaded
@@ -3003,27 +3143,13 @@ export default function ProductCategoryPnlPage() {
       {showManualForm ? (
         <div
           data-testid="product-category-manual-form"
-          style={{
-            display: "grid",
-            gap: 12,
-            marginBottom: 18,
-            padding: 18,
-            borderRadius: 18,
-            border: `1px solid ${designTokens.color.neutral[200]}`,
-            background: designTokens.color.neutral[50],
-          }}
+          className="product-category-manual-form"
         >
-          <div style={{ fontWeight: 600 }}>
+          <div className="product-category-manual-form__title">
             {editingAdjustmentId ? "编辑手工录入" : "手工录入"}
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 12,
-            }}
-          >
-            <label style={{ display: "grid", gap: 6 }}>
+          <div className="product-category-manual-form__grid">
+            <label className="product-category-manual-form__field">
               报表日期
               <input
                 aria-label="手工录入-报表日期"
@@ -3031,7 +3157,7 @@ export default function ProductCategoryPnlPage() {
                 readOnly
               />
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               操作方式
               <select
                 aria-label="手工录入-操作方式"
@@ -3048,7 +3174,7 @@ export default function ProductCategoryPnlPage() {
                 <option value="OVERRIDE">覆盖</option>
               </select>
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               币种
               <select
                 aria-label="手工录入-币种"
@@ -3061,7 +3187,7 @@ export default function ProductCategoryPnlPage() {
                 <option value="CNY">CNY</option>
               </select>
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               科目代码
               <input
                 aria-label="手工录入-科目代码"
@@ -3069,7 +3195,7 @@ export default function ProductCategoryPnlPage() {
                 onChange={(event) => updateAdjustmentField("account_code", event.target.value)}
               />
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               科目名称
               <input
                 aria-label="手工录入-科目名称"
@@ -3077,7 +3203,7 @@ export default function ProductCategoryPnlPage() {
                 onChange={(event) => updateAdjustmentField("account_name", event.target.value)}
               />
             </label>
-            <label style={{ display: "grid", gap: 6 }}>
+            <label className="product-category-manual-form__field">
               审批状态
               <select
                 aria-label="手工录入-审批状态"
@@ -3101,7 +3227,7 @@ export default function ProductCategoryPnlPage() {
               ["daily_avg_balance", "月日均"],
               ["annual_avg_balance", "年日均"],
             ].map(([field, label]) => (
-              <label key={field} style={{ display: "grid", gap: 6 }}>
+              <label key={field} className="product-category-manual-form__field">
                 {label}
                 <input
                   aria-label={`手工录入-${label}`}
@@ -3119,12 +3245,12 @@ export default function ProductCategoryPnlPage() {
           {adjustmentError ? (
             <div
               data-testid="product-category-manual-error"
-              style={{ color: designTokens.color.danger[700], fontSize: 12 }}
+              className="product-category-manual-form__error"
             >
               {adjustmentError}
             </div>
           ) : null}
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="product-category-manual-form__actions">
             <button
               type="button"
               data-testid="product-category-manual-submit"
@@ -3171,28 +3297,20 @@ export default function ProductCategoryPnlPage() {
       >
         <div
           data-testid="product-category-adjustment-history"
-          style={{ display: "grid", gap: 10 }}
+          className="product-category-adjustment-history"
         >
-          <div style={{ fontWeight: 600 }}>当前状态</div>
+          <div className="product-category-adjustment-history__title">当前状态</div>
           {(adjustmentsQuery.data?.adjustments ?? []).map((item) => (
             <div
               key={`current-${item.adjustment_id}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr auto auto auto",
-                gap: 12,
-                alignItems: "center",
-                padding: 12,
-                borderRadius: 12,
-                border: `1px solid ${designTokens.color.neutral[200]}`,
-              }}
+              className="product-category-adjustment-history__row"
             >
               <div>
-                <div style={{ fontWeight: 600 }}>{item.account_code}</div>
-                <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
+                <div className="product-category-adjustment-history__account-code">{item.account_code}</div>
+                <div className="product-category-adjustment-history__account-name">
                   {item.account_name || "未填写科目名称"}
                 </div>
-                <div style={{ color: designTokens.color.neutral[500], fontSize: 12 }}>
+                <div className="product-category-adjustment-history__event">
                   最近事件：{item.event_type}
                 </div>
               </div>
@@ -3240,21 +3358,10 @@ export default function ProductCategoryPnlPage() {
               </button>
             </div>
           ))}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              padding: 12,
-              borderRadius: 12,
-              border: `1px dashed ${designTokens.color.neutral[200]}`,
-              background: designTokens.color.neutral[50],
-            }}
-          >
-            <div style={{ display: "grid", gap: 4 }}>
-              <div style={{ fontWeight: 600 }}>完整事件时间线已迁移到独立审计视图</div>
-              <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
+          <div className="product-category-adjustment-history__audit-summary">
+            <div className="product-category-adjustment-history__audit-copy">
+              <div className="product-category-adjustment-history__audit-title">完整事件时间线已迁移到独立审计视图</div>
+              <div className="product-category-adjustment-history__audit-note">
                 当前报表月份共有 {(adjustmentsQuery.data?.events ?? []).length} 条调整事件。
               </div>
             </div>
@@ -3274,25 +3381,14 @@ export default function ProductCategoryPnlPage() {
         description="报告月份和视图模式驱动正式基线；FTP 场景只有点击应用后才触发情景查询，不覆盖正式结果。"
         testId="product-category-scenario-lead"
       />
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.3fr 1.3fr 1.3fr",
-          gap: 14,
-          marginBottom: 18,
-          padding: 18,
-          borderRadius: 18,
-          border: `1px solid ${designTokens.color.neutral[200]}`,
-          background: designTokens.color.neutral[50],
-        }}
-      >
-        <label style={{ display: "grid", gap: 8, fontSize: 13, color: designTokens.color.neutral[600] }}>
+      <div className="product-category-scenario-controls">
+        <label className="product-category-scenario-controls__field">
           选择报表月份
           <select
             aria-label="选择报表月份"
             value={selectedDate}
             onChange={(event) => handleReportDateChange(event.target.value)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${designTokens.color.neutral[200]}` }}
+            className="product-category-scenario-controls__select"
           >
             {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
               <option key={reportDate} value={reportDate}>
@@ -3302,7 +3398,7 @@ export default function ProductCategoryPnlPage() {
           </select>
         </label>
 
-        <label style={{ display: "grid", gap: 8, fontSize: 13, color: designTokens.color.neutral[600] }}>
+        <label className="product-category-scenario-controls__field">
           视图模式
           <div
             role="group"
@@ -3356,7 +3452,7 @@ export default function ProductCategoryPnlPage() {
           </div>
         </label>
 
-        <label style={{ display: "grid", gap: 8, fontSize: 13, color: designTokens.color.neutral[600] }}>
+        <label className="product-category-scenario-controls__field">
           FTP 场景
           <select
             aria-label="FTP 场景"
@@ -3365,7 +3461,7 @@ export default function ProductCategoryPnlPage() {
               setScenarioRateTouched(true);
               setScenarioRate(event.target.value);
             }}
-            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${designTokens.color.neutral[200]}` }}
+            className="product-category-scenario-controls__select"
           >
             {PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -3440,6 +3536,13 @@ export default function ProductCategoryPnlPage() {
       {!baselineQuery.isError ? (
         <ProductCategoryOperatingAnalysisPanel
           surface={operatingAnalysisSurface}
+        />
+      ) : null}
+      {!baselineQuery.isError ? (
+        <ProductCategoryOperatingActionBacktestPanel
+          surface={operatingActionBacktestSurface}
+          isHistoryLoaded={trendDiagnosticsLoaded}
+          historyLoading={trendHistoryQueries.some((query) => query.isLoading)}
         />
       ) : null}
 
