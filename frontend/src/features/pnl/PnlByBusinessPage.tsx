@@ -107,6 +107,9 @@ function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightM
           <span>{insight.formalUntracedDisplay}</span>
         </div>
       </div>
+      {insight.formalTriageDisplay ? (
+        <div className="pnl-by-business-insight-strip__triage">{insight.formalTriageDisplay}</div>
+      ) : null}
     </section>
   );
 }

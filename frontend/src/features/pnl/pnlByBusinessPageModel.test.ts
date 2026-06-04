@@ -671,5 +671,7 @@ describe("pnlByBusinessPageModel", () => {
     });
     expect(model.insight.nextStep).toContain("对账证据");
     expect(model.insight.nextStep).toContain("T 3 条 / A 2 条");
+    expect(model.insight.formalTriageDisplay).toContain("无余额/无持仓排查");
+    expect(model.insight.formalTriageDisplay).toContain("cost_center 已授权放宽");
   });
 });

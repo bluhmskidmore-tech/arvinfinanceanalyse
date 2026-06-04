@@ -1150,6 +1150,137 @@ def test_pnl_by_business_traces_formal_fi_to_zqtz_business_type_primary(tmp_path
     get_settings.cache_clear()
 
 
+def test_pnl_by_business_allows_cost_center_relaxed_trace_after_strict_miss(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'CCRELAX.IB', 'FI Desk', 'CC-PNL', 'A', 'FVOCI', 'CNY',
+              15.00, 0.00, 0.00, 0.00, 15.00,
+              'fi-relaxed-v1', 'rv_pnl_phase2_materialize_v1', 'ib-relaxed', 'trace-fi-relaxed'
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              '2025-12-31', 'CCRELAX.IB', 'FI Desk', 'CC-BAL', 'bond-relaxed',
+              'A', 'FVOCI', 'asset', 'CNY', 'CNY',
+              150.00000000, 150.00000000, 0.00000000, false,
+              'sv-z-relaxed', 'rv-z-relaxed', 'ib-z-relaxed', 'trace-z-relaxed'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    by_business = {row["business_type_primary"]: row for row in result["rows"]}
+    assert by_business["bond-relaxed"]["total_pnl"] == "15.00"
+    assert by_business["bond-relaxed"]["scale_amount"] == "150.00"
+    assert by_business["bond-relaxed"]["balance_row_count"] == 1
+    assert result["summary"]["untraced_pnl_row_count"] == 1
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_uses_relaxed_balance_amount_when_strict_business_type_is_blank(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'CCBLANK.IB', 'FI Desk', 'CC-PNL', 'A', 'FVOCI', 'CNY',
+              20.00, 0.00, 0.00, 0.00, 20.00,
+              'fi-relaxed-blank-v1', 'rv_pnl_phase2_materialize_v1', 'ib-relaxed-blank', 'trace-fi-relaxed-blank'
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2025-12-31",
+                    "CCBLANK.IB",
+                    "FI Desk",
+                    "CC-PNL",
+                    "",
+                    "A",
+                    "FVOCI",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "999.00000000",
+                    "999.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-strict-blank",
+                    "rv-z-strict-blank",
+                    "ib-z-strict-blank",
+                    "trace-z-strict-blank",
+                ),
+                (
+                    "2025-12-31",
+                    "CCBLANK.IB",
+                    "FI Desk",
+                    "CC-BAL",
+                    "bond-relaxed-blank",
+                    "A",
+                    "FVOCI",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "250.00000000",
+                    "250.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-relaxed-blank",
+                    "rv-z-relaxed-blank",
+                    "ib-z-relaxed-blank",
+                    "trace-z-relaxed-blank",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    by_business = {row["business_type_primary"]: row for row in result["rows"]}
+    assert by_business["bond-relaxed-blank"]["total_pnl"] == "20.00"
+    assert by_business["bond-relaxed-blank"]["scale_amount"] == "250.00"
+    assert by_business["bond-relaxed-blank"]["balance_row_count"] == 1
+    assert result["summary"]["untraced_pnl_row_count"] == 1
+    get_settings.cache_clear()
+
+
 def test_pnl_by_business_ytd_total_matches_formal_fact_rollups(tmp_path, monkeypatch):
     """默认 formal 路径：YTD 总损益应等于 FI + nonstd 桥接在 as_of 前的累计（与物化口径一致）。"""
     _materialize_three_pnl_dates(tmp_path, monkeypatch)

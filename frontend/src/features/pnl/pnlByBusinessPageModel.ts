@@ -95,6 +95,7 @@ export type PnlByBusinessInsightModel = {
   formalUntracedCount: number;
   formalUntracedValueDisplay: string;
   formalUntracedDisplay: string;
+  formalTriageDisplay: string;
   nextStep: string;
 };
 
@@ -359,6 +360,17 @@ function buildFormalUntracedDisplay(formalResult: PnlByBusinessPayload | undefin
     return `${untracedCount} 条未追溯`;
   }
   return untracedRows.map((row) => `${row.business_type_primary} ${row.pnl_row_count} 条`).join(" / ");
+}
+
+function buildFormalTriageDisplay(
+  formalResult: PnlByBusinessPayload | undefined,
+  formalUntracedDisplay: string,
+): string {
+  const untracedCount = formalResult?.summary.untraced_pnl_row_count ?? 0;
+  if (untracedCount <= 0) {
+    return "";
+  }
+  return `排查顺序：cost_center 已授权放宽；剩余未追溯先做无余额/无持仓排查（${formalUntracedDisplay}）。`;
 }
 
 export function formatPnlQualityStatus(
@@ -721,6 +733,7 @@ function buildPnlByBusinessInsight(input: {
     const topFormalValue = input.topFormalRow?.total_pnl;
     const formalUntracedCount = input.formalResult?.summary.untraced_pnl_row_count ?? 0;
     const formalUntracedDisplay = buildFormalUntracedDisplay(input.formalResult);
+    const formalTriageDisplay = buildFormalTriageDisplay(input.formalResult, formalUntracedDisplay);
     return {
       confidenceLabel: isWarning ? "预警/降级" : "仅对账",
       totalPnlDisplay: formatYuanAsWanUnit(input.formalResult?.summary.total_pnl),
@@ -736,6 +749,7 @@ function buildPnlByBusinessInsight(input: {
       formalUntracedCount,
       formalUntracedValueDisplay: `${formalUntracedCount} 条未追溯`,
       formalUntracedDisplay,
+      formalTriageDisplay,
       nextStep:
         formalUntracedCount > 0
           ? `用于对账证据和未追溯行排查，不作为业务贡献主分析。优先核对：${formalUntracedDisplay}。`
@@ -760,6 +774,7 @@ function buildPnlByBusinessInsight(input: {
       formalUntracedCount: 0,
       formalUntracedValueDisplay: "未读取",
       formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
+      formalTriageDisplay: "",
       nextStep: "先看当月贡献，再切到年累计核对趋势与 FTP 后收益。",
     };
   }
@@ -798,6 +813,7 @@ function buildPnlByBusinessInsight(input: {
     formalUntracedCount: 0,
     formalUntracedValueDisplay: "未读取",
     formalUntracedDisplay: "切到 primary 对账查看；不与月报/YTD 混加",
+    formalTriageDisplay: "",
     nextStep: ftpAvailable
       ? "先核对 FTP 后收益，再进入多维下钻定位组合、会计分类或资产明细。"
       : "先补齐日均/ADB 映射，再判断年化收益率和 FTP 后收益。",

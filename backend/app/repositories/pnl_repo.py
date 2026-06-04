@@ -461,15 +461,21 @@ class PnlRepository:
                 """
                 select count(*)
                 from fact_formal_pnl_fi p
-                left join fact_formal_zqtz_balance_daily z
-                  on z.report_date = p.report_date
-                 and trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                 and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
-                 and trim(coalesce(z.cost_center, '')) = trim(coalesce(p.cost_center, ''))
-                 and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
-                 and z.position_scope = 'asset'
                 where p.report_date = ?
-                  and nullif(trim(coalesce(z.business_type_primary, '')), '') is null
+                  and not exists (
+                    select 1
+                    from fact_formal_zqtz_balance_daily z
+                    where z.report_date = p.report_date
+                      and (
+                        trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                        or trim(coalesce(z.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                        or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                      )
+                      and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                      and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                      and z.position_scope = 'asset'
+                      and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
+                  )
                 """,
                 [report_date],
             ).fetchone()
@@ -1085,7 +1091,7 @@ class PnlRepository:
                   from fact_formal_zqtz_balance_daily
                   where position_scope = 'asset'
                   group by 1, 2, 3, 4, 5, 6
-                ), balance_choice as (
+                ), balance_strict_choice as (
                   select *
                   from (
                     select
@@ -1106,29 +1112,82 @@ class PnlRepository:
                     from balance_by_position
                   ) ranked
                   where rn = 1
+                ), balance_relaxed_by_business as (
+                  select
+                    report_date,
+                    instrument_code,
+                    portfolio_name,
+                    currency_basis,
+                    business_type_primary,
+                    coalesce(sum(scale_amount), 0) as scale_amount,
+                    coalesce(sum(balance_row_count), 0) as balance_row_count,
+                    min(cost_center) as cost_center_hint
+                  from balance_by_position
+                  group by 1, 2, 3, 4, 5
+                ), balance_relaxed_choice as (
+                  select *
+                  from (
+                    select
+                      report_date,
+                      instrument_code,
+                      portfolio_name,
+                      business_type_primary,
+                      currency_basis,
+                      scale_amount,
+                      balance_row_count,
+                      row_number() over (
+                        partition by report_date, instrument_code, portfolio_name, currency_basis
+                        order by
+                          case when business_type_primary is null then 1 else 0 end,
+                          abs(scale_amount) desc,
+                          balance_row_count desc,
+                          business_type_primary,
+                          cost_center_hint
+                      ) as rn
+                    from balance_relaxed_by_business
+                  ) ranked
+                  where rn = 1
                 ), joined as (
                   select
                     cast(p.report_date as varchar) as report_date,
-                    coalesce(b.business_type_primary, p.fallback_business_type, '未分类') as business_type_primary,
+                    coalesce(bs.business_type_primary, br.business_type_primary, p.fallback_business_type, '未分类') as business_type_primary,
                     p.currency_basis,
                     p.interest_income_514,
                     p.fair_value_change_516,
                     p.capital_gain_517,
                     p.manual_adjustment,
                     p.total_pnl,
-                    coalesce(b.scale_amount, 0) as scale_amount,
-                    coalesce(b.balance_row_count, 0) as balance_row_count
+                    case
+                      when bs.business_type_primary is not null then bs.scale_amount
+                      when br.business_type_primary is not null then br.scale_amount
+                      else 0
+                    end as scale_amount,
+                    case
+                      when bs.business_type_primary is not null then bs.balance_row_count
+                      when br.business_type_primary is not null then br.balance_row_count
+                      else 0
+                    end as balance_row_count
                   from pnl_rows p
-                  left join balance_choice b
-                    on b.report_date = cast(p.report_date as varchar)
+                  left join balance_strict_choice bs
+                    on bs.report_date = cast(p.report_date as varchar)
                    and (
-                     trim(coalesce(b.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
-                     or trim(coalesce(b.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
-                     or ('BOND-' || trim(coalesce(b.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                     trim(coalesce(bs.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                     or trim(coalesce(bs.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                     or ('BOND-' || trim(coalesce(bs.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
                    )
-                   and trim(coalesce(b.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
-                   and trim(coalesce(b.cost_center, '')) = trim(coalesce(p.cost_center, ''))
-                   and trim(coalesce(b.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                   and trim(coalesce(bs.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                   and trim(coalesce(bs.cost_center, '')) = trim(coalesce(p.cost_center, ''))
+                   and trim(coalesce(bs.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                  left join balance_relaxed_choice br
+                    on bs.business_type_primary is null
+                   and br.report_date = cast(p.report_date as varchar)
+                   and (
+                     trim(coalesce(br.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                     or trim(coalesce(br.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                     or ('BOND-' || trim(coalesce(br.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                   )
+                   and trim(coalesce(br.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                   and trim(coalesce(br.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
                 ), grouped as (
                   select
                     report_date,

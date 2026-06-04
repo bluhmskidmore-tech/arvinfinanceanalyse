@@ -1,6 +1,6 @@
 # PnL By Business Formal Untraced Diagnostic 2026-05-31
 
-Status: read-only diagnostic. This note supports `/pnl-by-business` reconciliation evidence; it is not a metric contract, not a formal promotion, and not an approval to change matching rules.
+Status: read-only diagnostic. This note supports `/pnl-by-business` reconciliation evidence; it is not a metric contract and not a formal promotion. A later owner decision allows controlled `cost_center` relaxed fallback after strict matching misses.
 
 ## Purpose
 
@@ -64,13 +64,13 @@ Most rows have no same-instrument asset balance row on the same report date. A s
 
 - The page warning is real reconciliation evidence, not a front-end display bug.
 - The formal primary tab should remain reconciliation-only: do not mix formal primary into monthly/YTD conclusions.
-- The current data does not justify relaxing `cost_center` matching in code without business approval, because that would change the formal trace grain.
+- Owner approval now allows relaxing `cost_center` only as a fallback after strict matching misses; report date, instrument, portfolio, currency, and asset scope remain strict.
 - The zero-balance `A/T/H` distribution shown by the page is useful triage evidence, but it is not a new business metric.
 
 ## Next Governance Actions
 
 - Validate the business dictionary for `invest_type_std` codes `A`, `T`, and `H`.
 - Investigate `no_same_instrument_in_balance` rows as matured/sold/no-position accruals versus missing ZQTZ balance ingestion.
-- Review whether any `cost_center` normalization rule exists for FI PnL to ZQTZ balance tracing; only change code after the rule is approved and covered by tests.
+- Re-run the formal read path after controlled `cost_center` fallback and confirm remaining untraced rows are no-same-instrument/no-balance cases.
 - Use `docs/pnl/pnl-by-business-formal-untraced-detail-packet-2026-05-31.md` as the owner triage packet for priority row review.
 - Keep `/pnl-by-business` as a temporary-exception route until formal untraced evidence is closed or explicitly accepted by governance.

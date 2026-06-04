@@ -46,7 +46,7 @@ def test_pnl_by_business_formal_untraced_detail_packet_lists_owner_triage_rows()
     for required in (
         "owner triage packet",
         "not a metric contract",
-        "not a backend matching-rule change",
+        "controlled `cost_center` relaxed fallback",
         "148",
         "123",
         "25",
@@ -59,7 +59,7 @@ def test_pnl_by_business_formal_untraced_detail_packet_lists_owner_triage_rows()
         "no_same_instrument_in_balance",
         "cost_center_mismatch",
         "Does this PnL row represent matured, sold, or no-position accrual activity?",
-        "Can cost_center be normalized or relaxed for this trace grain?",
+        "Owner answer: yes",
     ):
         assert required in detail_packet
 

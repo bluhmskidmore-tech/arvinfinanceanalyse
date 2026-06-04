@@ -148,11 +148,11 @@ function buildPnlClient(): ApiClient {
     report_date: "2025-12-31",
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
     summary: {
-      business_count: 1,
+      business_count: 3,
       total_pnl: "13.00",
       total_scale_amount: "100000000.00",
       traced_pnl_row_count: 1,
-      untraced_pnl_row_count: 0,
+      untraced_pnl_row_count: 5,
     },
     rows: [
       {
@@ -169,6 +169,36 @@ function buildPnlClient(): ApiClient {
         yield_pct: "0.000013",
         pnl_row_count: 1,
         balance_row_count: 1,
+      },
+      {
+        report_date: "2025-12-31",
+        business_type_primary: "T",
+        business_type: "T",
+        currency_basis: "CNY",
+        interest_income_514: "3.00",
+        fair_value_change_516: "0.00",
+        capital_gain_517: "0.00",
+        manual_adjustment: "0.00",
+        total_pnl: "3.00",
+        scale_amount: "0.00",
+        yield_pct: null,
+        pnl_row_count: 3,
+        balance_row_count: 0,
+      },
+      {
+        report_date: "2025-12-31",
+        business_type_primary: "A",
+        business_type: "A",
+        currency_basis: "CNY",
+        interest_income_514: "2.00",
+        fair_value_change_516: "0.00",
+        capital_gain_517: "0.00",
+        manual_adjustment: "0.00",
+        total_pnl: "2.00",
+        scale_amount: "0.00",
+        yield_pct: null,
+        pnl_row_count: 2,
+        balance_row_count: 0,
       },
     ],
   };
@@ -869,11 +899,14 @@ describe("pnl routed pages smoke", () => {
       expect(client.getPnlByBusiness).toHaveBeenCalledWith("2025-11-30");
     });
     await waitFor(() => {
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("0 条未追溯");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("5 条未追溯");
     });
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("对账证据");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("不与月报/YTD 混加");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("T 3 条 / A 2 条");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("无余额/无持仓排查");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("cost_center 已授权放宽");
     });
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");
     expect(screen.getByTestId("pnl-by-business-formal-table")).toHaveTextContent("表内收益率");

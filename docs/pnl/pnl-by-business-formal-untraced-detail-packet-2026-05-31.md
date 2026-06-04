@@ -1,10 +1,10 @@
 # PnL By Business Formal Untraced Detail Packet 2026-05-31
 
-Status: owner triage packet. This is read-only reconciliation evidence for `/pnl-by-business`; it is not a metric contract, not a backend matching-rule change, and not an approval to relax the formal trace grain.
+Status: owner triage packet. This is reconciliation evidence for `/pnl-by-business`; it is not a metric contract. Owner approval now allows a controlled `cost_center` relaxed fallback only after the strict trace grain misses.
 
 ## Purpose
 
-Turn the formal primary warning into an owner-review packet. The page already shows that 148 formal FI PnL rows are not traced to ZQTZ asset balance under the current strict join. This packet lists the highest-impact rows and the exact owner decisions needed before any code or backend matching rule changes.
+Turn the formal primary warning into an owner-review packet. The page showed 148 formal FI PnL rows not traced to ZQTZ asset balance under the previous strict join. This packet lists the highest-impact rows and records the owner decision that `cost_center` may be relaxed as a fallback, while remaining no-same-instrument rows still need business review.
 
 This packet must stay separate from monthly/YTD business conclusions. It supports reconciliation closure only.
 
@@ -15,11 +15,11 @@ Formal FI PnL rows are traced to ZQTZ asset balance rows by:
 - `report_date`
 - `instrument_code`
 - `portfolio_name`
-- `cost_center`
+- `cost_center` first; if strict trace misses, `cost_center` may be relaxed by owner approval
 - `currency_basis`
 - `position_scope = 'asset'`
 
-Rows below are untraced when the join does not return a non-blank ZQTZ `business_type_primary`.
+Rows below were untraced under the pre-approval strict join when the join did not return a non-blank ZQTZ `business_type_primary`.
 
 ## Executive Summary
 
@@ -29,7 +29,7 @@ Rows below are untraced when the join does not return a non-blank ZQTZ `business
 | `no_same_instrument_in_balance` | 123 | 4,064,966.86 | 4,609,890.48 |
 | `cost_center_mismatch` | 25 | 400,398.39 | 400,398.49 |
 
-The highest-impact issue is not a `BOND-` prefix mismatch. Most exposure comes from formal PnL rows with no same-instrument asset balance on 2026-05-31. A smaller set has same-instrument balance candidates, but strict `cost_center` matching blocks the trace.
+The highest-impact issue is not a `BOND-` prefix mismatch. Most exposure comes from formal PnL rows with no same-instrument asset balance on 2026-05-31. A smaller set has same-instrument balance candidates where strict `cost_center` matching blocked the trace before owner approval.
 
 ## Priority Rows By Absolute PnL
 
@@ -53,15 +53,15 @@ The highest-impact issue is not a `BOND-` prefix mismatch. Most exposure comes f
 
 ## Cost-Center Candidate Matches
 
-These rows have same-instrument balance candidates on the same report date, but current strict matching does not trace them because `cost_center` differs.
+These rows have same-instrument balance candidates on the same report date. Owner approval allows these to use a controlled relaxed `cost_center` fallback after strict matching misses.
 
 | Instrument | PnL cost center | Balance cost center candidates | Candidate balance rows | Total PnL yuan | Owner decision |
 | --- | --- | --- | ---: | ---: | --- |
-| `260303` | `50106001` | `501060` | 1 | 133,823.81 | Can cost_center be normalized or relaxed for this trace grain? |
-| `250215` | `50202001` | `50102002`, `50104002`, `501060`, `50106001` | 4 | 70,737.95 | Can cost_center be normalized or relaxed for this trace grain? |
-| `250215` | `50104001` | `50102002`, `50104002`, `501060`, `50106001` | 4 | 70,626.88 | Can cost_center be normalized or relaxed for this trace grain? |
-| `260205` | `5010200201` | `5010200101`, `501060`, `50106001` | 3 | 60,564.86 | Can cost_center be normalized or relaxed for this trace grain? |
-| `250220` | `5010200101` | `50104002`, `5020200101` | 2 | 36,803.36 | Can cost_center be normalized or relaxed for this trace grain? |
+| `260303` | `50106001` | `501060` | 1 | 133,823.81 | Approved: controlled `cost_center` relaxed fallback |
+| `250215` | `50202001` | `50102002`, `50104002`, `501060`, `50106001` | 4 | 70,737.95 | Approved: controlled `cost_center` relaxed fallback |
+| `250215` | `50104001` | `50102002`, `50104002`, `501060`, `50106001` | 4 | 70,626.88 | Approved: controlled `cost_center` relaxed fallback |
+| `260205` | `5010200201` | `5010200101`, `501060`, `50106001` | 3 | 60,564.86 | Approved: controlled `cost_center` relaxed fallback |
+| `250220` | `5010200101` | `50104002`, `5020200101` | 2 | 36,803.36 | Approved: controlled `cost_center` relaxed fallback |
 
 ## Coverage
 
@@ -86,21 +86,20 @@ For `no_same_instrument_in_balance`:
 For `cost_center_mismatch`:
 
 - Can cost_center be normalized or relaxed for this trace grain?
-- If yes, what is the approved normalization dictionary and effective date?
-- If no, should these rows remain visible as strict-trace exceptions?
+- Owner answer: yes, use controlled relaxed fallback only after strict trace misses.
+- Keep report date, instrument code, portfolio, currency basis, and `position_scope = 'asset'` strict.
 
 For `invest_type_std`:
 
 - Confirm the owner-approved meanings of `A`, `T`, and `H`.
 - Confirm whether any type should be excluded from formal FI-to-ZQTZ balance tracing.
 
-## Required Closure Before Code Change
+## Required Closure After Rule Change
 
-Do not change backend join logic until owners approve one of these outcomes:
+After the relaxed fallback is implemented, re-run the read path and confirm:
 
-- Keep strict trace grain and accept these rows as formal reconciliation exceptions.
-- Add an approved cost-center normalization rule with tests and lineage evidence.
-- Add an approved no-position classification rule with tests and lineage evidence.
-- Fix missing balance ingestion upstream, then re-run the same read-only diagnostic.
+- `cost_center_mismatch` rows are no longer counted as formal untraced rows when same-date, same-instrument, same-portfolio, same-currency asset balance evidence exists.
+- No-same-instrument rows remain visible as formal reconciliation follow-up.
+- Monthly/YTD business conclusions remain separate from formal primary reconciliation.
 
 Until then, `/pnl-by-business` should continue to show formal primary as reconciliation evidence only, separate from monthly/YTD business analysis.
