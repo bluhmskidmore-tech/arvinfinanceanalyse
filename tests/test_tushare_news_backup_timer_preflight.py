@@ -386,6 +386,13 @@ def test_timer_preflight_blocks_when_enablement_packet_fields_are_pending(tmp_pa
 
     assert report["verdict"] == "blocked"
     assert "timer_enablement_packet_filled" in report["blocking_items"]
+    action = next(
+        item
+        for item in report["next_actions"]
+        if item["gate"] == "timer_enablement_packet_filled"
+    )
+    assert "DuckDB path" in action["action"]
+    assert "alert/log retention owner" in action["action"]
 
 
 def test_timer_preflight_blocks_when_enablement_packet_contains_install_commands(tmp_path: Path) -> None:
@@ -494,6 +501,36 @@ def test_timer_preflight_cli_pre_enable_reports_not_ready_when_blocked(tmp_path:
     assert payload["stage"] == "pre-enable"
     assert payload["verdict"] == "blocked"
     assert payload["ready_to_create_timer"] is False
+    assert [
+        item["input"] for item in payload["required_pre_enable_inputs"]
+    ] == [
+        "Credential owner",
+        "Schedule owner",
+        "Page acceptance owner",
+        "Rollback owner",
+        "Evidence location",
+        "Timer host",
+        "Repository root",
+        "Python executable",
+        "DuckDB path",
+        "Log path",
+        "Refresh window",
+        "Write-window exclusion note",
+        "Alert/log retention owner",
+        "Page evidence owner sign-off",
+        "Enable timer decision",
+    ]
+    assert [
+        item["confirmation"] for item in payload["required_boundary_confirmations"]
+    ] == [
+        "`MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment.",
+        "Job runs from repo root or explicitly sets repo root.",
+        "DuckDB path points to intended target.",
+        "Refresh window avoids other DuckDB write/materialization jobs.",
+        "`/ui/news/tushare-npr/ingest` remains reserved.",
+        "`/api/news/tushare-npr/ingest` remains reserved.",
+        "Homepage still reads via `/ui/news/choice-events/latest`.",
+    ]
 
 
 def test_timer_preflight_cli_accepts_pre_enable_stage(tmp_path: Path, capsys) -> None:
@@ -511,6 +548,27 @@ def test_timer_preflight_cli_accepts_pre_enable_stage(tmp_path: Path, capsys) ->
     assert payload["verdict"] == "pass"
     assert payload["stage"] == "pre-enable"
     assert payload["ready_to_create_timer"] is True
+    assert "required_pre_enable_inputs" in payload
+    assert "required_boundary_confirmations" in payload
+
+
+def test_timer_preflight_cli_post_enable_reports_required_inputs(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(["--repo-root", str(tmp_path), "--stage", "post-enable"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["stage"] == "post-enable"
+    assert [
+        item["input"] for item in payload["required_post_enable_inputs"]
+    ] == [
+        "Enabled by",
+        "Enabled at",
+        "Timer evidence",
+        "Timer evidence in go-live bundle",
+    ]
 
 
 def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) -> None:
@@ -550,12 +608,15 @@ def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) ->
         "Schedule owner",
         "Page acceptance owner",
         "Rollback owner",
+        "Evidence location",
         "Timer host",
         "Repository root",
         "Python executable",
+        "DuckDB path",
         "Log path",
         "Refresh window",
         "Write-window exclusion note",
+        "Alert/log retention owner",
         "Page evidence owner sign-off",
         "Enable timer decision",
     ]
@@ -576,6 +637,27 @@ def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) ->
         "input": "Timer evidence in go-live bundle",
         "target": "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md",
         "evidence": "Same timer evidence linked from the go-live bundle.",
+    }
+    assert [
+        item["confirmation"] for item in payload["ops_gap"]["required_boundary_confirmations"]
+    ] == [
+        "`MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment.",
+        "Job runs from repo root or explicitly sets repo root.",
+        "DuckDB path points to intended target.",
+        "Refresh window avoids other DuckDB write/materialization jobs.",
+        "`/ui/news/tushare-npr/ingest` remains reserved.",
+        "`/api/news/tushare-npr/ingest` remains reserved.",
+        "Homepage still reads via `/ui/news/choice-events/latest`.",
+    ]
+    assert payload["ops_gap"]["required_boundary_confirmations"][0] == {
+        "confirmation": "`MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment.",
+        "target": "docs/templates/tushare_news_backup_refresh_go_live_checklist.md",
+        "evidence": "Environment proof without exposing token.",
+    }
+    assert payload["ops_gap"]["required_boundary_confirmations"][-1] == {
+        "confirmation": "Homepage still reads via `/ui/news/choice-events/latest`.",
+        "target": "docs/templates/tushare_news_backup_refresh_go_live_checklist.md",
+        "evidence": "Page/API evidence that the homepage uses the read-only landed-data path.",
     }
 
 
@@ -602,7 +684,16 @@ def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path
     assert "`ops_gap.immediate_next_actions`" in output
     assert "`ops_gap.deferred_post_enable_next_actions`" in output
     assert "`ops_gap.deferred_until`" in output
+    assert "`ops_gap.required_pre_enable_inputs`" in output
+    assert "`ops_gap.required_post_enable_inputs`" in output
+    assert "`ops_gap.required_boundary_confirmations`" in output
     assert "Ready to create timer: `true`" in output
+    assert "## Required Boundary Confirmations" in output
+    assert "## Required External Inputs" in output
+    assert "## Post-Enable Inputs" in output
+    assert "DuckDB path points to intended target." in output
+    assert "Alert/log retention owner" in output
+    assert "Timer evidence in go-live bundle" in output
     assert "Operator Fill Order" in output
     assert "Fill owner fields first" in output
     assert "After the first scheduled run, attach timer evidence" in output

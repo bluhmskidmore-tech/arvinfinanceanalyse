@@ -99,7 +99,8 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-g
 
 The preflight must return `pass` before enablement. A `blocked` verdict with
 `timer_enablement_packet_filled` means this packet still has placeholder owner,
-host, executable, log, refresh-window, or write-window fields.
+host, executable, DuckDB path, log, refresh-window, write-window, or alert/log
+retention fields.
 
 Run after the first timer fire:
 

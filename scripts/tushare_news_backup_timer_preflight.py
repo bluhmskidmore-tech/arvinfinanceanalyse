@@ -50,6 +50,11 @@ REQUIRED_PRE_ENABLE_INPUTS = (
         "evidence": "Team/person who can disable the timer.",
     },
     {
+        "input": "Evidence location",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Ticket, path, or log bundle that holds the go-live evidence.",
+    },
+    {
         "input": "Timer host",
         "target": TIMER_PACKET_PATH.as_posix(),
         "evidence": "Hostname or scheduler host identifier.",
@@ -65,6 +70,11 @@ REQUIRED_PRE_ENABLE_INPUTS = (
         "evidence": "Absolute Python path on the timer host.",
     },
     {
+        "input": "DuckDB path",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "DuckDB file path used by the scheduled job.",
+    },
+    {
         "input": "Log path",
         "target": TIMER_PACKET_PATH.as_posix(),
         "evidence": "Absolute scheduler log path.",
@@ -78,6 +88,11 @@ REQUIRED_PRE_ENABLE_INPUTS = (
         "input": "Write-window exclusion note",
         "target": TIMER_PACKET_PATH.as_posix(),
         "evidence": "Evidence that the job avoids other DuckDB writers.",
+    },
+    {
+        "input": "Alert/log retention owner",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Team/person responsible for refresh alerts and log retention.",
     },
     {
         "input": "Page evidence owner sign-off",
@@ -110,6 +125,43 @@ REQUIRED_POST_ENABLE_INPUTS = (
         "input": "Timer evidence in go-live bundle",
         "target": EVIDENCE_PATH.as_posix(),
         "evidence": "Same timer evidence linked from the go-live bundle.",
+    },
+)
+REQUIRED_BOUNDARY_CONFIRMATIONS = (
+    {
+        "confirmation": "`MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Environment proof without exposing token.",
+    },
+    {
+        "confirmation": "Job runs from repo root or explicitly sets repo root.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Scheduler command, working directory, or job log evidence.",
+    },
+    {
+        "confirmation": "DuckDB path points to intended target.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "DuckDB path used by the scheduled job.",
+    },
+    {
+        "confirmation": "Refresh window avoids other DuckDB write/materialization jobs.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Calendar, runbook, or operations note proving no writer overlap.",
+    },
+    {
+        "confirmation": "`/ui/news/tushare-npr/ingest` remains reserved.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Route test or output showing the UI ingest route remains reserved.",
+    },
+    {
+        "confirmation": "`/api/news/tushare-npr/ingest` remains reserved.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Route test or output showing the API ingest route remains reserved.",
+    },
+    {
+        "confirmation": "Homepage still reads via `/ui/news/choice-events/latest`.",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Page/API evidence that the homepage uses the read-only landed-data path.",
     },
 )
 
@@ -343,7 +395,7 @@ NEXT_ACTIONS: dict[str, dict[str, str]] = {
     },
     "timer_enablement_packet_filled": {
         "path": TIMER_PACKET_PATH.as_posix(),
-        "action": "Fill timer host, repository root, Python executable, log path, refresh window, write-window note, and packet owners.",
+        "action": "Fill timer host, repository root, Python executable, DuckDB path, log path, refresh window, write-window note, alert/log retention owner, and packet owners.",
     },
     "refresh_and_page_evidence_attached": {
         "path": EVIDENCE_PATH.as_posix(),
@@ -396,6 +448,10 @@ def _filter_next_actions(
 
 def _required_inputs(inputs: tuple[dict[str, str], ...]) -> list[dict[str, str]]:
     return [dict(item) for item in inputs]
+
+
+def _required_boundary_confirmations() -> list[dict[str, str]]:
+    return [dict(item) for item in REQUIRED_BOUNDARY_CONFIRMATIONS]
 
 
 def build_timer_preflight_report(
@@ -497,6 +553,10 @@ def build_timer_preflight_report(
     }
     if stage == "pre-enable":
         report["ready_to_create_timer"] = verdict == "pass"
+        report["required_pre_enable_inputs"] = _required_inputs(REQUIRED_PRE_ENABLE_INPUTS)
+        report["required_boundary_confirmations"] = _required_boundary_confirmations()
+    if stage == "post-enable":
+        report["required_post_enable_inputs"] = _required_inputs(REQUIRED_POST_ENABLE_INPUTS)
     return report
 
 
@@ -527,6 +587,7 @@ def build_timer_preflight_bundle(*, repo_root: str | Path = ROOT) -> dict[str, o
             ),
             "required_pre_enable_inputs": _required_inputs(REQUIRED_PRE_ENABLE_INPUTS),
             "required_post_enable_inputs": _required_inputs(REQUIRED_POST_ENABLE_INPUTS),
+            "required_boundary_confirmations": _required_boundary_confirmations(),
         },
     }
 
@@ -695,6 +756,15 @@ def _format_required_inputs_table(
     rows.extend(
         f"| {item['input']} | `{item['target']}` | {item['evidence']} |"
         for item in inputs
+    )
+    return rows
+
+
+def _format_required_boundary_confirmations_table() -> list[str]:
+    rows = ["| Confirmation | Target document | Evidence to attach |", "| --- | --- | --- |"]
+    rows.extend(
+        f"| {item['confirmation']} | `{item['target']}` | {item['evidence']} |"
+        for item in REQUIRED_BOUNDARY_CONFIRMATIONS
     )
     return rows
 
@@ -869,6 +939,12 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             *_format_ops_gap_activation_sequence(report),
             *_format_ops_gap_blocking_items(report),
             *_format_ops_gap_next_actions(report),
+            "## Required Boundary Confirmations",
+            "",
+            "Mark these checklist boundary rows `yes` with evidence before rerunning `pre-enable`:",
+            "",
+            *_format_required_boundary_confirmations_table(),
+            "",
             "## Required External Inputs",
             "",
             "Fill these before rerunning `pre-enable`:",

@@ -73,6 +73,7 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "ops_gap.deferred_until" in runbook
     assert "ops_gap.required_pre_enable_inputs" in runbook
     assert "ops_gap.required_post_enable_inputs" in runbook
+    assert "ops_gap.required_boundary_confirmations" in runbook
 
 
 def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_page_path() -> None:
@@ -276,6 +277,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "ops_gap.deferred_until" in status
     assert "ops_gap.required_pre_enable_inputs" in status
     assert "ops_gap.required_post_enable_inputs" in status
+    assert "ops_gap.required_boundary_confirmations" in status
     assert "Ready to create timer: `false`" in status
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in status
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
@@ -342,6 +344,16 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         "target": "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md",
         "evidence": "Same timer evidence linked from the go-live bundle.",
     }
+    assert all_stage["ops_gap"]["required_boundary_confirmations"][0] == {
+        "confirmation": "`MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment.",
+        "target": "docs/templates/tushare_news_backup_refresh_go_live_checklist.md",
+        "evidence": "Environment proof without exposing token.",
+    }
+    assert all_stage["ops_gap"]["required_boundary_confirmations"][-1] == {
+        "confirmation": "Homepage still reads via `/ui/news/choice-events/latest`.",
+        "target": "docs/templates/tushare_news_backup_refresh_go_live_checklist.md",
+        "evidence": "Page/API evidence that the homepage uses the read-only landed-data path.",
+    }
 
 
 def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_enabling_timer() -> None:
@@ -406,6 +418,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_matches_current_blockers_and_a
         "### Post-Enable",
         "## Immediate `next_actions`",
         "## Deferred Post-Enable `next_actions`",
+        "## Required Boundary Confirmations",
         "## Activation Sequence",
         "Immediate stage: `pre-enable`",
         "Ready to create timer: `false`",

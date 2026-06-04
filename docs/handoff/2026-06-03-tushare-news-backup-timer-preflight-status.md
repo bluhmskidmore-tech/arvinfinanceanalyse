@@ -30,6 +30,13 @@ Machine-readable JSON `ops_gap`:
 - `ops_gap.deferred_post_enable_next_actions` contains only first-scheduled-run
   evidence items.
 - `ops_gap.deferred_until` records when deferred items become actionable.
+- `ops_gap.required_pre_enable_inputs` lists the owner, evidence location,
+  host, DuckDB path, Python path, log path, window, alert/log owner, sign-off,
+  and enable-decision inputs to collect before creating the timer.
+- `ops_gap.required_post_enable_inputs` lists the first scheduled-run evidence
+  inputs to collect after the timer fires.
+- `ops_gap.required_boundary_confirmations` lists the checklist boundary rows
+  that must be marked `yes` with evidence before timer creation.
 
 Ready to create timer: `false`
 
@@ -118,7 +125,7 @@ Current `next_actions`:
 | --- | --- | --- |
 | `owners_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Credential owner, Schedule owner, Page acceptance owner, Rollback owner, and Evidence location. |
 | `boundary_confirmation_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Mark each boundary row yes and attach evidence without secrets. |
-| `timer_enablement_packet_filled` | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Fill timer host, repository root, Python executable, log path, refresh window, write-window note, and packet owners. |
+| `timer_enablement_packet_filled` | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Fill timer host, repository root, Python executable, DuckDB path, log path, refresh window, write-window note, alert/log retention owner, and packet owners. |
 | `page_acceptance_signoff_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Page evidence owner sign-off. |
 | `enable_timer_decision_yes` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set Enable timer to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
 

@@ -201,6 +201,14 @@ output, automation should prefer the machine-readable `ops_gap` grouping:
 `ops_gap.immediate_next_actions` lists the current `pre-enable` items to fill
 now, `ops_gap.deferred_post_enable_next_actions` lists the first-scheduled-run
 evidence to fill later, and `ops_gap.deferred_until` records the handoff point.
+`ops_gap.required_pre_enable_inputs` lists the owner, evidence location, host,
+DuckDB path, Python path, log path, window, alert/log owner, sign-off, and
+enable-decision fields operations must fill before creating the external timer.
+`ops_gap.required_post_enable_inputs` lists the first scheduled run evidence
+fields to fill after the timer fires.
+`ops_gap.required_boundary_confirmations` lists the checklist boundary rows that
+must be marked `yes` with evidence, including credential presence, repo root,
+DuckDB target, no writer overlap, reserved routes, and homepage read path.
 For operator-readable Markdown and ops-gap output, read `Ready to create timer`
 as the same go/no-go signal; when it is `false`, do not create the external
 timer.
