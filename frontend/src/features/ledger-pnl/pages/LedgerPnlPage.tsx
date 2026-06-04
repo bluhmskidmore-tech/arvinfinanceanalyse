@@ -49,6 +49,7 @@ const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID =
 const LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID = "ledger-pnl-formal-indicator-source-contract-panel";
 const LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID =
   "ledger-pnl-formal-indicator-source-contract-material-checklist";
+const LEDGER_PNL_REPORT_DATE_SELECT_ID = "ledger-pnl-report-date-select";
 
 const summaryCardStyle = {
   border: `1px solid ${designTokens.color.neutral[200]}`,
@@ -688,7 +689,13 @@ function focusLedgerResidualEvidenceTarget() {
   target?.focus({ preventScroll: true });
 }
 
-function focusLedgerFormalContractTarget() {
+function focusLedgerFormalContractTarget(requestedReportMonth?: string) {
+  if (!requestedReportMonth) {
+    const reportDateSelect = document.getElementById(LEDGER_PNL_REPORT_DATE_SELECT_ID);
+    reportDateSelect?.scrollIntoView?.({ block: "center", inline: "nearest" });
+    reportDateSelect?.focus({ preventScroll: true });
+    return;
+  }
   const target =
     document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID) ??
     document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID);
@@ -1379,7 +1386,7 @@ function LedgerFunctionalAuditStrip(props: {
               type="button"
               className="ledger-pnl-functional-strip__evidence-button"
               aria-label={`正式补证路径 ${formalEvidencePath}`}
-              onClick={focusLedgerFormalContractTarget}
+              onClick={() => focusLedgerFormalContractTarget(props.requestedReportMonth)}
             >
               {formalEvidencePath}
             </button>
@@ -1413,7 +1420,7 @@ function LedgerFunctionalAuditStrip(props: {
                     type="button"
                     className="ledger-pnl-functional-strip__evidence-button"
                     aria-label={`下一步补证 ${drill.label}`}
-                    onClick={focusLedgerFormalContractTarget}
+                    onClick={() => focusLedgerFormalContractTarget(props.requestedReportMonth)}
                   >
                     {drill.label}
                   </button>
@@ -2788,10 +2795,10 @@ export default function LedgerPnlPage() {
         <label>
           <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
+            id={LEDGER_PNL_REPORT_DATE_SELECT_ID}
             aria-label="ledger-pnl-report-date"
             value={selectedReportDate}
             onChange={(event) => setSelectedReportDate(event.target.value)}
-            disabled={reportDates.length === 0}
             style={{
               minWidth: 180,
               padding: "10px 12px",

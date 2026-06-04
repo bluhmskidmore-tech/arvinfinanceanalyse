@@ -1885,6 +1885,26 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).not.toHaveTextContent("正式状态正式值不可用，仅作候选核对");
     expect(decisionPath).not.toHaveTextContent("正式补证路径重新读取正式契约并复核 formal_use_allowed");
     expect(getLedgerPnlFormalFinancialIndicators).not.toHaveBeenCalled();
+
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollTargets: HTMLElement[] = [];
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+
+    try {
+      const reportDateSelect = screen.getByLabelText("ledger-pnl-report-date");
+      const formalPathButton = within(decisionPath).getByRole("button", {
+        name: "正式补证路径 先选择报告日生成 report_month",
+      });
+
+      await userEvent.click(formalPathButton);
+
+      expect(scrollTargets).toEqual([reportDateSelect]);
+      expect(reportDateSelect).toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("shows dates-level remediation drills when no ledger report dates are available", async () => {
