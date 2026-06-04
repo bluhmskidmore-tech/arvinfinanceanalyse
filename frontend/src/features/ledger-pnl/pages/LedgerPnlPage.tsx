@@ -713,6 +713,11 @@ function buildFormalContractMaterialChecklist(
   const rows = [
     { key: "artifact", label: "物料", value: remediation?.required_artifact?.trim() ?? "" },
     { key: "blocking", label: "阻断", value: remediation?.blocking_reason?.trim() ?? "" },
+    {
+      key: "acceptance",
+      label: "验收",
+      value: remediation?.acceptance_criteria?.map((item) => item.trim()).filter(Boolean).join("；") ?? "",
+    },
     { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
     { key: "verification", label: "验证", value: remediation?.verification?.trim() ?? "" },
   ];

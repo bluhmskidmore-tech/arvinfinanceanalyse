@@ -4513,6 +4513,7 @@ export type LedgerPnlFormalFinancialIndicatorRemediation = {
   required_artifact: string;
   artifact_status?: "missing" | "available" | string;
   blocking_reason?: string;
+  acceptance_criteria?: string[];
   registration_target: string;
   verification: string;
 };

@@ -304,6 +304,12 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
       required_artifact: "202605 正式财务指标 Excel 冻结样本",
       artifact_status: "missing",
       blocking_reason: "未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
+      acceptance_criteria: [
+        "样本必须来自 202605 正式财务指标 Excel 冻结版本",
+        "样本必须包含财务指标-汇总表及单元格引用",
+        "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推",
+        "登记后必须重新运行 Ledger PnL 正式财务指标金样本测试",
+      ],
       registration_target: "backend/app/core_finance/formal_financial_indicators.py",
       verification: "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     },
@@ -857,6 +863,10 @@ describe("LedgerPnlPage", () => {
     expect(checklist).toHaveTextContent(
       "阻断未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
     );
+    expect(checklist).toHaveTextContent("验收样本必须来自 202605 正式财务指标 Excel 冻结版本");
+    expect(checklist).toHaveTextContent("样本必须包含财务指标-汇总表及单元格引用");
+    expect(checklist).toHaveTextContent("样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推");
+    expect(checklist).toHaveTextContent("登记后必须重新运行 Ledger PnL 正式财务指标金样本测试");
     expect(checklist).toHaveTextContent("登记backend/app/core_finance/formal_financial_indicators.py");
     expect(checklist).toHaveTextContent(
       "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
