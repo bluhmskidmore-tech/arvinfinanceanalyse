@@ -3353,7 +3353,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("第一轮回答用于编辑。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "编辑问题" }));
+    const editQuestionButton = screen.getByRole("button", { name: /编辑问题/ });
+    expect(editQuestionButton).toHaveAccessibleName(/edit original question/);
+    await user.click(editQuestionButton);
 
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("edit original question");
@@ -4297,7 +4299,9 @@ describe("AgentWorkbenchPage", () => {
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft should be replaced");
 
     await user.click(screen.getByRole("button", { name: "停止当前回答" }));
-    await user.click(screen.getByRole("button", { name: "编辑问题" }));
+    const editQuestionButton = screen.getByRole("button", { name: /编辑问题/ });
+    expect(editQuestionButton).toHaveAccessibleName(/question to edit while running/);
+    await user.click(editQuestionButton);
 
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("question to edit while running");
@@ -4323,7 +4327,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft replaced by direct edit");
 
-    await user.click(screen.getByRole("button", { name: "编辑问题" }));
+    const editQuestionButton = screen.getByRole("button", { name: /编辑问题/ });
+    expect(editQuestionButton).toHaveAccessibleName(/question to edit directly/);
+    await user.click(editQuestionButton);
 
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("question to edit directly");

@@ -3538,6 +3538,7 @@ export function EmbeddedAgentCopilot({
                       <button
                         type="button"
                         className="agent-user-bubble__edit"
+                        aria-label={`编辑问题：${turn.question}`}
                         onClick={() => editAgentQuestion(turn)}
                         disabled={!canEditAgentQuestion(turn, isLatestLoadingTurn)}
                       >
