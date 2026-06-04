@@ -668,6 +668,110 @@ describe("LedgerPnlPage", () => {
     expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
   });
 
+  it("states the first-screen business conclusion when ledger evidence exists but the formal contract is missing", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: {
+            ...buildLedgerMeta("ledger_pnl.summary"),
+            requested_report_date: "2026-05-31",
+            resolved_report_date: "2026-05-31",
+            as_of_date: "2026-05-31",
+            evidence_rows: 665,
+            quality_flag: "ok",
+          },
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("123456789.00"),
+            ledger_monthly_pnl_all: money("123456789.00"),
+            ledger_total_assets: money("814405000000.00"),
+            ledger_total_liabilities: money("700000000000.00"),
+            ledger_net_assets: money("114405000000.00"),
+            by_currency: [{ currency: "CNY", total_pnl: money("123456789.00") }],
+            by_account: [
+              {
+                account_code: "50101000001",
+                account_name: "短期信用贷款利息收入",
+                total_pnl: money("123456789.00"),
+                count: 665,
+              },
+            ],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: {
+            ...buildLedgerMeta("ledger_pnl.data"),
+            requested_report_date: "2026-05-31",
+            resolved_report_date: "2026-05-31",
+            as_of_date: "2026-05-31",
+            evidence_rows: 7751,
+            quality_flag: "ok",
+          },
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            summary: {
+              total_pnl_cnx: money("0.00"),
+              total_pnl_cny: money("123456789.00"),
+              total_pnl: money("123456789.00"),
+              count: 7751,
+            },
+            items: [
+              {
+                account_code: "50101000001",
+                account_name: "短期信用贷款利息收入",
+                currency: "CNY",
+                beginning_balance: money("0.00"),
+                ending_balance: money("123456789.00"),
+                monthly_pnl: money("123456789.00"),
+                daily_avg_balance: money("0.00"),
+                days_in_period: 31,
+              },
+            ],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: ["202605"] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            quality_flag: "warning" as const,
+            as_of_date: "2026-05-31",
+            date_basis: "report_month_end",
+            evidence_rows: 0,
+            formal_use_allowed: false,
+            source_version: "sv_formal_financial_indicators_contract_unavailable",
+          },
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账候选解释可用，正式指标不可判定");
+      expect(strip).toHaveTextContent(
+        "总账汇总 665 行、明细 7751 行可支撑候选解释；但 202605 正式财务指标契约缺失，不能形成正式财务指标结论。",
+      );
+      expect(strip).toHaveTextContent("登记 202605 正式财务指标契约");
+      expect(strip).toHaveTextContent("汇总证据行665");
+      expect(strip).toHaveTextContent("明细证据行7751");
+    });
+  });
+
   it("keeps the first-screen contract gap as read failure when formal contract lookup fails", async () => {
     const base = createApiClient({ mode: "mock" });
     const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => {

@@ -616,6 +616,29 @@ function collectLedgerNextDrills(
   return rows;
 }
 
+function formalContractRemediationDrill(
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+): LedgerFunctionalDrill | null {
+  if (contract?.sample_status !== "missing_contract" || !contract.remediation?.action_label) {
+    return null;
+  }
+  return {
+    key: `formal-contract-remediation|${contract.remediation.action_label}`,
+    label: contract.remediation.action_label,
+    detail: contract.remediation.action_detail,
+  };
+}
+
+function appendLedgerDrill(
+  drills: LedgerFunctionalDrill[],
+  drill: LedgerFunctionalDrill | null,
+): LedgerFunctionalDrill[] {
+  if (!drill || drills.some((row) => row.key === drill.key)) {
+    return drills;
+  }
+  return [...drills, drill].slice(0, 3);
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -787,6 +810,21 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
+  if (props.formalIndicatorSourceContract?.sample_status === "missing_contract") {
+    const summaryRows = formatEvidenceRows(props.summaryMeta);
+    const detailRows = formatEvidenceRows(props.dataMeta);
+    const reportMonth = props.formalIndicatorSourceContract.report_month || "本月";
+    return {
+      tone: "warning",
+      title: "总账候选解释可用，正式指标不可判定",
+      detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但 ${reportMonth} 正式财务指标契约缺失，不能形成正式财务指标结论。`,
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
   return {
     tone: "ok",
     title: "总账候选口径可分析",
@@ -816,7 +854,10 @@ function LedgerFunctionalAuditStrip(props: {
   readErrors: unknown[];
 }) {
   const state = buildLedgerFunctionalAuditState(props);
-  const nextDrills = collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta);
+  const nextDrills = appendLedgerDrill(
+    collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta),
+    formalContractRemediationDrill(props.formalIndicatorSourceContract),
+  );
   const formalGapSummary = summarizeFormalIndicatorContractGaps(
     props.formalIndicatorSourceContract,
     props.isFormalContractLoading,
