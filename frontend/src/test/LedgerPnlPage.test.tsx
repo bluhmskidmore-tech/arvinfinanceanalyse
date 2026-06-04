@@ -119,6 +119,16 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
     formal_use_allowed: false,
     contract_note:
       "This contract freezes the Excel formal-indicator sample and current source status.",
+    release_gate: {
+      status: "registered_pending_release",
+      blocking_reason: "202603 正式财务指标样本契约已登记，但正式生产来源尚未接入，不能放行 formal_use_allowed。",
+      required_evidence: [
+        "governed production source connected for formal financial indicators",
+        "all contract values sourced from the frozen Excel sample",
+        "Ledger PnL formal financial indicator golden sample test passes",
+      ],
+      readback_action: "登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+    },
     status_semantics: {
       formal_pending:
         "Excel has the formal indicator value, but the governed production source is not connected.",
@@ -269,6 +279,7 @@ function buildReleasedFormalIndicatorContractPayload(): LedgerPnlFormalFinancial
     ...base,
     sample_status: "formal_contract",
     formal_use_allowed: true,
+    release_gate: undefined,
     contract_note: "Formal financial indicator values are approved for display.",
     metrics: base.metrics.slice(0, 2).map((metric) => ({
       ...metric,
@@ -535,10 +546,27 @@ describe("LedgerPnlPage", () => {
     expect(strip).toHaveTextContent("需对账 4");
 
     const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
-    expect(decisionPath).toHaveTextContent("执行状态待重新读取正式契约");
-    expect(decisionPath).toHaveTextContent("回读动作重新读取正式契约并复核 formal_use_allowed");
+    expect(decisionPath).toHaveTextContent("正式状态正式契约已登记，待放行");
+    expect(decisionPath).toHaveTextContent("执行状态已登记待放行");
+    expect(decisionPath).toHaveTextContent(
+      "回读动作登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+    );
     expect(decisionPath).not.toHaveTextContent("待登记正式契约");
     expect(decisionPath).not.toHaveTextContent("补证材料待补 0/3");
+
+    const decision = screen.getByTestId("ledger-pnl-formal-indicator-source-contract-decision");
+    expect(decision).toHaveTextContent("正式财务指标已登记待放行");
+    expect(decision).toHaveTextContent(
+      "202603 正式财务指标样本契约已登记，但正式生产来源尚未接入，不能放行 formal_use_allowed。",
+    );
+    expect(panel).toHaveTextContent("release_gate registered_pending_release");
+    expect(panel).toHaveTextContent("governed production source connected for formal financial indicators");
+    expect(panel).toHaveTextContent("Ledger PnL formal financial indicator golden sample test passes");
+    expect(panel).toHaveTextContent(
+      "登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+    );
+    expect(panel).not.toHaveTextContent("本月未登记正式财务指标契约");
+    expect(panel).not.toHaveTextContent("正式财务指标可用");
 
     const formalPendingRow = screen.getByTestId(
       "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",

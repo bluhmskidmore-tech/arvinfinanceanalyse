@@ -4543,6 +4543,12 @@ export type LedgerPnlFormalFinancialIndicatorContractPayload = {
   rule_version: string;
   formal_use_allowed: boolean;
   contract_note: string;
+  release_gate?: {
+    status?: string;
+    blocking_reason?: string;
+    required_evidence?: string[];
+    readback_action?: string;
+  };
   status_semantics: Record<LedgerPnlFormalIndicatorSourceStatus, string>;
   remediation?: LedgerPnlFormalFinancialIndicatorRemediation;
   metrics: LedgerPnlFormalFinancialIndicatorMetric[];

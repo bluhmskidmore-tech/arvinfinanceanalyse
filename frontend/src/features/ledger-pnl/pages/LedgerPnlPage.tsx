@@ -784,6 +784,18 @@ function buildFormalContractMaterialChecklist(
   };
 }
 
+function registeredPendingReleaseGate(
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+) {
+  if (!contract || contract.sample_status === "missing_contract" || contract.formal_use_allowed === true) {
+    return undefined;
+  }
+  const releaseGate = contract?.release_gate;
+  return releaseGate?.status?.trim() === "registered_pending_release"
+    ? releaseGate
+    : undefined;
+}
+
 function formalContractExecutionStatus(props: {
   contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   isLoading: boolean;
@@ -798,6 +810,10 @@ function formalContractExecutionStatus(props: {
   }
   if (props.contract?.formal_use_allowed === true) {
     return "已读取正式契约";
+  }
+  const releaseGate = registeredPendingReleaseGate(props.contract);
+  if (releaseGate) {
+    return "已登记待放行";
   }
   if (props.contract?.sample_status === "missing_contract") {
     if (props.materialChecklist.hasMissingArtifact) {
@@ -828,6 +844,10 @@ function formalContractReadbackAction(props: {
   if (props.contract?.formal_use_allowed === true) {
     return "已完成正式契约回读";
   }
+  const releaseGate = registeredPendingReleaseGate(props.contract);
+  if (releaseGate) {
+    return releaseGate.readback_action?.trim() || "登记来源接入证据并重新读取正式契约";
+  }
   if (props.contract?.sample_status === "missing_contract") {
     if (props.materialChecklist.hasMissingArtifact) {
       return "补齐样本并登记后刷新页面或重新查询正式契约接口";
@@ -851,6 +871,9 @@ function formalContractMaterialSummary(props: {
   }
   if (props.isError) {
     return "等待恢复正式契约读取";
+  }
+  if (registeredPendingReleaseGate(props.contract)) {
+    return "登记包已读，等待放行证据";
   }
   if (props.contract?.sample_status === "missing_contract") {
     return props.materialChecklist.summary;
@@ -966,11 +989,14 @@ function buildLedgerFunctionalAuditState(props: {
     props.summary?.source_version ??
     "缺失";
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
+  const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
   const formalStatus = formalUseAllowed
     ? "正式值可用"
-    : props.formalIndicatorSourceContract?.sample_status === "missing_contract"
-      ? "正式契约缺失，正式值不可用"
-      : "正式值不可用，仅作候选核对";
+    : releaseGate
+      ? "正式契约已登记，待放行"
+      : props.formalIndicatorSourceContract?.sample_status === "missing_contract"
+        ? "正式契约缺失，正式值不可用"
+        : "正式值不可用，仅作候选核对";
 
   if (props.isLoading) {
     return {
@@ -1067,6 +1093,20 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "ok",
       title: "正式财务指标可用",
       detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
+  if (releaseGate) {
+    return {
+      tone: "warning",
+      title: "正式财务指标已登记待放行",
+      detail:
+        releaseGate.blocking_reason?.trim() ||
+        "正式财务指标契约已登记，但尚未满足正式放行条件。",
       requestedDate,
       resolvedDate,
       asOfDate,
@@ -2011,6 +2051,16 @@ function buildFormalContractDecision(
       detail: "选择报告日并解析出月份后读取契约状态。",
     };
   }
+  const releaseGate = registeredPendingReleaseGate(contract);
+  if (releaseGate) {
+    return {
+      tone: "warning",
+      title: "正式财务指标已登记待放行",
+      detail:
+        releaseGate.blocking_reason?.trim() ||
+        "正式财务指标契约已登记，但尚未满足正式放行条件。",
+    };
+  }
   if (contract && !contract.formal_use_allowed) {
     return {
       tone: "warning",
@@ -2034,6 +2084,9 @@ function formatFormalContractNote(
   if (contract.sample_status === "missing_contract") {
     return "后台未登记本月正式财务指标契约；正式值保持不可用，不能用分析候选值补齐。";
   }
+  if (registeredPendingReleaseGate(contract)) {
+    return "当前契约已登记但未放行；QDB 候选值仍只能用于核对，不能转为正式展示。";
+  }
   if (!contract.formal_use_allowed) {
     return "当前契约只冻结样本与来源状态；QDB 候选值仅用于核对，不能转为正式展示。";
   }
@@ -2056,6 +2109,7 @@ function FormalIndicatorSourceContractPanel(props: {
   const contractNote = formatFormalContractNote(props.contract);
   const actionQueue = buildFormalContractActionQueue(metrics);
   const hasActionQueue = actionQueue.length > 0;
+  const releaseGate = registeredPendingReleaseGate(props.contract);
   const materialChecklist = buildFormalContractMaterialChecklist(props.contract?.remediation);
   const executionStatus = formalContractExecutionStatus({
     contract: props.contract,
@@ -2104,6 +2158,27 @@ function FormalIndicatorSourceContractPanel(props: {
 
       {contractNote ? (
         <div className="ledger-pnl-analysis__source-contract-note">{contractNote}</div>
+      ) : null}
+
+      {releaseGate ? (
+        <div
+          data-testid="ledger-pnl-formal-indicator-source-contract-release-gate"
+          className="ledger-pnl-analysis__source-contract-release-gate"
+        >
+          <strong>release_gate {releaseGate.status}</strong>
+          {releaseGate.blocking_reason ? <span>{releaseGate.blocking_reason}</span> : null}
+          {releaseGate.required_evidence?.length ? (
+            <div>
+              <span>required_evidence</span>
+              {releaseGate.required_evidence.map((item) => (
+                <small key={item}>{item}</small>
+              ))}
+            </div>
+          ) : null}
+          {releaseGate.readback_action ? (
+            <small>readback_action {releaseGate.readback_action}</small>
+          ) : null}
+        </div>
       ) : null}
 
       {props.isLoading ? (

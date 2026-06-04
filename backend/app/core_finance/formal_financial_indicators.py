@@ -10,6 +10,16 @@ EMPTY_SOURCE_VERSION = "sv_formal_financial_indicators_contract_unavailable"
 RULE_VERSION = "rv_formal_financial_indicators_source_status_v1"
 SOURCE_WORKBOOK = "C:/Users/arvin/Desktop/2026年财务指标表-3月最终(1).xlsx"
 SOURCE_SHEET = "财务指标-汇总"
+RELEASE_GATE_202603 = {
+    "status": "registered_pending_release",
+    "blocking_reason": "202603 正式财务指标样本契约已登记，但正式生产来源尚未接入，不能放行 formal_use_allowed。",
+    "required_evidence": [
+        "governed production source connected for formal financial indicators",
+        "all contract values sourced from the frozen Excel sample",
+        "Ledger PnL formal financial indicator golden sample test passes",
+    ],
+    "readback_action": "登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+}
 
 STATUS_SEMANTICS = {
     "formal_pending": "Excel has the formal indicator value, but the governed production source is not connected. System value must remain null, not zero.",
@@ -306,6 +316,7 @@ def build_formal_financial_indicator_contract(*, report_month: str) -> dict[str,
         "source_version": SOURCE_VERSION,
         "rule_version": RULE_VERSION,
         "formal_use_allowed": False,
+        "release_gate": deepcopy(RELEASE_GATE_202603),
         "contract_note": (
             "This contract freezes the Excel formal-indicator sample and current source status. "
             "It is not approval to promote analytical QDB values to formal financial indicators."

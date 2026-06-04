@@ -111,6 +111,16 @@ def test_formal_financial_indicator_registry_exposes_202603_contract_without_pro
     assert contract["source_version"] == "sv_formal_financial_indicators_excel_202603_contract"
     assert contract["rule_version"] == "rv_formal_financial_indicators_source_status_v1"
     assert contract["formal_use_allowed"] is False
+    assert contract["release_gate"] == {
+        "status": "registered_pending_release",
+        "blocking_reason": "202603 正式财务指标样本契约已登记，但正式生产来源尚未接入，不能放行 formal_use_allowed。",
+        "required_evidence": [
+            "governed production source connected for formal financial indicators",
+            "all contract values sourced from the frozen Excel sample",
+            "Ledger PnL formal financial indicator golden sample test passes",
+        ],
+        "readback_action": "登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
+    }
 
     contract_metrics = _metrics_by_key(contract)
     sample_metrics = _metrics_by_key(sample)
@@ -223,6 +233,7 @@ def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_env
     assert envelope["result_meta"]["formal_use_allowed"] is False
     assert envelope["result_meta"]["source_version"] == "sv_formal_financial_indicators_excel_202603_contract"
     assert envelope["result"]["sample_id"] == "GS-LEDGER-PNL-FIN-IND-202603-B"
+    assert envelope["result"]["release_gate"]["status"] == "registered_pending_release"
     metrics = _metrics_by_key(envelope["result"])
     assert metrics["group.operating_revenue"]["value"] is None
     assert metrics["group.operating_revenue"]["missing_reason"].startswith("正式财务指标来源未接入")
