@@ -123,13 +123,10 @@ export function MetricTable({
     const isEditing = editing?.metricId === metric.metric_id && editing?.field === field;
     if (isEditing) {
       return (
-        <div
-          style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="kpi-metric-table__editable-cell" onClick={(e) => e.stopPropagation()}>
           <Input
             size="small"
-            style={{ width: 88, textAlign: "right" }}
+            className="kpi-metric-table__edit-input"
             value={editing.value}
             onChange={(e) => setEditing({ ...editing, value: e.target.value })}
             onPressEnter={() => void handleSaveEdit(metric)}
@@ -145,19 +142,19 @@ export function MetricTable({
         </div>
       );
     }
+    const cellClassName = [
+      "kpi-metric-table__editable-cell",
+      "kpi-metric-table__editable-cell--button",
+      field === "score_value" ? "kpi-metric-table__editable-cell--score" : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
     return (
       <div
         role="button"
         tabIndex={0}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          gap: 4,
-          cursor: "pointer",
-          color: scoreColor,
-          fontWeight: field === "score_value" ? 600 : undefined,
-        }}
+        className={cellClassName}
+        style={{ color: scoreColor }}
         onClick={(e) => {
           e.stopPropagation();
           setEditing({
@@ -180,7 +177,7 @@ export function MetricTable({
           {displayValue}
           {suffix && displayValue !== "-" ? suffix : ""}
         </span>
-        <EditOutlined style={{ fontSize: 12, color: "#cbd5e1" }} />
+        <EditOutlined className="kpi-metric-table__edit-icon" />
       </div>
     );
   };
@@ -188,9 +185,9 @@ export function MetricTable({
   if (loading) {
     return (
       <Card>
-        <div style={{ padding: 48, textAlign: "center" }}>
+        <div className="kpi-metric-table__state">
           <Spin />
-          <div style={{ marginTop: 12, color: "#64748b" }}>加载指标…</div>
+          <div className="kpi-metric-table__loading-text">加载指标…</div>
         </div>
       </Card>
     );
@@ -199,7 +196,7 @@ export function MetricTable({
   if (metrics.length === 0) {
     return (
       <Card>
-        <div style={{ padding: 48, textAlign: "center", color: "#94a3b8" }}>
+        <div className="kpi-metric-table__state kpi-metric-table__state--empty">
           <p>暂无指标数据</p>
           {onAddMetric ? (
             <Button type="primary" ghost icon={<PlusOutlined />} onClick={onAddMetric}>
@@ -211,31 +208,33 @@ export function MetricTable({
     );
   }
 
-  const th: React.CSSProperties = {
-    padding: "12px 10px",
-    textAlign: "left",
-    fontWeight: 600,
-    color: "#334155",
-    borderBottom: "1px solid #e2e8f0",
-    background: "#f8fafc",
-    fontSize: 13,
-  };
-
   return (
-    <Card styles={{ body: { padding: 0 } }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+    <Card className="kpi-metric-table-card">
+      <div className="kpi-metric-table__scroll">
+        <table className="kpi-metric-table">
           <thead>
             <tr>
-              <th style={{ ...th, width: 36 }} />
-              <th style={th}>指标类别</th>
-              <th style={th}>考核指标</th>
-              <th style={{ ...th, textAlign: "right", width: 96 }}>目标</th>
-              <th style={{ ...th, textAlign: "right", width: 72 }}>分值</th>
-              <th style={{ ...th, minWidth: 200 }}>评分标准</th>
-              <th style={{ ...th, textAlign: "right", width: 96 }}>完成情况</th>
-              <th style={{ ...th, textAlign: "right", width: 96 }}>序时进度</th>
-              <th style={{ ...th, textAlign: "right", width: 88 }}>得分</th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--toggle" />
+              <th className="kpi-metric-table__head-cell">指标类别</th>
+              <th className="kpi-metric-table__head-cell">考核指标</th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--number kpi-metric-table__head-cell--target">
+                目标
+              </th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--number kpi-metric-table__head-cell--weight">
+                分值
+              </th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--scoring">
+                评分标准
+              </th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--number kpi-metric-table__head-cell--target">
+                完成情况
+              </th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--number kpi-metric-table__head-cell--target">
+                序时进度
+              </th>
+              <th className="kpi-metric-table__head-cell kpi-metric-table__head-cell--number kpi-metric-table__head-cell--score">
+                得分
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -244,16 +243,10 @@ export function MetricTable({
                 <tr>
                   <td
                     colSpan={9}
-                    style={{
-                      padding: "10px 12px",
-                      background: "#eff6ff",
-                      borderBottom: "1px solid #e2e8f0",
-                      fontWeight: 600,
-                      color: "#1e40af",
-                    }}
+                    className="kpi-metric-table__category-row-cell"
                   >
                     {category}{" "}
-                    <Tag color="blue" style={{ marginLeft: 8 }}>
+                    <Tag color="blue" className="kpi-metric-table__category-tag">
                       {categoryMetrics.length} 项
                     </Tag>
                   </td>
@@ -262,25 +255,28 @@ export function MetricTable({
                   const isExpanded = expandedMetricId === metric.metric_id;
                   const scoreColor = getScoreColor(metric.score_value ?? null, metric.score_weight);
                   const isLast = idx === categoryMetrics.length - 1;
+                  const rowClassName = [
+                    "kpi-metric-table__row",
+                    isExpanded ? "kpi-metric-table__row--expanded" : null,
+                    isLast ? "kpi-metric-table__row--last" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
                   return (
                     <React.Fragment key={metric.metric_id}>
                       <tr
-                        style={{
-                          borderBottom: isLast ? "1px solid #cbd5e1" : "1px solid #f1f5f9",
-                          background: isExpanded ? "#f0f9ff" : undefined,
-                          cursor: "pointer",
-                        }}
+                        className={rowClassName}
                         onClick={() => setExpandedMetricId(isExpanded ? null : metric.metric_id)}
                       >
-                        <td style={{ padding: "10px", textAlign: "center", color: "#94a3b8" }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--toggle">
                           {isExpanded ? <DownOutlined /> : <RightOutlined />}
                         </td>
-                        <td style={{ padding: "10px", color: "#475569" }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--indicator">
                           {metric.indicator_category || "-"}
                         </td>
-                        <td style={{ padding: "10px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontWeight: 500, color: "#0f172a" }}>{metric.metric_name}</span>
+                        <td className="kpi-metric-table__cell">
+                          <div className="kpi-metric-table__metric-name-wrap">
+                            <span className="kpi-metric-table__metric-name">{metric.metric_name}</span>
                             {onEditMetricDef ? (
                               <Button
                                 type="text"
@@ -294,40 +290,28 @@ export function MetricTable({
                             ) : null}
                           </div>
                         </td>
-                        <td style={{ padding: "10px", textAlign: "right", fontFamily: "monospace" }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--number">
                           {renderEditableCell(metric, "target_value", formatDecimal(metric.target_value))}
                         </td>
-                        <td
-                          style={{
-                            padding: "10px",
-                            textAlign: "right",
-                            fontFamily: "monospace",
-                            color: "#64748b",
-                          }}
-                        >
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--number kpi-metric-table__cell--muted">
                           {formatDecimal(metric.score_weight, 0)}
                         </td>
-                        <td style={{ padding: "10px", color: "#64748b", fontSize: 12, maxWidth: 280 }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--scoring">
                           <div
-                            style={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                            }}
+                            className="kpi-metric-table__scoring-text"
                             title={metric.scoring_text || ""}
                           >
                             {metric.scoring_text || "-"}
                           </div>
                         </td>
-                        <td style={{ padding: "10px", textAlign: "right", fontFamily: "monospace" }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--number">
                           {renderEditableCell(
                             metric,
                             "actual_value",
                             formatDecimal(metric.actual_value ?? null),
                           )}
                         </td>
-                        <td style={{ padding: "10px", textAlign: "right", fontFamily: "monospace" }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--number">
                           {renderEditableCell(
                             metric,
                             "progress_pct",
@@ -335,7 +319,7 @@ export function MetricTable({
                             "%",
                           )}
                         </td>
-                        <td style={{ padding: "10px", textAlign: "right", fontFamily: "monospace" }}>
+                        <td className="kpi-metric-table__cell kpi-metric-table__cell--number">
                           {renderEditableCell(
                             metric,
                             "score_value",
@@ -347,24 +331,10 @@ export function MetricTable({
                       </tr>
                       {isExpanded ? (
                         <tr>
-                          <td colSpan={9} style={{ background: "#f8fafc", padding: 16 }}>
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "1fr 1fr",
-                                gap: 24,
-                              }}
-                            >
+                          <td colSpan={9} className="kpi-metric-table__expanded-cell">
+                            <div className="kpi-metric-table__expanded-grid">
                               <div>
-                                <div
-                                  style={{
-                                    fontWeight: 600,
-                                    marginBottom: 12,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                  }}
-                                >
+                                <div className="kpi-metric-table__expanded-title">
                                   指标详情
                                   {onEditMetricDef ? (
                                     <Button type="link" size="small" onClick={() => onEditMetricDef(metric)}>
@@ -378,32 +348,32 @@ export function MetricTable({
                                   ) : null}
                                 </div>
                                 <Card size="small">
-                                  <div style={{ fontSize: 13, display: "grid", gap: 8 }}>
+                                  <div className="kpi-metric-table__detail-list">
                                     <div>
-                                      <span style={{ color: "#94a3b8" }}>指标代码 </span>
+                                      <span className="kpi-metric-table__detail-label">指标代码 </span>
                                       <code>{metric.metric_code}</code>
                                     </div>
                                     <div>
-                                      <span style={{ color: "#94a3b8" }}>数据来源 </span>
+                                      <span className="kpi-metric-table__detail-label">数据来源 </span>
                                       {metric.data_source_type === "MANUAL" ? "手工录入" : "自动抓取"}
                                     </div>
                                     <div>
-                                      <span style={{ color: "#94a3b8" }}>评分规则 </span>
+                                      <span className="kpi-metric-table__detail-label">评分规则 </span>
                                       {metric.scoring_rule_type}
                                     </div>
                                   </div>
                                 </Card>
                                 {metric.target_text ? (
-                                  <div style={{ marginTop: 12 }}>
-                                    <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>
+                                  <div className="kpi-metric-table__detail-section">
+                                    <div className="kpi-metric-table__detail-section-title">
                                       目标原文
                                     </div>
                                     <Card size="small">{metric.target_text}</Card>
                                   </div>
                                 ) : null}
                                 {metric.remarks ? (
-                                  <div style={{ marginTop: 12 }}>
-                                    <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>
+                                  <div className="kpi-metric-table__detail-section">
+                                    <div className="kpi-metric-table__detail-section-title">
                                       备注/口径说明
                                     </div>
                                     <Card size="small">{metric.remarks}</Card>
@@ -423,22 +393,15 @@ export function MetricTable({
                 })}
               </React.Fragment>
             ))}
-            <tr style={{ background: "#f1f5f9", fontWeight: 600 }}>
-              <td colSpan={4} style={{ padding: "12px 10px", textAlign: "right", color: "#334155" }}>
+            <tr className="kpi-metric-table__summary-row">
+              <td colSpan={4} className="kpi-metric-table__summary-label">
                 合计
               </td>
-              <td style={{ padding: "12px 10px", textAlign: "right", fontFamily: "monospace" }}>
+              <td className="kpi-metric-table__summary-number">
                 {summary.totalWeight.toFixed(0)}
               </td>
               <td colSpan={3} />
-              <td
-                style={{
-                  padding: "12px 10px",
-                  textAlign: "right",
-                  fontFamily: "monospace",
-                  color: "#1d4ed8",
-                }}
-              >
+              <td className="kpi-metric-table__summary-number kpi-metric-table__summary-number--score">
                 {summary.totalScore.toFixed(2)}
               </td>
             </tr>

@@ -132,3 +132,223 @@
   color: var(--moss-color-neutral-400);
   font-size: 48px;
 }
+
+.kpi-metric-table-card > .ant-card-body {
+  padding: 0;
+}
+
+.kpi-metric-table__state {
+  padding: 48px;
+  text-align: center;
+}
+
+.kpi-metric-table__state--empty {
+  color: var(--moss-color-neutral-400);
+}
+
+.kpi-metric-table__loading-text {
+  margin-top: var(--moss-space-3);
+  color: var(--moss-color-neutral-600);
+}
+
+.kpi-metric-table__editable-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.kpi-metric-table__editable-cell--button {
+  cursor: pointer;
+}
+
+.kpi-metric-table__editable-cell--score {
+  font-weight: 600;
+}
+
+.kpi-metric-table__edit-input {
+  width: 88px;
+  text-align: right;
+}
+
+.kpi-metric-table__edit-icon {
+  color: var(--moss-color-neutral-300);
+  font-size: 12px;
+}
+
+.kpi-metric-table__scroll {
+  overflow-x: auto;
+}
+
+.kpi-metric-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.kpi-metric-table__head-cell {
+  padding: var(--moss-space-3) 10px;
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.kpi-metric-table__head-cell--number {
+  text-align: right;
+}
+
+.kpi-metric-table__head-cell--toggle {
+  width: 36px;
+}
+
+.kpi-metric-table__head-cell--target {
+  width: 96px;
+}
+
+.kpi-metric-table__head-cell--weight {
+  width: 72px;
+}
+
+.kpi-metric-table__head-cell--score {
+  width: 88px;
+}
+
+.kpi-metric-table__head-cell--scoring {
+  min-width: 200px;
+}
+
+.kpi-metric-table__category-row-cell {
+  padding: 10px var(--moss-space-3);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-info-50);
+  color: var(--moss-color-info-800);
+  font-weight: 600;
+}
+
+.kpi-metric-table__category-tag {
+  margin-left: var(--moss-space-2);
+}
+
+.kpi-metric-table__row {
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  cursor: pointer;
+}
+
+.kpi-metric-table__row--expanded {
+  background: var(--moss-color-info-50);
+}
+
+.kpi-metric-table__row--last {
+  border-bottom-color: var(--moss-color-neutral-300);
+}
+
+.kpi-metric-table__cell {
+  padding: 10px;
+}
+
+.kpi-metric-table__cell--toggle {
+  color: var(--moss-color-neutral-400);
+  text-align: center;
+}
+
+.kpi-metric-table__cell--indicator {
+  color: var(--moss-color-neutral-600);
+}
+
+.kpi-metric-table__cell--number {
+  font-family: monospace;
+  text-align: right;
+}
+
+.kpi-metric-table__cell--muted,
+.kpi-metric-table__cell--scoring {
+  color: var(--moss-color-neutral-600);
+}
+
+.kpi-metric-table__cell--scoring {
+  max-width: 280px;
+  font-size: 12px;
+}
+
+.kpi-metric-table__metric-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-2);
+}
+
+.kpi-metric-table__metric-name {
+  color: var(--moss-color-neutral-900);
+  font-weight: 500;
+}
+
+.kpi-metric-table__scoring-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.kpi-metric-table__expanded-cell {
+  padding: var(--moss-space-4);
+  background: var(--moss-color-neutral-50);
+}
+
+.kpi-metric-table__expanded-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--moss-space-6);
+}
+
+.kpi-metric-table__expanded-title {
+  display: flex;
+  align-items: center;
+  gap: var(--moss-space-2);
+  margin-bottom: var(--moss-space-3);
+  font-weight: 600;
+}
+
+.kpi-metric-table__detail-list {
+  display: grid;
+  gap: var(--moss-space-2);
+  font-size: 13px;
+}
+
+.kpi-metric-table__detail-label {
+  color: var(--moss-color-neutral-400);
+}
+
+.kpi-metric-table__detail-section {
+  margin-top: var(--moss-space-3);
+}
+
+.kpi-metric-table__detail-section-title {
+  margin-bottom: var(--moss-space-1);
+  color: var(--moss-color-neutral-400);
+  font-size: 12px;
+}
+
+.kpi-metric-table__summary-row {
+  background: var(--moss-color-neutral-100);
+  font-weight: 600;
+}
+
+.kpi-metric-table__summary-label,
+.kpi-metric-table__summary-number {
+  padding: var(--moss-space-3) 10px;
+  text-align: right;
+}
+
+.kpi-metric-table__summary-label {
+  color: var(--moss-color-neutral-700);
+}
+
+.kpi-metric-table__summary-number {
+  font-family: monospace;
+}
+
+.kpi-metric-table__summary-number--score {
+  color: var(--moss-color-info-700);
+}
