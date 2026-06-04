@@ -527,6 +527,36 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("研究上下文已返回 · 可以继续追问")).toBeInTheDocument();
   });
 
+  it("refocuses the composer when a research shortcut returns after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveResearch!: (value: Response) => void;
+    const researchResponse = new Promise<Response>((resolve) => {
+      resolveResearch = resolve;
+    });
+    fetchMock.mockReturnValueOnce(researchResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("agent-conversation")).toHaveTextContent(
+        "Review landed stock research context",
+      ),
+    );
+
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveResearch(buildJsonResponse(buildDexterResearchResult("stock", "Stock research focus returned.")));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("Stock research focus returned.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("cues research shortcut execution while the request is pending", async () => {
     const user = userEvent.setup();
     fetchMock.mockReturnValueOnce(new Promise(() => undefined));

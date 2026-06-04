@@ -2546,6 +2546,8 @@ export function EmbeddedAgentCopilot({
         activeSuggestedActionPayload: null,
       }));
       setComposerAssistHint("研究上下文已返回 · 可以继续追问");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
       const nextError: AgentQueryError = {
         kind: "request",
