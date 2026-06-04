@@ -996,6 +996,7 @@ function buildLedgerFunctionalAuditState(props: {
   datesMeta: ResultMeta | null | undefined;
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
+  requestedReportMonth: string;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
@@ -1022,7 +1023,9 @@ function buildLedgerFunctionalAuditState(props: {
     "缺失";
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
-  const formalStatus = props.isFormalContractLoading
+  const formalStatus = !props.requestedReportMonth
+    ? "等待报告月份"
+    : props.isFormalContractLoading
     ? "正式契约读取中"
     : props.isFormalContractError
       ? "正式契约读取失败"
@@ -1171,6 +1174,7 @@ function LedgerFunctionalAuditStrip(props: {
   datesMeta: ResultMeta | null | undefined;
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
+  requestedReportMonth: string;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
@@ -1205,7 +1209,9 @@ function LedgerFunctionalAuditStrip(props: {
     materialChecklist,
   });
   const candidateEvidencePath = props.explainabilityModel.evidenceEntryPoint;
-  const formalEvidencePath = nextDrills[0]?.label ?? shortFormalContractReadbackAction(readbackAction);
+  const formalEvidencePath = props.requestedReportMonth
+    ? nextDrills[0]?.label ?? shortFormalContractReadbackAction(readbackAction)
+    : "先选择报告日生成 report_month";
   const materialSummary = formalContractMaterialSummary({
     contract: props.formalIndicatorSourceContract,
     isLoading: props.isFormalContractLoading,
@@ -2758,6 +2764,7 @@ export default function LedgerPnlPage() {
         datesMeta={datesQuery.data?.result_meta}
         summaryMeta={summaryQuery.data?.result_meta}
         dataMeta={dataQuery.data?.result_meta}
+        requestedReportMonth={requestedAnalysisMonth}
         formalIndicatorSourceContract={formalIndicatorSourceContract}
         isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
         isFormalContractError={formalIndicatorSourceContractQuery.isError}

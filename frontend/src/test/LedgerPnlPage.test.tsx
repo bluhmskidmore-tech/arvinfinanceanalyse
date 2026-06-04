@@ -1828,6 +1828,11 @@ describe("LedgerPnlPage", () => {
     const panel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
     expect(panel).toHaveTextContent("等待正式财务指标契约");
     expect(panel).not.toHaveTextContent("正式财务指标契约已读取");
+    const decisionPath = await screen.findByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("正式状态等待报告月份");
+    expect(decisionPath).toHaveTextContent("正式补证路径先选择报告日生成 report_month");
+    expect(decisionPath).not.toHaveTextContent("正式状态正式值不可用，仅作候选核对");
+    expect(decisionPath).not.toHaveTextContent("正式补证路径重新读取正式契约并复核 formal_use_allowed");
     expect(getLedgerPnlFormalFinancialIndicators).not.toHaveBeenCalled();
   });
 
