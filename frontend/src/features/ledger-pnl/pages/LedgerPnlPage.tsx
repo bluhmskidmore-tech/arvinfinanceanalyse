@@ -843,11 +843,22 @@ function summarizeFormalIndicatorContractGaps(
       needsReconciliation: 0,
     };
   }
+  const gapMetrics = metrics.filter(
+    (metric) => metric.formal_use_allowed === false || metric.value === null || metric.value === undefined || metric.value === "",
+  );
+  if (gapMetrics.length === 0) {
+    return {
+      label: "正式契约已放行",
+      formalPending: 0,
+      qdbCandidateAligned: 0,
+      needsReconciliation: 0,
+    };
+  }
   return {
     label: null,
-    formalPending: metrics.filter((metric) => metric.source_status === "formal_pending").length,
-    qdbCandidateAligned: metrics.filter((metric) => metric.source_status === "candidate_qdb_aligned").length,
-    needsReconciliation: metrics.filter((metric) => metric.source_status === "needs_reconciliation").length,
+    formalPending: gapMetrics.filter((metric) => metric.source_status === "formal_pending").length,
+    qdbCandidateAligned: gapMetrics.filter((metric) => metric.source_status === "candidate_qdb_aligned").length,
+    needsReconciliation: gapMetrics.filter((metric) => metric.source_status === "needs_reconciliation").length,
   };
 }
 
@@ -972,6 +983,18 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，正式指标不可判定",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但 ${reportMonth} 正式财务指标契约缺失，不能形成正式财务指标结论。`,
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
+  if (formalUseAllowed) {
+    return {
+      tone: "ok",
+      title: "正式财务指标可用",
+      detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
       requestedDate,
       resolvedDate,
       asOfDate,
@@ -1111,7 +1134,7 @@ function LedgerFunctionalAuditStrip(props: {
         <span>判断链</span>
         <div className="ledger-pnl-functional-strip__decision-list">
           <div>
-            <span>正式不可用原因</span>
+            <span>正式状态</span>
             <strong>{state.formalStatus}</strong>
           </div>
           <div>
@@ -1959,6 +1982,7 @@ function FormalIndicatorSourceContractPanel(props: {
   const decision = buildFormalContractDecision(props.contract, props.isLoading, props.isError);
   const contractNote = formatFormalContractNote(props.contract);
   const actionQueue = buildFormalContractActionQueue(metrics);
+  const hasActionQueue = actionQueue.length > 0;
   const materialChecklist = buildFormalContractMaterialChecklist(props.contract?.remediation);
   const executionStatus = formalContractExecutionStatus({
     contract: props.contract,
@@ -2014,38 +2038,40 @@ function FormalIndicatorSourceContractPanel(props: {
         <div className="ledger-pnl-analysis__empty">正式财务指标源契约读取失败</div>
       ) : metrics.length > 0 ? (
         <>
-          <div
-            data-testid="ledger-pnl-formal-indicator-source-contract-action-queue"
-            className="ledger-pnl-analysis__source-contract-actions"
-          >
-            <div className="ledger-pnl-analysis__source-contract-actions-header">
-              <strong>下一步核账队列</strong>
-              <span>先处理有系统候选但未对齐的项目，再补正式来源。</span>
+          {hasActionQueue ? (
+            <div
+              data-testid="ledger-pnl-formal-indicator-source-contract-action-queue"
+              className="ledger-pnl-analysis__source-contract-actions"
+            >
+              <div className="ledger-pnl-analysis__source-contract-actions-header">
+                <strong>下一步核账队列</strong>
+                <span>先处理有系统候选但未对齐的项目，再补正式来源。</span>
+              </div>
+              <div className="ledger-pnl-analysis__source-contract-action-list">
+                {actionQueue.map((metric, index) => (
+                  <article
+                    key={metric.metric_key}
+                    data-testid={`ledger-pnl-formal-indicator-source-contract-action-item-${metric.metric_key}`}
+                    className="ledger-pnl-analysis__source-contract-action-item"
+                  >
+                    <strong>{index + 1}</strong>
+                    <div>
+                      <span>{metric.metric_name}</span>
+                      <em>{contractActionTitle(metric)}</em>
+                      <small>
+                        Excel {formatContractMetricValue(metric.excel_value, metric.unit)} / 系统候选值{" "}
+                        {formatContractMetricValue(metric.system_value, metric.unit)}
+                      </small>
+                      {metric.reconciliation_gap ? (
+                        <small>对账差异 {formatContractMetricValue(metric.reconciliation_gap, metric.unit)}</small>
+                      ) : null}
+                      <small>{metric.cell_ref}</small>
+                    </div>
+                  </article>
+                ))}
+              </div>
             </div>
-            <div className="ledger-pnl-analysis__source-contract-action-list">
-              {actionQueue.map((metric, index) => (
-                <article
-                  key={metric.metric_key}
-                  data-testid={`ledger-pnl-formal-indicator-source-contract-action-item-${metric.metric_key}`}
-                  className="ledger-pnl-analysis__source-contract-action-item"
-                >
-                  <strong>{index + 1}</strong>
-                  <div>
-                    <span>{metric.metric_name}</span>
-                    <em>{contractActionTitle(metric)}</em>
-                    <small>
-                      Excel {formatContractMetricValue(metric.excel_value, metric.unit)} / 系统候选值{" "}
-                      {formatContractMetricValue(metric.system_value, metric.unit)}
-                    </small>
-                    {metric.reconciliation_gap ? (
-                      <small>对账差异 {formatContractMetricValue(metric.reconciliation_gap, metric.unit)}</small>
-                    ) : null}
-                    <small>{metric.cell_ref}</small>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
+          ) : null}
 
           <div className="ledger-pnl-analysis__source-contract-list">
             {metrics.map((metric) => {

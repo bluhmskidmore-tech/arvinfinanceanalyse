@@ -263,6 +263,25 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
   };
 }
 
+function buildReleasedFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicatorContractPayload {
+  const base = buildFormalIndicatorContractPayload();
+  return {
+    ...base,
+    sample_status: "formal_contract",
+    formal_use_allowed: true,
+    contract_note: "Formal financial indicator values are approved for display.",
+    metrics: base.metrics.slice(0, 2).map((metric) => ({
+      ...metric,
+      source_status: "formal_pending",
+      system_value: null,
+      reconciliation_gap: null,
+      value: metric.excel_value,
+      formal_use_allowed: true,
+      missing_reason: "正式财务指标来源已放行；展示值来自后端契约 value。",
+    })),
+  };
+}
+
 function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicatorContractPayload {
   return {
     sample_id: "GS-LEDGER-PNL-FIN-IND-202605-MISSING",
@@ -502,12 +521,12 @@ describe("LedgerPnlPage", () => {
 
   it("marks formal contract materials as pending while the contract is still loading", async () => {
     const base = createApiClient({ mode: "mock" });
-    const getLedgerPnlFormalFinancialIndicators = vi.fn(
-      () =>
-        new Promise<Awaited<ReturnType<typeof base.getLedgerPnlFormalFinancialIndicators>>>(() => {
-          // Keep the formal contract request pending so the first-screen readback state is observable.
-        }),
-    );
+    type FormalContractResult = Awaited<ReturnType<typeof base.getLedgerPnlFormalFinancialIndicators>>;
+    let resolveFormalContract: ((value: FormalContractResult) => void) | undefined;
+    const formalContractRequest = new Promise<FormalContractResult>((resolve) => {
+      resolveFormalContract = resolve;
+    });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(() => formalContractRequest);
 
     renderLedgerPnlPage({
       ...base,
@@ -558,6 +577,112 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("材料完整性等待正式契约读取");
     expect(decisionPath).toHaveTextContent("执行状态读取正式契约中");
     expect(decisionPath).not.toHaveTextContent("无缺契约补证材料");
+
+    resolveFormalContract?.({
+      result_meta: buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+      result: buildFormalIndicatorContractPayload(),
+    });
+  });
+
+  it("surfaces released formal financial indicator contracts as formal values, not candidate work", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => ({
+      result_meta: {
+        ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+        basis: "ledger" as const,
+        quality_flag: "ok" as const,
+        as_of_date: "2026-03-31",
+        date_basis: "report_month_end",
+        formal_use_allowed: true,
+      },
+      result: buildReleasedFormalIndicatorContractPayload(),
+    }));
+
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.dates"),
+        result: { dates: ["2026-03-31"] },
+      })),
+      getLedgerPnlSummary: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("ledger_pnl.summary"),
+          evidence_rows: 12,
+          quality_flag: "ok" as const,
+        },
+        result: {
+          report_date: "2026-03-31",
+          source_version: "sv_ledger_test",
+          ledger_monthly_pnl_core: money("1.00"),
+          ledger_monthly_pnl_all: money("1.00"),
+          ledger_total_assets: money("0.00"),
+          ledger_total_liabilities: money("0.00"),
+          ledger_net_assets: money("0.00"),
+          by_currency: [],
+          by_account: [],
+        },
+      })),
+      getLedgerPnlData: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("ledger_pnl.data"),
+          evidence_rows: 12,
+          quality_flag: "ok" as const,
+        },
+        result: {
+          report_date: "2026-03-31",
+          summary: {
+            total_pnl_cnx: money("0.00"),
+            total_pnl_cny: money("1.00"),
+            total_pnl: money("1.00"),
+            count: 12,
+          },
+          items: [],
+        },
+      })),
+      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+        result: { report_months: [] },
+      })),
+      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlFormalFinancialIndicators,
+    });
+
+    await waitFor(() => {
+      expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202603");
+    });
+
+    const panel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+    await waitFor(() => {
+      expect(panel).toHaveTextContent("formal_use_allowed=true");
+    });
+
+    const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
+    expect(strip).toHaveTextContent("正式财务指标可用");
+    expect(strip).toHaveTextContent("正式值可用");
+    expect(strip).not.toHaveTextContent("正式 PnL 与正式财务指标仍需单独放行");
+
+    const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("正式状态正式值可用");
+    expect(decisionPath).toHaveTextContent("材料完整性无缺契约补证材料");
+    expect(decisionPath).toHaveTextContent("执行状态已读取正式契约");
+    expect(decisionPath).toHaveTextContent("回读动作已完成正式契约回读");
+    expect(decisionPath).not.toHaveTextContent("待登记正式契约");
+    expect(decisionPath).not.toHaveTextContent("重新读取正式契约并复核 formal_use_allowed");
+
+    expect(panel).toHaveTextContent("formal_use_allowed=true");
+    expect(panel).toHaveTextContent("正式财务指标契约已读取");
+    expect(panel).toHaveTextContent("按后端契约返回的正式值展示");
+    expect(panel).not.toHaveTextContent("下一步核账队列");
+    expect(panel).not.toHaveTextContent("候选对照，不具备正式使用权限");
+    expect(panel).not.toHaveTextContent("正式展示值未接入");
+
+    const revenueRow = screen.getByTestId(
+      "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",
+    );
+    expect(revenueRow).toHaveTextContent("集团营业收入");
+    expect(revenueRow).toHaveTextContent(/正式展示值\s*43.4194731314 亿元/);
+    expect(revenueRow).toHaveTextContent(/Excel 样本值\s*43.4194731314 亿元/);
+    expect(revenueRow).toHaveTextContent(/系统候选值\s*-/);
   });
 
   it("ranks formal contract gaps into an actionable reconciliation queue", async () => {
@@ -974,7 +1099,7 @@ describe("LedgerPnlPage", () => {
     });
 
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
-    expect(decisionPath).toHaveTextContent("正式不可用原因正式契约缺失，正式值不可用");
+    expect(decisionPath).toHaveTextContent("正式状态正式契约缺失，正式值不可用");
     expect(decisionPath).toHaveTextContent("候选解释可信度未闭合 · 覆盖率 60.00%");
     expect(decisionPath).toHaveTextContent("最短补证路径登记 202605 正式财务指标契约");
     expect(decisionPath).toHaveTextContent("材料完整性补证材料齐备 3/3");
