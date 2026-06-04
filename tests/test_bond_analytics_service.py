@@ -449,6 +449,79 @@ def test_bond_analytics_dv01_risk_all_scope_groups_tenors_and_sorts_by_abs_dv01(
     get_settings.cache_clear()
 
 
+def test_bond_analytics_dv01_all_scope_warns_when_unmapped_accounting_class_is_included(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "OCI-001",
+            "instrument_name": "OCI Bond",
+            "issuer_name": "Issuer O",
+            "rating": "AAA",
+            "tenor_bucket": "3Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("100"),
+            "market_value": Decimal("101"),
+            "modified_duration": Decimal("3"),
+            "dv01": Decimal("30"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_oci",
+        },
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "UNK-001",
+            "instrument_name": "Unmapped Bond",
+            "issuer_name": "Issuer U",
+            "rating": "AA",
+            "tenor_bucket": "10Y",
+            "accounting_class": "other",
+            "face_value": Decimal("200"),
+            "market_value": Decimal("202"),
+            "modified_duration": Decimal("6"),
+            "dv01": Decimal("120"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_other",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            scoped = list(rows)
+            if accounting_class != "all":
+                scoped = [row for row in scoped if row["accounting_class"] == accounting_class]
+            return scoped
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    risk_payload = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="all")
+    reconciliation_payload = service_mod.get_dv01_reconciliation(date(2026, 3, 31), accounting_class="all")
+
+    assert risk_payload["result"]["accounting_class"] == "all"
+    assert any("未映射会计分类" in warning for warning in risk_payload["result"]["warnings"])
+    assert any("other" in warning for warning in risk_payload["result"]["warnings"])
+    assert reconciliation_payload["result"]["accounting_class"] == "all"
+    assert any("未映射会计分类" in warning for warning in reconciliation_payload["result"]["warnings"])
+    assert any("other" in warning for warning in reconciliation_payload["result"]["warnings"])
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_dv01_risk_empty_scope_returns_warning(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     service_mod = load_module(

@@ -157,6 +157,9 @@ EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
 BOND_ANALYTICS_DATE_BASIS = "bond_analytics_report_date"
 BOND_ANALYTICS_FACT_TABLE = "fact_formal_bond_analytics_daily"
 EMPTY_WARNING = "DuckDB bond analytics fact table not yet populated — returning empty result"
+DV01_UNMAPPED_ACCOUNTING_CLASS_WARNING_PREFIX = (
+    "DV01 全部口径包含未映射会计分类"
+)
 RETURN_TRADING_GAP_WARNING = (
     "Trading PnL remains a Phase 3 placeholder (0); transaction-level trade inputs are not integrated."
 )
@@ -1973,7 +1976,7 @@ def get_dv01_risk(
     total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
     total_abs_dv01 = _total_abs_dv01(rows)
     face_weighted_duration = _face_weighted_modified_duration(rows)
-    warnings = [] if rows else [EMPTY_WARNING]
+    warnings = _dv01_scope_warnings(rows, normalized_class)
 
     payload = DV01RiskResponse.model_validate(
         promote_flat_payload(
@@ -2027,7 +2030,7 @@ def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") ->
     total_market_value = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
     total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
     total_abs_dv01 = _total_abs_dv01(rows)
-    warnings = [] if rows else [EMPTY_WARNING]
+    warnings = _dv01_scope_warnings(rows, normalized_class)
 
     payload = DV01ReconciliationResponse.model_validate(
         promote_flat_payload(
@@ -2833,6 +2836,25 @@ def _normalize_dv01_accounting_class(value: str) -> str:
     if normalized not in {"AC", "OCI", "TPL"}:
         raise ValueError("accounting_class must be one of AC, OCI, TPL, all")
     return normalized
+
+
+def _dv01_scope_warnings(rows: list[dict[str, object]], accounting_class: str) -> list[str]:
+    warnings: list[str] = [] if rows else [EMPTY_WARNING]
+    if accounting_class != "all":
+        return warnings
+    unmapped_classes = sorted(
+        {
+            str(row.get("accounting_class") or "blank").strip() or "blank"
+            for row in rows
+            if str(row.get("accounting_class") or "").strip().upper() not in {"AC", "OCI", "TPL"}
+        }
+    )
+    if unmapped_classes:
+        warnings.append(
+            f"{DV01_UNMAPPED_ACCOUNTING_CLASS_WARNING_PREFIX}：{', '.join(unmapped_classes)}；"
+            "AC/OCI/TPL 正式分类验收不能用 all 行替代。"
+        )
+    return warnings
 
 
 def _parse_dv01_shocks(value: str) -> list[Decimal]:
