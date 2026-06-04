@@ -944,16 +944,16 @@ const FINANCIAL_WORKFLOWS: FinancialWorkflowShortcut[] = [
 const RESEARCH_SHORTCUTS: ResearchShortcut[] = [
   {
     id: "stock_research",
-    title: "Stock Research",
+    title: "股票研究",
     question: "Review landed stock research context",
-    description: "Review refreshed stock rows with evidence and limits.",
+    description: "复核已刷新的股票数据、证据和限制。",
     domain: "stock",
   },
   {
     id: "macro_research",
-    title: "Macro Research",
+    title: "宏观研究",
     question: "Review landed macro research context",
-    description: "Review refreshed macro series with evidence and limits.",
+    description: "复核已刷新的宏观序列、证据和限制。",
     domain: "macro",
   },
 ];
@@ -2966,10 +2966,10 @@ export function EmbeddedAgentCopilot({
       <section className="agent-financial-workflows" aria-label="研究快捷入口">
         <div className="agent-financial-workflows__header">
           <div>
-            <div className="agent-financial-workflows__eyebrow">DEXTER Research</div>
-            <h2>Landed data review</h2>
+            <div className="agent-financial-workflows__eyebrow">数据研究入口</div>
+            <h2>已刷新数据复核</h2>
           </div>
-          <span>Refresh first</span>
+          <span>先刷新数据</span>
         </div>
         <div className="agent-financial-workflows__grid">
           {RESEARCH_SHORTCUTS.map((shortcut) => (

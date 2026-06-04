@@ -412,7 +412,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     const shortcutDrawer = screen.getByText("快捷入口").closest("details");
-    const stockResearchButton = screen.getByText("Stock Research").closest("button");
+    const stockResearchButton = screen.getByText("股票研究").closest("button");
     const portfolioReviewButton = screen.getByText("Portfolio Review").closest("button");
     expect(shortcutDrawer).not.toBeNull();
     expect(shortcutDrawer).not.toHaveAttribute("open");
@@ -503,8 +503,11 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
     openShortcutDrawer();
 
-    expect(screen.getByRole("button", { name: /Stock Research/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Macro Research/ })).toBeInTheDocument();
+    expect(screen.getByText("数据研究入口")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "已刷新数据复核" })).toBeInTheDocument();
+    expect(screen.getByText("先刷新数据")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /股票研究/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /宏观研究/ })).toBeInTheDocument();
   });
 
   it("focuses the composer after launching a research shortcut", async () => {
@@ -514,7 +517,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await user.click(screen.getByRole("button", { name: /股票研究/ }));
 
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
   });
@@ -536,7 +539,7 @@ describe("AgentWorkbenchPage", () => {
     );
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await user.click(screen.getByRole("button", { name: /股票研究/ }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -570,7 +573,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await user.click(screen.getByRole("button", { name: /股票研究/ }));
     await waitFor(() =>
       expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
         "Review landed stock research context",
@@ -596,7 +599,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await user.click(screen.getByRole("button", { name: /股票研究/ }));
 
     expect(screen.getByText("正在读取研究上下文 · 可继续输入下一句")).toBeInTheDocument();
   });
@@ -608,7 +611,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await user.click(screen.getByRole("button", { name: /股票研究/ }));
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
     expect(screen.getByText("研究快捷入口失败 · 可重新点击或手动提问")).toBeInTheDocument();
@@ -625,7 +628,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await user.click(screen.getByRole("button", { name: /股票研究/ }));
     await waitFor(() =>
       expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
         "Review landed stock research context",
@@ -653,7 +656,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Macro Research/ }));
+    await user.click(screen.getByRole("button", { name: /宏观研究/ }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
