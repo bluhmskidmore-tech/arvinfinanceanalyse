@@ -17,7 +17,21 @@ describe("FilterBar", () => {
     expect(filterBar).not.toHaveAttribute("style");
   });
 
-  it("lets callers keep classes and override layout through the style prop", () => {
+  it("lets callers keep classes without adding inline layout style", () => {
+    render(
+      <FilterBar className="custom-filter">
+        <button type="button">Apply</button>
+      </FilterBar>,
+    );
+
+    const filterBar = screen.getByRole("button", { name: "Apply" }).parentElement;
+
+    expect(filterBar).toHaveClass("moss-filter-bar");
+    expect(filterBar).toHaveClass("custom-filter");
+    expect(filterBar).not.toHaveAttribute("style");
+  });
+
+  it("preserves the caller style override API", () => {
     const customProps: Pick<FilterBarProps, "className" | "style"> = {
       className: "custom-filter",
       style: { gap: 20, justifyContent: "flex-end" },
