@@ -642,6 +642,7 @@ function buildLedgerFunctionalAuditState(props: {
   reportDates: string[];
   summary: LedgerPnlSummaryPayload | undefined;
   data: LedgerPnlDataPayload | undefined;
+  datesMeta: ResultMeta | null | undefined;
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
@@ -700,6 +701,18 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
+  if (props.reportDates.length === 0) {
+    return {
+      tone: "warning",
+      title: "没有可选报告日",
+      detail: "日期接口没有返回总账报告日，需要先确认源文件发现链路。",
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
   if (!props.selectedReportDate) {
     return {
       tone: "warning",
@@ -736,18 +749,6 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
-  if (props.reportDates.length === 0) {
-    return {
-      tone: "warning",
-      title: "没有可选报告日",
-      detail: "日期接口没有返回总账报告日，需要先确认源文件发现链路。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      formalStatus,
-    };
-  }
   return {
     tone: "ok",
     title: "总账候选口径可分析",
@@ -766,6 +767,7 @@ function LedgerFunctionalAuditStrip(props: {
   reportDates: string[];
   summary: LedgerPnlSummaryPayload | undefined;
   data: LedgerPnlDataPayload | undefined;
+  datesMeta: ResultMeta | null | undefined;
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
@@ -774,7 +776,7 @@ function LedgerFunctionalAuditStrip(props: {
   readErrors: unknown[];
 }) {
   const state = buildLedgerFunctionalAuditState(props);
-  const nextDrills = collectLedgerNextDrills(props.summaryMeta, props.dataMeta);
+  const nextDrills = collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta);
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -2051,6 +2053,7 @@ export default function LedgerPnlPage() {
         reportDates={reportDates}
         summary={summary}
         data={data}
+        datesMeta={datesQuery.data?.result_meta}
         summaryMeta={summaryQuery.data?.result_meta}
         dataMeta={dataQuery.data?.result_meta}
         formalIndicatorSourceContract={formalIndicatorSourceContract}

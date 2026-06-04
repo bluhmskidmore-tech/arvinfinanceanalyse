@@ -797,6 +797,45 @@ describe("LedgerPnlPage", () => {
     expect(getLedgerPnlFormalFinancialIndicators).not.toHaveBeenCalled();
   });
 
+  it("shows dates-level remediation drills when no ledger report dates are available", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: {
+            ...buildMeta("ledger_pnl.dates"),
+            quality_flag: "warning" as const,
+            evidence_rows: 0,
+            next_drill: [
+              {
+                label: "核对总账源文件",
+                detail: "检查 product_category_source_dir 是否包含对应 YYYYMM 的总账对账工作簿。",
+              },
+            ],
+          },
+          result: { dates: [] },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(),
+      },
+      "/ledger-pnl",
+    );
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("没有可选报告日");
+      expect(strip).toHaveTextContent("下一步补证");
+      expect(strip).toHaveTextContent("核对总账源文件");
+      expect(strip).toHaveTextContent("product_category_source_dir");
+    });
+  });
+
   it("keeps missing ledger money values visibly unavailable instead of rendering zero", async () => {
     const base = createApiClient({ mode: "mock" });
     const missingMoney = null as unknown as LedgerMoneyValue;
