@@ -586,6 +586,7 @@ export default function RiskTensorPage() {
   const [qualityEvidenceReviewRecordCopyStatus, setQualityEvidenceReviewRecordCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [qualityEvidenceReviewRecordCopiedStateKey, setQualityEvidenceReviewRecordCopiedStateKey] = useState("");
   const [qualityEvidenceRequestCopyStatus, setQualityEvidenceRequestCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -620,6 +621,7 @@ export default function RiskTensorPage() {
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [blockedDateCopiedStateKey, setBlockedDateCopiedStateKey] = useState("");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [datesErrorCopiedStateKey, setDatesErrorCopiedStateKey] = useState("");
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopiedStateKey, setDatesEmptyCopiedStateKey] = useState("");
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -936,6 +938,7 @@ export default function RiskTensorPage() {
   useEffect(() => {
     setQualityEvidenceReviewConfirmed(false);
     setQualityEvidenceReviewRecordCopyStatus("idle");
+    setQualityEvidenceReviewRecordCopiedStateKey("");
     setQualityEvidenceRequestCopyStatus("idle");
     setQualityEvidenceRequestCopiedStateKey("");
     setPayloadQualityRequestCopyStatus("idle");
@@ -1161,9 +1164,10 @@ export default function RiskTensorPage() {
         ? "复制失败，请手动选择补证请求"
         : "";
   const qualityEvidenceReviewRecordCopyMessage =
-    qualityEvidenceReviewRecordCopyStatus === "copied"
+    qualityEvidenceReviewRecordCopiedStateKey === qualityStateKey && qualityEvidenceReviewRecordCopyStatus === "copied"
       ? "已复制确认记录"
-      : qualityEvidenceReviewRecordCopyStatus === "failed"
+      : qualityEvidenceReviewRecordCopiedStateKey === qualityStateKey &&
+          qualityEvidenceReviewRecordCopyStatus === "failed"
         ? "复制失败，请手动选择确认记录"
         : "";
   const payloadQualityRequestCopyStatusForCurrentState =
@@ -1276,10 +1280,16 @@ export default function RiskTensorPage() {
     "主读面未读取",
     "请核对风险张量报告日物化任务和日期治理接口",
   ].join("\n");
+  const datesErrorCopyStateKey = [
+    `report_date_param:${datesErrorReportDate}`,
+    `status:${datesErrorStatusCode || "unknown"}`,
+  ].join("|");
+  const datesErrorCopyStatusForCurrentState =
+    datesErrorCopiedStateKey === datesErrorCopyStateKey ? datesErrorCopyStatus : "idle";
   const datesErrorCopyMessage =
-    datesErrorCopyStatus === "copied"
+    datesErrorCopyStatusForCurrentState === "copied"
       ? "已复制日期排查信息"
-      : datesErrorCopyStatus === "failed"
+      : datesErrorCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择日期排查信息"
         : "";
   const datesEmptyCopyStateKey = [
@@ -1387,7 +1397,8 @@ export default function RiskTensorPage() {
 
   useEffect(() => {
     setDatesErrorCopyStatus("idle");
-  }, [datesErrorReportDate, datesErrorStatusCode]);
+    setDatesErrorCopiedStateKey("");
+  }, [datesErrorCopyStateKey]);
 
   useEffect(() => {
     setDatesEmptyCopyStatus("idle");
@@ -1642,14 +1653,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyQualityEvidenceReviewRecord = () => {
+    const copiedStateKey = qualityStateKey;
     if (!navigator.clipboard?.writeText) {
+      setQualityEvidenceReviewRecordCopiedStateKey(copiedStateKey);
       setQualityEvidenceReviewRecordCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(qualityEvidenceReviewRecordCopyText)
-      .then(() => setQualityEvidenceReviewRecordCopyStatus("copied"))
-      .catch(() => setQualityEvidenceReviewRecordCopyStatus("failed"));
+      .then(() => {
+        setQualityEvidenceReviewRecordCopiedStateKey(copiedStateKey);
+        setQualityEvidenceReviewRecordCopyStatus("copied");
+      })
+      .catch(() => {
+        setQualityEvidenceReviewRecordCopiedStateKey(copiedStateKey);
+        setQualityEvidenceReviewRecordCopyStatus("failed");
+      });
   };
 
   const handleCopyTensorError = () => {
@@ -1697,6 +1716,7 @@ export default function RiskTensorPage() {
     setBlockedDateCopyStatus("idle");
     setBlockedDateCopiedStateKey("");
     setDatesErrorCopyStatus("idle");
+    setDatesErrorCopiedStateKey("");
     setDatesEmptyCopyStatus("idle");
     setDatesEmptyCopiedStateKey("");
   };
@@ -1711,14 +1731,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyDatesError = () => {
+    const copiedStateKey = datesErrorCopyStateKey;
     if (!navigator.clipboard?.writeText) {
+      setDatesErrorCopiedStateKey(copiedStateKey);
       setDatesErrorCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(datesErrorCopyText)
-      .then(() => setDatesErrorCopyStatus("copied"))
-      .catch(() => setDatesErrorCopyStatus("failed"));
+      .then(() => {
+        setDatesErrorCopiedStateKey(copiedStateKey);
+        setDatesErrorCopyStatus("copied");
+      })
+      .catch(() => {
+        setDatesErrorCopiedStateKey(copiedStateKey);
+        setDatesErrorCopyStatus("failed");
+      });
   };
 
   const handleCopyDatesEmpty = () => {
@@ -1929,7 +1957,7 @@ export default function RiskTensorPage() {
 
   return (
     <section>
-      <div style={{ marginBottom: 24 }}>
+      <div className="risk-tensor-page__hero">
         <h1
           style={{
             margin: 0,
@@ -2140,7 +2168,7 @@ export default function RiskTensorPage() {
               {datesErrorCopyMessage}
             </small>
           ) : null}
-          {datesErrorCopyStatus === "failed" ? (
+          {datesErrorCopyStatusForCurrentState === "failed" ? (
             <pre
               className="risk-tensor-quality-detail__manual-copy"
               data-testid="risk-tensor-dates-error-manual-copy"
@@ -3340,7 +3368,8 @@ export default function RiskTensorPage() {
                               {qualityEvidenceReviewRecordCopyMessage}
                             </small>
                           ) : null}
-                          {qualityEvidenceReviewRecordCopyStatus === "failed" ? (
+                          {qualityEvidenceReviewRecordCopiedStateKey === qualityStateKey &&
+                          qualityEvidenceReviewRecordCopyStatus === "failed" ? (
                             <pre
                               className="risk-tensor-quality-detail__manual-copy"
                               data-testid="risk-tensor-quality-evidence-review-record-manual-copy"
@@ -3427,7 +3456,7 @@ export default function RiskTensorPage() {
                 </div>
               ) : null}
               {result.warnings.length === 0 ? (
-                <div style={{ color: "#5c6b82" }}>无预警。</div>
+                <div className="risk-tensor-quality-detail__warning-empty">无预警。</div>
               ) : (
                 <div>
                   <div className="risk-tensor-quality-detail__trace-actions">

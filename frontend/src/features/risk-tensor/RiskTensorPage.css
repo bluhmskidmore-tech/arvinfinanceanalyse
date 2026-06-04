@@ -486,6 +486,14 @@
   line-height: 1.5;
 }
 
+.risk-tensor-quality-detail__warning-empty {
+  color: var(--moss-color-text-muted);
+}
+
+.risk-tensor-page__hero {
+  margin-bottom: 24px;
+}
+
 .risk-tensor-brief__tiles {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

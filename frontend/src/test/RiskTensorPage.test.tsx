@@ -1695,6 +1695,86 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("ignores stale quality evidence review record copy results after report date changes", async () => {
+    const user = userEvent.setup();
+    let resolveReviewRecordCopy: (() => void) | undefined;
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveReviewRecordCopy = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_review_record_stale_copy_dates"),
+        result: { report_dates: ["2026-02-28", "2026-01-31"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: {
+          ...buildMeta("risk.tensor", `tr_tensor_review_record_stale_copy_${reportDate}`),
+          evidence_rows: reportDate === "2026-01-31" ? 96 : 128,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: reportDate,
+            desk: "FI",
+          },
+        },
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const tracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await user.click(within(tracePriority).getByRole("button", { name: "复制证据" }));
+      await user.click(await within(tracePriority).findByRole("button", { name: "确认业务复核" }));
+      await user.click(within(tracePriority).getByRole("button", { name: "复制确认记录" }));
+      await user.selectOptions(screen.getByLabelText("风险报告日"), "2026-01-31");
+
+      const nextTracePriority = within(await screen.findByTestId("risk-tensor-quality-detail")).getByTestId(
+        "risk-tensor-quality-trace-priority",
+      );
+      await waitFor(() => {
+        expect(nextTracePriority).toHaveTextContent("evidence_rows 96");
+      });
+
+      await act(async () => {
+        resolveReviewRecordCopy?.();
+      });
+
+      await user.click(within(nextTracePriority).getByRole("button", { name: "复制证据" }));
+      await user.click(await within(nextTracePriority).findByRole("button", { name: "确认业务复核" }));
+
+      expect(nextTracePriority).toHaveTextContent("复核状态：业务已确认");
+      expect(nextTracePriority).not.toHaveTextContent("已复制确认记录");
+      expect(
+        within(nextTracePriority).queryByTestId("risk-tensor-quality-evidence-review-record-manual-copy"),
+      ).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("ignores stale quality evidence copy results after report date changes", async () => {
     const user = userEvent.setup();
     let resolveCopy: (() => void) | undefined;
@@ -7897,6 +7977,64 @@ describe("RiskTensorPage", () => {
     });
     expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-02-28");
     expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale report-date list failure copy results after retry evidence changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates (503)"))
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates (504)"));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    try {
+      renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const errorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(errorContext).toHaveTextContent("HTTP 状态 503");
+
+      await user.click(within(errorContext).getByRole("button", { name: "复制日期排查信息" }));
+      await user.click(within(errorContext).getByRole("button", { name: "重试日期治理" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent("HTTP 状态 504");
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const retriedErrorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(retriedErrorContext).not.toHaveTextContent("已复制日期排查信息");
+      expect(within(retriedErrorContext).queryByTestId("risk-tensor-dates-error-manual-copy")).not.toBeInTheDocument();
+      expect(getRiskTensor).not.toHaveBeenCalled();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("shows manual report-date list failure diagnostic text when clipboard copy fails", async () => {
