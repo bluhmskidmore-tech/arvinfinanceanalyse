@@ -1341,14 +1341,16 @@ describe("LedgerPnlPage", () => {
     });
 
     try {
-      const formalContractPanel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+      const formalChecklist = await screen.findByTestId(
+        "ledger-pnl-formal-indicator-source-contract-material-checklist",
+      );
       const formalPathButton = within(decisionPath).getByRole("button", {
         name: "正式补证路径 补齐 202605 正式财务指标 Excel 冻结样本",
       });
       await userEvent.click(formalPathButton);
 
-      expect(scrollTargets).toEqual([formalContractPanel]);
-      expect(formalContractPanel).toHaveFocus();
+      expect(scrollTargets).toEqual([formalChecklist]);
+      expect(formalChecklist).toHaveFocus();
 
       scrollTargets.length = 0;
 

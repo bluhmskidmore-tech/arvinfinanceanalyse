@@ -47,6 +47,8 @@ const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_TABLE_ID = "ledger-pnl-residual-diagnostic-
 const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID =
   "ledger-pnl-residual-diagnostic-bottleneck-row";
 const LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID = "ledger-pnl-formal-indicator-source-contract-panel";
+const LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID =
+  "ledger-pnl-formal-indicator-source-contract-material-checklist";
 
 const summaryCardStyle = {
   border: `1px solid ${designTokens.color.neutral[200]}`,
@@ -687,7 +689,9 @@ function focusLedgerResidualEvidenceTarget() {
 }
 
 function focusLedgerFormalContractTarget() {
-  const target = document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID);
+  const target =
+    document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID) ??
+    document.getElementById(LEDGER_PNL_FORMAL_CONTRACT_PANEL_ID);
 
   target?.scrollIntoView?.({ block: "center", inline: "nearest" });
   target?.focus({ preventScroll: true });
@@ -2403,7 +2407,9 @@ function FormalIndicatorSourceContractPanel(props: {
                     "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。"}
                 </span>
                 <div
+                  id={LEDGER_PNL_FORMAL_CONTRACT_MATERIAL_CHECKLIST_ID}
                   data-testid="ledger-pnl-formal-indicator-source-contract-material-checklist"
+                  tabIndex={-1}
                   className="ledger-pnl-analysis__source-contract-material-checklist"
                 >
                   <strong>{materialChecklist.summary}</strong>
