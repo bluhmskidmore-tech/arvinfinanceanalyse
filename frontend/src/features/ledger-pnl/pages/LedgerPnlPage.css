@@ -257,6 +257,84 @@
   overflow-wrap: anywhere;
 }
 
+.ledger-pnl-analysis__source-contract-actions {
+  display: grid;
+  gap: var(--moss-space-3);
+  margin-bottom: var(--moss-space-3);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-neutral-50);
+}
+
+.ledger-pnl-analysis__source-contract-actions-header {
+  display: grid;
+  gap: 4px;
+}
+
+.ledger-pnl-analysis__source-contract-actions-header strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ledger-pnl-analysis__source-contract-actions-header span {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ledger-pnl-analysis__source-contract-action-list {
+  display: grid;
+  gap: var(--moss-space-2);
+}
+
+.ledger-pnl-analysis__source-contract-action-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--moss-space-2);
+  align-items: start;
+  padding: var(--moss-space-2);
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-bg-surface, #ffffff);
+}
+
+.ledger-pnl-analysis__source-contract-action-item > strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-700);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ledger-pnl-analysis__source-contract-action-item div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ledger-pnl-analysis__source-contract-action-item span {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.ledger-pnl-analysis__source-contract-action-item em,
+.ledger-pnl-analysis__source-contract-action-item small {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .ledger-pnl-analysis__source-contract-values {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

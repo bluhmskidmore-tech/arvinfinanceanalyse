@@ -129,6 +129,28 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
     },
     metrics: [
       {
+        metric_key: "group.total_assets",
+        metric_name: "集团总资产",
+        scope: "group_consolidated",
+        excel_value: "8342.0254700000",
+        unit: "亿元",
+        excel_ref: "财务指标-汇总!K35 -> 财务指标-计算表!K30",
+        formula: "external/formal calculation table input",
+        source_status: "needs_reconciliation",
+        system_metric: "qdb.total_assets",
+        system_value: "8144.05",
+        reconciliation_gap: "197.97547",
+        value: null,
+        basis: "formal_financial_indicator_source_contract",
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_excel_202603_contract",
+        rule_version: "rv_formal_financial_indicators_source_status_v1",
+        consolidation_scope: "group_consolidated",
+        cell_ref: "财务指标-汇总!K35 -> 财务指标-计算表!K30",
+        golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#group.total_assets",
+        missing_reason: "正式财务指标来源未接入；QDB 分析值与 Excel 正式样本存在差异，需先对账。",
+      },
+      {
         metric_key: "group.operating_revenue",
         metric_name: "集团营业收入",
         scope: "group_consolidated",
@@ -191,6 +213,50 @@ function buildFormalIndicatorContractPayload(): LedgerPnlFormalFinancialIndicato
         consolidation_scope: "parent_company",
         cell_ref: "财务指标-汇总!K40 -> 财务指标-计算表!K74",
         golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#parent.deposit_balance",
+        missing_reason: "正式财务指标来源未接入；QDB 分析值与 Excel 正式样本存在差异，需先对账。",
+      },
+      {
+        metric_key: "group.asset_quality_loan_balance",
+        metric_name: "贷款余额（集团资产质量口径）",
+        scope: "group_consolidated",
+        excel_value: "4193.9954022127",
+        unit: "亿元",
+        excel_ref: "财务指标-汇总!K53 -> 财务指标-计算表!K41",
+        formula: "external/formal calculation table input",
+        source_status: "needs_reconciliation",
+        system_metric: "qdb.loan_spot",
+        system_value: "4189.47",
+        reconciliation_gap: "4.5254022127",
+        value: null,
+        basis: "formal_financial_indicator_source_contract",
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_excel_202603_contract",
+        rule_version: "rv_formal_financial_indicators_source_status_v1",
+        consolidation_scope: "group_consolidated",
+        cell_ref: "财务指标-汇总!K53 -> 财务指标-计算表!K41",
+        golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#group.asset_quality_loan_balance",
+        missing_reason: "正式财务指标来源未接入；QDB 分析值与 Excel 正式样本存在差异，需先对账。",
+      },
+      {
+        metric_key: "group.allowance_to_loan_ratio",
+        metric_name: "拨贷比",
+        scope: "group_consolidated",
+        excel_value: "2.9263169853",
+        unit: "%",
+        excel_ref: "财务指标-汇总!K55 = K50 / K53",
+        formula: "K50 / K53",
+        source_status: "needs_reconciliation",
+        system_metric: "qdb.allowance_to_loan_ratio",
+        system_value: "2.70",
+        reconciliation_gap: "0.2263169853",
+        value: null,
+        basis: "formal_financial_indicator_source_contract",
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_excel_202603_contract",
+        rule_version: "rv_formal_financial_indicators_source_status_v1",
+        consolidation_scope: "group_consolidated",
+        cell_ref: "财务指标-汇总!K55 = K50 / K53",
+        golden_sample_ref: "GS-LEDGER-PNL-FIN-IND-202603-B#group.allowance_to_loan_ratio",
         missing_reason: "正式财务指标来源未接入；QDB 分析值与 Excel 正式样本存在差异，需先对账。",
       },
     ],
@@ -388,13 +454,13 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("formal_use_allowed=false");
     expect(panel).toHaveTextContent("formal_pending 1");
     expect(panel).toHaveTextContent("candidate_qdb_aligned 1");
-    expect(panel).toHaveTextContent("needs_reconciliation 1");
+    expect(panel).toHaveTextContent("needs_reconciliation 4");
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
     expect(strip).toHaveTextContent("正式契约缺口");
     expect(strip).toHaveTextContent("正式待接入 1");
     expect(strip).toHaveTextContent("QDB候选 1");
-    expect(strip).toHaveTextContent("需对账 1");
+    expect(strip).toHaveTextContent("需对账 4");
 
     const formalPendingRow = screen.getByTestId(
       "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",
@@ -418,6 +484,92 @@ describe("LedgerPnlPage", () => {
     expect(reconciliationRow).toHaveTextContent("存款余额（母公司）");
     expect(reconciliationRow).toHaveTextContent("对账差异 4.6780974646");
     expect(reconciliationRow).toHaveTextContent("需先对账");
+  });
+
+  it("ranks formal contract gaps into an actionable reconciliation queue", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.dates"),
+        result: { dates: ["2026-03-31"] },
+      })),
+      getLedgerPnlSummary: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.summary"),
+        result: {
+          report_date: "2026-03-31",
+          source_version: "sv_ledger_test",
+          ledger_monthly_pnl_core: money("1.00"),
+          ledger_monthly_pnl_all: money("1.00"),
+          ledger_total_assets: money("0.00"),
+          ledger_total_liabilities: money("0.00"),
+          ledger_net_assets: money("0.00"),
+          by_currency: [],
+          by_account: [
+            {
+              account_code: "50101000001",
+              account_name: "短期信用贷款利息收入",
+              total_pnl: money("1.00"),
+              count: 1,
+            },
+          ],
+        },
+      })),
+      getLedgerPnlData: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.data"),
+        result: {
+          report_date: "2026-03-31",
+          summary: {
+            total_pnl_cnx: money("0.00"),
+            total_pnl_cny: money("1.00"),
+            total_pnl: money("1.00"),
+            count: 1,
+          },
+          items: [],
+        },
+      })),
+      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+        result: { report_months: [] },
+      })),
+      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+        result_meta: {
+          ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+          basis: "ledger" as const,
+          quality_flag: "warning" as const,
+          formal_use_allowed: false,
+        },
+        result: buildFormalIndicatorContractPayload(),
+      })),
+    });
+
+    const queue = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-action-queue");
+    expect(queue).toHaveTextContent("下一步核账队列");
+    expect(queue).toHaveTextContent("先处理有系统候选但未对齐的项目，再补正式来源。");
+
+    const items = within(queue).getAllByTestId(
+      /^ledger-pnl-formal-indicator-source-contract-action-item-/,
+    );
+    expect(items).toHaveLength(6);
+    expect(items[0]).toHaveTextContent("1");
+    expect(items[0]).toHaveTextContent("集团总资产");
+    expect(items[0]).toHaveTextContent("先对账 QDB 候选与 Excel 样本");
+    expect(items[0]).toHaveTextContent("对账差异 197.97547 亿元");
+    expect(items[0]).toHaveTextContent("财务指标-汇总!K35 -> 财务指标-计算表!K30");
+
+    expect(items[1]).toHaveTextContent("存款余额（母公司）");
+    expect(items[1]).toHaveTextContent("对账差异 4.6780974646 亿元");
+
+    expect(items[2]).toHaveTextContent("贷款余额（集团资产质量口径）");
+    expect(items[3]).toHaveTextContent("拨贷比");
+
+    expect(items[4]).toHaveTextContent("贷款余额（母公司）");
+    expect(items[4]).toHaveTextContent("候选已对齐，等待正式来源放行");
+
+    expect(items[5]).toHaveTextContent("集团营业收入");
+    expect(items[5]).toHaveTextContent("补正式财务指标来源");
+    expect(items[5]).toHaveTextContent("系统候选值 -");
   });
 
   it("surfaces missing formal financial indicator contracts as unavailable instead of empty success", async () => {

@@ -1547,6 +1547,50 @@ function formatFormalContractValue(value: string | number | null | undefined, un
   return formatContractMetricValue(value, unit);
 }
 
+function parseContractGap(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.abs(value) : 0;
+  }
+  if (!value) {
+    return 0;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.abs(parsed) : 0;
+}
+
+function contractActionRank(metric: LedgerPnlFormalFinancialIndicatorMetric) {
+  if (metric.source_status === "needs_reconciliation") {
+    return 0;
+  }
+  if (metric.source_status === "candidate_qdb_aligned") {
+    return 1;
+  }
+  return 2;
+}
+
+function contractActionTitle(metric: LedgerPnlFormalFinancialIndicatorMetric) {
+  if (metric.source_status === "needs_reconciliation") {
+    return "先对账 QDB 候选与 Excel 样本";
+  }
+  if (metric.source_status === "candidate_qdb_aligned") {
+    return "候选已对齐，等待正式来源放行";
+  }
+  return "补正式财务指标来源";
+}
+
+function buildFormalContractActionQueue(metrics: LedgerPnlFormalFinancialIndicatorMetric[]) {
+  return [...metrics]
+    .filter((metric) => metric.formal_use_allowed === false || metric.value === null || metric.value === undefined)
+    .sort((left, right) => {
+      const rankDelta = contractActionRank(left) - contractActionRank(right);
+      if (rankDelta !== 0) {
+        return rankDelta;
+      }
+      return parseContractGap(right.reconciliation_gap) - parseContractGap(left.reconciliation_gap);
+    })
+    .slice(0, 6);
+}
+
 function buildFormalContractDecision(
   contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
   isLoading: boolean,
@@ -1623,6 +1667,7 @@ function FormalIndicatorSourceContractPanel(props: {
   };
   const decision = buildFormalContractDecision(props.contract, props.isLoading, props.isError);
   const contractNote = formatFormalContractNote(props.contract);
+  const actionQueue = buildFormalContractActionQueue(metrics);
 
   return (
     <section
@@ -1663,49 +1708,84 @@ function FormalIndicatorSourceContractPanel(props: {
       ) : props.isError ? (
         <div className="ledger-pnl-analysis__empty">正式财务指标源契约读取失败</div>
       ) : metrics.length > 0 ? (
-        <div className="ledger-pnl-analysis__source-contract-list">
-          {metrics.map((metric) => {
-            const tone = formalSourceContractTone(metric);
-            return (
-              <article
-                key={metric.metric_key}
-                data-testid={`ledger-pnl-formal-indicator-source-contract-row-${metric.metric_key}`}
-                className={`ledger-pnl-analysis__status-row ledger-pnl-analysis__status-row--${tone}`}
-              >
-                <div className="ledger-pnl-analysis__status-main">
-                  <span className="ledger-pnl-analysis__status-name">{metric.metric_name}</span>
-                  <span className="ledger-pnl-analysis__status-badge">
-                    {metric.source_status}
-                  </span>
-                </div>
-                <div className="ledger-pnl-analysis__source-contract-status">
-                  {sourceStatusLabels[metric.source_status]}
-                </div>
-                <div className="ledger-pnl-analysis__source-contract-values">
+        <>
+          <div
+            data-testid="ledger-pnl-formal-indicator-source-contract-action-queue"
+            className="ledger-pnl-analysis__source-contract-actions"
+          >
+            <div className="ledger-pnl-analysis__source-contract-actions-header">
+              <strong>下一步核账队列</strong>
+              <span>先处理有系统候选但未对齐的项目，再补正式来源。</span>
+            </div>
+            <div className="ledger-pnl-analysis__source-contract-action-list">
+              {actionQueue.map((metric, index) => (
+                <article
+                  key={metric.metric_key}
+                  data-testid={`ledger-pnl-formal-indicator-source-contract-action-item-${metric.metric_key}`}
+                  className="ledger-pnl-analysis__source-contract-action-item"
+                >
+                  <strong>{index + 1}</strong>
                   <div>
-                    <span>正式展示值</span>
-                    <strong>{formatFormalContractValue(metric.value, metric.unit)}</strong>
+                    <span>{metric.metric_name}</span>
+                    <em>{contractActionTitle(metric)}</em>
+                    <small>
+                      Excel {formatContractMetricValue(metric.excel_value, metric.unit)} / 系统候选值{" "}
+                      {formatContractMetricValue(metric.system_value, metric.unit)}
+                    </small>
+                    {metric.reconciliation_gap ? (
+                      <small>对账差异 {formatContractMetricValue(metric.reconciliation_gap, metric.unit)}</small>
+                    ) : null}
+                    <small>{metric.cell_ref}</small>
                   </div>
-                  <div>
-                    <span>Excel 样本值</span>
-                    <strong>{formatContractMetricValue(metric.excel_value, metric.unit)}</strong>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="ledger-pnl-analysis__source-contract-list">
+            {metrics.map((metric) => {
+              const tone = formalSourceContractTone(metric);
+              return (
+                <article
+                  key={metric.metric_key}
+                  data-testid={`ledger-pnl-formal-indicator-source-contract-row-${metric.metric_key}`}
+                  className={`ledger-pnl-analysis__status-row ledger-pnl-analysis__status-row--${tone}`}
+                >
+                  <div className="ledger-pnl-analysis__status-main">
+                    <span className="ledger-pnl-analysis__status-name">{metric.metric_name}</span>
+                    <span className="ledger-pnl-analysis__status-badge">
+                      {metric.source_status}
+                    </span>
                   </div>
-                  <div>
-                    <span>系统候选值</span>
-                    <strong>{formatContractMetricValue(metric.system_value, metric.unit)}</strong>
+                  <div className="ledger-pnl-analysis__source-contract-status">
+                    {sourceStatusLabels[metric.source_status]}
                   </div>
-                </div>
-                {metric.reconciliation_gap ? (
-                  <div className="ledger-pnl-analysis__source-contract-gap">
-                    对账差异 {metric.reconciliation_gap}
+                  <div className="ledger-pnl-analysis__source-contract-values">
+                    <div>
+                      <span>正式展示值</span>
+                      <strong>{formatFormalContractValue(metric.value, metric.unit)}</strong>
+                    </div>
+                    <div>
+                      <span>Excel 样本值</span>
+                      <strong>{formatContractMetricValue(metric.excel_value, metric.unit)}</strong>
+                    </div>
+                    <div>
+                      <span>系统候选值</span>
+                      <strong>{formatContractMetricValue(metric.system_value, metric.unit)}</strong>
+                    </div>
                   </div>
-                ) : null}
-                <div className="ledger-pnl-analysis__status-source">{metric.missing_reason}</div>
-                <div className="ledger-pnl-analysis__source-contract-ref">{metric.cell_ref}</div>
-              </article>
-            );
-          })}
-        </div>
+                  {metric.reconciliation_gap ? (
+                    <div className="ledger-pnl-analysis__source-contract-gap">
+                      对账差异 {metric.reconciliation_gap}
+                    </div>
+                  ) : null}
+                  <div className="ledger-pnl-analysis__status-source">{metric.missing_reason}</div>
+                  <div className="ledger-pnl-analysis__source-contract-ref">{metric.cell_ref}</div>
+                </article>
+              );
+            })}
+          </div>
+        </>
       ) : (
         <div className="ledger-pnl-analysis__empty">暂无正式财务指标源契约数据</div>
       )}
