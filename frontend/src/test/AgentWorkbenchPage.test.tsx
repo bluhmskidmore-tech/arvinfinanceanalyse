@@ -1455,32 +1455,35 @@ describe("AgentWorkbenchPage", () => {
           },
           next_drill: [],
         }),
-      )
-      .mockResolvedValueOnce(
-        buildJsonResponse({
-          answer: "GitNexus process ready.",
-          cards: [
-            {
-              title: "GitNexus Process Trace",
-              type: "table",
-              data: [{ step: 1, symbol: "start_checkout", file: "backend/app/api.py" }],
-              spec: { columns: ["step", "symbol", "file"] },
-            },
-          ],
-          evidence: {
-            tables_used: ["gitnexus://repo/MOSS-SYSTEM-V1/process/CheckoutFlow"],
-            filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1", process_name: "CheckoutFlow" },
-            evidence_rows: 1,
-            quality_flag: "ok",
-          },
-          result_meta: {
-            trace_id: "tr_gitnexus_process",
-            basis: "analytical",
-            generated_at: "2026-04-12T09:00:00Z",
-          },
-          next_drill: [],
-        }),
       );
+    let resolveProcessResponse!: (value: Response) => void;
+    const processResponse = new Promise<Response>((resolve) => {
+      resolveProcessResponse = resolve;
+    });
+    fetchMock.mockReturnValueOnce(processResponse);
+    const processPayload = buildJsonResponse({
+      answer: "GitNexus process ready.",
+      cards: [
+        {
+          title: "GitNexus Process Trace",
+          type: "table",
+          data: [{ step: 1, symbol: "start_checkout", file: "backend/app/api.py" }],
+          spec: { columns: ["step", "symbol", "file"] },
+        },
+      ],
+      evidence: {
+        tables_used: ["gitnexus://repo/MOSS-SYSTEM-V1/process/CheckoutFlow"],
+        filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1", process_name: "CheckoutFlow" },
+        evidence_rows: 1,
+        quality_flag: "ok",
+      },
+      result_meta: {
+        trace_id: "tr_gitnexus_process",
+        basis: "analytical",
+        generated_at: "2026-04-12T09:00:00Z",
+      },
+      next_drill: [],
+    });
 
     render(<AgentWorkbenchPage />);
 
@@ -1495,6 +1498,7 @@ describe("AgentWorkbenchPage", () => {
     await waitFor(() => expect(processSelect).toHaveValue("CheckoutFlow"));
     expect(viewProcessButton).not.toBeDisabled();
     await user.click(viewProcessButton);
+    screen.getByLabelText("process-search-input").focus();
 
     await waitFor(() => {
       const expectedBody = JSON.stringify({
@@ -1517,7 +1521,12 @@ describe("AgentWorkbenchPage", () => {
       );
       expect(matched).toBe(true);
     });
+    await act(async () => {
+      resolveProcessResponse(processPayload);
+      await Promise.resolve();
+    });
     expect(screen.getByText("已查看 GitNexus 流程 · 可继续追问")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
   });
 
   it("cues retry after viewing a selected GitNexus process fails", async () => {

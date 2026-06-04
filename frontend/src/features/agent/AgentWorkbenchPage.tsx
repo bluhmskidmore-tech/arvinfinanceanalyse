@@ -2707,6 +2707,8 @@ export function EmbeddedAgentCopilot({
         activeSuggestedActionPayload: null,
       }));
       setComposerAssistHint("已查看 GitNexus 流程 · 可继续追问");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     } finally {
       setComposerAssistHint((currentHint) =>
         currentHint === "正在查看 GitNexus 流程 · 可继续输入" ? null : currentHint,
