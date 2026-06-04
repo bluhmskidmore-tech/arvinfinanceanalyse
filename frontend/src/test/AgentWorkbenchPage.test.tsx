@@ -2426,7 +2426,9 @@ describe("AgentWorkbenchPage", () => {
     expect(
       await screen.findByText("智能体查询失败（500）"),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "编辑这句" }));
+    const stoppedEditAction = screen.getByRole("button", { name: /编辑这句/ });
+    expect(stoppedEditAction).toHaveAccessibleName(/stop this pending answer/);
+    await user.click(stoppedEditAction);
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("q");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
   });
@@ -5175,7 +5177,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(getWaitStatusStopAction());
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "重新发送" }));
+    const stoppedRerunAction = screen.getByRole("button", { name: /重新发送/ });
+    expect(stoppedRerunAction).toHaveAccessibleName(/rerun this stopped answer/);
+    await user.click(stoppedRerunAction);
 
     expect(await screen.findByText("正在重新发送已停止回答 · 可继续输入下一句")).toBeInTheDocument();
     expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
