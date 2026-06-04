@@ -19,6 +19,8 @@ const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const AGENT_RESULT_DETAILS_LABEL = "回答依据与运行信息";
 const AGENT_ANSWER_ACTIONS_LABEL = "回答操作";
 const AGENT_FOLLOW_UP_SUGGESTIONS_LABEL = "继续追问";
+const AGENT_RESEARCH_SHORTCUTS_LABEL = "研究快捷入口";
+const AGENT_FINANCIAL_WORKFLOWS_LABEL = "金融工作流";
 const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
@@ -424,6 +426,8 @@ describe("AgentWorkbenchPage", () => {
     expect(shortcutDrawer).toHaveAttribute("open");
     expect(stockResearchButton).toBeVisible();
     expect(portfolioReviewButton).toBeVisible();
+    expect(screen.getByLabelText(AGENT_RESEARCH_SHORTCUTS_LABEL)).toContainElement(stockResearchButton);
+    expect(screen.getByLabelText(AGENT_FINANCIAL_WORKFLOWS_LABEL)).toContainElement(portfolioReviewButton);
   });
 
   it("renders explicit repo_path input and GitNexus quick examples", () => {

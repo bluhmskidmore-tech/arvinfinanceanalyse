@@ -2934,7 +2934,7 @@ export function EmbeddedAgentCopilot({
 
   function renderFinancialWorkflowPanel() {
     return (
-      <section className="agent-financial-workflows" aria-label="financial-workflows">
+      <section className="agent-financial-workflows" aria-label="金融工作流">
         <div className="agent-financial-workflows__header">
           <div>
             <div className="agent-financial-workflows__eyebrow">金融工作流</div>
@@ -2963,7 +2963,7 @@ export function EmbeddedAgentCopilot({
 
   function renderResearchShortcutPanel() {
     return (
-      <section className="agent-financial-workflows" aria-label="research-shortcuts">
+      <section className="agent-financial-workflows" aria-label="研究快捷入口">
         <div className="agent-financial-workflows__header">
           <div>
             <div className="agent-financial-workflows__eyebrow">DEXTER Research</div>
