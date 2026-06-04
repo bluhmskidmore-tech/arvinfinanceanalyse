@@ -663,6 +663,8 @@ describe("productCategoryPnlPageModel", () => {
       attributionCoverageDetailLabel: "归因覆盖 1/2；缺少 2026-02-28",
       reviewWorkloadLabel: "P3 1",
       reviewWorkloadDetailLabel: "复核 1 条；P1 0 条，P2 0 条，P3 1 条",
+      dispositionLabel: "收紧 1",
+      dispositionDetailLabel: "规则处置：收紧 1 条，观察 0 条，保留 2 条",
     }));
     expect(surface.actionRows.map((item) => item.actionKind)).toEqual([
       "shrink_or_limit",

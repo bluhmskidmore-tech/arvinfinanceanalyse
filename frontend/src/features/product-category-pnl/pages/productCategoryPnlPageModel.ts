@@ -420,6 +420,8 @@ export type ProductCategoryOperatingBacktestSurface = {
     attributionCoverageDetailLabel: string;
     reviewWorkloadLabel: string;
     reviewWorkloadDetailLabel: string;
+    dispositionLabel: string;
+    dispositionDetailLabel: string;
     evidenceLabel: string;
   };
   coverageRows: Array<{
@@ -3013,6 +3015,23 @@ function productCategoryBacktestReviewWorkload(
   };
 }
 
+function productCategoryBacktestRuleDisposition(
+  calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[],
+): {
+  dispositionLabel: string;
+  dispositionDetailLabel: string;
+} {
+  const tightenCount = calibrationRows.filter((row) => row.recommendationLabel === "收紧触发条件").length;
+  const observeCount = calibrationRows.filter((row) => row.recommendationLabel === "继续观察").length;
+  const keepCount = calibrationRows.filter((row) => row.recommendationLabel === "保留规则").length;
+  const headline =
+    tightenCount > 0 ? `收紧 ${tightenCount}` : observeCount > 0 ? `观察 ${observeCount}` : `保留 ${keepCount}`;
+  return {
+    dispositionLabel: headline,
+    dispositionDetailLabel: `规则处置：收紧 ${tightenCount} 条，观察 ${observeCount} 条，保留 ${keepCount} 条`,
+  };
+}
+
 function productCategoryNextMonthEndDate(reportDate: string): string | null {
   const parsed = parseProductCategoryReportDate(reportDate);
   if (!parsed) {
@@ -3279,6 +3298,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     calibrationRows,
   });
   const reviewWorkload = productCategoryBacktestReviewWorkload(latestReviewRows);
+  const ruleDisposition = productCategoryBacktestRuleDisposition(calibrationRows);
 
   return {
     summary: {
@@ -3292,6 +3312,8 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       attributionCoverageDetailLabel: attributionCoverage.attributionCoverageDetailLabel,
       reviewWorkloadLabel: reviewWorkload.reviewWorkloadLabel,
       reviewWorkloadDetailLabel: reviewWorkload.reviewWorkloadDetailLabel,
+      dispositionLabel: ruleDisposition.dispositionLabel,
+      dispositionDetailLabel: ruleDisposition.dispositionDetailLabel,
       evidenceLabel: "信号来自动作队列；结果使用下一期 monthly 正式口径验证。",
     },
     coverageRows,
