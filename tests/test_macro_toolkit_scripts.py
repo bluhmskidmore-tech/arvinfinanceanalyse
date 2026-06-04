@@ -2719,6 +2719,7 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     calls: list[dict[str, object]] = []
+    source_cache_clears: list[str] = []
 
     def fake_backfill_macro_series(**kwargs: object) -> dict[str, object]:
         calls.append(dict(kwargs))
@@ -2754,6 +2755,7 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     )
     assert denied.status_code == 403, denied.text
     assert calls == []
+    assert source_cache_clears == []
 
     UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
         user_id="macro-source-user",
@@ -2769,6 +2771,7 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     assert unsupported.status_code == 400, unsupported.text
     assert "Unsupported macro source backfill alias" in unsupported.text
     assert calls == []
+    assert source_cache_clears == []
 
     allowed = client.post(
         "/ui/macro/toolkit/source-backfill/refresh",
@@ -2793,6 +2796,7 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
             "sources_filter": ["tushare_macro"],
         }
     ]
+    assert source_cache_clears == ["cleared"]
     get_settings.cache_clear()
 
 
@@ -2804,7 +2808,6 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     calls: list[dict[str, object]] = []
-    source_cache_clears: list[str] = []
     source_cache_clears: list[str] = []
 
     def fake_run_commodity_daily_ingest(**kwargs: object) -> dict[str, object]:
@@ -2849,7 +2852,6 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_runs_ingest(
     )
     assert denied.status_code == 403, denied.text
     assert calls == []
-    assert source_cache_clears == []
     assert source_cache_clears == []
 
     UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
