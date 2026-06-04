@@ -843,6 +843,64 @@ describe("productCategoryPnlPageModel", () => {
     );
   });
 
+  it("marks sample repair as signal-only when backtest months are covered", () => {
+    const payloadForReportDate = (reportDate: string): ProductCategoryPnlPayload => ({
+      report_date: reportDate,
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          report_date: reportDate,
+          category_id: "high_scale_low_yield",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.2),
+          weighted_yield: "1.10",
+        }),
+        row({
+          report_date: reportDate,
+          category_id: "low_scale_high_yield",
+          category_name: "低规模高收益",
+          cnx_scale: yi(100),
+          business_net_income: yi(0),
+          weighted_yield: "3.40",
+        }),
+      ],
+      asset_total: row({ report_date: reportDate, category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: reportDate,
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: reportDate,
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.6),
+        is_total: true,
+      }),
+    });
+
+    const surface = selectProductCategoryOperatingActionBacktestSurface({
+      payloads: [
+        payloadForReportDate("2026-01-31"),
+        payloadForReportDate("2026-02-28"),
+        payloadForReportDate("2026-03-31"),
+        payloadForReportDate("2026-04-30"),
+      ],
+    });
+
+    expect(surface.summary).toEqual(expect.objectContaining({
+      evaluatedMonthCount: 3,
+      signalCount: 3,
+      sampleRepairLabel: "补 3 条信号",
+      sampleRepairDateLabel: "需补月份：-",
+      sampleRepairReviewLabel: "最早复核：待补齐信号后",
+    }));
+  });
+
   it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
     const baseline = {
       report_date: "2026-02-28",

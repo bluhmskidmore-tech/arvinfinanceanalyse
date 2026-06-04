@@ -3084,6 +3084,7 @@ function productCategoryBacktestSampleRepair(input: {
   sampleRepairReviewLabel: string;
 } {
   const missingMonthCount = Math.max(0, PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT - input.evaluatedMonthCount);
+  const missingSignalCount = Math.max(0, PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT - input.signalCount);
   const repairDates: string[] = [];
   let cursor = input.latestReportDate;
   for (let index = 0; index < missingMonthCount; index += 1) {
@@ -3095,10 +3096,19 @@ function productCategoryBacktestSampleRepair(input: {
     cursor = nextDate;
   }
   return {
-    sampleRepairLabel: missingMonthCount > 0 ? `补 ${missingMonthCount} 个月` : "补信号样本",
+    sampleRepairLabel:
+      missingMonthCount > 0
+        ? `补 ${missingMonthCount} 个月`
+        : missingSignalCount > 0
+          ? `补 ${missingSignalCount} 条信号`
+          : "样本已满足",
     sampleRepairDetailLabel: `闸口需 ${PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT} 个月/${PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT} 条信号；当前 ${input.evaluatedMonthCount} 个月/${input.signalCount} 条信号`,
     sampleRepairDateLabel: repairDates.length > 0 ? `需补月份：${repairDates.join("、")}` : "需补月份：-",
-    sampleRepairReviewLabel: repairDates.length > 0 ? `最早复核：${repairDates[repairDates.length - 1]} 后` : "最早复核：待补齐样本后",
+    sampleRepairReviewLabel: repairDates.length > 0
+      ? `最早复核：${repairDates[repairDates.length - 1]} 后`
+      : missingSignalCount > 0
+        ? "最早复核：待补齐信号后"
+        : "最早复核：当前可复核",
   };
 }
 
