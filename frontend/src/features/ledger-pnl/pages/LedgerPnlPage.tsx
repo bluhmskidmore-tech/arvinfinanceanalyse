@@ -654,6 +654,24 @@ function formatFunctionalTopDriver(
   return `${displayLabel} ${formatYuanAsYi(driver.yuan)}`;
 }
 
+function firstResidualDiagnosticBottleneck(
+  rows: ReturnType<typeof buildLedgerExplainabilityModel>["residualDiagnosticRows"],
+) {
+  const materialRows = rows
+    .filter((row) => row.diff !== null && Math.abs(row.diff) >= LEDGER_RECONCILIATION_TOLERANCE_YUAN)
+    .sort((left, right) => Math.abs(right.diff ?? 0) - Math.abs(left.diff ?? 0));
+  return (
+    materialRows[0] ??
+    rows.find((row) => row.comparabilityReason || row.diff === null) ??
+    null
+  );
+}
+
+function formatFunctionalEvidenceLocator(model: ReturnType<typeof buildLedgerExplainabilityModel>) {
+  const row = firstResidualDiagnosticBottleneck(model.residualDiagnosticRows);
+  return row ? `残差诊断表 · ${row.layer}` : "残差诊断表 · 无需补证";
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -938,6 +956,7 @@ function LedgerFunctionalAuditStrip(props: {
           <em>最大卡点 {props.explainabilityModel.bottleneck}</em>
           <em>最大驱动 {formatFunctionalTopDriver(props.explainabilityModel.driverRows[0])}</em>
           <em>补证入口 {props.explainabilityModel.evidenceEntryPoint}</em>
+          <em>定位证据 {formatFunctionalEvidenceLocator(props.explainabilityModel)}</em>
         </div>
       </div>
       {nextDrills.length > 0 ? (
@@ -1189,6 +1208,8 @@ function LedgerExplainabilityPanel(props: {
   isLoading: boolean;
   isError: boolean;
 }) {
+  const residualBottleneck = firstResidualDiagnosticBottleneck(props.model.residualDiagnosticRows);
+
   return (
     <section data-testid="ledger-pnl-explainability-panel" className="ledger-pnl-analysis">
       <div className="ledger-pnl-analysis__header">
@@ -1255,6 +1276,9 @@ function LedgerExplainabilityPanel(props: {
             className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
           >
             <div className="ledger-pnl-analysis__table-title">残差诊断表</div>
+            <div className="ledger-pnl-analysis__source-contract-note">
+              定位链：第一屏最大卡点对应本表第一条未闭合或待核残差行。
+            </div>
             <table className="ledger-pnl-analysis__residual-table">
               <thead>
                 <tr>
@@ -1267,16 +1291,22 @@ function LedgerExplainabilityPanel(props: {
                 </tr>
               </thead>
               <tbody>
-                {props.model.residualDiagnosticRows.map((row) => (
+                {props.model.residualDiagnosticRows.map((row) => {
+                  const isBottleneck = residualBottleneck?.layer === row.layer;
+                  return (
                   <tr key={row.layer}>
                     <td>{row.layer}</td>
                     <td>{formatYuanAsYi(row.ledgerYuan)}</td>
                     <td>{formatYuanAsYi(row.reconciliationYuan)}</td>
                     <td>{formatYuanAsYi(row.diff)}</td>
-                    <td>{row.judgment}</td>
+                    <td>
+                      {isBottleneck ? <span className="ledger-pnl-analysis__trace-chip">残差定位：第一屏最大卡点</span> : null}
+                      {row.judgment}
+                    </td>
                     <td>{row.evidence}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

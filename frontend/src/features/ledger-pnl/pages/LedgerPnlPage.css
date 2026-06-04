@@ -448,6 +448,22 @@
   overflow-wrap: anywhere;
 }
 
+.ledger-pnl-analysis__trace-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-right: var(--moss-space-2);
+  margin-bottom: 3px;
+  padding: 3px 7px;
+  border: 1px solid var(--moss-color-warning-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-700);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  vertical-align: middle;
+}
+
 .ledger-pnl-analysis__table-head-row {
   background: var(--moss-color-neutral-50);
 }

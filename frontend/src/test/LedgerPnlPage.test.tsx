@@ -900,7 +900,13 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("最大卡点 科目汇总差异 40.00 亿元");
       expect(strip).toHaveTextContent("最大驱动 利息净收入 60.00 亿元");
       expect(strip).toHaveTextContent("补证入口 补科目汇总或确认科目范围");
+      expect(strip).toHaveTextContent("定位证据 残差诊断表 · 科目层");
     });
+
+    const residualTable = await screen.findByTestId("ledger-pnl-residual-diagnostic-table");
+    expect(residualTable).toHaveTextContent("科目层");
+    expect(residualTable).toHaveTextContent("残差定位：第一屏最大卡点");
+    expect(residualTable).toHaveTextContent("科目层残差 40.00 亿元");
   });
 
   it("keeps the first-screen contract gap as read failure when formal contract lookup fails", async () => {
