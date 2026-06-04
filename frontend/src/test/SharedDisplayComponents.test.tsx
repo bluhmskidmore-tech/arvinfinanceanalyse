@@ -7,7 +7,6 @@ import { CalibrationBadge } from "../components/CalibrationBadge";
 import { DataModeRibbon } from "../components/DataModeRibbon";
 import { StatusPill } from "../components/StatusPill";
 import { SummaryBlock } from "../components/SummaryBlock";
-import { designTokens } from "../theme/designSystem";
 
 describe("shared display components style governance", () => {
   it("renders alert severity dots with design tokens", () => {
@@ -16,7 +15,8 @@ describe("shared display components style governance", () => {
     );
 
     const dot = container.querySelector("[aria-hidden='true']");
-    expect(dot).toHaveStyle({ background: designTokens.color.danger[500] });
+    expect(dot).toHaveClass("alert-list__dot--danger");
+    expect(dot).not.toHaveAttribute("style");
   });
 
   it("renders summary copy with extracted token-backed classes", () => {

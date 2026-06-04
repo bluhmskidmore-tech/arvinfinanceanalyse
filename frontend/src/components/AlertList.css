@@ -18,6 +18,22 @@
   border-radius: 50%;
 }
 
+.alert-list__dot--danger {
+  background: var(--moss-color-danger-500);
+}
+
+.alert-list__dot--warning {
+  background: #d97706;
+}
+
+.alert-list__dot--caution {
+  background: var(--moss-color-warning-400);
+}
+
+.alert-list__dot--info {
+  background: #3b82f6;
+}
+
 .alert-list__content {
   flex: 1;
   min-width: 0;

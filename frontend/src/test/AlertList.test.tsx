@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { AlertList } from "../components/AlertList";
-import { designTokens } from "../theme/designSystem";
 
 describe("AlertList", () => {
   it("renders alert details with extracted layout classes", () => {
@@ -23,8 +22,7 @@ describe("AlertList", () => {
     expect(screen.getByText("Needs risk review")).toBeInTheDocument();
     expect(screen.getByText("09:30")).toBeInTheDocument();
     expect(container.querySelector(".alert-list")).toBeInTheDocument();
-    expect(container.querySelector(".alert-list__dot")).toHaveStyle({
-      background: designTokens.color.danger[500],
-    });
+    expect(container.querySelector(".alert-list__dot")).toHaveClass("alert-list__dot--danger");
+    expect(container.querySelector(".alert-list__dot")).not.toHaveAttribute("style");
   });
 });
