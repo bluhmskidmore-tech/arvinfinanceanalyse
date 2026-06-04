@@ -1603,7 +1603,7 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*26px\s*52px\s*!important[\s\S]*?max-height:\s*106px/,
     );
     expect(closureCss).toMatch(
-      /\[data-testid="stock-analysis-observation-preview"\],[\s\S]*?\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?min-height:\s*112px[\s\S]*?max-height:\s*138px/,
+      /\[data-testid="stock-analysis-observation-preview"\],[\s\S]*?\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?min-height:\s*112px[\s\S]*?max-height:\s*126px/,
     );
     expect(closureCss).toMatch(
       /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__boundary-summary\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*0\.62fr\)\s*minmax\(0,\s*1\.38fr\)/,
