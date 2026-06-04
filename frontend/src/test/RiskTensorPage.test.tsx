@@ -3471,6 +3471,10 @@ describe("RiskTensorPage", () => {
             status: tensorResult(reportDate).prior_period_change?.status ?? "available",
             comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
             summary: tensorResult(reportDate).prior_period_change?.summary ?? "估值 DV01 变动",
+            dominant_krd_bucket: tensorResult(reportDate).prior_period_change?.dominant_krd_bucket ?? "5Y",
+            previous_dominant_krd_bucket:
+              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
+            dominant_krd_shifted: tensorResult(reportDate).prior_period_change?.dominant_krd_shifted ?? true,
             metrics: [
               ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
               {
