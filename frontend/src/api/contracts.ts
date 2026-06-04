@@ -4526,6 +4526,15 @@ export type LedgerPnlFormalFinancialIndicatorRemediation = {
     missing_fields?: string[];
     blocking_rule?: string;
   };
+  readback_acceptance?: {
+    label?: string;
+    readback_query?: string;
+    target_state?: string;
+    release_state?: string;
+    formal_use_guard?: string;
+    source_guard?: string;
+    verification?: string;
+  };
   registration_target: string;
   verification: string;
 };

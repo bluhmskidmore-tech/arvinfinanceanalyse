@@ -760,6 +760,36 @@ function buildFormalContractMaterialChecklist(
       label: "守卫规则",
       value: remediation?.registration_package_guard?.blocking_rule?.trim() ?? "",
     },
+    {
+      key: "readbackAcceptance",
+      label: remediation?.readback_acceptance?.label?.trim() || "登记后回读验收",
+      value: remediation?.readback_acceptance?.readback_query?.trim() ?? "",
+    },
+    {
+      key: "readbackAcceptanceTarget",
+      label: "目标状态",
+      value: remediation?.readback_acceptance?.target_state?.trim() ?? "",
+    },
+    {
+      key: "readbackAcceptanceRelease",
+      label: "待放行状态",
+      value: remediation?.readback_acceptance?.release_state?.trim() ?? "",
+    },
+    {
+      key: "readbackAcceptanceFormalUse",
+      label: "不得放行",
+      value: remediation?.readback_acceptance?.formal_use_guard?.trim() ?? "",
+    },
+    {
+      key: "readbackAcceptanceSource",
+      label: "来源守卫",
+      value: remediation?.readback_acceptance?.source_guard?.trim() ?? "",
+    },
+    {
+      key: "readbackAcceptanceVerification",
+      label: "回读验证",
+      value: remediation?.readback_acceptance?.verification?.trim() ?? "",
+    },
     { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
     { key: "verification", label: "验证", value: remediation?.verification?.trim() ?? "" },
   ];

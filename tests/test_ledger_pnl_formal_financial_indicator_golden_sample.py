@@ -188,6 +188,15 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
             "missing_fields": [],
             "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
         },
+        "readback_acceptance": {
+            "label": "登记后回读验收",
+            "readback_query": "report_month=202605 必须返回已登记契约",
+            "target_state": "sample_status=contract_fixture，metrics 不得为空",
+            "release_state": "若正式生产来源尚未接入，release_gate.status 必须为 registered_pending_release",
+            "formal_use_guard": "formal_use_allowed 必须保持 false，直到正式来源接入且放行证据齐备",
+            "source_guard": "契约值必须来自冻结 Excel 样本；QDB 候选值只能保留在 system_value/reconciliation_gap",
+            "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+        },
         "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
         "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     }
