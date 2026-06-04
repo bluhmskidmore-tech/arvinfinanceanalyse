@@ -1155,7 +1155,7 @@ describe("stockAnalysisPageModel", () => {
     });
     expect(rows[0].statusLabel).toContain("目录待确认");
     expect(rows[1].detail).toContain("盘中异动");
-    expect(rows[1].detail).toContain("数据表缺失");
+    expect(rows[1].detail).toContain("数据源缺失");
     expect(rows.map((row) => row.detail).join(" ")).not.toContain("buy");
   });
 
@@ -2134,7 +2134,7 @@ describe("stockAnalysisPageModel", () => {
           level: "warning",
           event: "题材观察阻断",
           impact: "theme_breakout",
-          detail: "概念归属表待确认。",
+          detail: "概念归属待确认。",
         }),
         expect.objectContaining({
           source: "signal_confluence",

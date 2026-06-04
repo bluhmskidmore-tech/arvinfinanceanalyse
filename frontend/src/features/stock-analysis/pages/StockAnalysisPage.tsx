@@ -798,7 +798,7 @@ function isTechnicalRiskExitReason(reason: string | null | undefined) {
 
 function riskExitBlockedSummary(reason: string | null | undefined) {
   const normalized = reason?.trim();
-  if (!normalized) return "后端未供数";
+  if (!normalized) return "供数状态待确认";
   if (isTechnicalRiskExitReason(normalized)) return "风险退出待确认";
   if (/position_snapshot|ACTIVE A-share/i.test(normalized)) return "持仓快照缺失";
   return compactText(normalized, 24);

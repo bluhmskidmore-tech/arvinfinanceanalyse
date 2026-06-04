@@ -1445,17 +1445,18 @@ describe("StockAnalysisPage", () => {
 
   it("keeps the narrow first screen focused on summary, KPI, and sector chart", () => {
     const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
-    const finalRailStart = css.indexOf("Right rail final polish");
-    const narrowRailStart = css.indexOf("@media (max-width: 1279px)", finalRailStart);
-    const narrowRailCss = css.slice(narrowRailStart);
+    const finalLayoutStart = css.indexOf("Final homepage-rhythm pass");
+    const narrowRailStart = css.lastIndexOf("@media (max-width: 1279px)", finalLayoutStart);
+    const narrowCompactStart = css.indexOf("Narrow dashboard closure");
+    const narrowRailCss = css.slice(narrowRailStart, finalLayoutStart);
+    const narrowCompactCss = css.slice(narrowCompactStart);
 
+    expect(finalLayoutStart).toBeGreaterThan(-1);
+    expect(narrowRailStart).toBeGreaterThan(-1);
+    expect(narrowCompactStart).toBeGreaterThan(-1);
     expect(narrowRailCss).toContain('[data-testid="stock-analysis-first-screen-rail"]');
-    expect(narrowRailCss).toContain('[data-testid="stock-analysis-first-screen-primary"]');
     expect(narrowRailCss).toMatch(
-      /\[data-testid="stock-analysis-first-screen-primary"\]\s*\{[\s\S]*?order:\s*4\s*!important/,
-    );
-    expect(narrowRailCss).toMatch(
-      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?order:\s*1\s*!important/,
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?order:\s*8\s*!important/,
     );
     expect(narrowRailCss).toMatch(
       /\[data-testid="stock-analysis-review-queue"\]\s*\{[\s\S]*?order:\s*5\s*!important/,
@@ -1463,7 +1464,10 @@ describe("StockAnalysisPage", () => {
     expect(narrowRailCss).toMatch(
       /\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?order:\s*6\s*!important/,
     );
-    expect(narrowRailCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(narrowCompactCss).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(narrowCompactCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*22px\s*40px\s*!important[\s\S]*?max-height:\s*78px/,
+    );
     expect(narrowRailCss).toMatch(
       /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-risk-section"\][\s\S]*?display:\s*none/,
     );
@@ -1521,13 +1525,13 @@ describe("StockAnalysisPage", () => {
       /@media \(min-width:\s*1280px\)[\s\S]*?\.stock-analysis-page__first-screen-main\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
     );
     expect(finalLayoutCss).toMatch(
-      /@media \(min-width:\s*1280px\)[\s\S]*?\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?min-height:\s*320px/,
+      /Desktop layout closure[\s\S]*?\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?min-height:\s*276px/,
     );
     expect(finalLayoutCss).toMatch(
-      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__sector-chart-wrap\s*\{[\s\S]*?min-height:\s*176px\s*!important/,
+      /Desktop layout closure[\s\S]*?\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__sector-chart-wrap\s*\{[\s\S]*?min-height:\s*152px\s*!important/,
     );
     expect(finalLayoutCss).toMatch(
-      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__echart--sector-strength\s*\{[\s\S]*?height:\s*176px\s*!important/,
+      /Desktop layout closure[\s\S]*?\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__echart--sector-strength,[\s\S]*?canvas\s*\{[\s\S]*?height:\s*152px\s*!important/,
     );
     expect(finalLayoutCss).toMatch(
       /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*30px\s*minmax\(72px,\s*1fr\)/,
@@ -1577,13 +1581,81 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-first-screen-main"\],[\s\S]*?\[data-testid="stock-analysis-first-screen-workbench"\]\s*\{[\s\S]*?display:\s*contents\s*!important/,
     );
     expect(closureCss).toMatch(
-      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\{[\s\S]*?grid-column:\s*2\s*\/\s*3\s*!important[\s\S]*?grid-row:\s*1\s*\/\s*span\s*5\s*!important/,
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\{[\s\S]*?grid-column:\s*2\s*\/\s*3\s*!important[\s\S]*?grid-row:\s*1\s*\/\s*span\s*7\s*!important/,
     );
     expect(closureCss).toMatch(
       /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*2\s*!important[\s\S]*?grid-row:\s*4\s*!important/,
     );
     expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-observation-preview"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*2\s*!important[\s\S]*?grid-row:\s*5\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-theme-leaders-first-screen"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*2\s*!important[\s\S]*?grid-row:\s*6\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*2\s*!important[\s\S]*?grid-row:\s*7\s*!important/,
+    );
+    expect(closureCss).toMatch(
       /@media \(min-width:\s*1600px\)[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*352px\s*!important/,
+    );
+  });
+
+  it("keeps the narrow first screen readable without clipping status chips", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const mobileStart = css.indexOf("Mobile first-screen readability pass");
+    const narrowStart = css.indexOf("Narrow dashboard closure");
+    const compactMobileStart = css.indexOf('[data-testid="stock-analysis-first-screen-rail"]');
+    const mobileCss = css.slice(mobileStart);
+    const narrowCss = css.slice(narrowStart);
+    const compactMobileCss = css.slice(compactMobileStart);
+
+    expect(mobileStart).toBeGreaterThan(-1);
+    expect(narrowStart).toBeGreaterThan(-1);
+    expect(compactMobileStart).toBeGreaterThan(-1);
+    expect(mobileCss).toMatch(
+      /@media \(max-width:\s*720px\)[\s\S]*?\.stock-analysis-page__dh-hero-status-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(mobileCss).toMatch(
+      /\.stock-analysis-page__dh-hero-status-strip span\s*\{[\s\S]*?white-space:\s*normal\s*!important/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__sector-chart-wrap\s*\{[\s\S]*?min-height:\s*132px\s*!important/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__echart--sector-strength,[\s\S]*?canvas\s*\{[\s\S]*?height:\s*132px\s*!important/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\] \[data-testid="stock-sector-filter-chips"\],[\s\S]*?display:\s*none\s*!important/,
+    );
+    expect(mobileCss).toMatch(
+      /\.stock-analysis-page__dh-details summary \.stock-analysis-page__dh-pill\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+    expect(mobileCss).toMatch(
+      /\.stock-analysis-page__supply-kpi-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    );
+    expect(mobileCss).toMatch(
+      /\.stock-analysis-page__supply-kpi-card,[\s\S]*?\.stock-analysis-page__mini-chart\s*\{[\s\S]*?max-width:\s*100%/,
+    );
+    expect(compactMobileCss).toMatch(
+      /\.stock-analysis-page__dh-kpi-strip\s*\{[\s\S]*?display:\s*grid[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(narrowCss).toMatch(
+      /\.stock-analysis-page__strategy-lens-grid\s*\{[\s\S]*?display:\s*grid[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)[\s\S]*?max-height:\s*38px/,
+    );
+    expect(narrowCss).toMatch(
+      /\.stock-analysis-page__strategy-lens-card\s*\{[\s\S]*?max-width:\s*100%/,
+    );
+    expect(narrowCss).toMatch(
+      /\.stock-analysis-page__strategy-lens-card\s*\{[\s\S]*?min-height:\s*38px/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*22px\s*40px\s*!important[\s\S]*?max-height:\s*78px/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\]\s*\.stock-analysis-page__review-workbench-strip,[\s\S]*?height:\s*40px/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?order:\s*8\s*!important/,
     );
   });
 
@@ -2207,6 +2279,8 @@ describe("StockAnalysisPage", () => {
     expect(section).toHaveTextContent("Alpha Semiconductor");
     expect(section).not.toHaveTextContent("Semiconductor proxy");
     expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("目录待确认");
+    expect(screen.getByTestId("stock-analysis-theme-evidence-state")).toHaveTextContent("数据源缺失");
+    expect(screen.getByTestId("stock-analysis-theme-evidence-state")).not.toHaveTextContent("数据表缺失");
     const reviewItems = screen.getByTestId("stock-analysis-theme-review-items");
     expect(reviewItems).toHaveTextContent("簇强度不足");
     expect(reviewItems).toHaveTextContent("强势样本未过门槛，保留观察");
@@ -2871,7 +2945,8 @@ describe("StockAnalysisPage", () => {
     expect(section).toHaveTextContent("诊断");
     expect(section).toHaveTextContent("缺口");
     expect(section).toHaveTextContent("题材观察阻断");
-    expect(section).toHaveTextContent("概念归属表待确认");
+    expect(section).toHaveTextContent("概念归属待确认");
+    expect(section).not.toHaveTextContent("概念归属表待确认");
     expect(section).toHaveTextContent("中");
     expect(section).toHaveTextContent("高");
     expect(section).toHaveTextContent("市场宽度");
@@ -3093,6 +3168,28 @@ describe("StockAnalysisPage", () => {
 
     expect(section).toHaveTextContent("风险退出待确认");
     expect(section).not.toHaveTextContent(sourceTableRiskExitSignal);
+  });
+
+  it("shows a business pending label when risk exit is blocked without a backend reason", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          supported_outputs: ["market_gate", "sector_rank", "stock_candidates"],
+          unsupported_outputs: [
+            {
+              key: "risk_exit",
+              reason: "",
+            },
+          ],
+          risk_exit: undefined,
+        }),
+      }),
+    });
+
+    const section = await screen.findByTestId("stock-analysis-risk-section");
+    expect(section).toHaveTextContent("风险退出待补");
+    expect(section).toHaveTextContent("供数状态待确认");
+    expect(section).not.toHaveTextContent("后端未供数");
   });
 
   it("keeps risk rows compact until backend reason is requested", async () => {

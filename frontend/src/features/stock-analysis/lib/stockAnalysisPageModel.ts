@@ -856,7 +856,7 @@ export function localizeStockBackendText(
     return "强势样本拥挤，市场宽度未确认。";
   }
   if (lower.includes("concept membership table pending")) {
-    return "概念归属表待确认。";
+    return "概念归属待确认。";
   }
   if (lower.includes("signal confluence diagnostic") && lower.includes("pending") && lower.includes("detail")) {
     return "联动诊断待确认。";
@@ -1922,7 +1922,7 @@ const themeEvidenceInputLabels: Record<string, string> = {
 
 const themeEvidenceStatusLabels: Record<string, string> = {
   catalog_unconfirmed: "目录待确认",
-  table_missing: "数据表缺失",
+  table_missing: "数据源缺失",
   source_table_missing: "数据源缺失",
   landed_no_rows: "已接入无行",
   matched_rows: "已匹配",
