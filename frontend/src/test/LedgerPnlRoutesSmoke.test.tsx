@@ -13,9 +13,9 @@ import { routerFuture } from "../router/routerFuture";
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
     trace_id: traceId,
-    basis: "formal",
+    basis: "ledger",
     result_kind: resultKind,
-    formal_use_allowed: true,
+    formal_use_allowed: false,
     source_version: "sv_ledger_route",
     vendor_version: "vv_none",
     rule_version: "rv_ledger_route",
@@ -25,6 +25,7 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-17T08:00:00Z",
+    tables_used: ["qdb_general_ledger_workbook"],
   };
 }
 

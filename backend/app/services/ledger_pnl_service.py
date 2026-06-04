@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
@@ -33,6 +33,35 @@ CACHE_VERSION = "cv_ledger_pnl_v1"
 RULE_VERSION = "rv_ledger_pnl_v1"
 FINANCIAL_INDICATOR_CONTRACT_CACHE_VERSION = "cv_ledger_pnl_financial_indicator_contract_v1"
 SUPPORTED_CURRENCIES = {"CNX", "CNY"}
+LEDGER_PNL_TOTAL_ACCOUNT_PREFIXES = ("5",)
+
+
+def _quality_for_evidence(evidence_rows: int | None) -> Literal["ok", "warning"]:
+    return "ok" if evidence_rows and evidence_rows > 0 else "warning"
+
+
+def _empty_ledger_next_drill(report_date: str | None = None, currency: str | None = None) -> list[dict[str, str]]:
+    checks = [
+        {
+            "label": "核对总账报告日",
+            "detail": "确认请求报告日是否存在于 /api/ledger-pnl/dates 返回列表。",
+        },
+        {
+            "label": "核对总账源文件",
+            "detail": "检查 product_category_source_dir 是否包含对应 YYYYMM 的总账对账工作簿。",
+        },
+    ]
+    if currency:
+        checks.append({
+            "label": "核对币种筛选",
+            "detail": f"当前币种筛选为 {currency}，请确认该报告日下是否存在对应币种分录。",
+        })
+    if report_date:
+        checks.append({
+            "label": "核对明细证据",
+            "detail": f"补查 {report_date} 的 canonical 总账事实行，避免把无证据结果解释为真实 0。",
+        })
+    return checks
 
 
 def _load_facts_for_date(
@@ -69,6 +98,13 @@ def _sum_by_prefixes(
 
 def _supported_currency_facts(facts: list[Any]) -> list[Any]:
     return [row for row in facts if row.currency in SUPPORTED_CURRENCIES]
+
+
+def _pnl_total_facts(facts: list[Any]) -> list[Any]:
+    return [
+        row for row in facts
+        if str(row.account_code).strip().startswith(LEDGER_PNL_TOTAL_ACCOUNT_PREFIXES)
+    ]
 
 
 def get_available_dates(source_dir: str) -> dict[str, Any]:
@@ -168,12 +204,13 @@ def get_ledger_pnl_summary(
     ledger_net = ledger_assets - ledger_liabilities
 
     pnl_core = _sum_by_prefixes(filtered, LEDGER_PNL_ACCOUNT_PREFIXES, "monthly_pnl")
-    pnl_all = _sum_by_prefixes(filtered, ("5",), "monthly_pnl")
+    pnl_all = _sum_by_prefixes(filtered, LEDGER_PNL_TOTAL_ACCOUNT_PREFIXES, "monthly_pnl")
+    pnl_filtered = _pnl_total_facts(filtered)
 
     # 按币种汇总
     by_currency: dict[str, Decimal] = {}
     by_account: dict[str, dict[str, Any]] = {}
-    for row in filtered:
+    for row in pnl_filtered:
         pnl = to_decimal(row.monthly_pnl)
         curr = row.currency
         by_currency[curr] = by_currency.get(curr, Decimal("0")) + pnl
@@ -233,16 +270,21 @@ def _empty_summary(report_date: date, source_version: str) -> dict[str, Any]:
 
 
 def ledger_pnl_dates_envelope(source_dir: str) -> dict[str, Any]:
+    payload = get_available_dates(source_dir)
+    evidence_rows = len(payload.get("dates", []))
     return build_result_envelope(
-        basis="formal",
+        basis="ledger",
         trace_id="tr_ledger_pnl_dates",
         result_kind="ledger_pnl.dates",
         cache_version=CACHE_VERSION,
         source_version="sv_ledger_pnl_dates",
         rule_version=RULE_VERSION,
-        quality_flag="ok",
+        quality_flag=_quality_for_evidence(evidence_rows),
         vendor_version="vv_none",
-        result_payload=get_available_dates(source_dir),
+        result_payload=payload,
+        tables_used=["qdb_general_ledger_workbook"],
+        evidence_rows=evidence_rows,
+        next_drill=[] if evidence_rows > 0 else _empty_ledger_next_drill(),
     )
 
 
@@ -255,6 +297,7 @@ def ledger_pnl_data_envelope(
     rd = datetime.strptime(report_date.strip(), "%Y-%m-%d").date()
     payload = get_ledger_pnl_by_date(source_dir, rd, currency)
     items = payload.get("items")
+    evidence_rows = len(items) if isinstance(items, list) else None
     return build_result_envelope(
         basis="ledger",
         trace_id="tr_ledger_pnl_data",
@@ -262,7 +305,7 @@ def ledger_pnl_data_envelope(
         cache_version=CACHE_VERSION,
         source_version=payload.get("source_version", "sv_ledger_pnl_data"),
         rule_version=RULE_VERSION,
-        quality_flag="ok",
+        quality_flag=_quality_for_evidence(evidence_rows),
         vendor_version="vv_none",
         result_payload=payload,
         requested_report_date=report_date.strip(),
@@ -271,7 +314,8 @@ def ledger_pnl_data_envelope(
         date_basis="ledger_report_date",
         filters_applied={"report_date": payload["report_date"], "currency": currency or "ALL"},
         tables_used=["qdb_general_ledger_workbook"],
-        evidence_rows=len(items) if isinstance(items, list) else None,
+        evidence_rows=evidence_rows,
+        next_drill=[] if evidence_rows and evidence_rows > 0 else _empty_ledger_next_drill(payload["report_date"], currency),
     )
 
 
@@ -296,7 +340,7 @@ def ledger_pnl_summary_envelope(
         cache_version=CACHE_VERSION,
         source_version=payload.get("source_version", "sv_ledger_pnl_summary"),
         rule_version=RULE_VERSION,
-        quality_flag="ok",
+        quality_flag=_quality_for_evidence(evidence_rows),
         vendor_version="vv_none",
         result_payload=payload,
         requested_report_date=report_date.strip(),
@@ -306,6 +350,7 @@ def ledger_pnl_summary_envelope(
         filters_applied={"report_date": payload["report_date"], "currency": currency or "ALL"},
         tables_used=["qdb_general_ledger_workbook"],
         evidence_rows=evidence_rows,
+        next_drill=[] if evidence_rows and evidence_rows > 0 else _empty_ledger_next_drill(payload["report_date"], currency),
     )
 
 

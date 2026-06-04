@@ -566,9 +566,10 @@ def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypa
     assert "'*', NULL, 'choice_news.data', 'read'" in command
     assert "'anonymous', 'viewer', 'macro_toolkit', 'read'" in command
     assert "'anonymous', 'viewer', 'macro_vendor', 'read'" in command
+    assert "'anonymous', 'viewer', 'ledger_pnl', 'read'" in command
     assert "'anonymous', 'viewer', 'product_category_pnl', 'read'" in command
     assert "WHERE NOT EXISTS" in command
-    assert command.count("INSERT INTO user_role_scope") == 4
+    assert command.count("INSERT INTO user_role_scope") == len(module.DEV_USER_SCOPE_GRANTS)
 
 
 def test_resolve_python_executable_prefers_path_python(monkeypatch):

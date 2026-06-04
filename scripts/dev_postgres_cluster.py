@@ -39,6 +39,7 @@ RUNTIME_GOVERNANCE_SEED_FILES = (
 )
 DEV_USER_SCOPE_GRANTS = (
     {"user_id": "*", "role": None, "resource": "choice_news.data", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "ledger_pnl", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "macro_toolkit", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "macro_vendor", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "product_category_pnl", "action": "read"},
