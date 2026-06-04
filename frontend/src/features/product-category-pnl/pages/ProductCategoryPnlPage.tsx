@@ -43,6 +43,7 @@ import {
   selectProductCategoryCurrencyNetIncomeChart,
   type ProductCategoryDecisionFocusSurface,
   selectProductCategoryDecisionFocusSurface,
+  type ProductCategoryRootCauseSurface,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
@@ -51,6 +52,7 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
+  selectProductCategoryRootCauseSurface,
   type ProductCategoryScenarioSensitivitySurface,
   type ProductCategoryScenarioExplanation,
   selectProductCategoryScenarioExplanation,
@@ -1363,6 +1365,7 @@ function ProductCategoryFinancialAnalysisPanel(props: {
   onSetScenarioActionClosureStatus: (categoryId: string, status: ScenarioActionClosureStatus) => void;
   onSelectScenarioActionClosureMemo: (categoryId: string) => void;
   waterfall: ProductCategoryAttributionWaterfallSurface;
+  rootCause: ProductCategoryRootCauseSurface;
   decisionFocus: ProductCategoryDecisionFocusSurface;
 }) {
   const scenarioExplanation = props.scenarioExplanation;
@@ -1636,6 +1639,53 @@ function ProductCategoryFinancialAnalysisPanel(props: {
                   <small>累计 {row.cumulativeLabel}</small>
                 </div>
               ))}
+            </div>
+          )}
+        </article>
+        <article
+          className="product-category-financial-analysis__panel"
+          data-testid="product-category-root-cause"
+        >
+          <div className="product-category-financial-analysis__panel-head">
+            <div>
+              <h3 className="product-category-financial-analysis__title">产品差异根因拆解台</h3>
+              <p className="product-category-financial-analysis__note">
+                从正式归因中挑出变动最大的产品行，拆成规模、利率、FTP、直接和残差证据。
+              </p>
+            </div>
+          </div>
+          {props.rootCause.emptyCopy || !props.rootCause.headline ? (
+            <div className="product-category-financial-analysis__empty">{props.rootCause.emptyCopy}</div>
+          ) : (
+            <div className="product-category-financial-analysis__root-cause">
+              <div className="product-category-financial-analysis__root-cause-head">
+                <div>
+                  <span>主导原因</span>
+                  <strong>{props.rootCause.headline.categoryLabel}</strong>
+                  <small>{props.rootCause.headline.conclusionLabel}</small>
+                </div>
+                <b className={`is-${props.rootCause.headline.tone}`}>{props.rootCause.headline.deltaLabel}</b>
+              </div>
+              <div className="product-category-financial-analysis__root-cause-metrics">
+                <span>本期 {props.rootCause.headline.currentNetIncomeLabel}</span>
+                <span>对比期 {props.rootCause.headline.priorNetIncomeLabel}</span>
+                <span>规模 {props.rootCause.headline.scaleLabel}</span>
+                <span>收益率 {props.rootCause.headline.yieldLabel}</span>
+              </div>
+              <div className="product-category-financial-analysis__root-cause-drivers">
+                {props.rootCause.driverRows.map((row) => (
+                  <div className="product-category-financial-analysis__root-cause-driver" key={row.key}>
+                    <span>{row.label}</span>
+                    <b className={`is-${row.tone}`}>{row.valueLabel}</b>
+                    <small>{row.shareLabel}</small>
+                  </div>
+                ))}
+              </div>
+              <div className="product-category-financial-analysis__root-cause-evidence">
+                {props.rootCause.evidenceItems.map((item) => (
+                  <small key={item}>{item}</small>
+                ))}
+              </div>
             </div>
           )}
         </article>
@@ -2174,6 +2224,14 @@ export default function ProductCategoryPnlPage() {
   const attributionWaterfallSurface = useMemo(
     () => selectProductCategoryAttributionWaterfallSurface(attributionQuery.data?.result),
     [attributionQuery.data?.result],
+  );
+  const rootCauseSurface = useMemo(
+    () =>
+      selectProductCategoryRootCauseSurface({
+        rows: rowsToRender,
+        attribution: attributionQuery.data?.result,
+      }),
+    [attributionQuery.data?.result, rowsToRender],
   );
   const decisionFocusSurface = useMemo(
     () =>
@@ -3308,6 +3366,7 @@ export default function ProductCategoryPnlPage() {
           onSetScenarioActionClosureStatus={handleScenarioActionClosureStatus}
           onSelectScenarioActionClosureMemo={setScenarioActionClosureMemoCategoryId}
           waterfall={attributionWaterfallSurface}
+          rootCause={rootCauseSurface}
           decisionFocus={decisionFocusSurface}
         />
       ) : null}

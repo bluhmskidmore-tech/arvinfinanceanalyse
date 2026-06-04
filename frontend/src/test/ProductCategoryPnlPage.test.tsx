@@ -177,6 +177,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
     expect(screen.getByTestId("product-category-attribution-waterfall")).toHaveTextContent("经营差异瀑布");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("产品差异根因拆解台");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("主导原因");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("规模因素");
+    expect(screen.getByTestId("product-category-root-cause")).toHaveTextContent("未解释");
     expect(screen.getByTestId("product-category-decision-focus")).toHaveTextContent("本期决策焦点");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
     expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债侧产品类别口径");

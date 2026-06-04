@@ -504,6 +504,44 @@ export type ProductCategoryAttributionWaterfallSurface = {
   emptyCopy: string | null;
 };
 
+export type ProductCategoryRootCauseDriverKey =
+  | "scale_effect"
+  | "rate_effect"
+  | "ftp_effect"
+  | "direct_effect"
+  | "unexplained_effect"
+  | "closure_error";
+
+export type ProductCategoryRootCauseDriverRow = {
+  key: ProductCategoryRootCauseDriverKey;
+  label: string;
+  value: number;
+  valueLabel: string;
+  sharePct: number | null;
+  shareLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryRootCauseSurface = {
+  headline: {
+    categoryId: string;
+    categoryLabel: string;
+    delta: number;
+    deltaLabel: string;
+    driverLabel: string;
+    driverValueLabel: string;
+    currentNetIncomeLabel: string;
+    priorNetIncomeLabel: string;
+    scaleLabel: string;
+    yieldLabel: string;
+    conclusionLabel: string;
+    tone: "positive" | "negative" | "neutral";
+  } | null;
+  driverRows: ProductCategoryRootCauseDriverRow[];
+  evidenceItems: string[];
+  emptyCopy: string | null;
+};
+
 export type ProductCategoryDecisionFocusKey =
   | "top_contributor"
   | "top_pressure"
@@ -1988,6 +2026,15 @@ const PRODUCT_CATEGORY_ATTRIBUTION_WATERFALL_STEPS = [
   ["closure_error", "闭合误差"],
 ] as const;
 
+const PRODUCT_CATEGORY_ROOT_CAUSE_DRIVER_STEPS = [
+  ["scale_effect", "规模因素"],
+  ["rate_effect", "利率因素"],
+  ["ftp_effect", "FTP因素"],
+  ["direct_effect", "直接因素"],
+  ["unexplained_effect", "未解释"],
+  ["closure_error", "闭合误差"],
+] as const satisfies ReadonlyArray<readonly [ProductCategoryRootCauseDriverKey, string]>;
+
 export function selectProductCategoryAttributionWaterfallSurface(
   attribution: ProductCategoryAttributionPayload | null | undefined,
 ): ProductCategoryAttributionWaterfallSurface {
@@ -2051,6 +2098,87 @@ export function selectProductCategoryAttributionWaterfallSurface(
     title: `${headline.category_name || "全表合计"}经营差异瀑布`,
     deltaLabel: formatSignedProductCategoryYi(delta),
     rows,
+    emptyCopy: null,
+  };
+}
+
+export function selectProductCategoryRootCauseSurface(input: {
+  rows: ProductCategoryPnlRow[];
+  attribution?: ProductCategoryAttributionPayload | null;
+}): ProductCategoryRootCauseSurface {
+  if (!input.attribution || input.attribution.state !== "complete") {
+    return {
+      headline: null,
+      driverRows: [],
+      evidenceItems: [],
+      emptyCopy: "当前缺少可用的产品级正式归因，暂不能拆解根因。",
+    };
+  }
+  const parentIds = parentProductCategoryIds(input.rows);
+  const attributionRows = input.attribution.rows.filter(
+    (row) => !row.category_id.endsWith("_total") && row.category_id !== "grand_total" && !parentIds.has(row.category_id),
+  );
+  const headlineRow = attributionRows
+    .map((row) => ({ row, delta: yiNumber(row.effects.delta_business_net_income) }))
+    .filter((item): item is { row: ProductCategoryAttributionRow; delta: number } =>
+      item.delta !== null && item.delta !== 0,
+    )
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))[0];
+  if (!headlineRow) {
+    return {
+      headline: null,
+      driverRows: [],
+      evidenceItems: [],
+      emptyCopy: "当前产品级归因没有可拆解的显著差异。",
+    };
+  }
+  const displayRow = input.rows.find((row) => row.category_id === headlineRow.row.category_id);
+  const currentNetIncome = yiNumber(headlineRow.row.current?.business_net_income ?? displayRow?.business_net_income);
+  const priorNetIncome = yiNumber(headlineRow.row.prior?.business_net_income);
+  const scale = yiNumber(headlineRow.row.current?.scale ?? displayRow?.cnx_scale);
+  const yieldPct = percentNumber(headlineRow.row.current?.yield_pct ?? displayRow?.weighted_yield);
+  const driverRows = PRODUCT_CATEGORY_ROOT_CAUSE_DRIVER_STEPS
+    .map(([key, label]) => {
+      const value = yiNumber(headlineRow.row.effects[key]) ?? 0;
+      const sharePct = headlineRow.delta !== 0 ? Number((value / headlineRow.delta * 100).toFixed(1)) : null;
+      return {
+        key,
+        label,
+        value,
+        valueLabel: formatSignedProductCategoryYi(value),
+        sharePct,
+        shareLabel: productCategoryPercentLabel(sharePct),
+        tone: productCategoryDeltaTone(value),
+      };
+    })
+    .sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
+  const leadingDriver = driverRows[0] ?? null;
+  const closureError = yiNumber(headlineRow.row.effects.closure_error);
+  return {
+    headline: {
+      categoryId: headlineRow.row.category_id,
+      categoryLabel: headlineRow.row.category_name || headlineRow.row.category_id,
+      delta: headlineRow.delta,
+      deltaLabel: formatSignedProductCategoryYi(headlineRow.delta),
+      driverLabel: leadingDriver?.label ?? "未识别",
+      driverValueLabel: leadingDriver?.valueLabel ?? "-",
+      currentNetIncomeLabel: productCategoryYiNumberLabel(currentNetIncome),
+      priorNetIncomeLabel: productCategoryYiNumberLabel(priorNetIncome),
+      scaleLabel: productCategoryYiNumberLabel(scale),
+      yieldLabel: yieldPct === null ? "-" : `${yieldPct.toFixed(2)}%`,
+      conclusionLabel: `${headlineRow.row.category_name || headlineRow.row.category_id} 变动 ${formatSignedProductCategoryYi(
+        headlineRow.delta,
+      )} 亿元，主导原因是 ${leadingDriver?.label ?? "未识别"} ${leadingDriver?.valueLabel ?? "-"} 亿元。`,
+      tone: productCategoryDeltaTone(headlineRow.delta),
+    },
+    driverRows,
+    evidenceItems: [
+      `本期净营收 ${productCategoryYiNumberLabel(currentNetIncome)} 亿元`,
+      `对比期净营收 ${productCategoryYiNumberLabel(priorNetIncome)} 亿元`,
+      `当前规模 ${productCategoryYiNumberLabel(scale)} 亿元`,
+      `当前收益率 ${yieldPct === null ? "-" : `${yieldPct.toFixed(2)}%`}`,
+      `闭合误差 ${formatSignedProductCategoryYi(closureError)} 亿元`,
+    ],
     emptyCopy: null,
   };
 }

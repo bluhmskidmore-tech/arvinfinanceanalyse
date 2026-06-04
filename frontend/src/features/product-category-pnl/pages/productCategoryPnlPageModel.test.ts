@@ -38,6 +38,7 @@ import {
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
+  selectProductCategoryRootCauseSurface,
   selectProductCategoryScenarioExplanation,
   selectProductCategoryScenarioSensitivitySurface,
   selectProductCategoryTplScaleYieldChart,
@@ -889,6 +890,103 @@ describe("productCategoryPnlPageModel", () => {
       }),
     ]);
     expect(surface.emptyCopy).toBeNull();
+  });
+
+  it("builds a product root-cause drilldown from formal attribution rows", () => {
+    const rows = [
+      row({
+        category_id: "bond_ac",
+        category_name: "AC债券投资",
+        cnx_scale: yi(130),
+        weighted_yield: "2.80",
+        business_net_income: yi(1.2),
+      }),
+      row({
+        category_id: "repo_assets",
+        category_name: "买入返售",
+        cnx_scale: yi(80),
+        weighted_yield: "1.70",
+        business_net_income: yi(-0.35),
+      }),
+    ];
+    const attribution = attributionPayload({
+      rows: [
+        attributionRow({
+          category_id: "bond_ac",
+          category_name: "AC债券投资",
+          current: {
+            report_date: "2026-02-28",
+            days: 28,
+            scale: yi(130),
+            yield_pct: "2.80",
+            cash: yi(0.75),
+            ftp: yi(0.12),
+            business_net_income: yi(1.2),
+          },
+          prior: {
+            report_date: "2026-01-31",
+            days: 31,
+            scale: yi(118),
+            yield_pct: "2.50",
+            cash: yi(0.55),
+            ftp: yi(0.1),
+            business_net_income: yi(0.72),
+          },
+          effects: {
+            delta_business_net_income: yi(0.48),
+            scale_effect: yi(0.16),
+            rate_effect: yi(0.24),
+            ftp_effect: yi(-0.08),
+            direct_effect: yi(0.03),
+            unexplained_effect: yi(0.07),
+            closure_error: yi(0.01),
+          },
+        }),
+        attributionRow({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          effects: {
+            delta_business_net_income: yi(-0.2),
+            scale_effect: yi(-0.04),
+            rate_effect: yi(-0.05),
+            ftp_effect: yi(-0.03),
+            direct_effect: yi(0),
+            unexplained_effect: yi(-0.08),
+            closure_error: yi(0),
+          },
+        }),
+      ],
+    });
+
+    const surface = selectProductCategoryRootCauseSurface({ rows, attribution });
+
+    expect(surface.emptyCopy).toBeNull();
+    expect(surface.headline).toMatchObject({
+      categoryId: "bond_ac",
+      categoryLabel: "AC债券投资",
+      deltaLabel: "+0.48",
+      driverLabel: "利率因素",
+      driverValueLabel: "+0.24",
+      currentNetIncomeLabel: "1.20",
+      priorNetIncomeLabel: "0.72",
+      scaleLabel: "130.00",
+      yieldLabel: "2.80%",
+    });
+    expect(surface.driverRows.map((item) => [item.key, item.label, item.valueLabel, item.shareLabel])).toEqual([
+      ["rate_effect", "利率因素", "+0.24", "50.0%"],
+      ["scale_effect", "规模因素", "+0.16", "33.3%"],
+      ["ftp_effect", "FTP因素", "-0.08", "-16.7%"],
+      ["unexplained_effect", "未解释", "+0.07", "14.6%"],
+      ["direct_effect", "直接因素", "+0.03", "6.3%"],
+      ["closure_error", "闭合误差", "+0.01", "2.1%"],
+    ]);
+    expect(surface.evidenceItems).toEqual([
+      "本期净营收 1.20 亿元",
+      "对比期净营收 0.72 亿元",
+      "当前规模 130.00 亿元",
+      "当前收益率 2.80%",
+      "闭合误差 +0.01 亿元",
+    ]);
   });
 
   it("formats attribution effects from governed yuan values into yi display values", () => {
