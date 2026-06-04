@@ -629,6 +629,32 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
   });
 
+  it("refocuses the composer when a financial workflow returns after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveWorkflow!: (value: Response) => void;
+    const workflowResponse = new Promise<Response>((resolve) => {
+      resolveWorkflow = resolve;
+    });
+    fetchMock.mockReturnValueOnce(workflowResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await waitFor(() => expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo"));
+
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveWorkflow(buildJsonResponse(buildWorkflowExecutionResult()));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("Workflow Execution Steps")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("shows workflow-local pending copy before the Risk Memo workflow request resolves", async () => {
     const user = userEvent.setup();
     fetchMock.mockReturnValueOnce(new Promise(() => undefined));
