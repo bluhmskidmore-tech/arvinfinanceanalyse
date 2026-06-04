@@ -2628,7 +2628,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "show progress while running");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const progress = await screen.findByLabelText("agent-run-progress");
+    const progress = await screen.findByLabelText("回答进度：show progress while running");
     expect(progress).toHaveTextContent("已提交");
     expect(progress).toHaveTextContent("排队中");
     expect(progress).toHaveTextContent("分析中");

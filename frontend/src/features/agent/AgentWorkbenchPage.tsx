@@ -3260,12 +3260,12 @@ export function EmbeddedAgentCopilot({
     );
   }
 
-  function renderAgentRunProgress(agentRun: AgentRunPayload | null) {
+  function renderAgentRunProgress(agentRun: AgentRunPayload | null, question: string) {
     const currentIndex = getAgentRunProgressIndex(agentRun);
     const stages = ["已提交", "排队中", "分析中"];
 
     return (
-      <div className="agent-run-progress" aria-label="agent-run-progress">
+      <div className="agent-run-progress" aria-label={`回答进度：${question}`}>
         {stages.map((stage, index) => {
           const stageIndex = index + 1;
           const isCurrent = stageIndex === currentIndex;
@@ -3580,7 +3580,7 @@ export function EmbeddedAgentCopilot({
                             </div>
                           ) : null}
                           <div className="agent-wait-status__title">{formatAgentTurnWaitTitle(turn.agentRun)}</div>
-                          {renderAgentRunProgress(turn.agentRun)}
+                          {renderAgentRunProgress(turn.agentRun, turn.question)}
                         </div>
                         <div className="agent-wait-status__detail">
                           <details className="agent-wait-status__details">
