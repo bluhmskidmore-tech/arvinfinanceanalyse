@@ -101,6 +101,53 @@ Do not create the external timer while `pre-enable` is blocked.
 After `pre-enable` passes, create the external timer outside this packet and
 collect first-run evidence.
 
+## Required Boundary Confirmations
+
+Mark these checklist boundary rows `yes` with evidence before rerunning `pre-enable`:
+
+| Confirmation | Target document | Evidence to attach |
+| --- | --- | --- |
+| `MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Environment proof without exposing token. |
+| Job runs from repo root or explicitly sets repo root. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Scheduler command, working directory, or job log evidence. |
+| DuckDB path points to intended target. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | DuckDB path used by the scheduled job. |
+| Refresh window avoids other DuckDB write/materialization jobs. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Calendar, runbook, or operations note proving no writer overlap. |
+| `/ui/news/tushare-npr/ingest` remains reserved. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Route test or output showing the UI ingest route remains reserved. |
+| `/api/news/tushare-npr/ingest` remains reserved. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Route test or output showing the API ingest route remains reserved. |
+| Homepage still reads via `/ui/news/choice-events/latest`. | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Page/API evidence that the homepage uses the read-only landed-data path. |
+
+## Required External Inputs
+
+Fill these before rerunning `pre-enable`:
+
+| Input | Target document | Evidence to attach |
+| --- | --- | --- |
+| Credential owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person responsible for `MOSS_TUSHARE_TOKEN`; no token value. |
+| Schedule owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person responsible for the external timer. |
+| Page acceptance owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person accepting homepage fallback evidence. |
+| Rollback owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person who can disable the timer. |
+| Evidence location | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Ticket, path, or log bundle that holds the go-live evidence. |
+| Timer host | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Hostname or scheduler host identifier. |
+| Repository root | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute repo path used as job working directory. |
+| Python executable | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute Python path on the timer host. |
+| DuckDB path | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | DuckDB file path used by the scheduled job. |
+| Log path | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute scheduler log path. |
+| Refresh window | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Local time and timezone. |
+| Write-window exclusion note | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Evidence that the job avoids other DuckDB writers. |
+| Alert/log retention owner | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Team/person responsible for refresh alerts and log retention. |
+| Page evidence owner sign-off | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Sign-off for the attached homepage screenshot and browser JSON. |
+| Enable timer decision | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
+
+## Post-Enable Inputs
+
+Fill these only after the first scheduled run:
+
+| Input | Target document | Evidence to attach |
+| --- | --- | --- |
+| Enabled by | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person who enabled the external timer. |
+| Enabled at | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Timestamp with timezone. |
+| Timer evidence | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Scheduler screenshot, job config excerpt, or first scheduled-run log without secrets. |
+| Timer evidence in go-live bundle | `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md` | Same timer evidence linked from the go-live bundle. |
+
 ## Pre-Enable Status
 
 Command:
