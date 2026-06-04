@@ -63,19 +63,11 @@ export function DataSection({ title, extra, state, onRetry, children }: DataSect
 function renderHeader(title: string, extra: ReactNode): ReactNode {
   if (!title && !extra) return null;
   if (!title && extra) {
-    return <div style={{ marginBottom: 16 }}>{extra}</div>;
+    return <div className="data-section__header-extra">{extra}</div>;
   }
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 12,
-        marginBottom: 16,
-      }}
-    >
-      <span style={{ fontWeight: 600 }}>{title}</span>
+    <div className="data-section__header">
+      <span className="data-section__title">{title}</span>
       {extra}
     </div>
   );

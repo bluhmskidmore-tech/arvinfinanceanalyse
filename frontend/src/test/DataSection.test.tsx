@@ -105,6 +105,16 @@ describe("DataSection · stale", () => {
     expect(screen.getByTestId("data-section-stale-banner")).toBeInTheDocument();
     expect(screen.getByText(/2025-12-31/)).toBeInTheDocument();
   });
+
+  it("uses extracted class for stale banner style", () => {
+    renderWith({ kind: "stale", effective_date: "2025-12-31", details: "vendor_stale" });
+
+    const staleBanner = screen.getByTestId("data-section-stale-banner");
+
+    expect(staleBanner).toHaveClass("data-section__banner");
+    expect(staleBanner).toHaveClass("data-section__banner--stale");
+    expect(staleBanner).not.toHaveAttribute("style");
+  });
 });
 
 describe("DataSection · fallback", () => {
@@ -116,6 +126,16 @@ describe("DataSection · fallback", () => {
     expect(screen.getByTestId("inner")).toBeInTheDocument();
     expect(screen.getByTestId("data-section-fallback-banner")).toBeInTheDocument();
     expect(screen.getByText(/2025-12-30/)).toBeInTheDocument();
+  });
+
+  it("uses extracted class for fallback banner style", () => {
+    renderWith({ kind: "fallback", effective_date: "2025-12-30" });
+
+    const fallbackBanner = screen.getByTestId("data-section-fallback-banner");
+
+    expect(fallbackBanner).toHaveClass("data-section__banner");
+    expect(fallbackBanner).toHaveClass("data-section__banner--fallback");
+    expect(fallbackBanner).not.toHaveAttribute("style");
   });
 });
 
@@ -178,6 +198,44 @@ describe("DataSection · header extra slot", () => {
       </DataSection>,
     );
     expect(screen.getByTestId("extra")).toBeInTheDocument();
+  });
+  it("uses extracted classes for header row and title", () => {
+    render(
+      <DataSection
+        title="Overview"
+        state={{ kind: "ok" }}
+        onRetry={() => undefined}
+        extra={<span data-testid="extra">badge</span>}
+      >
+        <p>content</p>
+      </DataSection>,
+    );
+
+    const headerTitle = screen.getByText("Overview");
+    const headerRow = headerTitle.parentElement;
+
+    expect(headerRow).toHaveClass("data-section__header");
+    expect(headerRow).not.toHaveAttribute("style");
+    expect(headerTitle).toHaveClass("data-section__title");
+    expect(headerTitle).not.toHaveAttribute("style");
+  });
+
+  it("uses extracted class for extra-only header wrapper", () => {
+    render(
+      <DataSection
+        title=""
+        state={{ kind: "ok" }}
+        onRetry={() => undefined}
+        extra={<span data-testid="extra-only">badge</span>}
+      >
+        <p>content</p>
+      </DataSection>,
+    );
+
+    const extraOnlyWrapper = screen.getByTestId("extra-only").parentElement;
+
+    expect(extraOnlyWrapper).toHaveClass("data-section__header-extra");
+    expect(extraOnlyWrapper).not.toHaveAttribute("style");
   });
 });
 

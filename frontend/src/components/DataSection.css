@@ -45,3 +45,19 @@
   gap: 10px;
   margin-top: 18px;
 }
+
+.data-section__header,
+.data-section__header-extra {
+  margin-bottom: 16px;
+}
+
+.data-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.data-section__title {
+  font-weight: 600;
+}
