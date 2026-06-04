@@ -636,6 +636,17 @@ function hasLedgerPnlEvidence(props: {
   return (props.summary?.by_account.length ?? 0) > 0;
 }
 
+function summarizeFormalIndicatorContractGaps(
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+) {
+  const metrics = contract?.metrics ?? [];
+  return {
+    formalPending: metrics.filter((metric) => metric.source_status === "formal_pending").length,
+    qdbCandidateAligned: metrics.filter((metric) => metric.source_status === "candidate_qdb_aligned").length,
+    needsReconciliation: metrics.filter((metric) => metric.source_status === "needs_reconciliation").length,
+  };
+}
+
 function buildLedgerFunctionalAuditState(props: {
   selectedReportDate: string;
   selectedReportDateMissingFromDates: boolean;
@@ -777,6 +788,7 @@ function LedgerFunctionalAuditStrip(props: {
 }) {
   const state = buildLedgerFunctionalAuditState(props);
   const nextDrills = collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta);
+  const formalGapSummary = summarizeFormalIndicatorContractGaps(props.formalIndicatorSourceContract);
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -819,6 +831,14 @@ function LedgerFunctionalAuditStrip(props: {
         <div>
           <span>正式边界</span>
           <strong>{state.formalStatus}</strong>
+        </div>
+        <div>
+          <span>正式契约缺口</span>
+          <strong>
+            正式待接入 {formalGapSummary.formalPending} / QDB候选{" "}
+            {formalGapSummary.qdbCandidateAligned} / 需对账{" "}
+            {formalGapSummary.needsReconciliation}
+          </strong>
         </div>
       </div>
       {nextDrills.length > 0 ? (

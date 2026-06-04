@@ -390,6 +390,12 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("candidate_qdb_aligned 1");
     expect(panel).toHaveTextContent("needs_reconciliation 1");
 
+    const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
+    expect(strip).toHaveTextContent("正式契约缺口");
+    expect(strip).toHaveTextContent("正式待接入 1");
+    expect(strip).toHaveTextContent("QDB候选 1");
+    expect(strip).toHaveTextContent("需对账 1");
+
     const formalPendingRow = screen.getByTestId(
       "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",
     );
