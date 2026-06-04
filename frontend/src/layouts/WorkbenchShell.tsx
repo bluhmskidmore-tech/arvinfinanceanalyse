@@ -29,7 +29,6 @@ import {
   visibleWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
-import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import { DataModeRibbon } from "../components/DataModeRibbon";
 
@@ -47,40 +46,12 @@ const iconMap: Record<string, ReactNode> = {
   agent: <ApartmentOutlined />,
 };
 
-function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
-  if (kind === "live") {
-    return {
-      background: shellTokens.colorBgSuccessSoft,
-      color: shellTokens.colorSuccess,
-      border: `1px solid ${shellTokens.colorBorderSoft}`,
-    } as const;
-  }
+type ReadinessTone = WorkbenchSection["readiness"] | "warning";
 
-  if (kind === "placeholder") {
-    return {
-      background: shellTokens.readinessBadgePlaceholderBg,
-      color: shellTokens.readinessBadgePlaceholderFg,
-      border: `1px solid ${shellTokens.readinessBadgePlaceholderBorder}`,
-    } as const;
-  }
-
-  return {
-    background: shellTokens.colorBgWarningSoft,
-    color: shellTokens.colorWarning,
-    border: `1px solid ${shellTokens.colorBorderWarning}`,
-  } as const;
-}
-
-function sectionBadgeStyle(section: Pick<WorkbenchSection, "readiness" | "governanceStatus">) {
-  if (section.governanceStatus === "temporary-exception") {
-    return {
-      background: shellTokens.colorBgWarningSoft,
-      color: shellTokens.colorWarning,
-      border: `1px solid ${shellTokens.colorBorderWarning}`,
-    } as const;
-  }
-
-  return readinessBadgeStyle(section.readiness);
+function sectionReadinessTone(
+  section: Pick<WorkbenchSection, "readiness" | "governanceStatus">,
+): ReadinessTone {
+  return section.governanceStatus === "temporary-exception" ? "warning" : section.readiness;
 }
 
 type ShellTickerTone = "up" | "down";
@@ -403,7 +374,6 @@ export function WorkbenchShell() {
         .filter((section): section is WorkbenchSection => Boolean(section)),
     }))
     .filter((stage) => stage.sections.length > 0);
-  const contentSurfaceShadow = shellTokens.shadowPanel;
 
   return (
     <>
@@ -490,9 +460,7 @@ export function WorkbenchShell() {
                 </span>
                 <span
                   className="workbench-shell-agent-nav__badge"
-                  style={{
-                    ...sectionBadgeStyle(agentWorkbenchSection),
-                  }}
+                  data-readiness-tone={sectionReadinessTone(agentWorkbenchSection)}
                 >
                   {agentNavBadgeLabel}
                 </span>
@@ -526,9 +494,7 @@ export function WorkbenchShell() {
                     <span className="workbench-shell-secondary-label">{item.label}</span>
                     <span
                       className="workbench-shell-secondary-badge"
-                      style={{
-                        ...sectionBadgeStyle(item),
-                      }}
+                      data-readiness-tone={sectionReadinessTone(item)}
                     >
                       {item.readinessLabel}
                     </span>
@@ -630,13 +596,7 @@ export function WorkbenchShell() {
                   <strong className="workbench-market-ticker-strong">
                     {item.value}
                   </strong>
-                  <span
-                    style={{
-                      color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
-                      fontSize: 10,
-                      fontWeight: 700,
-                    }}
-                  >
+                  <span className="workbench-market-ticker-delta" data-tone={item.tone}>
                     {item.delta}
                   </span>
                   {index < shellTickerItems.length - 1 ? (
@@ -650,18 +610,9 @@ export function WorkbenchShell() {
         ) : null}
         {showWorkspaceHeroCard ? (
           <header
-            style={{
-              display: "flex",
-              flexWrap: isPortfolioGroup ? "wrap" : "nowrap",
-              alignItems: isPortfolioGroup ? "stretch" : "flex-start",
-              justifyContent: "space-between",
-              gap: 16,
-              padding: isBalanceAnalysisCompactChrome ? "12px 18px" : "18px 22px",
-              border: `1px solid ${shellTokens.colorBorder}`,
-              borderRadius: isBalanceAnalysisCompactChrome ? 18 : 24,
-              boxShadow: contentSurfaceShadow,
-              background: `linear-gradient(180deg, rgba(255,255,255,0.96) 0%, ${shellTokens.colorBgSurface} 100%)`,
-            }}
+            className="workbench-workspace-hero"
+            data-hero-layout={isPortfolioGroup ? "portfolio" : "standard"}
+            data-hero-density={isBalanceAnalysisCompactChrome ? "compact" : "comfortable"}
           >
             {isPortfolioGroup && isBalanceAnalysisCompactChrome ? (
               <section
@@ -741,9 +692,7 @@ export function WorkbenchShell() {
                         </span>
                         <strong
                           className="portfolio-workbench-lead__stat-value"
-                          style={{
-                            fontSize: item.value.length > 8 ? 16 : 24,
-                          }}
+                          data-value-size={item.value.length > 8 ? "compact" : "normal"}
                         >
                           {item.value}
                         </strong>
@@ -786,9 +735,7 @@ export function WorkbenchShell() {
                             <span className="portfolio-workbench-flow__link-title">{item.title}</span>
                             <span
                               className="portfolio-workbench-flow__badge"
-                              style={{
-                                ...sectionBadgeStyle(item.section),
-                              }}
+                              data-readiness-tone={sectionReadinessTone(item.section)}
                             >
                               {item.section.readinessLabel}
                             </span>
@@ -822,9 +769,7 @@ export function WorkbenchShell() {
                 <div className="workbench-shell-status-meta">
                   <span
                     className="workbench-shell-status-meta__badge"
-                    style={{
-                      ...sectionBadgeStyle(currentSection),
-                    }}
+                    data-readiness-tone={sectionReadinessTone(currentSection)}
                   >
                     {currentSection.label} · {currentSection.readinessLabel}
                   </span>
@@ -838,18 +783,9 @@ export function WorkbenchShell() {
         ) : null}
 
         <main
-          style={{
-            padding: isMinimalMainChrome ? 0 : 20,
-            border: isMinimalMainChrome ? "none" : `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: isMinimalMainChrome ? 0 : 24,
-            boxShadow: isMinimalMainChrome ? "none" : contentSurfaceShadow,
-            background: isMinimalMainChrome
-              ? "transparent"
-              : `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${shellTokens.colorBgSurface} 100%)`,
-            display: "grid",
-            alignContent: "start",
-            gap: 18,
-          }}
+          className={`workbench-main-surface${
+            isMinimalMainChrome ? " workbench-main-surface--minimal" : ""
+          }`}
         >
           {showPortfolioDecisionBoard ? (
             <section
@@ -887,9 +823,7 @@ export function WorkbenchShell() {
                             <span className="portfolio-workbench-board__section-title">{section.label}</span>
                             <span
                               className="portfolio-workbench-board__section-badge"
-                              style={{
-                                ...sectionBadgeStyle(section),
-                              }}
+                              data-readiness-tone={sectionReadinessTone(section)}
                             >
                               {active ? "当前页" : section.readinessLabel}
                             </span>
@@ -947,12 +881,7 @@ export function WorkbenchShell() {
             <section
               data-testid="workbench-readiness-banner"
               className="workbench-notice"
-              style={{
-                border: `1px solid ${shellTokens.colorBorderSoft}`,
-                background:
-                  currentSection.readiness === "placeholder" ? "#faf7ff" : "#fff8f1",
-                color: shellTokens.colorTextPrimary,
-              }}
+              data-readiness={currentSection.readiness}
             >
               <div className="workbench-notice__title">
                 {currentSection.readiness === "placeholder"
@@ -970,11 +899,7 @@ export function WorkbenchShell() {
             <section
               data-testid="workbench-governance-banner"
               className="workbench-notice"
-              style={{
-                border: `1px solid ${shellTokens.colorBorderWarning}`,
-                background: shellTokens.colorBgWarningSoft,
-                color: shellTokens.colorTextPrimary,
-              }}
+              data-notice-tone="governance"
             >
               <div className="workbench-notice__title">临时例外</div>
               <div className="workbench-notice__body">
