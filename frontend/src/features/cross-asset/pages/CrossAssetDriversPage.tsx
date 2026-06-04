@@ -955,8 +955,8 @@ function NcdProxyEvidencePanel({
           : crossAssetPanelClass
       }
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: t.space[3], flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0, fontSize: t.fontSize[16], fontWeight: 700, color: t.color.neutral[900] }}>NCD / 资金代理</h2>
+      <div className="cross-asset-ncd-proxy__header">
+        <h2 className="cross-asset-ncd-proxy__title">NCD / 资金代理</h2>
         {isLoading ? (
           <StatusPill status="caution" label="loading" />
         ) : (
@@ -966,9 +966,9 @@ function NcdProxyEvidencePanel({
           />
         )}
       </div>
-      <p style={{ margin: `${t.space[2]}px 0 0`, color: t.color.neutral[600], fontSize: t.fontSize[12] }}>{evidence.proxyLabel}</p>
+      <p className="cross-asset-ncd-proxy__label">{evidence.proxyLabel}</p>
       {evidence.asOfDate ? (
-        <p data-testid="cross-asset-ncd-asof" style={{ margin: `${t.space[1]}px 0 0`, color: t.color.neutral[500], fontSize: t.fontSize[12] }}>
+        <p data-testid="cross-asset-ncd-asof" className="cross-asset-ncd-proxy__asof">
           as of {evidence.asOfDate}
         </p>
       ) : null}
@@ -986,10 +986,10 @@ function NcdProxyEvidencePanel({
       {evidence.rowCaptions.length > 0 ? (
         <ul
           data-testid="cross-asset-ncd-proxy-rows"
-          style={{ margin: `${t.space[2]}px 0 0`, paddingLeft: t.space[5], color: t.color.neutral[700], fontSize: t.fontSize[12] }}
+          className="cross-asset-ncd-proxy__rows"
         >
           {evidence.rowCaptions.map((line) => (
-            <li key={line} style={{ marginBottom: t.space[1] }}>
+            <li key={line} className="cross-asset-ncd-proxy__row">
               {line}
             </li>
           ))}

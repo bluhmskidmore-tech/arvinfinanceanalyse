@@ -1932,6 +1932,43 @@
   background: var(--ca-warning-bg);
 }
 
+.cross-asset-ncd-proxy__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cross-asset-ncd-proxy__title {
+  margin: 0;
+  color: var(--ca-text);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.cross-asset-ncd-proxy__label {
+  margin: 8px 0 0;
+  color: var(--ca-sub);
+  font-size: 0.75rem;
+}
+
+.cross-asset-ncd-proxy__asof {
+  margin: 4px 0 0;
+  color: var(--ca-muted);
+  font-size: 0.75rem;
+}
+
+.cross-asset-ncd-proxy__rows {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--ca-text-muted);
+  font-size: 0.75rem;
+}
+
+.cross-asset-ncd-proxy__row {
+  margin-bottom: 4px;
+}
+
 .cross-asset-drivers-page__kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
