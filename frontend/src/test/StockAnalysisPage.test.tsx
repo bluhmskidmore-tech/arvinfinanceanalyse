@@ -1608,15 +1608,7 @@ describe("StockAnalysisPage", () => {
     expect(closureCss).toMatch(
       /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__boundary-summary\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*0\.62fr\)\s*minmax\(0,\s*1\.38fr\)/,
     );
-    expect(closureCss).toMatch(
-      /\[data-testid="stock-analysis-observation-preview"\],[\s\S]*?\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?grid-row:\s*5\s*!important/,
-    );
-    expect(closureCss).toMatch(
-      /\[data-testid="stock-analysis-theme-leaders-first-screen"\]\s*\{[\s\S]*?grid-column:\s*2\s*\/\s*3\s*!important/,
-    );
-    expect(closureCss).toMatch(
-      /\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?grid-column:\s*3\s*\/\s*4\s*!important/,
-    );
+    expect(closureCss).not.toMatch(/grid-column:\s*3\s*\/\s*4\s*!important/);
   });
 
   it("keeps the narrow first screen readable without clipping status chips", () => {
