@@ -106,7 +106,7 @@ describe("AgentPanel", () => {
     expect(screen.getByLabelText("agent-question-input")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-question")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "agent-composer-hint" })).toHaveTextContent("Enter");
+    expect(screen.getByRole("status", { name: "输入提示" })).toHaveTextContent("Enter");
     expect(screen.queryByLabelText("repo-path-input")).not.toBeInTheDocument();
   });
 

@@ -180,7 +180,7 @@ export function AgentQueryForm({
             <div
               className="agent-chat-composer__hint"
               role="status"
-              aria-label="agent-composer-hint"
+              aria-label="输入提示"
               aria-live="polite"
               aria-atomic="true"
             >
@@ -240,7 +240,7 @@ export function AgentQueryForm({
           <div
             className="agent-chat-composer__hint"
             role="status"
-            aria-label="agent-composer-hint"
+            aria-label="输入提示"
             aria-live="polite"
             aria-atomic="true"
           >
