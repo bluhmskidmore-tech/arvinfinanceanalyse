@@ -3109,7 +3109,11 @@ describe("AgentWorkbenchPage", () => {
 
       scrollTargets.length = 0;
       scrollOptions.length = 0;
-      const input = screen.getByLabelText("agent-question-input");
+      const draft = "已有草稿，继续补充";
+      const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+      await user.type(input, draft);
+      input.setSelectionRange(2, 2);
+      expect(input).toHaveProperty("selectionStart", 2);
       Object.defineProperty(input, "getBoundingClientRect", {
         configurable: true,
         value: () => ({
@@ -3126,8 +3130,10 @@ describe("AgentWorkbenchPage", () => {
       });
       await user.click(screen.getByRole("button", { name: "继续输入" }));
 
-      expect(input).toHaveValue("");
+      expect(input).toHaveValue(draft);
       expect(document.activeElement).toBe(input);
+      expect(input).toHaveProperty("selectionStart", draft.length);
+      expect(input).toHaveProperty("selectionEnd", draft.length);
       expect(screen.getByText("可以继续追问 · Enter 发送")).toBeInTheDocument();
       expect(scrollTargets).toContain(input);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });

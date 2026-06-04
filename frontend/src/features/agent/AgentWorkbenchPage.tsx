@@ -1545,6 +1545,8 @@ export function EmbeddedAgentCopilot({
       return;
     }
     input.focus();
+    const cursorPosition = input.value.length;
+    input.setSelectionRange(cursorPosition, cursorPosition);
     const scrollIntoView = input.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollComposerInputIntoView(input)) {
       scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
