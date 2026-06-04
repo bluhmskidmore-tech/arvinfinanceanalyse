@@ -6,12 +6,32 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 
 
 REPORT_DATE = "2026-03-31"
+
+
+@pytest.fixture(autouse=True)
+def _seed_agent_read_scope(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "agent-read-scope.db"
+    auth_dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", auth_dsn)
+    monkeypatch.delenv("MOSS_GOVERNANCE_SQL_DSN", raising=False)
+    UserScopeRepository(auth_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="agent",
+        action="read",
+    )
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def _seed_agent_pnl_tables(duckdb_path: Path) -> None:

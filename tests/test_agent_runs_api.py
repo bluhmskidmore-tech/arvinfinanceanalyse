@@ -13,6 +13,7 @@ from backend.app.agent.schemas.agent_response import (
     AgentEvidence,
     AgentResultMeta,
 )
+from tests.test_agent_api_contract import _agent_auth_fields, _seed_agent_read_scope
 from tests.helpers import load_module
 
 
@@ -31,6 +32,7 @@ def _settings(tmp_path: Path) -> SimpleNamespace:
         agent_hermes_timeout_seconds=9.0,
         duckdb_path=str(tmp_path / "moss.duckdb"),
         governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
     )
 
 
@@ -72,6 +74,7 @@ def _client(monkeypatch, tmp_path: Path, execute):
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     settings = _settings(tmp_path)
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
     monkeypatch.setattr(route_module, "execute_hermes_agent_query", execute)
@@ -147,6 +150,7 @@ def test_agent_run_create_returns_sync_envelope_for_cli_transport(monkeypatch, t
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     settings = _settings(tmp_path)
     settings.agent_hermes_transport = "cli"
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
@@ -331,6 +335,7 @@ def test_agent_runs_accept_dexter_provider_and_persist_provider_metadata(monkeyp
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
     )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
     settings = SimpleNamespace(
         agent_enabled=True,
         agent_provider="dexter",
@@ -342,6 +347,7 @@ def test_agent_runs_accept_dexter_provider_and_persist_provider_metadata(monkeyp
         agent_dexter_timeout_seconds=9.0,
         duckdb_path=str(tmp_path / "moss.duckdb"),
         governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
     )
     monkeypatch.setattr(route_module, "get_settings", lambda: settings)
 
