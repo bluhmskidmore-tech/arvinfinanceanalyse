@@ -1974,7 +1974,7 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.unsupportedCount).toBe(1);
     expect(summary.freshnessLabel).toBe("新鲜度 质量需复核 / 通道正常 / 回退快照");
     expect(summary.summaryLabel).toBe("3 条边界");
-    expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 未支持 1");
+    expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 阻断 1");
     expect(summary.topMessages.join(" ")).toContain("市场宽度输入不可用");
     expect(summary.topMessages.join(" ")).toContain("5日市场宽度输入未落地");
     expect(summary.topMessages.join(" ")).toContain("持仓快照未落地");
@@ -2116,7 +2116,7 @@ describe("stockAnalysisPageModel", () => {
       statusLabel: "需复核",
       tone: "warning",
     });
-    expect(evidence.find((item) => item.key === "exceptions")?.detail).toContain("诊断 1 / 缺口 1 / 未支持 1");
+    expect(evidence.find((item) => item.key === "exceptions")?.detail).toContain("诊断 1 / 缺口 1 / 阻断 1");
     expect(events.find((event) => event.source === "data_gap")).toMatchObject({
       event: "状态待确认",
       impact: "输入待确认",

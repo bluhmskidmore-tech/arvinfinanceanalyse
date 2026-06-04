@@ -563,7 +563,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
               ) : null}
               {choiceNewsQuery.isSuccess && !choiceNewsQuery.data?.result?.events?.length ? (
                 <p className="stock-detail-drawer__market-events-empty" data-testid="stock-detail-market-events-empty">
-                  暂无与该股票代码匹配的市场事件（或库表尚无写入）
+                  暂无与该股票代码匹配的市场事件，公告财报仍待补。
                 </p>
               ) : null}
               {choiceNewsQuery.isSuccess && (choiceNewsQuery.data?.result?.events?.length ?? 0) > 0 ? (
@@ -591,7 +591,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
               <Text type="secondary">
                 来源版本 {meta.source_version ?? stockDetailMetaPendingLabel} · 规则版本{" "}
                 {meta.rule_version ?? stockDetailMetaPendingLabel} · 质量{" "}
-                {stockDetailMetaLabel(meta.quality_flag, stockDetailMetaQualityLabels)} · 通道{" "}
+                {stockDetailMetaLabel(meta.quality_flag, stockDetailMetaQualityLabels)} · 供数状态{" "}
                 {stockDetailMetaLabel(meta.vendor_status, stockDetailMetaVendorLabels)}
               </Text>
             </footer>

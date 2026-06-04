@@ -125,7 +125,8 @@ describe("StockDetailDrawer", () => {
     expect(footerMeta).toHaveTextContent("来源版本 sv_test");
     expect(footerMeta).toHaveTextContent("规则版本 rv_test");
     expect(footerMeta).toHaveTextContent("质量 正常");
-    expect(footerMeta).toHaveTextContent("通道 正常");
+    expect(footerMeta).toHaveTextContent("供数状态 正常");
+    expect(footerMeta).not.toHaveTextContent("通道 正常");
     expect(footerMeta).not.toHaveTextContent("source_version");
     expect(footerMeta).not.toHaveTextContent("rule_version");
     expect(footerMeta).not.toHaveTextContent("quality_flag");
@@ -202,7 +203,8 @@ describe("StockDetailDrawer", () => {
     expect(footerMeta).toHaveTextContent("来源版本 待确认");
     expect(footerMeta).toHaveTextContent("规则版本 待确认");
     expect(footerMeta).toHaveTextContent("质量 待确认");
-    expect(footerMeta).toHaveTextContent("通道 待确认");
+    expect(footerMeta).toHaveTextContent("供数状态 待确认");
+    expect(footerMeta).not.toHaveTextContent("通道 待确认");
   });
 
   it("does not show the requested date as the stock detail data date when no data date is resolved", async () => {
@@ -299,7 +301,8 @@ describe("StockDetailDrawer", () => {
     expect(footerMeta).toHaveTextContent("来源版本 sv_live");
     expect(footerMeta).toHaveTextContent("规则版本 rv_live");
     expect(footerMeta).toHaveTextContent("质量 需复核");
-    expect(footerMeta).toHaveTextContent("通道 供数陈旧");
+    expect(footerMeta).toHaveTextContent("供数状态 供数陈旧");
+    expect(footerMeta).not.toHaveTextContent("通道 供数陈旧");
     expect(footerMeta).not.toHaveTextContent("warning");
     expect(footerMeta).not.toHaveTextContent("vendor_stale");
   });
@@ -477,9 +480,9 @@ describe("StockDetailDrawer", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByTestId("stock-detail-market-events-empty")).toHaveTextContent(
-      "暂无与该股票代码匹配的市场事件",
-    );
+    const emptyState = await screen.findByTestId("stock-detail-market-events-empty");
+    expect(emptyState).toHaveTextContent("暂无与该股票代码匹配的市场事件，公告财报仍待补。");
+    expect(emptyState).not.toHaveTextContent("库表");
   });
 
   it("refetches when lookback segment changes", async () => {

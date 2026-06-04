@@ -1598,6 +1598,16 @@ describe("StockAnalysisPage", () => {
     expect(closureCss).toMatch(
       /@media \(min-width:\s*1600px\)[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*352px\s*!important/,
     );
+    expect(closureCss).toContain("Final density polish");
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*26px\s*52px\s*!important[\s\S]*?max-height:\s*106px/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-observation-preview"\],[\s\S]*?\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?min-height:\s*112px[\s\S]*?max-height:\s*138px/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__boundary-summary\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*0\.62fr\)\s*minmax\(0,\s*1\.38fr\)/,
+    );
   });
 
   it("keeps the narrow first screen readable without clipping status chips", () => {
@@ -1656,6 +1666,15 @@ describe("StockAnalysisPage", () => {
     );
     expect(narrowCss).toMatch(
       /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?order:\s*8\s*!important/,
+    );
+    expect(narrowCss).toMatch(
+      /\.stock-analysis-page__lower-data-band\s*\{[\s\S]*?min-height:\s*96px[\s\S]*?max-height:\s*124px/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-observation-preview"\]\s*\.stock-analysis-page__observation-preview-grid,[\s\S]*?min-height:\s*48px/,
+    );
+    expect(narrowCss).toMatch(
+      /\[data-testid="stock-analysis-theme-leaders-first-screen"\]\s*>\s*\.stock-analysis-page__empty,[\s\S]*?min-height:\s*48px/,
     );
   });
 
@@ -2895,7 +2914,8 @@ describe("StockAnalysisPage", () => {
 
     const boundarySummary = screen.getByTestId("stock-analysis-boundary-summary");
     expect(boundarySummary).toHaveTextContent("3 条边界");
-    expect(boundarySummary).toHaveTextContent("诊断 1 / 缺口 1 / 未支持 1");
+    expect(boundarySummary).toHaveTextContent("诊断 1 / 缺口 1 / 阻断 1");
+    expect(boundarySummary).not.toHaveTextContent("未支持 1");
     const boundaryRail = screen.getByTestId("stock-analysis-boundary-rail");
     expect(boundaryRail).toHaveTextContent("数据日期");
     expect(boundaryRail).toHaveTextContent("规则版本");

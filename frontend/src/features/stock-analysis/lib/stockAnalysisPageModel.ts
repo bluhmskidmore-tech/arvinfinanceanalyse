@@ -1125,7 +1125,7 @@ export function buildDataBoundarySummary(
     unsupportedCount: unsupported.length,
     freshnessLabel,
     summaryLabel: boundaryCount > 0 ? `${boundaryCount} 条边界` : "边界清晰",
-    detailLabel: `诊断 ${diagnostics.length} / 缺口 ${dataGaps.length} / 未支持 ${unsupported.length} / ${freshnessLabel}`,
+    detailLabel: `诊断 ${diagnostics.length} / 缺口 ${dataGaps.length} / 阻断 ${unsupported.length} / ${freshnessLabel}`,
     topMessages,
   };
 }
