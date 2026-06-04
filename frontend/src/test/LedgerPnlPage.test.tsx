@@ -1173,6 +1173,8 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("补齐 202605 正式财务指标 Excel 冻结样本");
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
+      expect(strip).toHaveTextContent("候选补证入口 候选链路已闭合，无需补证");
+      expect(strip).not.toHaveTextContent("补证入口 暂无补证入口");
     });
 
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");

@@ -1280,7 +1280,7 @@ function LedgerFunctionalAuditStrip(props: {
           <em>覆盖率 {formatPercent(props.explainabilityModel.explanationCoveragePct)}</em>
           <em>最大卡点 {props.explainabilityModel.bottleneck}</em>
           <em>最大驱动 {formatFunctionalTopDriver(props.explainabilityModel.driverRows[0])}</em>
-          <em>补证入口 {props.explainabilityModel.evidenceEntryPoint}</em>
+          <em>候选补证入口 {candidateEvidencePath}</em>
           <button
             type="button"
             className="ledger-pnl-functional-strip__evidence-button"
