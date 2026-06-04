@@ -1,16 +1,16 @@
 import { LightIcon, type LightIconName } from "../../../../components/LightIcon";
-import type { DashboardHomeView } from "../dashboardHomeView";
+import type { DashboardHomeFirstScreenView } from "../dashboardHomeFirstScreenTypes";
 import styles from "../dashboardHome.module.css";
 
 type DecisionRailSectionProps = {
-  decisionRail: DashboardHomeView["decisionRail"];
+  decisionRail: DashboardHomeFirstScreenView["decisionRail"];
   reportDate: string;
   dataSyncPrefix: string;
-  dataStatusKind: DashboardHomeView["headerStatus"]["dataStatusKind"];
+  dataStatusKind: DashboardHomeFirstScreenView["headerStatus"]["dataStatusKind"];
 };
 
 function formatRailUpdatedAt(
-  statusKind: DashboardHomeView["headerStatus"]["dataStatusKind"],
+  statusKind: DashboardHomeFirstScreenView["headerStatus"]["dataStatusKind"],
   reportDate: string,
   updatedAt: string,
 ) {

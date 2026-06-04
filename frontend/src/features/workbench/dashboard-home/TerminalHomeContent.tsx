@@ -17,6 +17,7 @@ import styles from "./dashboardHome.module.css";
 
 type TerminalHomeContentProps = {
   view: DashboardHomeView;
+  showFirstScreen?: boolean;
 };
 
 type EChartsOption = import("../../../lib/echarts").EChartsOption;
@@ -844,11 +845,15 @@ function MarketContextPanel({ view }: { view: DashboardHomeView }) {
   );
 }
 
-export function TerminalHomeContent({ view }: TerminalHomeContentProps) {
+export function TerminalHomeContent({ view, showFirstScreen = true }: TerminalHomeContentProps) {
   return (
     <>
-      <TerminalKpiStrip view={view} />
-      <RiskStrip items={view.keyRiskStrip} />
+      {showFirstScreen ? (
+        <>
+          <TerminalKpiStrip view={view} />
+          <RiskStrip items={view.keyRiskStrip} />
+        </>
+      ) : null}
       <MarketContextPanel view={view} />
       <BondNewsSection bondNews={view.bondNews} />
 

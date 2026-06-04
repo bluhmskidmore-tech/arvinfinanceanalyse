@@ -5,18 +5,10 @@ import { apiQueryKeys } from "../../../api/queryKeys";
 import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
 import { useDashboardData } from "../dashboard/hooks/useDashboardData";
 import { todayIsoDate } from "../pages/dashboardPageHelpers";
-import { useDashboardSnapshotBoundary } from "../pages/useDashboardSnapshotBoundary";
 import { mapToHomeView } from "./dashboardHomeView";
+import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
-
-export function useDashboardHomeViewModel() {
-  const [reportDate, setReportDate] = useState("");
-  const [toolbarSearch, setToolbarSearch] = useState("");
-  const [allowPartial, setAllowPartial] = useState(false);
+export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapshotBoundary) {
   const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
   const [formalContextReportDate, setFormalContextReportDate] = useState<string | null>(null);
 
@@ -30,14 +22,9 @@ export function useDashboardHomeViewModel() {
     initialEffectiveReportDate,
     supplementalReportDate,
     reportDateDataWarning,
-    refreshSnapshot,
-  } = useDashboardSnapshotBoundary({
-    reportDate,
-    allowPartial,
-  });
+  } = snapshotBoundary;
 
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
-  const requestedReportDate = reportDate.trim();
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasInitialEffectiveReportDate = Boolean(initialEffectiveReportDate);
   const hasDeferredSupplementalData =
@@ -55,32 +42,10 @@ export function useDashboardHomeViewModel() {
     setSupplementalDataReportDate(null);
     setFormalContextReportDate(null);
     if (!initialEffectiveReportDate) {
-      return undefined;
+      return;
     }
 
-    let isActive = true;
-    const markSupplementalReady = () => {
-      if (isActive) {
-        setSupplementalDataReportDate(initialEffectiveReportDate);
-      }
-    };
-    const idleWindow = window as IdleWindow;
-    if (idleWindow.requestIdleCallback) {
-      const idleHandle = idleWindow.requestIdleCallback(
-        markSupplementalReady,
-        { timeout: 1_200 },
-      );
-      return () => {
-        isActive = false;
-        idleWindow.cancelIdleCallback?.(idleHandle);
-      };
-    }
-
-    const timeoutHandle = window.setTimeout(markSupplementalReady, 250);
-    return () => {
-      isActive = false;
-      window.clearTimeout(timeoutHandle);
-    };
+    setSupplementalDataReportDate(initialEffectiveReportDate);
   }, [initialEffectiveReportDate]);
 
   const {
@@ -241,7 +206,7 @@ export function useDashboardHomeViewModel() {
     macroNewsFallbackQueries.every((query) => query.isError);
 
   const effectiveReportDate =
-    snapshotReportDate || initialEffectiveReportDate || requestedReportDate;
+    snapshotReportDate || initialEffectiveReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
   const snapshotStale =
@@ -369,13 +334,6 @@ export function useDashboardHomeViewModel() {
 
   return {
     view,
-    reportDate,
-    setReportDate,
-    toolbarSearch,
-    setToolbarSearch,
-    allowPartial,
-    setAllowPartial,
-    refreshSnapshot,
     snapshotQuery,
     effectiveReportDate,
   };

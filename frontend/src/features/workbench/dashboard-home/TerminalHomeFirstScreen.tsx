@@ -1,13 +1,16 @@
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../components/LightIcon";
-import type { DashboardHomeView, HomeDataStateKind } from "./dashboardHomeView";
-import { resolveDeltaClass } from "./dashboardHomeView";
+import {
+  resolveDeltaClass,
+  type DashboardHomeFirstScreenView,
+  type HomeDataStateKind,
+} from "./dashboardHomeFirstScreenTypes";
 import { HomeSparkline } from "./HomeSparkline";
 import styles from "./dashboardHome.module.css";
 
 type TerminalHomeFirstScreenProps = {
-  view: DashboardHomeView;
+  view: DashboardHomeFirstScreenView;
 };
 
 const STATE_COPY: Record<HomeDataStateKind, string> = {
@@ -48,13 +51,13 @@ function EmptyRiskSurface() {
   );
 }
 
-function sparkStroke(tone: DashboardHomeView["terminalKpis"][number]["deltaTone"]): string {
+function sparkStroke(tone: DashboardHomeFirstScreenView["terminalKpis"][number]["deltaTone"]): string {
   if (tone === "up" || tone === "warn") return "#b94743";
   if (tone === "down") return "#1f7a55";
   return "#1850a1";
 }
 
-function TerminalKpiStrip({ view }: { view: DashboardHomeView }) {
+function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
   return (
     <section data-testid="dashboard-home-hero" className={styles.dhTerminalHero}>
       {view.terminalKpis.map((kpi) => (
@@ -86,7 +89,7 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeView }) {
   );
 }
 
-function RiskStrip({ items }: { items: DashboardHomeView["keyRiskStrip"] }) {
+function RiskStrip({ items }: { items: DashboardHomeFirstScreenView["keyRiskStrip"] }) {
   const hasItems = items.length > 0;
   return (
     <section data-testid="dashboard-home-market" className={`${styles.dhCard} ${styles.dhTerminalRiskStrip}`}>

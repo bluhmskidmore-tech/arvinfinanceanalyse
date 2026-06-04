@@ -81,8 +81,11 @@ describe("startup performance guards", () => {
     const dashboardHomePageSource = readFileSync(DASHBOARD_HOME_PAGE_PATH, "utf8");
 
     expect(dashboardHomePageSource).toContain('import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen"');
+    expect(dashboardHomePageSource).toContain('from "./useDashboardHomeFirstScreenViewModel"');
     expect(dashboardHomePageSource).toContain('lazy(() =>');
-    expect(dashboardHomePageSource).toContain('import("./TerminalHomeContent")');
+    expect(dashboardHomePageSource).toContain('import("./DeferredTerminalHomeContent")');
+    expect(dashboardHomePageSource).not.toContain('from "./useDashboardHomeViewModel"');
+    expect(dashboardHomePageSource).not.toContain('from "./dashboardHomeView"');
     expect(dashboardHomePageSource).not.toMatch(
       /import\s+\{\s*TerminalHomeContent\s*\}\s+from\s+["']\.\/TerminalHomeContent["']/,
     );
