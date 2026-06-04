@@ -45,7 +45,17 @@ function buildPromptPlaceholder(pageContext?: { page_id: string }) {
 }
 
 function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, query: string) {
-  return query.trim().length > 0 && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+  const nativeEvent = event.nativeEvent as Event & {
+    isComposing?: boolean;
+    nativeEvent?: { isComposing?: boolean };
+  };
+  return (
+    query.trim().length > 0 &&
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    !nativeEvent.isComposing &&
+    !nativeEvent.nativeEvent?.isComposing
+  );
 }
 
 function assignTextAreaRef(ref: Ref<HTMLTextAreaElement> | undefined, element: HTMLTextAreaElement | null) {
