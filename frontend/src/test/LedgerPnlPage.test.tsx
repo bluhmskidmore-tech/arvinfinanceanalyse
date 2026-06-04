@@ -299,8 +299,8 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
       "No frozen formal financial indicator contract is registered for requested report_month. Formal values remain unavailable and must not be backfilled from analytical candidates.",
     remediation: {
       required: true,
-      action_label: "登记 202605 正式财务指标契约",
-      action_detail: "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
+      action_label: "补齐 202605 正式财务指标 Excel 冻结样本",
+      action_detail: "先取得并冻结 202605 正式财务指标 Excel 样本，再登记 source contract 并重新核对 QDB 候选值。",
       required_artifact: "202605 正式财务指标 Excel 冻结样本",
       artifact_status: "missing",
       blocking_reason: "未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
@@ -847,8 +847,10 @@ describe("LedgerPnlPage", () => {
     expect(panel).not.toHaveTextContent("No frozen formal financial indicator contract is registered");
     expect(panel).not.toHaveTextContent("暂无正式财务指标源契约数据");
     expect(panel).toHaveTextContent("缺契约补证动作");
-    expect(panel).toHaveTextContent("登记 202605 正式财务指标契约");
-    expect(panel).toHaveTextContent("从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。");
+    expect(panel).toHaveTextContent("补齐 202605 正式财务指标 Excel 冻结样本");
+    expect(panel).toHaveTextContent(
+      "先取得并冻结 202605 正式财务指标 Excel 样本，再登记 source contract 并重新核对 QDB 候选值。",
+    );
     const checklist = within(panel).getByTestId("ledger-pnl-formal-indicator-source-contract-material-checklist");
     expect(checklist).toHaveTextContent("正式样本缺失 0/1");
     expect(checklist).toHaveTextContent("物料202605 正式财务指标 Excel 冻结样本");
@@ -860,7 +862,7 @@ describe("LedgerPnlPage", () => {
       "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     );
     expect(checklist).toHaveTextContent("执行状态待补齐正式样本");
-    expect(checklist).toHaveTextContent("回读动作登记后刷新页面或重新查询正式契约接口");
+    expect(checklist).toHaveTextContent("回读动作补齐样本并登记后刷新页面或重新查询正式契约接口");
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
     expect(strip).toHaveTextContent("正式契约缺口");
@@ -972,7 +974,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent(
         "总账汇总 665 行、明细 7751 行可支撑候选解释；但 202605 正式财务指标契约缺失，不能形成正式财务指标结论。",
       );
-      expect(strip).toHaveTextContent("登记 202605 正式财务指标契约");
+      expect(strip).toHaveTextContent("补齐 202605 正式财务指标 Excel 冻结样本");
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
     });
@@ -1106,10 +1108,10 @@ describe("LedgerPnlPage", () => {
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("正式状态正式契约缺失，正式值不可用");
     expect(decisionPath).toHaveTextContent("候选解释可信度未闭合 · 覆盖率 60.00%");
-    expect(decisionPath).toHaveTextContent("最短补证路径登记 202605 正式财务指标契约");
+    expect(decisionPath).toHaveTextContent("最短补证路径补齐 202605 正式财务指标 Excel 冻结样本");
     expect(decisionPath).toHaveTextContent("材料完整性正式样本缺失 0/1");
     expect(decisionPath).toHaveTextContent("执行状态待补齐正式样本");
-    expect(decisionPath).toHaveTextContent("回读动作登记后刷新正式契约");
+    expect(decisionPath).toHaveTextContent("回读动作补齐样本并登记后刷新正式契约");
 
     const residualTable = await screen.findByTestId("ledger-pnl-residual-diagnostic-table");
     expect(residualTable).toHaveTextContent("科目层");
@@ -1125,7 +1127,7 @@ describe("LedgerPnlPage", () => {
     try {
       const formalContractPanel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
       const shortestPathButton = within(decisionPath).getByRole("button", {
-        name: "最短补证路径 登记 202605 正式财务指标契约",
+        name: "最短补证路径 补齐 202605 正式财务指标 Excel 冻结样本",
       });
       await userEvent.click(shortestPathButton);
 

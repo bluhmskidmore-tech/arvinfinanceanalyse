@@ -330,8 +330,8 @@ def _empty_contract(report_month: str) -> dict[str, Any]:
         "status_semantics": dict(STATUS_SEMANTICS),
         "remediation": {
             "required": True,
-            "action_label": f"登记 {normalized_month} 正式财务指标契约",
-            "action_detail": "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
+            "action_label": f"补齐 {normalized_month} 正式财务指标 Excel 冻结样本",
+            "action_detail": f"先取得并冻结 {normalized_month} 正式财务指标 Excel 样本，再登记 source contract 并重新核对 QDB 候选值。",
             "required_artifact": f"{normalized_month} 正式财务指标 Excel 冻结样本",
             "artifact_status": "missing",
             "blocking_reason": f"未找到 {normalized_month} 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",

@@ -766,6 +766,7 @@ function formalContractReadbackAction(props: {
   contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   isLoading: boolean;
   isError: boolean;
+  materialChecklist: ReturnType<typeof buildFormalContractMaterialChecklist>;
 }) {
   if (props.isLoading) {
     return "等待正式契约读取完成";
@@ -777,6 +778,9 @@ function formalContractReadbackAction(props: {
     return "已完成正式契约回读";
   }
   if (props.contract?.sample_status === "missing_contract") {
+    if (props.materialChecklist.hasMissingArtifact) {
+      return "补齐样本并登记后刷新页面或重新查询正式契约接口";
+    }
     return "登记后刷新页面或重新查询正式契约接口";
   }
   return "重新读取正式契约并复核 formal_use_allowed";
@@ -801,6 +805,9 @@ function formalContractMaterialSummary(props: {
 }
 
 function shortFormalContractReadbackAction(action: string) {
+  if (action === "补齐样本并登记后刷新页面或重新查询正式契约接口") {
+    return "补齐样本并登记后刷新正式契约";
+  }
   return action === "登记后刷新页面或重新查询正式契约接口" ? "登记后刷新正式契约" : action;
 }
 
@@ -1066,6 +1073,7 @@ function LedgerFunctionalAuditStrip(props: {
     contract: props.formalIndicatorSourceContract,
     isLoading: props.isFormalContractLoading,
     isError: props.isFormalContractError,
+    materialChecklist,
   });
   const materialSummary = formalContractMaterialSummary({
     contract: props.formalIndicatorSourceContract,
@@ -2005,6 +2013,7 @@ function FormalIndicatorSourceContractPanel(props: {
     contract: props.contract,
     isLoading: props.isLoading,
     isError: props.isError,
+    materialChecklist,
   });
 
   return (

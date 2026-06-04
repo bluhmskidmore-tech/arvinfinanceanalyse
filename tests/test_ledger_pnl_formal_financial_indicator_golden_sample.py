@@ -147,8 +147,8 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
     assert contract["metrics"] == []
     assert contract["remediation"] == {
         "required": True,
-        "action_label": "登记 202605 正式财务指标契约",
-        "action_detail": "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
+        "action_label": "补齐 202605 正式财务指标 Excel 冻结样本",
+        "action_detail": "先取得并冻结 202605 正式财务指标 Excel 样本，再登记 source contract 并重新核对 QDB 候选值。",
         "required_artifact": "202605 正式财务指标 Excel 冻结样本",
         "artifact_status": "missing",
         "blocking_reason": "未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
@@ -286,7 +286,7 @@ def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month(tmp_path, 
     assert payload["result"]["report_month"] == "202605"
     assert payload["result"]["metrics"] == []
     assert payload["result"]["remediation"]["required"] is True
-    assert payload["result"]["remediation"]["action_label"] == "登记 202605 正式财务指标契约"
+    assert payload["result"]["remediation"]["action_label"] == "补齐 202605 正式财务指标 Excel 冻结样本"
 
 
 def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():
