@@ -6,7 +6,6 @@ import { AlertList } from "../components/AlertList";
 import { DataModeRibbon } from "../components/DataModeRibbon";
 import { SummaryBlock } from "../components/SummaryBlock";
 import { designTokens } from "../theme/designSystem";
-import { shellTokens } from "../theme/tokens";
 
 describe("shared display components style governance", () => {
   it("renders alert severity dots with design tokens", () => {
@@ -18,12 +17,10 @@ describe("shared display components style governance", () => {
     expect(dot).toHaveStyle({ background: designTokens.color.danger[500] });
   });
 
-  it("renders summary copy with shell text tokens", () => {
+  it("renders summary copy with extracted token-backed classes", () => {
     render(<SummaryBlock title="Conclusion" content="Use governed display tokens." />);
 
-    expect(screen.getByText("Use governed display tokens.")).toHaveStyle({
-      color: shellTokens.colorTextSecondary,
-    });
+    expect(screen.getByText("Use governed display tokens.")).toHaveClass("summary-block__content");
   });
 
   it("marks the mock data ribbon with the global governance class", () => {

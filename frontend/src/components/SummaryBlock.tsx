@@ -1,7 +1,6 @@
 import { Tag } from "antd";
 
-import { designTokens } from "../theme/designSystem";
-import { shellTokens } from "../theme/tokens";
+import "./SummaryBlock.css";
 
 export type SummaryBlockProps = {
   title: string;
@@ -14,22 +13,15 @@ export function SummaryBlock({ title, content, tags }: SummaryBlockProps) {
   return (
     <div>
       {showTitle ? (
-        <div style={{ fontSize: 14, fontWeight: "bold", color: shellTokens.colorTextPrimary, marginBottom: 8 }}>
+        <div className="summary-block__title">
           {title}
         </div>
       ) : null}
-      <p
-        style={{
-          margin: 0,
-          fontSize: designTokens.fontSize[14],
-          color: shellTokens.colorTextSecondary,
-          lineHeight: 1.8,
-        }}
-      >
+      <p className="summary-block__content">
         {content}
       </p>
       {tags && tags.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+        <div className="summary-block__tags">
           {tags.map((t) => (
             <Tag key={t.label} color={t.color}>
               {t.label}

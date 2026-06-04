@@ -11,16 +11,16 @@ describe("AlertList", () => {
         items={[
           {
             level: "danger",
-            title: "限额突破",
-            detail: "需要复核风险敞口",
+            title: "Limit breach",
+            detail: "Needs risk review",
             time: "09:30",
           },
         ]}
       />,
     );
 
-    expect(screen.getByText("限额突破")).toBeInTheDocument();
-    expect(screen.getByText("需要复核风险敞口")).toBeInTheDocument();
+    expect(screen.getByText("Limit breach")).toBeInTheDocument();
+    expect(screen.getByText("Needs risk review")).toBeInTheDocument();
     expect(screen.getByText("09:30")).toBeInTheDocument();
     expect(container.querySelector(".alert-list")).toBeInTheDocument();
     expect(container.querySelector(".alert-list__dot")).toHaveStyle({

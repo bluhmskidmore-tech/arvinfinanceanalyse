@@ -581,6 +581,7 @@ export default function RiskTensorPage() {
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
   const [selectedTenor, setSelectedTenor] = useState<string>("");
   const [qualityEvidenceCopyStatus, setQualityEvidenceCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [qualityEvidenceCopiedStateKey, setQualityEvidenceCopiedStateKey] = useState("");
   const [qualityEvidenceReviewConfirmed, setQualityEvidenceReviewConfirmed] = useState(false);
   const [qualityEvidenceReviewRecordCopyStatus, setQualityEvidenceReviewRecordCopyStatus] = useState<
     "idle" | "copied" | "failed"
@@ -919,6 +920,7 @@ export default function RiskTensorPage() {
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");
+    setQualityEvidenceCopiedStateKey("");
   }, [qualityStateKey]);
 
   useEffect(() => {
@@ -960,16 +962,20 @@ export default function RiskTensorPage() {
   const missingQualityEvidenceLabels = qualityEvidenceReviewItems
     .filter((item) => item.status === "未提供")
     .map((item) => item.label);
+  const qualityEvidenceCopyStatusForCurrentState =
+    qualityEvidenceCopiedStateKey === qualityStateKey ? qualityEvidenceCopyStatus : "idle";
   const canConfirmQualityEvidenceReview =
-    !hasMissingQualityEvidence && qualityEvidenceCopyStatus === "copied" && !qualityEvidenceReviewConfirmed;
+    !hasMissingQualityEvidence &&
+    qualityEvidenceCopyStatusForCurrentState === "copied" &&
+    !qualityEvidenceReviewConfirmed;
   const qualityReviewStateLabel =
     hasMissingQualityEvidence
       ? "证据不完整，待补证"
       : qualityEvidenceReviewConfirmed
         ? "业务已确认"
-      : qualityEvidenceCopyStatus === "copied"
+      : qualityEvidenceCopyStatusForCurrentState === "copied"
         ? "证据已复制，待业务确认"
-        : qualityEvidenceCopyStatus === "failed"
+        : qualityEvidenceCopyStatusForCurrentState === "failed"
           ? "复制失败，需手动选择证据"
           : "待复核";
   const qualityIssuanceCopyLines = [
@@ -1125,9 +1131,9 @@ export default function RiskTensorPage() {
     ...qualityEvidenceReviewItems.map((item) => `${item.label} ${item.status}`),
   ].join("\n");
   const qualityEvidenceCopyMessage =
-    qualityEvidenceCopyStatus === "copied"
+    qualityEvidenceCopyStatusForCurrentState === "copied"
       ? "已复制证据摘要"
-      : qualityEvidenceCopyStatus === "failed"
+      : qualityEvidenceCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择证据"
         : "";
   const qualityEvidenceRequestCopyMessage =
@@ -1413,14 +1419,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyQualityEvidence = () => {
+    const copiedStateKey = qualityStateKey;
     if (!navigator.clipboard?.writeText) {
+      setQualityEvidenceCopiedStateKey(copiedStateKey);
       setQualityEvidenceCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(qualityTraceCopyText)
-      .then(() => setQualityEvidenceCopyStatus("copied"))
-      .catch(() => setQualityEvidenceCopyStatus("failed"));
+      .then(() => {
+        setQualityEvidenceCopiedStateKey(copiedStateKey);
+        setQualityEvidenceCopyStatus("copied");
+      })
+      .catch(() => {
+        setQualityEvidenceCopiedStateKey(copiedStateKey);
+        setQualityEvidenceCopyStatus("failed");
+      });
   };
 
   const handleCopyQualityEvidenceRequest = () => {
@@ -3153,7 +3167,7 @@ export default function RiskTensorPage() {
                         {qualityEvidenceCopyMessage}
                       </small>
                     ) : null}
-                    {qualityEvidenceCopyStatus === "failed" ? (
+                    {qualityEvidenceCopyStatusForCurrentState === "failed" ? (
                       <pre
                         className="risk-tensor-quality-detail__manual-copy"
                         data-testid="risk-tensor-quality-evidence-manual-copy"
