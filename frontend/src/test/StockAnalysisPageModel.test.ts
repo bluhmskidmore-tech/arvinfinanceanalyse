@@ -2470,8 +2470,8 @@ describe("stockAnalysisPageModel", () => {
       rows: [
         {
           market_state: "HOT",
-          signal_kind: "external_vendor_alpha_signal",
-          strategy_label: "external_vendor_alpha_signal",
+          signal_kind: "factor_screen",
+          strategy_label: "sourceTableAlphaSignal",
           sample_status: "sufficient",
           priority_score: 69,
           priority_rank: 1,
@@ -2492,9 +2492,9 @@ describe("stockAnalysisPageModel", () => {
       backtest_window_summary: null,
       strategy_summaries: [
         {
-          summary_key: "strategy:external_vendor_alpha_signal",
-          signal_kind: "external_vendor_alpha_signal",
-          strategy_label: "external_vendor_alpha_signal",
+          summary_key: "strategy:sourceTableAlphaSignal",
+          signal_kind: "factor_screen",
+          strategy_label: "sourceTableAlphaSignal",
           sample_status: "sufficient",
           stats,
           date_weighted_stats: {},
@@ -2535,13 +2535,13 @@ describe("stockAnalysisPageModel", () => {
       queryState: "ready",
     });
 
-    expect(priority.headline).toBe("状态待确认 · 策略待确认");
+    expect(priority.headline).toBe("状态待确认 · 多因子");
     expect(priority.badgeLabel).toBe("待确认");
     expect(priority.tone).toBe("warning");
-    expect(optimization.headline).toBe("状态待确认 · 策略待确认");
+    expect(optimization.headline).toBe("状态待确认 · 多因子");
     expect(optimization.badgeLabel).toBe("待确认");
     expect(optimization.tone).toBe("warning");
-    expect(`${priority.headline} ${optimization.headline}`).not.toContain("external_vendor_alpha_signal");
+    expect(`${priority.headline} ${optimization.headline}`).not.toContain("sourceTableAlphaSignal");
     expect(`${priority.headline} ${optimization.headline}`).not.toContain("external_vendor_priority_state");
   });
 

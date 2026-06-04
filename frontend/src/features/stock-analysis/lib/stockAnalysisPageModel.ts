@@ -738,7 +738,16 @@ function localizeStockStrategyLabel(
   if (label === signalKind || normalizedLabel === signalKind?.trim().toLowerCase().replace(/[\s-]+/g, "_")) {
     return fallbackLabel;
   }
-  if (normalizedLabel?.includes("external_vendor") || normalizedLabel?.includes("vendor_")) {
+  const compactLabel = normalizedLabel?.replace(/_/g, "");
+  if (
+    normalizedLabel?.includes("external_vendor") ||
+    normalizedLabel?.includes("vendor_") ||
+    normalizedLabel?.includes("source_table") ||
+    compactLabel?.includes("externalvendor") ||
+    compactLabel?.includes("vendor") ||
+    compactLabel?.includes("sourcetable") ||
+    compactLabel?.includes("choicestock")
+  ) {
     return fallbackLabel;
   }
   return label;
