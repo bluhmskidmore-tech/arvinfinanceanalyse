@@ -2358,9 +2358,11 @@ function CrisisCommodityShadowDecisionPanel({
 function CrisisCommodityShadowImpactPanel({
   currentScore,
   coverage,
+  shadowImpact,
 }: {
   currentScore: number | null;
   coverage: CrisisCommodityCoverage;
+  shadowImpact: CrisisCommodityShadowImpact | null;
 }) {
   const promotionItems = coverage.items.map(commodityPromotionRuleItem);
   const driverItems = promotionItems.filter((item) => item.status !== "not_recommended");
@@ -2368,47 +2370,85 @@ function CrisisCommodityShadowImpactPanel({
   const driverCoverageItems = coverage.items.filter((item) => driverFields.has(item.field));
   const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
   const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
+  const hasShadowScore = shadowImpact?.shadow_score != null;
+  const impactDrivers = shadowImpact?.candidate_contributions.length
+    ? shadowImpact.candidate_contributions
+    : null;
   return (
     <div className="macro-toolkit-crisis-shadow-impact" aria-label="Crisis Score v2 影子影响评估">
       <div className="macro-toolkit-crisis-shadow-impact__head">
         <div>
           <span>Crisis Score v2 影子影响评估</span>
-          <strong>影子分数待公式确认</strong>
+          <strong>{hasShadowScore ? "shadow score 只读试算" : "影子分数待公式确认"}</strong>
         </div>
-        <small>商品候选当前只做影子影响判断；不改变正式 Crisis Score。</small>
+        <small>
+          {shadowImpact?.formula_version ?? "商品候选当前只做影子影响判断"}；不改变正式 Crisis Score。
+        </small>
       </div>
       <div className="macro-toolkit-crisis-shadow-impact__metrics">
         <MetricTile
           icon={<SafetyCertificateOutlined />}
           label="正式 Crisis Score"
-          value={currentScore ?? "缺失"}
+          value={shadowImpact?.current_score ?? currentScore ?? "缺失"}
           detail="不改变正式 Crisis Score"
-          tone={currentScore == null ? "missing" : "neutral"}
+          tone={(shadowImpact?.current_score ?? currentScore) == null ? "missing" : "neutral"}
         />
         <MetricTile
           icon={<LineChartOutlined />}
           label="v2 shadow score"
-          value="影子分数待公式确认"
-          detail="不能直接换算为分数"
+          value={shadowImpact?.shadow_score ?? "影子分数待公式确认"}
+          detail={
+            shadowImpact
+              ? `delta ${formatSignedDelta(shadowImpact.delta)} · ${shadowImpact.formula_version}`
+              : "不能直接换算为分数"
+          }
           tone="neutral"
         />
         <MetricTile
           icon={<ArrowUpOutlined />}
           label="影响方向"
-          value="待公式/权重确认"
-          detail={formatCommodityShadowImpactDirectionDetail(driverCoverageItems)}
+          value={shadowImpact ? commodityShadowImpactDirectionLabel(shadowImpact.direction) : "待公式/权重确认"}
+          detail={
+            shadowImpact
+              ? `${shadowImpact.scope} · ${formatCommodityShadowImpactWarnings(shadowImpact)}`
+              : formatCommodityShadowImpactDirectionDetail(driverCoverageItems)
+          }
           tone="neutral"
         />
         <MetricTile
           icon={<ToolOutlined />}
           label="候选驱动"
-          value={`${driverItems.length} 个待复核`}
-          detail={`可进入人工复核 ${readyCount} / 继续观察 ${manualCount}`}
+          value={`${shadowImpact?.candidate_count ?? driverItems.length} 个待复核`}
+          detail={
+            shadowImpact
+              ? `可进入公式前审批 ${shadowImpact.approval_required ? "是" : "否"}`
+              : `可进入人工复核 ${readyCount} / 继续观察 ${manualCount}`
+          }
           tone="neutral"
         />
       </div>
+      {shadowImpact?.warnings.length ? (
+        <div className="macro-toolkit-tag-row" aria-label="影子影响警示">
+          {shadowImpact.warnings.map((warning) => (
+            <Tag color="gold" key={warning}>
+              {warning}
+            </Tag>
+          ))}
+        </div>
+      ) : null}
       <div className="macro-toolkit-crisis-shadow-impact__grid">
-        {driverCoverageItems.map((item) => {
+        {impactDrivers
+          ? impactDrivers.map((item) => (
+              <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
+                <div className="macro-toolkit-capability-result-head">
+                  <span>{item.label || item.field}</span>
+                  <Tag color="blue">{item.status}</Tag>
+                </div>
+                <small>{formatCommodityShadowContributionDetail(item)}</small>
+                <small>{item.used_in_official_score ? "已纳入正式分数" : "不改变正式 Crisis Score"}</small>
+              </div>
+            ))
+          : driverCoverageItems.map((item) => {
           const promotionItem = promotionItems.find((candidate) => candidate.field === item.field);
           return (
             <div className="macro-toolkit-crisis-shadow-impact__item" key={item.field}>
@@ -2424,8 +2464,13 @@ function CrisisCommodityShadowImpactPanel({
           );
         })}
       </div>
+      {shadowImpact?.warnings.length ? (
+        <small className="macro-toolkit-crisis-shadow-impact__note">
+          {shadowImpact.warnings.join(" / ")}
+        </small>
+      ) : null}
       <small className="macro-toolkit-crisis-shadow-impact__note">
-        审批建议：先复核候选相关性，再确认 v2 权重
+        {shadowImpact?.next_step ?? "审批建议：先复核候选相关性，再确认 v2 权重"}
       </small>
     </div>
   );
@@ -2666,6 +2711,7 @@ function CrisisScoreEvidencePanel({
   const weights = isRecord(rawResult.weights) ? rawResult.weights : {};
   const commodityInput = inputEvidence.find(isNanhuaCrisisInput);
   const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
+  const commodityShadowImpact = normalizeCommodityShadowImpact(rawResult.shadow_impact);
   const commodityShortRefreshProducts = commodityCoverage?.candidate_summary
     ? commodityShadowRefreshProducts(commodityCoverage.candidate_summary)
     : [];
@@ -2821,6 +2867,7 @@ function CrisisScoreEvidencePanel({
               <CrisisCommodityShadowImpactPanel
                 currentScore={result.score}
                 coverage={commodityCoverage}
+                shadowImpact={commodityShadowImpact}
               />
               <CrisisCommodityShadowDecisionPanel
                 coverage={commodityCoverage}
@@ -3527,6 +3574,38 @@ type CrisisCommodityCoverage = {
   items: CrisisCommodityCoverageItem[];
 };
 
+type CrisisCommodityShadowContribution = {
+  field: string;
+  label: string;
+  series_id: string | null;
+  source: string | null;
+  latest_date: string | null;
+  sample_count: number | null;
+  candidate_metric: string;
+  candidate_value: number | null;
+  weight: number | null;
+  contribution: number | null;
+  used_in_official_score: boolean;
+  status: string;
+};
+
+type CrisisCommodityShadowImpact = {
+  formula_version: string;
+  scope: string;
+  current_score: number | null;
+  shadow_score: number | null;
+  delta: number | null;
+  direction: string;
+  included_candidates: string[];
+  candidate_count: number;
+  candidate_contributions: CrisisCommodityShadowContribution[];
+  weights: Record<string, number>;
+  warnings: string[];
+  approval_required: boolean;
+  official_score_unchanged: boolean;
+  next_step: string;
+};
+
 type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
 type CrisisGapGroupKey = "equity" | "liquidity" | "commodity" | "curve_credit" | "fx" | "other";
 type CrisisGapItem = {
@@ -3684,6 +3763,52 @@ function normalizeCommodityShadowEvaluation(value: unknown): CrisisCommodityShad
     crisis_sample_count: typeof value.crisis_sample_count === "number" ? value.crisis_sample_count : null,
     summary: typeof value.summary === "string" ? value.summary : "影子评估摘要待确认",
     next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
+  };
+}
+
+function normalizeCommodityShadowImpact(value: unknown): CrisisCommodityShadowImpact | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    formula_version: typeof value.formula_version === "string" ? value.formula_version : "formula missing",
+    scope: typeof value.scope === "string" ? value.scope : "scope missing",
+    current_score: typeof value.current_score === "number" ? value.current_score : null,
+    shadow_score: typeof value.shadow_score === "number" ? value.shadow_score : null,
+    delta: typeof value.delta === "number" ? value.delta : null,
+    direction: typeof value.direction === "string" ? value.direction : "unknown",
+    included_candidates: Array.isArray(value.included_candidates)
+      ? value.included_candidates.map((item) => String(item)).filter(Boolean)
+      : [],
+    candidate_count: typeof value.candidate_count === "number" ? value.candidate_count : 0,
+    candidate_contributions: Array.isArray(value.candidate_contributions)
+      ? value.candidate_contributions.map(normalizeCommodityShadowContribution).filter((item) => item !== null)
+      : [],
+    weights: normalizeNumberRecord(value.weights),
+    warnings: Array.isArray(value.warnings) ? value.warnings.map((item) => String(item)).filter(Boolean) : [],
+    approval_required: value.approval_required === true,
+    official_score_unchanged: value.official_score_unchanged === true,
+    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
+  };
+}
+
+function normalizeCommodityShadowContribution(value: unknown): CrisisCommodityShadowContribution | null {
+  if (!isRecord(value) || typeof value.field !== "string") {
+    return null;
+  }
+  return {
+    field: value.field,
+    label: typeof value.label === "string" ? value.label : value.field,
+    series_id: typeof value.series_id === "string" ? value.series_id : null,
+    source: typeof value.source === "string" ? value.source : null,
+    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
+    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
+    candidate_metric: typeof value.candidate_metric === "string" ? value.candidate_metric : "metric missing",
+    candidate_value: typeof value.candidate_value === "number" ? value.candidate_value : null,
+    weight: typeof value.weight === "number" ? value.weight : null,
+    contribution: typeof value.contribution === "number" ? value.contribution : null,
+    used_in_official_score: value.used_in_official_score === true,
+    status: typeof value.status === "string" ? value.status : "status missing",
   };
 }
 
@@ -3975,6 +4100,42 @@ function formatCommodityShadowImpactDriverDetail(item: CrisisCommodityCoverageIt
     `命中率 ${formatPercent(evaluation.crisis_hit_rate)}`,
     `同日相关 ${formatSignedDecimal(evaluation.same_day_correlation)}`,
     `样本 ${evaluation.sample_count ?? "缺失"}`,
+    item.latest_date ? `最新 ${item.latest_date}` : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+}
+
+function commodityShadowImpactDirectionLabel(direction: string) {
+  if (direction === "higher_stress") {
+    return "压力上行";
+  }
+  if (direction === "lower_stress") {
+    return "压力下行";
+  }
+  if (direction === "unchanged") {
+    return "基本不变";
+  }
+  return "待确认";
+}
+
+function formatSignedDelta(value: number | null | undefined, digits = 2) {
+  if (value == null) {
+    return "缺失";
+  }
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
+
+function formatCommodityShadowImpactWarnings(shadowImpact: CrisisCommodityShadowImpact) {
+  return shadowImpact.warnings.length ? shadowImpact.warnings.join(" / ") : "warnings missing";
+}
+
+function formatCommodityShadowContributionDetail(item: CrisisCommodityShadowContribution) {
+  return [
+    `${item.candidate_metric} ${formatSignedDelta(item.candidate_value, 2)}`,
+    `贡献 ${formatSignedDelta(item.contribution, 4)}`,
+    `权重 ${formatPercent(item.weight)}`,
+    `样本 ${item.sample_count ?? "缺失"}`,
     item.latest_date ? `最新 ${item.latest_date}` : null,
   ]
     .filter((part): part is string => Boolean(part))
