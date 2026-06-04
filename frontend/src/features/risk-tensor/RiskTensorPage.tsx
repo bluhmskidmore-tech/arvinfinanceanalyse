@@ -572,6 +572,10 @@ export default function RiskTensorPage() {
   const [combinedQualityRequestCopyStatus, setCombinedQualityRequestCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [dv01ControlActionsCopyStatus, setDv01ControlActionsCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const [qualityWarningsCopyStatus, setQualityWarningsCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -838,6 +842,8 @@ export default function RiskTensorPage() {
     setQualityEvidenceRequestCopyStatus("idle");
     setPayloadQualityRequestCopyStatus("idle");
     setCombinedQualityRequestCopyStatus("idle");
+    setDv01ControlActionsCopyStatus("idle");
+    setQualityWarningsCopyStatus("idle");
   }, [qualityStateKey]);
   const qualityEvidenceReviewItems = [
     {
@@ -923,6 +929,34 @@ export default function RiskTensorPage() {
     "",
     qualityEvidenceRequestCopyText,
   ].join("\n");
+  const dv01ControlActionsCopyText = [
+    "风险张量 DV01 控制处置清单",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    `control_status ${result?.dv01_controls ? dv01ControlStatusLabel(result.dv01_controls.limit_status) : "未提供"}`,
+    `volatility_status ${
+      result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"
+    }`,
+    ...(result?.dv01_controls?.control_actions ?? []).flatMap((item) => [
+      `${item.key} ${item.status} ${item.title}`,
+      `证据 ${item.evidence}`,
+      `处置 ${item.action}`,
+    ]),
+  ].join("\n");
+  const qualityWarningsCopyText = [
+    "风险张量质量预警清单",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    ...(result?.warnings ?? []).map((warning, index) => `warning[${index + 1}] ${warning}`),
+  ].join("\n");
   const qualityEvidenceReviewRecordCopyText = [
     "风险张量质量证据确认记录",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -970,6 +1004,18 @@ export default function RiskTensorPage() {
       ? "已复制完整补证包"
       : combinedQualityRequestCopyStatus === "failed"
         ? "复制失败，请手动选择完整补证包"
+        : "";
+  const dv01ControlActionsCopyMessage =
+    dv01ControlActionsCopyStatus === "copied"
+      ? "已复制处置清单"
+      : dv01ControlActionsCopyStatus === "failed"
+        ? "复制失败，请手动选择处置清单"
+        : "";
+  const qualityWarningsCopyMessage =
+    qualityWarningsCopyStatus === "copied"
+      ? "已复制预警清单"
+      : qualityWarningsCopyStatus === "failed"
+        ? "复制失败，请手动选择预警清单"
         : "";
   const tensorErrorCopyText = [
     "风险张量主读面加载失败排查信息",
@@ -1186,6 +1232,28 @@ export default function RiskTensorPage() {
       .writeText(combinedQualityRequestCopyText)
       .then(() => setCombinedQualityRequestCopyStatus("copied"))
       .catch(() => setCombinedQualityRequestCopyStatus("failed"));
+  };
+
+  const handleCopyDv01ControlActions = () => {
+    if (!navigator.clipboard?.writeText) {
+      setDv01ControlActionsCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(dv01ControlActionsCopyText)
+      .then(() => setDv01ControlActionsCopyStatus("copied"))
+      .catch(() => setDv01ControlActionsCopyStatus("failed"));
+  };
+
+  const handleCopyQualityWarnings = () => {
+    if (!navigator.clipboard?.writeText) {
+      setQualityWarningsCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(qualityWarningsCopyText)
+      .then(() => setQualityWarningsCopyStatus("copied"))
+      .catch(() => setQualityWarningsCopyStatus("failed"));
   };
 
   const handleConfirmQualityEvidenceReview = () => {
@@ -1791,6 +1859,13 @@ export default function RiskTensorPage() {
                     <button
                       type="button"
                       className="risk-tensor-brief__link-button"
+                      onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+                    >
+                      定位元数据
+                    </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-brief__link-button"
                       onClick={handleRetryTensorMainRead}
                     >
                       重试主读面
@@ -2227,6 +2302,28 @@ export default function RiskTensorPage() {
                     data-testid="risk-tensor-dv01-actions"
                     aria-label="DV01 control actions"
                   >
+                    <div className="risk-tensor-quality-detail__trace-actions">
+                      <button
+                        type="button"
+                        className="risk-tensor-quality-detail__trace-action"
+                        onClick={handleCopyDv01ControlActions}
+                      >
+                        复制处置清单
+                      </button>
+                      {dv01ControlActionsCopyMessage ? (
+                        <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                          {dv01ControlActionsCopyMessage}
+                        </small>
+                      ) : null}
+                    </div>
+                    {dv01ControlActionsCopyStatus === "failed" ? (
+                      <pre
+                        className="risk-tensor-quality-detail__manual-copy"
+                        data-testid="risk-tensor-dv01-actions-manual-copy"
+                      >
+                        {dv01ControlActionsCopyText}
+                      </pre>
+                    ) : null}
                     {result.dv01_controls.control_actions.map((item) => (
                       <article className="risk-tensor-dv01-controls__action-card" key={item.key}>
                         <div>
@@ -2678,11 +2775,35 @@ export default function RiskTensorPage() {
               {result.warnings.length === 0 ? (
                 <div style={{ color: "#5c6b82" }}>无预警。</div>
               ) : (
-                <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
-                  {result.warnings.map((warning, index) => (
-                    <li key={index}>{warning}</li>
-                  ))}
-                </ul>
+                <div>
+                  <div className="risk-tensor-quality-detail__trace-actions">
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleCopyQualityWarnings}
+                    >
+                      复制预警清单
+                    </button>
+                    {qualityWarningsCopyMessage ? (
+                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                        {qualityWarningsCopyMessage}
+                      </small>
+                    ) : null}
+                  </div>
+                  {qualityWarningsCopyStatus === "failed" ? (
+                    <pre
+                      className="risk-tensor-quality-detail__manual-copy"
+                      data-testid="risk-tensor-quality-warnings-manual-copy"
+                    >
+                      {qualityWarningsCopyText}
+                    </pre>
+                  ) : null}
+                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                    {result.warnings.map((warning, index) => (
+                      <li key={index}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
           </>

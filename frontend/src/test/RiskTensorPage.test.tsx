@@ -448,6 +448,104 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("copies the full quality warning list from quality detail", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_warning_copy_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const hiddenWarning = "部分到期日缺失，已从久期分母排除";
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_warning_copy_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: ["估值曲线 vendor stale", "回售权现金流未进入 formal 张量", hiddenWarning],
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+      await user.click(within(qualityDetail).getByRole("button", { name: "复制预警清单" }));
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量质量预警清单"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_warning_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("warning[1] 估值曲线 vendor stale"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining(`warning[3] ${hiddenWarning}`));
+      await waitFor(() => {
+        expect(qualityDetail).toHaveTextContent("已复制预警清单");
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      }
+    }
+  });
+
+  it("shows manual warning list text when quality warning copying fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard unavailable");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_warning_copy_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_warning_copy_failure_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: ["估值曲线 vendor stale", "回售权现金流未进入 formal 张量"],
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+      await user.click(within(qualityDetail).getByRole("button", { name: "复制预警清单" }));
+
+      await waitFor(() => {
+        expect(qualityDetail).toHaveTextContent("复制失败，请手动选择预警清单");
+      });
+      const manualCopy = within(qualityDetail).getByTestId("risk-tensor-quality-warnings-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量质量预警清单");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_warning_copy_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("warning[2] 回售权现金流未进入 formal 张量");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      }
+    }
+  });
+
   it("exposes the selected KRD tenor chip to assistive technology", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
@@ -628,6 +726,49 @@ describe("RiskTensorPage", () => {
     expect(await screen.findByTestId("risk-tensor-dv01-controls")).toHaveTextContent("Limit configuration is pending.");
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dv01_missing_retry_success");
     expect(screen.getByTestId("risk-tensor-brief")).not.toHaveTextContent("控制未接入");
+  });
+
+  it("lets users locate metadata when DV01 controls are missing from the first screen", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_meta_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_missing_meta_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: null,
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
+      expect(brief).toHaveTextContent("控制未接入");
+
+      await user.click(within(brief).getByRole("button", { name: "定位元数据" }));
+
+      expect(scrollTargets).toContain(metaPanel);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("lets users jump from the first-screen required information tile to DV01 actions", async () => {
@@ -4051,6 +4192,132 @@ describe("RiskTensorPage", () => {
     expect(controls).toHaveTextContent("波动源待接入");
     expect(controls).not.toHaveTextContent("pending_configuration");
     expect(controls).not.toHaveTextContent("pending_market_volatility");
+  });
+
+  it("copies the DV01 control action checklist for handoff", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_actions_copy_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_actions_copy_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({
+            control_actions: [
+              {
+                key: "approved_dv01_limit",
+                title: "配置审批限额",
+                status: "required",
+                evidence: "审批 DV01 限额未接入。",
+                action: "接入投委会或风控审批后的总 DV01 限额。",
+              },
+              {
+                key: "rate_volatility_input",
+                title: "接入利率波动",
+                status: "required",
+                evidence: "日度利率波动率未接入。",
+                action: "接入曲线波动率后生成波动预警。",
+              },
+            ],
+          }),
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
+
+      await user.click(within(actions).getByRole("button", { name: "复制处置清单" }));
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 控制处置清单"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_actions_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("approved_dv01_limit required 配置审批限额"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("证据 审批 DV01 限额未接入。"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("处置 接入曲线波动率后生成波动预警。"));
+      await waitFor(() => {
+        expect(actions).toHaveTextContent("已复制处置清单");
+      });
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      }
+    }
+  });
+
+  it("shows manual copy text when DV01 action checklist copying fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard unavailable");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_actions_copy_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_actions_copy_failure_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({
+            control_actions: [
+              {
+                key: "approved_dv01_limit",
+                title: "配置审批限额",
+                status: "required",
+                evidence: "审批 DV01 限额未接入。",
+                action: "接入投委会或风控审批后的总 DV01 限额。",
+              },
+            ],
+          }),
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
+
+      await user.click(within(actions).getByRole("button", { name: "复制处置清单" }));
+
+      await waitFor(() => {
+        expect(actions).toHaveTextContent("复制失败，请手动选择处置清单");
+      });
+      const manualCopy = within(actions).getByTestId("risk-tensor-dv01-actions-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量 DV01 控制处置清单");
+      expect(manualCopy).toHaveTextContent("approved_dv01_limit required 配置审批限额");
+      expect(manualCopy).toHaveTextContent("处置 接入投委会或风控审批后的总 DV01 限额。");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      }
+    }
   });
 
   it("lets users locate quality evidence and retry when DV01 control inputs are pending", async () => {
