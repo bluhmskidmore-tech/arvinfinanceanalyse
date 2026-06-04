@@ -1354,11 +1354,24 @@ function strategyRiskFlagLabel(label: string | null | undefined) {
   const value = label?.trim();
   if (!value) return "风险待确认";
   const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  const lower = value.toLowerCase();
   const labels: Record<string, string> = {
     long_window_risk: "长窗口风险",
   };
   if (labels[normalized]) return labels[normalized];
-  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "风险待确认";
+  const compact = normalized.replace(/_/g, "");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("source_table") ||
+    lower.includes("source table") ||
+    compact.includes("externalvendor") ||
+    compact.includes("vendor") ||
+    compact.includes("sourcetable") ||
+    compact.includes("choicestock")
+  ) {
+    return "风险待确认";
+  }
   return value;
 }
 

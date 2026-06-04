@@ -690,7 +690,7 @@ describe("stockAnalysisPageModel", () => {
             attention_score: 0.55,
             price_confirm_score: 0.8,
             crowding_penalty: 0.1,
-            fusion_action: "external_vendor_fusion_action",
+            fusion_action: "sourceTableFusionAction",
             confidence: "external_vendor_confidence",
             reason: "Fusion observation-only candidate",
             evidence: { source_kinds: ["factor_screen", "theme_breakout", "external_vendor_signal"] },
@@ -707,11 +707,11 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].stockCode).toBe("000009.SZ");
     expect(cards[0].evidence.join(" ")).toContain("融合分");
     expect(cards[0].evidence.join(" ")).toContain("融合裁决：裁决待确认");
-    expect(cards[0].evidence.join(" ")).not.toContain("external_vendor_fusion_action");
+    expect(cards[0].evidence.join(" ")).not.toContain("sourceTableFusionAction");
     expect(cards[0].counterEvidence.join(" ")).toContain("代理信号");
     expect(cards[0].counterEvidence.join(" ")).toContain("来源待确认");
     expect(cards[0].counterEvidence.join(" ")).not.toContain("external_vendor_signal");
-    expect(cards[0].rawFields.map((row) => row.value).join(" ")).not.toContain("external_vendor_fusion_action");
+    expect(cards[0].rawFields.map((row) => row.value).join(" ")).not.toContain("sourceTableFusionAction");
     const confidenceEvidence = cards[0].evidenceBullets.find((row) => row.key === "confidence");
     expect(confidenceEvidence).toBeDefined();
     expect(confidenceEvidence?.value).toBe("置信度待确认");
@@ -1410,12 +1410,57 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.items.map((item) => item.statusLabel)).toEqual(
       expect.arrayContaining(["状态待确认", "待确认"]),
     );
+    expect(summary.items.find((item) => item.key === "adversarial_gate")?.detail).toBe("风险待确认");
     expect(copy).not.toContain("external_vendor_entry_gate");
     expect(copy).not.toContain("external_vendor_exit_gate");
     expect(copy).not.toContain("external_vendor_replay_state");
     expect(copy).not.toContain("external_vendor_lineage_state");
+    expect(copy).not.toContain("external_vendor_adversarial_status");
+    expect(copy).not.toContain("external_vendor_mode");
     expect(copy).not.toContain("external_vendor_risk_gate");
     expect(copy).not.toContain("vendor_quality_signal_pending");
+  });
+
+  it("keeps unknown vendor adversarial fallback details out of closed-loop copy", () => {
+    const summary = buildClosedLoopSummary(
+      strategyPayload,
+      {
+        ...confluencePayload,
+        adversarial_context: {
+          status: "external_vendor_adversarial_status",
+          mode: "external_vendor_mode",
+          risk_gate: "external_vendor_risk_gate",
+          position_scale: null,
+          strongest_block_reason: null,
+        },
+        closed_loop_state: {
+          entry_gate: "open",
+          exit_gate: "watch",
+          replay_status: "available",
+          lineage_status: "complete",
+        },
+      },
+      {
+        quality_flag: "ok",
+        vendor_status: "ok",
+      },
+    );
+
+    const adversarialGate = summary.items.find((item) => item.key === "adversarial_gate");
+    const copy = [
+      summary.verdict.primaryReason,
+      ...summary.verdict.evidence,
+      adversarialGate?.statusLabel,
+      adversarialGate?.detail,
+    ].join(" ");
+
+    expect(adversarialGate).toMatchObject({
+      statusLabel: "状态待确认",
+      detail: "反拥挤状态待确认",
+    });
+    expect(copy).not.toContain("external_vendor_mode");
+    expect(copy).not.toContain("external_vendor_adversarial_status");
+    expect(copy).not.toContain("external_vendor_risk_gate");
   });
 
   it("builds a closed-loop summary that surfaces block states as blockers", () => {
