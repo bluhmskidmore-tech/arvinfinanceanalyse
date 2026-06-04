@@ -5498,6 +5498,90 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("resets DV01 action checklist copy feedback when refreshed control actions change", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_actions_feedback_reset_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_actions_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({
+              control_actions: [
+                {
+                  key: "approved_dv01_limit",
+                  title: "配置审批限额",
+                  status: "required",
+                  evidence: "审批 DV01 限额未接入。",
+                  action: "接入总 DV01 限额。",
+                },
+              ],
+            }),
+          } as RiskTensorPayload,
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_actions_feedback_reset"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({
+              control_actions: [
+                {
+                  key: "rate_volatility_input",
+                  title: "复核利率波动预警",
+                  status: "watch",
+                  evidence: "波动率源已接入。",
+                  action: "每日复核利率波动预警。",
+                },
+              ],
+            }),
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
+
+      await user.click(within(actions).getByRole("button", { name: "复制处置清单" }));
+
+      await waitFor(() => {
+        expect(actions).toHaveTextContent("已复制处置清单");
+      });
+
+      const retryActions = within(screen.getByTestId("risk-tensor-dv01-controls")).getAllByRole("button", {
+        name: "重试主读面",
+      });
+      await user.click(retryActions[0]!);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-dv01-actions")).toHaveTextContent("复核利率波动预警");
+      });
+      expect(screen.getByTestId("risk-tensor-dv01-actions")).not.toHaveTextContent("已复制处置清单");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("lets users hand off diagnostics when DV01 control actions are empty", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => undefined);

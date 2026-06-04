@@ -413,6 +413,8 @@ export type ProductCategoryOperatingBacktestSurface = {
     coverageLabel: string;
     attributionCoverageLabel: string;
     attributionCoverageDetailLabel: string;
+    reviewWorkloadLabel: string;
+    reviewWorkloadDetailLabel: string;
     evidenceLabel: string;
   };
   coverageRows: Array<{
@@ -2917,6 +2919,23 @@ function productCategoryBacktestLatestReviewRows(input: {
   });
 }
 
+function productCategoryBacktestReviewWorkload(
+  latestReviewRows: ProductCategoryOperatingBacktestLatestReviewRow[],
+): {
+  reviewWorkloadLabel: string;
+  reviewWorkloadDetailLabel: string;
+} {
+  const p1Count = latestReviewRows.filter((row) => row.riskRankLabel.startsWith("P1")).length;
+  const p2Count = latestReviewRows.filter((row) => row.riskRankLabel.startsWith("P2")).length;
+  const p3Count = latestReviewRows.filter((row) => row.riskRankLabel.startsWith("P3")).length;
+  const headline =
+    p1Count > 0 ? `P1 ${p1Count}` : p2Count > 0 ? `P2 ${p2Count}` : p3Count > 0 ? `P3 ${p3Count}` : "0";
+  return {
+    reviewWorkloadLabel: headline,
+    reviewWorkloadDetailLabel: `复核 ${latestReviewRows.length} 条；P1 ${p1Count} 条，P2 ${p2Count} 条，P3 ${p3Count} 条`,
+  };
+}
+
 function productCategoryNextMonthEndDate(reportDate: string): string | null {
   const parsed = parseProductCategoryReportDate(reportDate);
   if (!parsed) {
@@ -3182,6 +3201,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     actionRows,
     calibrationRows,
   });
+  const reviewWorkload = productCategoryBacktestReviewWorkload(latestReviewRows);
 
   return {
     summary: {
@@ -3193,6 +3213,8 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         : "-",
       attributionCoverageLabel: attributionCoverage.attributionCoverageLabel,
       attributionCoverageDetailLabel: attributionCoverage.attributionCoverageDetailLabel,
+      reviewWorkloadLabel: reviewWorkload.reviewWorkloadLabel,
+      reviewWorkloadDetailLabel: reviewWorkload.reviewWorkloadDetailLabel,
       evidenceLabel: "信号来自动作队列；结果使用下一期 monthly 正式口径验证。",
     },
     coverageRows,

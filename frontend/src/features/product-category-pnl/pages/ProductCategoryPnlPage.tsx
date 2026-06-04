@@ -1065,6 +1065,11 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
               <strong>{props.surface.summary.attributionCoverageLabel}</strong>
               <small>{props.surface.summary.attributionCoverageDetailLabel}</small>
             </div>
+            <div className="product-category-action-backtest__metric">
+              <span>复核工作量</span>
+              <strong>{props.surface.summary.reviewWorkloadLabel}</strong>
+              <small>{props.surface.summary.reviewWorkloadDetailLabel}</small>
+            </div>
             {props.surface.actionRows.map((row) => (
               <div className={`product-category-action-backtest__metric is-${row.tone}`} key={row.actionKind}>
                 <span>{row.actionLabel}</span>
