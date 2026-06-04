@@ -335,6 +335,32 @@
   overflow-wrap: anywhere;
 }
 
+.ledger-pnl-analysis__source-contract-material-checklist {
+  display: grid;
+  gap: 5px;
+  margin: 4px 0;
+  padding: 7px 9px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.ledger-pnl-analysis__source-contract-material-checklist strong {
+  color: var(--moss-color-neutral-800);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ledger-pnl-analysis__source-contract-material-checklist small {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--moss-space-2);
+}
+
+.ledger-pnl-analysis__source-contract-material-checklist small span {
+  color: var(--moss-color-neutral-500);
+}
+
 .ledger-pnl-analysis__source-contract-values {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -653,7 +679,7 @@
 
 .ledger-pnl-functional-strip__decision-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--moss-space-2);
 }
 

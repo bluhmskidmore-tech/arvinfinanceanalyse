@@ -656,10 +656,12 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("缺契约补证动作");
     expect(panel).toHaveTextContent("登记 202605 正式财务指标契约");
     expect(panel).toHaveTextContent("从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。");
-    expect(panel).toHaveTextContent("需要物料 202605 正式财务指标 Excel 冻结样本");
-    expect(panel).toHaveTextContent("登记位置 backend/app/core_finance/formal_financial_indicators.py");
-    expect(panel).toHaveTextContent(
-      "验证 python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
+    const checklist = within(panel).getByTestId("ledger-pnl-formal-indicator-source-contract-material-checklist");
+    expect(checklist).toHaveTextContent("补证材料齐备 3/3");
+    expect(checklist).toHaveTextContent("物料202605 正式财务指标 Excel 冻结样本");
+    expect(checklist).toHaveTextContent("登记backend/app/core_finance/formal_financial_indicators.py");
+    expect(checklist).toHaveTextContent(
+      "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     );
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
@@ -907,6 +909,7 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("正式不可用原因正式契约缺失，正式值不可用");
     expect(decisionPath).toHaveTextContent("候选解释可信度未闭合 · 覆盖率 60.00%");
     expect(decisionPath).toHaveTextContent("最短补证路径登记 202605 正式财务指标契约");
+    expect(decisionPath).toHaveTextContent("材料完整性补证材料齐备 3/3");
 
     const residualTable = await screen.findByTestId("ledger-pnl-residual-diagnostic-table");
     expect(residualTable).toHaveTextContent("科目层");

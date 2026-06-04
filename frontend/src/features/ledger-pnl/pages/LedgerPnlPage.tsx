@@ -15,6 +15,7 @@ import type {
   LedgerPnlDataPayload,
   LedgerPnlFormalFinancialIndicatorContractPayload,
   LedgerPnlFormalFinancialIndicatorMetric,
+  LedgerPnlFormalFinancialIndicatorRemediation,
   LedgerPnlSummaryPayload,
   LedgerPnlSummaryByAccount,
   LedgerPnlSummaryByCurrency,
@@ -704,6 +705,27 @@ function formatCandidateExplainabilityConfidence(
   return `${status} · 覆盖率 ${formatPercent(model.explanationCoveragePct)}`;
 }
 
+function buildFormalContractMaterialChecklist(
+  remediation: LedgerPnlFormalFinancialIndicatorRemediation | undefined,
+) {
+  const rows = [
+    { key: "artifact", label: "物料", value: remediation?.required_artifact?.trim() ?? "" },
+    { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
+    { key: "verification", label: "验证", value: remediation?.verification?.trim() ?? "" },
+  ];
+  const readyCount = rows.filter((row) => row.value.length > 0).length;
+  const totalCount = rows.length;
+  return {
+    rows,
+    readyCount,
+    totalCount,
+    summary:
+      readyCount === totalCount
+        ? `补证材料齐备 ${readyCount}/${totalCount}`
+        : `补证材料待补 ${readyCount}/${totalCount}`,
+  };
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -930,6 +952,9 @@ function LedgerFunctionalAuditStrip(props: {
     props.isFormalContractError,
   );
   const shortestEvidencePath = nextDrills[0]?.label ?? props.explainabilityModel.evidenceEntryPoint;
+  const materialChecklist = buildFormalContractMaterialChecklist(
+    props.formalIndicatorSourceContract?.remediation,
+  );
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -1019,6 +1044,10 @@ function LedgerFunctionalAuditStrip(props: {
             >
               {shortestEvidencePath}
             </button>
+          </div>
+          <div>
+            <span>材料完整性</span>
+            <strong>{materialChecklist.summary}</strong>
           </div>
         </div>
       </div>
@@ -1838,6 +1867,7 @@ function FormalIndicatorSourceContractPanel(props: {
   const decision = buildFormalContractDecision(props.contract, props.isLoading, props.isError);
   const contractNote = formatFormalContractNote(props.contract);
   const actionQueue = buildFormalContractActionQueue(metrics);
+  const materialChecklist = buildFormalContractMaterialChecklist(props.contract?.remediation);
 
   return (
     <section
@@ -1975,15 +2005,18 @@ function FormalIndicatorSourceContractPanel(props: {
                   {props.contract.remediation?.action_detail ??
                     "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。"}
                 </span>
-                {props.contract.remediation?.required_artifact ? (
-                  <small>需要物料 {props.contract.remediation.required_artifact}</small>
-                ) : null}
-                {props.contract.remediation?.registration_target ? (
-                  <small>登记位置 {props.contract.remediation.registration_target}</small>
-                ) : null}
-                {props.contract.remediation?.verification ? (
-                  <small>验证 {props.contract.remediation.verification}</small>
-                ) : null}
+                <div
+                  data-testid="ledger-pnl-formal-indicator-source-contract-material-checklist"
+                  className="ledger-pnl-analysis__source-contract-material-checklist"
+                >
+                  <strong>{materialChecklist.summary}</strong>
+                  {materialChecklist.rows.map((row) => (
+                    <small key={row.key}>
+                      <span>{row.label}</span>
+                      {row.value || "待补"}
+                    </small>
+                  ))}
+                </div>
                 <small>正式值保持未接入，不能用分析候选值补齐。</small>
               </div>
             </article>
