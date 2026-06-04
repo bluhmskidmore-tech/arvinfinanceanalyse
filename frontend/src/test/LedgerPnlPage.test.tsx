@@ -1186,7 +1186,9 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("候选解释可信度已闭合 · 覆盖率 100.00%");
     expect(decisionPath).toHaveTextContent("候选补证路径候选链路已闭合，无需补证");
     expect(decisionPath).toHaveTextContent("正式补证路径补齐 202605 正式财务指标 Excel 冻结样本");
-    expect(decisionPath).toHaveTextContent("正式补证结论202605 正式样本缺失；先补齐样本，再登记并刷新正式契约");
+    expect(decisionPath).toHaveTextContent(
+      "正式补证结论202605 正式样本缺失；先补齐样本，再登记 source contract、回读正式契约并核对 QDB 候选值",
+    );
     expect(decisionPath).not.toHaveTextContent("正式补证路径补科目汇总或确认科目范围");
     expect(
       within(decisionPath).queryByRole("button", { name: /候选补证路径/ }),

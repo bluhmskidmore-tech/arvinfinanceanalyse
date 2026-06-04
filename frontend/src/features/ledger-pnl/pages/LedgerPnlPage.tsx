@@ -938,7 +938,7 @@ function formalContractRemediationConclusion(props: {
   if (props.contract?.sample_status === "missing_contract") {
     const reportMonth = props.contract.report_month || "本月";
     if (props.materialChecklist.hasMissingArtifact) {
-      return `${reportMonth} 正式样本缺失；先补齐样本，再登记并刷新正式契约`;
+      return `${reportMonth} 正式样本缺失；先补齐样本，再登记 source contract、回读正式契约并核对 QDB 候选值`;
     }
     if (props.materialChecklist.hasBlockedRegistrationPackage) {
       return `${reportMonth} 登记包不完整；先补齐登记包，再登记正式契约`;
