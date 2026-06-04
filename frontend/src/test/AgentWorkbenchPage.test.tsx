@@ -19,6 +19,7 @@ const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
 const PROCESS_SEARCH_LABEL = "流程搜索";
 const PROCESS_NAME_LABEL = "流程名称";
+const REPO_PATH_LABEL = "GitNexus 仓库路径";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
@@ -397,7 +398,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByRole("heading", { name: "智能体对话" })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toBeInTheDocument();
     openGitNexusTools();
-    expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
+    expect(screen.getByLabelText(REPO_PATH_LABEL)).toBeInTheDocument();
   });
 
   it("keeps shortcut entry panels collapsed until requested", () => {
@@ -428,7 +429,7 @@ describe("AgentWorkbenchPage", () => {
     expect(advancedDetails).not.toHaveAttribute("open");
     openGitNexusTools();
     expect(advancedDetails).toHaveAttribute("open");
-    expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: REPO_PATH_LABEL })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "固定当前仓库" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "读取流程" })).toBeInTheDocument();
     const processDetails = screen.getByText("流程筛选与查看").closest("details");
@@ -1284,8 +1285,8 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.clear(screen.getByLabelText("repo-path-input"));
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\PINNED-MOSS");
+    await user.clear(screen.getByLabelText(REPO_PATH_LABEL));
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\PINNED-MOSS");
     await user.click(screen.getByRole("button", { name: "固定当前仓库" }));
 
     expect(screen.getByText("固定仓库")).toBeInTheDocument();
@@ -1303,7 +1304,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.clear(screen.getByLabelText("repo-path-input"));
+    await user.clear(screen.getByLabelText(REPO_PATH_LABEL));
     await user.click(screen.getByRole("button", { name: "固定当前仓库" }));
 
     expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再固定仓库")).toBeInTheDocument();
@@ -1345,7 +1346,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.queryByText("最近仓库")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "F:\\BETA" }));
-    expect(screen.getByLabelText("repo-path-input")).toHaveValue("F:\\BETA");
+    expect(screen.getByLabelText(REPO_PATH_LABEL)).toHaveValue("F:\\BETA");
     expect(screen.getByText("已切换 GitNexus 仓库 · 可继续提问")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
 
@@ -1433,7 +1434,7 @@ describe("AgentWorkbenchPage", () => {
 
     openGitNexusTools();
     expect(fetchMock).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("repo-path-input"), {
+    fireEvent.change(screen.getByLabelText(REPO_PATH_LABEL), {
       target: { value: "F:\\MOSS-SYSTEM-V1" },
     });
 
@@ -1509,7 +1510,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.clear(screen.getByLabelText("repo-path-input"));
+    await user.clear(screen.getByLabelText(REPO_PATH_LABEL));
     await user.click(screen.getByRole("button", { name: "读取流程" }));
 
     expect(screen.getByText("请先输入 GitNexus 仓库路径 · 再读取流程")).toBeInTheDocument();
@@ -1537,7 +1538,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
@@ -1582,7 +1583,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
     screen.getByRole("button", { name: "查看所选流程" }).focus();
     await act(async () => {
@@ -1663,7 +1664,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
     openProcessTools();
     await waitFor(() => expect(screen.getByRole("option", { name: "CheckoutFlow" })).toBeInTheDocument());
@@ -1741,7 +1742,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
     openProcessTools();
     await waitFor(() => expect(screen.getByLabelText(PROCESS_NAME_LABEL)).toHaveValue("CheckoutFlow"));
@@ -1771,7 +1772,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: /读取流程/ }));
     expect(screen.getByText("正在读取 GitNexus 流程 · 可继续输入")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
@@ -1854,7 +1855,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.click(screen.getByRole("button", { name: "读取流程" }));
     openProcessTools();
     await waitFor(() => expect(screen.getByRole("option", { name: "AuditFlow" })).toBeInTheDocument());
@@ -1882,7 +1883,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    fireEvent.change(screen.getByLabelText("repo-path-input"), {
+    fireEvent.change(screen.getByLabelText(REPO_PATH_LABEL), {
       target: { value: "F:\\MOSS-SYSTEM-V1" },
     });
     fireEvent.change(screen.getByPlaceholderText(AGENT_PLACEHOLDER), {
@@ -1996,7 +1997,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.type(
       screen.getByPlaceholderText(AGENT_PLACEHOLDER),
       "请给我看 GitNexus context",
@@ -2124,7 +2125,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    expect(screen.getByLabelText("repo-path-input")).toHaveValue("F:\\MOSS-SYSTEM-V1");
+    expect(screen.getByLabelText(REPO_PATH_LABEL)).toHaveValue("F:\\MOSS-SYSTEM-V1");
     expect(screen.getByRole("button", { name: "F:\\MOSS-SYSTEM-V1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "F:\\NEWMOSS" })).toBeInTheDocument();
   });
@@ -2153,7 +2154,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openGitNexusTools();
-    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(screen.getByLabelText(REPO_PATH_LABEL), "F:\\MOSS-SYSTEM-V1");
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "GitNexus context");
     await user.click(screen.getByRole("button", { name: "发送" }));
 

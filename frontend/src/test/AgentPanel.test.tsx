@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentPanel } from "../features/agent/AgentPanel";
 
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
+const REPO_PATH_LABEL = "GitNexus 仓库路径";
 
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -109,7 +110,7 @@ describe("AgentPanel", () => {
     expect(screen.getByTestId("agent-panel-question")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "输入提示" })).toHaveTextContent("Enter");
-    expect(screen.queryByLabelText("repo-path-input")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(REPO_PATH_LABEL)).not.toBeInTheDocument();
   });
 
   it("updates and focuses the embedded composer when the default question changes", () => {

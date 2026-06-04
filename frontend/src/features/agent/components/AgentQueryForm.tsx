@@ -297,7 +297,7 @@ export function AgentQueryForm({
             <label className="agent-chat-composer__field">
               <span>GitNexus 仓库路径</span>
               <input
-                aria-label="repo-path-input"
+                aria-label="GitNexus 仓库路径"
                 type="text"
                 placeholder="例如：F:\\MOSS-SYSTEM-V1"
                 value={repoPath}
