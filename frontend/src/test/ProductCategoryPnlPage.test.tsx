@@ -836,6 +836,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核后执行");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("P3 低样本复核");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("历史均值");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("当前证据");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规模 1013.32 亿元");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("确认最新收益率改善证据");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("放行条件");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");

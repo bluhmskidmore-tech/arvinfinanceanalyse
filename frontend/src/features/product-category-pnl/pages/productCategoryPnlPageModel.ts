@@ -384,6 +384,7 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   impactLabel: string;
   releaseConditionLabel: string;
   evidenceLabel: string;
+  currentEvidenceItems: string[];
   checkItems: string[];
   tone: "positive" | "negative" | "neutral";
 };
@@ -2957,6 +2958,7 @@ function productCategoryBacktestLatestReviewRows(input: {
         : "历史均值：-",
       releaseConditionLabel: releaseConditionForAction(row.actionKind),
       evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
+      currentEvidenceItems: row.evidenceItems,
       checkItems: checkItemsForAction(row.actionKind),
       tone: "negative" as const,
     }];
