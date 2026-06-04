@@ -894,7 +894,7 @@ function localizeBasisLabel(basis: string | null | undefined): string {
   if (normalized === "analytical") return "分析口径（非交易）";
   if (normalized === "formal") return "正式口径";
   if (!normalized) return "口径待补";
-  return `口径 ${basis}`;
+  return "口径待确认";
 }
 
 export type StockAnalysisPagePurpose = {
@@ -1633,6 +1633,7 @@ export function buildStockAnalysisEvidenceStatus(
   const qualityTone = isMetaBoundary(meta) ? "warning" : "positive";
   const lineageLabel = meta.source_version ?? "待补";
   const ruleVersion = meta.rule_version ?? "待补";
+  const basisLabel = localizeBasisLabel(payload.basis);
 
   return [
     {
@@ -1652,9 +1653,9 @@ export function buildStockAnalysisEvidenceStatus(
     {
       key: "basis",
       label: "计算口径",
-      statusLabel: localizeBasisLabel(payload.basis),
+      statusLabel: basisLabel,
       tone: evidenceToneForStatus(payload.basis ?? "pending"),
-      detail: payload.basis ? "指标口径已接入" : "口径待确认",
+      detail: basisLabel,
     },
     {
       key: "rule-version",
@@ -2123,12 +2124,20 @@ export function buildMarketStateCard(
     passedLabel: `${gate.passed_conditions} / ${gate.required_conditions} 条件通过`,
     basisLabel: localizeBasisLabel(payload.basis),
     warnings,
-    conditions: gate.conditions.map((condition) => ({
-      key: condition.key,
-      label: localizeMarketConditionLabel(condition.label),
-      status: condition.status,
-      evidence: localizeMarketConditionEvidence(condition.evidence),
-    })),
+    conditions: gate.conditions.map((condition) => {
+      const unknownVendorCondition = [
+        condition.key,
+        condition.label,
+        condition.evidence,
+        condition.source_series_id,
+      ].some((value) => value && isTechnicalMarketConditionText(value));
+      return {
+        key: condition.key,
+        label: unknownVendorCondition ? "条件待确认" : localizeMarketConditionLabel(condition.label),
+        status: condition.status,
+        evidence: unknownVendorCondition ? "说明待确认" : localizeMarketConditionEvidence(condition.evidence),
+      };
+    }),
   };
 }
 
@@ -2143,6 +2152,9 @@ function localizeMarketConditionLabel(label: string): string {
   };
   if (exactLabels[normalized]) {
     return exactLabels[normalized];
+  }
+  if (isTechnicalMarketConditionText(value)) {
+    return "条件待确认";
   }
   return value.replace(/\bCSI300\b/g, "沪深300").replace(/\bclose\b/gi, "收盘价");
 }
@@ -2160,6 +2172,9 @@ function localizeMarketConditionEvidence(evidence: string): string {
   if (exactEvidence[normalized]) {
     return exactEvidence[normalized];
   }
+  if (isTechnicalMarketConditionText(value)) {
+    return "说明待确认";
+  }
   return value
     .replace(/\b(MA\d+)\s+is\s+above\b/gi, "$1 高于")
     .replace(/\b(MA\d+)\s+is\s+below\b/gi, "$1 低于")
@@ -2168,6 +2183,16 @@ function localizeMarketConditionEvidence(evidence: string): string {
     .replace(/\babove\b/gi, "高于")
     .replace(/\bbelow\b/gi, "低于")
     .replace(/\.$/, "。");
+}
+
+function isTechnicalMarketConditionText(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("choice_stock") ||
+    normalized.includes("source_table")
+  );
 }
 
 export function buildSectorRows(payload: LivermoreStrategyPayload): StockSectorRow[] {
@@ -2564,8 +2589,7 @@ export function buildClosedLoopSummary(
       detail:
         adversarialStatus === "missing"
           ? "待补：反拥挤证据缺失，不能视为中性证明"
-          : localizeStockBackendText(adversarial?.strongest_block_reason) ||
-            `${adversarial?.mode ?? "anti-crowding"} / 状态 ${adversarial?.status ?? "missing"}`,
+          : closedLoopAdversarialDetail(adversarial),
     },
     {
       key: "risk_exit",
@@ -2917,6 +2941,30 @@ function closedLoopStatusLabel(key: StockClosedLoopSummaryItem["key"], status: s
   if (normalized === "watch") return "观察中";
   if (normalized === "pass" || normalized === "allow" || normalized === "ok") return "通过";
   return key === "lineage" ? "待确认" : "状态待确认";
+}
+
+function closedLoopAdversarialDetail(
+  adversarial: LivermoreSignalConfluencePayload["adversarial_context"] | null,
+): string {
+  const reason = adversarial?.strongest_block_reason?.trim();
+  if (reason) {
+    return localizeStockBackendText(reason);
+  }
+  const fallbackValues = [adversarial?.mode, adversarial?.status, adversarial?.risk_gate];
+  if (fallbackValues.some(isTechnicalStockFallbackText)) {
+    return "\u53cd\u62e5\u6324\u72b6\u6001\u5f85\u786e\u8ba4";
+  }
+  return `${adversarial?.mode ?? "anti-crowding"} / \u72b6\u6001 ${adversarial?.status ?? "missing"}`;
+}
+
+function isTechnicalStockFallbackText(value: string | null | undefined): boolean {
+  const normalized = value?.toLowerCase() ?? "";
+  return (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("choice_stock") ||
+    normalized.includes("source_table")
+  );
 }
 
 function closedLoopExitCounts(

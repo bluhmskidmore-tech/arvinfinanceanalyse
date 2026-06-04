@@ -351,6 +351,71 @@ describe("stockAnalysisPageModel", () => {
     expect(copy).not.toContain(vendorMarketState);
   });
 
+  it("localizes unknown vendor strategy basis before building page copy", () => {
+    const vendorBasis = "external_vendor_basis";
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      basis: vendorBasis as LivermoreStrategyPayload["basis"],
+    };
+
+    const decisionSummary = buildDecisionSummary(payload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+    });
+    const marketCard = buildMarketStateCard(payload);
+    const evidenceStatus = buildStockAnalysisEvidenceStatus(payload, {
+      quality_flag: "ok",
+      vendor_status: "ok",
+    });
+    const basisEvidence = evidenceStatus.find((item) => item.key === "basis");
+    const boundaryNotes = buildDataBoundaryNotes(payload);
+    const copy = [
+      decisionSummary.basisLabel,
+      marketCard.basisLabel,
+      basisEvidence?.statusLabel,
+      basisEvidence?.detail,
+      ...boundaryNotes,
+    ].join(" ");
+
+    expect(decisionSummary.basisLabel).toBe("口径待确认");
+    expect(marketCard.basisLabel).toBe("口径待确认");
+    expect(basisEvidence?.statusLabel).toBe("口径待确认");
+    expect(basisEvidence?.detail).toBe("口径待确认");
+    expect(boundaryNotes.join(" ")).toContain("口径：口径待确认");
+    expect(copy).not.toContain(vendorBasis);
+  });
+
+  it("localizes unknown vendor market condition copy before building page copy", () => {
+    const vendorCondition = "external_vendor_condition";
+    const vendorEvidence = "external_vendor_condition_ready";
+    const payload: LivermoreStrategyPayload = {
+      ...strategyPayload,
+      market_gate: {
+        ...strategyPayload.market_gate,
+        conditions: [
+          {
+            key: "external_vendor_gate",
+            label: vendorCondition,
+            status: "pass",
+            evidence: vendorEvidence,
+            source_series_id: "external_vendor_series",
+          },
+        ],
+      },
+    };
+
+    const marketCard = buildMarketStateCard(payload);
+    const copy = marketCard.conditions.map((condition) => `${condition.label} ${condition.evidence}`).join(" ");
+
+    expect(marketCard.conditions[0]).toMatchObject({
+      label: "条件待确认",
+      evidence: "说明待确认",
+    });
+    expect(copy).not.toContain(vendorCondition);
+    expect(copy).not.toContain(vendorEvidence);
+    expect(copy).not.toContain("external_vendor_series");
+  });
+
   it("builds candidate evidence with counter-evidence and invalidation rules", () => {
     const cards = buildCandidateEvidenceCards(strategyPayload);
 

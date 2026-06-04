@@ -1405,10 +1405,38 @@ describe("StockAnalysisPage", () => {
       /\.stock-analysis-page__rail-verdict\s*\{[\s\S]*?grid-template-columns:\s*22px\s*minmax\(0,\s*1fr\)\s*auto/,
     );
     expect(narrowRailCss).toMatch(
+      /\.stock-analysis-page__rail-verdict\s*\{[\s\S]*?align-items:\s*center/,
+    );
+    expect(narrowRailCss).toMatch(
       /\.stock-analysis-page__rail-verdict-body strong\s*\{[\s\S]*?display:\s*none/,
     );
     expect(narrowRailCss).toMatch(
       /\.stock-analysis-page__rail-verdict-kpis\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*46px\)/,
+    );
+  });
+
+  it("keeps narrow KPI strip from repeating hero and decision states", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const narrowKpiStart = css.indexOf("Narrow KPI pass");
+    const narrowKpiCss = css.slice(narrowKpiStart);
+
+    expect(narrowKpiStart).toBeGreaterThan(-1);
+    expect(narrowKpiCss).toMatch(
+      /\[data-testid="stock-analysis-kpi-market-state"\],[\s\S]*?\[data-testid="stock-analysis-kpi-closed-loop"\]\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+    expect(narrowKpiCss).toMatch(
+      /\.stock-analysis-page__dh-kpi-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+  });
+
+  it("removes repeated rail chrome on narrow screens", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const narrowRailChromeStart = css.indexOf("Narrow rail chrome pass");
+    const narrowRailChromeCss = css.slice(narrowRailChromeStart);
+
+    expect(narrowRailChromeStart).toBeGreaterThan(-1);
+    expect(narrowRailChromeCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\.stock-analysis-page__dh-section-eyebrow\s*\{[\s\S]*?display:\s*none\s*!important/,
     );
   });
 
