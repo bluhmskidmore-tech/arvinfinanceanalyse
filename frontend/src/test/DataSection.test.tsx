@@ -33,6 +33,19 @@ describe("DataSection · loading", () => {
     expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
     expect(screen.getByTestId("data-section-loading")).toBeInTheDocument();
   });
+
+  it("uses extracted classes for loading label and skeleton stack", () => {
+    renderWith({ kind: "loading" }, <p data-testid="inner">should-hide</p>);
+
+    const loadingBlock = screen.getByTestId("data-section-loading");
+    const loadingLabel = loadingBlock.querySelector(".data-section__loading-label");
+    const skeletonStack = loadingBlock.querySelector(".data-section__skeleton-stack");
+
+    expect(loadingLabel).toBeInTheDocument();
+    expect(loadingLabel).not.toHaveAttribute("style");
+    expect(skeletonStack).toBeInTheDocument();
+    expect(skeletonStack).not.toHaveAttribute("style");
+  });
 });
 
 describe("DataSection · error", () => {
@@ -72,6 +85,14 @@ describe("DataSection · empty", () => {
     renderWith({ kind: "empty", hint: "请先选择日期" });
     expect(screen.getByText("请先选择日期")).toBeInTheDocument();
   });
+  it("uses extracted class for empty placeholder tone", () => {
+    renderWith({ kind: "empty" });
+
+    const emptyBlock = screen.getByTestId("data-section-empty");
+
+    expect(emptyBlock).toHaveClass("data-section__empty");
+    expect(emptyBlock).not.toHaveAttribute("style");
+  });
 });
 
 describe("DataSection · stale", () => {
@@ -108,6 +129,17 @@ describe("DataSection · vendor_unavailable", () => {
     expect(screen.getByTestId("data-section-vendor-unavailable")).toBeInTheDocument();
     expect(screen.getByText(/bond analytics 未返回/)).toBeInTheDocument();
   });
+  it("uses extracted classes for vendor unavailable layout and title", () => {
+    renderWith({ kind: "vendor_unavailable", details: "vendor down" });
+
+    const block = screen.getByTestId("data-section-vendor-unavailable");
+    const title = block.querySelector(".data-section__warning-soft-title");
+
+    expect(block).toHaveClass("data-section__compact-state");
+    expect(block).not.toHaveAttribute("style");
+    expect(title).toBeInTheDocument();
+    expect(title).not.toHaveAttribute("style");
+  });
 });
 
 describe("DataSection · explicit_miss", () => {
@@ -119,6 +151,17 @@ describe("DataSection · explicit_miss", () => {
     expect(screen.queryByTestId("inner")).not.toBeInTheDocument();
     expect(screen.getByTestId("data-section-explicit-miss")).toBeInTheDocument();
     expect(screen.getByText(/2025-11-30/)).toBeInTheDocument();
+  });
+  it("uses extracted classes for explicit miss layout and title", () => {
+    renderWith({ kind: "explicit_miss", requested_date: "2025-11-30", details: "missing" });
+
+    const block = screen.getByTestId("data-section-explicit-miss");
+    const title = block.querySelector(".data-section__warning-title");
+
+    expect(block).toHaveClass("data-section__compact-state");
+    expect(block).not.toHaveAttribute("style");
+    expect(title).toBeInTheDocument();
+    expect(title).not.toHaveAttribute("style");
   });
 });
 

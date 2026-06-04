@@ -91,8 +91,8 @@ function renderBody(opts: {
   if (state.kind === "loading") {
     return (
       <div data-testid="data-section-loading">
-        <span style={{ color: displayTokens.text.muted }}>正在载入</span>
-        <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
+        <span className="data-section__loading-label">正在载入</span>
+        <div className="data-section__skeleton-stack">
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
@@ -125,7 +125,7 @@ function renderBody(opts: {
 
   if (state.kind === "empty") {
     return (
-      <div data-testid="data-section-empty" style={{ color: displayTokens.text.muted }}>
+      <div data-testid="data-section-empty" className="data-section__empty">
         {state.hint ?? "当前暂无可展示内容。"}
       </div>
     );
@@ -133,11 +133,8 @@ function renderBody(opts: {
 
   if (state.kind === "vendor_unavailable") {
     return (
-      <div
-        data-testid="data-section-vendor-unavailable"
-        style={{ display: "grid", gap: 6, color: displayTokens.text.secondary }}
-      >
-        <span style={{ color: displayTokens.text.onWarningSoft, fontWeight: 600 }}>该业务域数据暂不可用。</span>
+      <div data-testid="data-section-vendor-unavailable" className="data-section__compact-state">
+        <span className="data-section__warning-soft-title">该业务域数据暂不可用。</span>
         {state.details ? <span>{state.details}</span> : null}
       </div>
     );
@@ -145,11 +142,8 @@ function renderBody(opts: {
 
   if (state.kind === "explicit_miss") {
     return (
-      <div
-        data-testid="data-section-explicit-miss"
-        style={{ display: "grid", gap: 6, color: displayTokens.text.secondary }}
-      >
-        <span style={{ color: displayTokens.text.onWarning, fontWeight: 600 }}>
+      <div data-testid="data-section-explicit-miss" className="data-section__compact-state">
+        <span className="data-section__warning-title">
           指定报告日{state.requested_date ? ` ${state.requested_date} ` : ""}无数据。
         </span>
         {state.details ? <span>{state.details}</span> : null}

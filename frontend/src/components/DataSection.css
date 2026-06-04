@@ -12,3 +12,36 @@
 .data-section__secondary-text {
   color: var(--moss-color-neutral-600);
 }
+
+.data-section__empty {
+  color: var(--moss-color-neutral-500);
+}
+
+.data-section__compact-state {
+  display: grid;
+  gap: 6px;
+  color: var(--moss-color-neutral-600);
+}
+
+.data-section__warning-soft-title,
+.data-section__warning-title {
+  font-weight: 600;
+}
+
+.data-section__warning-soft-title {
+  color: var(--moss-color-warning-700);
+}
+
+.data-section__warning-title {
+  color: var(--moss-color-warning-800);
+}
+
+.data-section__loading-label {
+  color: var(--moss-color-neutral-500);
+}
+
+.data-section__skeleton-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
