@@ -338,6 +338,30 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
   };
 }
 
+function buildBlockedRegistrationPackageContractPayload(): LedgerPnlFormalFinancialIndicatorContractPayload {
+  const contract = buildMissingFormalIndicatorContractPayload();
+  return {
+    ...contract,
+    remediation: contract.remediation
+      ? {
+          ...contract.remediation,
+          artifact_status: "available",
+          blocking_reason: "已找到 202605 正式财务指标 Excel 冻结样本，但登记包缺少放行条件。",
+          registration_package: {
+            ...contract.remediation.registration_package,
+            release_gate: "",
+          },
+          registration_package_guard: {
+            status: "blocked",
+            required_fields: ["fixture_target", "registry_target", "contract_builder", "release_gate"],
+            missing_fields: ["release_gate"],
+            blocking_rule: "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+          },
+        }
+      : undefined,
+  };
+}
+
 describe("LedgerPnlPage", () => {
   it("renders ledger summary and detail metadata as non-formal ledger basis", async () => {
     const base = createApiClient({ mode: "mock" });
@@ -907,6 +931,82 @@ describe("LedgerPnlPage", () => {
     expect(strip).toHaveTextContent("正式契约缺口");
     expect(strip).toHaveTextContent("无正式契约明细");
     expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
+  });
+
+  it("blocks formal registration when the local registration package is incomplete", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => ({
+      result_meta: {
+        ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+        basis: "ledger" as const,
+        quality_flag: "warning" as const,
+        as_of_date: "2026-05-31",
+        date_basis: "report_month_end",
+        evidence_rows: 0,
+        formal_use_allowed: false,
+        source_version: "sv_formal_financial_indicators_contract_unavailable",
+      },
+      result: buildBlockedRegistrationPackageContractPayload(),
+    }));
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.summary"),
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("0.00"),
+            ledger_monthly_pnl_all: money("0.00"),
+            ledger_total_assets: money("0.00"),
+            ledger_total_liabilities: money("0.00"),
+            ledger_net_assets: money("0.00"),
+            by_currency: [],
+            by_account: [],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: buildMeta("ledger_pnl.data"),
+          result: {
+            report_date: "2026-05-31",
+            summary: {
+              total_pnl_cnx: money("0.00"),
+              total_pnl_cny: money("0.00"),
+              total_pnl: money("0.00"),
+              count: 0,
+            },
+            items: [],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: [] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getLedgerPnlFormalFinancialIndicators,
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    await waitFor(() => {
+      expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202605");
+    });
+
+    const panel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
+    const checklist = within(panel).getByTestId("ledger-pnl-formal-indicator-source-contract-material-checklist");
+
+    expect(checklist).toHaveTextContent("补证材料待补");
+    expect(checklist).toHaveTextContent("登记包守卫blocked");
+    expect(checklist).toHaveTextContent("缺失字段release_gate");
+    expect(checklist).toHaveTextContent("执行状态待补齐登记包");
+    expect(checklist).toHaveTextContent("回读动作补齐登记包后再登记正式契约");
+    expect(checklist).not.toHaveTextContent("执行状态待登记正式契约");
+    expect(checklist).not.toHaveTextContent("回读动作登记后刷新页面或重新查询正式契约接口");
   });
 
   it("states the first-screen business conclusion when ledger evidence exists but the formal contract is missing", async () => {

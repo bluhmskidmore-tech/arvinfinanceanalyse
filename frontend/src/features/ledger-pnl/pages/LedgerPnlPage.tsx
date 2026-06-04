@@ -710,6 +710,8 @@ function buildFormalContractMaterialChecklist(
 ) {
   const hasRemediation = remediation !== undefined;
   const hasMissingArtifact = remediation?.artifact_status === "missing";
+  const guardStatus = remediation?.registration_package_guard?.status?.trim() ?? "";
+  const hasBlockedRegistrationPackage = guardStatus === "blocked";
   const rows = [
     { key: "artifact", label: "物料", value: remediation?.required_artifact?.trim() ?? "" },
     { key: "blocking", label: "阻断", value: remediation?.blocking_reason?.trim() ?? "" },
@@ -769,6 +771,7 @@ function buildFormalContractMaterialChecklist(
   return {
     rows,
     hasMissingArtifact,
+    hasBlockedRegistrationPackage,
     readyCount,
     totalCount,
     summary: !hasRemediation
@@ -800,6 +803,9 @@ function formalContractExecutionStatus(props: {
     if (props.materialChecklist.hasMissingArtifact) {
       return "待补齐正式样本";
     }
+    if (props.materialChecklist.hasBlockedRegistrationPackage) {
+      return "待补齐登记包";
+    }
     return props.materialChecklist.readyCount === props.materialChecklist.totalCount
       ? "待登记正式契约"
       : "待补齐材料";
@@ -825,6 +831,9 @@ function formalContractReadbackAction(props: {
   if (props.contract?.sample_status === "missing_contract") {
     if (props.materialChecklist.hasMissingArtifact) {
       return "补齐样本并登记后刷新页面或重新查询正式契约接口";
+    }
+    if (props.materialChecklist.hasBlockedRegistrationPackage) {
+      return "补齐登记包后再登记正式契约";
     }
     return "登记后刷新页面或重新查询正式契约接口";
   }

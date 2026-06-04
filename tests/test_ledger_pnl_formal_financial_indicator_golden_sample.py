@@ -183,6 +183,32 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
     }
 
 
+def test_formal_financial_indicator_registration_package_guard_blocks_missing_fields():
+    registry = load_module(
+        "backend.app.core_finance.formal_financial_indicators",
+        "backend/app/core_finance/formal_financial_indicators.py",
+    )
+
+    guard = registry._registration_package_guard({
+        "fixture_target": "tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json",
+        "registry_target": "backend/app/core_finance/formal_financial_indicators.py::_METRICS_202605",
+        "contract_builder": "build_formal_financial_indicator_contract(report_month='202605')",
+        "release_gate": "",
+    })
+
+    assert guard == {
+        "status": "blocked",
+        "required_fields": [
+            "fixture_target",
+            "registry_target",
+            "contract_builder",
+            "release_gate",
+        ],
+        "missing_fields": ["release_gate"],
+        "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+    }
+
+
 def test_ledger_pnl_service_wraps_financial_indicator_contract_as_non_formal_envelope():
     service = load_module(
         "backend.app.services.ledger_pnl_service",
