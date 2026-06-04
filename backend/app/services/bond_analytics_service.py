@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
+    build_action_attribution_success_payload,
     compute_action_attribution_bonds,
 )
 from backend.app.core_finance.bond_analytics import dv01 as dv01_core
@@ -3063,51 +3064,22 @@ def _build_action_attribution_success_response(
 ) -> dict:
     """Build success response from computed action attribution."""
     meta = _meta("bond_analytics.action_attribution", report_date, rows_end)
-    warn_parts: list[str] = [str(w) for w in (raw.get("warnings") or [])]
-    if not prior_rd:
-        warn_parts.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
-    warn_parts.extend(pnl_warn_codes)
-    warn_strings = _ordered_unique_warnings(warn_parts)
-    warnings_detail = [{"code": w, "level": "warning", "message": w} for w in warn_strings]
-
-    missing_inputs: list[str] = []
-    if not pnl_by_key:
-        missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
-
+    payload = build_action_attribution_success_payload(
+        report_date=report_date,
+        period_type=period_type,
+        raw=raw,
+        prior_snapshot_date=prior_rd,
+        pnl_by_key=pnl_by_key,
+        pnl_warning_codes=pnl_warn_codes,
+        computed_at=meta.generated_at.isoformat(),
+    )
     response = ActionAttributionResponse.model_validate(
         promote_flat_payload(
-            {
-                "report_date": report_date,
-                "period_type": period_type,
-                "period_start": date.fromisoformat(str(raw["period_start"])),
-                "period_end": date.fromisoformat(str(raw["period_end"])),
-                "total_actions": int(raw["total_actions"]),
-                "total_pnl_from_actions": raw["total_pnl_from_actions"],
-                "by_action_type": [
-                    ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
-                    for item in raw.get("by_action_type", [])
-                ],
-                "action_details": [
-                    ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
-                    for item in raw.get("action_details", [])
-                ],
-                "period_start_duration": raw["period_start_duration"],
-                "period_end_duration": raw["period_end_duration"],
-                "duration_change_from_actions": raw["duration_change_from_actions"],
-                "period_start_dv01": raw["period_start_dv01"],
-                "period_end_dv01": raw["period_end_dv01"],
-                "status": "ready",
-                "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
-                "missing_inputs": missing_inputs,
-                "blocked_components": [],
-                "computed_at": meta.generated_at.isoformat(),
-                "warnings": _ordered_unique_warnings(warn_strings),
-                "warnings_detail": warnings_detail,
-            },
+            payload,
             ActionAttributionResponse,
         )
     )
-    meta_adj = meta.model_copy(update={"quality_flag": "warning" if warn_strings else "ok"})
+    meta_adj = meta.model_copy(update={"quality_flag": "warning" if payload["warnings"] else "ok"})
     return build_formal_result_envelope(
         result_meta=meta_adj,
         result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),

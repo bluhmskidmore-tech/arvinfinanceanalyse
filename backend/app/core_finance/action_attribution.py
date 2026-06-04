@@ -39,6 +39,67 @@ def bond_analytics_action_line_payload(row: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def build_action_attribution_success_payload(
+    *,
+    report_date: date,
+    period_type: str,
+    raw: Mapping[str, Any],
+    prior_snapshot_date: str | None,
+    pnl_by_key: Mapping[str, Decimal],
+    pnl_warning_codes: list[str],
+    computed_at: str,
+) -> dict[str, Any]:
+    warn_parts: list[str | None] = [str(w) for w in (raw.get("warnings") or [])]
+    if not prior_snapshot_date:
+        warn_parts.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
+    warn_parts.extend(pnl_warning_codes)
+    warnings = _ordered_unique_warnings(warn_parts)
+
+    missing_inputs: list[str] = []
+    if not pnl_by_key:
+        missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
+
+    return {
+        "report_date": report_date,
+        "period_type": period_type,
+        "period_start": date.fromisoformat(str(raw["period_start"])),
+        "period_end": date.fromisoformat(str(raw["period_end"])),
+        "total_actions": int(raw["total_actions"]),
+        "total_pnl_from_actions": raw["total_pnl_from_actions"],
+        "by_action_type": list(raw.get("by_action_type", [])),
+        "action_details": list(raw.get("action_details", [])),
+        "period_start_duration": raw["period_start_duration"],
+        "period_end_duration": raw["period_end_duration"],
+        "duration_change_from_actions": raw["duration_change_from_actions"],
+        "period_start_dv01": raw["period_start_dv01"],
+        "period_end_dv01": raw["period_end_dv01"],
+        "status": "ready",
+        "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
+        "missing_inputs": missing_inputs,
+        "blocked_components": [],
+        "computed_at": computed_at,
+        "warnings": warnings,
+        "warnings_detail": [
+            {"code": warning, "level": "warning", "message": warning}
+            for warning in warnings
+        ],
+    }
+
+
+def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
 def _key(inst: str, book: str) -> str:
     return f"{inst}::{book}"
 

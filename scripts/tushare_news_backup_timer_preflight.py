@@ -547,9 +547,9 @@ def build_timer_preflight_report(
         "summary": summary,
         "gates": [asdict(gate) for gate in gates],
         "stage": stage,
-        "checklist_path": str(CHECKLIST_PATH),
-        "timer_packet_path": str(TIMER_PACKET_PATH),
-        "evidence_path": str(EVIDENCE_PATH),
+        "checklist_path": CHECKLIST_PATH.as_posix(),
+        "timer_packet_path": TIMER_PACKET_PATH.as_posix(),
+        "evidence_path": EVIDENCE_PATH.as_posix(),
     }
     if stage == "pre-enable":
         report["ready_to_create_timer"] = verdict == "pass"

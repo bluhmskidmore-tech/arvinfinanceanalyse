@@ -500,6 +500,12 @@ def test_timer_preflight_cli_pre_enable_reports_not_ready_when_blocked(tmp_path:
     assert exit_code == 1
     assert payload["stage"] == "pre-enable"
     assert payload["verdict"] == "blocked"
+    assert payload["checklist_path"] == CHECKLIST
+    assert payload["timer_packet_path"] == TIMER_PACKET
+    assert payload["evidence_path"] == EVIDENCE
+    assert "\\" not in payload["checklist_path"]
+    assert "\\" not in payload["timer_packet_path"]
+    assert "\\" not in payload["evidence_path"]
     assert payload["ready_to_create_timer"] is False
     assert [
         item["input"] for item in payload["required_pre_enable_inputs"]
