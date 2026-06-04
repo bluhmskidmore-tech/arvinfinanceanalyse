@@ -4329,7 +4329,7 @@ export default function StockAnalysisPage() {
                                 <thead>
                                   <tr>
                                     <th scope="col">策略</th>
-                                    <th scope="col">建议</th>
+                                    <th scope="col">复核状态</th>
                                     <th scope="col">T+5 收益</th>
                                     <th scope="col">按日等权</th>
                                     <th scope="col">原因</th>
@@ -6101,7 +6101,7 @@ export default function StockAnalysisPage() {
                           <thead>
                             <tr>
                               <th scope="col">策略</th>
-                              <th scope="col">建议</th>
+                              <th scope="col">复核状态</th>
                               <th scope="col">T+5 收益</th>
                               <th scope="col">按日等权</th>
                               <th scope="col">原因</th>
@@ -6158,7 +6158,7 @@ export default function StockAnalysisPage() {
                             <tr>
                               <th scope="col">切片</th>
                               <th scope="col">策略</th>
-                              <th scope="col">建议</th>
+                              <th scope="col">复核状态</th>
                               <th scope="col">T+5 收益</th>
                             </tr>
                           </thead>

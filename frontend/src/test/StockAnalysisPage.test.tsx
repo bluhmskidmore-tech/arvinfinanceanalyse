@@ -3919,6 +3919,8 @@ describe("StockAnalysisPage", () => {
     await waitFor(() => expect(card).toHaveTextContent("多因子"), { timeout: 3_000 });
     expect(card).toHaveTextContent("三策略 T+5 排名");
     expect(card).toHaveTextContent("多因子");
+    expect(card).toHaveTextContent("复核状态");
+    expect(card).not.toHaveTextContent("建议");
     expect(card).toHaveTextContent("优先复核");
     expect(card).toHaveTextContent("T+5 样本 30");
     expect(card).not.toHaveTextContent("sample 30");

@@ -710,6 +710,7 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].evidence.join(" ")).not.toContain("sourceTableFusionAction");
     expect(cards[0].counterEvidence.join(" ")).toContain("代理信号");
     expect(cards[0].counterEvidence.join(" ")).toContain("来源待确认");
+    expect(cards[0].counterEvidence.join(" ")).not.toContain("仓位建议");
     expect(cards[0].counterEvidence.join(" ")).not.toContain("external_vendor_signal");
     expect(cards[0].rawFields.map((row) => row.value).join(" ")).not.toContain("sourceTableFusionAction");
     const confidenceEvidence = cards[0].evidenceBullets.find((row) => row.key === "confidence");

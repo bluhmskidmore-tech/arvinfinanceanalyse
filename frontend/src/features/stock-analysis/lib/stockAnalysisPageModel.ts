@@ -569,7 +569,7 @@ function buildHybridFusionEvidenceCards(
       evidence,
       counterEvidence: [
         "生命法庭层为代理信号，未接入真实大V文本、OCR/ASR或社交情绪生产线。",
-        "仅作观察与复核，不生成实盘订单或仓位建议。",
+        "仅作观察与复核，不作为执行依据。",
         `来源命中：${sourceKinds}`,
       ],
       invalidationRules: [
