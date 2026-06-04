@@ -339,7 +339,7 @@ export function AgentQueryForm({
                 <label className="agent-chat-composer__field">
                   <span>流程搜索</span>
                   <input
-                    aria-label="process-search-input"
+                    aria-label="流程搜索"
                     type="text"
                     placeholder="按流程名过滤"
                     value={processSearch}

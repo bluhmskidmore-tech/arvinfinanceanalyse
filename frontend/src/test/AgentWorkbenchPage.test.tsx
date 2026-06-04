@@ -17,6 +17,7 @@ const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
 const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
+const PROCESS_SEARCH_LABEL = "流程搜索";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
@@ -434,11 +435,11 @@ describe("AgentWorkbenchPage", () => {
     expect(processDetails).not.toHaveAttribute("open");
     const viewProcessButton = screen.getByText("查看所选流程").closest("button");
     expect(viewProcessButton).not.toBeNull();
-    expect(screen.getByLabelText("process-search-input")).not.toBeVisible();
+    expect(screen.getByLabelText(PROCESS_SEARCH_LABEL)).not.toBeVisible();
     expect(viewProcessButton).not.toBeVisible();
     openProcessTools();
     expect(processDetails).toHaveAttribute("open");
-    expect(screen.getByLabelText("process-search-input")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: PROCESS_SEARCH_LABEL })).toBeVisible();
     expect(viewProcessButton).toBeVisible();
     expect(screen.getByLabelText("process-name-select")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "解释当前页面的主要结论和风险点" })).toBeInTheDocument();
@@ -1671,7 +1672,7 @@ describe("AgentWorkbenchPage", () => {
     await waitFor(() => expect(processSelect).toHaveValue("CheckoutFlow"));
     expect(viewProcessButton).not.toBeDisabled();
     await user.click(viewProcessButton);
-    screen.getByLabelText("process-search-input").focus();
+    screen.getByLabelText(PROCESS_SEARCH_LABEL).focus();
 
     await waitFor(() => {
       const expectedBody = JSON.stringify({
@@ -1745,7 +1746,7 @@ describe("AgentWorkbenchPage", () => {
     await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
 
     await user.click(screen.getByRole("button", { name: "查看所选流程" }));
-    screen.getByLabelText("process-search-input").focus();
+    screen.getByLabelText(PROCESS_SEARCH_LABEL).focus();
     await act(async () => {
       resolveProcessResponse(buildJsonResponse({}, 500));
       await Promise.resolve();
@@ -1857,7 +1858,7 @@ describe("AgentWorkbenchPage", () => {
     openProcessTools();
     await waitFor(() => expect(screen.getByRole("option", { name: "AuditFlow" })).toBeInTheDocument());
 
-    await user.type(screen.getByLabelText("process-search-input"), "Audit");
+    await user.type(screen.getByLabelText(PROCESS_SEARCH_LABEL), "Audit");
 
     const select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
     expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "AuditFlow"]);
