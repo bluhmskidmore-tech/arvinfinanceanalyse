@@ -606,6 +606,7 @@ export default function RiskTensorPage() {
   const [dv01ControlActionsCopyStatus, setDv01ControlActionsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [dv01ControlActionsCopiedStateKey, setDv01ControlActionsCopiedStateKey] = useState("");
   const [qualityWarningsCopyStatus, setQualityWarningsCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -875,6 +876,22 @@ export default function RiskTensorPage() {
   const qualityFlagStateKey = `quality_flag:${result?.quality_flag ?? tensorMeta?.quality_flag ?? "missing"}`;
   const qualityResultKindStateKey = `result_kind:${tensorMeta?.result_kind ?? "missing"}`;
   const qualityStateKey = `${tensorMeta?.trace_id ?? ""}|${result?.report_date ?? reportDate ?? ""}|${payloadQualityIssueSummary}|${qualityEvidenceStateKey}|${qualityLineageStateKey}|${qualityFallbackStateKey}|${qualityIssuanceStateKey}|${qualityWarningStateKey}|${qualityBlockedDateStateKey}|${qualityFlagStateKey}|${qualityResultKindStateKey}`;
+  const dv01ControlsStateKey = [
+    `limit_status:${result?.dv01_controls?.limit_status ?? "missing"}`,
+    `approved_limit_dv01:${displayStr(result?.dv01_controls?.approved_limit_dv01 ?? undefined)}`,
+    `limit_usage_ratio:${displayStr(result?.dv01_controls?.limit_usage_ratio ?? undefined)}`,
+    `volatility_status:${result?.dv01_controls?.volatility_status ?? "missing"}`,
+    `daily_rate_volatility_bp:${displayStr(result?.dv01_controls?.daily_rate_volatility_bp ?? undefined)}`,
+    `stress:${(result?.dv01_controls?.stress_scenarios ?? [])
+      .map((item) => `${item.scenario_key}:${displayStr(item.shock_bp)}:${displayStr(item.estimated_pnl_impact)}`)
+      .join("/")}`,
+    `actions:${(result?.dv01_controls?.control_actions ?? [])
+      .map((item) => `${item.key}:${item.status}:${item.title}:${item.evidence}:${item.action}`)
+      .join("/")}`,
+    `message:${result?.dv01_controls?.control_message ?? "missing"}`,
+    `hint:${result?.dv01_controls?.action_hint ?? "missing"}`,
+  ].join("|");
+  const dv01ControlActionsCurrentStateKey = `${qualityStateKey}|${dv01ControlsStateKey}`;
 
   useEffect(() => {
     setQualityEvidenceCopyStatus("idle");
@@ -887,11 +904,15 @@ export default function RiskTensorPage() {
     setPayloadQualityRequestCopyStatus("idle");
     setCombinedQualityRequestCopyStatus("idle");
     setDv01MissingControlsCopyStatus("idle");
+    setQualityWarningsCopyStatus("idle");
+  }, [qualityStateKey]);
+
+  useEffect(() => {
     setDv01PendingInputsCopyStatus("idle");
     setDv01StressScenariosCopyStatus("idle");
     setDv01ControlActionsCopyStatus("idle");
-    setQualityWarningsCopyStatus("idle");
-  }, [qualityStateKey]);
+    setDv01ControlActionsCopiedStateKey("");
+  }, [qualityStateKey, dv01ControlsStateKey]);
   const qualityEvidenceReviewItems = [
     {
       key: "evidence_rows",
@@ -1125,10 +1146,12 @@ export default function RiskTensorPage() {
       : dv01StressScenariosCopyStatus === "failed"
         ? "复制失败，请手动选择压力情景排查信息"
         : "";
+  const dv01ControlActionsCopyStatusForCurrentState =
+    dv01ControlActionsCopiedStateKey === dv01ControlActionsCurrentStateKey ? dv01ControlActionsCopyStatus : "idle";
   const dv01ControlActionsCopyMessage =
-    dv01ControlActionsCopyStatus === "copied"
+    dv01ControlActionsCopyStatusForCurrentState === "copied"
       ? "已复制处置清单"
-      : dv01ControlActionsCopyStatus === "failed"
+      : dv01ControlActionsCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择处置清单"
         : "";
   const qualityWarningsCopyMessage =
@@ -1393,14 +1416,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyDv01ControlActions = () => {
+    const copiedStateKey = dv01ControlActionsCurrentStateKey;
+    setDv01ControlActionsCopiedStateKey(copiedStateKey);
     if (!navigator.clipboard?.writeText) {
       setDv01ControlActionsCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(dv01ControlActionsCopyText)
-      .then(() => setDv01ControlActionsCopyStatus("copied"))
-      .catch(() => setDv01ControlActionsCopyStatus("failed"));
+      .then(() => {
+        setDv01ControlActionsCopiedStateKey(copiedStateKey);
+        setDv01ControlActionsCopyStatus("copied");
+      })
+      .catch(() => {
+        setDv01ControlActionsCopiedStateKey(copiedStateKey);
+        setDv01ControlActionsCopyStatus("failed");
+      });
   };
 
   const handleCopyDv01MissingControls = () => {
@@ -2687,7 +2718,7 @@ export default function RiskTensorPage() {
                         </small>
                       ) : null}
                     </div>
-                    {dv01ControlActionsCopyStatus === "failed" ? (
+                    {dv01ControlActionsCopyStatusForCurrentState === "failed" ? (
                       <pre
                         className="risk-tensor-quality-detail__manual-copy"
                         data-testid="risk-tensor-dv01-actions-manual-copy"
@@ -2740,7 +2771,7 @@ export default function RiskTensorPage() {
                         {dv01ControlActionsCopyMessage}
                       </small>
                     ) : null}
-                    {dv01ControlActionsCopyStatus === "failed" ? (
+                    {dv01ControlActionsCopyStatusForCurrentState === "failed" ? (
                       <pre
                         className="risk-tensor-quality-detail__manual-copy"
                         data-testid="risk-tensor-dv01-actions-empty-manual-copy"

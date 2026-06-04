@@ -724,6 +724,11 @@ describe("productCategoryPnlPageModel", () => {
         riskReasonLabel: "低置信；主因收益率未改善",
         reasonLabel: "历史回测建议收紧触发条件：命中率 0.0%，主因收益率未改善",
         impactLabel: "历史均值：净营收 -0.05 亿元 · 收益率 -10.0bp · 规模 +100.00 亿元",
+        checkItems: [
+          "确认最新收益率改善证据",
+          "复核规模扩张是否稀释收益率",
+          "核对净营收是否同步改善",
+        ],
       }),
     ]);
     expect(surface.actionRows[2]).toEqual(expect.objectContaining({
