@@ -708,6 +708,7 @@ function formatCandidateExplainabilityConfidence(
 function buildFormalContractMaterialChecklist(
   remediation: LedgerPnlFormalFinancialIndicatorRemediation | undefined,
 ) {
+  const hasRemediation = remediation !== undefined;
   const rows = [
     { key: "artifact", label: "物料", value: remediation?.required_artifact?.trim() ?? "" },
     { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
@@ -719,8 +720,9 @@ function buildFormalContractMaterialChecklist(
     rows,
     readyCount,
     totalCount,
-    summary:
-      readyCount === totalCount
+    summary: !hasRemediation
+      ? "无缺契约补证材料"
+      : readyCount === totalCount
         ? `补证材料齐备 ${readyCount}/${totalCount}`
         : `补证材料待补 ${readyCount}/${totalCount}`,
   };
@@ -767,6 +769,24 @@ function formalContractReadbackAction(props: {
     return "登记后刷新页面或重新查询正式契约接口";
   }
   return "重新读取正式契约并复核 formal_use_allowed";
+}
+
+function formalContractMaterialSummary(props: {
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  materialChecklist: ReturnType<typeof buildFormalContractMaterialChecklist>;
+}) {
+  if (props.isLoading) {
+    return "等待正式契约读取";
+  }
+  if (props.isError) {
+    return "等待恢复正式契约读取";
+  }
+  if (props.contract?.sample_status === "missing_contract") {
+    return props.materialChecklist.summary;
+  }
+  return "无缺契约补证材料";
 }
 
 function shortFormalContractReadbackAction(action: string) {
@@ -1013,6 +1033,12 @@ function LedgerFunctionalAuditStrip(props: {
     isLoading: props.isFormalContractLoading,
     isError: props.isFormalContractError,
   });
+  const materialSummary = formalContractMaterialSummary({
+    contract: props.formalIndicatorSourceContract,
+    isLoading: props.isFormalContractLoading,
+    isError: props.isFormalContractError,
+    materialChecklist,
+  });
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -1105,7 +1131,7 @@ function LedgerFunctionalAuditStrip(props: {
           </div>
           <div>
             <span>材料完整性</span>
-            <strong>{materialChecklist.summary}</strong>
+            <strong>{materialSummary}</strong>
           </div>
           <div>
             <span>执行状态</span>

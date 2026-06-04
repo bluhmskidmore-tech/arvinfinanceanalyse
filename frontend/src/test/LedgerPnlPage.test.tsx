@@ -470,6 +470,12 @@ describe("LedgerPnlPage", () => {
     expect(strip).toHaveTextContent("QDB候选 1");
     expect(strip).toHaveTextContent("需对账 4");
 
+    const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("执行状态待重新读取正式契约");
+    expect(decisionPath).toHaveTextContent("回读动作重新读取正式契约并复核 formal_use_allowed");
+    expect(decisionPath).not.toHaveTextContent("待登记正式契约");
+    expect(decisionPath).not.toHaveTextContent("补证材料待补 0/3");
+
     const formalPendingRow = screen.getByTestId(
       "ledger-pnl-formal-indicator-source-contract-row-group.operating_revenue",
     );
@@ -492,6 +498,66 @@ describe("LedgerPnlPage", () => {
     expect(reconciliationRow).toHaveTextContent("存款余额（母公司）");
     expect(reconciliationRow).toHaveTextContent("对账差异 4.6780974646");
     expect(reconciliationRow).toHaveTextContent("需先对账");
+  });
+
+  it("marks formal contract materials as pending while the contract is still loading", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(
+      () =>
+        new Promise<Awaited<ReturnType<typeof base.getLedgerPnlFormalFinancialIndicators>>>(() => {
+          // Keep the formal contract request pending so the first-screen readback state is observable.
+        }),
+    );
+
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.dates"),
+        result: { dates: ["2026-03-31"] },
+      })),
+      getLedgerPnlSummary: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.summary"),
+        result: {
+          report_date: "2026-03-31",
+          source_version: "sv_ledger_test",
+          ledger_monthly_pnl_core: money("0.00"),
+          ledger_monthly_pnl_all: money("0.00"),
+          ledger_total_assets: money("0.00"),
+          ledger_total_liabilities: money("0.00"),
+          ledger_net_assets: money("0.00"),
+          by_currency: [],
+          by_account: [],
+        },
+      })),
+      getLedgerPnlData: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.data"),
+        result: {
+          report_date: "2026-03-31",
+          summary: {
+            total_pnl_cnx: money("0.00"),
+            total_pnl_cny: money("0.00"),
+            total_pnl: money("0.00"),
+            count: 0,
+          },
+          items: [],
+        },
+      })),
+      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+        result: { report_months: [] },
+      })),
+      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlFormalFinancialIndicators,
+    });
+
+    await waitFor(() => {
+      expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202603");
+    });
+
+    const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("材料完整性等待正式契约读取");
+    expect(decisionPath).toHaveTextContent("执行状态读取正式契约中");
+    expect(decisionPath).not.toHaveTextContent("无缺契约补证材料");
   });
 
   it("ranks formal contract gaps into an actionable reconciliation queue", async () => {
