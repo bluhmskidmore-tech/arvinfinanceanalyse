@@ -537,7 +537,7 @@ def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeou
     assert any("choice_news.data" in " ".join(args) for args in recorded_grants)
 
 
-def test_seed_dev_user_scopes_grants_choice_news_read_once(tmp_path, monkeypatch):
+def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -563,9 +563,11 @@ def test_seed_dev_user_scopes_grants_choice_news_read_once(tmp_path, monkeypatch
     assert len(calls) == 1
     command = " ".join(calls[0])
     assert "INSERT INTO user_role_scope" in command
-    assert "choice_news.data" in command
-    assert "read" in command
+    assert "'*', NULL, 'choice_news.data', 'read'" in command
+    assert "'anonymous', 'viewer', 'macro_toolkit', 'read'" in command
+    assert "'anonymous', 'viewer', 'macro_vendor', 'read'" in command
     assert "WHERE NOT EXISTS" in command
+    assert command.count("INSERT INTO user_role_scope") == 3
 
 
 def test_resolve_python_executable_prefers_path_python(monkeypatch):

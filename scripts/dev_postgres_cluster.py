@@ -37,6 +37,11 @@ RUNTIME_GOVERNANCE_SEED_FILES = (
     "cache_manifest.jsonl",
     "cache_build_run.jsonl",
 )
+DEV_USER_SCOPE_GRANTS = (
+    {"user_id": "*", "role": None, "resource": "choice_news.data", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_toolkit", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_vendor", "action": "read"},
+)
 
 
 @dataclass(frozen=True)
@@ -129,6 +134,10 @@ def _sql_identifier(value: str) -> str:
 
 def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
+
+
+def _sql_nullable_literal(value: str | None) -> str:
+    return "NULL" if value is None else _sql_literal(value)
 
 
 def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
@@ -394,6 +403,29 @@ def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> No
 
 
 def _seed_dev_user_scopes(config: DevPostgresClusterConfig) -> None:
+    statements = []
+    for grant in DEV_USER_SCOPE_GRANTS:
+        user_id = str(grant["user_id"])
+        role = grant["role"]
+        resource = str(grant["resource"])
+        action = str(grant["action"])
+        role_predicate = "role IS NULL" if role is None else f"role = {_sql_literal(str(role))}"
+        statements.append(
+            "INSERT INTO user_role_scope "
+            "(user_id, role, resource, action, scope_key, scope_value, is_active, created_at, updated_at) "
+            f"SELECT {_sql_literal(user_id)}, {_sql_nullable_literal(str(role) if role is not None else None)}, "
+            f"{_sql_literal(resource)}, {_sql_literal(action)}, NULL, NULL, TRUE, NOW(), NOW() "
+            "WHERE NOT EXISTS ("
+            "SELECT 1 FROM user_role_scope "
+            f"WHERE user_id = {_sql_literal(user_id)} "
+            f"AND {role_predicate} "
+            f"AND resource = {_sql_literal(resource)} "
+            f"AND action = {_sql_literal(action)} "
+            "AND scope_key IS NULL "
+            "AND scope_value IS NULL "
+            "AND is_active IS TRUE"
+            ");"
+        )
     _run_checked(
         [
             str(config.bin_dir / "psql.exe"),
@@ -408,21 +440,7 @@ def _seed_dev_user_scopes(config: DevPostgresClusterConfig) -> None:
             "-v",
             "ON_ERROR_STOP=1",
             "-c",
-            (
-                "INSERT INTO user_role_scope "
-                "(user_id, role, resource, action, scope_key, scope_value, is_active, created_at, updated_at) "
-                "SELECT '*', NULL, 'choice_news.data', 'read', NULL, NULL, TRUE, NOW(), NOW() "
-                "WHERE NOT EXISTS ("
-                "SELECT 1 FROM user_role_scope "
-                "WHERE user_id = '*' "
-                "AND role IS NULL "
-                "AND resource = 'choice_news.data' "
-                "AND action = 'read' "
-                "AND scope_key IS NULL "
-                "AND scope_value IS NULL "
-                "AND is_active IS TRUE"
-                ");"
-            ),
+            " ".join(statements),
         ]
     )
 
