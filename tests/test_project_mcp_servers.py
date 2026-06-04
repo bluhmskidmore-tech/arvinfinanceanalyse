@@ -1663,6 +1663,128 @@ def test_lineage_evidence_mcp_maps_cube_query_page_to_allowed_source_tables(tmp_
         server.close()
 
 
+@pytest.mark.parametrize(
+    ("page_id", "record", "required_anchors"),
+    [
+        (
+            "PAGE-PORTFOLIO-HOME-001",
+            {
+                "result_kind": "bond_dashboard.headline_kpis",
+                "primary_api": "/api/bond-dashboard/headline-kpis",
+                "page_role": "module-home/portfolio",
+                "tables_used": ["fact_formal_bond_analytics_daily"],
+                "boundary": "module home no standalone MTR binding",
+            },
+            [
+                "module-home/portfolio",
+                "/api/bond-dashboard/headline-kpis",
+                "bond_dashboard.headline_kpis",
+                "fact_formal_bond_analytics_daily",
+            ],
+        ),
+        (
+            "PAGE-MARKET-HOME-001",
+            {
+                "result_kind": "market_data.rates",
+                "primary_api": "/ui/market-data/rates",
+                "page_role": "module-home/market",
+                "tables_used": ["market_data_series_category"],
+                "boundary": "module home observational market entry",
+            },
+            [
+                "module-home/market",
+                "/ui/market-data/rates",
+                "market_data.rates",
+                "market_data_series_category",
+            ],
+        ),
+        (
+            "PAGE-RISK-HOME-001",
+            {
+                "result_kind": "risk.tensor",
+                "primary_api": "/api/risk/tensor",
+                "page_role": "module-home/risk",
+                "tables_used": ["fact_formal_risk_tensor_daily"],
+                "boundary": "module home does not replace PAGE-RISK-001 formal risk truth",
+            },
+            [
+                "module-home/risk",
+                "/api/risk/tensor",
+                "risk.tensor",
+                "fact_formal_risk_tensor_daily",
+            ],
+        ),
+        (
+            "PAGE-PERFORMANCE-HOME-001",
+            {
+                "result_kind": "pnl.by_business_ytd",
+                "primary_api": "/api/pnl/by-business-ytd",
+                "page_role": "module-home/performance",
+                "tables_used": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
+                "boundary": "module home does not rebuild KPI or team formulas",
+            },
+            [
+                "module-home/performance",
+                "/api/pnl/by-business-ytd",
+                "pnl.by_business_ytd",
+                "fact_formal_pnl_fi",
+            ],
+        ),
+        (
+            "PAGE-REPORTS-HOME-001",
+            {
+                "result_kind": "preview.source-foundation",
+                "primary_api": "/ui/preview/source-foundation",
+                "page_role": "module-home/governance",
+                "tables_used": ["source_foundation"],
+                "boundary": "module home diagnostics are not data-quality approval",
+            },
+            [
+                "module-home/governance",
+                "/ui/preview/source-foundation",
+                "preview.source-foundation",
+                "/api/cube/dimensions/bond_analytics",
+            ],
+        ),
+    ],
+)
+def test_lineage_evidence_mcp_maps_module_home_pages_to_downstream_read_records(
+    tmp_path: Path,
+    page_id: str,
+    record: dict[str, Any],
+    required_anchors: list[str],
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(record) + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": page_id, "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == page_id
+        for anchor in required_anchors:
+            assert anchor in found_payload["expanded_queries"]
+        assert not any(anchor.startswith("MTR-") for anchor in found_payload["expanded_queries"])
+        assert not any(anchor.startswith("GS-") for anchor in found_payload["expanded_queries"])
+        assert found_payload["records"]
+        assert found_payload["records"][0]["matched_query"] in required_anchors
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["result_kind"] == record["result_kind"]
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_dashboard_home_page_to_mixed_snapshot_records(
     tmp_path: Path,
 ) -> None:
