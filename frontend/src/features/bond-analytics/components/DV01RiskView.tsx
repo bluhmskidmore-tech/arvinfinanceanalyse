@@ -633,6 +633,16 @@ function riskLevelLabel(value: string | null | undefined): string {
   return value || "—";
 }
 
+function actionPolicyBasisLabel(value: string | null | undefined): string {
+  if (value === "formal_limit") return "正式限额口径";
+  return "页面预警阈值 fallback";
+}
+
+function actionPolicyBasisDescription(value: string | null | undefined): string {
+  if (value === "formal_limit") return "动作计划按已接入的正式 DV01 限额计算。";
+  return "正式限额未接入，风险动作仅用于预警排查；正式超限结论以 business-approved 限额验收通过后为准。";
+}
+
 function limitConfigOverallLabel(value: string | null | undefined): string {
   if (value === "ready") return "整体已配置";
   if (value === "incomplete") return "整体未完成";
@@ -1142,6 +1152,13 @@ function DV01ActionPlanPanel({
               ))}
             />
           ) : null}
+          <Alert
+            type={data.policy_basis === "formal_limit" ? "success" : "warning"}
+            showIcon
+            data-testid="dv01-action-plan-policy-basis"
+            message={`当前动作口径：${actionPolicyBasisLabel(data.policy_basis)}`}
+            description={actionPolicyBasisDescription(data.policy_basis)}
+          />
           <DV01ActionLimitKpis data={data} />
           {data.risk_level === "no_data" ? (
             <div className={styles.emptyState} data-testid="dv01-action-plan-empty-state">

@@ -665,6 +665,9 @@ describe("DV01RiskView", () => {
     );
     const panel = await screen.findByTestId("dv01-action-plan-panel");
     expect(panel).toHaveTextContent("DV01 风险动作");
+    expect(panel).toHaveTextContent("当前动作口径");
+    expect(panel).toHaveTextContent("页面预警阈值 fallback");
+    expect(panel).toHaveTextContent("正式限额未接入，风险动作仅用于预警排查");
     expect(panel).toHaveTextContent("超限");
     expect(panel).toHaveTextContent("需压降 DV01");
     expect(panel).toHaveTextContent("250,000");
@@ -866,6 +869,9 @@ describe("DV01RiskView", () => {
     renderView(getDv01Risk, undefined, undefined, getDv01ActionPlan);
 
     const panel = await screen.findByTestId("dv01-action-plan-panel");
+    expect(panel).toHaveTextContent("当前动作口径");
+    expect(panel).toHaveTextContent("正式限额口径");
+    expect(panel).toHaveTextContent("动作计划按已接入的正式 DV01 限额计算");
     expect(panel).toHaveTextContent("已接入正式 DV01 限额");
     expect(panel).toHaveTextContent("risk_committee_minutes");
     expect(panel).toHaveTextContent("risk_minutes_2026_03");
