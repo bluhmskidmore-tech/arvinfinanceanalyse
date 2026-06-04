@@ -10,8 +10,8 @@ const baseline = {
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
   apiClientMockOccurrences: 55,
   dashboardStyleFiles: {},
-  totalTsxStyleProps: 2262,
-  totalStaticTsxStyleProps: 893,
+  totalTsxStyleProps: 2238,
+  totalStaticTsxStyleProps: 869,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 13,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
@@ -310,10 +310,10 @@ assertNoGrowth(
   "Reuse page primitives, tokens, or page-local style modules instead of adding repeated inline styles.",
 );
 assertNoGrowth(
-  "frontend TSX static style props",
+  "frontend TSX literal static style props",
   totalStaticStyleProps,
   baseline.totalStaticTsxStyleProps,
-  "Static inline styles should move into CSS classes, page primitives, or style modules.",
+  "Literal static inline style objects should move into CSS classes, page primitives, or style modules.",
 );
 notes.push(`frontend TSX dynamic style props: ${totalDynamicStyleProps}`);
 
@@ -330,10 +330,10 @@ for (const [repoPath, max] of Object.entries(baseline.maxPageStyleProps)) {
 for (const [repoPath, max] of Object.entries(baseline.maxPageStaticStyleProps)) {
   const actual = pageStaticStyleCounts.get(repoPath) ?? 0;
   assertNoGrowth(
-    `${repoPath} static style props`,
+    `${repoPath} literal static style props`,
     actual,
     max,
-    "Static inline styles should move into CSS classes, page primitives, or style modules.",
+    "Literal static inline style objects should move into CSS classes, page primitives, or style modules.",
   );
 }
 
