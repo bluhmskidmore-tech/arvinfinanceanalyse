@@ -443,3 +443,65 @@
 .kpi-metric-table__summary-number--score {
   color: var(--moss-color-info-700);
 }
+
+.kpi-trace-panel {
+  display: grid;
+  gap: var(--moss-space-3);
+}
+
+.kpi-trace-panel__empty {
+  color: var(--moss-color-neutral-400);
+  font-size: 13px;
+}
+
+.kpi-trace-panel__empty-icon,
+.kpi-trace-panel__title-icon {
+  margin-right: var(--moss-space-2);
+}
+
+.kpi-trace-panel__title-icon--fetch,
+.kpi-trace-panel__text--fetch {
+  color: var(--moss-color-info-500);
+}
+
+.kpi-trace-panel__title-icon--score,
+.kpi-trace-panel__text--score {
+  color: #722ed1;
+}
+
+.kpi-trace-panel__text--success,
+.kpi-trace-panel__final-score {
+  color: var(--moss-color-success-500);
+}
+
+.kpi-trace-panel__content {
+  display: grid;
+  gap: var(--moss-space-2);
+  font-size: 13px;
+}
+
+.kpi-trace-panel__text--small {
+  font-size: 11px;
+}
+
+.kpi-trace-panel__text--compact {
+  font-size: 12px;
+}
+
+.kpi-trace-panel__text--break {
+  word-break: break-all;
+}
+
+.kpi-trace-panel__final-score {
+  font-size: 16px;
+}
+
+.kpi-trace-panel__cap-note {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+.kpi-trace-panel__title-meta {
+  float: right;
+  font-size: 11px;
+}

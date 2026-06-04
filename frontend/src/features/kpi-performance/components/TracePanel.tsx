@@ -14,15 +14,15 @@ function formatParams(params: Record<string, unknown>): string {
 
 function FetchTraceContent({ trace }: { trace: KpiFetchTrace }) {
   return (
-    <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+    <div className="kpi-trace-panel__content">
       <div>
         <Text type="secondary">抓取方式: </Text>
         {trace.sql_template_id ? (
-          <Text strong style={{ color: "#1677ff" }}>
+          <Text strong className="kpi-trace-panel__text--fetch">
             SQL模板 ({trace.sql_template_id})
           </Text>
         ) : trace.fetch_function ? (
-          <Text strong style={{ color: "#52c41a" }}>
+          <Text strong className="kpi-trace-panel__text--success">
             函数注册表 ({trace.fetch_function})
           </Text>
         ) : (
@@ -32,14 +32,16 @@ function FetchTraceContent({ trace }: { trace: KpiFetchTrace }) {
       {trace.sql_hash ? (
         <div>
           <Text type="secondary">SQL哈希: </Text>
-          <Text code style={{ fontSize: 11 }}>
+          <Text code className="kpi-trace-panel__text--small">
             {trace.sql_hash}
           </Text>
         </div>
       ) : null}
       <div>
         <Text type="secondary">查询参数: </Text>
-        <Text style={{ fontSize: 11, wordBreak: "break-all" }}>{formatParams(trace.params)}</Text>
+        <Text className="kpi-trace-panel__text--small kpi-trace-panel__text--break">
+          {formatParams(trace.params)}
+        </Text>
       </div>
       <div>
         <Text type="secondary">执行信息: </Text>
@@ -51,14 +53,14 @@ function FetchTraceContent({ trace }: { trace: KpiFetchTrace }) {
       {trace.error ? (
         <div>
           <Text type="secondary">错误: </Text>
-          <Text type="danger" style={{ fontSize: 12 }}>
+          <Text type="danger" className="kpi-trace-panel__text--compact">
             {trace.error}
           </Text>
         </div>
       ) : null}
       <div>
         <Text type="secondary">抓取时间: </Text>
-        <Text style={{ fontSize: 11 }}>{trace.fetched_at}</Text>
+        <Text className="kpi-trace-panel__text--small">{trace.fetched_at}</Text>
       </div>
     </div>
   );
@@ -73,28 +75,28 @@ function ScoreTraceContent({ trace }: { trace: KpiScoreTrace }) {
         : trace.score_input_field;
 
   return (
-    <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+    <div className="kpi-trace-panel__content">
       <div>
         <Text type="secondary">评分规则: </Text>
-        <Text strong style={{ color: "#1677ff" }}>
+        <Text strong className="kpi-trace-panel__text--fetch">
           {trace.rule_type}
         </Text>
       </div>
       <div>
         <Text type="secondary">使用口径: </Text>
-        <Text strong style={{ color: "#722ed1" }}>
+        <Text strong className="kpi-trace-panel__text--score">
           {inputFieldDisplay}
         </Text>
       </div>
       <div>
         <Text type="secondary">计算公式: </Text>
-        <Text code style={{ fontSize: 11 }}>
+        <Text code className="kpi-trace-panel__text--small">
           {trace.formula}
         </Text>
       </div>
       <div>
         <Text type="secondary">输入值: </Text>
-        <div style={{ fontSize: 11 }}>
+        <div className="kpi-trace-panel__text--small">
           {Object.entries(trace.inputs).map(([k, v]) => (
             <div key={k}>
               <Text type="secondary">{k}: </Text>
@@ -105,17 +107,17 @@ function ScoreTraceContent({ trace }: { trace: KpiScoreTrace }) {
       </div>
       <div>
         <Text type="secondary">舍入规则: </Text>
-        <Text code style={{ fontSize: 11 }}>
+        <Text code className="kpi-trace-panel__text--small">
           {trace.rounding}
         </Text>
       </div>
       <div>
         <Text type="secondary">最终得分: </Text>
-        <Text strong style={{ fontSize: 16, color: "#52c41a" }}>
+        <Text strong className="kpi-trace-panel__final-score">
           {trace.final_score}
         </Text>
         {trace.capped ? (
-          <Text type="warning" style={{ fontSize: 11, marginLeft: 6 }}>
+          <Text type="warning" className="kpi-trace-panel__cap-note">
             (已触发上限)
           </Text>
         ) : null}
@@ -123,12 +125,12 @@ function ScoreTraceContent({ trace }: { trace: KpiScoreTrace }) {
       {trace.reason ? (
         <div>
           <Text type="secondary">说明: </Text>
-          <Text style={{ fontSize: 11 }}>{trace.reason}</Text>
+          <Text className="kpi-trace-panel__text--small">{trace.reason}</Text>
         </div>
       ) : null}
       <div>
         <Text type="secondary">计分时间: </Text>
-        <Text style={{ fontSize: 11 }}>{trace.scored_at}</Text>
+        <Text className="kpi-trace-panel__text--small">{trace.scored_at}</Text>
       </div>
     </div>
   );
@@ -143,24 +145,24 @@ export type TracePanelProps = {
 export function TracePanel({ fetchTrace, scoreTrace, className }: TracePanelProps) {
   if (!fetchTrace && !scoreTrace) {
     return (
-      <div className={className} style={{ fontSize: 13, color: "#94a3b8" }}>
-        <AlertOutlined style={{ marginRight: 8 }} />
+      <div className={["kpi-trace-panel__empty", className].filter(Boolean).join(" ")}>
+        <AlertOutlined className="kpi-trace-panel__empty-icon" />
         暂无追溯信息
       </div>
     );
   }
 
   return (
-    <div className={className} style={{ display: "grid", gap: 12 }}>
+    <div className={["kpi-trace-panel", className].filter(Boolean).join(" ")}>
       {fetchTrace ? (
         <Card
           size="small"
           title={
             <span>
-              <DatabaseOutlined style={{ marginRight: 8, color: "#1677ff" }} />
+              <DatabaseOutlined className="kpi-trace-panel__title-icon kpi-trace-panel__title-icon--fetch" />
               取数追溯
               {fetchTrace.sql_template_id ? (
-                <Text code style={{ float: "right", fontSize: 11 }}>
+                <Text code className="kpi-trace-panel__title-meta">
                   {fetchTrace.sql_template_id}
                 </Text>
               ) : null}
@@ -175,9 +177,9 @@ export function TracePanel({ fetchTrace, scoreTrace, className }: TracePanelProp
           size="small"
           title={
             <span>
-              <CalculatorOutlined style={{ marginRight: 8, color: "#722ed1" }} />
+              <CalculatorOutlined className="kpi-trace-panel__title-icon kpi-trace-panel__title-icon--score" />
               计分追溯
-              <Text type="secondary" style={{ float: "right", fontSize: 11 }}>
+              <Text type="secondary" className="kpi-trace-panel__title-meta">
                 使用 {scoreTrace.score_input_field}
               </Text>
             </span>
