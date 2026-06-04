@@ -3604,6 +3604,66 @@ describe("RiskTensorPage", () => {
     expect(radarQualityNote).toHaveTextContent("liquidity_gap_30d_ratio");
   });
 
+  it("lets users review and retry unparseable radar dimension fields from the quality note", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_quality_actions_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_radar_quality_actions_initial"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            portfolio_modified_duration: "bad-duration",
+            liquidity_gap_30d_ratio: "not-a-number",
+          },
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_radar_quality_actions_success"),
+          result: tensorResult("2026-02-28"),
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const radarCard = await screen.findByTestId("risk-tensor-radar-card");
+      const qualityNote = within(radarCard).getByTestId("risk-tensor-radar-quality-note");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+
+      await user.click(within(qualityNote).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+
+      await user.click(within(qualityNote).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.queryByTestId("risk-tensor-radar-quality-note")).not.toBeInTheDocument();
+      expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+        "tr_tensor_radar_quality_actions_success",
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("uses readable dynamic max values for radar axes", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -3991,6 +4051,116 @@ describe("RiskTensorPage", () => {
     expect(controls).toHaveTextContent("波动源待接入");
     expect(controls).not.toHaveTextContent("pending_configuration");
     expect(controls).not.toHaveTextContent("pending_market_volatility");
+  });
+
+  it("lets users locate quality evidence and retry when DV01 control inputs are pending", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_pending_actions_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const stressScenarios: NonNullable<RiskTensorPayload["dv01_controls"]>["stress_scenarios"] = [
+        {
+          scenario_key: "parallel_up_10bp",
+          label: "+10bp",
+          shock_bp: {
+            raw: 10,
+            unit: "bp" as const,
+            display: "+10 bp",
+            precision: 0,
+            sign_aware: true,
+          },
+          estimated_pnl_impact: {
+            raw: -1200,
+            unit: "yuan" as const,
+            display: "-1,200.00",
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      ];
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_pending_actions_initial"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({ stress_scenarios: stressScenarios }),
+          } as RiskTensorPayload,
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_pending_actions_retry"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({
+              limit_status: "ok",
+              approved_limit_dv01: {
+                raw: 2000000,
+                unit: "dv01" as const,
+                display: "2,000,000.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              limit_usage_ratio: {
+                raw: 0.24,
+                unit: "ratio" as const,
+                display: "24.0%",
+                precision: 1,
+                sign_aware: false,
+              },
+              volatility_status: "ok",
+              daily_rate_volatility_bp: {
+                raw: 8,
+                unit: "bp" as const,
+                display: "8.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              stress_scenarios: stressScenarios,
+              control_message: "DV01 controls are configured.",
+              action_hint: "Continue daily monitoring.",
+            }),
+          } as RiskTensorPayload,
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      expect(controls).toHaveTextContent("限额待配置");
+      expect(controls).toHaveTextContent("波动源待接入");
+
+      await user.click(within(controls).getByRole("button", { name: "定位质量证据" }));
+
+      expect(scrollTargets).toContain(qualityDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+
+      await user.click(within(controls).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      });
+      expect(await screen.findByTestId("risk-tensor-dv01-controls")).toHaveTextContent("DV01 controls are configured.");
+      expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+        "tr_tensor_dv01_pending_actions_retry",
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("surfaces backend-blocked stale dates without using them as the default", async () => {

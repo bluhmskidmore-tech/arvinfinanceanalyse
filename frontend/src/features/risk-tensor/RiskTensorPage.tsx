@@ -738,6 +738,11 @@ export default function RiskTensorPage() {
       : "--";
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
+  const dv01ControlInputsPending = Boolean(
+    result?.dv01_controls &&
+      (result.dv01_controls.limit_status === "pending_configuration" ||
+        result.dv01_controls.volatility_status === "pending_market_volatility"),
+  );
   const firstRequiredAction = requiredActions[0];
   const priorPeriodChange = result?.prior_period_change ?? null;
   const priorPeriodMetrics = priorPeriodChange?.metrics ?? [];
@@ -2197,6 +2202,25 @@ export default function RiskTensorPage() {
                   <p>{result.dv01_controls.operating_judgement}</p>
                 </div>
 
+                {dv01ControlInputsPending ? (
+                  <div className="risk-tensor-quality-detail__trace-actions">
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleQualityDetailJump}
+                    >
+                      定位质量证据
+                    </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleRetryTensorMainRead}
+                    >
+                      重试主读面
+                    </button>
+                  </div>
+                ) : null}
+
                 {result.dv01_controls.control_actions.length > 0 ? (
                   <div
                     className="risk-tensor-dv01-controls__actions"
@@ -2243,6 +2267,20 @@ export default function RiskTensorPage() {
                     <div className="risk-tensor-radar-quality" data-testid="risk-tensor-radar-quality-note">
                       {invalidRadarRows.map((row) => `${row.key} ${row.issue}`).join(" / ")}
                       ；未参与前端雷达图数值。
+                      <button
+                        type="button"
+                        className="risk-tensor-brief__link-button"
+                        onClick={handlePayloadChecklistJump}
+                      >
+                        查看字段复核
+                      </button>
+                      <button
+                        type="button"
+                        className="risk-tensor-brief__link-button"
+                        onClick={handleRetryTensorMainRead}
+                      >
+                        重试主读面
+                      </button>
                     </div>
                   ) : null}
                   {radarNavigationItems.length > 0 ? (
