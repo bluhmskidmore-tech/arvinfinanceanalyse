@@ -685,7 +685,7 @@ describe("LedgerPnlPage", () => {
             resolved_report_date: "2026-05-31",
             as_of_date: "2026-05-31",
             evidence_rows: 665,
-            quality_flag: "ok",
+            quality_flag: "ok" as const,
           },
           result: {
             report_date: "2026-05-31",
@@ -713,7 +713,7 @@ describe("LedgerPnlPage", () => {
             resolved_report_date: "2026-05-31",
             as_of_date: "2026-05-31",
             evidence_rows: 7751,
-            quality_flag: "ok",
+            quality_flag: "ok" as const,
           },
           result: {
             report_date: "2026-05-31",
@@ -742,7 +742,13 @@ describe("LedgerPnlPage", () => {
           result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
           result: { report_months: ["202605"] },
         })),
-        getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
+          result: {
+            report_month: "202605",
+            sheets: [],
+          },
+        })),
         getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
           result_meta: {
             ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
@@ -769,6 +775,131 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("登记 202605 正式财务指标契约");
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
+    });
+  });
+
+  it("lifts the explainability model summary into the first screen", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: {
+            ...buildLedgerMeta("ledger_pnl.summary"),
+            requested_report_date: "2026-05-31",
+            resolved_report_date: "2026-05-31",
+            as_of_date: "2026-05-31",
+            evidence_rows: 665,
+            quality_flag: "ok" as const,
+          },
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("10000000000.00"),
+            ledger_monthly_pnl_all: money("10000000000.00"),
+            ledger_total_assets: money("0.00"),
+            ledger_total_liabilities: money("0.00"),
+            ledger_net_assets: money("0.00"),
+            by_currency: [{ currency: "CNY", total_pnl: money("9900000000.00") }],
+            by_account: [
+              {
+                account_code: "601101",
+                account_name: "贷款利息收入",
+                total_pnl: money("7000000000.00"),
+                count: 300,
+              },
+              {
+                account_code: "642101",
+                account_name: "存款利息支出",
+                total_pnl: money("-1000000000.00"),
+                count: 200,
+              },
+            ],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: {
+            ...buildLedgerMeta("ledger_pnl.data"),
+            requested_report_date: "2026-05-31",
+            resolved_report_date: "2026-05-31",
+            as_of_date: "2026-05-31",
+            evidence_rows: 7751,
+            quality_flag: "ok" as const,
+          },
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            summary: {
+              total_pnl_cnx: money("0.00"),
+              total_pnl_cny: money("10000000000.00"),
+              total_pnl: money("10000000000.00"),
+              count: 7751,
+            },
+            items: [
+              {
+                account_code: "601101",
+                account_name: "贷款利息收入",
+                currency: "CNY",
+                beginning_balance: money("0.00"),
+                ending_balance: money("0.00"),
+                monthly_pnl: money("7000000000.00"),
+                daily_avg_balance: money("0.00"),
+                days_in_period: 31,
+              },
+              {
+                account_code: "642101",
+                account_name: "存款利息支出",
+                currency: "CNY",
+                beginning_balance: money("0.00"),
+                ending_balance: money("0.00"),
+                monthly_pnl: money("-1000000000.00"),
+                daily_avg_balance: money("0.00"),
+                days_in_period: 31,
+              },
+            ],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: ["202605"] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
+          result: {
+            report_month: "202605",
+            sheets: [],
+          },
+        })),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            quality_flag: "warning" as const,
+            as_of_date: "2026-05-31",
+            date_basis: "report_month_end",
+            evidence_rows: 0,
+            formal_use_allowed: false,
+            source_version: "sv_formal_financial_indicators_contract_unavailable",
+          },
+          result: buildMissingFormalIndicatorContractPayload(),
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("解释摘要");
+      expect(strip).toHaveTextContent("解释链未闭合");
+      expect(strip).toHaveTextContent("覆盖率 60.00%");
+      expect(strip).toHaveTextContent("最大卡点 科目汇总差异 40.00 亿元");
+      expect(strip).toHaveTextContent("最大驱动 利息净收入 60.00 亿元");
+      expect(strip).toHaveTextContent("补证入口 补科目汇总或确认科目范围");
     });
   });
 

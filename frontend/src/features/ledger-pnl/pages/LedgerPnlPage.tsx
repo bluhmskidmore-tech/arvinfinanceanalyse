@@ -639,6 +639,21 @@ function appendLedgerDrill(
   return [...drills, drill].slice(0, 3);
 }
 
+function formatFunctionalTopDriver(
+  driver: ReturnType<typeof buildLedgerExplainabilityModel>["driverRows"][number] | undefined,
+) {
+  if (!driver) {
+    return "暂无";
+  }
+  const displayLabel =
+    driver.label === "利息收支"
+      ? driver.yuan >= 0
+        ? "利息净收入"
+        : "利息净支出"
+      : driver.label;
+  return `${displayLabel} ${formatYuanAsYi(driver.yuan)}`;
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -852,6 +867,7 @@ function LedgerFunctionalAuditStrip(props: {
   isLoading: boolean;
   isError: boolean;
   readErrors: unknown[];
+  explainabilityModel: ReturnType<typeof buildLedgerExplainabilityModel>;
 }) {
   const state = buildLedgerFunctionalAuditState(props);
   const nextDrills = appendLedgerDrill(
@@ -912,6 +928,16 @@ function LedgerFunctionalAuditStrip(props: {
             {formalGapSummary.label ??
               `正式待接入 ${formalGapSummary.formalPending} / QDB候选 ${formalGapSummary.qdbCandidateAligned} / 需对账 ${formalGapSummary.needsReconciliation}`}
           </strong>
+        </div>
+      </div>
+      <div className="ledger-pnl-functional-strip__explainability">
+        <span>解释摘要</span>
+        <div className="ledger-pnl-functional-strip__explainability-list">
+          <strong>{props.explainabilityModel.verdict}</strong>
+          <em>覆盖率 {formatPercent(props.explainabilityModel.explanationCoveragePct)}</em>
+          <em>最大卡点 {props.explainabilityModel.bottleneck}</em>
+          <em>最大驱动 {formatFunctionalTopDriver(props.explainabilityModel.driverRows[0])}</em>
+          <em>补证入口 {props.explainabilityModel.evidenceEntryPoint}</em>
         </div>
       </div>
       {nextDrills.length > 0 ? (
@@ -2271,6 +2297,7 @@ export default function LedgerPnlPage() {
         }
         isError={datesQuery.isError || summaryQuery.isError || dataQuery.isError}
         readErrors={[datesQuery.error, summaryQuery.error, dataQuery.error]}
+        explainabilityModel={ledgerExplainabilityModel}
       />
 
       <div data-testid="ledger-pnl-summary-cards" style={summaryGridStyleWithBottom}>
