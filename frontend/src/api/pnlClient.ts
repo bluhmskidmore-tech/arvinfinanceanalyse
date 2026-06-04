@@ -119,6 +119,7 @@ export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
             total_scale_amount: "0.00",
             traced_pnl_row_count: 0,
             untraced_pnl_row_count: 0,
+            untraced_breakdown: [],
           },
           rows: [],
         },

@@ -2013,6 +2013,7 @@ These bindings are analytical compatibility bindings, not formal balance/PnL tru
 - Formal primary may return `quality_flag=warning` when `summary.untraced_pnl_row_count > 0`.
 - Current 2026-05-31 local evidence shows 148 formal FI rows untraced by balance join; page evidence surfaces the main zero-balance groups such as `T`, `A`, and `H` from existing rows where `balance_row_count = 0`.
 - Owner-approved trace rule: strict match is attempted first; if it misses, `cost_center` may be relaxed only when report date, instrument code, portfolio, currency basis, and `position_scope = asset` still match a ZQTZ balance row.
+- Formal summary may include `untraced_breakdown` as reconciliation-only evidence for remaining rows, using balance-evidence buckets such as `position_absent_before_maturity`, `matured_before_or_on_report_date`, and `never_seen_in_zqtz_asset_balance`; these buckets are not official business contribution metrics.
 - Supporting read-only diagnostic: `docs/pnl/pnl-by-business-formal-untraced-diagnostic-2026-05-31.md`.
 - Owner triage packet: `docs/pnl/pnl-by-business-formal-untraced-detail-packet-2026-05-31.md`.
 - Untraced formal rows must be treated as reconciliation follow-up, not as a reason to mix formal primary rows into monthly/YTD conclusions.

@@ -1281,6 +1281,182 @@ def test_pnl_by_business_uses_relaxed_balance_amount_when_strict_business_type_i
     get_settings.cache_clear()
 
 
+def test_pnl_by_business_keeps_ambiguous_relaxed_trace_untraced(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'CCAMBIG.IB', 'FI Desk', 'CC-PNL', 'A', 'FVOCI', 'CNY',
+              30.00, 0.00, 0.00, 0.00, 30.00,
+              'fi-relaxed-ambiguous-v1', 'rv_pnl_phase2_materialize_v1', 'ib-relaxed-ambiguous',
+              'trace-fi-relaxed-ambiguous'
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2025-12-31",
+                    "CCAMBIG.IB",
+                    "FI Desk",
+                    "CC-BAL-A",
+                    "bond-relaxed-ambiguous-a",
+                    "A",
+                    "FVOCI",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "100.00000000",
+                    "100.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-relaxed-ambiguous-a",
+                    "rv-z-relaxed-ambiguous-a",
+                    "ib-z-relaxed-ambiguous-a",
+                    "trace-z-relaxed-ambiguous-a",
+                ),
+                (
+                    "2025-12-31",
+                    "CCAMBIG.IB",
+                    "FI Desk",
+                    "CC-BAL-B",
+                    "bond-relaxed-ambiguous-b",
+                    "A",
+                    "FVOCI",
+                    "asset",
+                    "CNY",
+                    "CNY",
+                    "900.00000000",
+                    "900.00000000",
+                    "0.00000000",
+                    False,
+                    "sv-z-relaxed-ambiguous-b",
+                    "rv-z-relaxed-ambiguous-b",
+                    "ib-z-relaxed-ambiguous-b",
+                    "trace-z-relaxed-ambiguous-b",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    by_business = {row["business_type_primary"]: row for row in result["rows"]}
+    assert "bond-relaxed-ambiguous-a" not in by_business
+    assert "bond-relaxed-ambiguous-b" not in by_business
+    assert by_business["A"]["total_pnl"] == "30.00"
+    assert by_business["A"]["scale_amount"] == "0.00"
+    assert by_business["A"]["balance_row_count"] == 0
+    assert result["summary"]["traced_pnl_row_count"] == 3
+    assert result["summary"]["untraced_pnl_row_count"] == 2
+    breakdown = {
+        (row["reason_code"], row["invest_type_std"]): row
+        for row in result["summary"]["untraced_breakdown"]
+    }
+    assert breakdown[("same_day_balance_multiple_primary_types", "A")]["pnl_row_count"] == 1
+    assert breakdown[("same_day_balance_multiple_primary_types", "A")]["total_pnl"] == "30.00"
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_summarizes_untraced_balance_evidence(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_rows(duckdb_path)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.executemany(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', ?, 'FI Desk', ?, ?, 'FVOCI', 'CNY',
+              ?, ?, 0.00, 0.00, ?,
+              'fi-untraced-evidence-v1', 'rv_pnl_phase2_materialize_v1', 'ib-untraced-evidence', ?
+            )
+            """,
+            [
+                ("HIST-FUT.IB", "CC-HIST", "A", "30.00", "0.00", "30.00", "trace-fi-hist-future"),
+                ("HIST-MATURED.IB", "CC-MATURED", "T", "0.00", "-5.00", "-5.00", "trace-fi-hist-matured"),
+                ("NEVER-ZQTZ.IB", "CC-NEVER", "A", "7.00", "0.00", "7.00", "trace-fi-never"),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, maturity_date, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, 'FI Desk', ?, ?, ?, 'FVOCI', 'asset', 'CNY', 'CNY',
+              ?, ?, 0.00000000, ?, false,
+              'sv-z-historical', 'rv-z-historical', 'ib-z-historical', ?
+            )
+            """,
+            [
+                (
+                    "2025-11-30",
+                    "HIST-FUT.IB",
+                    "CC-HIST",
+                    "bond-historical",
+                    "A",
+                    "300.00000000",
+                    "300.00000000",
+                    "2026-06-30",
+                    "trace-z-hist-future",
+                ),
+                (
+                    "2025-11-30",
+                    "HIST-MATURED.IB",
+                    "CC-MATURED",
+                    "bond-matured",
+                    "T",
+                    "200.00000000",
+                    "200.00000000",
+                    "2025-12-01",
+                    "trace-z-hist-matured",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["summary"]["untraced_pnl_row_count"] == 4
+    breakdown = {
+        (row["reason_code"], row["invest_type_std"]): row
+        for row in result["summary"]["untraced_breakdown"]
+    }
+    assert breakdown[("position_absent_before_maturity", "A")]["pnl_row_count"] == 1
+    assert breakdown[("position_absent_before_maturity", "A")]["total_pnl"] == "30.00"
+    assert breakdown[("matured_before_or_on_report_date", "T")]["pnl_row_count"] == 1
+    assert breakdown[("matured_before_or_on_report_date", "T")]["total_pnl"] == "-5.00"
+    assert breakdown[("matured_before_or_on_report_date", "T")]["abs_pnl"] == "5.00"
+    assert breakdown[("never_seen_in_zqtz_asset_balance", "A")]["pnl_row_count"] == 1
+    assert breakdown[("never_seen_in_zqtz_asset_balance", "A")]["total_pnl"] == "7.00"
+    assert breakdown[("never_seen_in_zqtz_asset_balance", "H")]["total_pnl"] == "4.00"
+    get_settings.cache_clear()
+
+
 def test_pnl_by_business_ytd_total_matches_formal_fact_rollups(tmp_path, monkeypatch):
     """默认 formal 路径：YTD 总损益应等于 FI + nonstd 桥接在 as_of 前的累计（与物化口径一致）。"""
     _materialize_three_pnl_dates(tmp_path, monkeypatch)

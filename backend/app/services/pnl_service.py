@@ -38,6 +38,7 @@ from backend.app.schemas.pnl import (
     PnlByBusinessPayload,
     PnlByBusinessRow,
     PnlByBusinessSummary,
+    PnlByBusinessUntracedBreakdownRow,
     PnlByBusinessYtdItem,
     PnlByBusinessYtdPayload,
     PnlDataPayload,
@@ -427,6 +428,20 @@ def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_da
 
     rows = [PnlByBusinessRow(**_quantized_business_row(row)) for row in repo.fetch_by_business_rows(report_date)]
     untraced_count = repo.count_untraced_formal_fi_rows(report_date)
+    untraced_breakdown = [
+        PnlByBusinessUntracedBreakdownRow(
+            reason_code=str(row["reason_code"]),
+            invest_type_std=str(row["invest_type_std"]),
+            pnl_row_count=int(row["pnl_row_count"]),
+            total_pnl=_quantize_decimal(Decimal(str(row["total_pnl"] or "0"))),
+            abs_pnl=_quantize_decimal(Decimal(str(row["abs_pnl"] or "0"))),
+            interest_income_514=_quantize_decimal(Decimal(str(row["interest_income_514"] or "0"))),
+            fair_value_change_516=_quantize_decimal(Decimal(str(row["fair_value_change_516"] or "0"))),
+            capital_gain_517=_quantize_decimal(Decimal(str(row["capital_gain_517"] or "0"))),
+            manual_adjustment=_quantize_decimal(Decimal(str(row["manual_adjustment"] or "0"))),
+        )
+        for row in repo.fetch_untraced_formal_fi_breakdown(report_date)
+    ]
     payload = PnlByBusinessPayload(
         report_date=report_date,
         source_tables=["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge", "fact_formal_zqtz_balance_daily"],
@@ -436,6 +451,7 @@ def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_da
             total_scale_amount=_quantize_decimal(sum((row.scale_amount for row in rows), Decimal("0"))),
             traced_pnl_row_count=sum(row.pnl_row_count for row in rows if row.balance_row_count > 0),
             untraced_pnl_row_count=untraced_count,
+            untraced_breakdown=untraced_breakdown,
         ),
         rows=rows,
     )

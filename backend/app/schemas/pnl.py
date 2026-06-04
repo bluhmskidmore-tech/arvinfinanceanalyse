@@ -133,6 +133,30 @@ class PnlByBusinessRow(BaseModel):
     balance_row_count: int
 
 
+PnlByBusinessUntracedReason = Literal[
+    "position_absent_before_maturity",
+    "matured_before_or_on_report_date",
+    "never_seen_in_zqtz_asset_balance",
+    "same_day_balance_without_primary_type",
+    "same_day_balance_multiple_primary_types",
+    "unexpected_untraced",
+]
+
+
+class PnlByBusinessUntracedBreakdownRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason_code: PnlByBusinessUntracedReason
+    invest_type_std: str
+    pnl_row_count: int
+    total_pnl: Decimal
+    abs_pnl: Decimal
+    interest_income_514: Decimal
+    fair_value_change_516: Decimal
+    capital_gain_517: Decimal
+    manual_adjustment: Decimal
+
+
 class PnlByBusinessSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -141,6 +165,7 @@ class PnlByBusinessSummary(BaseModel):
     total_scale_amount: Decimal
     traced_pnl_row_count: int
     untraced_pnl_row_count: int
+    untraced_breakdown: list[PnlByBusinessUntracedBreakdownRow] = Field(default_factory=list)
 
 
 class PnlByBusinessPayload(BaseModel):

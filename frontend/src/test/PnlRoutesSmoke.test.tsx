@@ -153,6 +153,30 @@ function buildPnlClient(): ApiClient {
       total_scale_amount: "100000000.00",
       traced_pnl_row_count: 1,
       untraced_pnl_row_count: 5,
+      untraced_breakdown: [
+        {
+          reason_code: "position_absent_before_maturity",
+          invest_type_std: "A",
+          pnl_row_count: 2,
+          total_pnl: "2.00",
+          abs_pnl: "2.00",
+          interest_income_514: "2.00",
+          fair_value_change_516: "0.00",
+          capital_gain_517: "0.00",
+          manual_adjustment: "0.00",
+        },
+        {
+          reason_code: "matured_before_or_on_report_date",
+          invest_type_std: "T",
+          pnl_row_count: 3,
+          total_pnl: "3.00",
+          abs_pnl: "3.00",
+          interest_income_514: "3.00",
+          fair_value_change_516: "0.00",
+          capital_gain_517: "0.00",
+          manual_adjustment: "0.00",
+        },
+      ],
     },
     rows: [
       {
@@ -905,7 +929,8 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("对账证据");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("不与月报/YTD 混加");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("T 3 条 / A 2 条");
-      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("无余额/无持仓排查");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("到期后无持仓");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("未到期但报表日无持仓");
       expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("cost_center 已授权放宽");
     });
     expect(await screen.findByTestId("pnl-by-business-formal-table")).toHaveTextContent("政策性金融债");

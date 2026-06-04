@@ -60,17 +60,34 @@ The loose prefix check did not reduce the warning, so this is not explained by a
 
 Most rows have no same-instrument asset balance row on the same report date. A smaller subset has same instrument/portfolio/currency evidence, but the current strict key does not match because `cost_center` differs.
 
+## Post-Relaxed Residual Split
+
+After owner-approved `cost_center` relaxed fallback, the remaining `123` rows are still reconciliation follow-up. A read-only rerun against `data/moss.duckdb` splits them by balance evidence:
+
+| Residual evidence bucket | Invest type | Rows | Total PnL yuan | Absolute PnL yuan |
+| --- | --- | ---: | ---: | ---: |
+| `position_absent_before_maturity` | `A` | 21 | 2,916,063.75 | 2,916,063.75 |
+| `position_absent_before_maturity` | `T` | 14 | 603,782.26 | 603,782.52 |
+| `matured_before_or_on_report_date` | `A` | 7 | 583,565.28 | 583,565.28 |
+| `matured_before_or_on_report_date` | `T` | 10 | -265,583.51 | 279,339.65 |
+| `matured_before_or_on_report_date` | `H` | 11 | 182,436.76 | 182,436.76 |
+| `position_absent_before_maturity` | `H` | 3 | 32,959.56 | 32,959.56 |
+| `never_seen_in_zqtz_asset_balance` | `A` | 3 | 11,742.74 | 11,742.74 |
+| `never_seen_in_zqtz_asset_balance` | `T` | 54 | 0.02 | 0.22 |
+
+This split is evidence only. `position_absent_before_maturity` means the same instrument existed in historical ZQTZ asset balance but not on `2026-05-31`, so it still needs owner confirmation as sold/no-position accrual versus missing same-date balance. `matured_before_or_on_report_date` is the strongest candidate for expected no-position reconciliation. `never_seen_in_zqtz_asset_balance` is mostly immaterial T-class rounding/tail rows, except one A-class row requiring source review.
+
 ## Interpretation
 
 - The page warning is real reconciliation evidence, not a front-end display bug.
 - The formal primary tab should remain reconciliation-only: do not mix formal primary into monthly/YTD conclusions.
 - Owner approval now allows relaxing `cost_center` only as a fallback after strict matching misses; report date, instrument, portfolio, currency, and asset scope remain strict.
-- The zero-balance `A/T/H` distribution shown by the page is useful triage evidence, but it is not a new business metric.
+- The zero-balance `A/T/H` and residual evidence distributions shown by the page are useful triage evidence, but they are not new business metrics.
 
 ## Next Governance Actions
 
 - Validate the business dictionary for `invest_type_std` codes `A`, `T`, and `H`.
-- Investigate `no_same_instrument_in_balance` rows as matured/sold/no-position accruals versus missing ZQTZ balance ingestion.
-- Re-run the formal read path after controlled `cost_center` fallback and confirm remaining untraced rows are no-same-instrument/no-balance cases.
+- Investigate `position_absent_before_maturity` rows first as sold/no-position accruals versus missing same-date ZQTZ balance ingestion.
+- Review the one material `never_seen_in_zqtz_asset_balance` A-class row (`09260202`, 11,742.74 yuan); T-class never-seen rows are immaterial tail rows in the current evidence.
 - Use `docs/pnl/pnl-by-business-formal-untraced-detail-packet-2026-05-31.md` as the owner triage packet for priority row review.
 - Keep `/pnl-by-business` as a temporary-exception route until formal untraced evidence is closed or explicitly accepted by governance.

@@ -35,6 +35,10 @@ def test_pnl_by_business_formal_untraced_diagnostic_records_data_quality_evidenc
         "4,465,365.25",
         "no_same_instrument_in_balance",
         "cost_center_mismatch",
+        "Post-Relaxed Residual Split",
+        "position_absent_before_maturity",
+        "matured_before_or_on_report_date",
+        "never_seen_in_zqtz_asset_balance",
         "do not mix formal primary into monthly/YTD conclusions",
     ):
         assert required in diagnostic
@@ -58,6 +62,10 @@ def test_pnl_by_business_formal_untraced_detail_packet_lists_owner_triage_rows()
         "50106001",
         "no_same_instrument_in_balance",
         "cost_center_mismatch",
+        "untraced_breakdown",
+        "position_absent_before_maturity",
+        "matured_before_or_on_report_date",
+        "never_seen_in_zqtz_asset_balance",
         "Does this PnL row represent matured, sold, or no-position accrual activity?",
         "Owner answer: yes",
     ):

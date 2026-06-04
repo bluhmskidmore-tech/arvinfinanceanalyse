@@ -31,6 +31,16 @@ Rows below were untraced under the pre-approval strict join when the join did no
 
 The highest-impact issue is not a `BOND-` prefix mismatch. Most exposure comes from formal PnL rows with no same-instrument asset balance on 2026-05-31. A smaller set has same-instrument balance candidates where strict `cost_center` matching blocked the trace before owner approval.
 
+After the controlled `cost_center` fallback, the formal read path can surface an `untraced_breakdown` reconciliation summary for the remaining `123` rows:
+
+| Residual evidence bucket | Rows | Total PnL yuan | Owner question |
+| --- | ---: | ---: | --- |
+| `position_absent_before_maturity` | 38 | 3,552,805.57 | Sold/no-position accrual or missing same-date ZQTZ balance? |
+| `matured_before_or_on_report_date` | 28 | 500,418.53 | Expected no-position reconciliation item? |
+| `never_seen_in_zqtz_asset_balance` | 57 | 11,742.76 | Source review for material A row; T rows are immaterial tail rows. |
+
+This summary is reconciliation evidence only. It does not create a new official metric and must not be mixed into monthly/YTD business conclusions.
+
 ## Priority Rows By Absolute PnL
 
 | Rank | Invest type | Cause bucket | Instrument | Portfolio | Cost center | Currency | Total PnL yuan | Triage owner question |
@@ -100,6 +110,7 @@ After the relaxed fallback is implemented, re-run the read path and confirm:
 
 - `cost_center_mismatch` rows are no longer counted as formal untraced rows when same-date, same-instrument, same-portfolio, same-currency asset balance evidence exists.
 - No-same-instrument rows remain visible as formal reconciliation follow-up.
+- Remaining rows are split by balance evidence as `position_absent_before_maturity`, `matured_before_or_on_report_date`, or `never_seen_in_zqtz_asset_balance`.
 - Monthly/YTD business conclusions remain separate from formal primary reconciliation.
 
 Until then, `/pnl-by-business` should continue to show formal primary as reconciliation evidence only, separate from monthly/YTD business analysis.

@@ -674,4 +674,79 @@ describe("pnlByBusinessPageModel", () => {
     expect(model.insight.formalTriageDisplay).toContain("无余额/无持仓排查");
     expect(model.insight.formalTriageDisplay).toContain("cost_center 已授权放宽");
   });
+
+  it("uses formal untraced balance evidence breakdown when returned", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "formal",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      monthlyResult: undefined,
+      ytdResult: undefined,
+      selectedBusinessKey: null,
+      formalState: { isLoading: false, isError: false },
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalResult: formalPayload({
+        summary: {
+          ...formalPayload().summary,
+          untraced_pnl_row_count: 4,
+          untraced_breakdown: [
+            {
+              reason_code: "position_absent_before_maturity",
+              invest_type_std: "A",
+              pnl_row_count: 2,
+              total_pnl: "3000000",
+              abs_pnl: "3000000",
+              interest_income_514: "3000000",
+              fair_value_change_516: "0",
+              capital_gain_517: "0",
+              manual_adjustment: "0",
+            },
+            {
+              reason_code: "matured_before_or_on_report_date",
+              invest_type_std: "T",
+              pnl_row_count: 1,
+              total_pnl: "-500000",
+              abs_pnl: "500000",
+              interest_income_514: "0",
+              fair_value_change_516: "-500000",
+              capital_gain_517: "0",
+              manual_adjustment: "0",
+            },
+            {
+              reason_code: "never_seen_in_zqtz_asset_balance",
+              invest_type_std: "H",
+              pnl_row_count: 1,
+              total_pnl: "10000",
+              abs_pnl: "10000",
+              interest_income_514: "10000",
+              fair_value_change_516: "0",
+              capital_gain_517: "0",
+              manual_adjustment: "0",
+            },
+            {
+              reason_code: "same_day_balance_multiple_primary_types",
+              invest_type_std: "A",
+              pnl_row_count: 1,
+              total_pnl: "1000000",
+              abs_pnl: "1000000",
+              interest_income_514: "1000000",
+              fair_value_change_516: "0",
+              capital_gain_517: "0",
+              manual_adjustment: "0",
+            },
+          ],
+        },
+      }),
+      formalMeta: meta({ quality_flag: "warning" }),
+      monthlyMeta: meta(),
+      ytdMeta: meta(),
+    });
+
+    expect(model.insight.formalTriageDisplay).toContain("未到期但报表日无持仓 · A 2 条");
+    expect(model.insight.formalTriageDisplay).toContain("到期后无持仓 · T 1 条");
+    expect(model.insight.formalTriageDisplay).toContain("同日余额多业务分类 · A 1 条");
+    expect(model.insight.formalTriageDisplay).toContain("不作为业务贡献结论");
+  });
 });

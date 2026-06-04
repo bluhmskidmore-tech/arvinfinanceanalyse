@@ -472,10 +472,25 @@ class PnlRepository:
                         or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
                       )
                       and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                      and trim(coalesce(z.cost_center, '')) = trim(coalesce(p.cost_center, ''))
                       and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
                       and z.position_scope = 'asset'
                       and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
                   )
+                  and (
+                    select count(distinct nullif(trim(coalesce(z.business_type_primary, '')), ''))
+                    from fact_formal_zqtz_balance_daily z
+                    where z.report_date = p.report_date
+                      and (
+                        trim(coalesce(z.instrument_code, '')) = trim(coalesce(p.instrument_code, ''))
+                        or trim(coalesce(z.instrument_code, '')) = replace(trim(coalesce(p.instrument_code, '')), 'BOND-', '')
+                        or ('BOND-' || trim(coalesce(z.instrument_code, ''))) = trim(coalesce(p.instrument_code, ''))
+                      )
+                      and trim(coalesce(z.portfolio_name, '')) = trim(coalesce(p.portfolio_name, ''))
+                      and trim(coalesce(z.currency_basis, '')) = trim(coalesce(p.currency_basis, ''))
+                      and z.position_scope = 'asset'
+                      and nullif(trim(coalesce(z.business_type_primary, '')), '') is not null
+                  ) <> 1
                 """,
                 [report_date],
             ).fetchone()
@@ -487,6 +502,165 @@ class PnlRepository:
             if "conn" in locals():
                 conn.close()
         return int(row[0] if row else 0)
+
+    def fetch_untraced_formal_fi_breakdown(self, report_date: str) -> list[dict[str, object]]:
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                """
+                with pnl as (
+                  select
+                    cast(report_date as varchar) as report_date,
+                    trim(coalesce(instrument_code, '')) as instrument_code,
+                    trim(coalesce(portfolio_name, '')) as portfolio_name,
+                    trim(coalesce(cost_center, '')) as cost_center,
+                    trim(coalesce(currency_basis, '')) as currency_basis,
+                    coalesce(nullif(trim(coalesce(invest_type_std, '')), ''), '未分类') as invest_type_std,
+                    interest_income_514,
+                    fair_value_change_516,
+                    capital_gain_517,
+                    manual_adjustment,
+                    total_pnl
+                  from fact_formal_pnl_fi
+                  where report_date = ?
+                ), same_day_balance as (
+                  select
+                    cast(report_date as varchar) as report_date,
+                    trim(coalesce(instrument_code, '')) as instrument_code,
+                    trim(coalesce(portfolio_name, '')) as portfolio_name,
+                    trim(coalesce(cost_center, '')) as cost_center,
+                    trim(coalesce(currency_basis, '')) as currency_basis,
+                    nullif(trim(coalesce(business_type_primary, '')), '') as business_type_primary
+                  from fact_formal_zqtz_balance_daily
+                  where report_date = ?
+                    and position_scope = 'asset'
+                ), historical_balance as (
+                  select
+                    trim(coalesce(instrument_code, '')) as instrument_code,
+                    trim(coalesce(portfolio_name, '')) as portfolio_name,
+                    trim(coalesce(currency_basis, '')) as currency_basis,
+                    min(nullif(trim(coalesce(maturity_date, '')), '')) as maturity_date_hint,
+                    count(*) as historical_balance_rows,
+                    coalesce(sum(case when cast(report_date as varchar) = ? then 1 else 0 end), 0) as same_day_any_asset_rows,
+                    coalesce(sum(
+                      case
+                        when cast(report_date as varchar) = ?
+                         and nullif(trim(coalesce(business_type_primary, '')), '') is not null
+                        then 1
+                        else 0
+                      end
+                    ), 0) as same_day_classified_asset_rows
+                  from fact_formal_zqtz_balance_daily
+                  where position_scope = 'asset'
+                  group by 1, 2, 3
+                ), trace_classification as (
+                  select
+                    p.report_date,
+                    p.instrument_code,
+                    p.portfolio_name,
+                    p.cost_center,
+                    p.currency_basis,
+                    count(distinct case when z.business_type_primary is not null then z.business_type_primary end)
+                      as relaxed_business_type_count,
+                    count(distinct case
+                      when z.cost_center = p.cost_center and z.business_type_primary is not null
+                      then z.business_type_primary
+                    end) as strict_business_type_count
+                  from pnl p
+                  left join same_day_balance z
+                    on (
+                      z.instrument_code = p.instrument_code
+                      or z.instrument_code = replace(p.instrument_code, 'BOND-', '')
+                      or ('BOND-' || z.instrument_code) = p.instrument_code
+                    )
+                   and z.portfolio_name = p.portfolio_name
+                   and z.currency_basis = p.currency_basis
+                  group by 1, 2, 3, 4, 5
+                ), untraced as (
+                  select
+                    p.*,
+                    case
+                      when coalesce(h.same_day_any_asset_rows, 0) = 0
+                       and coalesce(h.historical_balance_rows, 0) > 0
+                       and h.maturity_date_hint <= ?
+                        then 'matured_before_or_on_report_date'
+                      when coalesce(h.same_day_any_asset_rows, 0) = 0
+                       and coalesce(h.historical_balance_rows, 0) > 0
+                        then 'position_absent_before_maturity'
+                      when coalesce(h.same_day_any_asset_rows, 0) = 0
+                        then 'never_seen_in_zqtz_asset_balance'
+                      when coalesce(h.same_day_classified_asset_rows, 0) = 0
+                        then 'same_day_balance_without_primary_type'
+                      when coalesce(tc.strict_business_type_count, 0) = 0
+                       and coalesce(tc.relaxed_business_type_count, 0) > 1
+                        then 'same_day_balance_multiple_primary_types'
+                      else 'unexpected_untraced'
+                    end as reason_code
+                  from pnl p
+                  left join historical_balance h
+                    on (
+                      h.instrument_code = p.instrument_code
+                      or h.instrument_code = replace(p.instrument_code, 'BOND-', '')
+                      or ('BOND-' || h.instrument_code) = p.instrument_code
+                    )
+                   and h.portfolio_name = p.portfolio_name
+                   and h.currency_basis = p.currency_basis
+                  left join trace_classification tc
+                    on tc.report_date = p.report_date
+                   and tc.instrument_code = p.instrument_code
+                   and tc.portfolio_name = p.portfolio_name
+                   and tc.cost_center = p.cost_center
+                   and tc.currency_basis = p.currency_basis
+                  where not exists (
+                    select 1
+                    from same_day_balance z
+                    where (
+                      z.instrument_code = p.instrument_code
+                      or z.instrument_code = replace(p.instrument_code, 'BOND-', '')
+                      or ('BOND-' || z.instrument_code) = p.instrument_code
+                    )
+                      and z.portfolio_name = p.portfolio_name
+                      and z.currency_basis = p.currency_basis
+                      and z.cost_center = p.cost_center
+                      and z.business_type_primary is not null
+                  )
+                    and coalesce(tc.relaxed_business_type_count, 0) <> 1
+                )
+                select
+                  reason_code,
+                  invest_type_std,
+                  count(*) as pnl_row_count,
+                  coalesce(sum(total_pnl), 0) as total_pnl,
+                  coalesce(sum(abs(total_pnl)), 0) as abs_pnl,
+                  coalesce(sum(interest_income_514), 0) as interest_income_514,
+                  coalesce(sum(fair_value_change_516), 0) as fair_value_change_516,
+                  coalesce(sum(capital_gain_517), 0) as capital_gain_517,
+                  coalesce(sum(manual_adjustment), 0) as manual_adjustment
+                from untraced
+                group by 1, 2
+                order by abs_pnl desc, reason_code asc, invest_type_std asc
+                """,
+                [report_date, report_date, report_date, report_date, report_date],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        columns = [
+            "reason_code",
+            "invest_type_std",
+            "pnl_row_count",
+            "total_pnl",
+            "abs_pnl",
+            "interest_income_514",
+            "fair_value_change_516",
+            "capital_gain_517",
+            "manual_adjustment",
+        ]
+        return [dict(zip(columns, row, strict=True)) for row in rows]
 
     def sum_formal_total_pnl_for_year(self, year: int) -> Decimal:
         try:
@@ -1120,33 +1294,22 @@ class PnlRepository:
                     currency_basis,
                     business_type_primary,
                     coalesce(sum(scale_amount), 0) as scale_amount,
-                    coalesce(sum(balance_row_count), 0) as balance_row_count,
-                    min(cost_center) as cost_center_hint
+                    coalesce(sum(balance_row_count), 0) as balance_row_count
                   from balance_by_position
+                  where business_type_primary is not null
                   group by 1, 2, 3, 4, 5
                 ), balance_relaxed_choice as (
-                  select *
-                  from (
-                    select
-                      report_date,
-                      instrument_code,
-                      portfolio_name,
-                      business_type_primary,
-                      currency_basis,
-                      scale_amount,
-                      balance_row_count,
-                      row_number() over (
-                        partition by report_date, instrument_code, portfolio_name, currency_basis
-                        order by
-                          case when business_type_primary is null then 1 else 0 end,
-                          abs(scale_amount) desc,
-                          balance_row_count desc,
-                          business_type_primary,
-                          cost_center_hint
-                      ) as rn
-                    from balance_relaxed_by_business
-                  ) ranked
-                  where rn = 1
+                  select
+                    report_date,
+                    instrument_code,
+                    portfolio_name,
+                    currency_basis,
+                    min(business_type_primary) as business_type_primary,
+                    coalesce(sum(scale_amount), 0) as scale_amount,
+                    coalesce(sum(balance_row_count), 0) as balance_row_count
+                  from balance_relaxed_by_business
+                  group by 1, 2, 3, 4
+                  having count(distinct business_type_primary) = 1
                 ), joined as (
                   select
                     cast(p.report_date as varchar) as report_date,

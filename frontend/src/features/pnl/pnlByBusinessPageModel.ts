@@ -370,7 +370,29 @@ function buildFormalTriageDisplay(
   if (untracedCount <= 0) {
     return "";
   }
+  const breakdown = formalResult?.summary.untraced_breakdown ?? [];
+  if (breakdown.length) {
+    const topBuckets = breakdown
+      .slice()
+      .sort((a, b) => (numeric(b.abs_pnl) ?? 0) - (numeric(a.abs_pnl) ?? 0))
+      .slice(0, 3)
+      .map((row) => `${formalUntracedReasonLabel(row.reason_code)} · ${row.invest_type_std} ${row.pnl_row_count} 条`)
+      .join(" / ");
+    return `排查顺序：cost_center 已授权放宽；剩余未追溯按余额证据分类（${topBuckets}），不作为业务贡献结论。`;
+  }
   return `排查顺序：cost_center 已授权放宽；剩余未追溯先做无余额/无持仓排查（${formalUntracedDisplay}）。`;
+}
+
+function formalUntracedReasonLabel(reasonCode: string): string {
+  const labels: Record<string, string> = {
+    position_absent_before_maturity: "未到期但报表日无持仓",
+    matured_before_or_on_report_date: "到期后无持仓",
+    never_seen_in_zqtz_asset_balance: "从未见同券资产余额",
+    same_day_balance_without_primary_type: "同日余额缺业务分类",
+    same_day_balance_multiple_primary_types: "同日余额多业务分类",
+    unexpected_untraced: "待复核",
+  };
+  return labels[reasonCode] ?? "待复核";
 }
 
 export function formatPnlQualityStatus(

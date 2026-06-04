@@ -2568,6 +2568,26 @@ export type PnlByBusinessRow = {
   balance_row_count: number;
 };
 
+export type PnlByBusinessUntracedReason =
+  | "position_absent_before_maturity"
+  | "matured_before_or_on_report_date"
+  | "never_seen_in_zqtz_asset_balance"
+  | "same_day_balance_without_primary_type"
+  | "same_day_balance_multiple_primary_types"
+  | "unexpected_untraced";
+
+export type PnlByBusinessUntracedBreakdownRow = {
+  reason_code: PnlByBusinessUntracedReason;
+  invest_type_std: string;
+  pnl_row_count: number;
+  total_pnl: string;
+  abs_pnl: string;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+};
+
 export type PnlByBusinessPayload = {
   report_date: string;
   source_tables: string[];
@@ -2577,6 +2597,7 @@ export type PnlByBusinessPayload = {
     total_scale_amount: string;
     traced_pnl_row_count: number;
     untraced_pnl_row_count: number;
+    untraced_breakdown?: PnlByBusinessUntracedBreakdownRow[];
   };
   rows: PnlByBusinessRow[];
 };
