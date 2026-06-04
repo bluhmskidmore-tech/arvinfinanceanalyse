@@ -1716,6 +1716,109 @@ def test_lineage_evidence_mcp_maps_formal_pnl_page_to_formal_fact_records(tmp_pa
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_pnl_bridge_page_to_bridge_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_key": "pnl:bridge:formal",
+                "result_kind": "pnl.bridge",
+                "source_surface": "pnl_bridge",
+                "fact_tables": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
+                "golden_samples": ["GS-BRIDGE-A", "GS-BRIDGE-WARN-B"],
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-BRIDGE-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-BRIDGE-001"
+        assert "/api/pnl/bridge" in found_payload["expanded_queries"]
+        assert "pnl.bridge" in found_payload["expanded_queries"]
+        assert "pnl_bridge" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" in found_payload["expanded_queries"]
+        assert "GS-BRIDGE-A" in found_payload["expanded_queries"]
+        assert "GS-BRIDGE-WARN-B" in found_payload["expanded_queries"]
+        assert "MTR-BRG-001" in found_payload["expanded_queries"]
+        assert "MTR-BRG-105" in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "pnl.bridge"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["result_kind"] == "pnl.bridge"
+        assert found_payload["records"][0]["record"]["source_surface"] == "pnl_bridge"
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_balance_analysis_page_to_formal_balance_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "source_manifest_latest.jsonl").write_text(
+        json.dumps(
+            {
+                "source_version": "sv_balance_fixture",
+                "rule_version": "rv_balance_materialize_fixture",
+                "result_kind": "balance-analysis.overview",
+                "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+                "golden_samples": ["GS-BAL-OVERVIEW-A", "GS-BAL-WORKBOOK-A"],
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-BALANCE-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-BALANCE-001"
+        assert "/ui/balance-analysis/overview" in found_payload["expanded_queries"]
+        assert "/ui/balance-analysis/workbook" in found_payload["expanded_queries"]
+        assert "balance-analysis.overview" in found_payload["expanded_queries"]
+        assert "balance-analysis.workbook" in found_payload["expanded_queries"]
+        assert "balance_analysis" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_tyw_balance_daily" in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" in found_payload["expanded_queries"]
+        assert "GS-BAL-WORKBOOK-A" in found_payload["expanded_queries"]
+        assert "MTR-BAL-001" in found_payload["expanded_queries"]
+        assert "MTR-BAL-203" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "balance-analysis.overview"
+        assert found_payload["records"][0]["stream"] == "source_manifest_latest"
+        assert found_payload["records"][0]["record"]["tables_used"] == [
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+        ]
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tmp_path: Path) -> None:
     governance = tmp_path / "governance"
     governance.mkdir()
