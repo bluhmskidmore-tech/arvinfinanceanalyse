@@ -31,28 +31,6 @@ const RETRY_BTN_STYLE = {
   cursor: "pointer",
 } as const;
 
-const BANNER_BASE = {
-  display: "grid",
-  gap: 4,
-  padding: "10px 14px",
-  borderRadius: 12,
-  marginBottom: 14,
-  fontSize: 13,
-} as const;
-
-const STALE_BANNER = {
-  ...BANNER_BASE,
-  background: displayTokens.banner.staleBg,
-  color: displayTokens.banner.staleText,
-  border: displayTokens.banner.staleBorder,
-};
-const FALLBACK_BANNER = {
-  ...BANNER_BASE,
-  background: displayTokens.banner.fallbackBg,
-  color: displayTokens.banner.fallbackText,
-  border: displayTokens.banner.fallbackBorder,
-};
-
 export function DataSection({ title, extra, state, onRetry, children }: DataSectionProps) {
   const header = renderHeader(title, extra);
   const body = renderBody({ state, onRetry, children });
@@ -146,7 +124,7 @@ function renderBody(opts: {
   if (state.kind === "stale") {
     return (
       <>
-        <div data-testid="data-section-stale-banner" style={STALE_BANNER}>
+        <div data-testid="data-section-stale-banner" className="data-section__banner data-section__banner--stale">
           <strong>数据可能已过期</strong>
           <span>
             {state.effective_date ? `有效日 ${state.effective_date}` : null}
@@ -162,7 +140,7 @@ function renderBody(opts: {
   if (state.kind === "fallback") {
     return (
       <>
-        <div data-testid="data-section-fallback-banner" style={FALLBACK_BANNER}>
+        <div data-testid="data-section-fallback-banner" className="data-section__banner data-section__banner--fallback">
           <strong>已回退至最近可用日</strong>
           <span>
             {state.effective_date ? `回退日 ${state.effective_date}` : null}

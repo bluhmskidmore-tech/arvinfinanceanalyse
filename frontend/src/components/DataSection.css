@@ -61,3 +61,24 @@
 .data-section__title {
   font-weight: 600;
 }
+
+.data-section__banner {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.data-section__banner--stale {
+  border: 1px solid var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800);
+}
+
+.data-section__banner--fallback {
+  border: 1px solid var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-700);
+}
