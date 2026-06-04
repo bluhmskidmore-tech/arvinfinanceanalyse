@@ -257,6 +257,14 @@ class LineageEvidenceProvider(McpProvider):
             "/api/agent/runs",
             "/api/agent/query",
         ],
+        "page-cube-query-001": [
+            "/api/cube/query",
+            "cube_query.",
+            "fact_formal_bond_analytics_daily",
+            "fact_formal_pnl_fi",
+            "fact_formal_zqtz_balance_daily",
+            "product_category_pnl_formal_read_model",
+        ],
         "page-risk-001": [
             "fact_formal_risk_tensor_daily",
             "agent.risk_tensor",

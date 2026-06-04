@@ -1624,6 +1624,45 @@ def test_lineage_evidence_mcp_maps_agent_page_contract_to_agent_audit_records(tm
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_cube_query_page_to_allowed_source_tables(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "source_manifest_latest.jsonl").write_text(
+        json.dumps(
+            {
+                "source_version": "sv_cube_pnl_fixture",
+                "rule_version": "rv_cube_query_fixture",
+                "tables_used": ["fact_formal_pnl_fi"],
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-CUBE-QUERY-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-CUBE-QUERY-001"
+        assert "/api/cube/query" in found_payload["expanded_queries"]
+        assert "cube_query." in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" in found_payload["expanded_queries"]
+        assert "result_meta" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "fact_formal_pnl_fi"
+        assert found_payload["records"][0]["stream"] == "source_manifest_latest"
+        assert found_payload["records"][0]["record"]["tables_used"] == ["fact_formal_pnl_fi"]
+    finally:
+        server.close()
+
+
 def test_data_catalog_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None:
     missing_duckdb = tmp_path / "missing.duckdb"
     server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(missing_duckdb)})
