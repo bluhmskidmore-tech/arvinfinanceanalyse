@@ -794,6 +794,10 @@ export function localizeStockBackendText(
   if ((lower.includes("external_vendor") || lower.includes("vendor_")) && /pending|guard|unavailable/.test(lower)) {
     return "风险待确认";
   }
+  if (lower.includes("external_vendor") || lower.includes("vendor_")) {
+    if (lower.includes("not landed") || lower.includes("未落地")) return `${familyLabel || "输入待确认"} 未落地`;
+    return "说明待确认";
+  }
   const availableSample = value.match(/\b(T\+\d+)\s+available\s+(\d+)\s*\/\s*(\d+)/i);
   const matureSnapshotSample = value.match(/\b(T\+\d+)\s+matured?\s+snapshots?\s+(\d+)\s*\/\s*(\d+)/i);
   const optimizationSample = value.match(/\b(T\+\d+)\s+sample\s+(\d+)/i);
@@ -3409,7 +3413,7 @@ export function buildConsensusReviewPanelSummary(consensus: ConsensusSummary): S
   };
 }
 
-function localizeStrategyPanelErrorDetail(errorMessage: string | null | undefined): string {
+export function localizeStrategyPanelErrorDetail(errorMessage: string | null | undefined): string {
   const value = errorMessage?.trim();
   if (!value) return "请求失败：错误详情待补。";
   const lower = value.toLowerCase();

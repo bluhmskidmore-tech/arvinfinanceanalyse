@@ -72,6 +72,7 @@ import {
   localizeStockBackendText,
   localizeStockDataFamily,
   localizeImplementationStage,
+  localizeStrategyPanelErrorDetail,
   localizeMarketDataStatus,
   localizeThemeRadarBadge,
   type StockStrategyPanelQueryState,
@@ -108,6 +109,11 @@ function errorMessage(error: unknown) {
   return localizeStockErrorMessage(message);
 }
 
+function strategyPanelErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return localizeStrategyPanelErrorDetail(message);
+}
+
 function localizeStockErrorMessage(message: string) {
   const value = message.trim();
   const normalized = value.toLowerCase().replace(/\s+/g, " ");
@@ -120,6 +126,14 @@ function localizeStockErrorMessage(message: string) {
   }
   if (normalized.includes("not allowed") || normalized.includes("permission") || normalized.includes("forbidden")) {
     return "数据权限待确认，请联系管理员。";
+  }
+  if (
+    normalized.includes("request failed") ||
+    normalized.includes("/ui/") ||
+    normalized.includes("market-data") ||
+    normalized.includes("livermore")
+  ) {
+    return "供数暂不可用，请稍后复核。";
   }
   return localizeStockBackendText(value);
 }
@@ -761,8 +775,15 @@ function closedLoopRailIcon(key: ClosedLoopRailKey) {
 function riskExitBlockedSummary(reason: string | null | undefined) {
   const normalized = reason?.trim();
   if (!normalized) return "后端未供数";
+  if (normalized.toLowerCase().replace(/[\s-]+/g, "_").includes("external_vendor")) return "风险退出待确认";
   if (/position_snapshot|ACTIVE A-share/i.test(normalized)) return "持仓快照缺失";
   return compactText(normalized, 24);
+}
+
+function riskExitBlockedDetail(reason: string | null | undefined, key: string | null | undefined) {
+  const normalized = reason?.trim();
+  if (normalized?.toLowerCase().replace(/[\s-]+/g, "_").includes("external_vendor")) return "风险退出待确认";
+  return localizeStockBackendText(reason, key);
 }
 
 function eventSourceLabel(source: string) {
@@ -783,7 +804,7 @@ function eventLevelLabel(level: string) {
 }
 
 function eventImpactLabel(row: { source: string; impact: string }) {
-  if (row.source === "data_gap") return dataGapFamilyLabel(row.impact);
+  if (row.source === "data_gap") return row.impact;
   if (row.source === "unsupported" || row.source === "risk_exit") return outputKeyLabel(row.impact);
   if (row.source === "signal_confluence") return "联动观察";
   return localizeStockDataFamily(row.impact);
@@ -4166,7 +4187,7 @@ export default function StockAnalysisPage() {
                             <p className="stock-analysis-page__empty">当前市场策略优先级加载中。</p>
                           ) : strategyScoreQuery.isError ? (
                             <p className="stock-analysis-page__notice">
-                              当前市场策略优先级暂不可用：{errorMessage(strategyScoreQuery.error)}
+                              当前市场策略优先级暂不可用：{strategyPanelErrorMessage(strategyScoreQuery.error)}
                             </p>
                           ) : strategyPriorityRows.length > 0 ? (
                             <div className="stock-analysis-page__table-wrap">
@@ -4231,7 +4252,7 @@ export default function StockAnalysisPage() {
                             <p className="stock-analysis-page__empty">优化诊断加载中。</p>
                           ) : strategyOptimizationQuery.isError ? (
                             <p className="stock-analysis-page__notice">
-                              优化诊断暂不可用：{errorMessage(strategyOptimizationQuery.error)}
+                              优化诊断暂不可用：{strategyPanelErrorMessage(strategyOptimizationQuery.error)}
                             </p>
                           ) : strategyOptimizationRows.length > 0 ? (
                             <div className="stock-analysis-page__table-wrap">
@@ -4912,7 +4933,7 @@ export default function StockAnalysisPage() {
                                   label: "供数原因",
                                   children: (
                                     <p className="m-0 text-xs">
-                                      {localizeStockBackendText(riskExitUnsupported.reason, riskExitUnsupported.key)}
+                                      {riskExitBlockedDetail(riskExitUnsupported.reason, riskExitUnsupported.key)}
                                     </p>
                                   ),
                                 },
@@ -5665,7 +5686,7 @@ export default function StockAnalysisPage() {
                 ) : null}
                 {strategyScoreQuery.isError ? (
                   <p className="stock-analysis-page__notice">
-                    当前市场策略优先级暂不可用：{errorMessage(strategyScoreQuery.error)}
+                    当前市场策略优先级暂不可用：{strategyPanelErrorMessage(strategyScoreQuery.error)}
                   </p>
                 ) : null}
                 {!strategyScoreQuery.isLoading && !strategyScoreQuery.isError ? (
@@ -5979,7 +6000,7 @@ export default function StockAnalysisPage() {
                 ) : null}
                 {strategyOptimizationQuery.isError ? (
                   <p className="stock-analysis-page__notice">
-                    优化诊断暂不可用：{errorMessage(strategyOptimizationQuery.error)}
+                    优化诊断暂不可用：{strategyPanelErrorMessage(strategyOptimizationQuery.error)}
                   </p>
                 ) : null}
                 {!strategyOptimizationQuery.isLoading && !strategyOptimizationQuery.isError ? (
