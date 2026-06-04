@@ -1194,6 +1194,28 @@ describe("LedgerPnlPage", () => {
       within(decisionPath).queryByRole("button", { name: /候选补证路径/ }),
     ).not.toBeInTheDocument();
     expect(within(strip).queryByRole("button", { name: /定位证据/ })).not.toBeInTheDocument();
+
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollTargets: HTMLElement[] = [];
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+
+    try {
+      const formalChecklist = await screen.findByTestId(
+        "ledger-pnl-formal-indicator-source-contract-material-checklist",
+      );
+      const drillButton = within(strip).getByRole("button", {
+        name: "下一步补证 补齐 202605 正式财务指标 Excel 冻结样本",
+      });
+
+      await userEvent.click(drillButton);
+
+      expect(scrollTargets).toEqual([formalChecklist]);
+      expect(formalChecklist).toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("lifts the explainability model summary into the first screen", async () => {

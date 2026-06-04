@@ -1408,7 +1408,18 @@ function LedgerFunctionalAuditStrip(props: {
           <div className="ledger-pnl-functional-strip__drill-list">
             {nextDrills.map((drill) => (
               <div key={drill.key} className="ledger-pnl-functional-strip__drill-item">
-                <strong>{drill.label}</strong>
+                {drill.key.startsWith("formal-contract-remediation|") ? (
+                  <button
+                    type="button"
+                    className="ledger-pnl-functional-strip__evidence-button"
+                    aria-label={`下一步补证 ${drill.label}`}
+                    onClick={focusLedgerFormalContractTarget}
+                  >
+                    {drill.label}
+                  </button>
+                ) : (
+                  <strong>{drill.label}</strong>
+                )}
                 {drill.detail ? <em>{drill.detail}</em> : null}
               </div>
             ))}
