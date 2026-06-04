@@ -2377,6 +2377,16 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("状态 available"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("对比日期 2026-02-27"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metrics_count 2"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metric[1] 监管口径 DV01"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("current 12.34"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("previous 8.00"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("delta +4.34"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("interpretation 监管口径 DV01 扩大"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metric[2] 30 日流动性缺口比例"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("current 5.0%"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("previous 3.0%"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("delta +2.0%"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("interpretation 30 日流动性缓冲改善"));
       await waitFor(() => {
         expect(priorChange).toHaveTextContent("已复制上期排查信息");
       });

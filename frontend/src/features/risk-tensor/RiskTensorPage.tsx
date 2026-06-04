@@ -1262,6 +1262,13 @@ export default function RiskTensorPage() {
     `对比日期 ${priorPeriodChange?.comparison_report_date ?? "未提供"}`,
     `摘要 ${priorPeriodSummary}`,
     `metrics_count ${priorPeriodMetrics.length}`,
+    ...priorPeriodMetrics.flatMap((metric, index) => [
+      `metric[${index + 1}] ${metric.label}`,
+      `current ${metric.current_display || metric.current.display}`,
+      `previous ${metric.previous_display || metric.previous.display}`,
+      `delta ${metric.delta_display || metric.delta.display}`,
+      `interpretation ${metric.interpretation}`,
+    ]),
     `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
     `basis ${tensorMeta?.basis ?? "未提供"}`,
     `cache_version ${tensorMeta?.cache_version ?? "未提供"}`,
