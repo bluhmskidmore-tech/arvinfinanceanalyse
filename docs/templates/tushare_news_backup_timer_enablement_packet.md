@@ -109,6 +109,12 @@ python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --n
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
 ```
 
+For the post-enable evidence checklist after the first timer fire:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown
+```
+
 For the remaining post-enable operations gaps after the first timer fire:
 
 ```powershell

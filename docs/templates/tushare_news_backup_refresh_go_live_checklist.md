@@ -179,6 +179,10 @@ python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-g
 After the first scheduled run, inspect remaining post-enable operations gaps:
 
 ```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown
+```
+
+```powershell
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap
 ```
 

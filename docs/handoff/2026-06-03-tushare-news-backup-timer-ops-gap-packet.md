@@ -125,6 +125,7 @@ Fill these only after the first scheduled run:
 | Timer evidence in go-live bundle | `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md` | Same timer evidence linked from the go-live bundle. |
 
 Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.
+Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown` after the first scheduled run to read the post-enable evidence checklist.
 Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps.
 
 ## Boundaries

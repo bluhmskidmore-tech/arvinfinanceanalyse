@@ -76,6 +76,12 @@ For the external operations input gap packet, run:
 python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
 ```
 
+After the first scheduled run, read the post-enable evidence checklist:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown
+```
+
 Do not enable the timer while this preflight returns `blocked`.
 
 Acceptance:
@@ -135,6 +141,12 @@ After the timer fires, run:
 ```powershell
 python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
+```
+
+For the post-enable evidence checklist after the first timer fire, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown
 ```
 
 For the remaining post-enable operations gaps after the first timer fire, run:

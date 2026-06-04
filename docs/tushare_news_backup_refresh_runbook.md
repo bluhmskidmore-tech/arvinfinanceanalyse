@@ -182,6 +182,12 @@ timer evidence:
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
 ```
 
+For the post-enable evidence checklist after the first timer fire, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown
+```
+
 For the remaining post-enable operations gaps after the first timer fire, run:
 
 ```powershell

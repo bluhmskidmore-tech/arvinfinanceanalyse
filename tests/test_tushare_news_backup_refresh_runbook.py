@@ -59,6 +59,7 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "--stage pre-enable --format markdown" in runbook
     assert "--stage pre-enable --format ops-gap" in runbook
     assert "--stage post-enable" in runbook
+    assert "--stage post-enable --format markdown" in runbook
     assert "--stage post-enable --format ops-gap" in runbook
     assert "timer enablement packet is filled" in runbook
     assert "actual install commands" in runbook
@@ -98,9 +99,17 @@ def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_p
     assert "--stage pre-enable --format markdown" in handoff
     assert "--stage pre-enable --format ops-gap" in handoff
     assert "--stage post-enable" in handoff
+    assert "--stage post-enable --format markdown" in handoff
     assert "--stage post-enable --format ops-gap" in handoff
     assert "preflight returns `blocked`" in handoff
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in handoff
+
+    post_run_validation = handoff.split("## Post-Run Validation", maxsplit=1)[1]
+    post_run_validation = post_run_validation.split("## Rollback", maxsplit=1)[0]
+    assert "scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run" in post_run_validation
+    assert "python scripts/tushare_news_backup_timer_preflight.py --stage post-enable" in post_run_validation
+    assert "python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown" in post_run_validation
+    assert "python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap" in post_run_validation
 
 
 def test_tushare_news_backup_refresh_go_live_checklist_requires_evidence_before_timer_enablement() -> None:
@@ -129,6 +138,7 @@ def test_tushare_news_backup_refresh_go_live_checklist_requires_evidence_before_
     assert "--stage pre-enable --format markdown" in checklist
     assert "--stage pre-enable --format ops-gap" in checklist
     assert "--stage post-enable" in checklist
+    assert "--stage post-enable --format markdown" in checklist
     assert "--stage post-enable --format ops-gap" in checklist
     assert "returns `pass`" in checklist
     assert "External timer enablement: enabled" in checklist
@@ -161,6 +171,7 @@ def test_tushare_news_backup_timer_enablement_packet_is_ops_fillable_not_executa
     assert "--stage pre-enable --format markdown" in packet
     assert "--stage pre-enable --format ops-gap" in packet
     assert "--stage post-enable" in packet
+    assert "--stage post-enable --format markdown" in packet
     assert "--stage post-enable --format ops-gap" in packet
     assert "preflight must return `pass` before enablement" in packet
     assert "External timer enablement: enabled" in packet
@@ -238,6 +249,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "--format ops-gap" in status
     assert "--stage pre-enable --format markdown" in status
     assert "--stage pre-enable --format ops-gap" in status
+    assert "--stage post-enable --format markdown" in status
     assert "--stage post-enable --format ops-gap" in status
     assert "Combined verdict: `blocked`" in status
     assert "Blocking stages: `pre-enable`, `post-enable`" in status
@@ -404,6 +416,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status." in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap` to read the current pre-enable operations gaps." in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in packet
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown` after the first scheduled run to read the post-enable evidence checklist." in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps." in packet
     assert "POST /ui/news/tushare-npr/ingest" in packet
     assert "POST /api/news/tushare-npr/ingest" in packet
@@ -415,6 +428,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap` to read the current pre-enable operations gaps.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
+        "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown` after the first scheduled run to read the post-enable evidence checklist.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps.",
     ):
         assert marker in generated

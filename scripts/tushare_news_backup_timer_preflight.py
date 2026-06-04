@@ -1013,6 +1013,7 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             *_format_required_inputs_table(REQUIRED_POST_ENABLE_INPUTS),
             "",
             "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
+            "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown` after the first scheduled run to read the post-enable evidence checklist.",
             "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps.",
             "",
             "## Boundaries",

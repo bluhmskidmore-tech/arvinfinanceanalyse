@@ -64,6 +64,12 @@ Operations gap packet command:
 python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
 ```
 
+Post-enable evidence checklist command:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format markdown
+```
+
 Post-enable operations gap command:
 
 ```powershell
