@@ -1,0 +1,8 @@
+.section-card__error {
+  display: grid;
+  gap: 12px;
+}
+
+.section-card__error-text {
+  color: var(--moss-color-danger-600);
+}
