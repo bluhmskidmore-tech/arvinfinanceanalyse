@@ -726,6 +726,29 @@ function buildFormalContractMaterialChecklist(
   };
 }
 
+function formalContractExecutionStatus(props: {
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  materialChecklist: ReturnType<typeof buildFormalContractMaterialChecklist>;
+}) {
+  if (props.isLoading) {
+    return "读取正式契约中";
+  }
+  if (props.isError) {
+    return "待恢复契约读取";
+  }
+  if (props.contract?.formal_use_allowed === true) {
+    return "已读取正式契约";
+  }
+  if (props.contract?.sample_status === "missing_contract") {
+    return props.materialChecklist.readyCount === props.materialChecklist.totalCount
+      ? "待登记正式契约"
+      : "待补齐材料";
+  }
+  return "待重新读取正式契约";
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -955,6 +978,12 @@ function LedgerFunctionalAuditStrip(props: {
   const materialChecklist = buildFormalContractMaterialChecklist(
     props.formalIndicatorSourceContract?.remediation,
   );
+  const executionStatus = formalContractExecutionStatus({
+    contract: props.formalIndicatorSourceContract,
+    isLoading: props.isFormalContractLoading,
+    isError: props.isFormalContractError,
+    materialChecklist,
+  });
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -1048,6 +1077,10 @@ function LedgerFunctionalAuditStrip(props: {
           <div>
             <span>材料完整性</span>
             <strong>{materialChecklist.summary}</strong>
+          </div>
+          <div>
+            <span>执行状态</span>
+            <strong>{executionStatus}</strong>
           </div>
         </div>
       </div>
@@ -1868,6 +1901,12 @@ function FormalIndicatorSourceContractPanel(props: {
   const contractNote = formatFormalContractNote(props.contract);
   const actionQueue = buildFormalContractActionQueue(metrics);
   const materialChecklist = buildFormalContractMaterialChecklist(props.contract?.remediation);
+  const executionStatus = formalContractExecutionStatus({
+    contract: props.contract,
+    isLoading: props.isLoading,
+    isError: props.isError,
+    materialChecklist,
+  });
 
   return (
     <section
@@ -2016,6 +2055,10 @@ function FormalIndicatorSourceContractPanel(props: {
                       {row.value || "待补"}
                     </small>
                   ))}
+                  <small>
+                    <span>执行状态</span>
+                    {executionStatus}
+                  </small>
                 </div>
                 <small>正式值保持未接入，不能用分析候选值补齐。</small>
               </div>

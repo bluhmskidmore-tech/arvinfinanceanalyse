@@ -679,7 +679,7 @@
 
 .ledger-pnl-functional-strip__decision-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: var(--moss-space-2);
 }
 
