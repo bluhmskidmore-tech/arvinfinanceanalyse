@@ -2282,7 +2282,7 @@ export function EmbeddedAgentCopilot({
       return;
     }
     function handleEscapeStop(event: KeyboardEvent) {
-      if (event.key !== "Escape") {
+      if (event.key !== "Escape" || event.isComposing) {
         return;
       }
       stopActiveAgentTurnRef.current();

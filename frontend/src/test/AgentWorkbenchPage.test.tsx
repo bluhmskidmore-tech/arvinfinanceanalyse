@@ -5067,6 +5067,24 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
   });
 
+  it("does not stop a pending answer when Escape belongs to text composition", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "composition escape should keep running");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("composition escape should keep running")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+
+    expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止当前回答" })).toBeInTheDocument();
+    expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+  });
+
   it("reruns a stopped ordinary turn from the stopped callout", async () => {
     const user = userEvent.setup();
     let resolveStoppedRun!: (value: Response) => void;
