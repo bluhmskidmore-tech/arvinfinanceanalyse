@@ -7,6 +7,22 @@ import pytest
 
 from tests.helpers import ROOT, load_module
 
+EXPECTED_DEV_USER_SCOPE_GRANTS = {
+    ("*", None, "choice_news.data", "read"),
+    ("anonymous", "viewer", "balance_analysis", "read"),
+    ("anonymous", "viewer", "bond_analytics", "read"),
+    ("anonymous", "viewer", "bond_dashboard", "read"),
+    ("anonymous", "viewer", "cashflow_projection", "read"),
+    ("anonymous", "viewer", "dashboard", "read"),
+    ("anonymous", "viewer", "executive", "read"),
+    ("anonymous", "viewer", "ledger_pnl", "read"),
+    ("anonymous", "viewer", "macro_toolkit", "read"),
+    ("anonymous", "viewer", "macro_vendor", "read"),
+    ("anonymous", "viewer", "pnl_attribution", "read"),
+    ("anonymous", "viewer", "product_category_pnl", "read"),
+    ("anonymous", "viewer", "research_calendar", "read"),
+}
+
 
 def test_dev_postgres_cluster_builds_expected_local_layout():
     module = load_module(
@@ -24,6 +40,20 @@ def test_dev_postgres_cluster_builds_expected_local_layout():
     assert config.host == "127.0.0.1"
     assert config.database == "moss"
     assert config.user == "moss"
+
+
+def test_dev_postgres_cluster_seeds_home_page_read_scopes():
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    seeded_scopes = {
+        (grant["user_id"], grant["role"], grant["resource"], grant["action"])
+        for grant in module.DEV_USER_SCOPE_GRANTS
+    }
+
+    assert seeded_scopes == EXPECTED_DEV_USER_SCOPE_GRANTS
 
 
 def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
@@ -563,12 +593,9 @@ def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypa
     assert len(calls) == 1
     command = " ".join(calls[0])
     assert "INSERT INTO user_role_scope" in command
-    assert "'*', NULL, 'choice_news.data', 'read'" in command
-    assert "'anonymous', 'viewer', 'cashflow_projection', 'read'" in command
-    assert "'anonymous', 'viewer', 'macro_toolkit', 'read'" in command
-    assert "'anonymous', 'viewer', 'macro_vendor', 'read'" in command
-    assert "'anonymous', 'viewer', 'ledger_pnl', 'read'" in command
-    assert "'anonymous', 'viewer', 'product_category_pnl', 'read'" in command
+    for user_id, role, resource, action in EXPECTED_DEV_USER_SCOPE_GRANTS:
+        role_sql = "NULL" if role is None else f"'{role}'"
+        assert f"'{user_id}', {role_sql}, '{resource}', '{action}'" in command
     assert "WHERE NOT EXISTS" in command
     assert command.count("INSERT INTO user_role_scope") == len(module.DEV_USER_SCOPE_GRANTS)
 
