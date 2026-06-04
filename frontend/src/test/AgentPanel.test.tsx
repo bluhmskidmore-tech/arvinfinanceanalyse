@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentPanel } from "../features/agent/AgentPanel";
 
+const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -169,7 +171,7 @@ describe("AgentPanel", () => {
       />,
     );
 
-    expect(screen.queryByRole("status", { name: "agent-page-context-change" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: AGENT_PAGE_CONTEXT_CHANGE_LABEL })).not.toBeInTheDocument();
 
     rerender(
       <AgentPanel
@@ -180,7 +182,7 @@ describe("AgentPanel", () => {
       />,
     );
 
-    const contextNotice = screen.getByRole("status", { name: "agent-page-context-change" });
+    const contextNotice = screen.getByRole("status", { name: AGENT_PAGE_CONTEXT_CHANGE_LABEL });
     expect(contextNotice).toHaveTextContent("页面上下文已更新");
     expect(contextNotice).toHaveTextContent("下一问将使用当前页面选择");
 
@@ -193,13 +195,13 @@ describe("AgentPanel", () => {
       />,
     );
 
-    expect(screen.getAllByRole("status", { name: "agent-page-context-change" })).toHaveLength(1);
+    expect(screen.getAllByRole("status", { name: AGENT_PAGE_CONTEXT_CHANGE_LABEL })).toHaveLength(1);
 
     await user.type(screen.getByLabelText("agent-question-input"), "review the updated selection");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     expect(await screen.findByText("Embedded Agent answered.")).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: "agent-page-context-change" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: AGENT_PAGE_CONTEXT_CHANGE_LABEL })).not.toBeInTheDocument();
     const [, options] = fetchMock.mock.calls[0] ?? [];
     expect(JSON.parse(String((options as RequestInit | undefined)?.body))).toMatchObject({
       question: "review the updated selection",

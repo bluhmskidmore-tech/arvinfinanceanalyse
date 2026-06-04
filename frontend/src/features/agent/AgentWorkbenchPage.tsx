@@ -3484,7 +3484,7 @@ export function EmbeddedAgentCopilot({
         <div
           className="agent-context-change-notice"
           role="status"
-          aria-label="agent-page-context-change"
+          aria-label="页面上下文已更新"
         >
           <strong>页面上下文已更新</strong>
           <span>下一问将使用当前页面选择</span>
