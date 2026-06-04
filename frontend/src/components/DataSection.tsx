@@ -12,20 +12,11 @@ type DataSectionProps = {
   children: ReactNode;
 };
 
-const SECTION_STYLE = {
-  height: "100%",
-  padding: 24,
-  borderRadius: displayTokens.radius.section,
-  background: displayTokens.surface.section,
-  border: displayTokens.surface.sectionBorder,
-  boxShadow: displayTokens.surface.sectionShadow,
-} as const;
-
 export function DataSection({ title, extra, state, onRetry, children }: DataSectionProps) {
   const header = renderHeader(title, extra);
   const body = renderBody({ state, onRetry, children });
 
-  return <section style={SECTION_STYLE}>{header}{body}</section>;
+  return <section className="data-section">{header}{body}</section>;
 }
 
 function renderHeader(title: string, extra: ReactNode): ReactNode {

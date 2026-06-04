@@ -25,6 +25,15 @@ describe("DataSection · ok", () => {
     renderWith({ kind: "ok" });
     expect(screen.getByText("Overview")).toBeInTheDocument();
   });
+
+  it("uses extracted class for the section shell", () => {
+    renderWith({ kind: "ok" });
+
+    const section = screen.getByText("Overview").closest("section");
+
+    expect(section).toHaveClass("data-section");
+    expect(section).not.toHaveAttribute("style");
+  });
 });
 
 describe("DataSection · loading", () => {

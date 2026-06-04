@@ -1,3 +1,12 @@
+.data-section {
+  height: 100%;
+  padding: 24px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: var(--moss-shadow-card);
+}
+
 .data-section__state-stack {
   display: grid;
   align-items: start;
