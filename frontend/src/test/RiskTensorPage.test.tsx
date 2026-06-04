@@ -2005,6 +2005,54 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 1Y");
   });
 
+  it("moves a selected KRD tenor back to a valid bucket when the report date payload makes it unparseable", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_tenor_report_date_reset_dates"),
+      result: { report_dates: ["2026-02-28", "2026-01-31"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_tenor_report_date_reset_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        ...(reportDate === "2026-01-31"
+          ? {
+              krd_1y: "bad-krd",
+              krd_3y: "20000",
+              krd_5y: "30000",
+            }
+          : {}),
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const tenorDrill = await screen.findByTestId("risk-tensor-tenor-drill");
+    await user.click(within(tenorDrill).getByRole("button", { name: "1Y" }));
+
+    await waitFor(() => {
+      expect(within(tenorDrill).getByText("1Y", { selector: "strong" })).toBeInTheDocument();
+    });
+
+    await user.selectOptions(await screen.findByRole("combobox"), "2026-01-31");
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
+      expect(
+        within(screen.getByTestId("risk-tensor-tenor-drill")).getByText("5Y", { selector: "strong" }),
+      ).toBeInTheDocument();
+    });
+    const updatedTenorDrill = screen.getByTestId("risk-tensor-tenor-drill");
+    expect(within(updatedTenorDrill).getByRole("button", { name: "5Y" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(updatedTenorDrill).queryByText("1Y", { selector: "strong" })).not.toBeInTheDocument();
+    expect(await screen.findByTestId("risk-tensor-krd-quality-note")).toHaveTextContent("krd_1y");
+  });
+
   it("renders prior-period no-data state without comparison metric cards", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

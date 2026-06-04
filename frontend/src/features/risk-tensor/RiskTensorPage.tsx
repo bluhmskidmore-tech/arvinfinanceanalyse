@@ -755,13 +755,14 @@ export default function RiskTensorPage() {
       return;
     }
     const defaultTenor = dominantTenorRow?.tenor ?? tenorRows.find((row) => row.magnitude !== null)?.tenor ?? "";
-    if (!selectedTenor || !tenorRows.some((row) => row.tenor === selectedTenor)) {
+    const selectedRow = tenorRows.find((row) => row.tenor === selectedTenor);
+    if (!selectedTenor || !selectedRow || selectedRow.magnitude === null) {
       setSelectedTenor(defaultTenor);
     }
   }, [dominantTenorRow?.tenor, selectedTenor, tenorRows]);
 
   const selectedTenorRow =
-    tenorRows.find((row) => row.tenor === selectedTenor) ??
+    tenorRows.find((row) => row.tenor === selectedTenor && row.magnitude !== null) ??
     dominantTenorRow ??
     tenorRows.find((row) => row.magnitude !== null);
   const tensorMeta = envelope?.result_meta;
