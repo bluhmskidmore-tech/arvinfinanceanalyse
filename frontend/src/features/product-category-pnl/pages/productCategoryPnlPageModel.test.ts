@@ -745,6 +745,22 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.summary.evaluatedMonthCount).toBe(0);
     expect(surface.summary.signalCount).toBe(0);
     expect(surface.summary.latestPendingCount).toBe(2);
+    expect(surface.coverageRows).toEqual([
+      {
+        reportDate: "2026-01-31",
+        nextReportDate: "2026-03-31",
+        statusLabel: "跳过：非连续月份",
+        signalCount: 2,
+        tone: "negative",
+      },
+      {
+        reportDate: "2026-03-31",
+        nextReportDate: null,
+        statusLabel: "最新月待观察",
+        signalCount: 2,
+        tone: "neutral",
+      },
+    ]);
     expect(surface.actionRows).toEqual([]);
     expect(surface.emptyCopy).toBe("需要至少两个连续月度正式 payload 才能回测行动信号。");
   });

@@ -175,6 +175,16 @@
   cursor: pointer;
 }
 
+.product-category-footer-total {
+  margin-top: 16px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--moss-color-neutral-900);
+  color: var(--moss-color-neutral-50);
+  font-weight: 700;
+  text-align: center;
+}
+
 .product-category-branch-switcher {
   margin-bottom: 16px !important;
 }
@@ -989,6 +999,58 @@
 
 .product-category-action-backtest__metric.is-negative strong,
 .product-category-action-backtest__example.is-negative b {
+  color: var(--moss-color-danger-600);
+}
+
+.product-category-action-backtest__coverage {
+  display: grid;
+  gap: var(--moss-space-2);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.product-category-action-backtest__coverage h3 {
+  margin: 0;
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.product-category-action-backtest__coverage-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.product-category-action-backtest__coverage-row {
+  display: grid;
+  gap: 2px;
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+}
+
+.product-category-action-backtest__coverage-row span,
+.product-category-action-backtest__coverage-row small {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+}
+
+.product-category-action-backtest__coverage-row strong {
+  color: var(--moss-color-neutral-900);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.product-category-action-backtest__coverage-row.is-positive strong {
+  color: var(--moss-color-success-700);
+}
+
+.product-category-action-backtest__coverage-row.is-negative strong {
   color: var(--moss-color-danger-600);
 }
 

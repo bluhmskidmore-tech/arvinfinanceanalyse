@@ -824,6 +824,9 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
     });
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本覆盖");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("已回测");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新月待观察");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
     expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
   });
@@ -1522,6 +1525,7 @@ describe("ProductCategoryPnlPage", () => {
     const getProductCategoryPnl = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
       buildMockProductCategoryPnlEnvelope(options),
     );
+    const getProductCategoryAttribution = vi.fn(baseClient.getProductCategoryAttribution);
     renderWorkbenchAppWithClient({
       ...baseClient,
       getProductCategoryDates: vi.fn(async () =>
@@ -1540,6 +1544,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl,
+      getProductCategoryAttribution,
     });
 
     await screen.findByTestId("product-category-table");
@@ -1593,8 +1598,28 @@ describe("ProductCategoryPnlPage", () => {
       "2026-01-31:monthly",
       "2026-02-28:monthly",
     ]);
+    await waitFor(() => {
+      expect(
+        getProductCategoryAttribution.mock.calls.filter((call) => call[0].reportDate !== "2026-03-31"),
+      ).toHaveLength(7);
+    });
+    const historyAttributionCalls = getProductCategoryAttribution.mock.calls
+      .map((call) => call[0])
+      .filter((options) => options.reportDate !== "2026-03-31")
+      .map((options) => `${options.reportDate}:${options.compare ?? "mom"}`)
+      .sort();
+    expect(historyAttributionCalls).toEqual([
+      "2025-03-31:mom",
+      "2025-06-30:mom",
+      "2025-09-30:mom",
+      "2025-11-30:mom",
+      "2025-12-31:mom",
+      "2026-01-31:mom",
+      "2026-02-28:mom",
+    ]);
 
     getProductCategoryPnl.mockClear();
+    getProductCategoryAttribution.mockClear();
     const viewButtons = within(screen.getByRole("group", { name: "视图模式" })).getAllByRole("button");
     await user.click(viewButtons[1]!);
     await waitFor(() => {

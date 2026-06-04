@@ -356,6 +356,13 @@ export type ProductCategoryOperatingBacktestSurface = {
     coverageLabel: string;
     evidenceLabel: string;
   };
+  coverageRows: Array<{
+    reportDate: string;
+    nextReportDate: string | null;
+    statusLabel: string;
+    signalCount: number;
+    tone: "positive" | "negative" | "neutral";
+  }>;
   actionRows: ProductCategoryOperatingBacktestActionRow[];
   examples: ProductCategoryOperatingBacktestExample[];
   emptyCopy: string | null;
@@ -2692,6 +2699,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       }).rows.length
     : 0;
   const samples: ProductCategoryOperatingBacktestExample[] = [];
+  const coverageRows: ProductCategoryOperatingBacktestSurface["coverageRows"] = [];
 
   for (let index = 0; index < payloads.length - 1; index += 1) {
     const current = payloads[index];
@@ -2699,14 +2707,21 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     if (!current || !next) {
       continue;
     }
-    if (!productCategoryReportDatesAreConsecutiveMonths(current.report_date, next.report_date)) {
-      continue;
-    }
     const currentActions = selectProductCategoryOperatingActionQueue({
       rows: current.rows,
       attribution: input.attributionsByReportDate?.get(current.report_date),
       parentCategoryIds: parentProductCategoryIds(current.rows),
     }).rows;
+    if (!productCategoryReportDatesAreConsecutiveMonths(current.report_date, next.report_date)) {
+      coverageRows.push({
+        reportDate: current.report_date,
+        nextReportDate: next.report_date,
+        statusLabel: "跳过：非连续月份",
+        signalCount: currentActions.length,
+        tone: "negative",
+      });
+      continue;
+    }
     const currentRowsById = new Map(current.rows.map((row) => [row.category_id, row]));
     const nextRowsById = new Map(next.rows.map((row) => [row.category_id, row]));
     for (const action of currentActions) {
@@ -2764,6 +2779,22 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         tone: hit === null ? "neutral" : hit ? "positive" : "negative",
       });
     }
+    coverageRows.push({
+      reportDate: current.report_date,
+      nextReportDate: next.report_date,
+      statusLabel: "已回测",
+      signalCount: currentActions.length,
+      tone: "positive",
+    });
+  }
+  if (latestPayload) {
+    coverageRows.push({
+      reportDate: latestPayload.report_date,
+      nextReportDate: null,
+      statusLabel: "最新月待观察",
+      signalCount: latestPendingCount,
+      tone: "neutral",
+    });
   }
 
   const evaluatedDates = Array.from(new Set(samples.map((sample) => sample.reportDate))).sort();
@@ -2811,6 +2842,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         : "-",
       evidenceLabel: "信号来自动作队列；结果使用下一期 monthly 正式口径验证。",
     },
+    coverageRows,
     actionRows,
     examples: samples
       .slice()

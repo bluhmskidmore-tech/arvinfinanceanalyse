@@ -1068,6 +1068,21 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
               </div>
             ))}
           </div>
+          <article className="product-category-action-backtest__coverage">
+            <h3>样本覆盖</h3>
+            <div className="product-category-action-backtest__coverage-list">
+              {props.surface.coverageRows.slice(-6).map((row) => (
+                <div
+                  className={`product-category-action-backtest__coverage-row is-${row.tone}`}
+                  key={`${row.reportDate}-${row.nextReportDate ?? "pending"}`}
+                >
+                  <span>{row.reportDate}{row.nextReportDate ? ` → ${row.nextReportDate}` : ""}</span>
+                  <strong>{row.statusLabel}</strong>
+                  <small>{row.signalCount} 条信号</small>
+                </div>
+              ))}
+            </div>
+          </article>
           <div className="product-category-action-backtest__grid">
             <article className="product-category-action-backtest__panel">
               <h3>动作类型表现</h3>
@@ -2453,6 +2468,24 @@ export default function ProductCategoryPnlPage() {
       retry: false,
     })),
   });
+  const trendHistoryAttributionQueries = useQueries({
+    queries: trendHistoryPoints.map((point) => ({
+      queryKey: [
+        "product-category-pnl",
+        "trend-history-attribution",
+        client.mode,
+        point.reportDate,
+        "mom",
+      ],
+      queryFn: () =>
+        client.getProductCategoryAttribution({
+          reportDate: point.reportDate,
+          compare: "mom",
+        }),
+      enabled: Boolean(trendDiagnosticsLoaded && selectedView === "monthly" && point.reportDate),
+      retry: false,
+    })),
+  });
   const interestSpreadComparisonReportPoints = useMemo(
     () =>
       selectProductCategoryTwoYearInterestSpreadReportPoints(
@@ -2523,8 +2556,13 @@ export default function ProductCategoryPnlPage() {
     if (attributionQuery.data?.result && attributionCompare === "mom") {
       byReportDate.set(attributionQuery.data.result.report_date, attributionQuery.data.result);
     }
+    trendHistoryAttributionQueries.forEach((query) => {
+      if (query.data?.result) {
+        byReportDate.set(query.data.result.report_date, query.data.result);
+      }
+    });
     return byReportDate;
-  }, [attributionCompare, attributionQuery.data?.result]);
+  }, [attributionCompare, attributionQuery.data?.result, trendHistoryAttributionQueries]);
   const operatingActionBacktestSurface = useMemo(
     () =>
       selectProductCategoryOperatingActionBacktestSurface({
@@ -3512,7 +3550,10 @@ export default function ProductCategoryPnlPage() {
         <ProductCategoryOperatingActionBacktestPanel
           surface={operatingActionBacktestSurface}
           isHistoryLoaded={trendDiagnosticsLoaded}
-          historyLoading={trendHistoryQueries.some((query) => query.isLoading)}
+          historyLoading={
+            trendHistoryQueries.some((query) => query.isLoading) ||
+            trendHistoryAttributionQueries.some((query) => query.isLoading)
+          }
         />
       ) : null}
 
@@ -3657,15 +3698,7 @@ export default function ProductCategoryPnlPage() {
       {displayedGrandTotal && !baselineQuery.isError ? (
         <div
           data-testid="product-category-footer-total"
-          style={{
-            marginTop: 16,
-            padding: "14px 18px",
-            borderRadius: 16,
-            background: designTokens.color.neutral[900],
-            color: designTokens.color.neutral[50],
-            fontWeight: 700,
-            textAlign: "center",
-          }}
+          className="product-category-footer-total"
         >
           全部市场科目 + 投资收益合计：{formatProductCategoryValue(displayedGrandTotal.business_net_income)}
         </div>
