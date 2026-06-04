@@ -3699,6 +3699,98 @@ describe("AgentWorkbenchPage", () => {
     });
   });
 
+  it("refocuses the composer when a queued local answer returns after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRun!: (value: Response) => void;
+    const firstRunResponse = new Promise<Response>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    let resolveQueuedRun!: (value: Response) => void;
+    const queuedRunResponse = new Promise<Response>((resolve) => {
+      resolveQueuedRun = resolve;
+    });
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildWorkflowExecutionResult()))
+      .mockReturnValueOnce(firstRunResponse)
+      .mockReturnValueOnce(queuedRunResponse);
+
+    render(<AgentWorkbenchPage />);
+    openShortcutDrawer();
+
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    expect(await screen.findByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "local queued first turn");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("local queued first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "local queued second turn");
+    await user.click(screen.getByTestId("agent-panel-queue-submit"));
+
+    await act(async () => {
+      resolveFirstRun(buildJsonResponse(buildLocalOrdinaryTextResult("local queued first answer")));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("local queued second turn")).toBeInTheDocument();
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveQueuedRun(buildJsonResponse(buildLocalOrdinaryTextResult("local queued second answer")));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("local queued second answer")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
+  it("refocuses the composer when a queued local answer fails after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRun!: (value: Response) => void;
+    const firstRunResponse = new Promise<Response>((resolve) => {
+      resolveFirstRun = resolve;
+    });
+    let resolveQueuedRun!: (value: Response) => void;
+    const queuedRunResponse = new Promise<Response>((resolve) => {
+      resolveQueuedRun = resolve;
+    });
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildWorkflowExecutionResult()))
+      .mockReturnValueOnce(firstRunResponse)
+      .mockReturnValueOnce(queuedRunResponse);
+
+    render(<AgentWorkbenchPage />);
+    openShortcutDrawer();
+
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    expect(await screen.findByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "local queued fail first turn");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("local queued fail first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "local queued fail second turn");
+    await user.click(screen.getByTestId("agent-panel-queue-submit"));
+
+    await act(async () => {
+      resolveFirstRun(buildJsonResponse(buildLocalOrdinaryTextResult("local queued fail first answer")));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("local queued fail second turn")).toBeInTheDocument();
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveQueuedRun(buildJsonResponse({ detail: "local query failed" }, 500));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("sends multiple queued follow-ups one by one after the active answer completes", async () => {
     const user = userEvent.setup();
     let resolveFirstRun!: (value: Response) => void;

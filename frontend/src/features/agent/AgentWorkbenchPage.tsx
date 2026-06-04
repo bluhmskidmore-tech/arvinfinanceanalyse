@@ -2107,6 +2107,8 @@ export function EmbeddedAgentCopilot({
         ...turn,
         agentRun: failedSyncRun,
       }));
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
       return;
     }
 
@@ -2119,6 +2121,8 @@ export function EmbeddedAgentCopilot({
       error: null,
       activeSuggestedActionPayload: null,
     }));
+    shouldFocusComposerRef.current = true;
+    window.setTimeout(focusComposerInput, 0);
   }
 
   async function executeSuggestedIntentAction(action: AgentSuggestedAction, intent: string) {
@@ -2363,6 +2367,8 @@ export function EmbeddedAgentCopilot({
         currentHint === "正在发送排队问题 · 可继续输入下一句" ? null : currentHint,
       );
       setLoading(false);
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     }
   }
   submitQueuedQueryRef.current = submitQueuedQuery;
