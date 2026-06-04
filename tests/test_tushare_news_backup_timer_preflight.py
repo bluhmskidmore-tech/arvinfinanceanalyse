@@ -554,6 +554,7 @@ def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path
     assert "`ops_gap.immediate_next_actions`" in output
     assert "`ops_gap.deferred_post_enable_next_actions`" in output
     assert "`ops_gap.deferred_until`" in output
+    assert "Ready to create timer: `true`" in output
     assert "Operator Fill Order" in output
     assert "Fill owner fields first" in output
     assert "After the first scheduled run, attach timer evidence" in output
@@ -592,6 +593,7 @@ def test_timer_preflight_cli_can_render_single_stage_markdown_status(tmp_path: P
     output = capsys.readouterr().out
     assert exit_code == 1
     assert "Current verdict: `blocked`" in output
+    assert "Ready to create timer: `false`" in output
     assert "Current blocking items:" in output
     assert "`owners_filled`" in output
     assert "Current `next_actions`:" in output
@@ -616,6 +618,7 @@ def test_timer_preflight_cli_can_render_ops_gap_packet(tmp_path: Path, capsys) -
     assert "Blocking stages: `pre-enable`, `post-enable`" in output
     assert "Pre-enable summary:" in output
     assert "Post-enable summary:" in output
+    assert "Ready to create timer: `false`" in output
     assert "## Activation Sequence" in output
     assert "Immediate stage: `pre-enable`" in output
     assert "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes." in output

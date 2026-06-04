@@ -131,6 +131,12 @@ Then run the read-only timer preflight before creating the external timer:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable
 ```
 
+For the operator-readable go/no-go status, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
+```
+
 To review both the pre-enable and post-enable gates in one read-only report,
 run:
 
@@ -183,6 +189,9 @@ output, automation should prefer the machine-readable `ops_gap` grouping:
 `ops_gap.immediate_next_actions` lists the current `pre-enable` items to fill
 now, `ops_gap.deferred_post_enable_next_actions` lists the first-scheduled-run
 evidence to fill later, and `ops_gap.deferred_until` records the handoff point.
+For operator-readable Markdown and ops-gap output, read `Ready to create timer`
+as the same go/no-go signal; when it is `false`, do not create the external
+timer.
 
 ## Post-Refresh Validation
 

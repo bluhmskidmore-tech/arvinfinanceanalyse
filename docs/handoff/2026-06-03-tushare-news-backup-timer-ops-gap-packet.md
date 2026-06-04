@@ -23,6 +23,8 @@ Pre-enable summary: `6 pass / 5 blocked`
 
 Post-enable summary: `6 pass / 7 blocked`
 
+Ready to create timer: `false`
+
 ## Activation Sequence
 
 Immediate stage: `pre-enable`

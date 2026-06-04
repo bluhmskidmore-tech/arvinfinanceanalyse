@@ -595,6 +595,14 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
                 "",
                 f"Current verdict: `{report['verdict']}`",
                 "",
+                *(
+                    (
+                        f"Ready to create timer: `{str(report['verdict'] == 'pass').lower()}`",
+                        "",
+                    )
+                    if report.get("stage") == "pre-enable"
+                    else ()
+                ),
                 "Current blocking items:",
                 "",
                 *[f"- `{item}`" for item in report["blocking_items"]],
@@ -637,6 +645,8 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
         "- `ops_gap.immediate_next_actions` contains the current `pre-enable` items.",
         "- `ops_gap.deferred_post_enable_next_actions` contains only first-scheduled-run evidence items.",
         "- `ops_gap.deferred_until` records when deferred items become actionable.",
+        "",
+        f"Ready to create timer: `{str(report['ops_gap']['ready_to_create_timer']).lower()}`",
         "",
         "## Operator Fill Order",
         "",
@@ -724,6 +734,8 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             f"Current verdict: `{report['verdict']}`",
             "",
             *_format_ops_gap_summary(report),
+            f"Ready to create timer: `{str(report['ops_gap']['ready_to_create_timer']).lower()}`",
+            "",
             *_format_ops_gap_activation_sequence(report),
             *_format_ops_gap_blocking_items(report),
             *_format_ops_gap_next_actions(report),

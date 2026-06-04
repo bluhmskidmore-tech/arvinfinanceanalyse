@@ -56,6 +56,7 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "--format markdown" in runbook
     assert "--format ops-gap" in runbook
     assert "--stage pre-enable" in runbook
+    assert "--stage pre-enable --format markdown" in runbook
     assert "--stage post-enable" in runbook
     assert "timer enablement packet is filled" in runbook
     assert "actual install commands" in runbook
@@ -64,6 +65,7 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "Timer evidence in go-live bundle" in runbook
     assert "next_actions" in runbook
     assert "ops_gap.ready_to_create_timer" in runbook
+    assert "Ready to create timer" in runbook
     assert "ops_gap.immediate_next_actions" in runbook
     assert "ops_gap.deferred_post_enable_next_actions" in runbook
     assert "ops_gap.deferred_until" in runbook
@@ -256,6 +258,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "ops_gap.immediate_next_actions" in status
     assert "ops_gap.deferred_post_enable_next_actions" in status
     assert "ops_gap.deferred_until" in status
+    assert "Ready to create timer: `false`" in status
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in status
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
     assert "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md" in status
@@ -371,6 +374,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_matches_current_blockers_and_a
         "## Deferred Post-Enable `next_actions`",
         "## Activation Sequence",
         "Immediate stage: `pre-enable`",
+        "Ready to create timer: `false`",
         "Do not create the external timer while `pre-enable` is blocked.",
     ):
         assert marker in generated
