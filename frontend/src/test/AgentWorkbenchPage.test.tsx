@@ -2784,6 +2784,10 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("可复制的助手回答，只包含结论文本。")).toBeInTheDocument();
 
+    const followUpDraft = "复制后继续问风险细节";
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    await user.type(input, followUpDraft);
+    input.setSelectionRange(3, 3);
     await user.click(screen.getByRole("button", { name: "复制回答" }));
 
     expect(writeText).toHaveBeenCalledWith("可复制的助手回答，只包含结论文本。");
@@ -2803,7 +2807,10 @@ describe("AgentWorkbenchPage", () => {
     expect(
       (answerPanel?.compareDocumentPosition(toolbar as Element) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
+    expect(input).toHaveValue(followUpDraft);
+    expect(input).toHaveFocus();
+    expect(input).toHaveProperty("selectionStart", followUpDraft.length);
+    expect(input).toHaveProperty("selectionEnd", followUpDraft.length);
     expect(screen.getByText("已复制回答 · 可以继续追问")).toBeInTheDocument();
   });
 
