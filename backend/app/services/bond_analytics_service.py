@@ -10,6 +10,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
 from backend.app.core_finance.action_attribution import compute_action_attribution_bonds
+from backend.app.core_finance.bond_analytics import dv01 as dv01_core
 from backend.app.core_finance.bond_analytics.common import (
     STANDARD_SCENARIOS,
     infer_curve_type,
@@ -307,6 +308,10 @@ def _bond_analytics_api_payload(payload: dict[str, object]) -> dict[str, object]
             if isinstance(sc, str):
                 row["spread_change_bp"] = float(Decimal(sc))
     return out
+
+
+def _model_payloads(rows: list[dict[str, object]], model_cls: type) -> list:
+    return [model_cls.model_validate(promote_flat_payload(row, model_cls)) for row in rows]
 
 
 def _repo() -> BondAnalyticsRepository:
@@ -1970,12 +1975,10 @@ def get_dv01_risk(
         accounting_class=normalized_class,
     )
     top_n = max(1, min(int(top_n), 100))
-    shocks = _parse_dv01_shocks(shock_bps)
-    total_face_value = sum((safe_decimal(row.get("face_value")) for row in rows), ZERO)
-    total_market_value = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
-    total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
-    total_abs_dv01 = _total_abs_dv01(rows)
-    face_weighted_duration = _face_weighted_modified_duration(rows)
+    shocks = dv01_core.parse_dv01_shocks(shock_bps)
+    summary = dv01_core.dv01_scope_summary(rows)
+    total_dv01 = summary["total_dv01"]
+    total_abs_dv01 = dv01_core.total_abs_dv01(rows)
     warnings = _dv01_scope_warnings(rows, normalized_class)
 
     payload = DV01RiskResponse.model_validate(
@@ -1983,27 +1986,29 @@ def get_dv01_risk(
             {
                 "report_date": report_date,
                 "accounting_class": normalized_class,
-                "total_face_value": total_face_value,
-                "total_market_value": total_market_value,
-                "face_weighted_modified_duration": face_weighted_duration,
+                "total_face_value": summary["total_face_value"],
+                "total_market_value": summary["total_market_value"],
+                "face_weighted_modified_duration": summary["face_weighted_modified_duration"],
                 "total_dv01": total_dv01,
                 "position_count": len(rows),
-                "shock_scenarios": [
-                    DV01ShockScenario.model_validate(
-                        promote_flat_payload(
-                            {
-                                "scenario_name": f"rate_{'up' if shock > 0 else 'down'}_{abs(shock)}bp",
-                                "shock_bp": shock,
-                                "estimated_pnl": -(total_dv01 * shock),
-                            },
-                            DV01ShockScenario,
-                        )
-                    )
-                    for shock in _expand_parallel_shocks(shocks)
-                ] if rows else [],
-                "tenor_buckets": _build_dv01_tenor_buckets(rows, total_abs_dv01=total_abs_dv01),
-                "top_bonds": _build_dv01_top_bonds(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
-                "top_issuers": _build_dv01_top_issuers(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
+                "shock_scenarios": _model_payloads(
+                    dv01_core.build_dv01_shock_scenario_payloads(total_dv01=total_dv01, shocks=shocks)
+                    if rows
+                    else [],
+                    DV01ShockScenario,
+                ),
+                "tenor_buckets": _model_payloads(
+                    dv01_core.build_dv01_tenor_bucket_payloads(rows, total_abs_dv01=total_abs_dv01),
+                    DV01TenorBucket,
+                ),
+                "top_bonds": _model_payloads(
+                    dv01_core.build_dv01_top_bond_payloads(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
+                    DV01TopBondItem,
+                ),
+                "top_issuers": _model_payloads(
+                    dv01_core.build_dv01_top_issuer_payloads(rows, total_abs_dv01=total_abs_dv01, top_n=top_n),
+                    DV01TopIssuerItem,
+                ),
                 "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": warnings,
             },
@@ -2026,10 +2031,8 @@ def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") ->
         report_date=report_date.isoformat(),
         accounting_class=normalized_class,
     )
-    total_face_value = sum((safe_decimal(row.get("face_value")) for row in rows), ZERO)
-    total_market_value = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
-    total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
-    total_abs_dv01 = _total_abs_dv01(rows)
+    summary = dv01_core.dv01_scope_summary(rows)
+    total_abs_dv01 = dv01_core.total_abs_dv01(rows)
     warnings = _dv01_scope_warnings(rows, normalized_class)
 
     payload = DV01ReconciliationResponse.model_validate(
@@ -2037,12 +2040,15 @@ def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") ->
             {
                 "report_date": report_date,
                 "accounting_class": normalized_class,
-                "total_face_value": total_face_value,
-                "total_market_value": total_market_value,
-                "face_weighted_modified_duration": _face_weighted_modified_duration(rows),
-                "total_dv01": total_dv01,
+                "total_face_value": summary["total_face_value"],
+                "total_market_value": summary["total_market_value"],
+                "face_weighted_modified_duration": summary["face_weighted_modified_duration"],
+                "total_dv01": summary["total_dv01"],
                 "position_count": len(rows),
-                "rows": _build_dv01_reconciliation_rows(rows, total_abs_dv01=total_abs_dv01),
+                "rows": _model_payloads(
+                    dv01_core.build_dv01_reconciliation_payloads(rows, total_abs_dv01=total_abs_dv01),
+                    DV01ReconciliationRow,
+                ),
                 "computed_at": datetime.now(UTC).isoformat(),
                 "warnings": warnings,
             },
@@ -2080,8 +2086,8 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
     current_all_rows = repo.fetch_bond_analytics_rows(report_date=current_date, accounting_class="all")
     previous_all_rows = repo.fetch_bond_analytics_rows(report_date=previous_date, accounting_class="all") if previous_date else []
 
-    current_summary = _dv01_scope_summary(current_rows)
-    previous_summary = _dv01_scope_summary(previous_rows)
+    current_summary = dv01_core.dv01_scope_summary(current_rows)
+    previous_summary = dv01_core.dv01_scope_summary(previous_rows)
     delta_dv01 = current_summary["total_dv01"] - previous_summary["total_dv01"]
     warnings: list[str] = []
     if not current_rows:
@@ -2252,7 +2258,7 @@ def get_dv01_action_plan(
         limit_rule_version = DV01_PAGE_THRESHOLD_RULE_VERSION
         limit_effective_date = None
     total_dv01 = sum((safe_decimal(row.get("dv01")) for row in rows), ZERO)
-    total_abs_dv01 = _total_abs_dv01(rows)
+    total_abs_dv01 = dv01_core.total_abs_dv01(rows)
     dv01_to_reduce = max(total_dv01 - hedge_target, ZERO)
     limit_usage = (total_dv01 / limit) if limit > ZERO else ZERO
     remaining_limit_dv01 = limit - total_dv01
@@ -2716,7 +2722,7 @@ def _build_dv01_action_scenarios(
 def _suggested_reduction_for_share(dv01: Decimal, total_abs_dv01: Decimal, dv01_to_reduce: Decimal) -> Decimal:
     if dv01_to_reduce <= ZERO or total_abs_dv01 <= ZERO:
         return ZERO
-    return dv01_to_reduce * _dv01_share(dv01, total_abs_dv01)
+    return dv01_to_reduce * dv01_core.dv01_share(dv01, total_abs_dv01)
 
 
 def _build_dv01_action_tenors(
@@ -2739,7 +2745,7 @@ def _build_dv01_action_tenors(
                     {
                         "tenor_bucket": tenor,
                         "dv01": dv01,
-                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
+                        "dv01_share": dv01_core.dv01_share(dv01, total_abs_dv01),
                         "suggested_reduction_dv01": _suggested_reduction_for_share(
                             dv01,
                             total_abs_dv01,
@@ -2774,7 +2780,7 @@ def _build_dv01_action_issuers(
                     {
                         "issuer_name": issuer,
                         "dv01": dv01,
-                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
+                        "dv01_share": dv01_core.dv01_share(dv01, total_abs_dv01),
                         "suggested_reduction_dv01": _suggested_reduction_for_share(
                             dv01,
                             total_abs_dv01,
@@ -2815,7 +2821,7 @@ def _build_dv01_action_bonds(
                     "market_value": safe_decimal(row.get("market_value")),
                     "modified_duration": safe_decimal(row.get("modified_duration")),
                     "dv01": safe_decimal(row.get("dv01")),
-                    "dv01_share": _dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
+                    "dv01_share": dv01_core.dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
                     "suggested_reduction_dv01": _suggested_reduction_for_share(
                         safe_decimal(row.get("dv01")),
                         total_abs_dv01,
@@ -2855,201 +2861,6 @@ def _dv01_scope_warnings(rows: list[dict[str, object]], accounting_class: str) -
             "AC/OCI/TPL 正式分类验收不能用 all 行替代。"
         )
     return warnings
-
-
-def _parse_dv01_shocks(value: str) -> list[Decimal]:
-    shocks: list[Decimal] = []
-    for raw in str(value or "1,10,25,50").split(","):
-        text = raw.strip()
-        if not text:
-            continue
-        shock = safe_decimal(text).copy_abs()
-        if shock == ZERO:
-            continue
-        if shock not in shocks:
-            shocks.append(shock)
-    return shocks or [Decimal("1"), Decimal("10"), Decimal("25"), Decimal("50")]
-
-
-def _expand_parallel_shocks(shocks: list[Decimal]) -> list[Decimal]:
-    expanded: list[Decimal] = []
-    for shock in shocks:
-        expanded.extend([shock, -shock])
-    return expanded
-
-
-def _face_weighted_modified_duration(rows: list[dict[str, object]]) -> Decimal:
-    total_face_value = sum((safe_decimal(row.get("face_value")) for row in rows), ZERO)
-    if total_face_value == ZERO:
-        return ZERO
-    return (
-        sum(
-            (
-                safe_decimal(row.get("face_value")) * safe_decimal(row.get("modified_duration"))
-                for row in rows
-            ),
-            ZERO,
-        )
-        / total_face_value
-    )
-
-
-def _total_abs_dv01(rows: list[dict[str, object]]) -> Decimal:
-    return sum((safe_decimal(row.get("dv01")).copy_abs() for row in rows), ZERO)
-
-
-def _dv01_share(dv01: Decimal, total_abs_dv01: Decimal) -> Decimal:
-    denominator = total_abs_dv01.copy_abs()
-    if denominator == ZERO:
-        return ZERO
-    return abs(dv01) / denominator
-
-
-def _build_dv01_tenor_buckets(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-) -> list[DV01TenorBucket]:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for row in rows:
-        tenor = str(row.get("tenor_bucket") or "UNKNOWN").strip() or "UNKNOWN"
-        grouped.setdefault(tenor, []).append(row)
-    result: list[DV01TenorBucket] = []
-    for tenor, bucket_rows in grouped.items():
-        face_value = sum((safe_decimal(row.get("face_value")) for row in bucket_rows), ZERO)
-        market_value = sum((safe_decimal(row.get("market_value")) for row in bucket_rows), ZERO)
-        dv01 = sum((safe_decimal(row.get("dv01")) for row in bucket_rows), ZERO)
-        result.append(
-            DV01TenorBucket.model_validate(
-                promote_flat_payload(
-                    {
-                        "tenor_bucket": tenor,
-                        "face_value": face_value,
-                        "market_value": market_value,
-                        "face_weighted_modified_duration": _face_weighted_modified_duration(bucket_rows),
-                        "dv01": dv01,
-                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
-                        "position_count": len(bucket_rows),
-                    },
-                    DV01TenorBucket,
-                )
-            )
-        )
-    return sorted(result, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), str(row.tenor_bucket)), reverse=True)
-
-
-def _build_dv01_top_bonds(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-    top_n: int,
-) -> list[DV01TopBondItem]:
-    ordered = sorted(
-        rows,
-        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
-        reverse=True,
-    )
-    return [
-        DV01TopBondItem.model_validate(
-            promote_flat_payload(
-                {
-                    "instrument_code": str(row.get("instrument_code") or ""),
-                    "instrument_name": _optional_text(row.get("instrument_name")),
-                    "issuer_name": _optional_text(row.get("issuer_name")),
-                    "rating": _optional_text(row.get("rating")),
-                    "tenor_bucket": str(row.get("tenor_bucket") or ""),
-                    "accounting_class": str(row.get("accounting_class") or ""),
-                    "face_value": safe_decimal(row.get("face_value")),
-                    "market_value": safe_decimal(row.get("market_value")),
-                    "modified_duration": safe_decimal(row.get("modified_duration")),
-                    "dv01": safe_decimal(row.get("dv01")),
-                    "dv01_share": _dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
-                },
-                DV01TopBondItem,
-            )
-        )
-        for row in ordered[:top_n]
-    ]
-
-
-def _build_dv01_top_issuers(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-    top_n: int,
-) -> list[DV01TopIssuerItem]:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for row in rows:
-        issuer = str(row.get("issuer_name") or "UNKNOWN").strip() or "UNKNOWN"
-        grouped.setdefault(issuer, []).append(row)
-    items: list[DV01TopIssuerItem] = []
-    for issuer, issuer_rows in grouped.items():
-        face_value = sum((safe_decimal(row.get("face_value")) for row in issuer_rows), ZERO)
-        market_value = sum((safe_decimal(row.get("market_value")) for row in issuer_rows), ZERO)
-        dv01 = sum((safe_decimal(row.get("dv01")) for row in issuer_rows), ZERO)
-        items.append(
-            DV01TopIssuerItem.model_validate(
-                promote_flat_payload(
-                    {
-                        "issuer_name": issuer,
-                        "face_value": face_value,
-                        "market_value": market_value,
-                        "face_weighted_modified_duration": _face_weighted_modified_duration(issuer_rows),
-                        "dv01": dv01,
-                        "dv01_share": _dv01_share(dv01, total_abs_dv01),
-                        "position_count": len(issuer_rows),
-                    },
-                    DV01TopIssuerItem,
-                )
-            )
-        )
-    return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.issuer_name), reverse=True)[:top_n]
-
-
-def _build_dv01_reconciliation_rows(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-) -> list[DV01ReconciliationRow]:
-    ordered = sorted(
-        rows,
-        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
-        reverse=True,
-    )
-    return [
-        DV01ReconciliationRow.model_validate(
-            promote_flat_payload(
-                {
-                    "report_date": row.get("report_date"),
-                    "instrument_code": str(row.get("instrument_code") or ""),
-                    "instrument_name": _optional_text(row.get("instrument_name")),
-                    "accounting_class": str(row.get("accounting_class") or ""),
-                    "issuer_name": _optional_text(row.get("issuer_name")),
-                    "rating": _optional_text(row.get("rating")),
-                    "tenor_bucket": str(row.get("tenor_bucket") or ""),
-                    "face_value": safe_decimal(row.get("face_value")),
-                    "market_value": safe_decimal(row.get("market_value")),
-                    "modified_duration": safe_decimal(row.get("modified_duration")),
-                    "dv01": safe_decimal(row.get("dv01")),
-                    "dv01_share": _dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
-                    "source_version": str(row.get("source_version") or ""),
-                    "rule_version": str(row.get("rule_version") or ""),
-                    "trace_id": str(row.get("trace_id") or ""),
-                },
-                DV01ReconciliationRow,
-            )
-        )
-        for row in ordered
-    ]
-
-
-def _dv01_scope_summary(rows: list[dict[str, object]]) -> dict[str, Decimal]:
-    return {
-        "total_face_value": sum((safe_decimal(row.get("face_value")) for row in rows), ZERO),
-        "total_market_value": sum((safe_decimal(row.get("market_value")) for row in rows), ZERO),
-        "face_weighted_modified_duration": _face_weighted_modified_duration(rows),
-        "total_dv01": sum((safe_decimal(row.get("dv01")) for row in rows), ZERO),
-    }
 
 
 def _row_key(row: dict[str, object]) -> str:

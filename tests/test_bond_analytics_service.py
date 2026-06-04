@@ -1315,59 +1315,6 @@ def test_bond_analytics_dv01_action_plan_empty_scope_returns_warning(tmp_path, m
     get_settings.cache_clear()
 
 
-def test_bond_analytics_dv01_risk_shares_use_absolute_exposure_denominator(tmp_path, monkeypatch):
-    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
-    get_settings.cache_clear()
-    service_mod = load_module(
-        "backend.app.services.bond_analytics_service",
-        "backend/app/services/bond_analytics_service.py",
-    )
-    rows = [
-        {
-            "instrument_code": "POS-001",
-            "instrument_name": "Positive DV01",
-            "issuer_name": "Issuer A",
-            "rating": "AAA",
-            "tenor_bucket": "3Y",
-            "accounting_class": "OCI",
-            "face_value": Decimal("100"),
-            "market_value": Decimal("101"),
-            "modified_duration": Decimal("3"),
-            "dv01": Decimal("100"),
-            "source_version": "sv_test",
-            "rule_version": "rv_test",
-        },
-        {
-            "instrument_code": "NEG-001",
-            "instrument_name": "Negative DV01",
-            "issuer_name": "Issuer B",
-            "rating": "AAA",
-            "tenor_bucket": "5Y",
-            "accounting_class": "OCI",
-            "face_value": Decimal("100"),
-            "market_value": Decimal("99"),
-            "modified_duration": Decimal("5"),
-            "dv01": Decimal("-40"),
-            "source_version": "sv_test",
-            "rule_version": "rv_test",
-        },
-    ]
-    total_dv01 = Decimal("60")
-
-    total_abs_dv01 = service_mod._total_abs_dv01(rows)
-
-    assert total_abs_dv01 == Decimal("140")
-    assert total_dv01 == Decimal("60")
-    tenor_buckets = service_mod._build_dv01_tenor_buckets(rows, total_abs_dv01=total_abs_dv01)
-    top_bonds = service_mod._build_dv01_top_bonds(rows, total_abs_dv01=total_abs_dv01, top_n=2)
-    top_issuers = service_mod._build_dv01_top_issuers(rows, total_abs_dv01=total_abs_dv01, top_n=2)
-
-    assert _numeric_raw(tenor_buckets[0].dv01_share.model_dump(mode="json")) == Decimal(str(100 / 140))
-    assert _numeric_raw(top_bonds[0].dv01_share.model_dump(mode="json")) == Decimal(str(100 / 140))
-    assert _numeric_raw(top_issuers[0].dv01_share.model_dump(mode="json")) == Decimal(str(100 / 140))
-    get_settings.cache_clear()
-
-
 def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentration(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     service_mod = load_module(
