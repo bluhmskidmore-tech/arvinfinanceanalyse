@@ -911,6 +911,39 @@ function formalContractMaterialSummary(props: {
   return "无缺契约补证材料";
 }
 
+function formalContractRemediationConclusion(props: {
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  materialChecklist: ReturnType<typeof buildFormalContractMaterialChecklist>;
+  readbackAction: string;
+}) {
+  if (props.isLoading) {
+    return "等待正式契约读取后再判断补证闭环";
+  }
+  if (props.isError) {
+    return "正式契约读取失败；先恢复读取，再复核正式契约";
+  }
+  if (props.contract?.formal_use_allowed === true) {
+    return "正式契约已放行；无需正式补证";
+  }
+  const releaseGate = registeredPendingReleaseGate(props.contract);
+  if (releaseGate) {
+    return "正式契约已登记待放行；补齐放行证据后再回读确认";
+  }
+  if (props.contract?.sample_status === "missing_contract") {
+    const reportMonth = props.contract.report_month || "本月";
+    if (props.materialChecklist.hasMissingArtifact) {
+      return `${reportMonth} 正式样本缺失；先补齐样本，再登记并刷新正式契约`;
+    }
+    if (props.materialChecklist.hasBlockedRegistrationPackage) {
+      return `${reportMonth} 登记包不完整；先补齐登记包，再登记正式契约`;
+    }
+    return `${reportMonth} 正式契约待登记；${shortFormalContractReadbackAction(props.readbackAction)}`;
+  }
+  return "正式契约未放行；重新读取正式契约并复核 formal_use_allowed";
+}
+
 function shortFormalContractReadbackAction(action: string) {
   if (action === "补齐样本并登记后刷新页面或重新查询正式契约接口") {
     return "补齐样本并登记后刷新正式契约";
@@ -1218,6 +1251,13 @@ function LedgerFunctionalAuditStrip(props: {
     isError: props.isFormalContractError,
     materialChecklist,
   });
+  const formalConclusion = formalContractRemediationConclusion({
+    contract: props.formalIndicatorSourceContract,
+    isLoading: props.isFormalContractLoading,
+    isError: props.isFormalContractError,
+    materialChecklist,
+    readbackAction,
+  });
   const candidateEvidencePath = candidateExplainabilityClosed
     ? "候选链路已闭合，无需补证"
     : props.explainabilityModel.evidenceEntryPoint;
@@ -1339,6 +1379,10 @@ function LedgerFunctionalAuditStrip(props: {
             >
               {formalEvidencePath}
             </button>
+          </div>
+          <div>
+            <span>正式补证结论</span>
+            <strong>{formalConclusion}</strong>
           </div>
           <div>
             <span>材料完整性</span>
