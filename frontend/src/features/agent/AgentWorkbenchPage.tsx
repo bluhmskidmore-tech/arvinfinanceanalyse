@@ -3132,6 +3132,7 @@ export function EmbeddedAgentCopilot({
                   <button
                     type="button"
                     className="agent-result-toolbar__button"
+                    aria-label={`${copyLabel}：${turn.question}`}
                     onClick={() => void copyAgentAnswer(turn)}
                     disabled={!turnResult.answer.trim()}
                   >

@@ -2790,7 +2790,9 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     await user.type(input, followUpDraft);
     input.setSelectionRange(3, 3);
-    await user.click(screen.getByRole("button", { name: "复制回答" }));
+    const copyButton = screen.getByRole("button", { name: /复制回答/ });
+    expect(copyButton).toHaveAccessibleName(/copy this answer/);
+    await user.click(copyButton);
 
     expect(writeText).toHaveBeenCalledWith("可复制的助手回答，只包含结论文本。");
     expect(await screen.findByText("已复制")).toBeInTheDocument();
@@ -2852,10 +2854,14 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("复制反馈会自动恢复。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "复制回答" }));
-    expect(await screen.findByRole("button", { name: "已复制" })).toBeInTheDocument();
+    const copyButton = screen.getByRole("button", { name: /复制回答/ });
+    expect(copyButton).toHaveAccessibleName(/copy feedback reset check/);
+    await user.click(copyButton);
+    expect(await screen.findByRole("button", { name: /已复制/ })).toHaveAccessibleName(/copy feedback reset check/);
 
-    expect(await screen.findByRole("button", { name: "复制回答" }, { timeout: 2500 })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /复制回答/ }, { timeout: 2500 })).toHaveAccessibleName(
+      /copy feedback reset check/,
+    );
   });
 
   it("shows copy failure feedback without interrupting the chat", async () => {
@@ -2894,10 +2900,12 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("这段回答暂时复制不了。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "复制回答" }));
+    const copyButton = screen.getByRole("button", { name: /复制回答/ });
+    expect(copyButton).toHaveAccessibleName(/copy failure check/);
+    await user.click(copyButton);
 
     expect(writeText).toHaveBeenCalledWith("这段回答暂时复制不了。");
-    expect(await screen.findByRole("button", { name: "复制失败" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /复制失败/ })).toHaveAccessibleName(/copy failure check/);
     expect(screen.getByText("这段回答暂时复制不了。")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     expect(screen.getByText("复制失败 · 可手动选择回答文本")).toBeInTheDocument();
@@ -2938,9 +2946,11 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("这段回答需要手动复制。")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "复制回答" }));
+    const copyButton = screen.getByRole("button", { name: /复制回答/ });
+    expect(copyButton).toHaveAccessibleName(/copy unavailable check/);
+    await user.click(copyButton);
 
-    expect(await screen.findByRole("button", { name: "复制失败" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /复制失败/ })).toHaveAccessibleName(/copy unavailable check/);
     const copyStatus = await screen.findByRole("status", { name: "复制状态" });
     expect(copyStatus).toHaveTextContent("复制失败，请手动选择回答文本。");
     expect(copyStatus).toBeVisible();
@@ -3090,9 +3100,13 @@ describe("AgentWorkbenchPage", () => {
       fireEvent.click(screen.getByText("依据与运行信息 · 2 项"));
       expect(resultDrawer).toHaveAttribute("open");
 
-      await user.click(screen.getByRole("button", { name: "复制回答" }));
-      screen.getByRole("button", { name: "已复制" }).focus();
-      expect(document.activeElement).toBe(screen.getByRole("button", { name: "已复制" }));
+      const copyButton = screen.getByRole("button", { name: /复制回答/ });
+      expect(copyButton).toHaveAccessibleName(/duration risk follow-up check/);
+      await user.click(copyButton);
+      const copiedButton = screen.getByRole("button", { name: /已复制/ });
+      expect(copiedButton).toHaveAccessibleName(/duration risk follow-up check/);
+      copiedButton.focus();
+      expect(document.activeElement).toBe(copiedButton);
       const moreSuggestedActions = screen.getByText("更多建议 · 1 项").closest("details");
       expect(moreSuggestedActions).not.toBeNull();
       if (!moreSuggestedActions) {
