@@ -572,6 +572,12 @@ export default function RiskTensorPage() {
   const [combinedQualityRequestCopyStatus, setCombinedQualityRequestCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [dv01MissingControlsCopyStatus, setDv01MissingControlsCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const [dv01PendingInputsCopyStatus, setDv01PendingInputsCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
   const [dv01ControlActionsCopyStatus, setDv01ControlActionsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -581,6 +587,7 @@ export default function RiskTensorPage() {
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [priorPeriodCopyStatus, setPriorPeriodCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -752,6 +759,7 @@ export default function RiskTensorPage() {
   const priorPeriodMetrics = priorPeriodChange?.metrics ?? [];
   const priorPeriodSummary =
     priorPeriodChange?.summary ?? `后端未返回上期变化载荷；trace_id ${tensorMeta?.trace_id ?? "未提供"}。`;
+  const priorPeriodDiagnosticsStatus = priorPeriodChange?.status ?? "missing";
   const actionTileDetail =
     firstRequiredAction?.title ??
     result?.warnings[0] ??
@@ -842,6 +850,8 @@ export default function RiskTensorPage() {
     setQualityEvidenceRequestCopyStatus("idle");
     setPayloadQualityRequestCopyStatus("idle");
     setCombinedQualityRequestCopyStatus("idle");
+    setDv01MissingControlsCopyStatus("idle");
+    setDv01PendingInputsCopyStatus("idle");
     setDv01ControlActionsCopyStatus("idle");
     setQualityWarningsCopyStatus("idle");
   }, [qualityStateKey]);
@@ -929,6 +939,39 @@ export default function RiskTensorPage() {
     "",
     qualityEvidenceRequestCopyText,
   ].join("\n");
+  const dv01MissingControlsCopyText = [
+    "风险张量 DV01 控制载荷缺失排查信息",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `监管口径 DV01 ${result ? regulatoryDv01DisplayWithUnit(result.regulatory_dv01) : "未提供"}`,
+    "dv01_controls 未提供",
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    "页面不会在前端补算 DV01 控制载荷",
+    "请核对正式风险张量主读载荷、DV01 限额控制配置和 result_meta 证据",
+  ].join("\n");
+  const dv01PendingInputsCopyText = [
+    "风险张量 DV01 控制输入排查信息",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `监管口径 DV01 ${result ? regulatoryDv01DisplayWithUnit(result.regulatory_dv01) : "未提供"}`,
+    `limit_status ${result?.dv01_controls ? dv01ControlStatusLabel(result.dv01_controls.limit_status) : "未提供"}`,
+    `approved_limit_dv01 ${result?.dv01_controls ? yuanAsWanWithUnit(result.dv01_controls.approved_limit_dv01 ?? undefined) : "未提供"}`,
+    `limit_usage_ratio ${result?.dv01_controls ? ratioPercentDisplay(result.dv01_controls.limit_usage_ratio) : "未提供"}`,
+    `volatility_status ${result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"}`,
+    `daily_rate_volatility_bp ${result?.dv01_controls ? displayStr(result.dv01_controls.daily_rate_volatility_bp) : "未提供"}`,
+    `stress_scenarios_count ${result?.dv01_controls?.stress_scenarios.length ?? 0}`,
+    `control_actions_count ${result?.dv01_controls?.control_actions.length ?? 0}`,
+    `action_hint ${result?.dv01_controls?.action_hint ?? "未提供"}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    "页面不会在前端补算 DV01 控制输入",
+    "请补充正式限额源、利率波动输入或控制动作明细后重新出具",
+  ].join("\n");
   const dv01ControlActionsCopyText = [
     "风险张量 DV01 控制处置清单",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -1004,6 +1047,18 @@ export default function RiskTensorPage() {
       ? "已复制完整补证包"
       : combinedQualityRequestCopyStatus === "failed"
         ? "复制失败，请手动选择完整补证包"
+        : "";
+  const dv01MissingControlsCopyMessage =
+    dv01MissingControlsCopyStatus === "copied"
+      ? "已复制控制排查信息"
+      : dv01MissingControlsCopyStatus === "failed"
+        ? "复制失败，请手动选择控制排查信息"
+        : "";
+  const dv01PendingInputsCopyMessage =
+    dv01PendingInputsCopyStatus === "copied"
+      ? "已复制输入排查信息"
+      : dv01PendingInputsCopyStatus === "failed"
+        ? "复制失败，请手动选择输入排查信息"
         : "";
   const dv01ControlActionsCopyMessage =
     dv01ControlActionsCopyStatus === "copied"
@@ -1099,6 +1154,28 @@ export default function RiskTensorPage() {
       : emptyPositionCopyStatus === "failed"
         ? "复制失败，请手动选择空持仓排查信息"
         : "";
+  const priorPeriodCopyText = [
+    "风险张量较上期变化排查信息",
+    `报告日 ${result?.report_date ?? (reportDate || "未选择")}`,
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `状态 ${priorPeriodDiagnosticsStatus}`,
+    `对比日期 ${priorPeriodChange?.comparison_report_date ?? "未提供"}`,
+    `摘要 ${priorPeriodSummary}`,
+    `metrics_count ${priorPeriodMetrics.length}`,
+    `quality_flag ${result?.quality_flag ?? tensorMeta?.quality_flag ?? "未提供"}`,
+    `basis ${tensorMeta?.basis ?? "未提供"}`,
+    `cache_version ${tensorMeta?.cache_version ?? "未提供"}`,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    "页面不会在前端补算较上期变化指标",
+    "请核对正式风险张量主读载荷和上期报告日物化结果",
+  ].join("\n");
+  const priorPeriodCopyMessage =
+    priorPeriodCopyStatus === "copied"
+      ? "已复制上期排查信息"
+      : priorPeriodCopyStatus === "failed"
+        ? "复制失败，请手动选择上期排查信息"
+        : "";
 
   useEffect(() => {
     setTensorErrorCopyStatus("idle");
@@ -1141,6 +1218,21 @@ export default function RiskTensorPage() {
     tensorMeta?.evidence_rows,
     metadataTablesUsed,
     metadataFiltersApplied,
+  ]);
+
+  useEffect(() => {
+    setPriorPeriodCopyStatus("idle");
+  }, [
+    result?.report_date,
+    priorPeriodDiagnosticsStatus,
+    priorPeriodChange?.comparison_report_date,
+    priorPeriodSummary,
+    priorPeriodMetrics.length,
+    tensorMeta?.trace_id,
+    tensorMeta?.basis,
+    tensorMeta?.cache_version,
+    tensorMeta?.source_version,
+    tensorMeta?.rule_version,
   ]);
 
   const handlePrimaryTenorDrill = () => {
@@ -1243,6 +1335,28 @@ export default function RiskTensorPage() {
       .writeText(dv01ControlActionsCopyText)
       .then(() => setDv01ControlActionsCopyStatus("copied"))
       .catch(() => setDv01ControlActionsCopyStatus("failed"));
+  };
+
+  const handleCopyDv01MissingControls = () => {
+    if (!navigator.clipboard?.writeText) {
+      setDv01MissingControlsCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(dv01MissingControlsCopyText)
+      .then(() => setDv01MissingControlsCopyStatus("copied"))
+      .catch(() => setDv01MissingControlsCopyStatus("failed"));
+  };
+
+  const handleCopyDv01PendingInputs = () => {
+    if (!navigator.clipboard?.writeText) {
+      setDv01PendingInputsCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(dv01PendingInputsCopyText)
+      .then(() => setDv01PendingInputsCopyStatus("copied"))
+      .catch(() => setDv01PendingInputsCopyStatus("failed"));
   };
 
   const handleCopyQualityWarnings = () => {
@@ -1350,6 +1464,17 @@ export default function RiskTensorPage() {
       .writeText(emptyPositionCopyText)
       .then(() => setEmptyPositionCopyStatus("copied"))
       .catch(() => setEmptyPositionCopyStatus("failed"));
+  };
+
+  const handleCopyPriorPeriodDiagnostics = () => {
+    if (!navigator.clipboard?.writeText) {
+      setPriorPeriodCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(priorPeriodCopyText)
+      .then(() => setPriorPeriodCopyStatus("copied"))
+      .catch(() => setPriorPeriodCopyStatus("failed"));
   };
 
   const handleKrdChartClick = (params: KrdChartClickParams) => {
@@ -1870,6 +1995,27 @@ export default function RiskTensorPage() {
                     >
                       重试主读面
                     </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-brief__link-button"
+                      onClick={handleCopyDv01MissingControls}
+                    >
+                      复制控制排查信息
+                    </button>
+                    {dv01MissingControlsCopyMessage ? (
+                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                        {dv01MissingControlsCopyMessage}
+                      </small>
+                    ) : null}
+                    {dv01MissingControlsCopyStatus === "failed" ? (
+                      <pre
+                        className="risk-tensor-quality-detail__manual-copy"
+                        data-testid="risk-tensor-dv01-missing-controls-manual-copy"
+                        tabIndex={0}
+                      >
+                        {dv01MissingControlsCopyText}
+                      </pre>
+                    ) : null}
                   </article>
                 )}
                 <button
@@ -2198,8 +2344,29 @@ export default function RiskTensorPage() {
                     >
                       重试主读面
                     </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleCopyPriorPeriodDiagnostics}
+                    >
+                      复制上期排查信息
+                    </button>
                   </div>
                 )}
+                {priorPeriodCopyMessage ? (
+                  <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                    {priorPeriodCopyMessage}
+                  </small>
+                ) : null}
+                {priorPeriodCopyStatus === "failed" ? (
+                  <pre
+                    className="risk-tensor-quality-detail__manual-copy"
+                    data-testid="risk-tensor-prior-period-manual-copy"
+                    tabIndex={0}
+                  >
+                    {priorPeriodCopyText}
+                  </pre>
+                ) : null}
               </section>
             ) : null}
 
@@ -2300,6 +2467,27 @@ export default function RiskTensorPage() {
                     >
                       重试主读面
                     </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleCopyDv01PendingInputs}
+                    >
+                      复制输入排查信息
+                    </button>
+                    {dv01PendingInputsCopyMessage ? (
+                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                        {dv01PendingInputsCopyMessage}
+                      </small>
+                    ) : null}
+                    {dv01PendingInputsCopyStatus === "failed" ? (
+                      <pre
+                        className="risk-tensor-quality-detail__manual-copy"
+                        data-testid="risk-tensor-dv01-pending-inputs-manual-copy"
+                        tabIndex={0}
+                      >
+                        {dv01PendingInputsCopyText}
+                      </pre>
+                    ) : null}
                   </div>
                 ) : null}
 
