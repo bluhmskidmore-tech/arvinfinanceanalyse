@@ -5800,7 +5800,7 @@ describe("RiskTensorPage", () => {
     }
   });
 
-  it("ignores stale DV01 stress scenario copy results after scenarios refresh", async () => {
+  it("ignores stale DV01 stress scenario copy results after control evidence changes", async () => {
     const user = userEvent.setup();
     let resolveCopy: (() => void) | undefined;
     const writeText = vi.fn(
@@ -5835,26 +5835,30 @@ describe("RiskTensorPage", () => {
           result: {
             ...tensorResult("2026-02-28"),
             dv01_controls: dv01ControlsFixture({
-              stress_scenarios: [
-                {
-                  scenario_key: "parallel_up_10bp",
-                  label: "+10bp",
-                  shock_bp: {
-                    raw: 10,
-                    unit: "bp" as const,
-                    display: "+10 bp",
-                    precision: 0,
-                    sign_aware: true,
-                  },
-                  estimated_pnl_impact: {
-                    raw: -1200,
-                    unit: "yuan" as const,
-                    display: "-1,200.00",
-                    precision: 2,
-                    sign_aware: true,
-                  },
-                },
-              ],
+              limit_status: "ok",
+              approved_limit_dv01: {
+                raw: 100,
+                unit: "dv01" as const,
+                display: "100.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              limit_usage_ratio: {
+                raw: 0.45,
+                unit: "ratio" as const,
+                display: "45.0%",
+                precision: 1,
+                sign_aware: false,
+              },
+              volatility_status: "ok",
+              daily_rate_volatility_bp: {
+                raw: 5,
+                unit: "bp" as const,
+                display: "5.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              stress_scenarios: [],
             }),
           } as RiskTensorPayload,
         });
@@ -5870,7 +5874,9 @@ describe("RiskTensorPage", () => {
       await user.click(within(stressEmpty).getByRole("button", { name: "重试主读面" }));
 
       await waitFor(() => {
-        expect(screen.queryByTestId("risk-tensor-dv01-stress-empty")).not.toBeInTheDocument();
+        expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+          "tr_tensor_dv01_stress_stale_copy_refreshed",
+        );
       });
 
       await act(async () => {
@@ -5878,7 +5884,7 @@ describe("RiskTensorPage", () => {
       });
 
       const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
-      expect(stressScenarios).toHaveTextContent("+10bp");
+      expect(stressScenarios).toHaveTextContent("暂无压力情景");
       expect(stressScenarios).not.toHaveTextContent("已复制压力情景排查信息");
       expect(screen.queryByTestId("risk-tensor-dv01-stress-manual-copy")).not.toBeInTheDocument();
     } finally {
@@ -7084,6 +7090,70 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("ignores stale empty report-date copy results after date governance evidence changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_empty_stale_copy_initial"),
+        result: { report_dates: [] },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_empty_stale_copy_refreshed"),
+        result: { report_dates: [] },
+      });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    try {
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const emptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
+      await user.click(within(emptyState).getByRole("button", { name: "复制空日期排查信息" }));
+      await user.click(within(emptyState).getByRole("button", { name: "重试日期治理" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-dates-empty-state")).toHaveTextContent(
+          "trace_id tr_tensor_dates_empty_stale_copy_refreshed",
+        );
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const refreshedEmptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
+      expect(refreshedEmptyState).not.toHaveTextContent("已复制空日期排查信息");
+      expect(screen.queryByTestId("risk-tensor-dates-empty-manual-copy")).not.toBeInTheDocument();
+      expect(getRiskTensor).not.toHaveBeenCalled();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("lets users jump from empty report-date context to result metadata", async () => {
     const user = userEvent.setup();
     const scrollTargets: Element[] = [];
@@ -7310,6 +7380,99 @@ describe("RiskTensorPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不会在前端补算正式指标"));
       expect(emptyState).toHaveTextContent("已复制空持仓排查信息");
       expect(screen.queryByTestId("risk-tensor-brief")).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("ignores stale no-position copy results after empty evidence changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_empty_position_stale_copy_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: {
+          ...buildMeta("risk.tensor", "tr_tensor_empty_position_stale_copy_initial"),
+          quality_flag: "missing" as const,
+          evidence_rows: 0,
+          tables_used: ["risk_tensor_daily"],
+          filters_applied: {
+            report_date: "2026-02-28",
+            desk: "FI",
+          },
+        },
+        result: {
+          ...tensorResult("2026-02-28"),
+          bond_count: 0,
+          quality_flag: "missing",
+          warnings: [],
+        } as RiskTensorPayload,
+      })
+      .mockResolvedValueOnce({
+        result_meta: {
+          ...buildMeta("risk.tensor", "tr_tensor_empty_position_stale_copy_refreshed"),
+          quality_flag: "missing" as const,
+          evidence_rows: 0,
+          tables_used: ["risk_tensor_daily", "bond_position_snapshot"],
+          filters_applied: {
+            report_date: "2026-02-28",
+            desk: "FI",
+            refresh: "manual",
+          },
+        },
+        result: {
+          ...tensorResult("2026-02-28"),
+          bond_count: 0,
+          quality_flag: "missing",
+          warnings: [],
+        } as RiskTensorPayload,
+      });
+
+    try {
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const emptyState = await screen.findByTestId("risk-tensor-empty-state");
+      await user.click(within(emptyState).getByRole("button", { name: "复制空持仓排查信息" }));
+      await user.click(within(emptyState).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+          "tr_tensor_empty_position_stale_copy_refreshed",
+        );
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const refreshedEmptyState = await screen.findByTestId("risk-tensor-empty-state");
+      expect(refreshedEmptyState).toHaveTextContent("tables_used risk_tensor_daily / bond_position_snapshot");
+      expect(refreshedEmptyState).not.toHaveTextContent("已复制空持仓排查信息");
+      expect(screen.queryByTestId("risk-tensor-empty-position-manual-copy")).not.toBeInTheDocument();
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);

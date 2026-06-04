@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -605,9 +605,11 @@ export default function RiskTensorPage() {
   const [dv01PendingInputsCopyStatus, setDv01PendingInputsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [dv01PendingInputsCopiedStateKey, setDv01PendingInputsCopiedStateKey] = useState("");
   const [dv01StressScenariosCopyStatus, setDv01StressScenariosCopyStatus] = useState<
     "idle" | "copied" | "failed"
   >("idle");
+  const [dv01StressScenariosCopiedStateKey, setDv01StressScenariosCopiedStateKey] = useState("");
   const [dv01ControlActionsCopyStatus, setDv01ControlActionsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -617,7 +619,10 @@ export default function RiskTensorPage() {
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [datesEmptyCopiedStateKey, setDatesEmptyCopiedStateKey] = useState("");
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [emptyPositionCopiedStateKey, setEmptyPositionCopiedStateKey] = useState("");
+  const emptyPositionCopyStateKeyRef = useRef("");
   const [priorPeriodCopyStatus, setPriorPeriodCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [priorPeriodCopiedStateKey, setPriorPeriodCopiedStateKey] = useState("");
 
@@ -943,7 +948,9 @@ export default function RiskTensorPage() {
     setDv01MissingControlsCopyStatus("idle");
     setDv01MissingControlsCopiedStateKey("");
     setDv01PendingInputsCopyStatus("idle");
+    setDv01PendingInputsCopiedStateKey("");
     setDv01StressScenariosCopyStatus("idle");
+    setDv01StressScenariosCopiedStateKey("");
     setDv01ControlActionsCopyStatus("idle");
     setDv01ControlActionsCopiedStateKey("");
   }, [qualityStateKey, dv01ControlsStateKey]);
@@ -1180,16 +1187,20 @@ export default function RiskTensorPage() {
       : dv01MissingControlsCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择控制排查信息"
         : "";
+  const dv01PendingInputsCopyStatusForCurrentState =
+    dv01PendingInputsCopiedStateKey === dv01ControlsStateKey ? dv01PendingInputsCopyStatus : "idle";
   const dv01PendingInputsCopyMessage =
-    dv01PendingInputsCopyStatus === "copied"
+    dv01PendingInputsCopyStatusForCurrentState === "copied"
       ? "已复制输入排查信息"
-      : dv01PendingInputsCopyStatus === "failed"
+      : dv01PendingInputsCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择输入排查信息"
         : "";
+  const dv01StressScenariosCopyStatusForCurrentState =
+    dv01StressScenariosCopiedStateKey === dv01ControlsStateKey ? dv01StressScenariosCopyStatus : "idle";
   const dv01StressScenariosCopyMessage =
-    dv01StressScenariosCopyStatus === "copied"
+    dv01StressScenariosCopyStatusForCurrentState === "copied"
       ? "已复制压力情景排查信息"
-      : dv01StressScenariosCopyStatus === "failed"
+      : dv01StressScenariosCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择压力情景排查信息"
         : "";
   const dv01ControlActionsCopyStatusForCurrentState =
@@ -1255,6 +1266,11 @@ export default function RiskTensorPage() {
       : datesErrorCopyStatus === "failed"
         ? "复制失败，请手动选择日期排查信息"
         : "";
+  const datesEmptyCopyStateKey = [
+    `trace_id:${datesEmptyTraceId}`,
+    `report_date_param:${datesErrorReportDate}`,
+    `available_count:${datesQuery.data?.result.report_dates.length ?? "missing"}`,
+  ].join("|");
   const datesEmptyCopyText = [
     "风险张量报告日列表为空排查信息",
     `trace_id ${datesEmptyTraceId}`,
@@ -1264,12 +1280,24 @@ export default function RiskTensorPage() {
     "主读面未读取",
     "请核对风险张量报告日物化任务和日期治理结果",
   ].join("\n");
+  const datesEmptyCopyStatusForCurrentState =
+    datesEmptyCopiedStateKey === datesEmptyCopyStateKey ? datesEmptyCopyStatus : "idle";
   const datesEmptyCopyMessage =
-    datesEmptyCopyStatus === "copied"
+    datesEmptyCopyStatusForCurrentState === "copied"
       ? "已复制空日期排查信息"
-      : datesEmptyCopyStatus === "failed"
+      : datesEmptyCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择空日期排查信息"
         : "";
+  const emptyPositionCopyStateKey = [
+    `report_date:${result?.report_date ?? (reportDate || "missing")}`,
+    `bond_count:${result?.bond_count ?? "missing"}`,
+    `quality_flag:${result?.quality_flag ?? tensorMeta?.quality_flag ?? "missing"}`,
+    `trace_id:${tensorMeta?.trace_id ?? "missing"}`,
+    `meta_quality_flag:${tensorMeta?.quality_flag ?? "missing"}`,
+    `evidence_rows:${typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "missing"}`,
+    `tables_used:${metadataTablesUsed || "missing"}`,
+    `filters_applied:${metadataFiltersApplied || "missing"}`,
+  ].join("|");
   const emptyPositionCopyText = [
     "风险张量空持仓排查信息",
     `报告日 ${result?.report_date ?? (reportDate || "未选择")}`,
@@ -1282,10 +1310,12 @@ export default function RiskTensorPage() {
     "页面不会在前端补算正式指标",
     "请核对持仓快照、风险张量物化任务和元数据证据",
   ].join("\n");
+  const emptyPositionCopyStatusForCurrentState =
+    emptyPositionCopiedStateKey === emptyPositionCopyStateKey ? emptyPositionCopyStatus : "idle";
   const emptyPositionCopyMessage =
-    emptyPositionCopyStatus === "copied"
+    emptyPositionCopyStatusForCurrentState === "copied"
       ? "已复制空持仓排查信息"
-      : emptyPositionCopyStatus === "failed"
+      : emptyPositionCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择空持仓排查信息"
         : "";
   const priorPeriodCopyText = [
@@ -1349,20 +1379,14 @@ export default function RiskTensorPage() {
 
   useEffect(() => {
     setDatesEmptyCopyStatus("idle");
-  }, [datesEmptyTraceId, datesErrorReportDate]);
+    setDatesEmptyCopiedStateKey("");
+  }, [datesEmptyCopyStateKey]);
 
   useEffect(() => {
+    emptyPositionCopyStateKeyRef.current = emptyPositionCopyStateKey;
     setEmptyPositionCopyStatus("idle");
-  }, [
-    result?.report_date,
-    result?.bond_count,
-    result?.quality_flag,
-    tensorMeta?.trace_id,
-    tensorMeta?.quality_flag,
-    tensorMeta?.evidence_rows,
-    metadataTablesUsed,
-    metadataFiltersApplied,
-  ]);
+    setEmptyPositionCopiedStateKey("");
+  }, [emptyPositionCopyStateKey]);
 
   useEffect(() => {
     setPriorPeriodCopyStatus("idle");
@@ -1545,25 +1569,41 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyDv01PendingInputs = () => {
+    const copiedStateKey = dv01ControlsStateKey;
     if (!navigator.clipboard?.writeText) {
+      setDv01PendingInputsCopiedStateKey(copiedStateKey);
       setDv01PendingInputsCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(dv01PendingInputsCopyText)
-      .then(() => setDv01PendingInputsCopyStatus("copied"))
-      .catch(() => setDv01PendingInputsCopyStatus("failed"));
+      .then(() => {
+        setDv01PendingInputsCopiedStateKey(copiedStateKey);
+        setDv01PendingInputsCopyStatus("copied");
+      })
+      .catch(() => {
+        setDv01PendingInputsCopiedStateKey(copiedStateKey);
+        setDv01PendingInputsCopyStatus("failed");
+      });
   };
 
   const handleCopyDv01StressScenarios = () => {
+    const copiedStateKey = dv01ControlsStateKey;
     if (!navigator.clipboard?.writeText) {
+      setDv01StressScenariosCopiedStateKey(copiedStateKey);
       setDv01StressScenariosCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(dv01StressScenariosCopyText)
-      .then(() => setDv01StressScenariosCopyStatus("copied"))
-      .catch(() => setDv01StressScenariosCopyStatus("failed"));
+      .then(() => {
+        setDv01StressScenariosCopiedStateKey(copiedStateKey);
+        setDv01StressScenariosCopyStatus("copied");
+      })
+      .catch(() => {
+        setDv01StressScenariosCopiedStateKey(copiedStateKey);
+        setDv01StressScenariosCopyStatus("failed");
+      });
   };
 
   const handleCopyQualityWarnings = () => {
@@ -1629,6 +1669,7 @@ export default function RiskTensorPage() {
     setBlockedDateCopyStatus("idle");
     setDatesErrorCopyStatus("idle");
     setDatesEmptyCopyStatus("idle");
+    setDatesEmptyCopiedStateKey("");
   };
 
   const handleRetryDatesGovernance = () => {
@@ -1652,25 +1693,48 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyDatesEmpty = () => {
+    const copiedStateKey = datesEmptyCopyStateKey;
     if (!navigator.clipboard?.writeText) {
+      setDatesEmptyCopiedStateKey(copiedStateKey);
       setDatesEmptyCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(datesEmptyCopyText)
-      .then(() => setDatesEmptyCopyStatus("copied"))
-      .catch(() => setDatesEmptyCopyStatus("failed"));
+      .then(() => {
+        setDatesEmptyCopiedStateKey(copiedStateKey);
+        setDatesEmptyCopyStatus("copied");
+      })
+      .catch(() => {
+        setDatesEmptyCopiedStateKey(copiedStateKey);
+        setDatesEmptyCopyStatus("failed");
+      });
   };
 
   const handleCopyEmptyPosition = () => {
+    const copiedStateKey = emptyPositionCopyStateKey;
+    emptyPositionCopyStateKeyRef.current = copiedStateKey;
     if (!navigator.clipboard?.writeText) {
+      setEmptyPositionCopiedStateKey(copiedStateKey);
       setEmptyPositionCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(emptyPositionCopyText)
-      .then(() => setEmptyPositionCopyStatus("copied"))
-      .catch(() => setEmptyPositionCopyStatus("failed"));
+      .then(() => {
+        if (emptyPositionCopyStateKeyRef.current !== copiedStateKey) {
+          return;
+        }
+        setEmptyPositionCopiedStateKey(copiedStateKey);
+        setEmptyPositionCopyStatus("copied");
+      })
+      .catch(() => {
+        if (emptyPositionCopyStateKeyRef.current !== copiedStateKey) {
+          return;
+        }
+        setEmptyPositionCopiedStateKey(copiedStateKey);
+        setEmptyPositionCopyStatus("failed");
+      });
   };
 
   const handleCopyPriorPeriodDiagnostics = () => {
@@ -2101,7 +2165,7 @@ export default function RiskTensorPage() {
                 {datesEmptyCopyMessage}
               </small>
             ) : null}
-            {datesEmptyCopyStatus === "failed" ? (
+            {datesEmptyCopyStatusForCurrentState === "failed" ? (
               <pre
                 className="risk-tensor-quality-detail__manual-copy"
                 data-testid="risk-tensor-dates-empty-manual-copy"
@@ -2147,7 +2211,7 @@ export default function RiskTensorPage() {
                 {emptyPositionCopyMessage}
               </small>
             ) : null}
-            {emptyPositionCopyStatus === "failed" ? (
+            {emptyPositionCopyStatusForCurrentState === "failed" ? (
               <pre
                 className="risk-tensor-quality-detail__manual-copy"
                 data-testid="risk-tensor-empty-position-manual-copy"
@@ -2751,7 +2815,7 @@ export default function RiskTensorPage() {
                           {dv01StressScenariosCopyMessage}
                         </small>
                       ) : null}
-                      {dv01StressScenariosCopyStatus === "failed" ? (
+                      {dv01StressScenariosCopyStatusForCurrentState === "failed" ? (
                         <pre
                           className="risk-tensor-quality-detail__manual-copy"
                           data-testid="risk-tensor-dv01-stress-manual-copy"
@@ -2797,7 +2861,7 @@ export default function RiskTensorPage() {
                         {dv01PendingInputsCopyMessage}
                       </small>
                     ) : null}
-                    {dv01PendingInputsCopyStatus === "failed" ? (
+                    {dv01PendingInputsCopyStatusForCurrentState === "failed" ? (
                       <pre
                         className="risk-tensor-quality-detail__manual-copy"
                         data-testid="risk-tensor-dv01-pending-inputs-manual-copy"
