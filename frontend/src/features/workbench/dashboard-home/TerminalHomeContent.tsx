@@ -397,7 +397,7 @@ function DistributionPanel({
 
 function TerminalKpiStrip({ view }: { view: DashboardHomeView }) {
   return (
-    <section data-testid="dashboard-home-hero" className={styles.dhTerminalHero}>
+    <section data-testid="dashboard-home-terminal-kpis" className={styles.dhTerminalHero}>
       {view.terminalKpis.map((kpi) => (
         <article
           key={kpi.id}
