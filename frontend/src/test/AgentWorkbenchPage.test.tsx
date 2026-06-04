@@ -2000,7 +2000,12 @@ describe("AgentWorkbenchPage", () => {
     openGitNexusTools();
     await user.click(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON }));
 
-    expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue("请给我看 GitNexus processes");
+    const prompt = "请给我看 GitNexus processes";
+    const input = screen.getByPlaceholderText(AGENT_PLACEHOLDER) as HTMLTextAreaElement;
+    expect(input).toHaveValue(prompt);
+    expect(input).toHaveFocus();
+    expect(input).toHaveProperty("selectionStart", prompt.length);
+    expect(input).toHaveProperty("selectionEnd", prompt.length);
     expect(screen.getByText("已填入快捷问题 · Enter 发送")).toBeInTheDocument();
   });
 
@@ -2043,9 +2048,12 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(quickExampleButton);
 
-    const input = screen.getByLabelText("agent-question-input");
-    expect(input).toHaveValue("解释当前页面的主要结论和风险点");
+    const prompt = "解释当前页面的主要结论和风险点";
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    expect(input).toHaveValue(prompt);
     expect(input).toHaveFocus();
+    expect(input).toHaveProperty("selectionStart", prompt.length);
+    expect(input).toHaveProperty("selectionEnd", prompt.length);
     expect(screen.getByText("已填入快捷问题 · Enter 发送")).toBeInTheDocument();
   });
 
