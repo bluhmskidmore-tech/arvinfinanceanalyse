@@ -846,6 +846,13 @@ describe("MacroToolkitPage", () => {
     expect(auditNote).toHaveTextContent("用途：商品候选进入公式前的影子复核");
     expect(auditNote).toHaveTextContent("边界：不写入 Crisis Score，不改变权重");
     expect(auditNote).toHaveTextContent("审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交");
+    const formulaBoundary = within(promotionRulePack).getByLabelText("Crisis Score 商品公式输入边界");
+    expect(formulaBoundary).toHaveTextContent("正式输入");
+    expect(formulaBoundary).toHaveTextContent("Nanhua commodity index · NH0100.NHF / NHCI.NH");
+    expect(formulaBoundary).toHaveTextContent("已纳入 Crisis Score 公式");
+    expect(formulaBoundary).toHaveTextContent("影子候选");
+    expect(formulaBoundary).toHaveTextContent("Copper futures / Crude oil futures");
+    expect(formulaBoundary).toHaveTextContent("当前未计入 Crisis Score");
     expect(promotionRulePack).toHaveTextContent("Copper futures");
     expect(promotionRulePack).toHaveTextContent("待人工判断");
     expect(promotionRulePack).toHaveTextContent("相关性偏弱，需人工复核");
@@ -918,6 +925,28 @@ describe("MacroToolkitPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("边界：不写入 Crisis Score，不改变权重"));
       expect(writeText).toHaveBeenCalledWith(
         expect.stringContaining("审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("人工复核队列 Copper futures / Crude oil futures"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("补历史样本队列 Rebar futures / Iron ore futures / Aluminum futures / Gold futures"),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("处理顺序 下一步：先补齐样本不足品种，再复核铜、原油的相关性与命中率"),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "正式商品输入 Nanhua commodity index · NH0100.NHF / NHCI.NH · source choice · latest 2026-04-10 · rows 120 · value 1075.20 · 已纳入 Crisis Score 公式",
+        ),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "候选来源 Copper futures · CA.COPPER · aliases CU0 / CU0.SHF · matched CU0 · tushare · latest 2026-04-10 · report 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
+        ),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "候选来源 Rebar futures · COMMODITY.RB · aliases RB0 / RB0.SHF · matched RB0 · tushare · latest 2026-04-10 · report 2026-04-10 · 同日 · rows 120 · 当前未计入 Crisis Score",
+        ),
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 待人工判断 · 相关性偏弱，需人工复核"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Copper futures · 样本检查 通过 41/20"));

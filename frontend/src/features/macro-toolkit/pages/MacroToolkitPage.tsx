@@ -2151,21 +2151,30 @@ function CrisisCommodityClosurePanel({
 
 function CrisisCommodityShadowDecisionPanel({
   coverage,
+  commodityInput = null,
   analysisMeta,
   analysisAsOfDate = null,
 }: {
   coverage: CrisisCommodityCoverage;
+  commodityInput?: MacroToolkitInputEvidenceItem | null;
   analysisMeta?: ResultMeta | null;
   analysisAsOfDate?: string | null;
 }) {
   const promotionItems = coverage.items.map(commodityPromotionRuleItem);
   const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
   const rejectedCount = promotionItems.filter((item) => item.status === "not_recommended").length;
+  const reviewQueueItems = coverage.items.filter(isCommodityShadowReviewReady);
+  const shortQueueItems = coverage.items.filter(isCommodityShadowHistoryShort);
   const auditPackCopyText = buildCommodityPromotionAuditPackCopyText(promotionItems, {
     manualCount,
     rejectedCount,
     analysisMeta,
     analysisAsOfDate,
+    reviewQueueItems,
+    shortQueueItems,
+    coverageItems: coverage.items,
+    commodityInput,
+    summary: coverage.candidate_summary,
   });
   const [auditPackCopyStatus, setAuditPackCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const handleCopyAuditPack = useCallback(async () => {
@@ -2191,8 +2200,10 @@ function CrisisCommodityShadowDecisionPanel({
   const reviewableCount = summary.shadow_evaluation_ready_count;
   const shortCount = summary.shadow_evaluation_short_count;
   const totalCount = coverage.tracked_count || coverage.items.length;
-  const reviewQueueItems = coverage.items.filter(isCommodityShadowReviewReady);
-  const shortQueueItems = coverage.items.filter(isCommodityShadowHistoryShort);
+  const formalCommodityInputText = commodityInput
+    ? `${commodityInput.label || commodityInput.field} · ${formatCrisisInputIdentifiers(commodityInput)}`
+    : "南华商品输入缺失";
+  const shadowCandidateText = formatCommodityActionQueueLabels(reviewQueueItems);
   return (
     <div className="macro-toolkit-crisis-shadow-decision" aria-label="候选商品影子评估决策面板">
       <div className="macro-toolkit-crisis-shadow-decision__head">
@@ -2293,6 +2304,23 @@ function CrisisCommodityShadowDecisionPanel({
           <small>用途：商品候选进入公式前的影子复核</small>
           <small>边界：不写入 Crisis Score，不改变权重</small>
           <small>审批：历史回测、相关性检验、权重审批、版本记录齐备后再提交</small>
+        </div>
+        <div
+          className="macro-toolkit-crisis-promotion-rule-pack__formula-boundary"
+          aria-label="Crisis Score 商品公式输入边界"
+        >
+          <div className="macro-toolkit-crisis-promotion-rule-pack__formula-boundary-item">
+            <span>正式输入</span>
+            <strong>{formalCommodityInputText}</strong>
+            <small>
+              {commodityInput ? "已纳入 Crisis Score 公式" : "已纳入 Crisis Score 公式的南华输入未命中"}
+            </small>
+          </div>
+          <div className="macro-toolkit-crisis-promotion-rule-pack__formula-boundary-item">
+            <span>影子候选</span>
+            <strong>{shadowCandidateText}</strong>
+            <small>当前未计入 Crisis Score</small>
+          </div>
         </div>
         <div className="macro-toolkit-crisis-promotion-rule-pack__grid">
           {promotionItems.map((item) => (
@@ -2658,6 +2686,7 @@ function CrisisScoreEvidencePanel({
               </div>
               <CrisisCommodityShadowDecisionPanel
                 coverage={commodityCoverage}
+                commodityInput={commodityInput ?? null}
                 analysisMeta={analysisMeta}
                 analysisAsOfDate={analysisAsOfDate}
               />
@@ -3742,8 +3771,18 @@ function buildCommodityPromotionAuditPackCopyText(
     rejectedCount: number;
     analysisMeta?: ResultMeta | null;
     analysisAsOfDate?: string | null;
+    reviewQueueItems: CrisisCommodityCoverageItem[];
+    shortQueueItems: CrisisCommodityCoverageItem[];
+    coverageItems: CrisisCommodityCoverageItem[];
+    commodityInput: MacroToolkitInputEvidenceItem | null;
+    summary: CrisisCommodityCandidateSummary | null;
   },
 ) {
+  const reviewQueueText = formatCommodityActionQueueLabels(counts.reviewQueueItems);
+  const shortQueueText = formatCommodityActionQueueLabels(counts.shortQueueItems);
+  const nextStepText = counts.summary
+    ? formatCommodityActionQueueNextStep(counts.reviewQueueItems, counts.shortQueueItems, counts.summary)
+    : "下一步待确认";
   return [
     "Crisis Score 商品候选审计包",
     `分析日期 ${counts.analysisMeta?.as_of_date ?? counts.analysisAsOfDate ?? "缺失"}`,
@@ -3759,8 +3798,13 @@ function buildCommodityPromotionAuditPackCopyText(
     `样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_SAMPLES} 个重叠样本`,
     `危机样本阈值 >=${MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES} 个高 Crisis Score 样本`,
     `相关性阈值 |corr|>=${MACRO_COMMODITY_SHADOW_MIN_CORRELATION.toFixed(2)} 才可直接通过`,
+    `人工复核队列 ${reviewQueueText}`,
+    `补历史样本队列 ${shortQueueText}`,
+    `处理顺序 ${nextStepText}`,
+    formatOfficialCommodityInputAuditLine(counts.commodityInput),
     `待人工判断 ${counts.manualCount}`,
     `不建议进入公式 ${counts.rejectedCount}`,
+    ...counts.coverageItems.map(formatCommodityAuditSourceLine),
     ...promotionItems.flatMap((item) => [
       `${item.label} · ${commodityPromotionRuleStatusLabel(item.status)} · ${item.reason}`,
       ...item.checks.map(
@@ -3779,6 +3823,37 @@ function commodityShadowStatusColor(status: string | null | undefined) {
     return "orange";
   }
   return "default";
+}
+
+function formatCommodityAuditSourceLine(item: CrisisCommodityCoverageItem) {
+  const formulaText = item.used_in_formula ? "已纳入公式" : "当前未计入 Crisis Score";
+  return [
+    `候选来源 ${item.label || item.field}`,
+    item.series_id ?? "series 缺失",
+    `aliases ${item.aliases.length ? item.aliases.join(" / ") : "缺失"}`,
+    `matched ${item.matched_alias ?? "缺失"}`,
+    item.source ?? "source 缺失",
+    `latest ${item.latest_date ?? "缺失"}`,
+    `report ${item.report_date ?? "缺失"}`,
+    formatCommodityCoverageDateStatus(item.date_alignment_status),
+    `rows ${item.row_count ?? "缺失"}`,
+    formulaText,
+  ].join(" · ");
+}
+
+function formatOfficialCommodityInputAuditLine(input: MacroToolkitInputEvidenceItem | null) {
+  if (!input) {
+    return "正式商品输入 缺失 · 已纳入 Crisis Score 公式的南华输入未命中";
+  }
+  return [
+    `正式商品输入 ${input.label || input.field}`,
+    formatCrisisInputIdentifiers(input),
+    `source ${input.source ?? "缺失"}`,
+    `latest ${input.latest_date ?? "缺失"}`,
+    `rows ${input.row_count ?? "缺失"}`,
+    `value ${formatValue(input.value ?? null, "")}`,
+    "已纳入 Crisis Score 公式",
+  ].join(" · ");
 }
 
 function isCommodityShadowReviewReady(item: CrisisCommodityCoverageItem) {
