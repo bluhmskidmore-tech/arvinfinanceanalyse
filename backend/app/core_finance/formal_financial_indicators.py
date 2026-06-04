@@ -16,6 +16,12 @@ STATUS_SEMANTICS = {
     "candidate_qdb_aligned": "QDB analytical value aligns to the Excel value within display precision, but remains analytical until formally approved.",
     "needs_reconciliation": "QDB has a related analytical value, but it does not reconcile to the Excel formal value.",
 }
+REGISTRATION_PACKAGE_REQUIRED_FIELDS = (
+    "fixture_target",
+    "registry_target",
+    "contract_builder",
+    "release_gate",
+)
 
 _FORMAL_PENDING_REASON = "正式财务指标来源未接入；系统值必须保持为空，不能用 0 或 QDB 分析值顶替。"
 _CANDIDATE_REASON = "正式财务指标来源未接入；QDB 分析值仅作为候选对照，不具备正式使用权限。"
@@ -311,6 +317,7 @@ def build_formal_financial_indicator_contract(*, report_month: str) -> dict[str,
 
 def _empty_contract(report_month: str) -> dict[str, Any]:
     normalized_month = report_month or "unknown"
+    registration_package = _registration_package(normalized_month)
     return {
         "sample_id": f"GS-LEDGER-PNL-FIN-IND-{normalized_month}-MISSING",
         "sample_status": "missing_contract",
@@ -341,25 +348,44 @@ def _empty_contract(report_month: str) -> dict[str, Any]:
                 "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推",
                 "登记后必须重新运行 Ledger PnL 正式财务指标金样本测试",
             ],
-            "registration_package": {
-                "fixture_target": (
-                    "tests/fixtures/formal_financial_indicators/"
-                    f"ledger_pnl_{normalized_month}_financial_indicator_golden.json"
-                ),
-                "registry_target": (
-                    "backend/app/core_finance/formal_financial_indicators.py"
-                    f"::_METRICS_{normalized_month}"
-                ),
-                "contract_builder": (
-                    "build_formal_financial_indicator_contract("
-                    f"report_month='{normalized_month}')"
-                ),
-                "release_gate": "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
-            },
+            "registration_package": registration_package,
+            "registration_package_guard": _registration_package_guard(registration_package),
             "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
             "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
         },
         "metrics": [],
+    }
+
+
+def _registration_package(report_month: str) -> dict[str, str]:
+    return {
+        "fixture_target": (
+            "tests/fixtures/formal_financial_indicators/"
+            f"ledger_pnl_{report_month}_financial_indicator_golden.json"
+        ),
+        "registry_target": (
+            "backend/app/core_finance/formal_financial_indicators.py"
+            f"::_METRICS_{report_month}"
+        ),
+        "contract_builder": (
+            "build_formal_financial_indicator_contract("
+            f"report_month='{report_month}')"
+        ),
+        "release_gate": "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
+    }
+
+
+def _registration_package_guard(registration_package: dict[str, str]) -> dict[str, Any]:
+    missing_fields = [
+        field
+        for field in REGISTRATION_PACKAGE_REQUIRED_FIELDS
+        if not registration_package.get(field)
+    ]
+    return {
+        "status": "blocked" if missing_fields else "ready",
+        "required_fields": list(REGISTRATION_PACKAGE_REQUIRED_FIELDS),
+        "missing_fields": missing_fields,
+        "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
     }
 
 

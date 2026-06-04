@@ -167,6 +167,17 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
             "contract_builder": "build_formal_financial_indicator_contract(report_month='202605')",
             "release_gate": "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
         },
+        "registration_package_guard": {
+            "status": "ready",
+            "required_fields": [
+                "fixture_target",
+                "registry_target",
+                "contract_builder",
+                "release_gate",
+            ],
+            "missing_fields": [],
+            "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+        },
         "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
         "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     }
@@ -308,6 +319,17 @@ def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month(tmp_path, 
     assert payload["result"]["remediation"]["registration_package"]["fixture_target"] == (
         "tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json"
     )
+    assert payload["result"]["remediation"]["registration_package_guard"] == {
+        "status": "ready",
+        "required_fields": [
+            "fixture_target",
+            "registry_target",
+            "contract_builder",
+            "release_gate",
+        ],
+        "missing_fields": [],
+        "blocking_rule": "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+    }
 
 
 def test_real_202603_qdb_algorithm_matches_golden_probe_without_promoting_formal_metrics():

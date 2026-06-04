@@ -4520,6 +4520,12 @@ export type LedgerPnlFormalFinancialIndicatorRemediation = {
     contract_builder?: string;
     release_gate?: string;
   };
+  registration_package_guard?: {
+    status?: string;
+    required_fields?: string[];
+    missing_fields?: string[];
+    blocking_rule?: string;
+  };
   registration_target: string;
   verification: string;
 };

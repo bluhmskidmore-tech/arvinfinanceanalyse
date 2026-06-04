@@ -317,6 +317,12 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
         contract_builder: "build_formal_financial_indicator_contract(report_month='202605')",
         release_gate: "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
       },
+      registration_package_guard: {
+        status: "ready",
+        required_fields: ["fixture_target", "registry_target", "contract_builder", "release_gate"],
+        missing_fields: [],
+        blocking_rule: "登记包四项齐备前不得登记正式契约或放行 formal_use_allowed",
+      },
       registration_target: "backend/app/core_finance/formal_financial_indicators.py",
       verification: "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     },
@@ -886,6 +892,10 @@ describe("LedgerPnlPage", () => {
     expect(checklist).toHaveTextContent(
       "放行条件formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
     );
+    expect(checklist).toHaveTextContent("登记包守卫ready");
+    expect(checklist).toHaveTextContent("必备字段fixture_target；registry_target；contract_builder；release_gate");
+    expect(checklist).toHaveTextContent("缺失字段无");
+    expect(checklist).toHaveTextContent("守卫规则登记包四项齐备前不得登记正式契约或放行 formal_use_allowed");
     expect(checklist).toHaveTextContent("登记backend/app/core_finance/formal_financial_indicators.py");
     expect(checklist).toHaveTextContent(
       "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",

@@ -738,6 +738,26 @@ function buildFormalContractMaterialChecklist(
       label: "放行条件",
       value: remediation?.registration_package?.release_gate?.trim() ?? "",
     },
+    {
+      key: "registrationPackageGuard",
+      label: "登记包守卫",
+      value: remediation?.registration_package_guard?.status?.trim() ?? "",
+    },
+    {
+      key: "registrationPackageRequiredFields",
+      label: "必备字段",
+      value: remediation?.registration_package_guard?.required_fields?.map((item) => item.trim()).filter(Boolean).join("；") ?? "",
+    },
+    {
+      key: "registrationPackageMissingFields",
+      label: "缺失字段",
+      value: remediation?.registration_package_guard?.missing_fields?.map((item) => item.trim()).filter(Boolean).join("；") || "无",
+    },
+    {
+      key: "registrationPackageBlockingRule",
+      label: "守卫规则",
+      value: remediation?.registration_package_guard?.blocking_rule?.trim() ?? "",
+    },
     { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
     { key: "verification", label: "验证", value: remediation?.verification?.trim() ?? "" },
   ];
