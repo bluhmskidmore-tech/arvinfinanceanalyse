@@ -1556,8 +1556,12 @@ describe("AgentWorkbenchPage", () => {
           },
           next_drill: [],
         }),
-      )
-      .mockResolvedValueOnce(buildJsonResponse({}, 500));
+      );
+    let resolveProcessResponse!: (value: Response) => void;
+    const processResponse = new Promise<Response>((resolve) => {
+      resolveProcessResponse = resolve;
+    });
+    fetchMock.mockReturnValueOnce(processResponse);
 
     render(<AgentWorkbenchPage />);
 
@@ -1568,9 +1572,15 @@ describe("AgentWorkbenchPage", () => {
     await waitFor(() => expect(screen.getByLabelText("process-name-select")).toHaveValue("CheckoutFlow"));
 
     await user.click(screen.getByRole("button", { name: "查看所选流程" }));
+    screen.getByLabelText("process-search-input").focus();
+    await act(async () => {
+      resolveProcessResponse(buildJsonResponse({}, 500));
+      await Promise.resolve();
+    });
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
     expect(screen.getByText("查看 GitNexus 流程失败 · 可重新选择流程后重试")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
   });
 
   it("shows local-sync pending copy before the selected GitNexus process request resolves", async () => {

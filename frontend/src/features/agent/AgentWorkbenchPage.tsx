@@ -2687,6 +2687,8 @@ export function EmbeddedAgentCopilot({
       const payload = await executeAgentQuery(question, "query", turn.id);
       if (!payload) {
         setComposerAssistHint("查看 GitNexus 流程失败 · 可重新选择流程后重试");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
         return;
       }
       updateConversationTurn(turn.id, (currentTurn) => ({
