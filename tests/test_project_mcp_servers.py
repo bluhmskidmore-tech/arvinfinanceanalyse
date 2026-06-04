@@ -1663,6 +1663,48 @@ def test_lineage_evidence_mcp_maps_cube_query_page_to_allowed_source_tables(tmp_
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "source_manifest_latest.jsonl").write_text(
+        json.dumps(
+            {
+                "source_version": "sv_ledger_pnl_fixture",
+                "rule_version": "rv_ledger_pnl_fixture",
+                "tables_used": ["qdb_general_ledger_workbook"],
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-LEDGER-PNL-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-LEDGER-PNL-001"
+        assert "/api/ledger-pnl/summary" in found_payload["expanded_queries"]
+        assert "ledger_pnl." in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" in found_payload["expanded_queries"]
+        assert "formal_financial_indicator_source_contract" in found_payload["expanded_queries"]
+        assert "GS-LEDGER-PNL-FIN-IND-202603-B" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "qdb_general_ledger_workbook"
+        assert found_payload["records"][0]["stream"] == "source_manifest_latest"
+        assert found_payload["records"][0]["record"]["tables_used"] == ["qdb_general_ledger_workbook"]
+    finally:
+        server.close()
+
+
 def test_data_catalog_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None:
     missing_duckdb = tmp_path / "missing.duckdb"
     server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(missing_duckdb)})

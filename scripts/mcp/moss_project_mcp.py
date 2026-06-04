@@ -265,6 +265,15 @@ class LineageEvidenceProvider(McpProvider):
             "fact_formal_zqtz_balance_daily",
             "product_category_pnl_formal_read_model",
         ],
+        "page-ledger-pnl-001": [
+            "/api/ledger-pnl/summary",
+            "/api/ledger-pnl/data",
+            "/api/ledger-pnl/formal-financial-indicators",
+            "ledger_pnl.",
+            "qdb_general_ledger_workbook",
+            "formal_financial_indicator_source_contract",
+            "GS-LEDGER-PNL-FIN-IND-202603-B",
+        ],
         "page-risk-001": [
             "fact_formal_risk_tensor_daily",
             "agent.risk_tensor",
