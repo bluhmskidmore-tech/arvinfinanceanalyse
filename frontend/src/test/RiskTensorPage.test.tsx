@@ -8146,7 +8146,7 @@ describe("RiskTensorPage", () => {
     expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
   });
 
-  it("ignores stale report-date list failure copy results after retry evidence changes", async () => {
+  it("ignores stale report-date list failure copy results after retry evidence changes with the same status", async () => {
     const user = userEvent.setup();
     let resolveCopy: (() => void) | undefined;
     const writeText = vi.fn(
@@ -8163,8 +8163,8 @@ describe("RiskTensorPage", () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi
       .fn()
-      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates (503)"))
-      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates (504)"));
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates?trace=initial (503)"))
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates?trace=retry (503)"));
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
       result: tensorResult(reportDate),
@@ -8184,8 +8184,9 @@ describe("RiskTensorPage", () => {
       await user.click(within(errorContext).getByRole("button", { name: "重试日期治理" }));
 
       await waitFor(() => {
-        expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent("HTTP 状态 504");
+        expect(getRiskTensorDates).toHaveBeenCalledTimes(2);
       });
+      expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent("HTTP 状态 503");
 
       await act(async () => {
         resolveCopy?.();
@@ -8240,6 +8241,7 @@ describe("RiskTensorPage", () => {
       const manualCopy = within(errorContext).getByTestId("risk-tensor-dates-error-manual-copy");
       expect(manualCopy).toHaveTextContent("风险张量报告日列表加载失败排查信息");
       expect(manualCopy).toHaveTextContent("HTTP 状态 503");
+      expect(manualCopy).toHaveTextContent("错误 Request failed: /api/risk/tensor/dates (503)");
       expect(manualCopy).toHaveTextContent("请求 /api/risk/tensor/dates");
       expect(manualCopy).toHaveTextContent("报告日参数 2026-02-27");
       expect(manualCopy).toHaveTextContent("页面不会回退到硬编码报告日");

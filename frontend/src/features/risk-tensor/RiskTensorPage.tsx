@@ -450,6 +450,10 @@ function errorStatusCode(error: unknown) {
   return match ? match[1] : "";
 }
 
+function errorEvidenceMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error ?? "");
+}
+
 function riskTensorErrorMessage(statusCode: string) {
   if (statusCode === "404") {
     return "当前报告日无风险张量数据";
@@ -623,6 +627,7 @@ export default function RiskTensorPage() {
   const [blockedDateCopiedStateKey, setBlockedDateCopiedStateKey] = useState("");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesErrorCopiedStateKey, setDatesErrorCopiedStateKey] = useState("");
+  const datesErrorCopyRequestKeyRef = useRef("");
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopiedStateKey, setDatesEmptyCopiedStateKey] = useState("");
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -1290,6 +1295,7 @@ export default function RiskTensorPage() {
   const datesErrorCopyText = [
     "风险张量报告日列表加载失败排查信息",
     `HTTP 状态 ${datesErrorStatusCode || "未知"}`,
+    `错误 ${errorEvidenceMessage(datesQuery.error) || "未提供"}`,
     "请求 /api/risk/tensor/dates",
     `报告日参数 ${datesErrorReportDate}`,
     "页面不会回退到硬编码报告日",
@@ -1299,6 +1305,7 @@ export default function RiskTensorPage() {
   const datesErrorCopyStateKey = [
     `report_date_param:${datesErrorReportDate}`,
     `status:${datesErrorStatusCode || "unknown"}`,
+    `error:${errorEvidenceMessage(datesQuery.error) || "missing"}`,
   ].join("|");
   const datesErrorCopyStatusForCurrentState =
     datesErrorCopiedStateKey === datesErrorCopyStateKey ? datesErrorCopyStatus : "idle";
@@ -1733,6 +1740,7 @@ export default function RiskTensorPage() {
     setBlockedDateCopiedStateKey("");
     setDatesErrorCopyStatus("idle");
     setDatesErrorCopiedStateKey("");
+    datesErrorCopyRequestKeyRef.current = "";
     setDatesEmptyCopyStatus("idle");
     setDatesEmptyCopiedStateKey("");
   };
@@ -1748,6 +1756,7 @@ export default function RiskTensorPage() {
 
   const handleCopyDatesError = () => {
     const copiedStateKey = datesErrorCopyStateKey;
+    datesErrorCopyRequestKeyRef.current = copiedStateKey;
     if (!navigator.clipboard?.writeText) {
       setDatesErrorCopiedStateKey(copiedStateKey);
       setDatesErrorCopyStatus("failed");
@@ -1756,10 +1765,16 @@ export default function RiskTensorPage() {
     void navigator.clipboard
       .writeText(datesErrorCopyText)
       .then(() => {
+        if (datesErrorCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setDatesErrorCopiedStateKey(copiedStateKey);
         setDatesErrorCopyStatus("copied");
       })
       .catch(() => {
+        if (datesErrorCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setDatesErrorCopiedStateKey(copiedStateKey);
         setDatesErrorCopyStatus("failed");
       });
