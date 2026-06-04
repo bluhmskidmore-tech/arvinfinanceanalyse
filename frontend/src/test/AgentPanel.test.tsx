@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentPanel } from "../features/agent/AgentPanel";
 
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
+const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
 const REPO_PATH_LABEL = "GitNexus 仓库路径";
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -106,7 +107,7 @@ describe("AgentPanel", () => {
     renderAgentPanel();
 
     expect(screen.getByTestId("agent-panel")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-question")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "输入提示" })).toHaveTextContent("Enter");
@@ -121,7 +122,7 @@ describe("AgentPanel", () => {
       />,
     );
 
-    expect(screen.getByLabelText("agent-question-input")).toHaveValue("explain current page");
+    expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("explain current page");
 
     rerender(
       <AgentPanel
@@ -130,7 +131,7 @@ describe("AgentPanel", () => {
       />,
     );
 
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
     expect(input).toHaveValue("review selected row");
     expect(input).toHaveFocus();
     expect(input).toHaveProperty("selectionStart", "review selected row".length);
@@ -145,7 +146,7 @@ describe("AgentPanel", () => {
       />,
     );
 
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
     input.focus();
     fireEvent.change(input, { target: { value: "my manual follow-up" } });
 
@@ -198,7 +199,7 @@ describe("AgentPanel", () => {
 
     expect(screen.getAllByRole("status", { name: AGENT_PAGE_CONTEXT_CHANGE_LABEL })).toHaveLength(1);
 
-    await user.type(screen.getByLabelText("agent-question-input"), "review the updated selection");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "review the updated selection");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     expect(await screen.findByText("Embedded Agent answered.")).toBeInTheDocument();
@@ -219,7 +220,7 @@ describe("AgentPanel", () => {
     const user = userEvent.setup();
     renderAgentPanel();
 
-    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL) as HTMLTextAreaElement;
     Object.defineProperty(input, "scrollHeight", {
       configurable: true,
       value: 168,
@@ -239,7 +240,7 @@ describe("AgentPanel", () => {
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
     renderAgentPanel();
 
-    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL) as HTMLTextAreaElement;
     Object.defineProperty(input, "scrollHeight", {
       configurable: true,
       value: 168,
@@ -251,7 +252,7 @@ describe("AgentPanel", () => {
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     expect(await screen.findByText("Embedded Agent answered.")).toBeInTheDocument();
-    const dockedInput = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    const dockedInput = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL) as HTMLTextAreaElement;
     expect(dockedInput).toHaveValue("");
     expect(dockedInput.style.height).toBe("");
     expect(dockedInput).toHaveFocus();
@@ -282,7 +283,7 @@ describe("AgentPanel", () => {
     try {
       renderAgentPanel();
 
-      const input = screen.getByLabelText("agent-question-input");
+      const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
       Object.defineProperty(input, "getBoundingClientRect", {
         configurable: true,
         value: () => ({
@@ -304,7 +305,7 @@ describe("AgentPanel", () => {
 
       expect(input).toHaveValue("");
       expect(document.activeElement).toBe(input);
-      expect(scrollTargets.some((target) => target.getAttribute("aria-label") === "agent-question-input")).toBe(true);
+      expect(scrollTargets.some((target) => target.getAttribute("aria-label") === AGENT_QUESTION_INPUT_LABEL)).toBe(true);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "nearest" });
     } finally {
       scrollIntoViewSpy.restore();
@@ -324,7 +325,7 @@ describe("AgentPanel", () => {
     fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
     renderAgentPanel();
 
-    await user.type(screen.getByLabelText("agent-question-input"), "please judge current risk");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -364,7 +365,7 @@ describe("AgentPanel", () => {
     );
     renderAgentPanel();
 
-    await user.type(screen.getByLabelText("agent-question-input"), "please judge current risk");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     expect(await screen.findByTestId("agent-panel-answer")).toHaveTextContent(
@@ -403,7 +404,7 @@ describe("AgentPanel", () => {
       );
     renderAgentPanel();
 
-    await user.type(screen.getByLabelText("agent-question-input"), "please judge current risk");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
     await screen.findByTestId("agent-panel-answer");
     await user.click(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" }));
@@ -459,7 +460,7 @@ describe("AgentPanel", () => {
       />,
     );
 
-    const input = screen.getByLabelText("agent-question-input");
+    const input = screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL);
     expect(input).toHaveValue("second embedded question");
     expect(screen.getByText("First embedded answer.")).toBeInTheDocument();
 
@@ -497,7 +498,7 @@ describe("AgentPanel", () => {
     );
     renderAgentPanel();
 
-    await user.type(screen.getByLabelText("agent-question-input"), "please judge current risk");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     expect(await screen.findByText(/未启用|disabled/i)).toBeInTheDocument();
@@ -514,7 +515,7 @@ describe("AgentPanel", () => {
     );
     renderAgentPanel();
 
-    await user.type(screen.getByLabelText("agent-question-input"), "please judge current risk");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
     const turnStatus = await screen.findByRole("status", { name: "回答状态：please judge current risk" });
@@ -525,7 +526,7 @@ describe("AgentPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     });
-    await user.type(screen.getByLabelText("agent-question-input"), "follow-up risk check");
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "follow-up risk check");
     expect(screen.getByTestId("agent-panel-submit")).not.toBeDisabled();
   });
 });

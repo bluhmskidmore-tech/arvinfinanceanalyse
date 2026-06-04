@@ -196,7 +196,7 @@ export function AgentQueryForm({
       <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
         <div className="agent-chat-composer__input-wrap">
           <textarea
-            aria-label="agent-question-input"
+            aria-label="向 Agent 提问"
             data-testid="agent-panel-question"
             className="agent-chat-composer__input"
             ref={(element) => {

@@ -6,6 +6,8 @@ import { primaryWorkbenchNavigation } from "../mocks/navigation";
 import { workbenchSections } from "../router/routes";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
+const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
+
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => ({
   BondAnalyticsDetailSection: ({ activeTab }: { activeTab: string }) => (
     <section data-testid="bond-analysis-detail-section" data-module-key={activeTab}>
@@ -450,7 +452,7 @@ describe("RouteRegistry", () => {
   it("renders the hidden /agent route as the live workbench", async () => {
     renderWorkbenchApp(["/agent"], { client: mockClient });
 
-    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(await screen.findByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

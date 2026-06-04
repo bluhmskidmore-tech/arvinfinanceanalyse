@@ -5,6 +5,8 @@ import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
+const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
+
 function buildMeta(): ResultMeta {
   return {
     trace_id: "tr_agent_placeholder",
@@ -48,7 +50,7 @@ describe("/agent route", () => {
 
     renderWorkbenchApp(["/agent"], { client });
 
-    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(await screen.findByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
     expect(client.getPlaceholderSnapshot).not.toHaveBeenCalled();
   });
@@ -62,7 +64,7 @@ describe("/agent route", () => {
 
     renderWorkbenchApp(["/agent"], { client: buildAgentPlaceholderClient() });
 
-    expect(await screen.findByLabelText("agent-question-input")).toBeInTheDocument();
+    expect(await screen.findByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
