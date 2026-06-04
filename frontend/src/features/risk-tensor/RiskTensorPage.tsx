@@ -780,6 +780,7 @@ export default function RiskTensorPage() {
       : "--";
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
+  const dv01ControlsMissing = Boolean(result && !result.dv01_controls);
   const dv01ControlInputsPending = Boolean(
     result?.dv01_controls &&
       (result.dv01_controls.limit_status === "pending_configuration" ||
@@ -793,9 +794,12 @@ export default function RiskTensorPage() {
   const priorPeriodDiagnosticsStatus = priorPeriodChange?.status ?? "missing";
   const actionTileDetail =
     firstRequiredAction?.title ??
+    (dv01ControlsMissing ? "后端未返回限额控制载荷，请先核对 DV01 控制诊断。" : null) ??
     result?.warnings[0] ??
     "后端未返回必做控制动作，继续按质量标记和明细核对。";
-  const actionTileCanJump = Boolean(result && (requiredActions.length > 0 || result.dv01_controls || result.warnings.length > 0));
+  const actionTileCanJump = Boolean(
+    result && (dv01ControlsMissing || requiredActions.length > 0 || result.dv01_controls || result.warnings.length > 0),
+  );
   const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 || (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
   const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
   const radarNavigationItems = result
@@ -1630,6 +1634,8 @@ export default function RiskTensorPage() {
     const targetTestId =
       requiredActions.length > 0
         ? "risk-tensor-dv01-actions"
+        : dv01ControlsMissing
+          ? "risk-tensor-dv01-missing-controls"
         : result?.warnings.length
           ? "risk-tensor-quality-detail"
           : result?.dv01_controls
@@ -2125,7 +2131,11 @@ export default function RiskTensorPage() {
                     </span>
                   </button>
                 ) : (
-                  <article className="risk-tensor-brief__tile" data-tone="warning">
+                  <article
+                    className="risk-tensor-brief__tile"
+                    data-testid="risk-tensor-dv01-missing-controls"
+                    data-tone="warning"
+                  >
                     <span>DV01 控制</span>
                     <strong>控制未接入</strong>
                     <p>监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；后端未返回限额控制载荷。</p>

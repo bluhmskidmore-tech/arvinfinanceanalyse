@@ -771,6 +771,50 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users jump from required information to missing DV01 control diagnostics", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_required_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_missing_required_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: [],
+          dv01_controls: null,
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
+      const missingControls = within(brief).getByTestId("risk-tensor-dv01-missing-controls");
+
+      await user.click(requiredAction);
+
+      expect(scrollTargets).toContain(missingControls);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("copies DV01 control payload diagnostic context when controls are missing from the first screen", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => undefined);
