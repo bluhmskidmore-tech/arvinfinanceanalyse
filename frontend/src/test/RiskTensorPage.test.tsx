@@ -2370,6 +2370,99 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("falls back from prior-period KRD bucket change to KRD quality review when every bucket is unparseable", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_krd_quality_fallback_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_krd_quality_fallback_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          krd_1y: "bad",
+          krd_3y: "",
+          krd_5y: "undefined",
+          krd_7y: "bad",
+          krd_10y: "NaN",
+          krd_30y: "missing",
+          prior_period_change: {
+            ...tensorResult(reportDate).prior_period_change,
+            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
+            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
+            summary: tensorResult(reportDate).prior_period_change?.summary ?? "主风险桶切换",
+            dominant_krd_bucket: tensorResult(reportDate).prior_period_change?.dominant_krd_bucket ?? "5Y",
+            previous_dominant_krd_bucket:
+              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
+            dominant_krd_shifted: tensorResult(reportDate).prior_period_change?.dominant_krd_shifted ?? true,
+            metrics: [
+              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
+              {
+                key: "dominant_krd_bucket",
+                label: "主风险桶",
+                current: {
+                  raw: null,
+                  unit: "count" as const,
+                  display: "5Y",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                previous: {
+                  raw: null,
+                  unit: "count" as const,
+                  display: "3Y",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                delta: {
+                  raw: null,
+                  unit: "count" as const,
+                  display: "5Y - 3Y",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                current_display: "5Y",
+                previous_display: "3Y",
+                delta_display: "5Y - 3Y",
+                direction: "changed",
+                tone: "warning",
+                interpretation: "主风险桶切换",
+              },
+            ],
+          },
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const krdAction = within(priorChange).getByTestId("risk-tensor-prior-change-action-dominant_krd_bucket");
+      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
+      expect(screen.queryByTestId("risk-tensor-tenor-drill")).not.toBeInTheDocument();
+
+      await user.click(krdAction);
+
+      expect(scrollTargets).toContain(qualityNote);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("falls back from prior-period DV01 change to the KPI grid when controls are absent", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];

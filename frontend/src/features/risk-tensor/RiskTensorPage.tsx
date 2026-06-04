@@ -792,6 +792,9 @@ export default function RiskTensorPage() {
     if (PRIOR_CHANGE_DV01_KEYS.has(metricKey)) {
       return result?.dv01_controls ? "risk-tensor-dv01-controls" : "risk-tensor-kpi-grid";
     }
+    if (metricKey === "dominant_krd_bucket" && !selectedTenorRow && invalidKrdRows.length > 0) {
+      return "risk-tensor-krd-quality-note";
+    }
     return PRIOR_CHANGE_NAVIGATION_TARGETS[metricKey];
   };
   const topLineSummary = result
