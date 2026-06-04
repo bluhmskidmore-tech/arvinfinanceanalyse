@@ -165,8 +165,10 @@
 .referenceKpiValue {
   margin-top: 5px;
   color: var(--moss-color-primary-900);
+  font-family: var(--moss-font-mono);
   font-size: 22px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
   line-height: 1.1;
   white-space: nowrap;
 }
@@ -604,6 +606,10 @@
 
 .holdingsTableRow:last-child {
   border-bottom: 0;
+}
+
+.holdingNumericCell {
+  font-variant-numeric: tabular-nums;
 }
 
 .holdingNameCell {

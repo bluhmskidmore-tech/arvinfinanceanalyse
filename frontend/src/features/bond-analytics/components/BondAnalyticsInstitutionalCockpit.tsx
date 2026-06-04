@@ -216,7 +216,6 @@ function ReferenceKpiTile({
       <div
         className={styles.referenceKpiValue}
         data-tone={tone}
-        style={tabularNumsStyle}
       >
         {value}
       </div>
@@ -246,7 +245,7 @@ function ReferenceKpiDonutTile({
     <div className={styles.referenceKpiDonutTile}>
       <div>
         <div className={styles.referenceKpiLabel}>{label}</div>
-        <div className={styles.referenceKpiValue} style={tabularNumsStyle}>
+        <div className={styles.referenceKpiValue}>
           {value}
         </div>
         <div className={styles.referenceKpiDetail}>{detail}</div>
@@ -438,10 +437,10 @@ function HoldingRows({
           </div>
           <span>{item.asset_class}</span>
           <span>{item.rating ?? "—"}</span>
-          <span style={tabularNumsStyle}>{formatYi(item.market_value)}</span>
-          <span style={tabularNumsStyle}>{formatPct(item.ytm)}</span>
-          <span style={tabularNumsStyle}>{item.modified_duration.display}</span>
-          <span style={tabularNumsStyle}>{formatPct(item.weight)}</span>
+          <span className={styles.holdingNumericCell}>{formatYi(item.market_value)}</span>
+          <span className={styles.holdingNumericCell}>{formatPct(item.ytm)}</span>
+          <span className={styles.holdingNumericCell}>{item.modified_duration.display}</span>
+          <span className={styles.holdingNumericCell}>{formatPct(item.weight)}</span>
         </div>
       ))}
     </div>
