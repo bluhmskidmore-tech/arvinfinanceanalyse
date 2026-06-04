@@ -739,6 +739,10 @@ export default function RiskTensorPage() {
   const liquidity30dRaw = result ? bondNumericRawOrNull(result.liquidity_gap_30d) : null;
   const requiredActions = result?.dv01_controls?.control_actions.filter((item) => item.status === "required") ?? [];
   const firstRequiredAction = requiredActions[0];
+  const priorPeriodChange = result?.prior_period_change ?? null;
+  const priorPeriodMetrics = priorPeriodChange?.metrics ?? [];
+  const priorPeriodSummary =
+    priorPeriodChange?.summary ?? `后端未返回上期变化载荷；trace_id ${tensorMeta?.trace_id ?? "未提供"}。`;
   const actionTileDetail =
     firstRequiredAction?.title ??
     result?.warnings[0] ??
@@ -1227,6 +1231,21 @@ export default function RiskTensorPage() {
     });
   };
 
+  const clearDatesGovernanceCopyFeedback = () => {
+    setBlockedDateCopyStatus("idle");
+    setDatesErrorCopyStatus("idle");
+    setDatesEmptyCopyStatus("idle");
+  };
+
+  const handleRetryDatesGovernance = () => {
+    clearDatesGovernanceCopyFeedback();
+    void datesQuery.refetch();
+  };
+
+  const handleRetryTensorMainRead = () => {
+    void tensorQuery.refetch();
+  };
+
   const handleCopyDatesError = () => {
     if (!navigator.clipboard?.writeText) {
       setDatesErrorCopyStatus("failed");
@@ -1463,6 +1482,13 @@ export default function RiskTensorPage() {
             <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyBlockedDate}>
               复制拦截信息
             </button>
+            <button
+              type="button"
+              className="risk-tensor-quality-detail__trace-action"
+              onClick={handleRetryDatesGovernance}
+            >
+              重试日期治理
+            </button>
             {latestAvailableReportDate ? (
               <button
                 type="button"
@@ -1511,6 +1537,13 @@ export default function RiskTensorPage() {
             >
               定位元数据
             </button>
+            <button
+              type="button"
+              className="risk-tensor-quality-detail__trace-action"
+              onClick={handleRetryTensorMainRead}
+            >
+              重试主读面
+            </button>
             <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyTensorError}>
               复制排查信息
             </button>
@@ -1537,6 +1570,13 @@ export default function RiskTensorPage() {
             HTTP 状态 {datesErrorStatusCode || "未知"}。页面不会回退到硬编码报告日。
           </span>
           <div className="risk-tensor-quality-detail__trace-actions">
+            <button
+              type="button"
+              className="risk-tensor-quality-detail__trace-action"
+              onClick={handleRetryDatesGovernance}
+            >
+              重试日期治理
+            </button>
             <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyDatesError}>
               复制日期排查信息
             </button>
@@ -1584,6 +1624,13 @@ export default function RiskTensorPage() {
               >
                 定位元数据
               </button>
+              <button
+                type="button"
+                className="risk-tensor-quality-detail__trace-action"
+                onClick={handleRetryDatesGovernance}
+              >
+                重试日期治理
+              </button>
               <button type="button" className="risk-tensor-quality-detail__trace-action" onClick={handleCopyDatesEmpty}>
                 复制空日期排查信息
               </button>
@@ -1618,6 +1665,13 @@ export default function RiskTensorPage() {
                 onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
               >
                 定位元数据
+              </button>
+              <button
+                type="button"
+                className="risk-tensor-quality-detail__trace-action"
+                onClick={handleRetryTensorMainRead}
+              >
+                重试主读面
               </button>
               <button
                 type="button"
@@ -1723,6 +1777,13 @@ export default function RiskTensorPage() {
                     <span>DV01 控制</span>
                     <strong>控制未接入</strong>
                     <p>监管口径 {regulatoryDv01DisplayWithUnit(result.regulatory_dv01)}；后端未返回限额控制载荷。</p>
+                    <button
+                      type="button"
+                      className="risk-tensor-brief__link-button"
+                      onClick={handleRetryTensorMainRead}
+                    >
+                      重试主读面
+                    </button>
                   </article>
                 )}
                 <button
@@ -1813,6 +1874,13 @@ export default function RiskTensorPage() {
                   onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
                 >
                   查看 result_meta
+                </button>
+                <button
+                  type="button"
+                  className="risk-tensor-brief__link-button"
+                  onClick={handleRetryTensorMainRead}
+                >
+                  重试主读面
                 </button>
                 <button
                   type="button"
@@ -1974,7 +2042,7 @@ export default function RiskTensorPage() {
               </section>
             ) : null}
 
-            {result.prior_period_change ? (
+            {result ? (
               <section className="risk-tensor-prior-change" data-testid="risk-tensor-prior-period-change">
                 <div className="risk-tensor-prior-change__header">
                   <div>
@@ -1982,15 +2050,15 @@ export default function RiskTensorPage() {
                     <h2>风险变化判断</h2>
                   </div>
                   <strong>
-                    {result.prior_period_change.comparison_report_date
-                      ? `对比 ${result.prior_period_change.comparison_report_date}`
+                    {priorPeriodChange?.comparison_report_date
+                      ? `对比 ${priorPeriodChange.comparison_report_date}`
                       : "暂无可比日期"}
                   </strong>
                 </div>
-                <p className="risk-tensor-prior-change__summary">{result.prior_period_change.summary}</p>
-                {result.prior_period_change.metrics.length > 0 ? (
+                <p className="risk-tensor-prior-change__summary">{priorPeriodSummary}</p>
+                {priorPeriodMetrics.length > 0 ? (
                   <div className="risk-tensor-prior-change__metrics">
-                    {result.prior_period_change.metrics.map((metric) => {
+                    {priorPeriodMetrics.map((metric) => {
                       const targetTestId = priorChangeTargetFor(metric.key);
                       const metricContent = (
                         <>
@@ -2028,6 +2096,24 @@ export default function RiskTensorPage() {
                     })}
                   </div>
                 ) : null}
+                {priorPeriodMetrics.length === 0 && (
+                  <div className="risk-tensor-quality-detail__trace-actions">
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={() => handleSectionJump("risk-tensor-result-meta-panel")}
+                    >
+                      定位元数据
+                    </button>
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleRetryTensorMainRead}
+                    >
+                      重试主读面
+                    </button>
+                  </div>
+                )}
               </section>
             ) : null}
 
@@ -2089,6 +2175,13 @@ export default function RiskTensorPage() {
                     <div className="risk-tensor-dv01-controls__empty" data-testid="risk-tensor-dv01-stress-empty">
                       <span>暂无压力情景</span>
                       <p>后端 stress_scenarios 为空，请补充正式压力情景后再判断 DV01 冲击损益。</p>
+                      <button
+                        type="button"
+                        className="risk-tensor-quality-detail__trace-action"
+                        onClick={handleRetryTensorMainRead}
+                      >
+                        重试主读面
+                      </button>
                     </div>
                   )}
                 </div>

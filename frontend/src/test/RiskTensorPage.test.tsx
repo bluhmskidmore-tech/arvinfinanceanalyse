@@ -586,6 +586,50 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users retry the risk tensor main read when DV01 controls are missing from the first screen", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_retry_initial"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          dv01_controls: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_retry_success"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          dv01_controls: dv01ControlsFixture(),
+        },
+      });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const brief = await screen.findByTestId("risk-tensor-brief");
+    expect(brief).toHaveTextContent("控制未接入");
+    expect(getRiskTensor).toHaveBeenCalledTimes(1);
+
+    await user.click(within(brief).getByRole("button", { name: "重试主读面" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByTestId("risk-tensor-dv01-controls")).toHaveTextContent("Limit configuration is pending.");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dv01_missing_retry_success");
+    expect(screen.getByTestId("risk-tensor-brief")).not.toHaveTextContent("控制未接入");
+  });
+
   it("lets users jump from the first-screen required information tile to DV01 actions", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -1709,6 +1753,190 @@ describe("RiskTensorPage", () => {
     expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
   });
 
+  it("lets users jump from prior-period no-data state to result metadata", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_meta_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_no_prior_meta_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          prior_period_change: {
+            status: "no_prior",
+            comparison_report_date: null,
+            summary: "no prior comparable data",
+            dominant_krd_bucket: "5Y",
+            previous_dominant_krd_bucket: null,
+            dominant_krd_shifted: false,
+            metrics: [],
+          },
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
+
+      await user.click(within(priorChange).getByRole("button", { name: "定位元数据" }));
+
+      expect(scrollTargets).toContain(metaPanel);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users retry the risk tensor main read from the prior-period no-data state", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_no_prior_retry_initial"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          prior_period_change: {
+            status: "no_prior",
+            comparison_report_date: null,
+            summary: "no prior comparable data",
+            dominant_krd_bucket: "5Y",
+            previous_dominant_krd_bucket: null,
+            dominant_krd_shifted: false,
+            metrics: [],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_no_prior_retry_success"),
+        result: tensorResult("2026-02-28"),
+      });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+    expect(priorChange).toHaveTextContent("no prior comparable data");
+    expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
+
+    await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_no_prior_retry_success");
+  });
+
+  it("surfaces a traceable prior-period payload missing state", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_missing_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_missing_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          prior_period_change: null,
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
+      expect(priorChange).toHaveTextContent("后端未返回上期变化载荷");
+      expect(priorChange).toHaveTextContent("trace_id tr_tensor_prior_missing_2026-02-28");
+      expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
+
+      await user.click(within(priorChange).getByRole("button", { name: "定位元数据" }));
+
+      expect(scrollTargets).toContain(metaPanel);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users retry the risk tensor main read when prior-period payload is missing", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_missing_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_prior_missing_retry_initial"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          prior_period_change: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_prior_missing_retry_success"),
+        result: tensorResult("2026-02-28"),
+      });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
+    expect(priorChange).toHaveTextContent("后端未返回上期变化载荷");
+
+    await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+      "tr_tensor_prior_missing_retry_success",
+    );
+  });
+
   it("lets users jump from prior-period liquidity change to liquidity gap detail", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -1884,6 +2112,49 @@ describe("RiskTensorPage", () => {
     expect(kpi).toHaveTextContent("估值口径 DV01");
     expect(kpi).toHaveTextContent("—");
     expect(screen.getByTestId("risk-tensor-liquidity-action")).toHaveTextContent("not-a-number");
+  });
+
+  it("lets users retry the risk tensor main read from the first-screen payload warning", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_payload_warning_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_payload_warning_retry_initial"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          portfolio_dv01: "",
+          liquidity_gap_30d_ratio: "not-a-number",
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_payload_warning_retry_success"),
+        result: tensorResult("2026-02-28"),
+      });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const warning = await screen.findByTestId("risk-tensor-payload-quality-warning");
+    expect(getRiskTensor).toHaveBeenCalledTimes(1);
+
+    await user.click(within(warning).getByRole("button", { name: "\u91cd\u8bd5\u4e3b\u8bfb\u9762" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("\u62a5\u544a\u65e5 2026-02-28");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+      "tr_tensor_payload_warning_retry_success",
+    );
+    expect(screen.queryByTestId("risk-tensor-payload-quality-warning")).not.toBeInTheDocument();
   });
 
   it("lets users jump from the first-screen payload warning to the payload checklist", async () => {
@@ -3432,6 +3703,70 @@ describe("RiskTensorPage", () => {
     expect(stressScenarios).toHaveTextContent("stress_scenarios");
   });
 
+  it("lets users retry the risk tensor main read from the DV01 stress scenario empty state", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_retry_initial"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_retry_success"),
+        result: {
+          ...tensorResult("2026-02-28"),
+          dv01_controls: dv01ControlsFixture({
+            stress_scenarios: [
+              {
+                scenario_key: "parallel_up_10bp",
+                label: "+10bp",
+                shock_bp: {
+                  raw: 10,
+                  unit: "bp" as const,
+                  display: "+10 bp",
+                  precision: 0,
+                  sign_aware: true,
+                },
+                estimated_pnl_impact: {
+                  raw: -1200,
+                  unit: "yuan" as const,
+                  display: "-1,200.00",
+                  precision: 2,
+                  sign_aware: true,
+                },
+              },
+            ],
+          }),
+        },
+      });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
+    expect(stressScenarios).toHaveTextContent("暂无压力情景");
+
+    await user.click(within(stressScenarios).getByRole("button", { name: "重试主读面" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dv01_stress_retry_success");
+    expect(screen.queryByTestId("risk-tensor-dv01-stress-empty")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("risk-tensor-dv01-stress-scenarios")).toHaveTextContent("+10bp");
+  });
+
   it("shows the backend DV01 limit and volatility control deck", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -3738,6 +4073,67 @@ describe("RiskTensorPage", () => {
     expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
   });
 
+  it("lets users retry report-date governance when a blocked report date has no available replacement yet", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_no_replacement_initial"),
+        result: {
+          report_dates: [],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage is stale",
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_no_replacement_recovered"),
+        result: {
+          report_dates: ["2026-02-28"],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage is stale",
+            },
+          ],
+        },
+      });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_blocked_no_replacement_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日已被新鲜度校验拦截");
+    expect(within(errorContext).queryByRole("button", { name: "切换到最新可用报告日" })).not.toBeInTheDocument();
+    expect(getRiskTensor).not.toHaveBeenCalled();
+
+    await user.click(within(errorContext).getByRole("button", { name: "重试日期治理" }));
+
+    await waitFor(() => {
+      expect(getRiskTensorDates).toHaveBeenCalledTimes(2);
+    });
+    await user.click(within(await screen.findByTestId("risk-tensor-error-context")).getByRole("button", {
+      name: "切换到最新可用报告日",
+    }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-02-28");
+    expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
+  });
+
   it("does not surface cached tensor data for a backend-blocked report date", async () => {
     const base = createApiClient({ mode: "mock" });
     const blockedReportDate = "2026-02-27";
@@ -3974,6 +4370,47 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users retry report-date governance from the empty report-date state", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_empty_retry_initial"),
+        result: { report_dates: [] },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_empty_retry_success"),
+        result: { report_dates: ["2026-02-28"] },
+      });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_empty_dates_retry_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const emptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
+    expect(emptyState).toHaveTextContent("后端未返回可用风险报告日");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+
+    await user.click(within(emptyState).getByRole("button", { name: "重试日期治理" }));
+
+    await waitFor(() => {
+      expect(getRiskTensorDates).toHaveBeenCalledTimes(2);
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-02-28");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+      "tr_tensor_dates_empty_retry_success",
+    );
+    expect(screen.queryByTestId("risk-tensor-dates-empty-state")).not.toBeInTheDocument();
+  });
+
   it("shows manual empty report-date diagnostic text when clipboard copy fails", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {
@@ -4182,6 +4619,55 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users retry the risk tensor main read from the no-position state", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_empty_position_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: {
+          ...buildMeta("risk.tensor", "tr_tensor_empty_position_retry_initial"),
+          quality_flag: "missing" as const,
+          evidence_rows: 0,
+        },
+        result: {
+          ...tensorResult("2026-02-28"),
+          bond_count: 0,
+          quality_flag: "missing",
+          warnings: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_empty_position_retry_success"),
+        result: tensorResult("2026-02-28"),
+      });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const emptyState = await screen.findByTestId("risk-tensor-empty-state");
+    expect(emptyState).toHaveTextContent("当前报告日无风险张量持仓");
+    expect(screen.queryByTestId("risk-tensor-brief")).not.toBeInTheDocument();
+
+    await user.click(within(emptyState).getByRole("button", { name: "重试主读面" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-02-28");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+      "tr_tensor_empty_position_retry_success",
+    );
+    expect(screen.queryByTestId("risk-tensor-empty-state")).not.toBeInTheDocument();
+  });
+
   it("shows manual no-position diagnostic text when clipboard copy fails", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {
@@ -4314,6 +4800,41 @@ describe("RiskTensorPage", () => {
         Reflect.deleteProperty(navigator, "clipboard");
       }
     }
+  });
+
+  it("lets users retry report-date governance from the failure context", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor/dates (503)"))
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_retry_success"),
+        result: { report_dates: ["2026-02-28"] },
+      });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_dates_retry_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("风险报告日列表加载失败");
+    expect(getRiskTensor).not.toHaveBeenCalled();
+
+    await user.click(within(errorContext).getByRole("button", { name: "重试日期治理" }));
+
+    await waitFor(() => {
+      expect(getRiskTensorDates).toHaveBeenCalledTimes(2);
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-02-28");
+    expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
   });
 
   it("shows manual report-date list failure diagnostic text when clipboard copy fails", async () => {
@@ -4503,6 +5024,42 @@ describe("RiskTensorPage", () => {
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+
+  it("lets users retry the risk tensor main read from the failure context", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_error_retry_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor?report_date=2026-03-15 (404)"))
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor", "tr_tensor_retry_success"),
+        result: tensorResult("2026-03-15"),
+      });
+
+    renderRiskTensorRoute("/risk-tensor?report_date=2026-03-15", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const errorContext = await screen.findByTestId("risk-tensor-error-context");
+    expect(errorContext).toHaveTextContent("当前报告日无风险张量数据");
+    expect(getRiskTensor).toHaveBeenCalledTimes(1);
+
+    await user.click(within(errorContext).getByRole("button", { name: "重试主读面" }));
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      expect(getRiskTensor).toHaveBeenLastCalledWith("2026-03-15");
+    });
+    expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-03-15");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_retry_success");
+    expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
   });
 
   it("shows manual risk tensor failure diagnostic text when clipboard copy fails", async () => {
