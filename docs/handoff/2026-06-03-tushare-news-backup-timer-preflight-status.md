@@ -45,10 +45,22 @@ Operator go/no-go command:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
 ```
 
+Current pre-enable operations gap command:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap
+```
+
 Operations gap packet command:
 
 ```powershell
 python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
+```
+
+Post-enable operations gap command:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap
 ```
 
 Combined verdict: `blocked`

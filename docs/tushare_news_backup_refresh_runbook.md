@@ -137,6 +137,12 @@ For the operator-readable go/no-go status, run:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
 ```
 
+For the current pre-enable operations gap packet, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap
+```
+
 To review both the pre-enable and post-enable gates in one read-only report,
 run:
 
@@ -174,6 +180,12 @@ timer evidence:
 
 ```powershell
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
+```
+
+For the remaining post-enable operations gaps after the first timer fire, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap
 ```
 
 Go-live evidence must no longer say `not enabled`; it must record

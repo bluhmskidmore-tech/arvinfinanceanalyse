@@ -57,7 +57,9 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "--format ops-gap" in runbook
     assert "--stage pre-enable" in runbook
     assert "--stage pre-enable --format markdown" in runbook
+    assert "--stage pre-enable --format ops-gap" in runbook
     assert "--stage post-enable" in runbook
+    assert "--stage post-enable --format ops-gap" in runbook
     assert "timer enablement packet is filled" in runbook
     assert "actual install commands" in runbook
     assert "browser evidence JSON confirms" in runbook
@@ -69,6 +71,8 @@ def test_tushare_news_backup_refresh_runbook_documents_operator_contract() -> No
     assert "ops_gap.immediate_next_actions" in runbook
     assert "ops_gap.deferred_post_enable_next_actions" in runbook
     assert "ops_gap.deferred_until" in runbook
+    assert "ops_gap.required_pre_enable_inputs" in runbook
+    assert "ops_gap.required_post_enable_inputs" in runbook
 
 
 def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_page_path() -> None:
@@ -91,7 +95,9 @@ def test_tushare_news_backup_refresh_scheduler_handoff_keeps_scheduling_out_of_p
     assert "--format ops-gap" in handoff
     assert "--stage pre-enable" in handoff
     assert "--stage pre-enable --format markdown" in handoff
+    assert "--stage pre-enable --format ops-gap" in handoff
     assert "--stage post-enable" in handoff
+    assert "--stage post-enable --format ops-gap" in handoff
     assert "preflight returns `blocked`" in handoff
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in handoff
 
@@ -120,7 +126,9 @@ def test_tushare_news_backup_refresh_go_live_checklist_requires_evidence_before_
     assert "--format ops-gap" in checklist
     assert "--stage pre-enable" in checklist
     assert "--stage pre-enable --format markdown" in checklist
+    assert "--stage pre-enable --format ops-gap" in checklist
     assert "--stage post-enable" in checklist
+    assert "--stage post-enable --format ops-gap" in checklist
     assert "returns `pass`" in checklist
     assert "External timer enablement: enabled" in checklist
     assert "Timer evidence in go-live bundle" in checklist
@@ -150,7 +158,9 @@ def test_tushare_news_backup_timer_enablement_packet_is_ops_fillable_not_executa
     assert "--format ops-gap" in packet
     assert "--stage pre-enable" in packet
     assert "--stage pre-enable --format markdown" in packet
+    assert "--stage pre-enable --format ops-gap" in packet
     assert "--stage post-enable" in packet
+    assert "--stage post-enable --format ops-gap" in packet
     assert "preflight must return `pass` before enablement" in packet
     assert "External timer enablement: enabled" in packet
     assert "Timer evidence in go-live bundle" in packet
@@ -226,6 +236,8 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "--format markdown" in status
     assert "--format ops-gap" in status
     assert "--stage pre-enable --format markdown" in status
+    assert "--stage pre-enable --format ops-gap" in status
+    assert "--stage post-enable --format ops-gap" in status
     assert "Combined verdict: `blocked`" in status
     assert "Blocking stages: `pre-enable`, `post-enable`" in status
     assert "Pre-enable summary: `6 pass / 5 blocked`" in status
@@ -262,6 +274,8 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "ops_gap.immediate_next_actions" in status
     assert "ops_gap.deferred_post_enable_next_actions" in status
     assert "ops_gap.deferred_until" in status
+    assert "ops_gap.required_pre_enable_inputs" in status
+    assert "ops_gap.required_post_enable_inputs" in status
     assert "Ready to create timer: `false`" in status
     assert "docs/templates/tushare_news_backup_refresh_go_live_checklist.md" in status
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
@@ -318,6 +332,16 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         "timer_evidence_filled",
         "post_enable_evidence_confirms_timer_enabled",
     ]
+    assert all_stage["ops_gap"]["required_pre_enable_inputs"][0] == {
+        "input": "Credential owner",
+        "target": "docs/templates/tushare_news_backup_refresh_go_live_checklist.md",
+        "evidence": "Team/person responsible for `MOSS_TUSHARE_TOKEN`; no token value.",
+    }
+    assert all_stage["ops_gap"]["required_post_enable_inputs"][-1] == {
+        "input": "Timer evidence in go-live bundle",
+        "target": "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md",
+        "evidence": "Same timer evidence linked from the go-live bundle.",
+    }
 
 
 def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_enabling_timer() -> None:
@@ -351,7 +375,9 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
     assert "Post-Enable Inputs" in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs." in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status." in packet
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap` to read the current pre-enable operations gaps." in packet
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in packet
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps." in packet
     assert "POST /ui/news/tushare-npr/ingest" in packet
     assert "POST /api/news/tushare-npr/ingest" in packet
     assert "/ui/news/choice-events/latest" in packet
@@ -360,7 +386,9 @@ def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_
         "Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status.",
+        "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap` to read the current pre-enable operations gaps.",
         "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
+        "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps.",
     ):
         assert marker in generated
         assert marker in packet

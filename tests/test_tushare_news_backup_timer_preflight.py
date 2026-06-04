@@ -543,6 +543,40 @@ def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) ->
         "timer_evidence_filled",
         "post_enable_evidence_confirms_timer_enabled",
     ]
+    assert [
+        item["input"] for item in payload["ops_gap"]["required_pre_enable_inputs"]
+    ] == [
+        "Credential owner",
+        "Schedule owner",
+        "Page acceptance owner",
+        "Rollback owner",
+        "Timer host",
+        "Repository root",
+        "Python executable",
+        "Log path",
+        "Refresh window",
+        "Write-window exclusion note",
+        "Page evidence owner sign-off",
+        "Enable timer decision",
+    ]
+    assert payload["ops_gap"]["required_pre_enable_inputs"][0] == {
+        "input": "Credential owner",
+        "target": "docs/templates/tushare_news_backup_refresh_go_live_checklist.md",
+        "evidence": "Team/person responsible for `MOSS_TUSHARE_TOKEN`; no token value.",
+    }
+    assert [
+        item["input"] for item in payload["ops_gap"]["required_post_enable_inputs"]
+    ] == [
+        "Enabled by",
+        "Enabled at",
+        "Timer evidence",
+        "Timer evidence in go-live bundle",
+    ]
+    assert payload["ops_gap"]["required_post_enable_inputs"][-1] == {
+        "input": "Timer evidence in go-live bundle",
+        "target": "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md",
+        "evidence": "Same timer evidence linked from the go-live bundle.",
+    }
 
 
 def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path, capsys) -> None:

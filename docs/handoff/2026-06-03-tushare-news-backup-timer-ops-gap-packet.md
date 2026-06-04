@@ -94,6 +94,7 @@ Fill these before rerunning `pre-enable`:
 
 Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.
 Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status.
+Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap` to read the current pre-enable operations gaps.
 
 ## Post-Enable Inputs
 
@@ -107,6 +108,7 @@ Fill these only after the first scheduled run:
 | Timer evidence in go-live bundle | `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md` | Same timer evidence linked from the go-live bundle. |
 
 Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.
+Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps.
 
 ## Boundaries
 

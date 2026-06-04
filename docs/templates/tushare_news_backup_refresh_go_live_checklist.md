@@ -155,6 +155,8 @@ Do not enable the timer unless all of these are true:
   returns `pass`.
 - `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown`
   shows `Ready to create timer: true`.
+- `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap`
+  shows no remaining pre-enable operations gaps.
 
 For a combined read-only review of pre-enable and post-enable gates, run:
 
@@ -172,6 +174,12 @@ For the external operations input gap packet, run:
 
 ```powershell
 python scripts/tushare_news_backup_timer_preflight.py --stage all --format ops-gap
+```
+
+After the first scheduled run, inspect remaining post-enable operations gaps:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap
 ```
 
 Decision:

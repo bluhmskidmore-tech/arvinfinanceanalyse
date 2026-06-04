@@ -73,6 +73,12 @@ For the operator-readable go/no-go status:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
 ```
 
+For the current pre-enable operations gaps:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap
+```
+
 For a combined read-only review of both pre-enable and post-enable gates:
 
 ```powershell
@@ -100,6 +106,12 @@ Run after the first timer fire:
 ```powershell
 python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
+```
+
+For the remaining post-enable operations gaps after the first timer fire:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap
 ```
 
 Before the `post-enable` preflight can pass, update the go-live evidence bundle:

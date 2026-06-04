@@ -28,6 +28,90 @@ POST_ENABLE_ONLY_GATES = (
     "timer_evidence_filled",
     "post_enable_evidence_confirms_timer_enabled",
 )
+REQUIRED_PRE_ENABLE_INPUTS = (
+    {
+        "input": "Credential owner",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Team/person responsible for `MOSS_TUSHARE_TOKEN`; no token value.",
+    },
+    {
+        "input": "Schedule owner",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Team/person responsible for the external timer.",
+    },
+    {
+        "input": "Page acceptance owner",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Team/person accepting homepage fallback evidence.",
+    },
+    {
+        "input": "Rollback owner",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Team/person who can disable the timer.",
+    },
+    {
+        "input": "Timer host",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Hostname or scheduler host identifier.",
+    },
+    {
+        "input": "Repository root",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Absolute repo path used as job working directory.",
+    },
+    {
+        "input": "Python executable",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Absolute Python path on the timer host.",
+    },
+    {
+        "input": "Log path",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Absolute scheduler log path.",
+    },
+    {
+        "input": "Refresh window",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Local time and timezone.",
+    },
+    {
+        "input": "Write-window exclusion note",
+        "target": TIMER_PACKET_PATH.as_posix(),
+        "evidence": "Evidence that the job avoids other DuckDB writers.",
+    },
+    {
+        "input": "Page evidence owner sign-off",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Sign-off for the attached homepage screenshot and browser JSON.",
+    },
+    {
+        "input": "Enable timer decision",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer.",
+    },
+)
+REQUIRED_POST_ENABLE_INPUTS = (
+    {
+        "input": "Enabled by",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Team/person who enabled the external timer.",
+    },
+    {
+        "input": "Enabled at",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Timestamp with timezone.",
+    },
+    {
+        "input": "Timer evidence",
+        "target": CHECKLIST_PATH.as_posix(),
+        "evidence": "Scheduler screenshot, job config excerpt, or first scheduled-run log without secrets.",
+    },
+    {
+        "input": "Timer evidence in go-live bundle",
+        "target": EVIDENCE_PATH.as_posix(),
+        "evidence": "Same timer evidence linked from the go-live bundle.",
+    },
+)
 
 
 @dataclass(frozen=True)
@@ -310,6 +394,10 @@ def _filter_next_actions(
     return [action for action in next_actions if action["gate"] in allowed_gates]
 
 
+def _required_inputs(inputs: tuple[dict[str, str], ...]) -> list[dict[str, str]]:
+    return [dict(item) for item in inputs]
+
+
 def build_timer_preflight_report(
     *,
     repo_root: str | Path = ROOT,
@@ -437,6 +525,8 @@ def build_timer_preflight_bundle(*, repo_root: str | Path = ROOT) -> dict[str, o
                 reports["post-enable"]["next_actions"],
                 allowed_gates=set(POST_ENABLE_ONLY_GATES),
             ),
+            "required_pre_enable_inputs": _required_inputs(REQUIRED_PRE_ENABLE_INPUTS),
+            "required_post_enable_inputs": _required_inputs(REQUIRED_POST_ENABLE_INPUTS),
         },
     }
 
@@ -590,6 +680,22 @@ def _format_ops_gap_next_actions(report: dict[str, object]) -> list[str]:
     else:
         rows.append("| `none` | `none` | No action required. |")
     rows.append("")
+    return rows
+
+
+def _format_required_inputs_table(
+    inputs: tuple[dict[str, str], ...],
+    *,
+    empty_label: str = "No input required.",
+) -> list[str]:
+    rows = ["| Input | Target document | Evidence to attach |", "| --- | --- | --- |"]
+    if not inputs:
+        rows.append(f"| `none` | `none` | {empty_label} |")
+        return rows
+    rows.extend(
+        f"| {item['input']} | `{item['target']}` | {item['evidence']} |"
+        for item in inputs
+    )
     return rows
 
 
@@ -767,36 +873,20 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             "",
             "Fill these before rerunning `pre-enable`:",
             "",
-            "| Input | Target document | Evidence to attach |",
-            "| --- | --- | --- |",
-            "| Credential owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person responsible for `MOSS_TUSHARE_TOKEN`; no token value. |",
-            "| Schedule owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person responsible for the external timer. |",
-            "| Page acceptance owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person accepting homepage fallback evidence. |",
-            "| Rollback owner | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person who can disable the timer. |",
-            "| Timer host | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Hostname or scheduler host identifier. |",
-            "| Repository root | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute repo path used as job working directory. |",
-            "| Python executable | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute Python path on the timer host. |",
-            "| Log path | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Absolute scheduler log path. |",
-            "| Refresh window | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Local time and timezone. |",
-            "| Write-window exclusion note | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Evidence that the job avoids other DuckDB writers. |",
-            "| Page evidence owner sign-off | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Sign-off for the attached homepage screenshot and browser JSON. |",
-            "| Enable timer decision | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |",
+            *_format_required_inputs_table(REQUIRED_PRE_ENABLE_INPUTS),
             "",
             "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs.",
             "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown` to read the operator go/no-go status.",
+            "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap` to read the current pre-enable operations gaps.",
             "",
             "## Post-Enable Inputs",
             "",
             "Fill these only after the first scheduled run:",
             "",
-            "| Input | Target document | Evidence to attach |",
-            "| --- | --- | --- |",
-            "| Enabled by | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Team/person who enabled the external timer. |",
-            "| Enabled at | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Timestamp with timezone. |",
-            "| Timer evidence | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Scheduler screenshot, job config excerpt, or first scheduled-run log without secrets. |",
-            "| Timer evidence in go-live bundle | `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md` | Same timer evidence linked from the go-live bundle. |",
+            *_format_required_inputs_table(REQUIRED_POST_ENABLE_INPUTS),
             "",
             "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run.",
+            "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap` after the first scheduled run to read the remaining post-enable operations gaps.",
             "",
             "## Boundaries",
             "",

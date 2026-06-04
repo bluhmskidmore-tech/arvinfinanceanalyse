@@ -52,6 +52,12 @@ For the operator-readable go/no-go status, run:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
 ```
 
+For the current pre-enable operations gap packet, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format ops-gap
+```
+
 To review both pre-enable and post-enable gates in one read-only bundle, run:
 
 ```powershell
@@ -129,6 +135,12 @@ After the timer fires, run:
 ```powershell
 python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina --dry-run
 python scripts/tushare_news_backup_timer_preflight.py --stage post-enable
+```
+
+For the remaining post-enable operations gaps after the first timer fire, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --format ops-gap
 ```
 
 Accept the scheduled run only when:
