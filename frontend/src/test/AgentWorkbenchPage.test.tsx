@@ -146,6 +146,14 @@ function getAgentTurnStatus() {
   return status;
 }
 
+function getWaitStatusStopAction() {
+  const stopAction = document.querySelector<HTMLButtonElement>(".agent-wait-status__stop");
+  if (!stopAction) {
+    throw new Error("Expected wait status stop action");
+  }
+  return stopAction;
+}
+
 async function findAgentTurnStatus() {
   const statuses = await screen.findAllByRole("status", { name: "agent-turn-status" });
   const status = statuses.at(-1);
@@ -4196,7 +4204,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued stop second turn");
 
-    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    await user.click(getWaitStatusStopAction());
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
@@ -4316,7 +4324,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft should be replaced");
 
-    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    await user.click(getWaitStatusStopAction());
     const editQuestionButton = screen.getByRole("button", { name: /编辑问题/ });
     expect(editQuestionButton).toHaveAccessibleName(/question to edit while running/);
     await user.click(editQuestionButton);
@@ -4946,7 +4954,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("stop this pending answer")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    const waitStopAction = getWaitStatusStopAction();
+    expect(waitStopAction).toHaveAccessibleName(/stop this pending answer/);
+    await user.click(waitStopAction);
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
@@ -5130,7 +5140,7 @@ describe("AgentWorkbenchPage", () => {
     fireEvent.keyDown(window, { key: "Escape", isComposing: true });
 
     expect(screen.queryByText("已停止等待这次回答。")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "停止当前回答" })).toBeInTheDocument();
+    expect(getWaitStatusStopAction()).toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("");
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
   });
@@ -5162,7 +5172,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("rerun this stopped answer")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    await user.click(getWaitStatusStopAction());
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重新发送" }));
@@ -5223,7 +5233,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("stop and refresh this answer")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    await user.click(getWaitStatusStopAction());
 
     await waitFor(() => {
       const storedTurns = JSON.parse(window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY) ?? "[]");
@@ -5302,7 +5312,7 @@ describe("AgentWorkbenchPage", () => {
       expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBe("agent_run:known-before-stop");
     });
 
-    await user.click(screen.getByRole("button", { name: "停止当前回答" }));
+    await user.click(getWaitStatusStopAction());
 
     expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();

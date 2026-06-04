@@ -3594,7 +3594,7 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-wait-status__stop"
-                              aria-label="停止当前回答"
+                              aria-label={`停止当前回答：${turn.question}`}
                               onClick={stopActiveAgentTurn}
                             >
                               停止
