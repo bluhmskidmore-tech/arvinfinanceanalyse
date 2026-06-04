@@ -250,6 +250,56 @@
   overflow-wrap: anywhere;
 }
 
+.macro-toolkit-read-scope-blocker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-warning-300);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-warning-50);
+  text-align: left;
+}
+
+.macro-toolkit-read-scope-blocker > div:first-child,
+.macro-toolkit-read-scope-blocker__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.macro-toolkit-read-scope-blocker span {
+  color: var(--moss-color-warning-700);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.macro-toolkit-read-scope-blocker strong {
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.macro-toolkit-read-scope-blocker small,
+.macro-toolkit-read-scope-blocker__copy-status {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.macro-toolkit-read-scope-blocker__copy-status--success {
+  color: var(--moss-color-success-600);
+}
+
+.macro-toolkit-read-scope-blocker__copy-status--error {
+  color: var(--moss-color-danger-600);
+}
+
 .macro-toolkit-metric {
   display: grid;
   gap: 5px;

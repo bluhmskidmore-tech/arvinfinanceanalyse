@@ -347,6 +347,71 @@ function formatQueryError(error: unknown) {
   return "宏观工具接口暂不可用";
 }
 
+function isMacroToolkitReadForbidden(message: string) {
+  return /not allowed/i.test(message) && /read\s+macro_toolkit/i.test(message);
+}
+
+const MACRO_TOOLKIT_READ_SCOPE_REQUEST_TEXT = [
+  "申请授予 macro_toolkit/read",
+  "resource=macro_toolkit",
+  "action=read",
+  "页面=/macro-toolkit",
+  "用途=读取宏观工具 core/full 分析、脚本注册表、策略摘要和 Crisis Score 证据面板",
+  "授权后点击重试读取",
+].join("\n");
+
+function MacroToolkitReadScopeBlocker() {
+  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const copyScopeRequest = useCallback(async () => {
+    const clipboard =
+      (typeof navigator === "undefined" ? undefined : navigator.clipboard) ??
+      (typeof window === "undefined" ? undefined : window.navigator.clipboard);
+    const writeText = clipboard?.writeText;
+    if (typeof writeText !== "function") {
+      setCopyStatus("error");
+      return;
+    }
+    try {
+      await writeText.call(clipboard, MACRO_TOOLKIT_READ_SCOPE_REQUEST_TEXT);
+      setCopyStatus("success");
+    } catch {
+      setCopyStatus("error");
+    }
+  }, []);
+
+  return (
+    <div className="macro-toolkit-read-scope-blocker" aria-label="宏观工具读取权限缺口">
+      <div>
+        <span>缺少宏观工具读取权限</span>
+        <strong>macro_toolkit/read</strong>
+        <small>当前账号未被允许读取宏观工具；授权后点击重试读取。</small>
+      </div>
+      <div className="macro-toolkit-read-scope-blocker__actions">
+        <Button
+          aria-label="复制授权申请"
+          icon={<CopyOutlined aria-hidden="true" />}
+          size="small"
+          type="default"
+          onClick={() => void copyScopeRequest()}
+        >
+          {copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制授权申请"}
+        </Button>
+        {copyStatus !== "idle" ? (
+          <span
+            aria-atomic="true"
+            aria-live="polite"
+            className={`macro-toolkit-read-scope-blocker__copy-status macro-toolkit-read-scope-blocker__copy-status--${copyStatus}`}
+            role="status"
+          >
+            {copyStatus === "success" ? "授权申请已复制" : "复制失败，请手动选择授权信息"}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function isReadyStatus(status: string) {
   return ["current", "ready", "library_ready", "complete", "wired", "visible", "ok"].includes(status);
 }
@@ -528,6 +593,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const failedReadMessages = queryErrors
     .filter(Boolean)
     .map(formatQueryError);
+  const hasReadScopeBlocker = failedReadMessages.some(isMacroToolkitReadForbidden);
   const runtimeSections = analysis?.runtime_status?.deferred_sections ?? [];
   const hasonStrategy = analysis?.hason_strategy ?? null;
   const showFullAnalysisActionInRuntime = isCoreAnalysis && runtimeSections.length > 0;
@@ -1044,10 +1110,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             description="This route exposes analytical macro evidence only. Refresh actions, script execution, and operational registries stay on /macro-toolkit."
           />
         ) : null}
+        {hasReadScopeBlocker ? <MacroToolkitReadScopeBlocker /> : null}
         <div className="macro-toolkit-error-sources" aria-label="宏观工具失败来源">
           <span>失败来源</span>
           {failedReadMessages.length ? (
-            failedReadMessages.map((message) => <small key={message}>{message}</small>)
+            failedReadMessages.map((message, index) => <small key={`${message}-${index}`}>{message}</small>)
           ) : (
             <small>后端宏观模块没有返回可展示数据。</small>
           )}

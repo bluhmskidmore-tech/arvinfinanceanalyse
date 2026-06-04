@@ -3432,4 +3432,51 @@ describe("MacroToolkitPage", () => {
     expect(errorState).toHaveTextContent("/ui/macro/toolkit/analysis/strategy-summaries");
     expect(await screen.findByRole("button", { name: /重试读取/ })).toBeInTheDocument();
   });
+
+  it("surfaces a copyable macro toolkit read-scope request when reads are forbidden", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const baseClient = createApiClient({ mode: "mock" });
+    const client = {
+      ...baseClient,
+      getMacroToolkitAnalysis: async () => {
+        throw new Error("User is not allowed to read macro_toolkit.");
+      },
+      getMacroToolkitScripts: async () => {
+        throw new Error("User is not allowed to read macro_toolkit.");
+      },
+      getMacroToolkitStrategySummaries: async () => {
+        throw new Error("User is not allowed to read macro_toolkit.");
+      },
+    } as ApiClient;
+
+    try {
+      renderWorkbenchApp(["/macro-toolkit"], { client });
+
+      const errorState = await screen.findByTestId("macro-toolkit-error-state");
+      expect(errorState).toHaveTextContent("缺少宏观工具读取权限");
+      expect(errorState).toHaveTextContent("macro_toolkit/read");
+      expect(errorState).toHaveTextContent("授权后点击重试读取");
+      const permissionPanel = within(errorState).getByLabelText("宏观工具读取权限缺口");
+      fireEvent.click(within(permissionPanel).getByRole("button", { name: "复制授权申请" }));
+
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(expect.stringContaining("申请授予 macro_toolkit/read")),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("resource=macro_toolkit"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("action=read"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("页面=/macro-toolkit"));
+      await waitFor(() => expect(permissionPanel).toHaveTextContent("授权申请已复制"));
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(window.navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(window.navigator, "clipboard");
+      }
+    }
+  });
 });
