@@ -749,6 +749,30 @@ function formalContractExecutionStatus(props: {
   return "待重新读取正式契约";
 }
 
+function formalContractReadbackAction(props: {
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  if (props.isLoading) {
+    return "等待正式契约读取完成";
+  }
+  if (props.isError) {
+    return "恢复读取后重新查询正式契约";
+  }
+  if (props.contract?.formal_use_allowed === true) {
+    return "已完成正式契约回读";
+  }
+  if (props.contract?.sample_status === "missing_contract") {
+    return "登记后刷新页面或重新查询正式契约接口";
+  }
+  return "重新读取正式契约并复核 formal_use_allowed";
+}
+
+function shortFormalContractReadbackAction(action: string) {
+  return action === "登记后刷新页面或重新查询正式契约接口" ? "登记后刷新正式契约" : action;
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -984,6 +1008,11 @@ function LedgerFunctionalAuditStrip(props: {
     isError: props.isFormalContractError,
     materialChecklist,
   });
+  const readbackAction = formalContractReadbackAction({
+    contract: props.formalIndicatorSourceContract,
+    isLoading: props.isFormalContractLoading,
+    isError: props.isFormalContractError,
+  });
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -1081,6 +1110,10 @@ function LedgerFunctionalAuditStrip(props: {
           <div>
             <span>执行状态</span>
             <strong>{executionStatus}</strong>
+          </div>
+          <div>
+            <span>回读动作</span>
+            <strong>{shortFormalContractReadbackAction(readbackAction)}</strong>
           </div>
         </div>
       </div>
@@ -1907,6 +1940,11 @@ function FormalIndicatorSourceContractPanel(props: {
     isError: props.isError,
     materialChecklist,
   });
+  const readbackAction = formalContractReadbackAction({
+    contract: props.contract,
+    isLoading: props.isLoading,
+    isError: props.isError,
+  });
 
   return (
     <section
@@ -2058,6 +2096,10 @@ function FormalIndicatorSourceContractPanel(props: {
                   <small>
                     <span>执行状态</span>
                     {executionStatus}
+                  </small>
+                  <small>
+                    <span>回读动作</span>
+                    {readbackAction}
                   </small>
                 </div>
                 <small>正式值保持未接入，不能用分析候选值补齐。</small>

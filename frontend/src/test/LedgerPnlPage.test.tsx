@@ -664,6 +664,7 @@ describe("LedgerPnlPage", () => {
       "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     );
     expect(checklist).toHaveTextContent("执行状态待登记正式契约");
+    expect(checklist).toHaveTextContent("回读动作登记后刷新页面或重新查询正式契约接口");
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
     expect(strip).toHaveTextContent("正式契约缺口");
@@ -912,6 +913,7 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("最短补证路径登记 202605 正式财务指标契约");
     expect(decisionPath).toHaveTextContent("材料完整性补证材料齐备 3/3");
     expect(decisionPath).toHaveTextContent("执行状态待登记正式契约");
+    expect(decisionPath).toHaveTextContent("回读动作登记后刷新正式契约");
 
     const residualTable = await screen.findByTestId("ledger-pnl-residual-diagnostic-table");
     expect(residualTable).toHaveTextContent("科目层");
