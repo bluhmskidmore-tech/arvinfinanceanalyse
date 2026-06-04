@@ -2513,6 +2513,60 @@ describe("AgentWorkbenchPage", () => {
     expect(document.activeElement).toBe(screen.getByLabelText("agent-question-input"));
   });
 
+  it("refocuses the composer when a managed answer returns after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed pending focus");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("managed pending focus")).toBeInTheDocument();
+
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveCreateRun(
+        buildJsonResponse(
+          buildManagedRunPayload(
+            {
+              answer: "managed focus answer returned",
+              cards: [],
+              evidence: {
+                tables_used: ["hermes_cli"],
+                filters_applied: {
+                  provider: "hermes",
+                  model: "gpt-5.5",
+                  transport: "bridge",
+                  toolsets: "file",
+                },
+                evidence_rows: 1,
+                quality_flag: "ok",
+              },
+              result_meta: {
+                trace_id: "tr_managed_refocus_after_controls",
+                basis: "formal",
+                result_kind: "agent.hermes",
+              },
+              next_drill: [],
+              suggested_actions: [],
+            },
+            "agent_run:managed-refocus-after-controls",
+          ),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("managed focus answer returned")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("copies a completed assistant answer from the chat turn", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

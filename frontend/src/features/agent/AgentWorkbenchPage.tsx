@@ -1957,6 +1957,8 @@ export function EmbeddedAgentCopilot({
         error: null,
         activeSuggestedActionPayload: null,
       }));
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
       if (
         requestError instanceof AgentManagedRunRequiresHermesError &&
