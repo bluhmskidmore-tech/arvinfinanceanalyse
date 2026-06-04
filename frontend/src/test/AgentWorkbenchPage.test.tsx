@@ -154,6 +154,14 @@ function getWaitStatusStopAction() {
   return stopAction;
 }
 
+function getRetryTurnAction(question: string) {
+  const action = screen.getByLabelText(`重试这一轮：${question}`);
+  if (!(action instanceof HTMLButtonElement)) {
+    throw new Error(`Expected retry action for ${question}`);
+  }
+  return action;
+}
+
 async function findAgentTurnStatus() {
   const statuses = await screen.findAllByRole("status", { name: "agent-turn-status" });
   const status = statuses.at(-1);
@@ -1080,7 +1088,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+    const retryTurnAction = getRetryTurnAction("ordinary retry question");
+    expect(retryTurnAction).toHaveAccessibleName("重试这一轮：ordinary retry question");
+    await user.click(retryTurnAction);
 
     expect(await screen.findByText("retry recovered managed answer")).toBeInTheDocument();
     expect(screen.queryByText("智能体查询失败（500）")).not.toBeInTheDocument();
@@ -1113,7 +1123,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+    const retryCueAction = getRetryTurnAction("ordinary retry cue question");
+    expect(retryCueAction).toHaveAccessibleName("重试这一轮：ordinary retry cue question");
+    await user.click(retryCueAction);
 
     expect(await screen.findByText("正在重试这一轮 · 可继续输入下一句")).toBeInTheDocument();
     expect(screen.queryByText("智能体查询失败（500）")).not.toBeInTheDocument();
@@ -1195,7 +1207,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+    const followUpRetryAction = getRetryTurnAction("follow-up needs retry");
+    expect(followUpRetryAction).toHaveAccessibleName("重试这一轮：follow-up needs retry");
+    await user.click(followUpRetryAction);
     expect(await screen.findByText("follow-up retry recovered")).toBeInTheDocument();
 
     const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
@@ -2427,7 +2441,7 @@ describe("AgentWorkbenchPage", () => {
       await screen.findByText("智能体查询失败（500）"),
     ).toBeInTheDocument();
     const stoppedEditAction = screen.getByRole("button", { name: /编辑这句/ });
-    expect(stoppedEditAction).toHaveAccessibleName(/stop this pending answer/);
+    expect(stoppedEditAction).toHaveAccessibleName("编辑这句：q");
     await user.click(stoppedEditAction);
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("q");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
@@ -4812,7 +4826,9 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("restore found failed run")).toBeInTheDocument();
     expect(screen.getAllByText("pending follow-up question")).toHaveLength(1);
-    await user.click(screen.getByRole("button", { name: "重试这一轮" }));
+    const restoredRetryAction = getRetryTurnAction("pending follow-up question");
+    expect(restoredRetryAction).toHaveAccessibleName("重试这一轮：pending follow-up question");
+    await user.click(restoredRetryAction);
     expect(await screen.findByText("retry after restore answer")).toBeInTheDocument();
 
     const runPostCalls = fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs");
@@ -4964,7 +4980,9 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("stop this pending answer");
     expect(screen.getByText("已恢复到输入框 · 可编辑后重新发送")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "编辑这句" }));
+    const stoppedEditAction = screen.getByRole("button", { name: /编辑这句/ });
+    expect(stoppedEditAction).toHaveAccessibleName(/stop this pending answer/);
+    await user.click(stoppedEditAction);
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("stop this pending answer");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
 

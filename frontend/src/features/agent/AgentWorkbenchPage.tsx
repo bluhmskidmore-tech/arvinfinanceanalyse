@@ -3312,6 +3312,7 @@ export function EmbeddedAgentCopilot({
               <button
                 type="button"
                 className="agent-callout__action"
+                aria-label={`编辑这句：${turn.question}`}
                 onClick={() => editAgentQuestion(turn)}
                 disabled={loading}
               >
@@ -3320,6 +3321,7 @@ export function EmbeddedAgentCopilot({
               <button
                 type="button"
                 className="agent-callout__action"
+                aria-label={`重试这一轮：${turn.question}`}
                 onClick={() => void retryAgentTurn(turn)}
                 disabled={loading}
               >
@@ -3612,6 +3614,7 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-callout__action"
+                              aria-label={`编辑这句：${turn.question}`}
                               onClick={() => editAgentQuestion(turn)}
                               disabled={loading}
                             >
@@ -3620,6 +3623,7 @@ export function EmbeddedAgentCopilot({
                             <button
                               type="button"
                               className="agent-callout__action"
+                              aria-label={`重新发送：${turn.question}`}
                               onClick={() =>
                                 void rerunOrdinaryTurn(turn, "正在重新发送已停止回答 · 可继续输入下一句")
                               }
