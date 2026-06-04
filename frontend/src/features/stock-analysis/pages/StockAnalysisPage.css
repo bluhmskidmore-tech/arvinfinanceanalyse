@@ -5797,7 +5797,7 @@
 /* Canonical stock dashboard layout: one clean pass after earlier exploratory overrides. */
 @media (min-width: 1280px) {
   .stock-analysis-page__first-screen {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) 312px;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 288px;
     grid-template-areas:
       "hero hero hero rail"
       "kpi kpi kpi rail"
@@ -6855,7 +6855,7 @@
 
 @media (min-width: 1280px) {
   .stock-analysis-page__first-screen {
-    grid-template-columns: minmax(0, 1fr) 312px;
+    grid-template-columns: minmax(0, 1fr) 288px;
     gap: 14px;
     align-items: start;
   }

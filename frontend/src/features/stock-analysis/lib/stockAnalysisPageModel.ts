@@ -506,7 +506,18 @@ function fusionActionLabel(value: string | null | undefined): string {
     observation_only: "仅观察",
   };
   if (labels[normalized]) return labels[normalized];
-  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "裁决待确认";
+  const compact = normalized.replace(/_/g, "");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("source_table") ||
+    compact.includes("externalvendor") ||
+    compact.includes("vendor") ||
+    compact.includes("sourcetable") ||
+    compact.includes("choicestock")
+  ) {
+    return "裁决待确认";
+  }
   return action;
 }
 
