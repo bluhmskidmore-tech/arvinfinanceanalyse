@@ -833,6 +833,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本不足");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本任务");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补 2 个月");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("需补月份：2026-03-31、2026-04-30");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最早复核：2026-04-30 后");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核工作量");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规则处置");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧 3");

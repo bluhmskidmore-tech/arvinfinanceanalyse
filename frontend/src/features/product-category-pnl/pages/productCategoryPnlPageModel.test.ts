@@ -666,6 +666,8 @@ describe("productCategoryPnlPageModel", () => {
       backtestGateTone: "negative",
       sampleRepairLabel: "补 2 个月",
       sampleRepairDetailLabel: "闸口需 3 个月/6 条信号；当前 1 个月/3 条信号",
+      sampleRepairDateLabel: "需补月份：2026-03-31、2026-04-30",
+      sampleRepairReviewLabel: "最早复核：2026-04-30 后",
       reviewWorkloadLabel: "P3 1",
       reviewWorkloadDetailLabel: "复核 1 条；P1 0 条，P2 0 条，P3 1 条",
       dispositionLabel: "收紧 1",

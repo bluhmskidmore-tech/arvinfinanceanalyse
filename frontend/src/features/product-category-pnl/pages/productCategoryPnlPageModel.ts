@@ -424,6 +424,8 @@ export type ProductCategoryOperatingBacktestSurface = {
     backtestGateTone: "positive" | "negative" | "neutral";
     sampleRepairLabel: string;
     sampleRepairDetailLabel: string;
+    sampleRepairDateLabel: string;
+    sampleRepairReviewLabel: string;
     reviewWorkloadLabel: string;
     reviewWorkloadDetailLabel: string;
     dispositionLabel: string;
@@ -3074,14 +3076,29 @@ function productCategoryBacktestGate(input: {
 function productCategoryBacktestSampleRepair(input: {
   evaluatedMonthCount: number;
   signalCount: number;
+  latestReportDate: string | null;
 }): {
   sampleRepairLabel: string;
   sampleRepairDetailLabel: string;
+  sampleRepairDateLabel: string;
+  sampleRepairReviewLabel: string;
 } {
   const missingMonthCount = Math.max(0, PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT - input.evaluatedMonthCount);
+  const repairDates: string[] = [];
+  let cursor = input.latestReportDate;
+  for (let index = 0; index < missingMonthCount; index += 1) {
+    const nextDate = cursor ? productCategoryNextMonthEndDate(cursor) : null;
+    if (!nextDate) {
+      break;
+    }
+    repairDates.push(nextDate);
+    cursor = nextDate;
+  }
   return {
     sampleRepairLabel: missingMonthCount > 0 ? `补 ${missingMonthCount} 个月` : "补信号样本",
     sampleRepairDetailLabel: `闸口需 ${PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT} 个月/${PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT} 条信号；当前 ${input.evaluatedMonthCount} 个月/${input.signalCount} 条信号`,
+    sampleRepairDateLabel: repairDates.length > 0 ? `需补月份：${repairDates.join("、")}` : "需补月份：-",
+    sampleRepairReviewLabel: repairDates.length > 0 ? `最早复核：${repairDates[repairDates.length - 1]} 后` : "最早复核：待补齐样本后",
   };
 }
 
@@ -3366,6 +3383,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
   const sampleRepair = productCategoryBacktestSampleRepair({
     evaluatedMonthCount: evaluatedDates.length,
     signalCount: samples.length,
+    latestReportDate: latestPayload?.report_date ?? null,
   });
   const latestReviewRows = productCategoryBacktestLatestReviewRows({
     latestActionRows,
@@ -3392,6 +3410,8 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       backtestGateTone: backtestGate.backtestGateTone,
       sampleRepairLabel: sampleRepair.sampleRepairLabel,
       sampleRepairDetailLabel: sampleRepair.sampleRepairDetailLabel,
+      sampleRepairDateLabel: sampleRepair.sampleRepairDateLabel,
+      sampleRepairReviewLabel: sampleRepair.sampleRepairReviewLabel,
       reviewWorkloadLabel: reviewWorkload.reviewWorkloadLabel,
       reviewWorkloadDetailLabel: reviewWorkload.reviewWorkloadDetailLabel,
       dispositionLabel: ruleDisposition.dispositionLabel,
