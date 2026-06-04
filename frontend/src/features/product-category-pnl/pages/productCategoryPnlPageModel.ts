@@ -419,6 +419,9 @@ export type ProductCategoryOperatingBacktestSurface = {
     coverageLabel: string;
     attributionCoverageLabel: string;
     attributionCoverageDetailLabel: string;
+    backtestGateLabel: string;
+    backtestGateDetailLabel: string;
+    backtestGateTone: "positive" | "negative" | "neutral";
     reviewWorkloadLabel: string;
     reviewWorkloadDetailLabel: string;
     dispositionLabel: string;
@@ -3036,6 +3039,32 @@ function productCategoryBacktestRuleDisposition(
   };
 }
 
+function productCategoryBacktestGate(input: {
+  evaluatedMonthCount: number;
+  signalCount: number;
+}): {
+  backtestGateLabel: string;
+  backtestGateDetailLabel: string;
+  backtestGateTone: "positive" | "negative" | "neutral";
+} {
+  const requiredMonthCount = 3;
+  const requiredSignalCount = 6;
+  const enoughHistory = input.evaluatedMonthCount >= requiredMonthCount;
+  const enoughSignals = input.signalCount >= requiredSignalCount;
+  if (enoughHistory && enoughSignals) {
+    return {
+      backtestGateLabel: "可用于复核",
+      backtestGateDetailLabel: `连续回测 ${input.evaluatedMonthCount}/${requiredMonthCount} 个月；可评价信号 ${input.signalCount} 条，达到规则复核阈值`,
+      backtestGateTone: "positive",
+    };
+  }
+  return {
+    backtestGateLabel: "样本不足",
+    backtestGateDetailLabel: `连续回测 ${input.evaluatedMonthCount}/${requiredMonthCount} 个月；可评价信号 ${input.signalCount} 条，未达到规则放行阈值`,
+    backtestGateTone: "negative",
+  };
+}
+
 function productCategoryNextMonthEndDate(reportDate: string): string | null {
   const parsed = parseProductCategoryReportDate(reportDate);
   if (!parsed) {
@@ -3304,6 +3333,10 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
   });
   const reviewWorkload = productCategoryBacktestReviewWorkload(latestReviewRows);
   const ruleDisposition = productCategoryBacktestRuleDisposition(calibrationRows);
+  const backtestGate = productCategoryBacktestGate({
+    evaluatedMonthCount: evaluatedDates.length,
+    signalCount: samples.length,
+  });
 
   return {
     summary: {
@@ -3315,6 +3348,9 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         : "-",
       attributionCoverageLabel: attributionCoverage.attributionCoverageLabel,
       attributionCoverageDetailLabel: attributionCoverage.attributionCoverageDetailLabel,
+      backtestGateLabel: backtestGate.backtestGateLabel,
+      backtestGateDetailLabel: backtestGate.backtestGateDetailLabel,
+      backtestGateTone: backtestGate.backtestGateTone,
       reviewWorkloadLabel: reviewWorkload.reviewWorkloadLabel,
       reviewWorkloadDetailLabel: reviewWorkload.reviewWorkloadDetailLabel,
       dispositionLabel: ruleDisposition.dispositionLabel,
