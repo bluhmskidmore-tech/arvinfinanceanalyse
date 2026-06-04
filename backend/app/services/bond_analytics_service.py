@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
+    build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
     compute_action_attribution_bonds,
 )
@@ -90,8 +91,6 @@ from backend.app.schemas.bond_analytics import (
     AccountingClassAuditItem,
     AccountingClassAuditResponse,
     ActionAttributionResponse,
-    ActionDetail,
-    ActionTypeSummary,
     AssetClassBreakdown,
     AssetClassRiskSummary,
     BenchmarkExcessResponse,
@@ -2997,40 +2996,17 @@ def _build_action_attribution_placeholder_response(
         )
     )
     summary = analysis_envelope.result.summary
-    warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
+    payload = build_action_attribution_placeholder_payload(
+        report_date=report_date,
+        summary=summary,
+        facets=analysis_envelope.result.facets,
+        warnings=[warning.model_dump(mode="python") for warning in analysis_envelope.result.warnings],
+        generated_at=analysis_envelope.result_meta.generated_at.isoformat(),
+        default_status=str(ActionAttributionResponse.model_fields["status"].default),
+    )
     response = ActionAttributionResponse.model_validate(
         promote_flat_payload(
-            {
-                "report_date": report_date,
-                "period_type": str(summary["period_type"]),
-                "period_start": date.fromisoformat(str(summary["period_start"])),
-                "period_end": date.fromisoformat(str(summary["period_end"])),
-                "total_actions": int(summary["total_actions"]),
-                "total_pnl_from_actions": summary["total_pnl_from_actions"],
-                "by_action_type": [
-                    ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
-                    for item in analysis_envelope.result.facets.get("by_action_type", [])
-                ],
-                "action_details": [
-                    ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
-                    for item in analysis_envelope.result.facets.get("action_details", [])
-                ],
-                "period_start_duration": summary["period_start_duration"],
-                "period_end_duration": summary["period_end_duration"],
-                "duration_change_from_actions": summary["duration_change_from_actions"],
-                "period_start_dv01": summary["period_start_dv01"],
-                "period_end_dv01": summary["period_end_dv01"],
-                "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
-                "available_components": [str(item) for item in list(summary.get("available_components") or [])],
-                "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
-                "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
-                "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
-                "warnings": warnings,
-                "warnings_detail": [
-                    {"code": w.code, "level": w.level, "message": w.message}
-                    for w in analysis_envelope.result.warnings
-                ],
-            },
+            payload,
             ActionAttributionResponse,
         )
     )

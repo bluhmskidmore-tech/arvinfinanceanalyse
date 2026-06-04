@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
+    build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
 )
 
@@ -104,4 +105,47 @@ def test_build_action_attribution_success_payload_marks_missing_pnl_and_dedupes_
     assert payload["warnings_detail"] == [
         {"code": code, "level": "warning", "message": code}
         for code in payload["warnings"]
+    ]
+
+
+def test_build_action_attribution_placeholder_payload_uses_summary_defaults_and_warning_details() -> None:
+    payload = build_action_attribution_placeholder_payload(
+        report_date=date(2026, 3, 31),
+        summary={
+            "period_type": "MoM",
+            "period_start": "2026-03-01",
+            "period_end": "2026-03-31",
+            "total_actions": 0,
+            "total_pnl_from_actions": "0",
+            "period_start_duration": "0",
+            "period_end_duration": "0",
+            "duration_change_from_actions": "0",
+            "period_start_dv01": "0",
+            "period_end_dv01": "0",
+            "missing_inputs": ["trade_level_action_facts"],
+            "blocked_components": ["action_attribution"],
+        },
+        facets={
+            "by_action_type": [],
+            "action_details": [],
+        },
+        warnings=[
+            {"code": "empty", "level": "warning", "message": "no attribution rows"},
+            {"code": "empty", "level": "warning", "message": "no attribution rows"},
+        ],
+        generated_at="2026-03-31T10:00:00+00:00",
+        default_status="ready",
+    )
+
+    assert payload["report_date"] == date(2026, 3, 31)
+    assert payload["period_type"] == "MoM"
+    assert payload["period_start"] == date(2026, 3, 1)
+    assert payload["period_end"] == date(2026, 3, 31)
+    assert payload["status"] == "ready"
+    assert payload["missing_inputs"] == ["trade_level_action_facts"]
+    assert payload["blocked_components"] == ["action_attribution"]
+    assert payload["computed_at"] == "2026-03-31T10:00:00+00:00"
+    assert payload["warnings"] == ["no attribution rows"]
+    assert payload["warnings_detail"] == [
+        {"code": "empty", "level": "warning", "message": "no attribution rows"}
     ]

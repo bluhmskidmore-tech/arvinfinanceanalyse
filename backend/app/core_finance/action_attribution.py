@@ -86,6 +86,54 @@ def build_action_attribution_success_payload(
     }
 
 
+def build_action_attribution_placeholder_payload(
+    *,
+    report_date: date,
+    summary: Mapping[str, Any],
+    facets: Mapping[str, list[dict[str, Any]]],
+    warnings: list[Mapping[str, str]],
+    generated_at: str,
+    default_status: str,
+) -> dict[str, Any]:
+    warning_messages = _ordered_unique_warnings([warning.get("message") for warning in warnings])
+    warning_details: list[dict[str, str]] = []
+    seen_details: set[tuple[str, str, str]] = set()
+    for warning in warnings:
+        detail = {
+            "code": str(warning.get("code") or ""),
+            "level": str(warning.get("level") or "warning"),
+            "message": str(warning.get("message") or ""),
+        }
+        key = (detail["code"], detail["level"], detail["message"])
+        if key in seen_details:
+            continue
+        seen_details.add(key)
+        warning_details.append(detail)
+
+    return {
+        "report_date": report_date,
+        "period_type": str(summary["period_type"]),
+        "period_start": date.fromisoformat(str(summary["period_start"])),
+        "period_end": date.fromisoformat(str(summary["period_end"])),
+        "total_actions": int(summary["total_actions"]),
+        "total_pnl_from_actions": summary["total_pnl_from_actions"],
+        "by_action_type": list(facets.get("by_action_type", [])),
+        "action_details": list(facets.get("action_details", [])),
+        "period_start_duration": summary["period_start_duration"],
+        "period_end_duration": summary["period_end_duration"],
+        "duration_change_from_actions": summary["duration_change_from_actions"],
+        "period_start_dv01": summary["period_start_dv01"],
+        "period_end_dv01": summary["period_end_dv01"],
+        "status": str(summary.get("status") or default_status),
+        "available_components": [str(item) for item in list(summary.get("available_components") or [])],
+        "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
+        "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
+        "computed_at": str(summary.get("computed_at") or generated_at),
+        "warnings": warning_messages,
+        "warnings_detail": warning_details,
+    }
+
+
 def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
