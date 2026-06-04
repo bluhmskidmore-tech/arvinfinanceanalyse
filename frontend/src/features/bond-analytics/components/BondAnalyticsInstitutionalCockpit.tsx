@@ -15,7 +15,7 @@ import type { ActionAttributionResponse } from "../types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { formatPct, formatWan, formatYi } from "../utils/formatters";
-import { FIELD, panelStyle } from "./bondAnalyticsCockpitTokens";
+import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
 const { Text } = Typography;
@@ -23,7 +23,6 @@ const { Text } = Typography;
 const dt = designTokens;
 const inkStrong = dt.color.primary[900];
 const muted = dt.color.neutral[700];
-const sub = dt.color.neutral[600];
 const infoAccent = dt.color.info[500];
 const gradBar = `linear-gradient(90deg, ${dt.color.info[300]} 0%, ${infoAccent} 100%)`;
 const restrainedShadow = "0 8px 18px rgba(22, 35, 46, 0.05)";
@@ -33,11 +32,6 @@ const dashboardCardStyle: CSSProperties = {
   boxShadow: restrainedShadow,
 };
 const cardBodyStyle = { padding: 14 } as const;
-const moduleNoteStyle = {
-  color: sub,
-  fontSize: dt.fontSize[12],
-  lineHeight: dt.lineHeight.normal,
-} as const;
 
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
 const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
@@ -818,7 +812,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
         <div className={styles.referenceTopbar}>
           <div>
-            <div style={{ ...FIELD, marginBottom: 4 }}>债券持仓</div>
+            <div className={styles.holdingsKicker}>债券持仓</div>
             <h2 className={styles.referenceTitle}>组合总览</h2>
             <p className={styles.referenceSubtitle}>
               报告日 {dashboardReportDate || reportDate || "—"} · 首屏只展示后端读面与已确认下钻入口。
@@ -836,7 +830,7 @@ export function BondAnalyticsInstitutionalCockpit({
           className={styles.referenceSignalStrip}
         >
           <div>
-            <div style={{ ...FIELD, marginBottom: 3 }}>{conclusion.title}</div>
+            <div className={styles.conclusionKicker}>{conclusion.title}</div>
             <strong>{conclusion.body}</strong>
             <span>{conclusion.detail}</span>
           </div>
@@ -866,7 +860,7 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: cardBodyStyle }}
           >
             <DistributionDonut items={dashboardAssetItems} center={marketValueDisplay} emptyText="暂无资产结构" />
-            {portfolioHeadlinesUnavailable ? <div style={moduleNoteStyle}>{PORTFOLIO_HEADLINES_STRUCTURE_NOTE}</div> : null}
+            {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_STRUCTURE_NOTE}</div> : null}
           </Card>
 
           <Card
@@ -942,7 +936,7 @@ export function BondAnalyticsInstitutionalCockpit({
               styles={{ body: cardBodyStyle }}
             >
               <ProgressStack items={ratingRows} emptyText={topHoldingsUnavailable ? TOP_HOLDINGS_RATING_NOTE : "暂无评级分布"} />
-              {portfolioHeadlinesUnavailable ? <div style={moduleNoteStyle}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div> : null}
+              {portfolioHeadlinesUnavailable ? <div className={styles.moduleNote}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div> : null}
             </Card>
 
             <Card
