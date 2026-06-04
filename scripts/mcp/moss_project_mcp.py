@@ -250,6 +250,13 @@ class MetricContractsProvider(McpProvider):
 class LineageEvidenceProvider(McpProvider):
     name = "moss-lineage-evidence"
     _QUERY_EXPANSIONS = {
+        "page-agent-001": [
+            "agent.",
+            "AgentEnvelope",
+            "agent_audit",
+            "/api/agent/runs",
+            "/api/agent/query",
+        ],
         "page-risk-001": [
             "fact_formal_risk_tensor_daily",
             "agent.risk_tensor",
