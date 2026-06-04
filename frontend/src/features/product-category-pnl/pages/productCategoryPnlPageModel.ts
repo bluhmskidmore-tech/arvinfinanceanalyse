@@ -330,6 +330,35 @@ export type ProductCategoryOperatingBacktestActionRow = {
   tone: "positive" | "negative" | "neutral";
 };
 
+export type ProductCategoryOperatingBacktestMissReasonKey =
+  | "net_income_not_improved"
+  | "yield_not_improved"
+  | "scale_not_expanded"
+  | "positive_contribution_missing"
+  | "attribution_not_reduced"
+  | "scale_mismatch"
+  | "net_income_drag"
+  | "outcome_not_improved";
+
+export type ProductCategoryOperatingBacktestMissReasonRow = {
+  reasonKey: ProductCategoryOperatingBacktestMissReasonKey;
+  reasonLabel: string;
+  sampleCount: number;
+  sampleShareLabel: string;
+};
+
+export type ProductCategoryOperatingBacktestMissActionRow = {
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  missCount: number;
+  comparableCount: number;
+  missRate: number | null;
+  missRateLabel: string;
+  primaryReasonLabel: string;
+  reasonRows: ProductCategoryOperatingBacktestMissReasonRow[];
+  tone: "positive" | "negative" | "neutral";
+};
+
 export type ProductCategoryOperatingBacktestExample = {
   reportDate: string;
   nextReportDate: string;
@@ -345,6 +374,7 @@ export type ProductCategoryOperatingBacktestExample = {
   yieldDeltaBpLabel: string;
   scaleDelta: number | null;
   scaleDeltaLabel: string;
+  missReasonKeys: ProductCategoryOperatingBacktestMissReasonKey[];
   tone: "positive" | "negative" | "neutral";
 };
 
@@ -364,6 +394,7 @@ export type ProductCategoryOperatingBacktestSurface = {
     tone: "positive" | "negative" | "neutral";
   }>;
   actionRows: ProductCategoryOperatingBacktestActionRow[];
+  missReasonRows: ProductCategoryOperatingBacktestMissActionRow[];
   examples: ProductCategoryOperatingBacktestExample[];
   emptyCopy: string | null;
 };
@@ -2667,6 +2698,98 @@ function productCategoryBacktestTone(hitRate: number | null): "positive" | "nega
   return "neutral";
 }
 
+const PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER: ProductCategoryOperatingBacktestMissReasonKey[] = [
+  "yield_not_improved",
+  "net_income_not_improved",
+  "scale_not_expanded",
+  "positive_contribution_missing",
+  "attribution_not_reduced",
+  "scale_mismatch",
+  "net_income_drag",
+  "outcome_not_improved",
+];
+
+function productCategoryBacktestMissReasonLabel(
+  reasonKey: ProductCategoryOperatingBacktestMissReasonKey,
+): string {
+  if (reasonKey === "yield_not_improved") {
+    return "收益率未改善";
+  }
+  if (reasonKey === "net_income_not_improved") {
+    return "净营收未改善";
+  }
+  if (reasonKey === "scale_not_expanded") {
+    return "规模未扩张";
+  }
+  if (reasonKey === "positive_contribution_missing") {
+    return "正贡献不足";
+  }
+  if (reasonKey === "attribution_not_reduced") {
+    return "未解释差异未下降";
+  }
+  if (reasonKey === "scale_mismatch") {
+    return "规模方向错配";
+  }
+  if (reasonKey === "net_income_drag") {
+    return "净营收拖累";
+  }
+  return "结果未改善";
+}
+
+function productCategoryBacktestMissReasonKeys(input: {
+  actionKind: ProductCategoryOperatingActionKind;
+  hit: boolean | null;
+  netIncomeDelta: number | null;
+  nextNetIncome: number | null;
+  yieldDeltaBp: number | null;
+  scaleDelta: number | null;
+  currentUnexplainedAbs: number | null;
+  nextUnexplainedAbs: number | null;
+}): ProductCategoryOperatingBacktestMissReasonKey[] {
+  if (input.hit !== false) {
+    return [];
+  }
+  const reasons: ProductCategoryOperatingBacktestMissReasonKey[] = [];
+  if (input.actionKind === "reprice_or_improve") {
+    if (input.yieldDeltaBp !== null && input.yieldDeltaBp <= 0) {
+      reasons.push("yield_not_improved");
+    }
+    if (input.scaleDelta !== null && input.scaleDelta > 0 && (input.yieldDeltaBp === null || input.yieldDeltaBp <= 0)) {
+      reasons.push("scale_mismatch");
+    }
+    if (input.netIncomeDelta !== null && input.netIncomeDelta < 0) {
+      reasons.push("net_income_drag");
+    }
+  } else if (input.actionKind === "shrink_or_limit") {
+    if (input.netIncomeDelta !== null && input.netIncomeDelta <= 0) {
+      reasons.push("net_income_not_improved");
+    }
+    if (input.scaleDelta !== null && input.scaleDelta > 0) {
+      reasons.push("scale_mismatch");
+    }
+  } else if (input.actionKind === "selective_growth") {
+    if (input.scaleDelta !== null && input.scaleDelta <= 0) {
+      reasons.push("scale_not_expanded");
+    }
+    if (input.nextNetIncome !== null && input.nextNetIncome <= 0) {
+      reasons.push("positive_contribution_missing");
+    }
+    if (input.yieldDeltaBp !== null && input.yieldDeltaBp <= 0) {
+      reasons.push("yield_not_improved");
+    }
+  } else if (
+    input.currentUnexplainedAbs !== null
+    && input.nextUnexplainedAbs !== null
+    && input.nextUnexplainedAbs >= input.currentUnexplainedAbs
+  ) {
+    reasons.push("attribution_not_reduced");
+  }
+  if (reasons.length === 0) {
+    reasons.push("outcome_not_improved");
+  }
+  return reasons;
+}
+
 function productCategoryNextMonthEndDate(reportDate: string): string | null {
   const parsed = parseProductCategoryReportDate(reportDate);
   if (!parsed) {
@@ -2748,18 +2871,30 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         currentScale === null || nextScale === null
           ? null
           : Number((nextScale - currentScale).toFixed(2));
+      const currentUnexplainedAbs = productCategoryBacktestCurrentUnexplainedAbs(action);
+      const nextUnexplainedAbs = productCategoryBacktestNextUnexplainedAbs(
+        input.attributionsByReportDate?.get(next.report_date),
+        next.rows,
+        action.categoryId,
+      );
       const hit = productCategoryOutcomeHit({
         actionKind: action.actionKind,
         netIncomeDelta,
         nextNetIncome,
         yieldDeltaBp,
         scaleDelta,
-        currentUnexplainedAbs: productCategoryBacktestCurrentUnexplainedAbs(action),
-        nextUnexplainedAbs: productCategoryBacktestNextUnexplainedAbs(
-          input.attributionsByReportDate?.get(next.report_date),
-          next.rows,
-          action.categoryId,
-        ),
+        currentUnexplainedAbs,
+        nextUnexplainedAbs,
+      });
+      const missReasonKeys = productCategoryBacktestMissReasonKeys({
+        actionKind: action.actionKind,
+        hit,
+        netIncomeDelta,
+        nextNetIncome,
+        yieldDeltaBp,
+        scaleDelta,
+        currentUnexplainedAbs,
+        nextUnexplainedAbs,
       });
       samples.push({
         reportDate: current.report_date,
@@ -2776,6 +2911,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         yieldDeltaBpLabel: signedProductCategoryBpDeltaLabel(yieldDeltaBp),
         scaleDelta,
         scaleDeltaLabel: signedYiDeltaLabel(scaleDelta),
+        missReasonKeys,
         tone: hit === null ? "neutral" : hit ? "positive" : "negative",
       });
     }
@@ -2831,6 +2967,56 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       tone: productCategoryBacktestTone(hitRate),
     }];
   });
+  const missReasonRows = ([
+    "shrink_or_limit",
+    "review_attribution",
+    "reprice_or_improve",
+    "selective_growth",
+  ] as const).flatMap((actionKind) => {
+    const rows = samples.filter((sample) => sample.actionKind === actionKind);
+    const comparableRows = rows.filter((row) => row.outcomeLabel !== "待判定");
+    const missedRows = rows.filter((row) => row.outcomeLabel === "未命中");
+    if (missedRows.length === 0) {
+      return [];
+    }
+    const reasonCounts = missedRows.reduce((counts, row) => {
+      row.missReasonKeys.forEach((reasonKey) => {
+        counts.set(reasonKey, (counts.get(reasonKey) ?? 0) + 1);
+      });
+      return counts;
+    }, new Map<ProductCategoryOperatingBacktestMissReasonKey, number>());
+    const reasonRows = Array.from(reasonCounts.entries())
+      .sort((left, right) => {
+        if (right[1] !== left[1]) {
+          return right[1] - left[1];
+        }
+        return PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER.indexOf(left[0])
+          - PRODUCT_CATEGORY_BACKTEST_MISS_REASON_ORDER.indexOf(right[0]);
+      })
+      .map(([reasonKey, sampleCount]) => ({
+        reasonKey,
+        reasonLabel: productCategoryBacktestMissReasonLabel(reasonKey),
+        sampleCount,
+        sampleShareLabel: `${sampleCount}/${missedRows.length}`,
+      }));
+    const missRate = comparableRows.length === 0 ? null : missedRows.length / comparableRows.length;
+    return [{
+      actionKind,
+      actionLabel: productCategoryActionLabel(actionKind),
+      missCount: missedRows.length,
+      comparableCount: comparableRows.length,
+      missRate,
+      missRateLabel: productCategoryRateLabel(missRate),
+      primaryReasonLabel: reasonRows[0]?.reasonLabel ?? "-",
+      reasonRows,
+      tone: productCategoryBacktestTone(missRate === null ? null : 1 - missRate),
+    }];
+  }).sort((left, right) => {
+    if ((right.missRate ?? -1) !== (left.missRate ?? -1)) {
+      return (right.missRate ?? -1) - (left.missRate ?? -1);
+    }
+    return right.missCount - left.missCount;
+  });
 
   return {
     summary: {
@@ -2844,6 +3030,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     },
     coverageRows,
     actionRows,
+    missReasonRows,
     examples: samples
       .slice()
       .sort((left, right) => Math.abs(right.netIncomeDelta ?? 0) - Math.abs(left.netIncomeDelta ?? 0))

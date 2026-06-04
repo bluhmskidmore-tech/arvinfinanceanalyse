@@ -1083,6 +1083,27 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
               ))}
             </div>
           </article>
+          {props.surface.missReasonRows.length > 0 ? (
+            <article className="product-category-action-backtest__panel product-category-action-backtest__miss-panel">
+              <h3>未命中诊断</h3>
+              <div className="product-category-action-backtest__miss-list">
+                {props.surface.missReasonRows.map((row) => (
+                  <div className={`product-category-action-backtest__miss-row is-${row.tone}`} key={row.actionKind}>
+                    <div>
+                      <strong>{row.actionLabel}</strong>
+                      <span>
+                        未命中 {row.missCount}/{row.comparableCount} · 主因 {row.primaryReasonLabel}
+                      </span>
+                    </div>
+                    <b>{row.missRateLabel}</b>
+                    <small>
+                      {row.reasonRows.map((reason) => `${reason.reasonLabel} ${reason.sampleShareLabel}`).join(" · ")}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
           <div className="product-category-action-backtest__grid">
             <article className="product-category-action-backtest__panel">
               <h3>动作类型表现</h3>

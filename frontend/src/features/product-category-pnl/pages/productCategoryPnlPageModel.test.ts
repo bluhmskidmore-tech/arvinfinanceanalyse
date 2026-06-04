@@ -678,6 +678,30 @@ describe("productCategoryPnlPageModel", () => {
       hitRateLabel: "0.0%",
       averageYieldDeltaBpLabel: "-10.0bp",
     }));
+    expect(surface.missReasonRows[0]).toEqual(expect.objectContaining({
+      actionKind: "reprice_or_improve",
+      actionLabel: "重定价/提效",
+      missCount: 1,
+      missRateLabel: "100.0%",
+      primaryReasonLabel: "收益率未改善",
+      reasonRows: [
+        expect.objectContaining({
+          reasonKey: "yield_not_improved",
+          reasonLabel: "收益率未改善",
+          sampleCount: 1,
+        }),
+        expect.objectContaining({
+          reasonKey: "scale_mismatch",
+          reasonLabel: "规模方向错配",
+          sampleCount: 1,
+        }),
+        expect.objectContaining({
+          reasonKey: "net_income_drag",
+          reasonLabel: "净营收拖累",
+          sampleCount: 1,
+        }),
+      ],
+    }));
     expect(surface.actionRows[2]).toEqual(expect.objectContaining({
       actionLabel: "选择性扩张",
       hitRateLabel: "100.0%",
@@ -762,6 +786,7 @@ describe("productCategoryPnlPageModel", () => {
       },
     ]);
     expect(surface.actionRows).toEqual([]);
+    expect(surface.missReasonRows).toEqual([]);
     expect(surface.emptyCopy).toBe("需要至少两个连续月度正式 payload 才能回测行动信号。");
   });
 
