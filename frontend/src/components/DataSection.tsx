@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import { displayTokens } from "../theme/displayTokens";
 import type { DataSectionState } from "./DataSection.types";
 import "./DataSection.css";
 
@@ -45,15 +44,7 @@ function renderBody(opts: {
         <span className="data-section__loading-label">正在载入</span>
         <div className="data-section__skeleton-stack">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              style={{
-                height: 12,
-                borderRadius: 999,
-                background: index === 0 ? displayTokens.surface.track : displayTokens.surface.trackAlt,
-                width: index === 0 ? "76%" : index === 3 ? "61%" : "100%",
-              }}
-            />
+            <div key={index} className="data-section__skeleton-bar" />
           ))}
         </div>
       </div>

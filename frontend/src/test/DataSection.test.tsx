@@ -49,11 +49,16 @@ describe("DataSection · loading", () => {
     const loadingBlock = screen.getByTestId("data-section-loading");
     const loadingLabel = loadingBlock.querySelector(".data-section__loading-label");
     const skeletonStack = loadingBlock.querySelector(".data-section__skeleton-stack");
+    const skeletonBars = skeletonStack?.querySelectorAll(".data-section__skeleton-bar");
 
     expect(loadingLabel).toBeInTheDocument();
     expect(loadingLabel).not.toHaveAttribute("style");
     expect(skeletonStack).toBeInTheDocument();
     expect(skeletonStack).not.toHaveAttribute("style");
+    expect(skeletonBars).toHaveLength(4);
+    skeletonBars?.forEach((bar) => {
+      expect(bar).not.toHaveAttribute("style");
+    });
   });
 });
 
