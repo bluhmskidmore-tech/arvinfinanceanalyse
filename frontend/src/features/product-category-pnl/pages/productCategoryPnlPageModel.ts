@@ -383,6 +383,7 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   reasonLabel: string;
   impactLabel: string;
   evidenceLabel: string;
+  checkItems: string[];
   tone: "positive" | "negative" | "neutral";
 };
 
@@ -2889,6 +2890,34 @@ function productCategoryBacktestLatestReviewRows(input: {
     }
     return "P3 低样本复核";
   };
+  const checkItemsForAction = (actionKind: ProductCategoryOperatingActionKind): string[] => {
+    if (actionKind === "reprice_or_improve") {
+      return [
+        "确认最新收益率改善证据",
+        "复核规模扩张是否稀释收益率",
+        "核对净营收是否同步改善",
+      ];
+    }
+    if (actionKind === "shrink_or_limit") {
+      return [
+        "确认压降后净营收改善",
+        "复核规模回落是否落实",
+        "核对收益率是否继续承压",
+      ];
+    }
+    if (actionKind === "selective_growth") {
+      return [
+        "确认扩张后仍为正贡献",
+        "复核新增规模质量",
+        "核对收益率是否被摊薄",
+      ];
+    }
+    return [
+      "确认未解释差异下降",
+      "复核归因残差来源",
+      "核对正式归因闭合误差",
+    ];
+  };
   const tightenRowsByAction = new Map(
     input.calibrationRows
       .filter((row) => row.recommendationLabel === "收紧触发条件")
@@ -2914,6 +2943,7 @@ function productCategoryBacktestLatestReviewRows(input: {
         ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
         : "历史均值：-",
       evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
+      checkItems: checkItemsForAction(row.actionKind),
       tone: "negative" as const,
     }];
   });

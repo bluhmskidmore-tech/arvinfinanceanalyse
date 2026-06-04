@@ -1146,6 +1146,7 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                     </div>
                     <b>{row.reviewLabel} · {row.riskRankLabel}</b>
                     <small>{row.riskReasonLabel} · {row.impactLabel} · {row.evidenceLabel}</small>
+                    <small>{row.checkItems.join(" · ")}</small>
                   </div>
                 ))}
               </div>
