@@ -9,7 +9,10 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal
 
-from backend.app.core_finance.action_attribution import compute_action_attribution_bonds
+from backend.app.core_finance.action_attribution import (
+    bond_analytics_action_line_payload,
+    compute_action_attribution_bonds,
+)
 from backend.app.core_finance.bond_analytics import dv01 as dv01_core
 from backend.app.core_finance.bond_analytics.common import (
     STANDARD_SCENARIOS,
@@ -323,18 +326,6 @@ def _pnl_position_key_from_bond_row(row: dict[str, object]) -> str:
     pn = str(row.get("portfolio_name") or "").strip()
     cc = str(row.get("cost_center") or "").strip()
     return f"{inst}::{pn}::{cc}"
-
-
-def _action_attribution_bond_line(row: dict[str, object]) -> dict[str, object]:
-    pn = str(row.get("portfolio_name") or "").strip()
-    cc = str(row.get("cost_center") or "").strip()
-    return {
-        "bond_code": str(row.get("instrument_code") or "").strip(),
-        "book_id": f"{pn}::{cc}",
-        "market_value": row.get("market_value"),
-        "modified_duration": row.get("modified_duration"),
-        "asset_class": str(row.get("asset_class_std") or row.get("accounting_class") or ""),
-    }
 
 
 def _resolve_prior_bond_snapshot_date(repo: BondAnalyticsRepository, period_end: str) -> str | None:
@@ -3151,8 +3142,8 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         raw = compute_action_attribution_bonds(
             period_start=period_start,
             period_end=period_end,
-            positions_start=[_action_attribution_bond_line(r) for r in rows_start],
-            positions_end=[_action_attribution_bond_line(r) for r in rows_end],
+            positions_start=[bond_analytics_action_line_payload(r) for r in rows_start],
+            positions_end=[bond_analytics_action_line_payload(r) for r in rows_end],
             pnl_by_key=pnl_by_key,
         )
     except Exception:

@@ -27,6 +27,18 @@ ACTION_TYPE_NAMES: dict[str, str] = {
 }
 
 
+def bond_analytics_action_line_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    portfolio_name = str(row.get("portfolio_name") or "").strip()
+    cost_center = str(row.get("cost_center") or "").strip()
+    return {
+        "bond_code": str(row.get("instrument_code") or "").strip(),
+        "book_id": f"{portfolio_name}::{cost_center}",
+        "market_value": row.get("market_value"),
+        "modified_duration": row.get("modified_duration"),
+        "asset_class": str(row.get("asset_class_std") or row.get("accounting_class") or ""),
+    }
+
+
 def _key(inst: str, book: str) -> str:
     return f"{inst}::{book}"
 
