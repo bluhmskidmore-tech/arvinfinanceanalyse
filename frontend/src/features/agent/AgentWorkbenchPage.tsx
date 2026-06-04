@@ -3405,7 +3405,7 @@ export function EmbeddedAgentCopilot({
       <div
         className="agent-runtime-strip"
         role="status"
-        aria-label="agent-runtime-status"
+        aria-label="Agent 连接状态"
         aria-live="polite"
         aria-atomic="true"
       >

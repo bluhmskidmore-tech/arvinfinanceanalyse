@@ -13,6 +13,7 @@ const PAGE_CONTEXT_PLACEHOLDER =
 const GITNEXUS_STATUS_BUTTON = "GitNexus 状态";
 const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
 const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
+const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
@@ -447,7 +448,7 @@ describe("AgentWorkbenchPage", () => {
   it("keeps technical runtime details collapsed by default", () => {
     render(<AgentWorkbenchPage />);
 
-    const runtimeStatus = screen.getByLabelText("agent-runtime-status");
+    const runtimeStatus = screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL);
     expect(runtimeStatus).toHaveTextContent("待提问");
     expect(within(runtimeStatus).getByText("运行详情")).toBeVisible();
     expect(within(runtimeStatus).getByText("Engine")).not.toBeVisible();
@@ -456,7 +457,7 @@ describe("AgentWorkbenchPage", () => {
   it("announces runtime status changes without expanding technical details", () => {
     render(<AgentWorkbenchPage />);
 
-    const runtimeStatus = screen.getByRole("status", { name: "agent-runtime-status" });
+    const runtimeStatus = screen.getByRole("status", { name: AGENT_RUNTIME_STATUS_LABEL });
     expect(runtimeStatus).toHaveAttribute("aria-live", "polite");
     expect(runtimeStatus).toHaveAttribute("aria-atomic", "true");
   });
@@ -539,7 +540,7 @@ describe("AgentWorkbenchPage", () => {
       },
     });
     expect(await screen.findByText("Stock research ready.")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("Dexter");
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("Dexter");
     expect(screen.getByText("研究上下文已返回 · 可以继续追问")).toBeInTheDocument();
   });
 
@@ -651,7 +652,7 @@ describe("AgentWorkbenchPage", () => {
       filters: { research_domain: "macro" },
     });
     expect(await screen.findByText("Macro research ready.")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("Dexter");
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("Dexter");
   });
 
   it("executes Risk Memo through the local agent query workflow mode", async () => {
@@ -820,8 +821,8 @@ describe("AgentWorkbenchPage", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
-    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
-    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("sync");
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("local");
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("sync");
   });
 
   it("renders the local analysis-chat fallback with evidence and suggested actions", async () => {
@@ -845,7 +846,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("本地分析对话")).toBeInTheDocument();
     expect(screen.getByText("已捕获上下文")).toBeInTheDocument();
     expect(screen.getByText("组合概览")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("local");
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("local");
     expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
     const resultDetails = screen.getByLabelText("assistant-result-details");
     expect(resultDetails).toHaveClass("agent-result-side");
@@ -2577,7 +2578,7 @@ describe("AgentWorkbenchPage", () => {
     expect(getAgentTurnStatus()).toHaveTextContent("agent_run:test");
     expect(getAgentTurnStatus()).toHaveTextContent("已完成");
     expect(getAgentTurnStatus()).toHaveAccessibleName("回答状态：ping");
-    expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("gpt-5.5");
+    expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("gpt-5.5");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "/api/agent/runs",
@@ -5843,7 +5844,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "ping{Enter}");
 
-    const runtimeStatus = await screen.findByLabelText("agent-runtime-status");
+    const runtimeStatus = await screen.findByLabelText(AGENT_RUNTIME_STATUS_LABEL);
     expect(runtimeStatus).toHaveTextContent("Hermes");
     expect(runtimeStatus).toHaveTextContent("bridge");
     expect(runtimeStatus).toHaveTextContent("gpt-5.5");
@@ -5887,7 +5888,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("Dexter managed run complete.")).toBeInTheDocument();
     expect(getAgentTurnStatus()).toHaveTextContent("Dexter 托管任务完成");
-    const runtimeStatus = screen.getByLabelText("agent-runtime-status");
+    const runtimeStatus = screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL);
     expect(runtimeStatus).toHaveTextContent("Dexter");
     expect(runtimeStatus).toHaveTextContent("bridge");
     expect(runtimeStatus).toHaveTextContent("gpt-5.5");
