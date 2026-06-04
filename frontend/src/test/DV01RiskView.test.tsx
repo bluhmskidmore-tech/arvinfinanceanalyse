@@ -966,7 +966,14 @@ describe("DV01RiskView", () => {
     const panel = await screen.findByTestId("dv01-reconciliation-panel");
     expect(panel).toHaveTextContent("单券明细对账");
     expect(panel).toHaveTextContent("后端合计");
+    expect(panel).toHaveTextContent("面值 30.00 亿");
+    expect(panel).toHaveTextContent("市值 30.80 亿");
+    expect(panel).toHaveTextContent("久期 3.20 年");
+    expect(panel).toHaveTextContent("DV01 880,000");
     expect(panel).toHaveTextContent("当前筛选 2 / 2");
+    expect(panel).toHaveTextContent("搜索只改变明细可见行");
+    expect(screen.getByText("总 DV01")).toBeInTheDocument();
+    expect(screen.getByText("3,546,830")).toBeInTheDocument();
     const table = within(panel).getByTestId("dv01-reconciliation-table");
     expect(within(table).getByText("BOND-1")).toBeInTheDocument();
     expect(within(table).getByText("BOND-2")).toBeInTheDocument();
@@ -975,6 +982,11 @@ describe("DV01RiskView", () => {
     await user.type(screen.getByTestId("dv01-reconciliation-search"), "Beta");
 
     await waitFor(() => expect(panel).toHaveTextContent("当前筛选 1 / 2"));
+    expect(panel).toHaveTextContent("面值 30.00 亿");
+    expect(panel).toHaveTextContent("市值 30.80 亿");
+    expect(panel).toHaveTextContent("久期 3.20 年");
+    expect(panel).toHaveTextContent("DV01 880,000");
+    expect(screen.getByText("3,546,830")).toBeInTheDocument();
     expect(within(table).getByText("BOND-2")).toBeInTheDocument();
     expect(within(table).queryByText("BOND-1")).not.toBeInTheDocument();
   });

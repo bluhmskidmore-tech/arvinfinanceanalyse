@@ -1301,6 +1301,9 @@ function DV01ReconciliationPanel({
             {formatDurationYears(data?.face_weighted_modified_duration)} · DV01 {formatNumeric(data?.total_dv01)} · 持仓{" "}
             {formatCount(data?.position_count ?? 0)}
           </div>
+          <div className={styles.reconciliationMeta}>
+            搜索只改变明细可见行；后端合计和上方 KPI 仍为当前报告日/分类全量口径。
+          </div>
         </div>
         <div className={styles.reconciliationControls}>
           <span className={styles.reconciliationCount}>
