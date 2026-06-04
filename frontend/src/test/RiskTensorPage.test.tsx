@@ -4007,6 +4007,52 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("keeps invalid KRD chart bucket clicks on the field review path", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_invalid_chart_click_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_krd_invalid_chart_click_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          krd_1y: "bad-krd",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const tenorDrill = await screen.findByTestId("risk-tensor-tenor-drill");
+      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
+      const krdChart = screen.getAllByTestId("risk-tensor-echarts-stub")[1]!;
+      expect(tenorDrill).toHaveTextContent("当前桶：5Y");
+      expect(qualityNote).toHaveTextContent("krd_1y");
+
+      await user.click(krdChart);
+
+      expect(scrollTargets).toContain(qualityNote);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+      expect(tenorDrill).toHaveTextContent("当前桶：5Y");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("shows review and retry actions when every KRD bucket is unparseable", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -4413,6 +4459,55 @@ describe("RiskTensorPage", () => {
       expect(durationQualityNote).toHaveTextContent("portfolio_modified_duration");
 
       await user.click(within(durationQualityNote).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users continue from unparseable duration coverage fields to payload field review", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_duration_coverage_quality_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_duration_coverage_quality_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          rate_risk_market_value: "400000000",
+          rate_risk_dv01: "bad-rate-dv01",
+          rate_risk_modified_duration: "4.2",
+          duration_excluded_market_value: "not-a-number",
+          duration_excluded_count: 2,
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+      const qualityNote = within(durationScope).getByTestId("risk-tensor-duration-coverage-quality-note");
+      expect(qualityNote).toHaveTextContent("rate_risk_dv01 不可解析");
+      expect(qualityNote).toHaveTextContent("duration_excluded_market_value 不可解析");
+
+      await user.click(within(qualityNote).getByRole("button", { name: "查看字段复核" }));
 
       expect(scrollTargets).toContain(payloadChecklist);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });

@@ -149,6 +149,12 @@ const MAIN_PAYLOAD_NUMERIC_FIELDS = [
   { key: "liquidity_gap_30d_ratio", label: "liquidity_gap_30d_ratio" },
   { key: "total_market_value", label: "total_market_value" },
 ] as const;
+const OPTIONAL_DURATION_COVERAGE_FIELDS = [
+  { key: "rate_risk_market_value", label: "rate_risk_market_value" },
+  { key: "rate_risk_dv01", label: "rate_risk_dv01" },
+  { key: "rate_risk_modified_duration", label: "rate_risk_modified_duration" },
+  { key: "duration_excluded_market_value", label: "duration_excluded_market_value" },
+] as const;
 const KRD_FIELDS = [
   { key: "krd_1y", tenor: "1Y" },
   { key: "krd_3y", tenor: "3Y" },
@@ -191,10 +197,18 @@ function riskTensorScalarIssue(value: RiskTensorDisplayValue | null | undefined)
 }
 
 function riskTensorPayloadQualityIssues(result: RiskTensorPayload) {
-  return MAIN_PAYLOAD_NUMERIC_FIELDS.flatMap((field) => {
+  const mainIssues = MAIN_PAYLOAD_NUMERIC_FIELDS.flatMap((field) => {
     const issue = riskTensorScalarIssue(result[field.key]);
     return issue ? [{ ...field, issue }] : [];
   });
+  const durationCoverageIssues = OPTIONAL_DURATION_COVERAGE_FIELDS.flatMap((field) => {
+    if (!Object.prototype.hasOwnProperty.call(result, field.key)) {
+      return [];
+    }
+    const issue = riskTensorScalarIssue(result[field.key]);
+    return issue ? [{ ...field, issue }] : [];
+  });
+  return [...mainIssues, ...durationCoverageIssues];
 }
 
 function amountUnit(value: RiskTensorDisplayValue, unit: string) {
@@ -825,6 +839,9 @@ export default function RiskTensorPage() {
     typeof tensorMeta?.evidence_rows === "number" ? tensorMeta.evidence_rows : "未提供"
   }；tables_used ${metadataTablesUsed || "未提供"}；filters_applied ${metadataFiltersApplied || "未提供"}`;
   const payloadQualityIssues = result ? riskTensorPayloadQualityIssues(result) : [];
+  const durationCoverageQualityIssues = payloadQualityIssues.filter((item) =>
+    OPTIONAL_DURATION_COVERAGE_FIELDS.some((field) => field.key === item.key),
+  );
   const payloadQualityIssueLabels = payloadQualityIssues.map((item) => `${item.label} ${item.issue}`);
   const payloadQualityIssueSummary = payloadQualityIssueLabels.join(" / ");
   const qualityEvidenceStateKey = [
@@ -1535,6 +1552,12 @@ export default function RiskTensorPage() {
     const tenor = typeof params.name === "string" ? params.name : "";
     const row = tenorRows.find((item) => item.tenor === tenor);
     if (!row) {
+      return;
+    }
+    if (row.magnitude === null) {
+      document
+        .querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]')
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     setSelectedTenor(row.tenor);
@@ -2351,6 +2374,21 @@ export default function RiskTensorPage() {
                     tone={durationExclusionTone(result)}
                   />
                 </div>
+                {durationCoverageQualityIssues.length > 0 ? (
+                  <div
+                    className="risk-tensor-radar-quality"
+                    data-testid="risk-tensor-duration-coverage-quality-note"
+                  >
+                    {durationCoverageQualityIssues.map((row) => `${row.key} ${row.issue}`).join(" / ")}
+                    ；相关久期覆盖字段只保留后端原始展示/占位，页面不会在前端补算正式指标。
+                    <button type="button" className="risk-tensor-brief__link-button" onClick={handlePayloadChecklistJump}>
+                      查看字段复核
+                    </button>
+                    <button type="button" className="risk-tensor-brief__link-button" onClick={handleRetryTensorMainRead}>
+                      重试主读面
+                    </button>
+                  </div>
+                ) : null}
                 {durationRadarIssue ? (
                   <div className="risk-tensor-radar-quality" data-testid="risk-tensor-duration-quality-note">
                     portfolio_modified_duration {durationRadarIssue}；该字段未参与前端雷达图数值。
