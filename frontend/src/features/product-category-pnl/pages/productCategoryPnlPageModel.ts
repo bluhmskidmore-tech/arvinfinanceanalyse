@@ -432,6 +432,7 @@ export type ProductCategoryOperatingBacktestSurface = {
     reportDate: string;
     nextReportDate: string | null;
     statusLabel: string;
+    detailLabel: string;
     signalCount: number;
     tone: "positive" | "negative" | "neutral";
   }>;
@@ -3143,6 +3144,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
         reportDate: current.report_date,
         nextReportDate: next.report_date,
         statusLabel: "跳过：非连续月份",
+        detailLabel: `期望下一月末 ${productCategoryNextMonthEndDate(current.report_date) ?? "-"}，实际 ${next.report_date}`,
         signalCount: currentActions.length,
         tone: "negative",
       });
@@ -3222,6 +3224,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       reportDate: current.report_date,
       nextReportDate: next.report_date,
       statusLabel: "已回测",
+      detailLabel: "使用下一期 monthly 正式 payload 验证",
       signalCount: currentActions.length,
       tone: "positive",
     });
@@ -3231,6 +3234,7 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       reportDate: latestPayload.report_date,
       nextReportDate: null,
       statusLabel: "最新月待观察",
+      detailLabel: `等待下一期 ${productCategoryNextMonthEndDate(latestPayload.report_date) ?? "-"} payload 验证`,
       signalCount: latestPendingCount,
       tone: "neutral",
     });

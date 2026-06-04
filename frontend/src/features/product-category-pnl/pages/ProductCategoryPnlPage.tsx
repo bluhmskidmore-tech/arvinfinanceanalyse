@@ -1098,7 +1098,7 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                 >
                   <span>{row.reportDate}{row.nextReportDate ? ` → ${row.nextReportDate}` : ""}</span>
                   <strong>{row.statusLabel}</strong>
-                  <small>{row.signalCount} 条信号</small>
+                  <small>{row.signalCount} 条信号 · {row.detailLabel}</small>
                 </div>
               ))}
             </div>
