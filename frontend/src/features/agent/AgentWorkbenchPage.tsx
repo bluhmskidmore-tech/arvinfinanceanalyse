@@ -2451,6 +2451,8 @@ export function EmbeddedAgentCopilot({
         activeSuggestedActionPayload: null,
       }));
       setComposerAssistHint("Workflow 执行完成 · 可以继续追问");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     } catch (requestError) {
       const nextError: AgentQueryError = {
         kind: "request",
