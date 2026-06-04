@@ -10,8 +10,8 @@ const baseline = {
   // Phase 4H moves PnL attribution endpoint implementations into pnlAttributionClient.ts.
   apiClientMockOccurrences: 55,
   dashboardStyleFiles: {},
-  totalTsxStyleProps: 2274,
-  totalStaticTsxStyleProps: 902,
+  totalTsxStyleProps: 2262,
+  totalStaticTsxStyleProps: 893,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 13,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 1,
