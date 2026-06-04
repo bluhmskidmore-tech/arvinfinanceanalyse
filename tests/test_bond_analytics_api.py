@@ -7,6 +7,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
+import duckdb
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -171,6 +172,36 @@ def _assert_envelope(payload: dict[str, Any]) -> None:
         return
     for key in ("report_date", "computed_at", "warnings"):
         assert key in result, f"result missing {key!r}"
+
+
+def _seed_materialized_bond_analytics(duckdb_path, governance_dir) -> None:
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+
+def _mark_one_fact_row_as_unmapped_accounting_class(duckdb_path) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_bond_analytics_daily
+            set accounting_class = 'other',
+                accounting_rule_id = 'test_unmapped_accounting_class'
+            where report_date = ? and instrument_code = 'CB-001'
+            """,
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
 
 
 async def _check_all_endpoints() -> None:
@@ -355,6 +386,41 @@ def test_bond_analytics_dv01_reconciliation_returns_numeric_payload(tmp_path, mo
     assert result["rows"][0]["modified_duration"]["unit"] == "ratio"
     assert result["rows"][0]["dv01"]["unit"] == "dv01"
     assert result["rows"][0]["dv01_share"]["unit"] == "ratio"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_all_scope_warning_surfaces_over_http(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_materialized_bond_analytics(duckdb_path, governance_dir)
+    _mark_one_fact_row_as_unmapped_accounting_class(duckdb_path)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    risk_response = client.get(
+        "/api/bond-analytics/dv01-risk",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "all",
+        },
+    )
+    reconciliation_response = client.get(
+        "/api/bond-analytics/dv01-reconciliation",
+        params={
+            "report_date": REPORT_DATE,
+            "accounting_class": "all",
+        },
+    )
+
+    assert risk_response.status_code == 200, risk_response.text
+    assert reconciliation_response.status_code == 200, reconciliation_response.text
+    risk_warnings = risk_response.json()["result"]["warnings"]
+    reconciliation_warnings = reconciliation_response.json()["result"]["warnings"]
+    assert any("未映射会计分类" in warning for warning in risk_warnings)
+    assert any("other" in warning for warning in risk_warnings)
+    assert any("未映射会计分类" in warning for warning in reconciliation_warnings)
+    assert any("other" in warning for warning in reconciliation_warnings)
     get_settings.cache_clear()
 
 
