@@ -253,6 +253,8 @@ export default function ModuleWorkbenchHomePage({
   const stateTone =
     view.stateLabel === "读取失败"
       ? "error"
+      : view.stateLabel === "部分失败"
+        ? "watch"
       : view.stateLabel === "读取中"
         ? "muted"
         : "ok";
@@ -280,6 +282,28 @@ export default function ModuleWorkbenchHomePage({
           </div>
         </div>
       </header>
+
+      {view.decision ? (
+        <section className={styles.decisionBand} data-testid="module-home-decision">
+          <div className={styles.decisionMain}>
+            <span className={`${styles.decisionKicker} ${toneClassName(view.decision.tone)}`}>
+              {view.decision.title}
+            </span>
+            <strong className={`${styles.decisionConclusion} ${toneClassName(view.decision.tone)}`}>
+              {view.decision.conclusion}
+            </strong>
+            <span className={styles.decisionDetail}>{view.decision.detail}</span>
+          </div>
+          <div className={styles.decisionFacts}>
+            {view.decision.facts.map((fact) => (
+              <span className={styles.decisionFact} key={fact.label}>
+                <span>{fact.label}</span>
+                <strong className={`${styles.num} ${toneClassName(fact.tone)}`}>{fact.value}</strong>
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className={styles.layout}>
         <main className={styles.main}>
@@ -383,19 +407,19 @@ export default function ModuleWorkbenchHomePage({
 
           {view.detailPanels && view.detailPanels.length > 0 ? (
             view.kind === "risk" ? (
-              view.detailPanels.map((panel) => (
-                <section
-                  className={styles.card}
-                  data-testid={riskDetailPanelTestId(panel.key)}
-                  key={panel.key}
-                >
-                  <div className={styles.sectionTitle}>
-                    <span>{panel.title}</span>
-                    <span className={styles.sectionMeta}>{panel.meta}</span>
-                  </div>
-                  <DetailPanelBody panel={panel} variant="standalone" />
-                </section>
-              ))
+              <section className={styles.card} data-testid="module-home-risk-evidence">
+                <div className={styles.sectionTitle}>
+                  <span>风险证据面板</span>
+                  <span className={styles.sectionMeta}>字段级读数，不在首页补算</span>
+                </div>
+                <div className={styles.detailGrid}>
+                  {view.detailPanels.map((panel) => (
+                    <div data-testid={riskDetailPanelTestId(panel.key)} key={panel.key}>
+                      <DetailPanelBody panel={panel} />
+                    </div>
+                  ))}
+                </div>
+              </section>
             ) : view.kind === "performance" ? (
               view.detailPanels.map((panel) => (
                 <section

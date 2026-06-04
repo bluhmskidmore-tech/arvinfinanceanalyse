@@ -98,6 +98,18 @@ export type ModuleHomeDataNote = {
   tone: ModuleHomeTone;
 };
 
+export type ModuleHomeDecision = {
+  title: string;
+  conclusion: string;
+  detail: string;
+  tone: ModuleHomeTone;
+  facts: Array<{
+    label: string;
+    value: string;
+    tone: ModuleHomeTone;
+  }>;
+};
+
 export type ModuleHomeDistributionRow = {
   key: string;
   label: string;
@@ -161,6 +173,7 @@ export type ModuleHomeView = {
   kpis: ModuleHomeKpi[];
   statuses: ModuleHomeStatus[];
   briefings: ModuleHomeBriefing[];
+  decision?: ModuleHomeDecision;
   distributionPanels?: ModuleHomeDistributionPanel[];
   detailPanels?: ModuleHomeDetailPanel[];
   dataNote: ModuleHomeDataNote;
@@ -2371,6 +2384,18 @@ function riskTensorRatioPercent(value: RiskTensorDisplayValue): string {
   return display;
 }
 
+function riskTensorValueTone(value: RiskTensorDisplayValue): ModuleHomeTone {
+  const raw = riskTensorRawOrNull(value);
+  if (raw === null) {
+    return "watch";
+  }
+  return "ok";
+}
+
+function riskTensorPendingOrWan(value: RiskTensorDisplayValue): string {
+  return hasRiskTensorValue(value) ? riskTensorWanWithUnit(value) : "待接入";
+}
+
 function hasRiskTensorValue(value: RiskTensorDisplayValue): boolean {
   return value !== null && value !== undefined;
 }
@@ -2608,6 +2633,40 @@ function riskView(
   const cashflow = queries.cashflow?.data?.result;
   const reportDate = tensor?.report_date ?? cashflow?.report_date ?? dates[0] ?? "-";
   const cashflowReportDate = cashflow?.report_date ?? reportDate;
+  const tensorWarnings = tensor?.warnings ?? [];
+  const hasRiskPartialError = Boolean(queries.riskDates?.isError || queries.riskTensor?.isError || queries.cashflow?.isError);
+  const hasRiskPrimaryError = Boolean(queries.riskDates?.isError || queries.riskTensor?.isError);
+  const riskStateLabel = hasRiskPrimaryError
+    ? "读取失败"
+    : hasRiskPartialError
+      ? "部分失败"
+      : hasLoading(queries)
+        ? "读取中"
+        : "已接入";
+  const decisionTone: ModuleHomeTone = hasRiskPrimaryError
+    ? "error"
+    : hasLoading(queries)
+      ? "muted"
+      : hasRiskPartialError || !tensor || tensorWarnings.length > 0 || !hasRiskTensorValue(tensor.regulatory_dv01)
+        ? "watch"
+        : "ok";
+  const decisionConclusion = hasRiskPrimaryError
+    ? "风险读链路失败，当前不能形成处置判断。"
+    : hasLoading(queries)
+      ? "风险链路读取中，等待正式接口返回。"
+      : !tensor
+        ? "风险张量未返回，先补齐主链数据。"
+        : hasRiskPartialError
+          ? "风险张量已返回，现金流等辅助链路需单独复核。"
+        : tensorWarnings.length > 0
+          ? `存在 ${tensorWarnings.length} 条风险数据提示，优先核对张量质量。`
+          : !hasRiskTensorValue(tensor.regulatory_dv01)
+            ? "监管 DV01 待接入，不能判定限额状态。"
+            : "主链已返回，按后端字段做截面风险复核。";
+  const decisionDetail =
+    tensor?.dv01_controls?.control_message ??
+    tensor?.prior_period_change?.summary ??
+    "下方保留字段级证据；正式处置进入风险张量、集中度和现金流页面。";
 
   const riskTensorRows = tensor ? buildRiskTensorDetailRows(tensor) : [];
   const riskTensorStatus = queryStatus(
@@ -2656,23 +2715,25 @@ function riskView(
       };
 
   return {
-    stateLabel: hasError(queries) ? "读取失败" : hasLoading(queries) ? "读取中" : "已接入",
-    stateDetail: hasError(queries)
-      ? "风险读链路失败，不使用前端补数。"
+    stateLabel: riskStateLabel,
+    stateDetail: hasRiskPrimaryError
+      ? "风险主链路失败，不使用前端补数。"
+      : hasRiskPartialError
+        ? `风险报告日 ${reportDate}，主链已返回；辅助链路存在失败。`
       : `风险报告日 ${reportDate}，可用日期 ${dates.length} 个。`,
     kpis: [
       {
-        key: "risk-dates",
-        label: "可用报告日",
-        value: `${dates.length}`,
-        detail: "来自 risk tensor dates。",
-        tone: dates.length > 0 ? "ok" : "watch",
+        key: "regulatory-dv01",
+        label: "监管 DV01",
+        value: tensor ? riskTensorPendingOrWan(tensor.regulatory_dv01) : "-",
+        detail: "来自 regulatory_dv01；缺失时不使用估值 DV01 替代。",
+        tone: tensor ? riskTensorValueTone(tensor.regulatory_dv01) : "watch",
       },
       {
         key: "portfolio-dv01",
         label: "估值 DV01",
         value: tensor ? riskTensorWanWithUnit(tensor.portfolio_dv01) : "-",
-        detail: "portfolio_dv01，非监管限额口径替代。",
+        detail: "portfolio_dv01，只作估值敏感度读数。",
         tone: tensor ? "ok" : "watch",
       },
       {
@@ -2702,6 +2763,30 @@ function riskView(
         tone: "muted",
       },
     ],
+    decision: {
+      title: "风险处置判断",
+      conclusion: decisionConclusion,
+      detail: decisionDetail,
+      tone: decisionTone,
+      facts: [
+        { label: "报告日", value: reportDate, tone: reportDate === "-" ? "watch" : "ok" },
+        {
+          label: "质量标记",
+          value: tensor?.quality_flag ?? "-",
+          tone: tensor?.quality_flag === "ok" ? "ok" : tensor ? "watch" : "muted",
+        },
+        {
+          label: "限额状态",
+          value: tensor?.dv01_controls?.limit_status ?? "未返回",
+          tone: tensor?.dv01_controls?.limit_status === "within_limit" ? "ok" : "watch",
+        },
+        {
+          label: "数据提示",
+          value: `${tensorWarnings.length} 条`,
+          tone: tensorWarnings.length > 0 ? "watch" : "ok",
+        },
+      ],
+    },
     briefings: [
       {
         title: "久期与 DV01",

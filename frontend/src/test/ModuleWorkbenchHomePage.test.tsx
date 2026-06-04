@@ -139,17 +139,74 @@ describe("ModuleWorkbenchHomePage", () => {
     renderAt("/risk-overview");
 
     const page = await screen.findByTestId("module-workbench-home");
+    expect(within(page).getByTestId("module-home-decision")).toHaveTextContent("风险处置判断");
     expect(within(page).getByTestId("module-home-risk-tensor")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-cashflow")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-risk-evidence")).toBeInTheDocument();
     expect(page).toHaveTextContent("风险张量明细");
     expect(page).toHaveTextContent("现金流与缺口");
     await waitFor(() => {
+      expect(page).toHaveTextContent("监管 DV01");
       expect(page).toHaveTextContent("KRD 5Y");
       expect(page).toHaveTextContent("CS01");
       expect(page).toHaveTextContent("久期缺口");
     });
     expect(page).toHaveTextContent("来源 risk-tensor");
     expect(page).toHaveTextContent("来源 cashflow-projection");
+  });
+
+  it("does not use portfolio DV01 as a fallback for missing regulatory DV01", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensor: vi.fn(async (reportDate: string) => {
+        const envelope = await base.getRiskTensor(reportDate);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            regulatory_dv01: null,
+            warnings: [],
+          },
+        };
+      }),
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = within(page).getByTestId("module-home-decision");
+    const kpis = within(page).getByTestId("module-home-kpi-strip");
+    await waitFor(() => {
+      expect(decision).toHaveTextContent("监管 DV01 待接入");
+    });
+    expect(kpis).toHaveTextContent("监管 DV01");
+    expect(kpis).toHaveTextContent("待接入");
+    expect(kpis).toHaveTextContent("估值 DV01");
+    expect(kpis).toHaveTextContent("12.00 万元");
+  });
+
+  it("keeps risk tensor readable when the auxiliary cashflow read fails", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getCashflowProjection: vi.fn(async () => {
+        throw new Error("cashflow unavailable");
+      }),
+    };
+
+    renderAt("/risk-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("部分失败");
+      expect(page).toHaveTextContent("风险张量已返回，现金流等辅助链路需单独复核。");
+      expect(page).toHaveTextContent("监管 DV01");
+      expect(page).toHaveTextContent("12.00 万元");
+    });
+    expect(page).toHaveTextContent("现金流预测");
+    expect(page).toHaveTextContent("读取失败");
+    expect(page).toHaveTextContent("不使用前端补数");
   });
 
   it("renders performance kpi detail and business pnl cards from backend reads", async () => {

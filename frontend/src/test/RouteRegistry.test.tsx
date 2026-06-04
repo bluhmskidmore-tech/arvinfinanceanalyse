@@ -100,15 +100,6 @@ vi.mock("../features/cashflow-projection/pages/CashflowProjectionPage", () => ({
   ),
 }));
 
-vi.mock("../features/risk-overview/RiskOverviewPage", () => ({
-  default: () => (
-    <section data-testid="risk-overview-kpi-grid">
-      <h1>风险总览</h1>
-      <p>主指标来自正式风险张量接口</p>
-    </section>
-  ),
-}));
-
 vi.mock("../features/workbench/module-home/ModuleWorkbenchHomePage", () => ({
   default: ({ kind }: { kind: string }) => (
     <section data-testid="module-workbench-home">
