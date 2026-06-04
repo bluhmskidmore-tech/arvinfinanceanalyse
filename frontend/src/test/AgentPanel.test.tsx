@@ -514,7 +514,8 @@ describe("AgentPanel", () => {
     await user.type(screen.getByLabelText("agent-question-input"), "please judge current risk");
     await user.click(screen.getByTestId("agent-panel-submit"));
 
-    expect(await screen.findByRole("status", { name: "agent-turn-status" })).toHaveTextContent("本地查询");
+    const turnStatus = await screen.findByRole("status", { name: "回答状态：please judge current risk" });
+    expect(turnStatus).toHaveTextContent("本地查询");
     expect(screen.getByText("正在回答 · Shift+Enter 换行")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeDisabled();
     release?.();

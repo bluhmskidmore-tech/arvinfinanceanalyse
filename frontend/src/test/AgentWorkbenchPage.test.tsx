@@ -139,7 +139,7 @@ function queryQueuedFollowUpStatus() {
 }
 
 function getAgentTurnStatus() {
-  const status = screen.getAllByRole("status", { name: "agent-turn-status" }).at(-1);
+  const status = screen.getAllByRole("status", { name: /回答状态/ }).at(-1);
   if (!status) {
     throw new Error("Expected at least one agent turn status");
   }
@@ -163,7 +163,7 @@ function getRetryTurnAction(question: string) {
 }
 
 async function findAgentTurnStatus() {
-  const statuses = await screen.findAllByRole("status", { name: "agent-turn-status" });
+  const statuses = await screen.findAllByRole("status", { name: /回答状态/ });
   const status = statuses.at(-1);
   if (!status) {
     throw new Error("Expected at least one agent turn status");
@@ -2576,6 +2576,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("Hermes 托管任务完成。")).toBeInTheDocument();
     expect(getAgentTurnStatus()).toHaveTextContent("agent_run:test");
     expect(getAgentTurnStatus()).toHaveTextContent("已完成");
+    expect(getAgentTurnStatus()).toHaveAccessibleName("回答状态：ping");
     expect(screen.getByLabelText("agent-runtime-status")).toHaveTextContent("gpt-5.5");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,

@@ -3564,7 +3564,7 @@ export function EmbeddedAgentCopilot({
                       <div
                         className="agent-wait-status"
                         role="status"
-                        aria-label="agent-turn-status"
+                        aria-label={`回答状态：${turn.question}`}
                         aria-live="polite"
                       >
                         <div className="agent-wait-status__copy">
