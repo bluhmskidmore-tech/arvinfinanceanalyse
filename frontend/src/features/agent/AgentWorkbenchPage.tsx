@@ -3527,7 +3527,7 @@ export function EmbeddedAgentCopilot({
       ) : null}
 
       {hasConversation ? (
-        <section className="agent-conversation" aria-label="agent-conversation" ref={conversationRef}>
+        <section className="agent-conversation" aria-label="Agent 对话记录" ref={conversationRef}>
           {conversationTurns.map((turn) => {
             const isLatestLoadingTurn = turn === latestConversationTurn && loading;
             const showThinkingPlaceholder = isLatestLoadingTurn && !turn.result && !turn.error;

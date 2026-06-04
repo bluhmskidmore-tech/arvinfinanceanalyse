@@ -15,6 +15,7 @@ const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
 const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
+const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
@@ -564,7 +565,7 @@ describe("AgentWorkbenchPage", () => {
     openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Stock Research/ }));
     await waitFor(() =>
-      expect(screen.getByLabelText("agent-conversation")).toHaveTextContent(
+      expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
         "Review landed stock research context",
       ),
     );
@@ -619,7 +620,7 @@ describe("AgentWorkbenchPage", () => {
     openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Stock Research/ }));
     await waitFor(() =>
-      expect(screen.getByLabelText("agent-conversation")).toHaveTextContent(
+      expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
         "Review landed stock research context",
       ),
     );
@@ -709,7 +710,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("Mapped Intent Results")).toBeInTheDocument();
     expect(getAgentTurnStatus()).toHaveTextContent("Workflow 执行完成");
     expect(getAgentTurnStatus()).not.toHaveTextContent("Hermes 托管任务完成");
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("/risk-memo");
     expect(screen.getByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
   });
 
@@ -725,7 +726,7 @@ describe("AgentWorkbenchPage", () => {
 
     openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
-    await waitFor(() => expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo"));
+    await waitFor(() => expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("/risk-memo"));
 
     screen.getByTestId("agent-panel-submit").focus();
     expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
@@ -781,7 +782,7 @@ describe("AgentWorkbenchPage", () => {
 
     openShortcutDrawer();
     await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
-    await waitFor(() => expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo"));
+    await waitFor(() => expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("/risk-memo"));
 
     screen.getByTestId("agent-panel-submit").focus();
     expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
@@ -941,7 +942,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "组合概览" }));
 
     expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("执行建议动作：组合概览");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("执行建议动作：组合概览");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [, options] = fetchMock.mock.calls[1] ?? [];
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/agent/query");
@@ -2723,7 +2724,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed conversation check");
     await user.click(screen.getByRole("button", { name: "发送" }));
 
-    const conversation = await screen.findByLabelText("agent-conversation");
+    const conversation = await screen.findByLabelText(AGENT_CONVERSATION_LABEL);
     expect(conversation).toHaveTextContent("managed conversation check");
     expect(conversation).toHaveTextContent("这是更像对话的一次回答。");
     expect(conversation).toHaveTextContent("已完成");
@@ -3597,7 +3598,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("old thread answer")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "新对话" }));
-    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_CONVERSATION_LABEL)).not.toBeInTheDocument();
     expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
     expect(window.localStorage.getItem(AGENT_CONVERSATION_TURNS_KEY)).toBe("[]");
     expect(screen.getByText("已开启新对话 · 可以直接提问")).toBeInTheDocument();
@@ -3673,8 +3674,8 @@ describe("AgentWorkbenchPage", () => {
     const composerDock = document.querySelector(".agent-composer-dock");
     expect(composerDock).not.toBeNull();
     expect(composerDock).toContainElement(queuedPreview);
-    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("下一句");
-    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued second turn");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).not.toHaveTextContent("下一句");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).not.toHaveTextContent("queued second turn");
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
     expect(screen.getByText("已接住下一句：queued second turn · 回答完自动发送")).toBeInTheDocument();
     await user.click(queuedPreviewActions[0]);
@@ -3988,7 +3989,7 @@ describe("AgentWorkbenchPage", () => {
     expect(queuedPreview).toHaveTextContent("multi queue third turn");
     expect(queuedPreview).toHaveTextContent("2 句待发送");
     expect(screen.getByText("2 句已排队 · 刚加入：multi queue third turn")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("multi queue third turn");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).not.toHaveTextContent("multi queue third turn");
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
 
     await act(async () => {
@@ -4063,7 +4064,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft after remount");
-    expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued draft after remount");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).not.toHaveTextContent("queued draft after remount");
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveValue("");
   });
 
@@ -4631,7 +4632,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(screen.getByText("restored before clear")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新对话" }));
-    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_CONVERSATION_LABEL)).not.toBeInTheDocument();
 
     await act(async () => {
       resolveRestore(
@@ -4667,7 +4668,7 @@ describe("AgentWorkbenchPage", () => {
     });
 
     expect(screen.queryByText("late restored answer")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_CONVERSATION_LABEL)).not.toBeInTheDocument();
   });
 
   it("restores saved conversation turns and continues with restored context", async () => {
@@ -4769,7 +4770,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toBeInTheDocument();
-    expect(screen.queryByLabelText("agent-conversation")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(AGENT_CONVERSATION_LABEL)).not.toBeInTheDocument();
   });
 
   it("merges a latest-run restore into a saved pending turn and preserves retry context", async () => {
@@ -4888,7 +4889,7 @@ describe("AgentWorkbenchPage", () => {
       await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "先给我一个响应");
       await user.click(screen.getByRole("button", { name: "发送" }));
 
-      const conversation = await screen.findByLabelText("agent-conversation");
+      const conversation = await screen.findByLabelText(AGENT_CONVERSATION_LABEL);
       expect(conversation).toHaveTextContent("先给我一个响应");
       expect(conversation).toHaveTextContent("正在思考");
       expect(conversation).toHaveTextContent("我先接住问题，拿到运行状态后继续更新。");
@@ -4924,7 +4925,7 @@ describe("AgentWorkbenchPage", () => {
       await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "read history without jumping");
       await user.click(screen.getByTestId("agent-panel-submit"));
 
-      const conversation = await screen.findByLabelText("agent-conversation");
+      const conversation = await screen.findByLabelText(AGENT_CONVERSATION_LABEL);
       Object.defineProperty(conversation, "scrollHeight", {
         configurable: true,
         value: 1800,
@@ -5290,7 +5291,7 @@ describe("AgentWorkbenchPage", () => {
     unmount();
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("stop and refresh this answer");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("stop and refresh this answer");
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
     expect(screen.queryByText("undefined")).not.toBeInTheDocument();
 
@@ -5364,7 +5365,7 @@ describe("AgentWorkbenchPage", () => {
     unmount();
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("stop after run id exists");
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("stop after run id exists");
     expect(screen.getByText("已停止等待这次回答。")).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });

@@ -6,6 +6,7 @@ import { AgentPanel } from "../features/agent/AgentPanel";
 
 const AGENT_PAGE_CONTEXT_CHANGE_LABEL = "页面上下文已更新";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
+const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const REPO_PATH_LABEL = "GitNexus 仓库路径";
 
 function buildJsonResponse(payload: unknown, status = 200) {
@@ -410,7 +411,7 @@ describe("AgentPanel", () => {
     await user.click(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" }));
 
     expect(await screen.findByText("Formal portfolio overview answered.")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-conversation")).toHaveTextContent(
+    expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(
       "\u6267\u884c\u5efa\u8bae\u52a8\u4f5c\uff1a\u7ec4\u5408\u6982\u89c8",
     );
     const [, options] = fetchMock.mock.calls[1] ?? [];
