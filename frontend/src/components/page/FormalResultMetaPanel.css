@@ -1,0 +1,95 @@
+.formal-result-meta-panel {
+  --formal-result-meta-border-soft: #e4e9f0;
+
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--formal-result-meta-border-soft);
+  border-radius: 16px;
+  background: var(--moss-color-card-bg);
+}
+
+.formal-result-meta-panel__title {
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.formal-result-meta-panel__subtitle {
+  margin-top: 6px;
+  color: var(--moss-color-neutral-500);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.formal-result-meta-panel__empty {
+  margin-top: 14px;
+  color: var(--moss-color-neutral-500);
+  font-size: 13px;
+}
+
+.formal-result-meta-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.formal-result-meta-panel__card {
+  padding: 14px;
+  border: 1px solid var(--formal-result-meta-border-soft);
+  border-radius: 14px;
+  background: var(--moss-color-neutral-50);
+}
+
+.formal-result-meta-panel__label {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.formal-result-meta-panel__card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.formal-result-meta-panel__heading {
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.formal-result-meta-panel__badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.formal-result-meta-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--formal-result-meta-border-soft);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.formal-result-meta-panel__list {
+  display: grid;
+  grid-template-columns: minmax(120px, 150px) minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 12px 0 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.formal-result-meta-panel__value {
+  margin: 0;
+}

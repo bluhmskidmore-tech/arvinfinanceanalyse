@@ -1,6 +1,7 @@
 import type { ResultMeta } from "../../api/contracts";
 import { designTokens as dt } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
+import "./FormalResultMetaPanel.css";
 
 type FormalResultMetaSection = {
   key: string;
@@ -16,90 +17,6 @@ type FormalResultMetaPanelProps = {
   emptyText?: string;
   sections: FormalResultMetaSection[];
 };
-
-const panelStyle = {
-  marginTop: 24,
-  padding: 16,
-  borderRadius: 16,
-  border: `1px solid ${t.colorBorderSoft}`,
-  background: t.colorBgSurface,
-} as const;
-
-const panelTitleStyle = {
-  color: t.colorTextPrimary,
-  fontSize: 14,
-  fontWeight: 600,
-} as const;
-
-const panelSubtitleStyle = {
-  marginTop: 6,
-  color: t.colorTextMuted,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const sectionGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
-  marginTop: 16,
-} as const;
-
-const cardStyle = {
-  borderRadius: 14,
-  border: `1px solid ${t.colorBorderSoft}`,
-  background: t.colorBgApp,
-  padding: 14,
-} as const;
-
-const labelStyle = {
-  color: t.colorTextMuted,
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-} as const;
-
-const cardHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 8,
-  marginTop: 8,
-} as const;
-
-const headingStyle = {
-  color: t.colorTextPrimary,
-  fontSize: 14,
-  fontWeight: 600,
-} as const;
-
-const badgeRowStyle = {
-  display: "flex",
-  flexWrap: "wrap" as const,
-  justifyContent: "flex-end",
-  gap: 6,
-} as const;
-
-const listStyle = {
-  margin: "12px 0 0",
-  display: "grid",
-  gridTemplateColumns: "minmax(120px, 150px) minmax(0, 1fr)",
-  gap: "8px 12px",
-  color: t.colorTextSecondary,
-  fontSize: 13,
-  lineHeight: 1.6,
-} as const;
-
-const badgeBaseStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "2px 8px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 600,
-  border: `1px solid ${t.colorBorderSoft}`,
-} as const;
 
 const missingAsOfDateLabel = "未提供";
 
@@ -256,16 +173,16 @@ export function FormalResultMetaPanel({
   const visibleSections = sections.filter((section) => section.meta);
 
   return (
-    <section data-testid={testId} style={panelStyle}>
-      <div style={panelTitleStyle}>{title}</div>
-      <div style={panelSubtitleStyle}>
+    <section data-testid={testId} className="formal-result-meta-panel">
+      <div className="formal-result-meta-panel__title">{title}</div>
+      <div className="formal-result-meta-panel__subtitle">
         展示当前读链路返回的口径、版本、质量与可选证据字段；页面不在前端补算正式指标。
       </div>
 
       {visibleSections.length === 0 ? (
-        <div style={{ marginTop: 14, color: t.colorTextMuted, fontSize: 13 }}>{emptyText}</div>
+        <div className="formal-result-meta-panel__empty">{emptyText}</div>
       ) : (
-        <div style={sectionGridStyle}>
+        <div className="formal-result-meta-panel__grid">
           {visibleSections.map((section) => {
             const meta = section.meta!;
             const vendorStatus = section.vendor_status ?? meta.vendor_status;
@@ -276,13 +193,13 @@ export function FormalResultMetaPanel({
               <article
                 key={section.key}
                 data-testid={`${testId}-${section.key}`}
-                style={cardStyle}
+                className="formal-result-meta-panel__card"
               >
-                <div style={labelStyle}>溯源</div>
-                <div style={cardHeaderStyle}>
-                  <div style={headingStyle}>{section.title}</div>
+                <div className="formal-result-meta-panel__label">溯源</div>
+                <div className="formal-result-meta-panel__card-header">
+                  <div className="formal-result-meta-panel__heading">{section.title}</div>
                   {badges.length > 0 ? (
-                    <div style={badgeRowStyle}>
+                    <div className="formal-result-meta-panel__badge-row">
                       {badges.map((badge) => {
                         const tone = badgeTone(
                           badge.key as "vendor_status" | "fallback_mode",
@@ -292,7 +209,8 @@ export function FormalResultMetaPanel({
                           <span
                             key={badge.key}
                             title={badge.title}
-                            style={{ ...badgeBaseStyle, ...tone }}
+                            className="formal-result-meta-panel__badge"
+                            style={tone}
                           >
                             {badge.label}
                           </span>
@@ -301,53 +219,59 @@ export function FormalResultMetaPanel({
                     </div>
                   ) : null}
                 </div>
-                <dl style={listStyle}>
+                <dl className="formal-result-meta-panel__list">
                   <dt>{metaLabelMap.basis}</dt>
-                  <dd style={{ margin: 0 }}>{formatMetaField("basis", meta.basis)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatMetaField("basis", meta.basis)}</dd>
                   <dt>{metaLabelMap.result_kind}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.result_kind)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.result_kind)}</dd>
                   <dt>{metaLabelMap.formal_use_allowed}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.formal_use_allowed)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.formal_use_allowed)}</dd>
                   <dt>{metaLabelMap.scenario_flag}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.scenario_flag)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.scenario_flag)}</dd>
                   <dt>{metaLabelMap.quality_flag}</dt>
-                  <dd style={{ margin: 0 }}>{formatMetaField("quality_flag", meta.quality_flag)}</dd>
+                  <dd className="formal-result-meta-panel__value">
+                    {formatMetaField("quality_flag", meta.quality_flag)}
+                  </dd>
                   <dt>{metaLabelMap.vendor_status}</dt>
-                  <dd style={{ margin: 0 }}>{formatMetaField("vendor_status", vendorStatus)}</dd>
+                  <dd className="formal-result-meta-panel__value">
+                    {formatMetaField("vendor_status", vendorStatus)}
+                  </dd>
                   <dt>{metaLabelMap.fallback_mode}</dt>
-                  <dd style={{ margin: 0 }}>{formatMetaField("fallback_mode", fallbackMode)}</dd>
+                  <dd className="formal-result-meta-panel__value">
+                    {formatMetaField("fallback_mode", fallbackMode)}
+                  </dd>
                   <dt>{metaLabelMap.trace_id}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.trace_id)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.trace_id)}</dd>
                   <dt>{metaLabelMap.source_version}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.source_version)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.source_version)}</dd>
                   <dt>{metaLabelMap.vendor_version}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.vendor_version)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.vendor_version)}</dd>
                   <dt>{metaLabelMap.rule_version}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.rule_version)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.rule_version)}</dd>
                   <dt>{metaLabelMap.cache_version}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.cache_version)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.cache_version)}</dd>
                   <dt>{metaLabelMap.requested_report_date}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.requested_report_date)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.requested_report_date)}</dd>
                   <dt>{metaLabelMap.resolved_report_date}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.resolved_report_date)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.resolved_report_date)}</dd>
                   <dt>{metaLabelMap.as_of_date}</dt>
-                  <dd style={{ margin: 0 }}>{formatAsOfDate(meta.as_of_date)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatAsOfDate(meta.as_of_date)}</dd>
                   <dt>{metaLabelMap.date_basis}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.date_basis)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.date_basis)}</dd>
                   <dt>{metaLabelMap.fallback_date}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.fallback_date)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.fallback_date)}</dd>
                   <dt>{metaLabelMap.generated_at}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.generated_at)}</dd>
+                  <dd className="formal-result-meta-panel__value">{formatValue(meta.generated_at)}</dd>
                   {hasEvidence(meta) ? (
                     <>
                       <dt>{metaLabelMap.tables_used}</dt>
-                      <dd style={{ margin: 0 }}>{formatValue(meta.tables_used)}</dd>
+                      <dd className="formal-result-meta-panel__value">{formatValue(meta.tables_used)}</dd>
                       <dt>{metaLabelMap.filters_applied}</dt>
-                      <dd style={{ margin: 0 }}>{formatValue(meta.filters_applied)}</dd>
+                      <dd className="formal-result-meta-panel__value">{formatValue(meta.filters_applied)}</dd>
                       <dt>{metaLabelMap.evidence_rows}</dt>
-                      <dd style={{ margin: 0 }}>{formatValue(meta.evidence_rows)}</dd>
+                      <dd className="formal-result-meta-panel__value">{formatValue(meta.evidence_rows)}</dd>
                       <dt>{metaLabelMap.next_drill}</dt>
-                      <dd style={{ margin: 0 }}>{formatValue(meta.next_drill)}</dd>
+                      <dd className="formal-result-meta-panel__value">{formatValue(meta.next_drill)}</dd>
                     </>
                   ) : null}
                 </dl>
