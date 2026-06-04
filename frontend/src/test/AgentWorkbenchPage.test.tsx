@@ -1109,7 +1109,9 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("正在重试这一轮 · 可继续输入下一句")).toBeInTheDocument();
     expect(screen.queryByText("智能体查询失败（500）")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+    const retryStopAction = screen.getByTestId("agent-panel-submit");
+    expect(retryStopAction).toHaveTextContent("停止");
+    expect(retryStopAction).toHaveAccessibleName(/ordinary retry cue question/);
   });
 
   it("retries a failed follow-up with its captured conversation context", async () => {
@@ -3229,7 +3231,10 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("第一版回答。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重新生成" }));
-    screen.getByRole("button", { name: "停止" }).focus();
+    const regenerateStopAction = screen.getByTestId("agent-panel-submit");
+    expect(regenerateStopAction).toHaveTextContent("停止");
+    expect(regenerateStopAction).toHaveAccessibleName(/regenerate this/);
+    regenerateStopAction.focus();
     await act(async () => {
       resolveRegenerateResponse(regeneratePayload);
       await Promise.resolve();
@@ -3282,7 +3287,9 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("正在重新生成 · 可继续输入下一句")).toBeInTheDocument();
     expect(screen.queryByText("第一版待重新生成回答。")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+    const regenerateCueStopAction = screen.getByTestId("agent-panel-submit");
+    expect(regenerateCueStopAction).toHaveTextContent("停止");
+    expect(regenerateCueStopAction).toHaveAccessibleName(/regenerate cue question/);
   });
 
   it("edits a completed ordinary question into the composer for a revised turn", async () => {
@@ -4977,6 +4984,7 @@ describe("AgentWorkbenchPage", () => {
 
     const composerAction = screen.getByTestId("agent-panel-submit");
     expect(composerAction).toHaveTextContent("停止");
+    expect(composerAction).toHaveAccessibleName(/composer stop this answer/);
     expect(composerAction).not.toBeDisabled();
     await user.click(composerAction);
 

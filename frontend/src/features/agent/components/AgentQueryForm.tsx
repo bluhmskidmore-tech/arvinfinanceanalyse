@@ -21,6 +21,7 @@ type AgentQueryFormProps = {
   onViewSelectedProcess: () => void;
   loading: boolean;
   query: string;
+  activeQuestion?: string;
   composerHint?: string | null;
   onQueryChange: (value: string) => void;
   onClearQuery?: () => void;
@@ -101,6 +102,7 @@ export function AgentQueryForm({
   onViewSelectedProcess,
   loading,
   query,
+  activeQuestion = "",
   composerHint,
   onQueryChange,
   onClearQuery,
@@ -268,6 +270,7 @@ export function AgentQueryForm({
                 type="button"
                 data-testid="agent-panel-submit"
                 className="agent-chat-composer__send agent-chat-composer__send--stop"
+                aria-label={activeQuestion.trim() ? `停止当前回答：${activeQuestion.trim()}` : "停止"}
                 onClick={onStop}
               >
                 停止

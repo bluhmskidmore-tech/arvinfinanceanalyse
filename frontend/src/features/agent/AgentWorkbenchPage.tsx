@@ -3504,6 +3504,7 @@ export function EmbeddedAgentCopilot({
           onViewSelectedProcess={() => void viewSelectedProcess()}
           loading={loading}
           query={query}
+          activeQuestion={latestConversationTurn?.question}
           composerHint={composerAssistHint}
           onQueryChange={updateComposerQuery}
           onClearQuery={clearComposerQueryFromButton}
@@ -3682,6 +3683,7 @@ export function EmbeddedAgentCopilot({
             onViewSelectedProcess={() => void viewSelectedProcess()}
             loading={loading}
             query={query}
+            activeQuestion={latestConversationTurn?.question}
             composerHint={composerAssistHint}
             onQueryChange={updateComposerQuery}
             onClearQuery={clearComposerQueryFromButton}
