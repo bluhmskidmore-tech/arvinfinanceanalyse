@@ -34,8 +34,8 @@ type RadarKey = (typeof RADAR_META)[number]["key"];
 const RADAR_NAVIGATION_TARGETS: Record<RadarKey, string> = {
   duration: "risk-tensor-duration-scope",
   dv01: "risk-tensor-dv01-controls",
-  convexity: "risk-tensor-kpi-grid",
-  cs01: "risk-tensor-kpi-grid",
+  convexity: "risk-tensor-convexity-kpi",
+  cs01: "risk-tensor-cs01-kpi",
   hhi: "risk-tensor-issuer-concentration-detail",
   liq_ratio: "risk-tensor-liquidity-gap-detail",
 };
@@ -618,6 +618,7 @@ export default function RiskTensorPage() {
   const [qualityWarningsCopyStatus, setQualityWarningsCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [qualityWarningsCopiedStateKey, setQualityWarningsCopiedStateKey] = useState("");
   const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [tensorErrorCopiedStateKey, setTensorErrorCopiedStateKey] = useState("");
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [blockedDateCopiedStateKey, setBlockedDateCopiedStateKey] = useState("");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
@@ -1238,10 +1239,22 @@ export default function RiskTensorPage() {
     "请先核对正式风险张量物化和 lineage 新鲜度",
     "页面不会使用缓存或前端补算替代正式主读结果",
   ].join("\n");
+  const tensorErrorCopyStateKey = [
+    `report_date:${tensorErrorReportDate}`,
+    `status:${tensorErrorStatusCode || "unknown"}`,
+    `dates_trace_id:${datesGovernanceMeta?.trace_id ?? "missing"}`,
+    `basis:${datesGovernanceMeta?.basis ?? "missing"}`,
+    `cache_version:${datesGovernanceMeta?.cache_version ?? "missing"}`,
+    `generated_at:${datesGovernanceMeta?.generated_at ?? "missing"}`,
+    `source_version:${datesGovernanceMeta?.source_version ?? "missing"}`,
+    `rule_version:${datesGovernanceMeta?.rule_version ?? "missing"}`,
+  ].join("|");
+  const tensorErrorCopyStatusForCurrentState =
+    tensorErrorCopiedStateKey === tensorErrorCopyStateKey ? tensorErrorCopyStatus : "idle";
   const tensorErrorCopyMessage =
-    tensorErrorCopyStatus === "copied"
+    tensorErrorCopyStatusForCurrentState === "copied"
       ? "已复制排查信息"
-      : tensorErrorCopyStatus === "failed"
+      : tensorErrorCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择排查信息"
         : "";
   const blockedDateCopyText = [
@@ -1379,16 +1392,8 @@ export default function RiskTensorPage() {
 
   useEffect(() => {
     setTensorErrorCopyStatus("idle");
-  }, [
-    tensorErrorReportDate,
-    tensorErrorStatusCode,
-    datesGovernanceMeta?.trace_id,
-    datesGovernanceMeta?.basis,
-    datesGovernanceMeta?.cache_version,
-    datesGovernanceMeta?.generated_at,
-    datesGovernanceMeta?.source_version,
-    datesGovernanceMeta?.rule_version,
-  ]);
+    setTensorErrorCopiedStateKey("");
+  }, [tensorErrorCopyStateKey]);
 
   useEffect(() => {
     setBlockedDateCopyStatus("idle");
@@ -1672,14 +1677,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyTensorError = () => {
+    const copiedStateKey = tensorErrorCopyStateKey;
     if (!navigator.clipboard?.writeText) {
+      setTensorErrorCopiedStateKey(copiedStateKey);
       setTensorErrorCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(tensorErrorCopyText)
-      .then(() => setTensorErrorCopyStatus("copied"))
-      .catch(() => setTensorErrorCopyStatus("failed"));
+      .then(() => {
+        setTensorErrorCopiedStateKey(copiedStateKey);
+        setTensorErrorCopyStatus("copied");
+      })
+      .catch(() => {
+        setTensorErrorCopiedStateKey(copiedStateKey);
+        setTensorErrorCopyStatus("failed");
+      });
   };
 
   const handleCopyBlockedDate = () => {
@@ -2135,7 +2148,7 @@ export default function RiskTensorPage() {
               {tensorErrorCopyMessage}
             </small>
           ) : null}
-          {tensorErrorCopyStatus === "failed" ? (
+          {tensorErrorCopyStatusForCurrentState === "failed" ? (
             <pre
               className="risk-tensor-quality-detail__manual-copy"
               data-testid="risk-tensor-error-manual-copy"
@@ -2593,12 +2606,14 @@ export default function RiskTensorPage() {
                 detail="cs01（信用 spread DV01 聚合）。"
                 unit={WAN_YUAN_UNIT}
                 tone={toneFromSignedDisplayString(yuanAsWanDisplay(result.cs01))}
+                testId="risk-tensor-cs01-kpi"
               />
               <KpiCard
                 title="组合凸性"
                 value={displayStr(result.portfolio_convexity)}
                 detail="portfolio_convexity。"
                 tone={toneFromSignedDisplayString(displayStr(result.portfolio_convexity))}
+                testId="risk-tensor-convexity-kpi"
               />
               <KpiCard
                 title="债券只数"

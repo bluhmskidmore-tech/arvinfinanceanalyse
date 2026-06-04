@@ -2246,6 +2246,84 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users jump from the radar CS01 dimension to the CS01 KPI card", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_cs01_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_cs01_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const cs01Card = await screen.findByTestId("risk-tensor-cs01-kpi");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-cs01");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(cs01Card);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users jump from the radar duration dimension to the duration KPI card when scope disclosure is absent", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_duration_kpi_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_duration_kpi_jump_${reportDate}`),
+        result: tensorResult(reportDate),
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const durationCard = await screen.findByTestId("risk-tensor-duration-kpi");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-duration");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(durationCard);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("lets users jump from the radar DV01 dimension to missing control diagnostics", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -5358,13 +5436,13 @@ describe("RiskTensorPage", () => {
         getRiskTensor,
       });
 
-      const kpiGrid = await screen.findByTestId("risk-tensor-kpi-grid");
+      const convexityCard = await screen.findByTestId("risk-tensor-convexity-kpi");
       const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
       const radarAction = await screen.findByTestId("risk-tensor-radar-action-convexity");
 
       await user.click(radarAction);
 
-      expect(scrollTargets).toContain(kpiGrid);
+      expect(scrollTargets).toContain(convexityCard);
       const kpiQualityNote = screen.getByTestId("risk-tensor-kpi-quality-note");
       expect(kpiQualityNote).toHaveTextContent("portfolio_convexity");
 
@@ -8260,6 +8338,65 @@ describe("RiskTensorPage", () => {
     expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-03-15");
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_retry_success");
     expect(screen.queryByTestId("risk-tensor-error-context")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale risk tensor failure copy results after retry evidence changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_error_stale_copy_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor?report_date=2026-03-15 (404)"))
+      .mockRejectedValueOnce(new Error("Request failed: /api/risk/tensor?report_date=2026-03-15 (503)"));
+
+    try {
+      renderRiskTensorRoute("/risk-tensor?report_date=2026-03-15", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const errorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(errorContext).toHaveTextContent("当前报告日无风险张量数据");
+      expect(errorContext).toHaveTextContent("HTTP 状态 404");
+
+      await user.click(within(errorContext).getByRole("button", { name: "复制排查信息" }));
+      await user.click(within(errorContext).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent("风险张量治理前置缺失");
+      });
+      expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent("HTTP 状态 503");
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const retriedErrorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(retriedErrorContext).not.toHaveTextContent("已复制排查信息");
+      expect(within(retriedErrorContext).queryByTestId("risk-tensor-error-manual-copy")).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("shows manual risk tensor failure diagnostic text when clipboard copy fails", async () => {
