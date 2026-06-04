@@ -598,7 +598,8 @@
 }
 
 .ledger-pnl-functional-strip__explainability-list strong,
-.ledger-pnl-functional-strip__explainability-list em {
+.ledger-pnl-functional-strip__explainability-list em,
+.ledger-pnl-functional-strip__evidence-button {
   min-width: 0;
   padding: 5px 9px;
   border: 1px solid var(--moss-color-neutral-100);
@@ -610,6 +611,27 @@
   font-weight: 700;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.ledger-pnl-functional-strip__evidence-button {
+  cursor: pointer;
+}
+
+.ledger-pnl-functional-strip__evidence-button:hover,
+.ledger-pnl-functional-strip__evidence-button:focus-visible {
+  border-color: var(--moss-color-primary-300);
+  color: var(--moss-color-primary-700);
+  outline: none;
+}
+
+.ledger-pnl-analysis__table:focus-visible,
+.ledger-pnl-analysis__residual-row--bottleneck:focus-visible {
+  outline: 2px solid var(--moss-color-primary-400);
+  outline-offset: 3px;
+}
+
+.ledger-pnl-analysis__residual-row--bottleneck {
+  background: var(--moss-color-warning-50);
 }
 
 .ledger-pnl-functional-strip__drill {

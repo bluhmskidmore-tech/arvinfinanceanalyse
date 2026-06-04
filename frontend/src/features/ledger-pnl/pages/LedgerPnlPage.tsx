@@ -42,6 +42,9 @@ const pageSubtitleStyle = {
 } as const;
 
 const summaryGridStyleWithBottom = { ...summaryGridStyle, marginBottom: designTokens.space[5] } as const;
+const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_TABLE_ID = "ledger-pnl-residual-diagnostic-table";
+const LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID =
+  "ledger-pnl-residual-diagnostic-bottleneck-row";
 
 const summaryCardStyle = {
   border: `1px solid ${designTokens.color.neutral[200]}`,
@@ -672,6 +675,15 @@ function formatFunctionalEvidenceLocator(model: ReturnType<typeof buildLedgerExp
   return row ? `残差诊断表 · ${row.layer}` : "残差诊断表 · 无需补证";
 }
 
+function focusLedgerResidualEvidenceTarget() {
+  const target =
+    document.getElementById(LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID) ??
+    document.getElementById(LEDGER_PNL_RESIDUAL_DIAGNOSTIC_TABLE_ID);
+
+  target?.scrollIntoView?.({ block: "center", inline: "nearest" });
+  target?.focus({ preventScroll: true });
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -956,7 +968,13 @@ function LedgerFunctionalAuditStrip(props: {
           <em>最大卡点 {props.explainabilityModel.bottleneck}</em>
           <em>最大驱动 {formatFunctionalTopDriver(props.explainabilityModel.driverRows[0])}</em>
           <em>补证入口 {props.explainabilityModel.evidenceEntryPoint}</em>
-          <em>定位证据 {formatFunctionalEvidenceLocator(props.explainabilityModel)}</em>
+          <button
+            type="button"
+            className="ledger-pnl-functional-strip__evidence-button"
+            onClick={focusLedgerResidualEvidenceTarget}
+          >
+            定位证据 {formatFunctionalEvidenceLocator(props.explainabilityModel)}
+          </button>
         </div>
       </div>
       {nextDrills.length > 0 ? (
@@ -1272,7 +1290,9 @@ function LedgerExplainabilityPanel(props: {
           </div>
 
           <div
+            id={LEDGER_PNL_RESIDUAL_DIAGNOSTIC_TABLE_ID}
             data-testid="ledger-pnl-residual-diagnostic-table"
+            tabIndex={-1}
             className="ledger-pnl-analysis__table ledger-pnl-analysis__residual-table-wrap"
           >
             <div className="ledger-pnl-analysis__table-title">残差诊断表</div>
@@ -1294,7 +1314,15 @@ function LedgerExplainabilityPanel(props: {
                 {props.model.residualDiagnosticRows.map((row) => {
                   const isBottleneck = residualBottleneck?.layer === row.layer;
                   return (
-                  <tr key={row.layer}>
+                  <tr
+                    key={row.layer}
+                    id={isBottleneck ? LEDGER_PNL_RESIDUAL_DIAGNOSTIC_BOTTLENECK_ROW_ID : undefined}
+                    data-testid={
+                      isBottleneck ? "ledger-pnl-residual-diagnostic-bottleneck-row" : undefined
+                    }
+                    tabIndex={isBottleneck ? -1 : undefined}
+                    className={isBottleneck ? "ledger-pnl-analysis__residual-row--bottleneck" : undefined}
+                  >
                     <td>{row.layer}</td>
                     <td>{formatYuanAsYi(row.ledgerYuan)}</td>
                     <td>{formatYuanAsYi(row.reconciliationYuan)}</td>

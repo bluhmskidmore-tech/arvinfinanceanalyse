@@ -907,6 +907,26 @@ describe("LedgerPnlPage", () => {
     expect(residualTable).toHaveTextContent("科目层");
     expect(residualTable).toHaveTextContent("残差定位：第一屏最大卡点");
     expect(residualTable).toHaveTextContent("科目层残差 40.00 亿元");
+
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollTargets: HTMLElement[] = [];
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+
+    try {
+      const locatorButton = within(strip).getByRole("button", {
+        name: "定位证据 残差诊断表 · 科目层",
+      });
+      const bottleneckRow = screen.getByTestId("ledger-pnl-residual-diagnostic-bottleneck-row");
+
+      await userEvent.click(locatorButton);
+
+      expect(scrollTargets).toEqual([bottleneckRow]);
+      expect(bottleneckRow).toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("keeps the first-screen contract gap as read failure when formal contract lookup fails", async () => {
