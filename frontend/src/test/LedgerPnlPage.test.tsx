@@ -1298,7 +1298,9 @@ describe("LedgerPnlPage", () => {
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("正式状态正式契约缺失，正式值不可用");
     expect(decisionPath).toHaveTextContent("候选解释可信度未闭合 · 覆盖率 60.00%");
-    expect(decisionPath).toHaveTextContent("最短补证路径补齐 202605 正式财务指标 Excel 冻结样本");
+    expect(decisionPath).toHaveTextContent("候选补证路径补科目汇总或确认科目范围");
+    expect(decisionPath).toHaveTextContent("正式补证路径补齐 202605 正式财务指标 Excel 冻结样本");
+    expect(decisionPath).not.toHaveTextContent("最短补证路径");
     expect(decisionPath).toHaveTextContent("材料完整性正式样本缺失 0/1");
     expect(decisionPath).toHaveTextContent("执行状态待补齐正式样本");
     expect(decisionPath).toHaveTextContent("回读动作补齐样本并登记后刷新正式契约");
@@ -1316,20 +1318,31 @@ describe("LedgerPnlPage", () => {
 
     try {
       const formalContractPanel = await screen.findByTestId("ledger-pnl-formal-indicator-source-contract-panel");
-      const shortestPathButton = within(decisionPath).getByRole("button", {
-        name: "最短补证路径 补齐 202605 正式财务指标 Excel 冻结样本",
+      const formalPathButton = within(decisionPath).getByRole("button", {
+        name: "正式补证路径 补齐 202605 正式财务指标 Excel 冻结样本",
       });
-      await userEvent.click(shortestPathButton);
+      await userEvent.click(formalPathButton);
 
       expect(scrollTargets).toEqual([formalContractPanel]);
       expect(formalContractPanel).toHaveFocus();
 
       scrollTargets.length = 0;
 
+      const candidatePathButton = within(decisionPath).getByRole("button", {
+        name: "候选补证路径 补科目汇总或确认科目范围",
+      });
+      const bottleneckRow = screen.getByTestId("ledger-pnl-residual-diagnostic-bottleneck-row");
+
+      await userEvent.click(candidatePathButton);
+
+      expect(scrollTargets).toEqual([bottleneckRow]);
+      expect(bottleneckRow).toHaveFocus();
+
+      scrollTargets.length = 0;
+
       const locatorButton = within(strip).getByRole("button", {
         name: "定位证据 残差诊断表 · 科目层",
       });
-      const bottleneckRow = screen.getByTestId("ledger-pnl-residual-diagnostic-bottleneck-row");
 
       await userEvent.click(locatorButton);
 

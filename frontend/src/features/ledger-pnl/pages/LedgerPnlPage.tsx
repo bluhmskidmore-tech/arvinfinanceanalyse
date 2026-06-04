@@ -1183,7 +1183,8 @@ function LedgerFunctionalAuditStrip(props: {
     props.isFormalContractLoading,
     props.isFormalContractError,
   );
-  const shortestEvidencePath = nextDrills[0]?.label ?? props.explainabilityModel.evidenceEntryPoint;
+  const candidateEvidencePath = props.explainabilityModel.evidenceEntryPoint;
+  const formalEvidencePath = nextDrills[0]?.label ?? "无正式契约补证路径";
   const materialChecklist = buildFormalContractMaterialChecklist(
     props.formalIndicatorSourceContract?.remediation,
   );
@@ -1285,14 +1286,25 @@ function LedgerFunctionalAuditStrip(props: {
             <strong>{formatCandidateExplainabilityConfidence(props.explainabilityModel)}</strong>
           </div>
           <div>
-            <span>最短补证路径</span>
+            <span>候选补证路径</span>
             <button
               type="button"
               className="ledger-pnl-functional-strip__evidence-button"
-              aria-label={`最短补证路径 ${shortestEvidencePath}`}
+              aria-label={`候选补证路径 ${candidateEvidencePath}`}
+              onClick={focusLedgerResidualEvidenceTarget}
+            >
+              {candidateEvidencePath}
+            </button>
+          </div>
+          <div>
+            <span>正式补证路径</span>
+            <button
+              type="button"
+              className="ledger-pnl-functional-strip__evidence-button"
+              aria-label={`正式补证路径 ${formalEvidencePath}`}
               onClick={focusLedgerFormalContractTarget}
             >
-              {shortestEvidencePath}
+              {formalEvidencePath}
             </button>
           </div>
           <div>
