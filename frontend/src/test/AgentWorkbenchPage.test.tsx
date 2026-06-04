@@ -16,6 +16,7 @@ const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
 const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
+const AGENT_RESULT_DETAILS_LABEL = "回答依据与运行信息";
 const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
@@ -856,7 +857,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("组合概览")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_RUNTIME_STATUS_LABEL)).toHaveTextContent("local");
     expect(getAgentTurnStatus()).toHaveTextContent("本地查询完成");
-    const resultDetails = screen.getByLabelText("assistant-result-details");
+    const resultDetails = screen.getByLabelText(AGENT_RESULT_DETAILS_LABEL);
     expect(resultDetails).toHaveClass("agent-result-side");
     expect(resultDetails).toHaveTextContent("回答依据");
     expect(resultDetails).toHaveTextContent("运行信息");
@@ -893,7 +894,7 @@ describe("AgentWorkbenchPage", () => {
       if (!resultDrawer) {
         throw new Error("Expected compact result details drawer to exist");
       }
-      const resultDetails = screen.getByLabelText("assistant-result-details");
+      const resultDetails = screen.getByLabelText(AGENT_RESULT_DETAILS_LABEL);
       expect(resultDrawer).not.toHaveAttribute("open");
       expect(resultDetails).not.toBeVisible();
 

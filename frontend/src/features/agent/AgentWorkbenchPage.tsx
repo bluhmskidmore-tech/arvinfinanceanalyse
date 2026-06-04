@@ -3064,7 +3064,7 @@ export function EmbeddedAgentCopilot({
     const hasEvidence = hasEvidenceContent(turnResult.evidence);
     const detailSectionCount = (hasEvidence ? 1 : 0) + (resultMetaEntries.length > 0 ? 1 : 0);
     const resultSide = (
-      <aside className="agent-result-side" aria-label="assistant-result-details">
+      <aside className="agent-result-side" aria-label="回答依据与运行信息">
         {hasEvidence ? (
           <AgentEvidencePanel
             tablesUsed={turnResult.evidence.tables_used}
