@@ -1174,6 +1174,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
       expect(strip).toHaveTextContent("候选补证入口 候选链路已闭合，无需补证");
+      expect(strip).toHaveTextContent("候选证据定位 残差诊断表 · 无需补证");
       expect(strip).not.toHaveTextContent("补证入口 暂无补证入口");
     });
 
@@ -1185,6 +1186,7 @@ describe("LedgerPnlPage", () => {
     expect(
       within(decisionPath).queryByRole("button", { name: /候选补证路径/ }),
     ).not.toBeInTheDocument();
+    expect(within(strip).queryByRole("button", { name: /定位证据/ })).not.toBeInTheDocument();
   });
 
   it("lifts the explainability model summary into the first screen", async () => {

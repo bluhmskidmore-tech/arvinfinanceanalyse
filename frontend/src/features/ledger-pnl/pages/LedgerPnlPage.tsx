@@ -1213,6 +1213,7 @@ function LedgerFunctionalAuditStrip(props: {
   const candidateEvidencePath = candidateExplainabilityClosed
     ? "候选链路已闭合，无需补证"
     : props.explainabilityModel.evidenceEntryPoint;
+  const candidateEvidenceLocator = formatFunctionalEvidenceLocator(props.explainabilityModel);
   const formalEvidencePath = props.requestedReportMonth
     ? formalNextDrill?.label ?? shortFormalContractReadbackAction(readbackAction)
     : "先选择报告日生成 report_month";
@@ -1281,13 +1282,17 @@ function LedgerFunctionalAuditStrip(props: {
           <em>最大卡点 {props.explainabilityModel.bottleneck}</em>
           <em>最大驱动 {formatFunctionalTopDriver(props.explainabilityModel.driverRows[0])}</em>
           <em>候选补证入口 {candidateEvidencePath}</em>
-          <button
-            type="button"
-            className="ledger-pnl-functional-strip__evidence-button"
-            onClick={focusLedgerResidualEvidenceTarget}
-          >
-            定位证据 {formatFunctionalEvidenceLocator(props.explainabilityModel)}
-          </button>
+          {candidateExplainabilityClosed ? (
+            <em>候选证据定位 {candidateEvidenceLocator}</em>
+          ) : (
+            <button
+              type="button"
+              className="ledger-pnl-functional-strip__evidence-button"
+              onClick={focusLedgerResidualEvidenceTarget}
+            >
+              定位证据 {candidateEvidenceLocator}
+            </button>
+          )}
         </div>
       </div>
       <div data-testid="ledger-pnl-decision-path" className="ledger-pnl-functional-strip__decision-path">
