@@ -1,0 +1,72 @@
+.calendar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calendar-list__item {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 96px auto minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+  color: #162033;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.calendar-list__date,
+.calendar-list__amount {
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-list__amount,
+.calendar-list__detail {
+  color: #5c6b82;
+}
+
+.calendar-list__event-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.calendar-list__event-title {
+  color: var(--moss-color-neutral-900);
+  font-size: 13px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.calendar-list__issuer {
+  display: inline-block;
+  align-self: start;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.calendar-list__level {
+  padding-top: 2px;
+}
+
+.calendar-list__detail {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.calendar-list__source-link {
+  color: var(--moss-color-primary-600);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
