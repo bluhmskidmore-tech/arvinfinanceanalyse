@@ -2378,36 +2378,33 @@ export default function CrossAssetDriversPage() {
                     </div>
                   </div>
 
-                  <section data-testid="cross-asset-linkage-portfolio-impact" className={crossAssetPanelClass}>
-                    <h2 style={{ marginTop: 0, marginBottom: t.space[2], fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
+                  <section
+                    data-testid="cross-asset-linkage-portfolio-impact"
+                    className={`${crossAssetPanelClass} cross-asset-linkage-portfolio-impact`}
+                  >
+                    <h2 className="cross-asset-linkage-portfolio-impact__title">
                       组合影响估算
                     </h2>
-                    <p style={{ marginTop: 0, color: t.color.neutral[600], fontSize: t.fontSize[13], lineHeight: t.lineHeight.relaxed }}>
+                    <p className="cross-asset-linkage-portfolio-impact__description">
                       以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
                     </p>
                     {hasPortfolioImpact ? (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                          gap: t.space[3],
-                        }}
-                      >
+                      <div className="cross-asset-linkage-portfolio-impact__grid">
                         <div>
-                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>利率变动</div>
+                          <div className="cross-asset-linkage-portfolio-impact__label">利率变动</div>
                           <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
                         </div>
                         <div>
-                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>利差走阔</div>
+                          <div className="cross-asset-linkage-portfolio-impact__label">利差走阔</div>
                           <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
                         </div>
                         <div>
-                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>合计估算</div>
+                          <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
                           <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
                         </div>
                       </div>
                     ) : (
-                      <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[14] }}>当前没有可用组合影响估算。</div>
+                      <div className="cross-asset-linkage-portfolio-impact__empty">当前没有可用组合影响估算。</div>
                     )}
                   </section>
                 </div>

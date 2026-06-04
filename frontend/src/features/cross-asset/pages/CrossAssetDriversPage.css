@@ -3018,8 +3018,38 @@
   color: var(--ca-sage);
 }
 
+.cross-asset-linkage-portfolio-impact__title {
+  margin: 0 0 var(--moss-space-2);
+  color: var(--ca-text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cross-asset-linkage-portfolio-impact__description {
+  margin: 0;
+  color: var(--ca-sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cross-asset-linkage-portfolio-impact__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--moss-space-3);
+}
+
+.cross-asset-linkage-portfolio-impact__label {
+  color: var(--ca-muted);
+  font-size: 12px;
+}
+
 .cross-asset-linkage-portfolio-impact__value {
   font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-linkage-portfolio-impact__empty {
+  color: var(--ca-muted);
+  font-size: 14px;
 }
 
 .ca-waterfall__evidence {
