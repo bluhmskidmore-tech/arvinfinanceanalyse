@@ -1060,6 +1060,11 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
               <strong>{props.surface.summary.signalCount}</strong>
               <small>{props.surface.summary.evidenceLabel}</small>
             </div>
+            <div className="product-category-action-backtest__metric">
+              <span>归因覆盖</span>
+              <strong>{props.surface.summary.attributionCoverageLabel}</strong>
+              <small>{props.surface.summary.attributionCoverageDetailLabel}</small>
+            </div>
             {props.surface.actionRows.map((row) => (
               <div className={`product-category-action-backtest__metric is-${row.tone}`} key={row.actionKind}>
                 <span>{row.actionLabel}</span>
@@ -1099,6 +1104,43 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                     <small>
                       {row.reasonRows.map((reason) => `${reason.reasonLabel} ${reason.sampleShareLabel}`).join(" · ")}
                     </small>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
+          {props.surface.calibrationRows.length > 0 ? (
+            <article className="product-category-action-backtest__panel product-category-action-backtest__miss-panel">
+              <h3>回测校准建议</h3>
+              <div className="product-category-action-backtest__miss-list">
+                {props.surface.calibrationRows.map((row) => (
+                  <div className={`product-category-action-backtest__miss-row is-${row.tone}`} key={row.actionKind}>
+                    <div>
+                      <strong>{row.actionLabel}</strong>
+                      <span>{row.reasonLabel}</span>
+                    </div>
+                    <b>{row.recommendationLabel}</b>
+                    <small>{row.evidenceLabel}</small>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
+          {props.surface.latestReviewRows.length > 0 ? (
+            <article className="product-category-action-backtest__panel product-category-action-backtest__miss-panel">
+              <h3>最新信号校准复核</h3>
+              <div className="product-category-action-backtest__miss-list">
+                {props.surface.latestReviewRows.map((row) => (
+                  <div
+                    className={`product-category-action-backtest__miss-row is-${row.tone}`}
+                    key={`${row.priorityLabel}-${row.categoryId}-${row.actionKind}`}
+                  >
+                    <div>
+                      <strong>{row.categoryLabel}</strong>
+                      <span>{row.actionLabel} · {row.reasonLabel}</span>
+                    </div>
+                    <b>{row.reviewLabel}</b>
+                    <small>{row.evidenceLabel}</small>
                   </div>
                 ))}
               </div>

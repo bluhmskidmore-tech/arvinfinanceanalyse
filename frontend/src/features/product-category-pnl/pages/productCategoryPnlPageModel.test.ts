@@ -659,6 +659,8 @@ describe("productCategoryPnlPageModel", () => {
       signalCount: 3,
       latestPendingCount: 3,
       coverageLabel: "2026-01-31 至 2026-01-31",
+      attributionCoverageLabel: "1/2",
+      attributionCoverageDetailLabel: "归因覆盖 1/2；缺少 2026-02-28",
     }));
     expect(surface.actionRows.map((item) => item.actionKind)).toEqual([
       "shrink_or_limit",
@@ -702,6 +704,23 @@ describe("productCategoryPnlPageModel", () => {
         }),
       ],
     }));
+    expect(surface.calibrationRows[0]).toEqual(expect.objectContaining({
+      actionKind: "reprice_or_improve",
+      actionLabel: "重定价/提效",
+      recommendationLabel: "收紧触发条件",
+      reasonLabel: "命中率 0.0%，主因收益率未改善",
+      confidenceLabel: "低置信",
+      confidenceDetailLabel: "1 条可评价样本",
+    }));
+    expect(surface.latestReviewRows).toEqual([
+      expect.objectContaining({
+        categoryId: "scale_asset",
+        categoryLabel: "高规模低收益",
+        actionLabel: "重定价/提效",
+        reviewLabel: "复核后执行",
+        reasonLabel: "历史回测建议收紧触发条件：命中率 0.0%，主因收益率未改善",
+      }),
+    ]);
     expect(surface.actionRows[2]).toEqual(expect.objectContaining({
       actionLabel: "选择性扩张",
       hitRateLabel: "100.0%",
@@ -787,6 +806,8 @@ describe("productCategoryPnlPageModel", () => {
     ]);
     expect(surface.actionRows).toEqual([]);
     expect(surface.missReasonRows).toEqual([]);
+    expect(surface.calibrationRows).toEqual([]);
+    expect(surface.latestReviewRows).toEqual([]);
     expect(surface.emptyCopy).toBe("需要至少两个连续月度正式 payload 才能回测行动信号。");
   });
 

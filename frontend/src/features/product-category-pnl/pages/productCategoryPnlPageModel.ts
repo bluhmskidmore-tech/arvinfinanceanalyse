@@ -359,6 +359,27 @@ export type ProductCategoryOperatingBacktestMissActionRow = {
   tone: "positive" | "negative" | "neutral";
 };
 
+export type ProductCategoryOperatingBacktestCalibrationRow = {
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  recommendationLabel: string;
+  reasonLabel: string;
+  evidenceLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+export type ProductCategoryOperatingBacktestLatestReviewRow = {
+  priorityLabel: string;
+  categoryId: string;
+  categoryLabel: string;
+  actionKind: ProductCategoryOperatingActionKind;
+  actionLabel: string;
+  reviewLabel: string;
+  reasonLabel: string;
+  evidenceLabel: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
 export type ProductCategoryOperatingBacktestExample = {
   reportDate: string;
   nextReportDate: string;
@@ -384,6 +405,8 @@ export type ProductCategoryOperatingBacktestSurface = {
     signalCount: number;
     latestPendingCount: number;
     coverageLabel: string;
+    attributionCoverageLabel: string;
+    attributionCoverageDetailLabel: string;
     evidenceLabel: string;
   };
   coverageRows: Array<{
@@ -395,6 +418,8 @@ export type ProductCategoryOperatingBacktestSurface = {
   }>;
   actionRows: ProductCategoryOperatingBacktestActionRow[];
   missReasonRows: ProductCategoryOperatingBacktestMissActionRow[];
+  calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[];
+  latestReviewRows: ProductCategoryOperatingBacktestLatestReviewRow[];
   examples: ProductCategoryOperatingBacktestExample[];
   emptyCopy: string | null;
 };
@@ -2790,6 +2815,77 @@ function productCategoryBacktestMissReasonKeys(input: {
   return reasons;
 }
 
+function productCategoryBacktestCalibrationRows(input: {
+  actionRows: ProductCategoryOperatingBacktestActionRow[];
+  missReasonRows: ProductCategoryOperatingBacktestMissActionRow[];
+}): ProductCategoryOperatingBacktestCalibrationRow[] {
+  const missRowsByAction = new Map(input.missReasonRows.map((row) => [row.actionKind, row]));
+  return input.actionRows
+    .map((row) => {
+      const missRow = missRowsByAction.get(row.actionKind);
+      if (row.hitRate !== null && row.hitRate >= 0.5) {
+        return {
+          actionKind: row.actionKind,
+          actionLabel: row.actionLabel,
+          recommendationLabel: "保留规则",
+          reasonLabel: `命中率 ${row.hitRateLabel}，样本方向可继续复用`,
+          evidenceLabel: `${row.signalCount} 条信号 · ${row.evidenceLabel}`,
+          tone: "positive" as const,
+        };
+      }
+      if (row.hitRate !== null && row.hitRate < 0.3 && missRow) {
+        return {
+          actionKind: row.actionKind,
+          actionLabel: row.actionLabel,
+          recommendationLabel: "收紧触发条件",
+          reasonLabel: `命中率 ${row.hitRateLabel}，主因${missRow.primaryReasonLabel}`,
+          evidenceLabel: `${missRow.missCount}/${missRow.comparableCount} 未命中 · ${row.evidenceLabel}`,
+          tone: "negative" as const,
+        };
+      }
+      return {
+        actionKind: row.actionKind,
+        actionLabel: row.actionLabel,
+        recommendationLabel: "继续观察",
+        reasonLabel: `命中率 ${row.hitRateLabel}，样本仍需累积`,
+        evidenceLabel: `${row.signalCount} 条信号 · ${row.evidenceLabel}`,
+        tone: "neutral" as const,
+      };
+    })
+    .sort((left, right) => {
+      const rank = { negative: 0, neutral: 1, positive: 2 };
+      return rank[left.tone] - rank[right.tone];
+    });
+}
+
+function productCategoryBacktestLatestReviewRows(input: {
+  latestActionRows: ProductCategoryOperatingActionQueueRow[];
+  calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[];
+}): ProductCategoryOperatingBacktestLatestReviewRow[] {
+  const tightenRowsByAction = new Map(
+    input.calibrationRows
+      .filter((row) => row.recommendationLabel === "收紧触发条件")
+      .map((row) => [row.actionKind, row]),
+  );
+  return input.latestActionRows.flatMap((row) => {
+    const calibration = tightenRowsByAction.get(row.actionKind);
+    if (!calibration) {
+      return [];
+    }
+    return [{
+      priorityLabel: row.priorityLabel,
+      categoryId: row.categoryId,
+      categoryLabel: row.categoryLabel,
+      actionKind: row.actionKind,
+      actionLabel: row.actionLabel,
+      reviewLabel: "复核后执行",
+      reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
+      evidenceLabel: `${row.triggerLabel} · ${calibration.evidenceLabel}`,
+      tone: "negative" as const,
+    }];
+  });
+}
+
 function productCategoryNextMonthEndDate(reportDate: string): string | null {
   const parsed = parseProductCategoryReportDate(reportDate);
   if (!parsed) {
@@ -2805,6 +2901,29 @@ function productCategoryReportDatesAreConsecutiveMonths(current: string, next: s
   return productCategoryNextMonthEndDate(current) === next;
 }
 
+function productCategoryAttributionCoverage(input: {
+  payloads: ProductCategoryPnlPayload[];
+  attributionsByReportDate?: Map<string, ProductCategoryAttributionPayload | null>;
+}): {
+  attributionCoverageLabel: string;
+  attributionCoverageDetailLabel: string;
+} {
+  const reportDates = Array.from(new Set(input.payloads.map((payload) => payload.report_date))).sort();
+  if (reportDates.length === 0) {
+    return {
+      attributionCoverageLabel: "0/0",
+      attributionCoverageDetailLabel: "暂无月度归因样本",
+    };
+  }
+  const coveredDates = reportDates.filter((reportDate) => input.attributionsByReportDate?.get(reportDate));
+  const missingDates = reportDates.filter((reportDate) => !input.attributionsByReportDate?.get(reportDate));
+  const missingSuffix = missingDates.length > 0 ? `；缺少 ${missingDates.slice(0, 3).join("、")}` : "；归因样本完整";
+  return {
+    attributionCoverageLabel: `${coveredDates.length}/${reportDates.length}`,
+    attributionCoverageDetailLabel: `归因覆盖 ${coveredDates.length}/${reportDates.length}${missingSuffix}`,
+  };
+}
+
 export function selectProductCategoryOperatingActionBacktestSurface(input: {
   payloads: ProductCategoryPnlPayload[];
   attributionsByReportDate?: Map<string, ProductCategoryAttributionPayload | null>;
@@ -2813,14 +2932,19 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     .filter((payload) => payload.view === "monthly")
     .slice()
     .sort((left, right) => left.report_date.localeCompare(right.report_date));
+  const attributionCoverage = productCategoryAttributionCoverage({
+    payloads,
+    attributionsByReportDate: input.attributionsByReportDate,
+  });
   const latestPayload = payloads[payloads.length - 1];
-  const latestPendingCount = latestPayload
-    ? selectProductCategoryOperatingActionQueue({
-        rows: latestPayload.rows,
-        attribution: input.attributionsByReportDate?.get(latestPayload.report_date),
-        parentCategoryIds: parentProductCategoryIds(latestPayload.rows),
-      }).rows.length
-    : 0;
+  const latestActionRows = latestPayload
+      ? selectProductCategoryOperatingActionQueue({
+          rows: latestPayload.rows,
+          attribution: input.attributionsByReportDate?.get(latestPayload.report_date),
+          parentCategoryIds: parentProductCategoryIds(latestPayload.rows),
+        }).rows
+      : [];
+  const latestPendingCount = latestActionRows.length;
   const samples: ProductCategoryOperatingBacktestExample[] = [];
   const coverageRows: ProductCategoryOperatingBacktestSurface["coverageRows"] = [];
 
@@ -3017,6 +3141,14 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     }
     return right.missCount - left.missCount;
   });
+  const calibrationRows = productCategoryBacktestCalibrationRows({
+    actionRows,
+    missReasonRows,
+  });
+  const latestReviewRows = productCategoryBacktestLatestReviewRows({
+    latestActionRows,
+    calibrationRows,
+  });
 
   return {
     summary: {
@@ -3026,11 +3158,15 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       coverageLabel: evaluatedDates.length > 0
         ? `${evaluatedDates[0]} 至 ${evaluatedDates[evaluatedDates.length - 1]}`
         : "-",
+      attributionCoverageLabel: attributionCoverage.attributionCoverageLabel,
+      attributionCoverageDetailLabel: attributionCoverage.attributionCoverageDetailLabel,
       evidenceLabel: "信号来自动作队列；结果使用下一期 monthly 正式口径验证。",
     },
     coverageRows,
     actionRows,
     missReasonRows,
+    calibrationRows,
+    latestReviewRows,
     examples: samples
       .slice()
       .sort((left, right) => Math.abs(right.netIncomeDelta ?? 0) - Math.abs(left.netIncomeDelta ?? 0))

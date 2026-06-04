@@ -827,6 +827,12 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本覆盖");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("已回测");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新月待观察");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("归因覆盖");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("回测校准建议");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧触发条件");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("低置信");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新信号校准复核");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核后执行");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
