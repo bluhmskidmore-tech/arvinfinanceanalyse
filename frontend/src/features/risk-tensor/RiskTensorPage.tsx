@@ -615,8 +615,10 @@ export default function RiskTensorPage() {
   );
   const [dv01ControlActionsCopiedStateKey, setDv01ControlActionsCopiedStateKey] = useState("");
   const [qualityWarningsCopyStatus, setQualityWarningsCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [qualityWarningsCopiedStateKey, setQualityWarningsCopiedStateKey] = useState("");
   const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const [blockedDateCopiedStateKey, setBlockedDateCopiedStateKey] = useState("");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopiedStateKey, setDatesEmptyCopiedStateKey] = useState("");
@@ -942,6 +944,7 @@ export default function RiskTensorPage() {
     setCombinedQualityRequestCopiedStateKey("");
     setDv01MissingControlsCopyStatus("idle");
     setQualityWarningsCopyStatus("idle");
+    setQualityWarningsCopiedStateKey("");
   }, [qualityStateKey]);
 
   useEffect(() => {
@@ -1212,9 +1215,9 @@ export default function RiskTensorPage() {
         ? "复制失败，请手动选择处置清单"
         : "";
   const qualityWarningsCopyMessage =
-    qualityWarningsCopyStatus === "copied"
+    qualityWarningsCopiedStateKey === qualityStateKey && qualityWarningsCopyStatus === "copied"
       ? "已复制预警清单"
-      : qualityWarningsCopyStatus === "failed"
+      : qualityWarningsCopiedStateKey === qualityStateKey && qualityWarningsCopyStatus === "failed"
         ? "复制失败，请手动选择预警清单"
         : "";
   const tensorErrorCopyText = [
@@ -1245,10 +1248,23 @@ export default function RiskTensorPage() {
     "主读面未读取",
     "请切换到可用报告日",
   ].join("\n");
+  const blockedDateCopyStateKey = [
+    `report_date:${selectedBlockedReportDate?.report_date ?? (explicitReportDate || "missing")}`,
+    `reason:${selectedBlockedReportDate?.reason || "missing"}`,
+    `explicit_report_date:${explicitReportDate || "missing"}`,
+    `trace_id:${datesGovernanceMeta?.trace_id ?? "missing"}`,
+    `basis:${datesGovernanceMeta?.basis ?? "missing"}`,
+    `cache_version:${datesGovernanceMeta?.cache_version ?? "missing"}`,
+    `generated_at:${datesGovernanceMeta?.generated_at ?? "missing"}`,
+    `source_version:${datesGovernanceMeta?.source_version ?? "missing"}`,
+    `rule_version:${datesGovernanceMeta?.rule_version ?? "missing"}`,
+  ].join("|");
+  const blockedDateCopyStatusForCurrentState =
+    blockedDateCopiedStateKey === blockedDateCopyStateKey ? blockedDateCopyStatus : "idle";
   const blockedDateCopyMessage =
-    blockedDateCopyStatus === "copied"
+    blockedDateCopyStatusForCurrentState === "copied"
       ? "已复制拦截信息"
-      : blockedDateCopyStatus === "failed"
+      : blockedDateCopyStatusForCurrentState === "failed"
         ? "复制失败，请手动选择拦截信息"
         : "";
   const datesErrorCopyText = [
@@ -1366,12 +1382,8 @@ export default function RiskTensorPage() {
 
   useEffect(() => {
     setBlockedDateCopyStatus("idle");
-  }, [
-    selectedBlockedReportDate?.report_date,
-    selectedBlockedReportDate?.reason,
-    explicitReportDate,
-    datesGovernanceMeta?.trace_id,
-  ]);
+    setBlockedDateCopiedStateKey("");
+  }, [blockedDateCopyStateKey]);
 
   useEffect(() => {
     setDatesErrorCopyStatus("idle");
@@ -1607,14 +1619,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyQualityWarnings = () => {
+    const copiedStateKey = qualityStateKey;
     if (!navigator.clipboard?.writeText) {
+      setQualityWarningsCopiedStateKey(copiedStateKey);
       setQualityWarningsCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(qualityWarningsCopyText)
-      .then(() => setQualityWarningsCopyStatus("copied"))
-      .catch(() => setQualityWarningsCopyStatus("failed"));
+      .then(() => {
+        setQualityWarningsCopiedStateKey(copiedStateKey);
+        setQualityWarningsCopyStatus("copied");
+      })
+      .catch(() => {
+        setQualityWarningsCopiedStateKey(copiedStateKey);
+        setQualityWarningsCopyStatus("failed");
+      });
   };
 
   const handleConfirmQualityEvidenceReview = () => {
@@ -1644,14 +1664,22 @@ export default function RiskTensorPage() {
   };
 
   const handleCopyBlockedDate = () => {
+    const copiedStateKey = blockedDateCopyStateKey;
     if (!navigator.clipboard?.writeText) {
+      setBlockedDateCopiedStateKey(copiedStateKey);
       setBlockedDateCopyStatus("failed");
       return;
     }
     void navigator.clipboard
       .writeText(blockedDateCopyText)
-      .then(() => setBlockedDateCopyStatus("copied"))
-      .catch(() => setBlockedDateCopyStatus("failed"));
+      .then(() => {
+        setBlockedDateCopiedStateKey(copiedStateKey);
+        setBlockedDateCopyStatus("copied");
+      })
+      .catch(() => {
+        setBlockedDateCopiedStateKey(copiedStateKey);
+        setBlockedDateCopyStatus("failed");
+      });
   };
 
   const handleUseLatestAvailableReportDate = () => {
@@ -1667,6 +1695,7 @@ export default function RiskTensorPage() {
 
   const clearDatesGovernanceCopyFeedback = () => {
     setBlockedDateCopyStatus("idle");
+    setBlockedDateCopiedStateKey("");
     setDatesErrorCopyStatus("idle");
     setDatesEmptyCopyStatus("idle");
     setDatesEmptyCopiedStateKey("");
@@ -2029,7 +2058,7 @@ export default function RiskTensorPage() {
               {blockedDateCopyMessage}
             </small>
           ) : null}
-          {blockedDateCopyStatus === "failed" ? (
+          {blockedDateCopyStatusForCurrentState === "failed" ? (
             <pre
               className="risk-tensor-quality-detail__manual-copy"
               data-testid="risk-tensor-blocked-date-manual-copy"
@@ -3415,7 +3444,7 @@ export default function RiskTensorPage() {
                       </small>
                     ) : null}
                   </div>
-                  {qualityWarningsCopyStatus === "failed" ? (
+                  {qualityWarningsCopiedStateKey === qualityStateKey && qualityWarningsCopyStatus === "failed" ? (
                     <pre
                       className="risk-tensor-quality-detail__manual-copy"
                       data-testid="risk-tensor-quality-warnings-manual-copy"

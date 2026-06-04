@@ -497,6 +497,70 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("ignores stale quality warning copy results after report date changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_warning_stale_copy_dates"),
+        result: { report_dates: ["2026-02-28", "2026-01-31"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_warning_stale_copy_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings:
+            reportDate === "2026-01-31"
+              ? ["刷新后预警需要单独复制"]
+              : ["估值曲线 vendor stale", "回售权现金流未进入 formal 张量"],
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      await user.click(within(qualityDetail).getByRole("button", { name: "复制预警清单" }));
+      await user.selectOptions(screen.getByLabelText("风险报告日"), "2026-01-31");
+
+      const refreshedQualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+      await waitFor(() => {
+        expect(refreshedQualityDetail).toHaveTextContent("刷新后预警需要单独复制");
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      expect(refreshedQualityDetail).not.toHaveTextContent("已复制预警清单");
+      expect(
+        within(refreshedQualityDetail).queryByTestId("risk-tensor-quality-warnings-manual-copy"),
+      ).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("shows manual warning list text when quality warning copying fails", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async () => {
@@ -6736,6 +6800,89 @@ describe("RiskTensorPage", () => {
       );
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("主读面未读取"));
       expect(errorContext).toHaveTextContent("已复制拦截信息");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("ignores stale blocked report-date copy results after date governance evidence changes", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi
+      .fn()
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_stale_copy_initial"),
+        result: {
+          report_dates: [],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage is stale",
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_stale_copy_refreshed"),
+        result: {
+          report_dates: [],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage refreshed but report date remains blocked",
+            },
+          ],
+        },
+      });
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    try {
+      renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const errorContext = await screen.findByTestId("risk-tensor-error-context");
+      await user.click(within(errorContext).getByRole("button", { name: "复制拦截信息" }));
+      await user.click(within(errorContext).getByRole("button", { name: "重试日期治理" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent(
+          "trace_id tr_tensor_blocked_stale_copy_refreshed",
+        );
+      });
+      expect(screen.getByTestId("risk-tensor-error-context")).toHaveTextContent(
+        "risk tensor source lineage refreshed but report date remains blocked",
+      );
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const refreshedErrorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(refreshedErrorContext).not.toHaveTextContent("已复制拦截信息");
+      expect(within(refreshedErrorContext).queryByTestId("risk-tensor-blocked-date-manual-copy")).not.toBeInTheDocument();
+      expect(getRiskTensor).not.toHaveBeenCalled();
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);
