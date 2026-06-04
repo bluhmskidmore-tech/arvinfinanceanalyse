@@ -171,7 +171,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-spread")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-operating-analysis")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-operating-profit-rank")).toHaveTextContent("1.45");
-    expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-operating-movement")).toHaveTextContent("0.02");
+    });
     expect(screen.getByTestId("product-category-operating-quadrant")).toHaveTextContent("2.57");
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("动作优先级队列");
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("选择性扩张");

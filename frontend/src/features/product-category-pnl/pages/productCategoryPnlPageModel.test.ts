@@ -693,6 +693,62 @@ describe("productCategoryPnlPageModel", () => {
     }));
   });
 
+  it("does not backtest operating actions across non-consecutive report months", () => {
+    const january: ProductCategoryPnlPayload = {
+      report_date: "2026-01-31",
+      view: "monthly",
+      available_views: ["monthly", "ytd"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          report_date: "2026-01-31",
+          category_id: "scale_asset",
+          category_name: "高规模低收益",
+          cnx_scale: yi(1000),
+          business_net_income: yi(0.2),
+          weighted_yield: "1.20",
+        }),
+        row({
+          report_date: "2026-01-31",
+          category_id: "growth_asset",
+          category_name: "成长资产",
+          cnx_scale: yi(100),
+          business_net_income: yi(0.4),
+          weighted_yield: "3.20",
+        }),
+      ],
+      asset_total: row({ report_date: "2026-01-31", category_id: "asset_total", is_total: true }),
+      liability_total: row({
+        report_date: "2026-01-31",
+        category_id: "liability_total",
+        side: "liability",
+        is_total: true,
+      }),
+      grand_total: row({
+        report_date: "2026-01-31",
+        category_id: "grand_total",
+        side: "all",
+        business_net_income: yi(0.6),
+        is_total: true,
+      }),
+    };
+    const march: ProductCategoryPnlPayload = {
+      ...january,
+      report_date: "2026-03-31",
+      rows: january.rows.map((item) => ({ ...item, report_date: "2026-03-31" })),
+    };
+
+    const surface = selectProductCategoryOperatingActionBacktestSurface({
+      payloads: [january, march],
+    });
+
+    expect(surface.summary.evaluatedMonthCount).toBe(0);
+    expect(surface.summary.signalCount).toBe(0);
+    expect(surface.summary.latestPendingCount).toBe(2);
+    expect(surface.actionRows).toEqual([]);
+    expect(surface.emptyCopy).toBe("需要至少两个连续月度正式 payload 才能回测行动信号。");
+  });
+
   it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
     const baseline = {
       report_date: "2026-02-28",

@@ -2660,6 +2660,21 @@ function productCategoryBacktestTone(hitRate: number | null): "positive" | "nega
   return "neutral";
 }
 
+function productCategoryNextMonthEndDate(reportDate: string): string | null {
+  const parsed = parseProductCategoryReportDate(reportDate);
+  if (!parsed) {
+    return null;
+  }
+  const nextMonth = parsed.month === 12 ? 1 : parsed.month + 1;
+  const nextYear = parsed.month === 12 ? parsed.year + 1 : parsed.year;
+  const lastDay = new Date(nextYear, nextMonth, 0).getDate();
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
+function productCategoryReportDatesAreConsecutiveMonths(current: string, next: string): boolean {
+  return productCategoryNextMonthEndDate(current) === next;
+}
+
 export function selectProductCategoryOperatingActionBacktestSurface(input: {
   payloads: ProductCategoryPnlPayload[];
   attributionsByReportDate?: Map<string, ProductCategoryAttributionPayload | null>;
@@ -2684,13 +2699,16 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     if (!current || !next) {
       continue;
     }
-    const currentRowsById = new Map(current.rows.map((row) => [row.category_id, row]));
-    const nextRowsById = new Map(next.rows.map((row) => [row.category_id, row]));
+    if (!productCategoryReportDatesAreConsecutiveMonths(current.report_date, next.report_date)) {
+      continue;
+    }
     const currentActions = selectProductCategoryOperatingActionQueue({
       rows: current.rows,
       attribution: input.attributionsByReportDate?.get(current.report_date),
       parentCategoryIds: parentProductCategoryIds(current.rows),
     }).rows;
+    const currentRowsById = new Map(current.rows.map((row) => [row.category_id, row]));
+    const nextRowsById = new Map(next.rows.map((row) => [row.category_id, row]));
     for (const action of currentActions) {
       const currentRow = currentRowsById.get(action.categoryId);
       const nextRow = nextRowsById.get(action.categoryId);
