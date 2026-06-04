@@ -372,10 +372,10 @@ function buildCandidateFundamentalEvidence(item: LivermoreStockCandidateItem): S
   if (factorScore != null || factorRank != null) {
     bullets.push({
       key: "fundamental_overlay",
-      label: "基本面 overlay",
+      label: "基本面因子",
       value: [
         factorScore != null ? `因子分 ${formatNumber(factorScore, 4)}` : null,
-        factorRank != null ? `overlay #${factorRank.toFixed(0)}` : null,
+        factorRank != null ? `因子排名 #${factorRank.toFixed(0)}` : null,
       ]
         .filter((part): part is string => Boolean(part))
         .join(" / "),
@@ -425,7 +425,7 @@ function buildCandidateFundamentalEvidence(item: LivermoreStockCandidateItem): S
 function candidateFundamentalCounterEvidence(item: LivermoreStockCandidateItem): string {
   const hasOverlay = finiteNumber(item.factor_score) != null || finiteNumber(item.factor_overlay_rank) != null;
   if (hasOverlay) {
-    return "基本面 overlay 已接入候选排序，但财报口径、最新公告和一致预期仍需复核。";
+    return "基本面因子已纳入候选排序，但财报口径、最新公告和一致预期仍需复核。";
   }
   return "基本面与估值证据未接入，不参与当前候选排序。";
 }
@@ -891,10 +891,10 @@ export function localizeStockBackendText(
     return "市场过热门控下暂停题材观察；历史回放显示该桶拖累。";
   }
   if (lower.includes("market gate is available") && lower.includes("pmi") && lower.includes("credit impulse")) {
-    return "市场门控已接入，PMI 与信用脉冲待补。";
+    return "市场门控已有可用证据，PMI 与信用脉冲待补。";
   }
   if (lower.includes("sector_rank is available")) {
-    return "板块强弱已接入。";
+    return "板块强弱已有可用证据。";
   }
   return displayValue
     .replace(/\bbreadth\b/gi, familyLabel || "市场宽度")

@@ -1608,6 +1608,15 @@ describe("StockAnalysisPage", () => {
     expect(closureCss).toMatch(
       /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__boundary-summary\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*0\.62fr\)\s*minmax\(0,\s*1\.38fr\)/,
     );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-observation-preview"\],[\s\S]*?\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?grid-row:\s*5\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-theme-leaders-first-screen"\]\s*\{[\s\S]*?grid-column:\s*2\s*\/\s*3\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-sector-heavyweights-first-screen"\]\s*\{[\s\S]*?grid-column:\s*3\s*\/\s*4\s*!important/,
+    );
   });
 
   it("keeps the narrow first screen readable without clipping status chips", () => {
@@ -1927,15 +1936,18 @@ describe("StockAnalysisPage", () => {
     expect(candidate).toHaveTextContent("证据明细");
     expect(candidate).not.toHaveTextContent("进入依据");
     expect(candidate).not.toHaveTextContent("10EMA 失效观察");
-    expect(candidate).not.toHaveTextContent("基本面 overlay 已接入候选排序");
+    expect(candidate).not.toHaveTextContent("基本面因子已纳入候选排序");
 
     await user.click(within(candidate).getByText("证据明细"));
 
     expect(candidate).toHaveTextContent("进入依据");
     expect(candidate).toHaveTextContent("10EMA 失效观察");
-    expect(candidate).toHaveTextContent("基本面 overlay");
+    expect(candidate).toHaveTextContent("基本面因子");
+    expect(candidate).toHaveTextContent("因子排名 #1");
     expect(candidate).toHaveTextContent("因子分 0.4812");
-    expect(candidate).toHaveTextContent("基本面 overlay 已接入候选排序");
+    expect(candidate).toHaveTextContent("基本面因子已纳入候选排序");
+    expect(candidate).not.toHaveTextContent("基本面 overlay");
+    expect(candidate).not.toHaveTextContent("overlay #");
     expect(candidate).toHaveTextContent("新闻、公告、财报事件尚未进入候选卡");
     expect(candidate).toHaveTextContent("10EMA");
   });
@@ -1993,8 +2005,10 @@ describe("StockAnalysisPage", () => {
     expect(framework).toHaveTextContent("行业上限 25%");
     expect(framework).toHaveTextContent("证据待齐");
     expect(framework).toHaveTextContent("输入待补");
-    expect(framework).toHaveTextContent("市场门控已接入");
-    expect(framework).toHaveTextContent("板块强弱已接入");
+    expect(framework).toHaveTextContent("市场门控已有可用证据");
+    expect(framework).toHaveTextContent("板块强弱已有可用证据");
+    expect(framework).not.toHaveTextContent("市场门控已接入");
+    expect(framework).not.toHaveTextContent("板块强弱已接入");
     expect(framework).not.toHaveTextContent("CycleScore");
     expect(framework).not.toHaveTextContent("Available:");
     expect(framework).not.toHaveTextContent("Missing:");

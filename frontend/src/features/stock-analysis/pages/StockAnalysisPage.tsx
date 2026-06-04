@@ -946,7 +946,7 @@ function compactCycleInputs(inputs: string[]) {
 function cycleInputSummary(availableInputs: string[], missingInputs: string[]) {
   const parts = [];
   if (availableInputs.length > 0) {
-    parts.push(`已接入 ${compactCycleInputs(availableInputs)}`);
+    parts.push(`已有证据 ${compactCycleInputs(availableInputs)}`);
   }
   if (missingInputs.length > 0) {
     parts.push(`待补 ${compactCycleInputs(missingInputs)}`);
@@ -1027,9 +1027,9 @@ function cycleEvidenceLabel(text: string | null | undefined) {
   const lower = value.toLowerCase();
   if (lower.includes("external_vendor") || lower.includes("external vendor")) return "证据待确认";
   if (lower.includes("market gate") && lower.includes("pmi") && lower.includes("credit impulse")) {
-    return "市场门控已接入；PMI 与信用脉冲待补。";
+    return "市场门控已有可用证据；PMI 与信用脉冲待补。";
   }
-  if (lower.includes("sector_rank")) return "板块强弱已接入。";
+  if (lower.includes("sector_rank")) return "板块强弱已有可用证据。";
   if (lower.includes("pricespread") || lower.includes("price_spread") || lower.includes("macroscore")) {
     return "价差与宏观分已接入。";
   }

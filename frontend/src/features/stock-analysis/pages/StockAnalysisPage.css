@@ -7889,9 +7889,22 @@
   [data-testid="stock-analysis-observation-preview"],
   [data-testid="stock-analysis-theme-leaders-first-screen"],
   [data-testid="stock-analysis-sector-heavyweights-first-screen"] {
+    grid-row: 5 !important;
     min-height: 112px;
     max-height: 138px;
     padding: 10px 13px;
+  }
+
+  [data-testid="stock-analysis-observation-preview"] {
+    grid-column: 1 / 2 !important;
+  }
+
+  [data-testid="stock-analysis-theme-leaders-first-screen"] {
+    grid-column: 2 / 3 !important;
+  }
+
+  [data-testid="stock-analysis-sector-heavyweights-first-screen"] {
+    grid-column: 3 / 4 !important;
   }
 
   [data-testid="stock-analysis-observation-preview"] > .stock-analysis-page__dh-section-head,
@@ -7924,6 +7937,7 @@
 
   [data-testid="stock-analysis-first-screen-rail"] {
     gap: 10px;
+    grid-row: 1 / span 5 !important;
   }
 
   [data-testid="stock-analysis-first-screen-rail"] > .stock-analysis-page__dh-card {

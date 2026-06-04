@@ -425,11 +425,12 @@ describe("stockAnalysisPageModel", () => {
     expect(cards[0].distanceToBreakoutPct).toMatch(/%/);
     expect(cards[0].evidence.join(" ")).toContain("行业排名第 1");
     expect(cards[0].evidence.join(" ")).toContain("收盘价 21.90");
-    expect(cards[0].evidence.join(" ")).toContain("基本面 overlay");
+    expect(cards[0].evidence.join(" ")).toContain("基本面因子");
     expect(cards[0].evidence.join(" ")).toContain("因子分 0.4812");
     expect(cards[0].evidence.join(" ")).toContain("ROE 18.0%");
     expect(cards[0].evidence.join(" ")).toContain("10EMA 失效观察");
-    expect(cards[0].counterEvidence.join(" ")).toContain("基本面 overlay 已接入候选排序");
+    expect(cards[0].counterEvidence.join(" ")).toContain("基本面因子已纳入候选排序");
+    expect(cards[0].counterEvidence.join(" ")).not.toContain("基本面 overlay");
     expect(cards[0].counterEvidence.join(" ")).toContain("新闻、公告、财报事件尚未进入候选卡");
     expect(cards[0].invalidationRules.join(" ")).toContain("10EMA");
     expect(cards[0].invalidationRules.join(" ")).toContain("涨跌停状态");
@@ -482,7 +483,7 @@ describe("stockAnalysisPageModel", () => {
       "ma_curve",
     ]);
     expect(queue[0].supportingEvidence.map((item) => item.key)).toContain("fundamental_overlay");
-    expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面 overlay 已接入候选排序");
+    expect(queue[0].boundaryEvidence.join(" ")).toContain("基本面因子已纳入候选排序");
     expect(queue[0].invalidationFocus).toContain("10EMA");
     expect(queue[0].reviewFocus).not.toContain("买入");
   });
