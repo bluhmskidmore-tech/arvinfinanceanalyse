@@ -1462,8 +1462,10 @@ describe("LedgerPnlPage", () => {
     });
 
     const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    expect(strip).toHaveTextContent("总账候选解释可用，正式契约读取失败");
     expect(strip).toHaveTextContent("正式契约缺口");
     expect(strip).toHaveTextContent("正式契约读取失败");
+    expect(strip).not.toHaveTextContent("总账候选口径可分析");
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("正式状态正式契约读取失败");
     expect(decisionPath).not.toHaveTextContent("正式状态正式值不可用，仅作候选核对");

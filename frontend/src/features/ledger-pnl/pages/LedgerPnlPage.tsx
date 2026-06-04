@@ -1164,6 +1164,20 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
+  if (props.isFormalContractError) {
+    const summaryRows = formatEvidenceRows(props.summaryMeta);
+    const detailRows = formatEvidenceRows(props.dataMeta);
+    return {
+      tone: "warning",
+      title: "总账候选解释可用，正式契约读取失败",
+      detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但正式财务指标契约读取失败，不能形成正式财务指标结论。`,
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
   if (props.formalIndicatorSourceContract?.sample_status === "missing_contract") {
     const summaryRows = formatEvidenceRows(props.summaryMeta);
     const detailRows = formatEvidenceRows(props.dataMeta);
