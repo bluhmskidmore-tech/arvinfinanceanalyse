@@ -1,6 +1,5 @@
 import { Button, Card, Spin } from "antd";
 import type { CSSProperties, ReactNode } from "react";
-import { displayTokens } from "../theme/displayTokens";
 import "./SectionCard.css";
 
 export type SectionCardProps = {
@@ -24,20 +23,13 @@ export function SectionCard({
   noPadding = false,
   style,
 }: SectionCardProps) {
-  const cardStyle: CSSProperties = {
-    background: displayTokens.surface.section,
-    border: displayTokens.surface.sectionBorder,
-    boxShadow: displayTokens.surface.sectionShadow,
-    borderRadius: displayTokens.radius.section,
-    ...style,
-  };
-
   if (error) {
     return (
       <Card
+        className="section-card"
         title={title}
         extra={extra}
-        style={cardStyle}
+        style={style}
         styles={{ body: { padding: noPadding ? 0 : undefined } }}
       >
         <div className="section-card__error">
@@ -54,9 +46,10 @@ export function SectionCard({
 
   return (
     <Card
+      className="section-card"
       title={title}
       extra={extra}
-      style={cardStyle}
+      style={style}
       styles={{ body: { padding: noPadding ? 0 : undefined } }}
     >
       <Spin spinning={loading}>{children}</Spin>
