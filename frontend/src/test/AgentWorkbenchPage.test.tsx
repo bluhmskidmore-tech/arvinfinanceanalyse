@@ -3351,6 +3351,8 @@ describe("AgentWorkbenchPage", () => {
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("edit original question");
     expect(document.activeElement).toBe(input);
+    expect(input).toHaveProperty("selectionStart", input.value.length);
+    expect(input).toHaveProperty("selectionEnd", input.value.length);
     expect(screen.getByText("已放回输入框 · 改完按 Enter 发送")).toBeInTheDocument();
 
     await user.clear(input);
