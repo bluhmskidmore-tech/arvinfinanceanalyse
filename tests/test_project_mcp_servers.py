@@ -1819,6 +1819,198 @@ def test_lineage_evidence_mcp_maps_balance_analysis_page_to_formal_balance_recor
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_pnl_attribution_workbench_to_formal_attribution_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "source_manifest_latest.jsonl").write_text(
+        json.dumps(
+            {
+                "source_version": "sv_pnl_attribution_fixture",
+                "rule_version": "rv_pnl_attribution_workbench_v1",
+                "cache_version": "cv_pnl_attribution_workbench_v1",
+                "result_kind": "pnl_attribution.volume_rate",
+                "tables_used": [
+                    "fact_formal_pnl_fi",
+                    "fact_nonstd_pnl_bridge",
+                    "fact_formal_zqtz_balance_daily",
+                ],
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-PNL-ATTR-WB-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-PNL-ATTR-WB-001"
+        assert "/api/pnl-attribution/volume-rate" in found_payload["expanded_queries"]
+        assert "/api/pnl-attribution/tpl-market" in found_payload["expanded_queries"]
+        assert "/api/pnl-attribution/composition" in found_payload["expanded_queries"]
+        assert "/api/pnl-attribution/advanced/summary" in found_payload["expanded_queries"]
+        assert "/api/pnl-attribution/campisi/four-effects" in found_payload["expanded_queries"]
+        assert "pnl_attribution.volume_rate" in found_payload["expanded_queries"]
+        assert "pnl_attribution.advanced_summary" in found_payload["expanded_queries"]
+        assert "VolumeRateAttributionPayload" in found_payload["expanded_queries"]
+        assert "AdvancedAttributionSummary" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_bond_analytics_daily" in found_payload["expanded_queries"]
+        assert "yield_curve_daily" in found_payload["expanded_queries"]
+        assert "MTR-PAT-001" in found_payload["expanded_queries"]
+        assert "MTR-PAT-304" in found_payload["expanded_queries"]
+        assert "executive.pnl-attribution" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-PNL-ATTR-A" not in found_payload["expanded_queries"]
+        assert "MTR-EXEC-101" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "pnl_attribution.volume_rate"
+        assert found_payload["records"][0]["stream"] == "source_manifest_latest"
+        assert found_payload["records"][0]["record"]["tables_used"] == [
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+            "fact_formal_zqtz_balance_daily",
+        ]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_balance_movement_page_to_movement_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_key": "accounting_asset_movement.monthly",
+                "cache_version": "cv_accounting_asset_movement_v1",
+                "result_kind_family": "balance-analysis.movement",
+                "module_name": "accounting_asset_movement",
+                "rule_version": "rv_accounting_asset_movement_v2",
+                "fact_tables": ["fact_accounting_asset_movement_monthly"],
+                "input_sources": ["fact_formal_zqtz_balance_daily"],
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-BAL-MOVE-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-BAL-MOVE-001"
+        assert "/ui/balance-movement-analysis" in found_payload["expanded_queries"]
+        assert "/ui/balance-movement-analysis/dates" in found_payload["expanded_queries"]
+        assert "balance-analysis.movement.detail" in found_payload["expanded_queries"]
+        assert "balance-analysis.movement.dates" in found_payload["expanded_queries"]
+        assert "accounting_asset_movement" in found_payload["expanded_queries"]
+        assert "fact_accounting_asset_movement_monthly" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "rv_accounting_asset_movement_v2" in found_payload["expanded_queries"]
+        assert "AccountingAssetMovementPayload" in found_payload["expanded_queries"]
+        assert "MTR-BMV-001" in found_payload["expanded_queries"]
+        assert "MTR-BMV-004" in found_payload["expanded_queries"]
+        assert "MTR-BAL-001" not in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "balance-analysis.movement"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["fact_tables"] == ["fact_accounting_asset_movement_monthly"]
+        assert found_payload["records"][0]["record"]["input_sources"] == ["fact_formal_zqtz_balance_daily"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_liability_analytics_page_to_mixed_source_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_key": "liability_analytics:compat:daily",
+                "result_kind": "liability_analytics.risk_buckets",
+                "source_surface": "formal_liability",
+                "basis": "analytical",
+                "source_tables": [
+                    "fact_formal_zqtz_balance_daily",
+                    "fact_formal_tyw_balance_daily",
+                    "zqtz_bond_daily_snapshot",
+                    "tyw_interbank_daily_snapshot",
+                ],
+                "rule_version": "rv_liability_analytics_compat_v1",
+                "cache_version": "cv_liability_analytics_v1",
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-LIAB-ANALYTICS-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-LIAB-ANALYTICS-001"
+        assert "/api/risk/buckets" in found_payload["expanded_queries"]
+        assert "/api/analysis/yield_metrics" in found_payload["expanded_queries"]
+        assert "/api/analysis/yield-by-period" in found_payload["expanded_queries"]
+        assert "/api/analysis/liabilities/counterparty" in found_payload["expanded_queries"]
+        assert "/api/liabilities/monthly" in found_payload["expanded_queries"]
+        assert "/api/analysis/liabilities/cockpit-warnings" in found_payload["expanded_queries"]
+        assert "/api/analysis/liabilities/contribution-split" in found_payload["expanded_queries"]
+        assert "liability_analytics.risk_buckets" in found_payload["expanded_queries"]
+        assert "liability_analytics.yield_metrics" in found_payload["expanded_queries"]
+        assert "liability_analytics.yield_by_period" in found_payload["expanded_queries"]
+        assert "liability_analytics.counterparty" in found_payload["expanded_queries"]
+        assert "liability_analytics.monthly" in found_payload["expanded_queries"]
+        assert "formal_liability" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_tyw_balance_daily" in found_payload["expanded_queries"]
+        assert "zqtz_bond_daily_snapshot" in found_payload["expanded_queries"]
+        assert "tyw_interbank_daily_snapshot" in found_payload["expanded_queries"]
+        assert "MTR-LIAB-001" in found_payload["expanded_queries"]
+        assert "MTR-LIAB-007" in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "liability_analytics.risk_buckets"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["source_surface"] == "formal_liability"
+        assert found_payload["records"][0]["record"]["basis"] == "analytical"
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tmp_path: Path) -> None:
     governance = tmp_path / "governance"
     governance.mkdir()
