@@ -34,7 +34,10 @@ describe("AsyncSection", () => {
       </AsyncSection>,
     );
 
-    expect(container.querySelector("section")).toHaveStyle({ height: "100%" });
+    const filledSection = container.querySelector("section");
+    expect(filledSection).toHaveClass("async-section");
+    expect(filledSection).toHaveClass("async-section--fill");
+    expect(filledSection).not.toHaveAttribute("style");
 
     rerender(
       <AsyncSection
@@ -49,10 +52,13 @@ describe("AsyncSection", () => {
       </AsyncSection>,
     );
 
-    expect(container.querySelector("section")).toHaveStyle({ height: "auto" });
+    const autoSection = container.querySelector("section");
+    expect(autoSection).toHaveClass("async-section");
+    expect(autoSection).toHaveClass("async-section--auto");
+    expect(autoSection).not.toHaveAttribute("style");
   });
 
-  it("uses the extracted AsyncSection class while preserving token variables", () => {
+  it("uses the extracted AsyncSection shell class without inline token variables", () => {
     const { container } = render(
       <AsyncSection
         title="layout"
@@ -67,7 +73,7 @@ describe("AsyncSection", () => {
 
     const section = container.querySelector("section");
     expect(section).toHaveClass("async-section");
-    expect(section).toHaveStyle({ "--display-section-bg": "#ffffff" });
+    expect(section).not.toHaveAttribute("style");
   });
 
   it("renders empty state", () => {

@@ -1,6 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { displayTokens } from "../theme/displayTokens";
 import "./AsyncSection.css";
 
 type AsyncSectionProps = {
@@ -12,21 +11,6 @@ type AsyncSectionProps = {
   fillHeight?: boolean;
   onRetry: () => void;
   children: ReactNode;
-};
-
-type AsyncSectionStyle = CSSProperties & {
-  "--display-section-border": string;
-  "--display-section-radius": string;
-  "--display-section-bg": string;
-  "--display-section-shadow": string;
-  "--display-surface-track": string;
-  "--display-surface-track-alt": string;
-  "--display-text-muted": string;
-  "--display-text-error": string;
-  "--display-text-secondary": string;
-  "--display-retry-border": string;
-  "--display-retry-bg": string;
-  "--display-retry-text": string;
 };
 
 export function AsyncSection({
@@ -78,24 +62,10 @@ export function AsyncSection({
       </div>
     );
 
-  const sectionStyle: AsyncSectionStyle = {
-    height: fillHeight ? "100%" : "auto",
-    "--display-section-border": displayTokens.surface.sectionBorder,
-    "--display-section-radius": `${displayTokens.radius.section}px`,
-    "--display-section-bg": displayTokens.surface.section,
-    "--display-section-shadow": displayTokens.surface.sectionShadow,
-    "--display-surface-track": displayTokens.surface.track,
-    "--display-surface-track-alt": displayTokens.surface.trackAlt,
-    "--display-text-muted": displayTokens.text.muted,
-    "--display-text-error": displayTokens.text.error,
-    "--display-text-secondary": displayTokens.text.secondary,
-    "--display-retry-border": displayTokens.interactive.retryBorder,
-    "--display-retry-bg": displayTokens.interactive.retryBg,
-    "--display-retry-text": displayTokens.interactive.retryText,
-  };
+  const sectionClassName = fillHeight ? "async-section async-section--fill" : "async-section async-section--auto";
 
   return (
-    <section className="async-section" style={sectionStyle}>
+    <section className={sectionClassName}>
       {header}
       {content}
     </section>
