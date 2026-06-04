@@ -3914,6 +3914,73 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("shows review and retry actions when every KRD bucket is unparseable", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_all_invalid_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_krd_all_invalid_initial"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            krd_1y: "not-a-number",
+            krd_3y: "",
+            krd_5y: "undefined",
+            krd_7y: "bad",
+            krd_10y: "NaN",
+            krd_30y: "missing",
+          },
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_krd_all_invalid_retry"),
+          result: tensorResult("2026-02-28"),
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 --");
+      expect(screen.queryByTestId("risk-tensor-tenor-drill")).not.toBeInTheDocument();
+
+      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+      expect(qualityNote).toHaveTextContent("krd_1y 不可解析");
+      expect(qualityNote).toHaveTextContent("krd_3y 缺失");
+      expect(qualityNote).toHaveTextContent("未参与前端主风险桶排序和图表数值");
+
+      await user.click(within(qualityNote).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+
+      await user.click(within(qualityNote).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      });
+      expect(await screen.findByTestId("risk-tensor-tenor-drill")).toHaveTextContent("当前桶：5Y");
+      expect(screen.queryByTestId("risk-tensor-krd-quality-note")).not.toBeInTheDocument();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("keeps unparseable radar dimensions out of chart magnitudes", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -4322,6 +4389,156 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dv01_stress_retry_success");
     expect(screen.queryByTestId("risk-tensor-dv01-stress-empty")).not.toBeInTheDocument();
     expect(await screen.findByTestId("risk-tensor-dv01-stress-scenarios")).toHaveTextContent("+10bp");
+  });
+
+  it("copies DV01 stress scenario diagnostics when backend scenarios are empty", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_copy_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_copy_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({
+            limit_status: "ok",
+            approved_limit_dv01: {
+              raw: 100,
+              unit: "dv01" as const,
+              display: "100.00",
+              precision: 2,
+              sign_aware: false,
+            },
+            limit_usage_ratio: {
+              raw: 0.45,
+              unit: "ratio" as const,
+              display: "45.0%",
+              precision: 1,
+              sign_aware: false,
+            },
+            volatility_status: "ok",
+            daily_rate_volatility_bp: {
+              raw: 5,
+              unit: "bp" as const,
+              display: "5.00",
+              precision: 2,
+              sign_aware: false,
+            },
+            stress_scenarios: [],
+          }),
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const stressEmpty = await screen.findByTestId("risk-tensor-dv01-stress-empty");
+      await user.click(within(stressEmpty).getByRole("button", { name: "复制压力情景排查信息" }));
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 压力情景排查信息"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_stress_copy_2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("limit_status 限额内"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("volatility_status ok"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("stress_scenarios_count 0"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("页面不会在前端补算 DV01 压力情景"));
+      expect(stressEmpty).toHaveTextContent("已复制压力情景排查信息");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("shows manual DV01 stress scenario diagnostics when copying fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard unavailable");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_copy_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_copy_failure_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({
+            limit_status: "ok",
+            approved_limit_dv01: {
+              raw: 100,
+              unit: "dv01" as const,
+              display: "100.00",
+              precision: 2,
+              sign_aware: false,
+            },
+            limit_usage_ratio: {
+              raw: 0.45,
+              unit: "ratio" as const,
+              display: "45.0%",
+              precision: 1,
+              sign_aware: false,
+            },
+            volatility_status: "ok",
+            daily_rate_volatility_bp: {
+              raw: 5,
+              unit: "bp" as const,
+              display: "5.00",
+              precision: 2,
+              sign_aware: false,
+            },
+            stress_scenarios: [],
+          }),
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const stressEmpty = await screen.findByTestId("risk-tensor-dv01-stress-empty");
+      await user.click(within(stressEmpty).getByRole("button", { name: "复制压力情景排查信息" }));
+
+      await waitFor(() => {
+        expect(stressEmpty).toHaveTextContent("复制失败，请手动选择压力情景排查信息");
+      });
+      const manualCopy = within(stressEmpty).getByTestId("risk-tensor-dv01-stress-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量 DV01 压力情景排查信息");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_stress_copy_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("stress_scenarios_count 0");
+      expect(manualCopy).toHaveTextContent("页面不会在前端补算 DV01 压力情景");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
   });
 
   it("shows the backend DV01 limit and volatility control deck", async () => {

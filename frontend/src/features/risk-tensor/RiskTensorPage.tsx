@@ -578,6 +578,9 @@ export default function RiskTensorPage() {
   const [dv01PendingInputsCopyStatus, setDv01PendingInputsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [dv01StressScenariosCopyStatus, setDv01StressScenariosCopyStatus] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
   const [dv01ControlActionsCopyStatus, setDv01ControlActionsCopyStatus] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -852,6 +855,7 @@ export default function RiskTensorPage() {
     setCombinedQualityRequestCopyStatus("idle");
     setDv01MissingControlsCopyStatus("idle");
     setDv01PendingInputsCopyStatus("idle");
+    setDv01StressScenariosCopyStatus("idle");
     setDv01ControlActionsCopyStatus("idle");
     setQualityWarningsCopyStatus("idle");
   }, [qualityStateKey]);
@@ -972,6 +976,25 @@ export default function RiskTensorPage() {
     "页面不会在前端补算 DV01 控制输入",
     "请补充正式限额源、利率波动输入或控制动作明细后重新出具",
   ].join("\n");
+  const dv01StressScenariosCopyText = [
+    "风险张量 DV01 压力情景排查信息",
+    `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
+    `报告日 ${result?.report_date ?? reportDate ?? "未提供"}`,
+    `监管口径 DV01 ${result ? regulatoryDv01DisplayWithUnit(result.regulatory_dv01) : "未提供"}`,
+    `limit_status ${result?.dv01_controls ? dv01ControlStatusLabel(result.dv01_controls.limit_status) : "未提供"}`,
+    `approved_limit_dv01 ${result?.dv01_controls ? yuanAsWanWithUnit(result.dv01_controls.approved_limit_dv01 ?? undefined) : "未提供"}`,
+    `limit_usage_ratio ${result?.dv01_controls ? ratioPercentDisplay(result.dv01_controls.limit_usage_ratio) : "未提供"}`,
+    `volatility_status ${result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"}`,
+    `daily_rate_volatility_bp ${result?.dv01_controls ? displayStr(result.dv01_controls.daily_rate_volatility_bp) : "未提供"}`,
+    `stress_scenarios_count ${result?.dv01_controls?.stress_scenarios.length ?? 0}`,
+    `control_actions_count ${result?.dv01_controls?.control_actions.length ?? 0}`,
+    `result_kind ${tensorMeta?.result_kind ?? "未提供"}`,
+    ...qualityIssuanceCopyLines,
+    `source_version ${tensorMeta?.source_version ?? "未提供"}`,
+    `rule_version ${tensorMeta?.rule_version ?? "未提供"}`,
+    "页面不会在前端补算 DV01 压力情景",
+    "请补充正式压力情景生成结果后重新出具",
+  ].join("\n");
   const dv01ControlActionsCopyText = [
     "风险张量 DV01 控制处置清单",
     `trace_id ${tensorMeta?.trace_id ?? "未提供"}`,
@@ -1062,6 +1085,12 @@ export default function RiskTensorPage() {
       ? "已复制输入排查信息"
       : dv01PendingInputsCopyStatus === "failed"
         ? "复制失败，请手动选择输入排查信息"
+        : "";
+  const dv01StressScenariosCopyMessage =
+    dv01StressScenariosCopyStatus === "copied"
+      ? "已复制压力情景排查信息"
+      : dv01StressScenariosCopyStatus === "failed"
+        ? "复制失败，请手动选择压力情景排查信息"
         : "";
   const dv01ControlActionsCopyMessage =
     dv01ControlActionsCopyStatus === "copied"
@@ -1362,6 +1391,17 @@ export default function RiskTensorPage() {
       .catch(() => setDv01PendingInputsCopyStatus("failed"));
   };
 
+  const handleCopyDv01StressScenarios = () => {
+    if (!navigator.clipboard?.writeText) {
+      setDv01StressScenariosCopyStatus("failed");
+      return;
+    }
+    void navigator.clipboard
+      .writeText(dv01StressScenariosCopyText)
+      .then(() => setDv01StressScenariosCopyStatus("copied"))
+      .catch(() => setDv01StressScenariosCopyStatus("failed"));
+  };
+
   const handleCopyQualityWarnings = () => {
     if (!navigator.clipboard?.writeText) {
       setQualityWarningsCopyStatus("failed");
@@ -1579,6 +1619,20 @@ export default function RiskTensorPage() {
       ],
     };
   }, [result]);
+
+  const krdQualityNote =
+    invalidKrdRows.length > 0 ? (
+      <div className="risk-tensor-tenor-drill__quality" data-testid="risk-tensor-krd-quality-note">
+        {invalidKrdRows.map((row) => `${row.key} ${riskTensorScalarIssue(row.value) ?? "不可解析"}`).join(" / ")}
+        ；未参与前端主风险桶排序和图表数值。
+        <button type="button" className="risk-tensor-brief__link-button" onClick={handlePayloadChecklistJump}>
+          查看字段复核
+        </button>
+        <button type="button" className="risk-tensor-brief__link-button" onClick={handleRetryTensorMainRead}>
+          重试主读面
+        </button>
+      </div>
+    ) : null;
 
   return (
     <section>
@@ -2445,6 +2499,27 @@ export default function RiskTensorPage() {
                       >
                         重试主读面
                       </button>
+                      <button
+                        type="button"
+                        className="risk-tensor-quality-detail__trace-action"
+                        onClick={handleCopyDv01StressScenarios}
+                      >
+                        复制压力情景排查信息
+                      </button>
+                      {dv01StressScenariosCopyMessage ? (
+                        <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                          {dv01StressScenariosCopyMessage}
+                        </small>
+                      ) : null}
+                      {dv01StressScenariosCopyStatus === "failed" ? (
+                        <pre
+                          className="risk-tensor-quality-detail__manual-copy"
+                          data-testid="risk-tensor-dv01-stress-manual-copy"
+                          tabIndex={0}
+                        >
+                          {dv01StressScenariosCopyText}
+                        </pre>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -2656,6 +2731,7 @@ export default function RiskTensorPage() {
                   style={{ height: 320, width: "100%" }}
                 />
               ) : null}
+              {!selectedTenorRow ? krdQualityNote : null}
 
               {selectedTenorRow ? (
                 <div data-testid="risk-tensor-tenor-drill" style={drillPanelStyle}>
@@ -2665,26 +2741,7 @@ export default function RiskTensorPage() {
                   <div style={{ color: t.colorTextSecondary, fontSize: 13, marginTop: 6 }}>
                     先用现有风险张量 payload 中可解析的 KRD 字段选择最强期限桶，再查看该桶的敏感度读数。
                   </div>
-                  {invalidKrdRows.length > 0 ? (
-                    <div className="risk-tensor-tenor-drill__quality" data-testid="risk-tensor-krd-quality-note">
-                      {invalidKrdRows.map((row) => `${row.key} ${riskTensorScalarIssue(row.value) ?? "不可解析"}`).join(" / ")}
-                      ；未参与前端主风险桶排序和图表数值。
-                      <button
-                        type="button"
-                        className="risk-tensor-brief__link-button"
-                        onClick={handlePayloadChecklistJump}
-                      >
-                        查看字段复核
-                      </button>
-                      <button
-                        type="button"
-                        className="risk-tensor-brief__link-button"
-                        onClick={handleRetryTensorMainRead}
-                      >
-                        重试主读面
-                      </button>
-                    </div>
-                  ) : null}
+                  {krdQualityNote}
                   <div style={chipRowStyle}>
                     {tenorRows.map((row) => (
                       <button
