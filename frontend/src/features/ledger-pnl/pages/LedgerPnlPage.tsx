@@ -1344,6 +1344,8 @@ function LedgerFunctionalAuditStrip(props: {
   const formalEvidencePath = props.requestedReportMonth
     ? formalNextDrill?.label ?? shortFormalContractReadbackAction(readbackAction)
     : "先选择报告日生成 report_month";
+  const formalEvidenceActionable =
+    props.formalIndicatorSourceContract?.formal_use_allowed !== true;
   const materialSummary = formalContractMaterialSummary({
     contract: props.formalIndicatorSourceContract,
     isLoading: props.isFormalContractLoading,
@@ -1450,14 +1452,18 @@ function LedgerFunctionalAuditStrip(props: {
           </div>
           <div>
             <span>正式补证路径</span>
-            <button
-              type="button"
-              className="ledger-pnl-functional-strip__evidence-button"
-              aria-label={`正式补证路径 ${formalEvidencePath}`}
-              onClick={() => focusLedgerFormalContractTarget(props.requestedReportMonth)}
-            >
-              {formalEvidencePath}
-            </button>
+            {formalEvidenceActionable ? (
+              <button
+                type="button"
+                className="ledger-pnl-functional-strip__evidence-button"
+                aria-label={`正式补证路径 ${formalEvidencePath}`}
+                onClick={() => focusLedgerFormalContractTarget(props.requestedReportMonth)}
+              >
+                {formalEvidencePath}
+              </button>
+            ) : (
+              <strong>{formalEvidencePath}</strong>
+            )}
           </div>
           <div>
             <span>正式补证结论</span>

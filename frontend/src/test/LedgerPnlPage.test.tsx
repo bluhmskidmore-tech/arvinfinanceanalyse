@@ -797,6 +797,7 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("回读动作已完成正式契约回读");
     expect(decisionPath).not.toHaveTextContent("待登记正式契约");
     expect(decisionPath).not.toHaveTextContent("重新读取正式契约并复核 formal_use_allowed");
+    expect(within(decisionPath).queryByRole("button", { name: /正式补证路径/ })).not.toBeInTheDocument();
 
     expect(panel).toHaveTextContent("formal_use_allowed=true");
     expect(panel).toHaveTextContent("正式财务指标契约已读取");
