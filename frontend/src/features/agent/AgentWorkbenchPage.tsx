@@ -3037,12 +3037,18 @@ export function EmbeddedAgentCopilot({
           <button
             type="button"
             className="agent-queued-draft__action"
+            aria-label={`编辑草稿：${queuedQuery}`}
             onClick={restoreQueuedQueryToComposer}
           >
             <EditOutlined aria-hidden="true" />
             <span>编辑草稿</span>
           </button>
-          <button type="button" className="agent-queued-draft__action" onClick={cancelQueuedQuery}>
+          <button
+            type="button"
+            className="agent-queued-draft__action"
+            aria-label={`取消草稿：${queuedQuery}`}
+            onClick={cancelQueuedQuery}
+          >
             <CloseOutlined aria-hidden="true" />
             <span>取消草稿</span>
           </button>

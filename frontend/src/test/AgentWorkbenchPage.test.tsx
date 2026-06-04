@@ -3599,6 +3599,9 @@ describe("AgentWorkbenchPage", () => {
     expect(queuedPreview).toHaveTextContent("下一句");
     expect(queuedPreview).toHaveTextContent("当前回答完成后发送");
     expect(queuedPreview).toHaveTextContent("queued second turn");
+    const queuedPreviewActions = within(queuedPreview).getAllByRole("button");
+    expect(queuedPreviewActions[0]).toHaveAccessibleName(/queued second turn/);
+    expect(queuedPreviewActions[1]).toHaveAccessibleName(/queued second turn/);
     expect(screen.queryByText("已排队：queued second turn")).not.toBeInTheDocument();
     expect(screen.queryByText("当前回答完成后自动发送。")).not.toBeInTheDocument();
     const composerDock = document.querySelector(".agent-composer-dock");
@@ -3608,12 +3611,12 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     expect(screen.getByText("下一句已排队 · 还可以继续输入")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "编辑草稿" }));
+    await user.click(queuedPreviewActions[0]);
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
-    await user.click(screen.getByRole("button", { name: "取消草稿" }));
+    await user.click(within(getQueuedFollowUpStatus()).getAllByRole("button")[1]);
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("agent-question-input"), "queued second turn");
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
@@ -4193,9 +4196,12 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued cancel second turn");
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
-    expect(getQueuedFollowUpStatus()).toHaveTextContent("queued cancel second turn");
+    const queuedPreview = getQueuedFollowUpStatus();
+    expect(queuedPreview).toHaveTextContent("queued cancel second turn");
 
-    await user.click(screen.getByRole("button", { name: "取消草稿" }));
+    const queuedPreviewActions = within(queuedPreview).getAllByRole("button");
+    expect(queuedPreviewActions[1]).toHaveAccessibleName(/queued cancel second turn/);
+    await user.click(queuedPreviewActions[1]);
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
     expect(input).toHaveValue("");
@@ -4252,9 +4258,12 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued edit second turn");
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
-    expect(getQueuedFollowUpStatus()).toHaveTextContent("queued edit second turn");
+    const queuedPreview = getQueuedFollowUpStatus();
+    expect(queuedPreview).toHaveTextContent("queued edit second turn");
 
-    await user.click(screen.getByRole("button", { name: "编辑草稿" }));
+    const queuedPreviewActions = within(queuedPreview).getAllByRole("button");
+    expect(queuedPreviewActions[0]).toHaveAccessibleName(/queued edit second turn/);
+    await user.click(queuedPreviewActions[0]);
 
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
