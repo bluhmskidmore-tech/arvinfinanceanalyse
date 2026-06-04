@@ -383,6 +383,8 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   reasonLabel: string;
   impactLabel: string;
   releaseConditionLabel: string;
+  observationLabel: string;
+  gapLabel: string;
   evidenceLabel: string;
   currentEvidenceItems: string[];
   checkItems: string[];
@@ -2932,6 +2934,33 @@ function productCategoryBacktestLatestReviewRows(input: {
     }
     return "放行条件：未解释差异下降且闭合误差可接受";
   };
+  const observationForAction = (actionKind: ProductCategoryOperatingActionKind): string => {
+    if (actionKind === "reprice_or_improve") {
+      return "观察口径：下一期收益率改善且净营收不恶化";
+    }
+    if (actionKind === "shrink_or_limit") {
+      return "观察口径：下一期净营收改善且规模不反弹";
+    }
+    if (actionKind === "selective_growth") {
+      return "观察口径：下一期规模扩张且净营收为正";
+    }
+    return "观察口径：下一期未解释差异下降且闭合误差可接受";
+  };
+  const gapForAction = (row: ProductCategoryOperatingActionQueueRow): string => {
+    if (row.actionKind === "reprice_or_improve") {
+      const yieldEvidence = row.evidenceItems.find((item) => item.startsWith("收益率 ")) ?? "收益率 -";
+      return `判定缺口：当前${yieldEvidence}，需下一期收益率转正改善`;
+    }
+    if (row.actionKind === "shrink_or_limit") {
+      const netIncomeEvidence = row.evidenceItems.find((item) => item.startsWith("净营收 ")) ?? "净营收 -";
+      return `判定缺口：当前${netIncomeEvidence}，需下一期净营收改善`;
+    }
+    if (row.actionKind === "selective_growth") {
+      const scaleEvidence = row.evidenceItems.find((item) => item.startsWith("规模 ")) ?? "规模 -";
+      return `判定缺口：当前${scaleEvidence}，需下一期规模扩张且净营收为正`;
+    }
+    return "判定缺口：需下一期正式归因确认未解释差异下降";
+  };
   const tightenRowsByAction = new Map(
     input.calibrationRows
       .filter((row) => row.recommendationLabel === "收紧触发条件")
@@ -2957,6 +2986,8 @@ function productCategoryBacktestLatestReviewRows(input: {
         ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
         : "历史均值：-",
       releaseConditionLabel: releaseConditionForAction(row.actionKind),
+      observationLabel: observationForAction(row.actionKind),
+      gapLabel: gapForAction(row),
       evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
       currentEvidenceItems: row.evidenceItems,
       checkItems: checkItemsForAction(row.actionKind),
