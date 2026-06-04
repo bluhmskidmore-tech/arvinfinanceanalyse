@@ -175,7 +175,15 @@ export function AgentQueryForm({
             <div>
               <div className="agent-chat-composer__title">问 Agent</div>
             </div>
-            <div className="agent-chat-composer__hint">{visibleComposerHint}</div>
+            <div
+              className="agent-chat-composer__hint"
+              role="status"
+              aria-label="agent-composer-hint"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {visibleComposerHint}
+            </div>
           </div>
 
           {quickExampleRow}
@@ -225,7 +233,17 @@ export function AgentQueryForm({
             </button>
           ) : null}
         </div>
-        {compact ? <div className="agent-chat-composer__hint">{visibleComposerHint}</div> : null}
+        {compact ? (
+          <div
+            className="agent-chat-composer__hint"
+            role="status"
+            aria-label="agent-composer-hint"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {visibleComposerHint}
+          </div>
+        ) : null}
         <div
           className={
             loading && onStop

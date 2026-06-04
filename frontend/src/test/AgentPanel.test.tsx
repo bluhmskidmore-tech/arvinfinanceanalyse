@@ -106,6 +106,7 @@ describe("AgentPanel", () => {
     expect(screen.getByLabelText("agent-question-input")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-question")).toBeInTheDocument();
     expect(screen.getByTestId("agent-panel-submit")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "agent-composer-hint" })).toHaveTextContent("Enter");
     expect(screen.queryByLabelText("repo-path-input")).not.toBeInTheDocument();
   });
 
@@ -129,6 +130,8 @@ describe("AgentPanel", () => {
     const input = screen.getByLabelText("agent-question-input");
     expect(input).toHaveValue("review selected row");
     expect(input).toHaveFocus();
+    expect(input).toHaveProperty("selectionStart", "review selected row".length);
+    expect(input).toHaveProperty("selectionEnd", "review selected row".length);
   });
 
   it("does not replace an edited embedded composer draft when the default question changes", () => {

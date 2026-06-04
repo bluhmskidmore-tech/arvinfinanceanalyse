@@ -1538,6 +1538,11 @@ export function EmbeddedAgentCopilot({
       });
   }, []);
 
+  const moveComposerCursorToEnd = useCallback((input: HTMLTextAreaElement) => {
+    const cursorPosition = input.value.length;
+    input.setSelectionRange(cursorPosition, cursorPosition);
+  }, []);
+
   const focusComposerInput = useCallback(() => {
     closeResultInteractionDetails();
     const input = composerInputRef.current;
@@ -1545,13 +1550,17 @@ export function EmbeddedAgentCopilot({
       return;
     }
     input.focus();
-    const cursorPosition = input.value.length;
-    input.setSelectionRange(cursorPosition, cursorPosition);
+    moveComposerCursorToEnd(input);
+    window.requestAnimationFrame(() => {
+      if (composerInputRef.current === input && document.activeElement === input) {
+        moveComposerCursorToEnd(input);
+      }
+    });
     const scrollIntoView = input.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollComposerInputIntoView(input)) {
       scrollIntoView.call(input, { behavior: "smooth", block: "nearest" });
     }
-  }, [closeResultInteractionDetails]);
+  }, [closeResultInteractionDetails, moveComposerCursorToEnd]);
 
   function scrollConversationToBottom() {
     const bottom = conversationBottomRef.current;
