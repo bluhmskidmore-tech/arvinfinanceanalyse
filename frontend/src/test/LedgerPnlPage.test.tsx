@@ -1599,6 +1599,26 @@ describe("LedgerPnlPage", () => {
     expect(
       cards.compareDocumentPosition(monthlyAnalysis) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollTargets: HTMLElement[] = [];
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement) {
+      scrollTargets.push(this);
+    });
+
+    try {
+      const bottleneckRow = await screen.findByTestId("ledger-pnl-residual-diagnostic-bottleneck-row");
+      const candidateDrillButton = within(strip).getByRole("button", {
+        name: "下一步补证 核对总账报告日",
+      });
+
+      await userEvent.click(candidateDrillButton);
+
+      expect(scrollTargets).toEqual([bottleneckRow]);
+      expect(bottleneckRow).toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("does not treat non-PnL ledger detail rows as analyzable PnL evidence", async () => {

@@ -1425,7 +1425,14 @@ function LedgerFunctionalAuditStrip(props: {
                     {drill.label}
                   </button>
                 ) : (
-                  <strong>{drill.label}</strong>
+                  <button
+                    type="button"
+                    className="ledger-pnl-functional-strip__evidence-button"
+                    aria-label={`下一步补证 ${drill.label}`}
+                    onClick={focusLedgerResidualEvidenceTarget}
+                  >
+                    {drill.label}
+                  </button>
                 )}
                 {drill.detail ? <em>{drill.detail}</em> : null}
               </div>
