@@ -1663,6 +1663,424 @@ def test_lineage_evidence_mcp_maps_cube_query_page_to_allowed_source_tables(tmp_
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_dashboard_home_page_to_mixed_snapshot_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "dashboard:home:snapshot",
+            "result_kind": "home.snapshot",
+            "source_surface": "executive_analytical",
+            "basis": "analytical",
+            "primary_api": "/ui/home/snapshot",
+            "payload_schema": "HomeSnapshotPayload",
+            "service": "home_snapshot_envelope",
+            "domains_effective_date": {
+                "balance": "2026-05-31",
+                "pnl": "2026-05-31",
+                "liability": "2026-05-31",
+                "bond": "2026-05-31",
+            },
+            "domains_missing": [],
+            "child_result_kinds": [
+                "executive.overview",
+                "executive.summary",
+                "executive.pnl-attribution",
+                "product_category_ytd",
+                "product_category_monthly",
+            ],
+            "supplemental_result_kinds": [
+                "dashboard.core_metrics",
+                "dashboard.daily_changes",
+                "bond_dashboard.headline_kpis",
+                "bond_analytics.portfolio_headlines",
+                "market_data.rates",
+                "calendar.supply_auctions",
+            ],
+            "tables_used": [
+                "fact_formal_zqtz_balance_daily",
+                "fact_formal_tyw_balance_daily",
+                "fact_formal_pnl_fi",
+                "fact_nonstd_pnl_bridge",
+                "zqtz_bond_daily_snapshot",
+                "tyw_interbank_daily_snapshot",
+                "fact_formal_bond_analytics_daily",
+                "product_category_pnl_formal_read_model",
+                "product_category_pnl_canonical_fact",
+                "fx_daily_mid",
+            ],
+        },
+        {
+            "cache_key": "dashboard:core-metrics",
+            "result_kind": "dashboard.core_metrics",
+            "source_surface": "dashboard_supplemental",
+            "basis": "analytical",
+            "role": "same_date_supplemental",
+            "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+        },
+        {
+            "cache_key": "dashboard:bond-headline",
+            "result_kind": "bond_dashboard.headline_kpis",
+            "source_surface": "bond_analytics",
+            "basis": "analytical",
+            "role": "same_date_supplemental",
+            "tables_used": ["fact_formal_bond_analytics_daily"],
+        },
+        {
+            "cache_key": "executive:overview",
+            "result_kind": "executive.overview",
+            "page_id": "PAGE-EXEC-OVERVIEW-001",
+            "golden_sample": "GS-EXEC-OVERVIEW-A",
+        },
+        {
+            "cache_key": "bond_dashboard:headline",
+            "result_kind": "bond_dashboard.headline_kpis",
+            "page_id": "PAGE-BOND-001",
+            "golden_sample": "GS-BOND-HEADLINE-A",
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-DASH-001", "max_results": 10}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-DASH-001"
+        assert "/ui/home/snapshot" in found_payload["expanded_queries"]
+        assert "home.snapshot" in found_payload["expanded_queries"]
+        assert "dashboard-home" in found_payload["expanded_queries"]
+        assert "HomeSnapshotPayload" in found_payload["expanded_queries"]
+        assert "home_snapshot_envelope" in found_payload["expanded_queries"]
+        assert "executive_analytical" in found_payload["expanded_queries"]
+        assert "domains_effective_date" in found_payload["expanded_queries"]
+        assert "domains_missing" in found_payload["expanded_queries"]
+        assert "product_category_ytd" in found_payload["expanded_queries"]
+        assert "product_category_monthly" in found_payload["expanded_queries"]
+        assert "dashboard.core_metrics" in found_payload["expanded_queries"]
+        assert "dashboard.daily_changes" in found_payload["expanded_queries"]
+        assert "bond_dashboard.headline_kpis" in found_payload["expanded_queries"]
+        assert "bond_analytics.portfolio_headlines" in found_payload["expanded_queries"]
+        assert "market_data.rates" in found_payload["expanded_queries"]
+        assert "calendar.supply_auctions" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_tyw_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" in found_payload["expanded_queries"]
+        assert "fact_formal_bond_analytics_daily" in found_payload["expanded_queries"]
+        assert "product_category_pnl_formal_read_model" in found_payload["expanded_queries"]
+        assert "fx_daily_mid" in found_payload["expanded_queries"]
+        assert "PAGE-EXEC-OVERVIEW-001" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "PAGE-EXEC-PNL-ATTR-001" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-PNL-ATTR-A" not in found_payload["expanded_queries"]
+        assert "PAGE-BOND-001" not in found_payload["expanded_queries"]
+        assert "GS-BOND-HEADLINE-A" not in found_payload["expanded_queries"]
+        assert "PAGE-PROD-CAT-PNL-001" not in found_payload["expanded_queries"]
+        assert "GS-PROD-CAT-PNL-A" not in found_payload["expanded_queries"]
+        assert "PAGE-MKT-001" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "/ui/home/snapshot"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["result_kind"] == "home.snapshot"
+        assert found_payload["records"][0]["record"]["basis"] == "analytical"
+        assert found_payload["records"][1]["matched_query"] == "dashboard.core_metrics"
+        assert found_payload["records"][1]["record"]["role"] == "same_date_supplemental"
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_executive_summary_page_to_narrative_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "executive:summary",
+            "result_kind": "executive.summary",
+            "source_surface": "executive_summary",
+            "basis": "analytical",
+            "primary_api": "/ui/home/summary",
+            "payload_schema": "SummaryPayload",
+            "golden_sample": "GS-EXEC-SUMMARY-A",
+            "contract_scope": "narrative-only",
+            "lineage_dependency": "executive.overview",
+        },
+        {
+            "cache_key": "executive:summary:point-income",
+            "result_kind": "executive.summary",
+            "source_surface": "executive_summary",
+            "basis": "analytical",
+            "payload_schema": "SummaryPoint",
+            "point_id": "income",
+            "lineage_dependency": "executive.overview",
+        },
+        {
+            "cache_key": "executive:overview",
+            "result_kind": "executive.overview",
+            "page_id": "PAGE-EXEC-OVERVIEW-001",
+            "golden_sample": "GS-EXEC-OVERVIEW-A",
+            "metric_ids": ["MTR-EXEC-001", "MTR-EXEC-002"],
+        },
+        {
+            "cache_key": "executive:pnl-attribution",
+            "result_kind": "executive.pnl-attribution",
+            "page_id": "PAGE-EXEC-PNL-ATTR-001",
+            "golden_sample": "GS-EXEC-PNL-ATTR-A",
+            "metric_ids": ["MTR-EXEC-101"],
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {
+                "name": "find_lineage_records",
+                "arguments": {"query": "PAGE-EXEC-SUMMARY-001", "max_results": 10},
+            },
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-EXEC-SUMMARY-001"
+        assert "/ui/home/summary" in found_payload["expanded_queries"]
+        assert "executive.summary" in found_payload["expanded_queries"]
+        assert "executive-summary" in found_payload["expanded_queries"]
+        assert "executive_summary" in found_payload["expanded_queries"]
+        assert "SummaryPayload" in found_payload["expanded_queries"]
+        assert "SummaryPoint" in found_payload["expanded_queries"]
+        assert "GS-EXEC-SUMMARY-A" in found_payload["expanded_queries"]
+        assert "narrative-only" in found_payload["expanded_queries"]
+        assert "executive.overview" in found_payload["expanded_queries"]
+        assert "PAGE-EXEC-OVERVIEW-001" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "MTR-EXEC-001" not in found_payload["expanded_queries"]
+        assert "MTR-EXEC-101" not in found_payload["expanded_queries"]
+        assert "PAGE-EXEC-PNL-ATTR-001" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-PNL-ATTR-A" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "/ui/home/summary"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["result_kind"] == "executive.summary"
+        assert found_payload["records"][0]["record"]["contract_scope"] == "narrative-only"
+        assert found_payload["records"][1]["matched_query"] == "executive.summary"
+        assert found_payload["records"][1]["record"]["payload_schema"] == "SummaryPoint"
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_macro_toolkit_page_to_tooling_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "macro-toolkit:analysis",
+            "result_kind": "macro_toolkit.analysis",
+            "source_surface": "macro_toolkit",
+            "basis": "analytical",
+            "primary_api": "/ui/macro/toolkit/analysis",
+            "formal_use_allowed": False,
+            "contract_scope": "candidate tooling surface",
+            "coverage_hit_rate": 0.82,
+            "source_version": "sv_macro_toolkit_analysis",
+            "rule_version": "rv_macro_toolkit_analysis",
+        },
+        {
+            "cache_key": "macro-toolkit:strategy-summaries",
+            "result_kind": "macro_toolkit.analysis.strategy_summaries",
+            "source_surface": "macro_toolkit",
+            "basis": "analytical",
+            "primary_api": "/ui/macro/toolkit/analysis/strategy-summaries",
+            "formal_use_allowed": False,
+            "strategy_count": 3,
+        },
+        {
+            "cache_key": "macro-toolkit:scripts",
+            "result_kind": "macro_toolkit.scripts",
+            "source_surface": "macro_toolkit",
+            "basis": "tooling",
+            "primary_api": "/ui/macro/toolkit/scripts",
+            "formal_use_allowed": False,
+            "script_count": 4,
+        },
+        {
+            "cache_key": "macro-toolkit:refresh",
+            "result_kind": "macro_toolkit.choice_stock_refresh",
+            "source_surface": "macro_toolkit",
+            "basis": "operational",
+            "primary_api": "/ui/macro/toolkit/choice-stock/refresh",
+            "formal_use_allowed": False,
+            "run_id": "macro-refresh-1",
+        },
+        {
+            "metric_id": "MTR-MACRO-001",
+            "result_kind": "formal.macro.metric",
+            "basis": "formal",
+            "formal_use_allowed": True,
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {
+                "name": "find_lineage_records",
+                "arguments": {"query": "PAGE-MACRO-TOOLKIT-001", "max_results": 10},
+            },
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-MACRO-TOOLKIT-001"
+        assert "/ui/macro/toolkit/analysis" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/analysis/strategy-summaries" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/scripts" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/scripts/" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/choice-stock/refresh-status" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/choice-stock/refresh" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/cffex-member-rank/refresh" in found_payload["expanded_queries"]
+        assert "macro-toolkit" in found_payload["expanded_queries"]
+        assert "macro_toolkit.analysis" in found_payload["expanded_queries"]
+        assert "macro_toolkit.analysis.strategy_summaries" in found_payload["expanded_queries"]
+        assert "macro_toolkit.scripts" in found_payload["expanded_queries"]
+        assert "macro_toolkit.choice_stock_refresh" in found_payload["expanded_queries"]
+        assert "macro_toolkit.cffex_member_rank_refresh" in found_payload["expanded_queries"]
+        assert "MacroToolkitAnalysisPayload" in found_payload["expanded_queries"]
+        assert "MacroToolkitPayload" in found_payload["expanded_queries"]
+        assert "MacroToolkitRunResponse" in found_payload["expanded_queries"]
+        assert "candidate tooling surface" in found_payload["expanded_queries"]
+        assert "source/version/run_id" in found_payload["expanded_queries"]
+        assert "MTR-MACRO-001" not in found_payload["expanded_queries"]
+        assert "MTR-" not in found_payload["expanded_queries"]
+        assert "GS-MACRO-TOOLKIT-A" not in found_payload["expanded_queries"]
+        matched_records = {record["record"]["result_kind"]: record for record in found_payload["records"]}
+        assert matched_records["macro_toolkit.analysis"]["matched_query"] == "/ui/macro/toolkit/analysis"
+        assert matched_records["macro_toolkit.analysis"]["record"]["formal_use_allowed"] is False
+        assert matched_records["macro_toolkit.analysis"]["record"]["contract_scope"] == "candidate tooling surface"
+        assert (
+            matched_records["macro_toolkit.analysis.strategy_summaries"]["record"]["primary_api"]
+            == "/ui/macro/toolkit/analysis/strategy-summaries"
+        )
+        assert matched_records["macro_toolkit.scripts"]["record"]["primary_api"] == "/ui/macro/toolkit/scripts"
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_macro_observation_page_to_readonly_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "macro-observation:analysis",
+            "result_kind": "macro_toolkit.analysis",
+            "source_surface": "macro_observation",
+            "basis": "analytical",
+            "primary_api": "/ui/macro/toolkit/analysis",
+            "formal_use_allowed": False,
+            "contract_scope": "read-only macro observation",
+            "boundary": "macro-observation-readonly-boundary",
+        },
+        {
+            "cache_key": "macro-observation:strategy-summaries",
+            "result_kind": "macro_toolkit.analysis.strategy_summaries",
+            "source_surface": "macro_observation",
+            "basis": "analytical",
+            "primary_api": "/ui/macro/toolkit/analysis/strategy-summaries",
+            "formal_use_allowed": False,
+            "contract_scope": "read-only macro observation",
+        },
+        {
+            "cache_key": "macro-toolkit:scripts",
+            "result_kind": "macro_toolkit.scripts",
+            "source_surface": "macro_toolkit",
+            "basis": "tooling",
+            "primary_api": "/ui/macro/toolkit/scripts",
+        },
+        {
+            "cache_key": "macro-toolkit:refresh",
+            "result_kind": "macro_toolkit.choice_stock_refresh",
+            "source_surface": "macro_toolkit",
+            "basis": "operational",
+            "primary_api": "/ui/macro/toolkit/choice-stock/refresh",
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {
+                "name": "find_lineage_records",
+                "arguments": {"query": "PAGE-MACRO-OBS-001", "max_results": 10},
+            },
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-MACRO-OBS-001"
+        assert "/ui/macro/toolkit/analysis" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/analysis/strategy-summaries" in found_payload["expanded_queries"]
+        assert "macro-observation" in found_payload["expanded_queries"]
+        assert "macro_observation" in found_payload["expanded_queries"]
+        assert "macro_toolkit.analysis" in found_payload["expanded_queries"]
+        assert "macro_toolkit.analysis.strategy_summaries" in found_payload["expanded_queries"]
+        assert "MacroToolkitAnalysisPayload" in found_payload["expanded_queries"]
+        assert "macro-observation-readonly-boundary" in found_payload["expanded_queries"]
+        assert "read-only macro observation" in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/scripts" not in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/scripts/" not in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/choice-stock/refresh" not in found_payload["expanded_queries"]
+        assert "/ui/macro/toolkit/choice-stock/refresh-status" not in found_payload["expanded_queries"]
+        assert "macro_toolkit.scripts" not in found_payload["expanded_queries"]
+        assert "macro_toolkit.choice_stock_refresh" not in found_payload["expanded_queries"]
+        assert "MTR-MACRO-001" not in found_payload["expanded_queries"]
+        assert "MTR-" not in found_payload["expanded_queries"]
+        matched_records = {record["record"]["result_kind"]: record for record in found_payload["records"]}
+        assert matched_records["macro_toolkit.analysis"]["matched_query"] == "/ui/macro/toolkit/analysis"
+        assert matched_records["macro_toolkit.analysis"]["record"]["contract_scope"] == "read-only macro observation"
+        assert (
+            matched_records["macro_toolkit.analysis.strategy_summaries"]["record"]["primary_api"]
+            == "/ui/macro/toolkit/analysis/strategy-summaries"
+        )
+        assert matched_records["macro_toolkit.analysis.strategy_summaries"]["record"]["formal_use_allowed"] is False
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_executive_overview_page_to_overlay_records(
     tmp_path: Path,
 ) -> None:
