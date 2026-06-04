@@ -310,6 +310,13 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
         "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推",
         "登记后必须重新运行 Ledger PnL 正式财务指标金样本测试",
       ],
+      registration_package: {
+        fixture_target:
+          "tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json",
+        registry_target: "backend/app/core_finance/formal_financial_indicators.py::_METRICS_202605",
+        contract_builder: "build_formal_financial_indicator_contract(report_month='202605')",
+        release_gate: "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
+      },
       registration_target: "backend/app/core_finance/formal_financial_indicators.py",
       verification: "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     },
@@ -867,6 +874,18 @@ describe("LedgerPnlPage", () => {
     expect(checklist).toHaveTextContent("样本必须包含财务指标-汇总表及单元格引用");
     expect(checklist).toHaveTextContent("样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推");
     expect(checklist).toHaveTextContent("登记后必须重新运行 Ledger PnL 正式财务指标金样本测试");
+    expect(checklist).toHaveTextContent(
+      "样本落盘tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json",
+    );
+    expect(checklist).toHaveTextContent(
+      "契约登记backend/app/core_finance/formal_financial_indicators.py::_METRICS_202605",
+    );
+    expect(checklist).toHaveTextContent(
+      "构建入口build_formal_financial_indicator_contract(report_month='202605')",
+    );
+    expect(checklist).toHaveTextContent(
+      "放行条件formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
+    );
     expect(checklist).toHaveTextContent("登记backend/app/core_finance/formal_financial_indicators.py");
     expect(checklist).toHaveTextContent(
       "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",

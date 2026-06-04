@@ -341,6 +341,21 @@ def _empty_contract(report_month: str) -> dict[str, Any]:
                 "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推",
                 "登记后必须重新运行 Ledger PnL 正式财务指标金样本测试",
             ],
+            "registration_package": {
+                "fixture_target": (
+                    "tests/fixtures/formal_financial_indicators/"
+                    f"ledger_pnl_{normalized_month}_financial_indicator_golden.json"
+                ),
+                "registry_target": (
+                    "backend/app/core_finance/formal_financial_indicators.py"
+                    f"::_METRICS_{normalized_month}"
+                ),
+                "contract_builder": (
+                    "build_formal_financial_indicator_contract("
+                    f"report_month='{normalized_month}')"
+                ),
+                "release_gate": "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
+            },
             "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
             "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
         },

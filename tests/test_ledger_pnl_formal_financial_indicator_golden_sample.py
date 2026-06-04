@@ -158,6 +158,15 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
             "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推",
             "登记后必须重新运行 Ledger PnL 正式财务指标金样本测试",
         ],
+        "registration_package": {
+            "fixture_target": (
+                "tests/fixtures/formal_financial_indicators/"
+                "ledger_pnl_202605_financial_indicator_golden.json"
+            ),
+            "registry_target": "backend/app/core_finance/formal_financial_indicators.py::_METRICS_202605",
+            "contract_builder": "build_formal_financial_indicator_contract(report_month='202605')",
+            "release_gate": "formal_use_allowed 只能在契约 value 均来自冻结样本且金样本测试通过后放行",
+        },
         "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
         "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     }
@@ -295,6 +304,9 @@ def test_ledger_pnl_api_exposes_empty_contract_for_unregistered_month(tmp_path, 
     assert payload["result"]["remediation"]["action_label"] == "补齐 202605 正式财务指标 Excel 冻结样本"
     assert payload["result"]["remediation"]["acceptance_criteria"][2] == (
         "样本值必须按亿元/%等原始单位冻结，不得由 QDB 候选值反推"
+    )
+    assert payload["result"]["remediation"]["registration_package"]["fixture_target"] == (
+        "tests/fixtures/formal_financial_indicators/ledger_pnl_202605_financial_indicator_golden.json"
     )
 
 

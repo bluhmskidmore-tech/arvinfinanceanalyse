@@ -718,6 +718,26 @@ function buildFormalContractMaterialChecklist(
       label: "验收",
       value: remediation?.acceptance_criteria?.map((item) => item.trim()).filter(Boolean).join("；") ?? "",
     },
+    {
+      key: "fixtureTarget",
+      label: "样本落盘",
+      value: remediation?.registration_package?.fixture_target?.trim() ?? "",
+    },
+    {
+      key: "registryTarget",
+      label: "契约登记",
+      value: remediation?.registration_package?.registry_target?.trim() ?? "",
+    },
+    {
+      key: "contractBuilder",
+      label: "构建入口",
+      value: remediation?.registration_package?.contract_builder?.trim() ?? "",
+    },
+    {
+      key: "releaseGate",
+      label: "放行条件",
+      value: remediation?.registration_package?.release_gate?.trim() ?? "",
+    },
     { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
     { key: "verification", label: "验证", value: remediation?.verification?.trim() ?? "" },
   ];
