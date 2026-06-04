@@ -5897,4 +5897,10 @@ describe("AgentWorkbenchPage", () => {
       question: "第一行\n第二行",
     });
   });
+
+  it("keeps submitted multiline questions formatted in user bubbles", () => {
+    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+
+    expect(cssText).toMatch(/\.agent-message--user \.agent-message__body\s*\{[^}]*white-space:\s*pre-wrap/s);
+  });
 });

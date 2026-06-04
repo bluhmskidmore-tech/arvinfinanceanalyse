@@ -2484,6 +2484,7 @@ select {
   color: var(--moss-color-text-primary);
   font-size: 14px;
   line-height: 1.65;
+  white-space: pre-wrap;
 }
 
 .agent-user-bubble .agent-message__body {
