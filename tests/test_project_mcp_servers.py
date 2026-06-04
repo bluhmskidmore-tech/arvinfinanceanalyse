@@ -1544,6 +1544,44 @@ def test_lineage_evidence_mcp_reads_governance_stream_status(tmp_path: Path) -> 
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_page_risk_contract_to_risk_tensor_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "agent_audit.jsonl").write_text(
+        json.dumps(
+            {
+                "result_kind": "risk.tensor",
+                "page_slug": "risk-tensor",
+                "source_surface": "risk_tensor",
+                "tables_used": ["fact_formal_risk_tensor_daily"],
+                "report_date": "2026-04-30",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-RISK-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-RISK-001"
+        assert "risk.tensor" in found_payload["expanded_queries"]
+        assert "fact_formal_risk_tensor_daily" in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "fact_formal_risk_tensor_daily"
+        assert found_payload["records"][0]["stream"] == "agent_audit"
+        assert found_payload["records"][0]["record"]["result_kind"] == "risk.tensor"
+    finally:
+        server.close()
+
+
 def test_data_catalog_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None:
     missing_duckdb = tmp_path / "missing.duckdb"
     server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(missing_duckdb)})

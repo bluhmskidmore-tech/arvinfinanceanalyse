@@ -249,6 +249,15 @@ class MetricContractsProvider(McpProvider):
 
 class LineageEvidenceProvider(McpProvider):
     name = "moss-lineage-evidence"
+    _QUERY_EXPANSIONS = {
+        "page-risk-001": [
+            "fact_formal_risk_tensor_daily",
+            "agent.risk_tensor",
+            "risk_tensor",
+            "risk.tensor",
+            "risk-tensor",
+        ],
+    }
 
     def __init__(self) -> None:
         self._governance_dir = resolve_path_env("MOSS_GOVERNANCE_PATH", DEFAULT_GOVERNANCE_DIR)
@@ -358,6 +367,7 @@ class LineageEvidenceProvider(McpProvider):
             query = str(arguments.get("query") or "").strip()
             if not query:
                 raise McpError(-32602, "query is required.")
+            query_terms = lineage_query_terms(query, self._QUERY_EXPANSIONS)
             requested_streams = arguments.get("streams")
             if isinstance(requested_streams, list) and requested_streams:
                 stream_names = [str(stream) for stream in requested_streams]
@@ -365,12 +375,33 @@ class LineageEvidenceProvider(McpProvider):
                 stream_names = list(self._streams)
             max_results = int(arguments.get("max_results") or 40)
             records = []
+            seen_records: set[tuple[str, int]] = set()
             for stream in stream_names:
                 path = self._stream_path(stream)
-                records.extend(find_jsonl_records(path, stream=stream, query=query, max_results=max_results))
+                for query_term in query_terms:
+                    stream_records = find_jsonl_records(
+                        path,
+                        stream=stream,
+                        query=query_term,
+                        max_results=max_results,
+                    )
+                    for record in stream_records:
+                        record_key = (str(record.get("stream") or stream), int(record.get("line") or 0))
+                        if record_key in seen_records:
+                            continue
+                        seen_records.add(record_key)
+                        records.append({"matched_query": query_term, **record})
+                        if len(records) >= max_results:
+                            break
+                    if len(records) >= max_results:
+                        break
                 if len(records) >= max_results:
                     break
-            payload = {"query": query, "records": records[:max_results]}
+            payload = {
+                "query": query,
+                "expanded_queries": query_terms,
+                "records": records[:max_results],
+            }
             return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
         return super().call_tool(name, arguments)
 
@@ -2590,6 +2621,18 @@ def find_jsonl_records(path: Path, *, stream: str, query: str, max_results: int)
             if len(matches) >= max_results:
                 break
     return matches
+
+
+def lineage_query_terms(query: str, expansions: dict[str, list[str]]) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for term in [query, *expansions.get(query.casefold(), [])]:
+        normalized = term.strip()
+        if not normalized or normalized.casefold() in seen:
+            continue
+        seen.add(normalized.casefold())
+        terms.append(normalized)
+    return terms
 
 
 def parse_json_line(line: str) -> dict[str, Any] | None:
