@@ -564,6 +564,7 @@ def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypa
     command = " ".join(calls[0])
     assert "INSERT INTO user_role_scope" in command
     assert "'*', NULL, 'choice_news.data', 'read'" in command
+    assert "'anonymous', 'viewer', 'cashflow_projection', 'read'" in command
     assert "'anonymous', 'viewer', 'macro_toolkit', 'read'" in command
     assert "'anonymous', 'viewer', 'macro_vendor', 'read'" in command
     assert "'anonymous', 'viewer', 'ledger_pnl', 'read'" in command
