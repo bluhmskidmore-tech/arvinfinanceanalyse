@@ -1923,7 +1923,7 @@ const themeEvidenceInputLabels: Record<string, string> = {
 const themeEvidenceStatusLabels: Record<string, string> = {
   catalog_unconfirmed: "目录待确认",
   table_missing: "数据表缺失",
-  source_table_missing: "源表缺失",
+  source_table_missing: "数据源缺失",
   landed_no_rows: "已接入无行",
   matched_rows: "已匹配",
 };
@@ -2782,13 +2782,13 @@ function localizeReplayReasonCode(reasonCode: string | null | undefined): string
   const normalized = (reasonCode ?? "").trim().toLowerCase();
   const labels: Record<string, string> = {
     missing_daily_limit_flags: "涨跌停标记缺失",
-    missing_required_source_table: "必需源表缺失",
+    missing_required_source_table: "必需数据源缺失",
     forward_returns_pending: "远期收益待成熟",
     proxy_theme_only: "仅代理题材",
     real_theme_inputs_unconfirmed: "真实题材输入待确认",
   };
   if (!normalized) return "原因待补";
-  if (normalized.includes("source_table") && normalized.includes("missing")) return "源表缺失";
+  if (normalized.includes("source_table") && normalized.includes("missing")) return "数据源缺失";
   return labels[normalized] ?? "原因待确认";
 }
 
@@ -3486,7 +3486,7 @@ export function localizeStrategyPanelErrorDetail(errorMessage: string | null | u
   if (!value) return "请求失败：错误详情待补。";
   const lower = value.toLowerCase();
   if (lower.includes("source_table") || lower.includes("source table")) {
-    return "请求失败：必需源表缺失，稍后复核供数状态。";
+    return "请求失败：必需数据源缺失，稍后复核供数状态。";
   }
   if (lower.includes("failed to fetch") || lower.includes("network error")) {
     return "请求失败：暂时无法连接策略分析服务。";

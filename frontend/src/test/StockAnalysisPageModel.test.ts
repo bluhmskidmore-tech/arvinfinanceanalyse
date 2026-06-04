@@ -1193,8 +1193,8 @@ describe("stockAnalysisPageModel", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       label: "盘中异动",
-      statusLabel: "源表缺失",
-      detail: "盘中异动：源表缺失",
+      statusLabel: "数据源缺失",
+      detail: "盘中异动：数据源缺失",
     });
     expect(rows[1]).toMatchObject({
       label: "题材输入",
@@ -1809,7 +1809,7 @@ describe("stockAnalysisPageModel", () => {
     });
     expect(replayItem?.detail).toContain("暂无可用于判断的完成回放日");
     expect(replayItem?.detail).toContain("2026-04-30 涨跌停标记缺失");
-    expect(replayItem?.detail).toContain("2026-05-09 源表缺失");
+    expect(replayItem?.detail).toContain("2026-05-09 数据源缺失");
     expect(replayItem?.detail).toContain("2026-05-08 远期收益待成熟");
     expect(replayItem?.detail).toContain("2026-05-10 原因待确认");
     expect(replayItem?.detail).not.toContain("missing required source table");
@@ -2634,9 +2634,9 @@ describe("stockAnalysisPageModel", () => {
     });
 
     const copy = [priority.detail, backtest.detail, optimization.detail].join(" ");
-    expect(priority.detail).toBe("请求失败：必需源表缺失，稍后复核供数状态。");
-    expect(backtest.detail).toBe("请求失败：必需源表缺失，稍后复核供数状态。");
-    expect(optimization.detail).toBe("请求失败：必需源表缺失，稍后复核供数状态。");
+    expect(priority.detail).toBe("请求失败：必需数据源缺失，稍后复核供数状态。");
+    expect(backtest.detail).toBe("请求失败：必需数据源缺失，稍后复核供数状态。");
+    expect(optimization.detail).toBe("请求失败：必需数据源缺失，稍后复核供数状态。");
     expect(copy).not.toContain("Failed to fetch");
     expect(copy).not.toContain("source_table");
     expect(copy).not.toContain("livermore_signal_snapshots");
