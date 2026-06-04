@@ -810,6 +810,15 @@ describe("MacroToolkitPage", () => {
     expect(commodityDecisionPanel).toHaveTextContent("转正前需审批");
     expect(commodityDecisionPanel).toHaveTextContent("可复核 2/6");
     expect(commodityDecisionPanel).toHaveTextContent("样本不足 4");
+    const commodityActionQueue = within(commodityDecisionPanel).getByLabelText("商品候选下一动作队列");
+    expect(commodityActionQueue).toHaveTextContent("人工复核队列");
+    expect(commodityActionQueue).toHaveTextContent("Copper futures / Crude oil futures");
+    expect(commodityActionQueue).toHaveTextContent("补历史样本队列");
+    expect(commodityActionQueue).toHaveTextContent(
+      "Rebar futures / Iron ore futures / Aluminum futures / Gold futures",
+    );
+    expect(commodityActionQueue).toHaveTextContent("当前未计入 Crisis Score");
+    expect(commodityActionQueue).toHaveTextContent("下一步：先补齐样本不足品种，再复核铜、原油的相关性与命中率");
     expect(commodityDecisionPanel).toHaveTextContent("Copper futures");
     expect(commodityDecisionPanel).toHaveTextContent("影子评估可读");
     expect(commodityDecisionPanel).toHaveTextContent("样本 41");

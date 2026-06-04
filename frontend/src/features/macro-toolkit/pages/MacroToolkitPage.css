@@ -1258,6 +1258,47 @@
   font-weight: 800;
 }
 
+.macro-toolkit-crisis-shadow-action-queue {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.macro-toolkit-crisis-shadow-action-queue__item,
+.macro-toolkit-crisis-shadow-action-queue__next {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--macro-toolkit-border-soft);
+  border-radius: var(--moss-radius-sm);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.macro-toolkit-crisis-shadow-action-queue__item span,
+.macro-toolkit-crisis-shadow-action-queue__next span {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.macro-toolkit-crisis-shadow-action-queue__item strong,
+.macro-toolkit-crisis-shadow-action-queue__next strong {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-crisis-shadow-action-queue__item small {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .macro-toolkit-crisis-shadow-decision__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));

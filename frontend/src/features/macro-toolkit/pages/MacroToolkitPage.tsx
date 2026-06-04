@@ -2191,6 +2191,8 @@ function CrisisCommodityShadowDecisionPanel({
   const reviewableCount = summary.shadow_evaluation_ready_count;
   const shortCount = summary.shadow_evaluation_short_count;
   const totalCount = coverage.tracked_count || coverage.items.length;
+  const reviewQueueItems = coverage.items.filter(isCommodityShadowReviewReady);
+  const shortQueueItems = coverage.items.filter(isCommodityShadowHistoryShort);
   return (
     <div className="macro-toolkit-crisis-shadow-decision" aria-label="候选商品影子评估决策面板">
       <div className="macro-toolkit-crisis-shadow-decision__head">
@@ -2208,6 +2210,11 @@ function CrisisCommodityShadowDecisionPanel({
           <Tag color={shortCount ? "orange" : "green"}>样本不足 {shortCount}</Tag>
         </div>
       </div>
+      <CommodityShadowActionQueue
+        reviewItems={reviewQueueItems}
+        shortItems={shortQueueItems}
+        summary={summary}
+      />
       <div className="macro-toolkit-crisis-shadow-decision__grid">
         {coverage.items.map((item) => (
           <div className="macro-toolkit-crisis-shadow-decision__item" key={item.field}>
@@ -2301,6 +2308,35 @@ function CrisisCommodityShadowDecisionPanel({
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CommodityShadowActionQueue({
+  reviewItems,
+  shortItems,
+  summary,
+}: {
+  reviewItems: CrisisCommodityCoverageItem[];
+  shortItems: CrisisCommodityCoverageItem[];
+  summary: CrisisCommodityCandidateSummary;
+}) {
+  return (
+    <div className="macro-toolkit-crisis-shadow-action-queue" aria-label="商品候选下一动作队列">
+      <div className="macro-toolkit-crisis-shadow-action-queue__item">
+        <span>人工复核队列</span>
+        <strong>{formatCommodityActionQueueLabels(reviewItems)}</strong>
+        <small>相关性与命中率可读，但进入公式前仍需审批确认</small>
+      </div>
+      <div className="macro-toolkit-crisis-shadow-action-queue__item">
+        <span>补历史样本队列</span>
+        <strong>{formatCommodityActionQueueLabels(shortItems)}</strong>
+        <small>当前未计入 Crisis Score；先补齐重叠样本和危机期样本</small>
+      </div>
+      <div className="macro-toolkit-crisis-shadow-action-queue__next">
+        <span>处理顺序</span>
+        <strong>{formatCommodityActionQueueNextStep(reviewItems, shortItems, summary)}</strong>
       </div>
     </div>
   );
@@ -3743,6 +3779,65 @@ function commodityShadowStatusColor(status: string | null | undefined) {
     return "orange";
   }
   return "default";
+}
+
+function isCommodityShadowReviewReady(item: CrisisCommodityCoverageItem) {
+  return item.shadow_evaluation?.status === "review_ready";
+}
+
+function isCommodityShadowHistoryShort(item: CrisisCommodityCoverageItem) {
+  return item.shadow_evaluation?.status === "history_short";
+}
+
+function formatCommodityActionQueueLabels(items: CrisisCommodityCoverageItem[]) {
+  if (!items.length) {
+    return "无";
+  }
+  return items.map((item) => item.label || item.field).join(" / ");
+}
+
+function formatCommodityActionQueueNextStep(
+  reviewItems: CrisisCommodityCoverageItem[],
+  shortItems: CrisisCommodityCoverageItem[],
+  summary: CrisisCommodityCandidateSummary,
+) {
+  if (shortItems.length && reviewItems.length) {
+    return `下一步：先补齐样本不足品种，再复核${formatCommodityActionQueueShortNames(reviewItems)}的相关性与命中率`;
+  }
+  if (shortItems.length) {
+    return "下一步：先补齐样本不足品种，再重新运行完整分析";
+  }
+  if (reviewItems.length) {
+    return `下一步：复核${formatCommodityActionQueueShortNames(reviewItems)}的相关性与命中率`;
+  }
+  return summary.shadow_evaluation_next_step || "下一步待确认";
+}
+
+function formatCommodityActionQueueShortNames(items: CrisisCommodityCoverageItem[]) {
+  return items.map((item) => commodityChineseShortName(item.label || item.field)).join("、");
+}
+
+function commodityChineseShortName(label: string) {
+  const normalized = label.toLowerCase();
+  if (normalized.includes("copper")) {
+    return "铜";
+  }
+  if (normalized.includes("crude")) {
+    return "原油";
+  }
+  if (normalized.includes("aluminum")) {
+    return "铝";
+  }
+  if (normalized.includes("gold")) {
+    return "黄金";
+  }
+  if (normalized.includes("rebar")) {
+    return "螺纹钢";
+  }
+  if (normalized.includes("iron")) {
+    return "铁矿石";
+  }
+  return label;
 }
 
 function formatCommodityShadowShortfallList(summary: CrisisCommodityCandidateSummary) {
