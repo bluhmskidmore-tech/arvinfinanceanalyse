@@ -940,6 +940,39 @@ describe("AgentWorkbenchPage", () => {
     );
   });
 
+  it("refocuses the composer when a managed request fails after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveCreateRun!: (value: Response) => void;
+    const createRunResponse = new Promise<Response>((resolve) => {
+      resolveCreateRun = resolve;
+    });
+    fetchMock.mockReturnValueOnce(createRunResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "managed failure focus");
+    await user.click(screen.getByTestId("agent-panel-submit"));
+    expect(await screen.findByText("managed failure focus")).toBeInTheDocument();
+
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveCreateRun(
+        buildJsonResponse(
+          {
+            detail: "temporary managed run outage",
+          },
+          500,
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("retries a failed ordinary conversation turn in place", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(

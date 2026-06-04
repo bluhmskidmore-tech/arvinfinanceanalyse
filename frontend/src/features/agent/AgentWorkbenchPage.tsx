@@ -1975,6 +1975,8 @@ export function EmbeddedAgentCopilot({
           };
           setError(disabledError);
           updateConversationTurn(turnId, (turn) => ({ ...turn, error: disabledError }));
+          shouldFocusComposerRef.current = true;
+          window.setTimeout(focusComposerInput, 0);
           return;
         }
         const nextError: AgentQueryError = {
@@ -1983,6 +1985,8 @@ export function EmbeddedAgentCopilot({
         };
         setError(nextError);
         updateConversationTurn(turnId, (turn) => ({ ...turn, error: nextError }));
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
       }
     }
   }
