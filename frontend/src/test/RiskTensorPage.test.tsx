@@ -4013,6 +4013,48 @@ describe("RiskTensorPage", () => {
     expect(stressScenarios).toHaveTextContent("stress_scenarios");
   });
 
+  it("lets users locate quality evidence from the DV01 stress scenario empty state", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_quality_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_quality_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
+      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
+
+      await user.click(within(stressScenarios).getByRole("button", { name: "定位质量证据" }));
+
+      expect(scrollTargets).toContain(qualityDetail);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("lets users retry the risk tensor main read from the DV01 stress scenario empty state", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });

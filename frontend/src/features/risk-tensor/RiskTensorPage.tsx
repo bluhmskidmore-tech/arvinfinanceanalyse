@@ -2264,6 +2264,13 @@ export default function RiskTensorPage() {
                       <button
                         type="button"
                         className="risk-tensor-quality-detail__trace-action"
+                        onClick={handleQualityDetailJump}
+                      >
+                        定位质量证据
+                      </button>
+                      <button
+                        type="button"
+                        className="risk-tensor-quality-detail__trace-action"
                         onClick={handleRetryTensorMainRead}
                       >
                         重试主读面
