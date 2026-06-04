@@ -18,6 +18,7 @@ const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
 const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const AGENT_RESULT_DETAILS_LABEL = "回答依据与运行信息";
 const AGENT_ANSWER_ACTIONS_LABEL = "回答操作";
+const AGENT_FOLLOW_UP_SUGGESTIONS_LABEL = "继续追问";
 const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
@@ -3030,6 +3031,7 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("回答里已经给出主要结论。")).toBeInTheDocument();
 
     const moreFollowUps = screen.getByText("更多追问");
+    expect(screen.getByLabelText(AGENT_FOLLOW_UP_SUGGESTIONS_LABEL)).toContainElement(moreFollowUps);
     const followUpDetails = moreFollowUps.closest("details");
     expect(followUpDetails).not.toBeNull();
     if (!followUpDetails) {

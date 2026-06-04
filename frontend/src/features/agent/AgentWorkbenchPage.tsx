@@ -3189,7 +3189,7 @@ export function EmbeddedAgentCopilot({
                 onActionClick={(action, sourceElement) => handleSuggestedAction(turn.id, action, sourceElement)}
               />
 
-              <div className="agent-follow-up-chips" aria-label="assistant-follow-up-suggestions">
+              <div className="agent-follow-up-chips" aria-label="继续追问">
                 <button
                   type="button"
                   className="agent-follow-up-chips__button agent-follow-up-chips__button--primary"
