@@ -67,6 +67,12 @@ python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --n
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable
 ```
 
+For the operator-readable go/no-go status:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
+```
+
 For a combined read-only review of both pre-enable and post-enable gates:
 
 ```powershell

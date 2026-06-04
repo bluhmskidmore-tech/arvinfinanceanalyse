@@ -395,8 +395,9 @@ def build_timer_preflight_report(
         "pass": sum(1 for gate in gates if gate.outcome == "pass"),
         "blocked": len(blocking_items),
     }
-    return {
-        "verdict": "pass" if not blocking_items else "blocked",
+    verdict = "pass" if not blocking_items else "blocked"
+    report = {
+        "verdict": verdict,
         "blocking_items": blocking_items,
         "next_actions": _next_actions(blocking_items),
         "summary": summary,
@@ -406,6 +407,9 @@ def build_timer_preflight_report(
         "timer_packet_path": str(TIMER_PACKET_PATH),
         "evidence_path": str(EVIDENCE_PATH),
     }
+    if stage == "pre-enable":
+        report["ready_to_create_timer"] = verdict == "pass"
+    return report
 
 
 def build_timer_preflight_bundle(*, repo_root: str | Path = ROOT) -> dict[str, object]:
@@ -525,6 +529,28 @@ def _format_ops_gap_summary(report: dict[str, object]) -> list[str]:
         "Post-enable summary: " + _format_summary(post_enable),
         "",
     ]
+
+
+def _format_ops_gap_stage_status(report: dict[str, object]) -> list[str]:
+    if report.get("stage") == "all":
+        return [
+            *_format_ops_gap_summary(report),
+            f"Ready to create timer: `{str(report['ops_gap']['ready_to_create_timer']).lower()}`",
+            "",
+        ]
+
+    rows = [
+        f"Stage: `{report['stage']}`",
+        "",
+    ]
+    if report.get("stage") == "pre-enable":
+        rows.extend(
+            (
+                f"Ready to create timer: `{str(report['verdict'] == 'pass').lower()}`",
+                "",
+            )
+        )
+    return rows
 
 
 def _format_ops_gap_next_actions(report: dict[str, object]) -> list[str]:
@@ -733,9 +759,7 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             "",
             f"Current verdict: `{report['verdict']}`",
             "",
-            *_format_ops_gap_summary(report),
-            f"Ready to create timer: `{str(report['ops_gap']['ready_to_create_timer']).lower()}`",
-            "",
+            *_format_ops_gap_stage_status(report),
             *_format_ops_gap_activation_sequence(report),
             *_format_ops_gap_blocking_items(report),
             *_format_ops_gap_next_actions(report),

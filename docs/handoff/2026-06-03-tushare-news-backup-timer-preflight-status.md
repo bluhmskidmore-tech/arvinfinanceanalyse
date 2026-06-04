@@ -39,6 +39,12 @@ Markdown handoff command:
 python scripts/tushare_news_backup_timer_preflight.py --stage all --format markdown
 ```
 
+Operator go/no-go command:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
+```
+
 Operations gap packet command:
 
 ```powershell

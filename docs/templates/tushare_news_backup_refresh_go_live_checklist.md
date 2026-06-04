@@ -153,6 +153,8 @@ Do not enable the timer unless all of these are true:
 - Rollback owner is assigned.
 - `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable`
   returns `pass`.
+- `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown`
+  shows `Ready to create timer: true`.
 
 For a combined read-only review of pre-enable and post-enable gates, run:
 

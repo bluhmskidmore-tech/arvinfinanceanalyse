@@ -225,6 +225,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "--stage all" in status
     assert "--format markdown" in status
     assert "--format ops-gap" in status
+    assert "--stage pre-enable --format markdown" in status
     assert "Combined verdict: `blocked`" in status
     assert "Blocking stages: `pre-enable`, `post-enable`" in status
     assert "Pre-enable summary: `6 pass / 5 blocked`" in status

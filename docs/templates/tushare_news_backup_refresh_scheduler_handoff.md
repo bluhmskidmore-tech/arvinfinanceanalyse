@@ -46,6 +46,12 @@ timer preflight before enabling the external timer:
 python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable
 ```
 
+For the operator-readable go/no-go status, run:
+
+```powershell
+python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable --format markdown
+```
+
 To review both pre-enable and post-enable gates in one read-only bundle, run:
 
 ```powershell

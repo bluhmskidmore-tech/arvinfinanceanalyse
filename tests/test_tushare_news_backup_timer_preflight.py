@@ -483,6 +483,19 @@ def test_timer_preflight_cli_returns_nonzero_when_blocked(tmp_path: Path, capsys
     assert "owners_filled" in payload["blocking_items"]
 
 
+def test_timer_preflight_cli_pre_enable_reports_not_ready_when_blocked(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(["--repo-root", str(tmp_path), "--stage", "pre-enable"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["stage"] == "pre-enable"
+    assert payload["verdict"] == "blocked"
+    assert payload["ready_to_create_timer"] is False
+
+
 def test_timer_preflight_cli_accepts_pre_enable_stage(tmp_path: Path, capsys) -> None:
     module = _load_preflight_module()
     _write_fixture_tree(
@@ -497,6 +510,7 @@ def test_timer_preflight_cli_accepts_pre_enable_stage(tmp_path: Path, capsys) ->
     assert exit_code == 0
     assert payload["verdict"] == "pass"
     assert payload["stage"] == "pre-enable"
+    assert payload["ready_to_create_timer"] is True
 
 
 def test_timer_preflight_cli_accepts_all_stage_bundle(tmp_path: Path, capsys) -> None:
@@ -632,6 +646,43 @@ def test_timer_preflight_cli_can_render_ops_gap_packet(tmp_path: Path, capsys) -
     assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in output
     assert "POST /ui/news/tushare-npr/ingest" in output
     assert "/ui/news/choice-events/latest" in output
+
+
+def test_timer_preflight_cli_can_render_single_stage_ops_gap_packet(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "pre-enable", "--format", "ops-gap"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Current verdict: `blocked`" in output
+    assert "Stage: `pre-enable`" in output
+    assert "Ready to create timer: `false`" in output
+    assert "### Pre-Enable" in output
+    assert "- `owners_filled`" in output
+    assert "## Current `next_actions`" in output
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage pre-enable` after filling pre-enable inputs." in output
+
+
+def test_timer_preflight_cli_can_render_post_enable_ops_gap_packet(tmp_path: Path, capsys) -> None:
+    module = _load_preflight_module()
+    _write_fixture_tree(tmp_path, checklist=_pending_checklist(), evidence=_evidence())
+
+    exit_code = module.main(
+        ["--repo-root", str(tmp_path), "--stage", "post-enable", "--format", "ops-gap"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "Current verdict: `blocked`" in output
+    assert "Stage: `post-enable`" in output
+    assert "### Post-Enable" in output
+    assert "- `timer_evidence_filled`" in output
+    assert "## Current `next_actions`" in output
+    assert "Run `python scripts/tushare_news_backup_timer_preflight.py --stage post-enable` after the first scheduled run." in output
 
 
 def test_timer_preflight_ops_gap_packet_lists_current_blockers_and_actions(tmp_path: Path, capsys) -> None:
