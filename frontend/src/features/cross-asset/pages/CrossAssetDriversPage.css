@@ -2190,6 +2190,22 @@
   line-height: 1.3;
 }
 
+.cross-asset-drivers-page__mini-kpi-delta--positive {
+  color: var(--moss-color-success-600);
+}
+
+.cross-asset-drivers-page__mini-kpi-delta--negative {
+  color: var(--moss-color-danger-600);
+}
+
+.cross-asset-drivers-page__mini-kpi-delta--warning {
+  color: var(--moss-color-warning-500);
+}
+
+.cross-asset-drivers-page__mini-kpi-delta--default {
+  color: var(--moss-color-primary-600);
+}
+
 .cross-asset-drivers-page__mini-kpi-tag {
   font-size: 0.6875rem;
   color: var(--ca-muted);

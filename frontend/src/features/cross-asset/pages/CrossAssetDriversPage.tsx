@@ -886,7 +886,7 @@ function MiniKpiCard({ kpi, compact = false }: { kpi: ResolvedCrossAssetKpi; com
           <div className="cross-asset-drivers-page__mini-kpi-value">
             {kpi.valueLabel}
           </div>
-          <div className="cross-asset-drivers-page__mini-kpi-delta" style={{ color: stroke }}>
+          <div className={`cross-asset-drivers-page__mini-kpi-delta cross-asset-drivers-page__mini-kpi-delta--${kpi.changeTone}`}>
             {kpi.changeLabel}
           </div>
           {compact ? null : <PercentileGauge sparkline={kpi.sparkline} />}
