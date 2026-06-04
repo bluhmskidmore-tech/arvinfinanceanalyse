@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 
@@ -41,6 +43,20 @@ class SurfaceCase:
     side_effect_file: str | None = None
 
 
+@dataclass(frozen=True)
+class RouteAuthSurface:
+    file_path: str
+    line: int
+    method: str
+    path: str
+    function: str
+    reaches_authz: bool
+
+    @property
+    def key(self) -> tuple[str, str, str, str]:
+        return (self.method, self.file_path, self.path, self.function)
+
+
 BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("agent.query", "/api/agent/query", "POST", json={"question": "ping"}, detail_substring="disabled"),
     SurfaceCase("preview.source-foundation", "/ui/preview/source-foundation", "GET"),
@@ -51,9 +67,27 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("preview.source-foundation.refresh-status", "/ui/preview/source-foundation/refresh-status", "GET"),
     SurfaceCase("news.ui.ingest", "/ui/news/tushare-npr/ingest", "POST", side_effect_target="ingest_tushare_npr_to_choice_news", side_effect_module="backend.app.api.routes.choice_news", side_effect_file="backend/app/api/routes/choice_news.py"),
     SurfaceCase("news.api.ingest", "/api/news/tushare-npr/ingest", "POST", side_effect_target="ingest_tushare_npr_to_choice_news", side_effect_module="backend.app.api.routes.choice_news", side_effect_file="backend/app/api/routes/choice_news.py"),
-    SurfaceCase("executive.risk-overview", "/ui/risk/overview", "GET"),
-    SurfaceCase("executive.home.alerts", "/ui/home/alerts", "GET"),
-    SurfaceCase("executive.home.contribution", "/ui/home/contribution", "GET"),
+    SurfaceCase(
+        "executive.risk-overview",
+        "/ui/risk/overview",
+        "GET",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
+    SurfaceCase(
+        "executive.home.alerts",
+        "/ui/home/alerts",
+        "GET",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
+    SurfaceCase(
+        "executive.home.contribution",
+        "/ui/home/contribution",
+        "GET",
+        expected_status=403,
+        detail_substring="not allowed",
+    ),
 )
 
 FRONTEND_RESERVED_KEYS = (
@@ -63,6 +97,24 @@ FRONTEND_RESERVED_KEYS = (
     "news-events",
     "source-preview",
 )
+
+PUBLIC_OR_ECHO_READ_SURFACES = {
+    ("GET", "backend/app/api/routes/health.py", "/live", "live"),
+    ("GET", "backend/app/api/routes/health.py", "", "health"),
+    ("GET", "backend/app/api/routes/health.py", "/ready", "ready"),
+    ("GET", "backend/app/api/routes/balance_analysis.py", "/current-user", "current_user"),
+}
+
+READ_LIKE_POST_SURFACES = {
+    ("POST", "backend/app/api/routes/agent.py", "/query", "query_agent"),
+    ("POST", "backend/app/api/routes/agent.py", "/runs", "create_agent_run_endpoint"),
+    ("POST", "backend/app/api/routes/cube_query.py", "/query", "cube_query"),
+}
+
+RESERVED_WRITE_SURFACES = {
+    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_ui"),
+    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_api"),
+}
 
 
 def _build_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -77,6 +129,23 @@ def _build_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)
     return TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+
+def _grant_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, resource: str, action: str) -> None:
+    sqlite_path = tmp_path / "boundary-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_module = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_module.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="*",
+        role=None,
+        resource=resource,
+        action=action,
+    )
 
 
 def _call_case(client: TestClient, case: SurfaceCase):
@@ -104,6 +173,78 @@ def _patch_side_effect_target(
     monkeypatch.setattr(target, parts[-1], fail)
 
 
+def _call_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        if isinstance(child.func, ast.Name):
+            names.add(child.func.id)
+        elif isinstance(child.func, ast.Attribute):
+            names.add(child.func.attr)
+    return names
+
+
+def _route_method(decorator: ast.expr) -> str | None:
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    if isinstance(target, ast.Attribute) and target.attr in {"get", "post", "put", "patch", "delete"}:
+        return target.attr.upper()
+    return None
+
+
+def _route_path(decorator: ast.expr) -> str:
+    if isinstance(decorator, ast.Call) and decorator.args and isinstance(decorator.args[0], ast.Constant):
+        return str(decorator.args[0].value)
+    return ""
+
+
+def _route_auth_surfaces() -> list[RouteAuthSurface]:
+    surfaces: list[RouteAuthSurface] = []
+    route_root = Path("backend/app/api/routes")
+    for path in sorted(route_root.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        }
+        direct_authz = {
+            name
+            for name, node in functions.items()
+            if "ensure_user_allowed" in _call_names(node)
+        }
+        authz_closure = set(direct_authz)
+        changed = True
+        while changed:
+            changed = False
+            for name, node in functions.items():
+                if name in authz_closure:
+                    continue
+                if _call_names(node) & authz_closure:
+                    authz_closure.add(name)
+                    changed = True
+
+        file_path = path.as_posix()
+        for name, node in functions.items():
+            calls = _call_names(node)
+            reaches_authz = name in authz_closure or bool(calls & authz_closure)
+            for decorator in node.decorator_list:
+                method = _route_method(decorator)
+                if method is None:
+                    continue
+                surfaces.append(
+                    RouteAuthSurface(
+                        file_path=file_path,
+                        line=node.lineno,
+                        method=method,
+                        path=_route_path(decorator),
+                        function=name,
+                        reaches_authz=reaches_authz,
+                    )
+                )
+    return surfaces
+
+
 def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> None:
     for doc in REQUIRED_AUTHORITY_DOCS:
         assert Path(doc).exists(), doc
@@ -128,6 +269,32 @@ def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> N
     }
 
 
+def test_backend_read_like_routes_reach_authorization_gate() -> None:
+    missing = [
+        surface
+        for surface in _route_auth_surfaces()
+        if (surface.method == "GET" or surface.key in READ_LIKE_POST_SURFACES)
+        and surface.key not in PUBLIC_OR_ECHO_READ_SURFACES
+        and not surface.reaches_authz
+    ]
+
+    assert missing == []
+
+
+def test_backend_mutation_routes_are_authorized_or_explicitly_reserved() -> None:
+    mutation_methods = {"POST", "PUT", "PATCH", "DELETE"}
+    missing = [
+        surface
+        for surface in _route_auth_surfaces()
+        if surface.method in mutation_methods
+        and surface.key not in READ_LIKE_POST_SURFACES
+        and surface.key not in RESERVED_WRITE_SURFACES
+        and not surface.reaches_authz
+    ]
+
+    assert missing == []
+
+
 @pytest.mark.parametrize("case", BACKEND_BOUNDARY_CASES, ids=lambda case: case.slug)
 def test_backend_boundary_surfaces_fail_closed_without_governed_result_meta(
     case: SurfaceCase,
@@ -149,6 +316,7 @@ def test_choice_macro_refresh_status_returns_idle_without_runs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _grant_scope(tmp_path, monkeypatch, resource="macro_vendor", action="read")
     client = _build_client(tmp_path, monkeypatch)
 
     response = client.get("/ui/macro/choice-series/refresh-status")

@@ -10,7 +10,7 @@ Release posture: **core automated quality gates are now green**, but do not call
 
 Current top blockers:
 
-1. **P1 - API authorization boundary still needs full inventory and policy closure.** Sampled sensitive reads now require explicit read scopes, but the broader business/governance GET inventory and production header-trust startup guardrails are not yet complete.
+1. **P1 - API authorization boundary still needs policy closure.** Sampled sensitive reads now require explicit read scopes, backend route inventory now guards unclassified read/mutation surfaces, and production startup rejects the development trusted-header switch, but the intended public/internal/admin policy classification is not yet complete.
 2. **P1 - Formal calculation boundary drift remains in `bond_analytics_service`.** DV01 shock expansion, duration aggregation, DV01 share/bucket helpers, and action attribution orchestration still live in the service layer instead of a `core_finance` calculation boundary.
 3. **P2 - Broad backend Ruff debt remains high.** Focused Ruff for touched backend/test files passes; the earlier broad backend scan reported 962 existing issues.
 4. **P2 - Candidate metric API metadata sampled in this pass is now weakened away from formal-use approval.** Ledger PnL summary/detail, Bond Dashboard headline, Positions list-count, Cashflow Projection, and Concentration Monitor metadata now avoid `formal_use_allowed=true` while preserving source/date evidence. These fields still remain candidate or page-contract-pending until dictionary approval, golden samples, and lineage closure exist.
@@ -21,6 +21,11 @@ Current top blockers:
 Closed during this continuation:
 
 - **P1 remediated - Source preview read endpoints no longer rely only on the environment flag.** The HTTP kill switch still fails closed, and read/list/history/status/rows/traces now require `source_preview.source_foundation/read`.
+- **P1 remediated - Macro Toolkit read endpoints require explicit read permission.** Scripts, analysis, strategy summaries, adversarial signal, and Choice stock refresh-status now require `macro_toolkit/read`; refresh/run actions keep separate permissions.
+- **P1 remediated - Agent Workbench enabled endpoints require explicit read permission.** Enabled query/run/status paths now require `agent/read` before execution or run-state lookup; disabled Agent stubs still fail closed with 503.
+- **P1 remediated - Production startup rejects trusted user headers.** `MOSS_ENVIRONMENT=production` now fails closed when `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` enables `X-User-Id` / `X-User-Role` trust.
+- **P1 remediated - Cube Query read endpoints require explicit read permission.** The query execution and dimensions metadata surfaces now require `cube/read` before reading formal/analytical cube data or metadata.
+- **P1 regression guard - Backend route authorization inventory now fails on unclassified surfaces.** Route inventory tests require backend GET/read-like POST handlers to reach authorization unless explicitly public/echo, and mutation handlers to be authorized unless explicitly reserved.
 
 ## Audit Health Score
 
@@ -198,12 +203,12 @@ Current verification:
 Evidence from the second-pass security review:
 
 - `backend/app/security/auth_context.py:12-26` defines `anonymous` / `viewer` defaults and accepts `X-User-Id` / `X-User-Role` headers.
-- `backend/app/security/auth_context.py:78` enables header trust through `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST`.
+- `backend/app/security/auth_context.py:79-86` now fails closed when production startup sees `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` enabled.
 - `backend/app/main.py:50-52` allows credentials and explicitly allows `Authorization`, `X-User-Id`, and `X-User-Role` CORS headers.
 - Sampled business read routes from this pass now have explicit read boundaries; broader route inventory review remains incomplete.
 - Remediated in this continuation: `backend/app/api/routes/positions.py` now requires `positions/read` on the sampled positions read surface.
 - Remediated in this continuation: `backend/app/api/routes/external_data.py` now requires `external_data/read` on catalog and series-data reads.
-- Remediated in this continuation: `backend/app/api/routes/cube_query.py` now requires `cube/read` on the cube dimensions read surface.
+- Remediated in this continuation: `backend/app/api/routes/cube_query.py` now requires `cube/read` on query execution and cube dimensions read surfaces.
 - Remediated in this continuation: `backend/app/api/routes/research_calendar.py` now requires `research_calendar/read` on supply-auction calendar reads.
 - Remediated in this continuation: `backend/app/api/routes/market_data_ncd_proxy.py` now requires `market_data_ncd_proxy/read` on the NCD funding proxy read surface.
 - Remediated in this continuation: `backend/app/api/routes/dashboard.py` now requires `dashboard/read` on core-metrics and daily-changes reads.
@@ -215,10 +220,12 @@ Evidence from the second-pass security review:
 - Remediated in this continuation: `backend/app/api/routes/pnl_attribution.py` now requires `pnl_attribution/read` on the workbench's basic and advanced attribution reads.
 - Remediated in this continuation: `backend/app/api/routes/balance_analysis.py` now requires `balance_analysis/read` on business reads, exports, advanced attribution, decision-item reads, and refresh-status reads; `/current-user` remains an auth-context echo endpoint.
 - Remediated in this continuation: `backend/app/api/routes/bond_analytics.py` now requires `bond_analytics/read` on analytical/formal bond analytics GET routes and refresh-status reads, while refresh remains `bond_analytics/refresh`.
+- Remediated in this continuation: `backend/app/api/routes/macro_toolkit.py` now requires `macro_toolkit/read` on scripts, analysis, strategy summaries, adversarial signal, and Choice stock refresh-status reads, while refresh/run actions remain separately scoped.
+- Remediated in this continuation: `backend/app/api/routes/agent.py` now requires `agent/read` on enabled Agent query, managed-run creation, and run-status reads before execution or run-state lookup.
 
-Impact: automated metric and page-contract tests can pass while sensitive business data remains readable through unauthenticated GET surfaces. The header-trust development path also makes production misconfiguration more consequential.
+Impact: automated metric and page-contract tests can pass while sensitive business data remains readable through unauthenticated GET surfaces if remaining business/governance reads are not inventoried and explicitly classified.
 
-Recommendation: define the intended read-access policy once, then add route-level or router-level read authorization for business/governance surfaces. Keep public liveness endpoints separate. Production startup should fail closed if header trust or anonymous business reads are enabled outside local development.
+Recommendation: define the intended read-access policy once, then add route-level or router-level read authorization for business/governance surfaces. Keep public liveness endpoints separate. Preserve the production fail-closed guard for any future development-only authentication bypasses.
 
 ## Remediated Findings
 
@@ -593,6 +600,138 @@ Verification:
 
 Residual risk: this closes the nine Livermore GET/read surfaces covered here, but it does not prove every market-data-adjacent route or frontend consumer has been inventoried. The broader P1 read/write authorization inventory remains open.
 
+### P1 remediated - ADB Analysis reads require read permission
+
+Evidence:
+
+- `backend/app/api/routes/adb_analysis.py` now checks `adb_analysis/read` before returning ADB read payloads for `/api/analysis/adb`, `/api/analysis/adb-comparison`, `/api/analysis/adb/comparison`, `/api/analysis/adb/monthly`, and `/api/analysis/adb/coverage`.
+- The existing ADB backfill mutation boundary remains separate: `POST /api/analysis/adb/backfill` continues to require `adb_analysis/backfill`.
+- `tests/test_adb_analysis_api.py` verifies all five ADB GET surfaces return 403 without an explicit read grant and do not call the ADB service/DuckDB read path before authorization.
+- Existing ADB payload, analytical envelope, date/rate normalization, formal-fact, and fallback behavior tests now grant `adb_analysis/read` explicitly before asserting business payload behavior.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query adb_analysis --repo MOSS-V3` ran, but returned no symbols and warned that FTS indexes are missing/degraded. Local route/test evidence was used instead; no metric definition or calculation semantics were changed.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_adb_analysis_api.py::test_adb_read_surfaces_require_explicit_read_scope -q` failed because the five ADB GET paths returned 500 after continuing into service/DuckDB logic instead of returning 403.
+- Green proof after production change: `python -m pytest tests/test_adb_analysis_api.py::test_adb_read_surfaces_require_explicit_read_scope -q`: `5 passed`.
+- `python -m pytest tests/test_adb_analysis_api.py -q`: `16 passed`.
+- `python -m pytest tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `28 passed`.
+- `python -m pytest tests/test_write_route_auth_contract.py::test_refresh_route_requires_explicit_scope_grant -q`: `10 passed`.
+- `ruff check backend/app/api/routes/adb_analysis.py tests/test_adb_analysis_api.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check`: passed.
+
+Residual risk: this closes the five ADB GET/read surfaces covered here, but it does not prove every ADB-adjacent frontend/client consumer or analysis route has been inventoried. The broader P1 read/write authorization inventory remains open.
+
+### P1 remediated - Macro Bond Linkage analysis requires read permission
+
+Evidence:
+
+- `backend/app/api/routes/macro_bond_linkage.py` now checks `macro_bond_linkage/read` before returning `GET /api/macro-bond-linkage/analysis`.
+- The route still keeps `report_date` as a FastAPI `date` query parameter; this change only adds authorization before the service call and does not change macro-bond linkage calculations, result metadata, or data-source semantics.
+- `tests/test_macro_bond_linkage.py` verifies the route returns 403 without an explicit read grant and does not call `get_macro_bond_linkage` before authorization.
+- Existing macro-bond linkage HTTP success tests now grant `macro_bond_linkage/read` explicitly; service/core tests remain unchanged because they do not exercise HTTP authorization.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query macro_bond_linkage --repo MOSS-V3` ran, but returned no symbols and warned that FTS indexes are missing/degraded. Local route/test evidence was used instead.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_macro_bond_linkage.py::test_macro_bond_linkage_read_requires_explicit_read_scope -q` failed because the route continued into the patched service and returned 500 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_macro_bond_linkage.py::test_macro_bond_linkage_read_requires_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_macro_bond_linkage.py -q`: `41 passed`.
+- `ruff check backend/app/api/routes/macro_bond_linkage.py tests/test_macro_bond_linkage.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/macro_bond_linkage.py tests/test_macro_bond_linkage.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the single Macro Bond Linkage analytical GET surface covered here, but it does not prove every macro/market-data-adjacent route has been inventoried or assigned the intended public/internal/admin policy. The broader P1 read authorization inventory remains open.
+
+### P1 remediated - Macro Vendor reads require read permission
+
+Evidence:
+
+- `backend/app/api/routes/macro_vendor.py` now checks `macro_vendor/read` before returning the seven Macro Vendor GET surfaces: `/ui/market-data/rates`, `/ui/market-data/catalog`, `/ui/preview/macro-foundation`, `/ui/macro/choice-series/latest`, `/ui/market-data/fx/formal-status`, `/ui/market-data/fx/analytical`, and `/ui/macro/choice-series/refresh-status`.
+- `POST /ui/macro/choice-series/refresh` remains on the separate `macro_vendor.choice_series/refresh` permission and was not weakened into read permission.
+- `tests/test_macro_query_contract_smoke.py` verifies all seven Macro Vendor GET surfaces return 403 without an explicit read grant and do not call the patched service/cache/governance read paths before authorization.
+- Existing Macro Vendor envelope, Choice series, category filter, policy metadata, stale/fallback, and catalog compatibility tests now grant `macro_vendor/read` explicitly before asserting business payload behavior.
+- `tests/test_result_meta_on_all_ui_endpoints.py` and `tests/test_choice_macro_delivery.py` now grant `macro_vendor/read` for successful Macro Vendor API contract checks.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query macro_vendor --repo MOSS-V3` ran, but returned no symbols and warned that FTS indexes are missing/degraded. Local route/test evidence was used instead.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_macro_query_contract_smoke.py::test_macro_vendor_read_surfaces_require_explicit_read_scope -q` failed because all seven Macro Vendor GET paths continued into service/cache/governance logic and returned 500 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_macro_query_contract_smoke.py::test_macro_vendor_read_surfaces_require_explicit_read_scope -q`: `7 passed`.
+- `python -m pytest tests/test_macro_query_contract_smoke.py -q`: `27 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result tests/test_result_meta_on_all_ui_endpoints.py::test_macro_vendor_surfaces_emit_governed_envelopes -q`: `13 passed`.
+- `python -m pytest tests/test_choice_macro_delivery.py::test_choice_macro_latest_api_returns_real_fact_rows tests/test_choice_macro_delivery.py::test_choice_macro_latest_api_aggregates_vendor_lineage_across_distinct_batch_versions tests/test_choice_macro_delivery.py::test_choice_macro_latest_api_returns_warning_quality_flag_when_duckdb_has_no_fact_rows tests/test_choice_macro_delivery.py::test_public_cross_asset_tushare_stock_rows_reach_latest_api_with_lineage -q`: `4 passed`.
+- `python -m pytest tests/test_write_route_auth_contract.py::test_macro_choice_series_refresh_requires_explicit_refresh_grant -q`: `1 passed`.
+- `ruff check backend/app/api/routes/macro_vendor.py tests/test_macro_query_contract_smoke.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_choice_macro_delivery.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/macro_vendor.py tests/test_macro_query_contract_smoke.py tests/test_result_meta_on_all_ui_endpoints.py tests/test_choice_macro_delivery.py`: passed.
+
+Residual risk: this closes the seven Macro Vendor GET/read surfaces covered here, but it does not prove every macro, market-data, or choice-adjacent route has been inventoried or assigned the intended public/internal/admin policy. The broader P1 read authorization inventory remains open.
+
+### P1 remediated - Macro Toolkit reads require read permission
+
+Evidence:
+
+- `backend/app/api/routes/macro_toolkit.py` now checks `macro_toolkit/read` before returning the five Macro Toolkit GET surfaces: `/ui/macro/toolkit/scripts`, `/ui/macro/toolkit/analysis`, `/ui/macro/toolkit/analysis/strategy-summaries`, `/ui/macro/toolkit/adversarial-signal`, and `/ui/macro/toolkit/choice-stock/refresh-status`.
+- Existing Macro Toolkit mutation boundaries remain separate: CFFEX member-rank refresh, Choice stock refresh, source backfill, commodity futures refresh, and script execution still use their existing `refresh` or `execute` permissions rather than `macro_toolkit/read`.
+- `tests/test_macro_toolkit_scripts.py` verifies all five Macro Toolkit GET surfaces return 403 without an explicit read grant and do not call patched source/status/analysis/adversarial read paths before authorization.
+- Existing Macro Toolkit scripts, analysis, strategy summary, adversarial-signal, factor snapshot date, shadow portfolio, and Choice stock refresh-status success tests now grant `macro_toolkit/read` explicitly before asserting business or operational payload behavior.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query macro_toolkit --repo MOSS-V3` ran, but returned no symbols and warned that FTS indexes are missing/degraded. Local route/test evidence was used instead; no metric definition, date semantics, or calculation logic was changed.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_macro_toolkit_scripts.py::test_macro_toolkit_read_surfaces_require_explicit_read_scope -q` failed because all five Macro Toolkit GET paths continued into patched business/read logic and returned 500 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_macro_toolkit_scripts.py::test_macro_toolkit_read_surfaces_require_explicit_read_scope -q`: `5 passed`.
+- `python -m pytest tests/test_macro_toolkit_scripts.py::test_macro_toolkit_read_surfaces_require_explicit_read_scope tests/test_macro_toolkit_scripts.py::test_macro_toolkit_api_exposes_frontend_payload tests/test_macro_toolkit_scripts.py::test_macro_toolkit_scripts_surfaces_granted_commodity_futures_permission_for_fallback_user tests/test_macro_toolkit_scripts.py::test_macro_toolkit_scripts_surfaces_empty_commodity_futures_status tests/test_macro_toolkit_scripts.py::test_macro_toolkit_api_exposes_analysis_payload tests/test_macro_toolkit_scripts.py::test_macro_toolkit_analysis_core_scope_defers_slow_sections tests/test_macro_toolkit_scripts.py::test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_payload tests/test_macro_toolkit_scripts.py::test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapshot -q`: `12 passed`.
+- `python -m pytest tests/test_macro_toolkit_scripts.py -q`: `68 passed`.
+- `python -m pytest tests/test_macro_toolkit_factor_snapshot_dates.py tests/test_macro_toolkit_shadow_portfolio_report.py tests/test_macro_adversarial_signal_service.py::test_macro_toolkit_adversarial_signal_endpoint_emits_expected_result_meta -q`: `9 passed`.
+- `python -m pytest tests/test_result_meta_on_all_ui_endpoints.py::test_ui_get_json_envelopes_include_result_meta_and_result -q`: `16 passed`.
+- `python -m pytest tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `28 passed`.
+- `ruff check backend/app/api/routes/macro_toolkit.py tests/test_macro_toolkit_scripts.py tests/test_macro_toolkit_factor_snapshot_dates.py tests/test_macro_toolkit_shadow_portfolio_report.py tests/test_macro_adversarial_signal_service.py tests/test_result_meta_on_all_ui_endpoints.py`: passed, with only the existing `.ruff_cache` access warning.
+- `git diff --check -- backend/app/api/routes/macro_toolkit.py tests/test_macro_toolkit_scripts.py tests/test_macro_toolkit_factor_snapshot_dates.py tests/test_macro_toolkit_shadow_portfolio_report.py tests/test_macro_adversarial_signal_service.py tests/test_result_meta_on_all_ui_endpoints.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the five Macro Toolkit GET/read surfaces covered here, but it does not prove every macro/tooling/market-data-adjacent route has been inventoried or assigned the intended public/internal/admin policy. The broader P1 read/write authorization inventory remains open.
+
+### P1 remediated - Agent Workbench enabled endpoints require read permission
+
+Evidence:
+
+- `backend/app/api/routes/agent.py` now checks `agent/read` before enabled Agent execution paths return live workbench payloads: `POST /api/agent/query`, `POST /api/agent/runs`, and `GET /api/agent/runs/{run_id}`.
+- Disabled Agent behavior remains fail-closed and explicit: when `agent_enabled` is false, the query and run creation endpoints still return the disabled 503 stub instead of a live envelope, and this does not require `agent/read`.
+- `tests/test_agent_api_contract.py` verifies the three enabled endpoints return 403 without an explicit read grant and do not call patched execution, run creation, or run-owner lookup paths before authorization.
+- Existing Agent query, provider-routing, managed-run, run-status, enabled-path smoke, and disabled-stub tests now grant `agent/read` explicitly when exercising enabled behavior.
+- The existing read-only request guard remains separate: mutating Agent action context still returns 403 before execution, and `agent/read` does not grant write/mutation capability.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query agent --repo MOSS-V3` ran, but returned no symbols and warned that FTS indexes are missing/degraded. Local route/test evidence was used instead; no Agent provider, tool execution, run persistence, metric definition, date semantics, or calculation logic was changed.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_agent_api_contract.py::test_agent_enabled_endpoints_require_explicit_read_scope -q` failed because `/api/agent/query` entered the patched Agent execution path and returned 500 instead of 403.
+- Green proof after production change: `python -m pytest tests/test_agent_api_contract.py::test_agent_enabled_endpoints_require_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_agent_api_contract.py tests/test_agent_runs_api.py tests/test_agent_enabled_path_smoke.py tests/test_agent_api.py::test_agent_query_is_disabled_without_governed_result_meta tests/test_result_meta_on_all_ui_endpoints.py::test_agent_post_disabled_stub_is_explicit_not_live_envelope -q`: `38 passed`.
+- `python -m pytest tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `28 passed`.
+- `ruff check backend/app/api/routes/agent.py tests/test_agent_api_contract.py tests/test_agent_runs_api.py tests/test_agent_enabled_path_smoke.py tests/test_agent_api.py tests/test_result_meta_on_all_ui_endpoints.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/agent.py tests/test_agent_api_contract.py tests/test_agent_runs_api.py tests/test_agent_enabled_path_smoke.py tests/test_agent_api.py tests/test_result_meta_on_all_ui_endpoints.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: this closes the enabled Agent Workbench query/run/status HTTP boundary covered here, but it does not prove every Agent-adjacent frontend/client path or future provider capability has the intended public/internal/admin policy. The broader P1 read/write authorization inventory remains open.
+
+### P1 remediated - Production startup rejects trusted user headers
+
+Root cause: `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` controlled `X-User-Id` / `X-User-Role` trust solely through environment truthiness, while `backend.app.main` did not reject the switch when `MOSS_ENVIRONMENT=production`.
+
+Fix:
+
+- Added `validate_auth_startup_guardrails()` in `backend/app/security/auth_context.py`.
+- Called it from `backend/app/main.py` immediately after settings load, before middleware/router exposure.
+- Preserved development/test trusted-header behavior for existing authorization tests.
+
+Verification:
+
+- Red proof before production change: `python -m pytest tests/test_startup_auth_guardrails.py -q` failed because the app import did not raise.
+- Green proof after production change: `python -m pytest tests/test_startup_auth_guardrails.py -q`: `1 passed`.
+- Regression proof: `python -m pytest tests/test_auth_context.py tests/test_settings_contract.py -q`: `19 passed`.
+- Test-isolation proof after adding the production startup guard: `tests/helpers.py` now removes a manually loaded module from `sys.modules` if import execution raises, preventing the expected production-startup `RuntimeError` from leaving a half-initialized `backend.app.main` without included routes.
+- Regression proof after test-isolation cleanup: `python -m pytest tests/test_startup_auth_guardrails.py tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `29 passed`.
+
+Residual risk: this closes the production trusted-header misconfiguration path only. The broader GET route authorization inventory remains open.
+
 ### P1 remediated - Livermore gate supplement refresh requires refresh permission
 
 Evidence:
@@ -649,22 +788,48 @@ Verification:
 
 Residual risk: this narrows the global API-read P1, but it does not prove every external-data consumer route has been inventoried.
 
-### P1 partially remediated - Cube dimensions endpoint requires read permission
+### P1 remediated - Cube Query read endpoints require read permission
 
 Evidence:
 
 - `backend/app/api/routes/cube_query.py:24-35` centralizes `cube/read` enforcement for cube read metadata.
-- `backend/app/api/routes/cube_query.py:53-58` applies the read check before `/api/cube/dimensions/{fact_table}` describes promoted dimensions and measures.
-- `tests/test_cube_query_api.py:102-119` verifies the dimensions endpoint returns 403 without an explicit read grant.
-- Existing dimensions contract tests now seed `cube/read` explicitly before asserting promoted dimension and unknown fact-table behavior.
+- `backend/app/api/routes/cube_query.py:38-46` now applies the read check before `POST /api/cube/query` executes the analytical bridge against formal/analytical cube data.
+- `backend/app/api/routes/cube_query.py:54-59` applies the read check before `/api/cube/dimensions/{fact_table}` describes promoted dimensions and measures.
+- `tests/test_cube_query_api.py` verifies the query endpoint returns 403 without an explicit read grant and does not enter the analytical bridge first.
+- Existing query and dimensions contract tests now seed `cube/read` explicitly before asserting formal response, invalid request, unavailable storage, promoted dimensions, and unknown fact-table behavior.
+- GitNexus evidence note: `npx.cmd -y gitnexus@latest query cube_query` could not run because the restricted npm cache did not contain `gitnexus` (`ENOTCACHED`). Local AST route inventory, route code, and focused tests were used instead.
 
 Verification:
 
 - Red proof before production change: `python -m pytest tests/test_cube_query_api.py::test_cube_dimensions_route_requires_explicit_read_scope -q` failed because `/api/cube/dimensions/bond_analytics` returned 200 instead of 403.
-- `python -m pytest tests/test_cube_query_api.py -q`: `6 passed`.
-- `python -m ruff check backend/app/api/routes/cube_query.py tests/test_cube_query_api.py`: passed.
+- Red proof before query production change: `python -m pytest tests/test_cube_query_api.py::test_cube_query_route_requires_explicit_read_scope -q` failed because `/api/cube/query` reached the patched analytical bridge and returned 503 instead of 403.
+- Green proof after query production change: `python -m pytest tests/test_cube_query_api.py::test_cube_query_route_requires_explicit_read_scope -q`: `1 passed`.
+- `python -m pytest tests/test_cube_query_api.py -q`: `7 passed`.
+- `python -m pytest tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `28 passed`.
+- `python -m ruff check backend/app/api/routes/cube_query.py tests/test_cube_query_api.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/cube_query.py tests/test_cube_query_api.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
 
-Residual risk: this narrows the global API-read P1, but it does not prove every cube/query-adjacent route has been inventoried.
+Residual risk: this closes the current Cube Query HTTP read surfaces, but it does not prove every future cube/query-adjacent route or frontend consumer has the intended public/internal/admin policy. The broader P1 read/write authorization inventory remains open.
+
+### P1 regression guard - Backend route authorization inventory covers read-like and mutation surfaces
+
+Evidence:
+
+- `tests/test_boundary_surface_inventory.py` now parses `backend/app/api/routes/*.py` route decorators and records method/path/function authorization surfaces.
+- Backend GET routes and read-like POST routes must reach `ensure_user_allowed`, except explicitly public health/current-user echo surfaces.
+- Backend POST/PUT/PATCH/DELETE routes must reach `ensure_user_allowed`, except explicitly reserved Tushare NPR ingest boundaries.
+- The inventory also locks the current executive compatibility behavior: without `executive/read`, `/ui/risk/overview`, `/ui/home/contribution`, and `/ui/home/alerts` now fail at authorization with 403 before reaching the reserved 503 boundary.
+- `tests/helpers.py` now cleans up failed manual module loads, so expected startup import failures cannot poison later route-registration tests with a half-initialized app module.
+
+Verification:
+
+- Failure proof before test-isolation cleanup: `python -m pytest tests/test_boundary_surface_inventory.py tests/test_cube_query_api.py tests/test_startup_auth_guardrails.py tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q` failed with `28 failed, 27 passed` because the expected startup guardrail import failure left a half-initialized `backend.app.main` cached; later mutation-route checks saw 404 instead of authorized route handlers.
+- Green proof after test-isolation cleanup: `python -m pytest tests/test_startup_auth_guardrails.py tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `29 passed`.
+- Combined authorization proof after cleanup: `python -m pytest tests/test_boundary_surface_inventory.py tests/test_cube_query_api.py tests/test_startup_auth_guardrails.py tests/test_write_route_auth_contract.py::test_mutation_route_returns_403_without_scope_grant -q`: `55 passed`.
+- `python -m ruff check backend/app/api/routes/cube_query.py backend/app/main.py backend/app/security/auth_context.py tests/helpers.py tests/test_cube_query_api.py tests/test_startup_auth_guardrails.py tests/test_boundary_surface_inventory.py`: passed, with only the existing `.ruff_cache` access warnings.
+- `git diff --check -- backend/app/api/routes/cube_query.py backend/app/main.py backend/app/security/auth_context.py tests/helpers.py tests/test_cube_query_api.py tests/test_startup_auth_guardrails.py tests/test_boundary_surface_inventory.py docs/audits/2026-06-02-system-audit-first-pass.md`: passed.
+
+Residual risk: the AST inventory proves a route reaches the authorization gate, not that every route has the final intended public/internal/admin policy or the exact correct resource/action name. Policy classification and consumer-level review remain open.
 
 ### P1 partially remediated - Research calendar endpoint requires read permission
 
@@ -1048,7 +1213,7 @@ Recommendation: keep the bundle workflow as the entry point for future page audi
 
 ## Recommended Next Pass
 
-1. Finish the read authorization boundary inventory: classify every business/governance GET route as public/internal/admin, add missing read checks where needed, and add startup guardrails for header-trust auth outside local development.
+1. Finish the read authorization policy closure: classify every business/governance route as public/internal/admin, verify resource/action names match the intended policy, and keep future development-only auth bypasses behind production startup guardrails.
 2. Create a bounded architecture remediation for `bond_analytics_service` calculation drift: migrate DV01/duration/bucket/action-attribution helpers behind `core_finance` or document a temporary exception with tests.
 3. Audit the next highest-risk governed metric pages for data-catalog/date-lineage gaps using the 26/26 page trace bundles as the routing map, starting with pages that mix formal source tables with candidate or tooling display fields.
 4. Add a direct `PAGE-RISK-001` lineage record or an explicit approved mapping from `PAGE-RISK-001` to the existing `risk_tensor` / `fact_formal_risk_tensor_daily` lineage records.

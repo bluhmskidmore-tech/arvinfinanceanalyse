@@ -41,6 +41,7 @@ def cube_query(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> CubeQueryResponse:
+    _ensure_cube_read_allowed(auth)
     bridge = AnalyticalBridgeService()
     try:
         return bridge.execute(request, settings.duckdb_path, auth=auth)

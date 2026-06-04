@@ -32,6 +32,7 @@ def _grant_cube_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None
 def test_cube_query_route_returns_formal_cube_response(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "cube.duckdb"
     _seed_cube_tables(duckdb_path)
+    _grant_cube_read_scope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
@@ -60,6 +61,7 @@ def test_cube_query_route_returns_formal_cube_response(tmp_path, monkeypatch):
 def test_cube_query_route_rejects_invalid_request(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "cube.duckdb"
     _seed_cube_tables(duckdb_path)
+    _grant_cube_read_scope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
 
@@ -80,6 +82,7 @@ def test_cube_query_route_rejects_invalid_request(tmp_path, monkeypatch):
 
 
 def test_cube_query_route_returns_503_when_storage_is_unavailable(tmp_path, monkeypatch):
+    _grant_cube_read_scope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "missing.duckdb"))
     get_settings.cache_clear()
 
@@ -96,6 +99,41 @@ def test_cube_query_route_returns_503_when_storage_is_unavailable(tmp_path, monk
 
     assert response.status_code == 503
     assert "storage is unavailable" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_cube_query_route_requires_explicit_read_scope(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "cube-read-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+
+    route_module = load_module(
+        "backend.app.api.routes.cube_query",
+        "backend/app/api/routes/cube_query.py",
+    )
+
+    class BridgeShouldNotRun:
+        def execute(self, *_args, **_kwargs):
+            raise RuntimeError("cube query bridge reached before authorization")
+
+    monkeypatch.setattr(route_module, "AnalyticalBridgeService", BridgeShouldNotRun)
+    test_app = FastAPI()
+    test_app.include_router(route_module.router)
+    client = TestClient(test_app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/api/cube/query",
+        headers=CUBE_READ_HEADERS,
+        json={
+            "report_date": "2026-03-31",
+            "fact_table": "bond_analytics",
+            "measures": ["sum(market_value)"],
+            "dimensions": ["asset_class_std"],
+        },
+    )
+
+    assert response.status_code == 403
     get_settings.cache_clear()
 
 
