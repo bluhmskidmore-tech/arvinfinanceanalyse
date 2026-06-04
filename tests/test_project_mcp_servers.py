@@ -1483,6 +1483,48 @@ def test_module_home_trace_bundles_preserve_downstream_truth_boundaries() -> Non
         server.close()
 
 
+def test_business_pnl_trace_bundle_preserves_page_level_analysis_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "pnl-by-business",
+            "/pnl-by-business",
+            "PAGE-PNL-BY-BUSINESS-001",
+            "/api/pnl/by-business-ytd",
+            "/api/pnl/by-business-analysis",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "pnl-by-business"
+
+        assert payload["page_id"] == "PAGE-PNL-BY-BUSINESS-001"
+        assert payload["frontend_route"] == "/pnl-by-business"
+        assert payload["primary_api"] == "/api/pnl/by-business-ytd"
+        assert payload["golden_samples"] == []
+        assert "/api/pnl/by-business-monthly" in payload["supporting_apis"]
+        assert "/api/pnl/by-business" in payload["supporting_apis"]
+        assert "/api/pnl/by-business-analysis" in payload["supporting_apis"]
+        assert "/api/adb/comparison" in payload["supporting_apis"]
+        assert any("YTD/monthly" in item for item in payload["truth_chain"])
+        assert any("formal reconciliation evidence only" in item for item in payload["truth_chain"])
+        assert any("no newly approved MTR" in item for item in payload["truth_chain"])
+        assert any(
+            "Manual adjustment" in item and "official metric" in item for item in payload["guardrails"]
+        )
+        assert any("Product-category truth" in item for item in payload["guardrails"])
+        assert any("Ledger-account PnL truth" in item for item in payload["guardrails"])
+        assert not any("MTR-" in item for item in payload["supporting_apis"])
+        assert not any("GS-" in item for item in payload["supporting_apis"])
+    finally:
+        server.close()
+
+
 def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_pages() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -1781,6 +1823,80 @@ def test_lineage_evidence_mcp_maps_module_home_pages_to_downstream_read_records(
         assert found_payload["records"][0]["matched_query"] in required_anchors
         assert found_payload["records"][0]["stream"] == "cache_manifest"
         assert found_payload["records"][0]["record"]["result_kind"] == record["result_kind"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_business_pnl_page_to_page_level_read_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    record = {
+        "result_kind": "pnl.by_business_ytd",
+        "primary_api": "/api/pnl/by-business-ytd",
+        "page_slug": "pnl-by-business",
+        "tables_used": [
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+            "fact_formal_zqtz_balance_daily",
+        ],
+        "boundary": "page-level analytical display no newly approved MTR binding",
+    }
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(record) + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {
+                "name": "find_lineage_records",
+                "arguments": {"query": "PAGE-PNL-BY-BUSINESS-001", "max_results": 5},
+            },
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        required_anchors = [
+            "pnl-by-business",
+            "/api/pnl/by-business-ytd",
+            "/api/pnl/by-business-monthly",
+            "/api/pnl/by-business",
+            "/api/pnl/by-business-analysis",
+            "/api/adb/comparison",
+            "pnl.by_business_ytd",
+            "pnl.by_business_monthly",
+            "pnl.by_business",
+            "pnl.by_business_analysis",
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+            "fact_formal_zqtz_balance_daily",
+            "fact_pnl_by_business_precompute",
+            "pnl_by_business_adjustments",
+        ]
+        excluded_anchors = [
+            "product_category_pnl_formal_read_model",
+            "qdb_general_ledger_workbook",
+            "GS-PROD-CAT-PNL-A",
+            "PAGE-PROD-CAT-PNL-001",
+            "PAGE-LEDGER-PNL-001",
+            "MTR-PCP-001",
+            "MTR-LPN-001",
+        ]
+
+        assert found_payload["query"] == "PAGE-PNL-BY-BUSINESS-001"
+        for anchor in required_anchors:
+            assert anchor in found_payload["expanded_queries"]
+        for anchor in excluded_anchors:
+            assert anchor not in found_payload["expanded_queries"]
+        assert not any(anchor.startswith("MTR-") for anchor in found_payload["expanded_queries"])
+        assert not any(anchor.startswith("GS-") for anchor in found_payload["expanded_queries"])
+        assert found_payload["records"][0]["matched_query"] == "/api/pnl/by-business-ytd"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["result_kind"] == "pnl.by_business_ytd"
     finally:
         server.close()
 
