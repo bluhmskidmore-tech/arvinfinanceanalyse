@@ -33,16 +33,6 @@ const dashboardCardStyle: CSSProperties = {
   boxShadow: restrainedShadow,
 };
 const cardBodyStyle = { padding: 14 } as const;
-const sectionTitleWrapStyle = {
-  display: "grid",
-  gap: 2,
-} as const;
-const sectionTitleStyle = {
-  color: inkStrong,
-  fontSize: dt.fontSize[16],
-  fontWeight: 700,
-  lineHeight: dt.lineHeight.tight,
-} as const;
 const moduleNoteStyle = {
   color: sub,
   fontSize: dt.fontSize[12],
@@ -149,9 +139,9 @@ function SectionCardTitle({
   title: string;
 }) {
   return (
-    <div style={sectionTitleWrapStyle}>
-      <div style={{ ...FIELD, marginBottom: 0 }}>{eyebrow}</div>
-      <div style={sectionTitleStyle}>{title}</div>
+    <div className={styles.sectionCardTitle}>
+      <div className={styles.sectionCardTitleEyebrow}>{eyebrow}</div>
+      <div className={styles.sectionCardTitleText}>{title}</div>
     </div>
   );
 }

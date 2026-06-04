@@ -86,6 +86,27 @@
   font-size: 12px;
 }
 
+.sectionCardTitle {
+  display: grid;
+  gap: 2px;
+}
+
+.sectionCardTitleEyebrow {
+  margin-bottom: 0;
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sectionCardTitleText {
+  color: var(--moss-color-primary-900);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .referenceKpiTile,
 .referenceKpiDonutTile {
   min-width: 0;
