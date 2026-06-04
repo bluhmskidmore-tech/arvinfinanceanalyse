@@ -903,6 +903,11 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("定位证据 残差诊断表 · 科目层");
     });
 
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("正式不可用原因正式契约缺失，正式值不可用");
+    expect(decisionPath).toHaveTextContent("候选解释可信度未闭合 · 覆盖率 60.00%");
+    expect(decisionPath).toHaveTextContent("最短补证路径登记 202605 正式财务指标契约");
+
     const residualTable = await screen.findByTestId("ledger-pnl-residual-diagnostic-table");
     expect(residualTable).toHaveTextContent("科目层");
     expect(residualTable).toHaveTextContent("残差定位：第一屏最大卡点");

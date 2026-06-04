@@ -684,6 +684,18 @@ function focusLedgerResidualEvidenceTarget() {
   target?.focus({ preventScroll: true });
 }
 
+function formatCandidateExplainabilityConfidence(
+  model: ReturnType<typeof buildLedgerExplainabilityModel>,
+) {
+  const status =
+    model.verdict === "解释链闭合"
+      ? "已闭合"
+      : model.verdict === "解释链未闭合"
+        ? "未闭合"
+        : "待校验";
+  return `${status} · 覆盖率 ${formatPercent(model.explanationCoveragePct)}`;
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -909,6 +921,7 @@ function LedgerFunctionalAuditStrip(props: {
     props.isFormalContractLoading,
     props.isFormalContractError,
   );
+  const shortestEvidencePath = nextDrills[0]?.label ?? props.explainabilityModel.evidenceEntryPoint;
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -975,6 +988,23 @@ function LedgerFunctionalAuditStrip(props: {
           >
             定位证据 {formatFunctionalEvidenceLocator(props.explainabilityModel)}
           </button>
+        </div>
+      </div>
+      <div data-testid="ledger-pnl-decision-path" className="ledger-pnl-functional-strip__decision-path">
+        <span>判断链</span>
+        <div className="ledger-pnl-functional-strip__decision-list">
+          <div>
+            <span>正式不可用原因</span>
+            <strong>{state.formalStatus}</strong>
+          </div>
+          <div>
+            <span>候选解释可信度</span>
+            <strong>{formatCandidateExplainabilityConfidence(props.explainabilityModel)}</strong>
+          </div>
+          <div>
+            <span>最短补证路径</span>
+            <strong>{shortestEvidencePath}</strong>
+          </div>
         </div>
       </div>
       {nextDrills.length > 0 ? (
