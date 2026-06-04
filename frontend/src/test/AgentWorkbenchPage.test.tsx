@@ -14,6 +14,8 @@ const GITNEXUS_STATUS_BUTTON = "GitNexus 状态";
 const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
 const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
+const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
+const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const LATEST_AGENT_RUN_ID_KEY = "moss.agent.latestRunId.v1";
@@ -5469,7 +5471,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     expect(await screen.findByText("restored polling final answer")).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: "agent-run-restore-status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: AGENT_RESTORE_STATUS_LABEL })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs/agent_run%3Arestore-polling")).toHaveLength(
       2,
     );
@@ -5481,7 +5483,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByRole("status", { name: "agent-run-restore-status" })).toHaveTextContent(
+    expect(screen.getByRole("status", { name: AGENT_RESTORE_STATUS_LABEL })).toHaveTextContent(
       "agent_run:restore-pending",
     );
     expect(fetchMock).toHaveBeenCalledWith(
@@ -5503,7 +5505,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByRole("status", { name: "agent-run-restore-status" })).toHaveTextContent(
+    expect(screen.getByRole("status", { name: AGENT_RESTORE_STATUS_LABEL })).toHaveTextContent(
       "agent_run:restore-pending-fresh-question",
     );
     await waitFor(() =>
@@ -5517,7 +5519,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("fresh answer while restore was pending")).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: "agent-run-restore-status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: AGENT_RESTORE_STATUS_LABEL })).not.toBeInTheDocument();
 
     await act(async () => {
       resolveRestore(
@@ -5542,7 +5544,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    const restoreError = await screen.findByRole("status", { name: "agent-run-restore-error" });
+    const restoreError = await screen.findByRole("status", { name: AGENT_RESTORE_ERROR_LABEL });
     expect(restoreError).toHaveTextContent("agent_run:restore-failed");
     expect(window.localStorage.getItem(LATEST_AGENT_RUN_ID_KEY)).toBeNull();
     expect(screen.getByLabelText("agent-question-input")).toBeInTheDocument();
@@ -5551,7 +5553,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(await screen.findByText("fresh answer after restore failure")).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: "agent-run-restore-error" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: AGENT_RESTORE_ERROR_LABEL })).not.toBeInTheDocument();
   });
 
   it("clears restore failure status when a quick example fills the composer", async () => {
@@ -5561,14 +5563,14 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    const restoreError = await screen.findByRole("status", { name: "agent-run-restore-error" });
+    const restoreError = await screen.findByRole("status", { name: AGENT_RESTORE_ERROR_LABEL });
     expect(restoreError).toHaveTextContent("agent_run:restore-failed-quick");
 
     openGitNexusTools();
     await user.click(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON }));
 
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("请给我看 GitNexus processes");
-    expect(screen.queryByRole("status", { name: "agent-run-restore-error" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: AGENT_RESTORE_ERROR_LABEL })).not.toBeInTheDocument();
   });
 
   it("shows elapsed managed-runtime wait status while the agent request is still running", async () => {

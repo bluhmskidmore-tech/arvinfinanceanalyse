@@ -3448,7 +3448,7 @@ export function EmbeddedAgentCopilot({
           className="agent-restore-status"
           role="status"
           aria-live="polite"
-          aria-label="agent-run-restore-status"
+          aria-label="正在恢复上次回答"
         >
           <div>
             <strong>正在恢复上一轮 Agent 状态</strong>
@@ -3463,7 +3463,7 @@ export function EmbeddedAgentCopilot({
           className="agent-restore-status agent-restore-status--error"
           role="status"
           aria-live="polite"
-          aria-label="agent-run-restore-error"
+          aria-label="上次回答恢复失败"
         >
           <div>
             <strong>上一轮 Agent 状态暂时无法恢复</strong>
