@@ -2422,6 +2422,8 @@ export function EmbeddedAgentCopilot({
         setError(disabledError);
         updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
         setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
         return;
       }
 
@@ -2465,6 +2467,8 @@ export function EmbeddedAgentCopilot({
       setError(nextError);
       updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: nextError }));
       setComposerAssistHint("Workflow 执行失败 · 可重新点击或手动提问");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     } finally {
       setLoading(false);
     }

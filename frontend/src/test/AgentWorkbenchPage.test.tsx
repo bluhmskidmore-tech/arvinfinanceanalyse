@@ -715,6 +715,32 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("Workflow 执行失败 · 可重新点击或手动提问")).toBeInTheDocument();
   });
 
+  it("refocuses the composer when a financial workflow fails after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveWorkflow!: (value: Response) => void;
+    const workflowResponse = new Promise<Response>((resolve) => {
+      resolveWorkflow = resolve;
+    });
+    fetchMock.mockReturnValueOnce(workflowResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await waitFor(() => expect(screen.getByLabelText("agent-conversation")).toHaveTextContent("/risk-memo"));
+
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveWorkflow(buildJsonResponse({}, 500));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("falls back to local agent query when managed Hermes runs return the provider-gated 400", async () => {
     const user = userEvent.setup();
     fetchMock
