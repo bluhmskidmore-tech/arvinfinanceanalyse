@@ -1705,6 +1705,55 @@ def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tm
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_product_category_page_aliases_to_formal_model_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_version": "cv_product_category_fixture",
+                "table_name": "product_category_pnl_formal_read_model",
+                "source_tables": ["product_category_pnl_canonical_fact"],
+                "golden_sample": "GS-PROD-CAT-PNL-A",
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for page_id in ("PAGE-PROD-CAT-PNL-001", "PAGE-PROD-CAT-001"):
+            found = server.request(
+                "tools/call",
+                {"name": "find_lineage_records", "arguments": {"query": page_id, "max_results": 5}},
+            )
+            found_payload = json.loads(found["content"][0]["text"])
+
+            assert found_payload["query"] == page_id
+            assert "product-category-pnl" in found_payload["expanded_queries"]
+            assert "/ui/pnl/product-category" in found_payload["expanded_queries"]
+            assert "product_category_pnl.detail" in found_payload["expanded_queries"]
+            assert "product_category_pnl_formal_read_model" in found_payload["expanded_queries"]
+            assert "product_category_pnl_canonical_fact" in found_payload["expanded_queries"]
+            assert "GS-PROD-CAT-PNL-A" in found_payload["expanded_queries"]
+            assert "MTR-PCP-001" in found_payload["expanded_queries"]
+            assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+            assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+            assert found_payload["records"][0]["matched_query"] == "product_category_pnl_formal_read_model"
+            assert found_payload["records"][0]["stream"] == "cache_manifest"
+            assert found_payload["records"][0]["record"]["table_name"] == "product_category_pnl_formal_read_model"
+            assert found_payload["records"][0]["record"]["source_tables"] == ["product_category_pnl_canonical_fact"]
+    finally:
+        server.close()
+
+
 def test_data_catalog_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None:
     missing_duckdb = tmp_path / "missing.duckdb"
     server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(missing_duckdb)})
