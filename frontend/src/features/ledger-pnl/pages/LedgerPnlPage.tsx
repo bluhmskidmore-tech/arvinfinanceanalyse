@@ -960,6 +960,14 @@ function summarizeFormalIndicatorContractGaps(
     };
   }
   const metrics = contract?.metrics ?? [];
+  if (contract?.sample_status === "missing_contract") {
+    return {
+      label: `${contract.report_month || "本月"} 正式契约样本缺失`,
+      formalPending: 0,
+      qdbCandidateAligned: 0,
+      needsReconciliation: 0,
+    };
+  }
   if (metrics.length === 0) {
     return {
       label: "无正式契约明细",

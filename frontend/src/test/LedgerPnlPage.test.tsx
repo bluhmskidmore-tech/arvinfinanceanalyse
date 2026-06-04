@@ -980,7 +980,8 @@ describe("LedgerPnlPage", () => {
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
     expect(strip).toHaveTextContent("正式契约缺口");
-    expect(strip).toHaveTextContent("无正式契约明细");
+    expect(strip).toHaveTextContent("202605 正式契约样本缺失");
+    expect(strip).not.toHaveTextContent("无正式契约明细");
     expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
   });
 
