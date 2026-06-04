@@ -3668,7 +3668,7 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("下一句");
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("queued second turn");
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
-    expect(screen.getByText("下一句已排队 · 还可以继续输入")).toBeInTheDocument();
+    expect(screen.getByText("已接住下一句：queued second turn · 回答完自动发送")).toBeInTheDocument();
     await user.click(queuedPreviewActions[0]);
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     expect(screen.getByLabelText("agent-question-input")).toHaveValue("queued second turn");
@@ -3767,7 +3767,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(screen.getByLabelText("agent-question-input"), "queued pending second turn");
     await user.click(screen.getByRole("button", { name: "发送下一句" }));
-    expect(screen.getByText("下一句已排队 · 还可以继续输入")).toBeInTheDocument();
+    expect(screen.getByText("已接住下一句：queued pending second turn · 回答完自动发送")).toBeInTheDocument();
 
     await act(async () => {
       resolveFirstRun(
@@ -3804,7 +3804,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(await screen.findByText("queued pending second turn")).toBeInTheDocument();
     expect(await screen.findByText("正在发送排队问题 · 可继续输入下一句")).toBeInTheDocument();
-    expect(screen.queryByText("下一句已排队 · 还可以继续输入")).not.toBeInTheDocument();
+    expect(screen.queryByText("已接住下一句：queued pending second turn · 回答完自动发送")).not.toBeInTheDocument();
     expect(screen.queryByText("queued pending second answer")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
@@ -3979,7 +3979,7 @@ describe("AgentWorkbenchPage", () => {
     expect(queuedPreview).toHaveTextContent("multi queue second turn");
     expect(queuedPreview).toHaveTextContent("multi queue third turn");
     expect(queuedPreview).toHaveTextContent("2 句待发送");
-    expect(screen.getByText("2 句已排队 · 还可以继续输入")).toBeInTheDocument();
+    expect(screen.getByText("2 句已排队 · 下一句：multi queue third turn")).toBeInTheDocument();
     expect(screen.getByLabelText("agent-conversation")).not.toHaveTextContent("multi queue third turn");
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
 
@@ -4127,6 +4127,13 @@ describe("AgentWorkbenchPage", () => {
     expect(cssText).toContain(".agent-chat-composer__actions--running > .agent-chat-composer__queue");
     expect(cssText).toContain(".agent-chat-composer__actions--running > .agent-chat-composer__send");
     expect(cssText).toContain("grid-template-columns: 1fr");
+  });
+
+  it("allows contextual composer hints to wrap instead of widening the dock", () => {
+    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+
+    expect(cssText).toMatch(/\.agent-chat-composer__hint\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+    expect(cssText).toMatch(/\.agent-chat-composer__hint\s*\{[^}]*white-space:\s*normal/s);
   });
 
   it("queues a multiline typed follow-up with Enter while the current answer is still running", async () => {

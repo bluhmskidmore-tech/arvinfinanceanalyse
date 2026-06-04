@@ -471,6 +471,11 @@ function trimAgentContextText(value: string, limit: number) {
   return `${normalized.slice(0, limit - 3)}...`;
 }
 
+function formatQueuedComposerHint(queuedQuery: string, queuedCount: number) {
+  const preview = trimAgentContextText(queuedQuery.replace(/\s+/g, " "), 48);
+  return queuedCount > 1 ? `${queuedCount} 句已排队 · 下一句：${preview}` : `已接住下一句：${preview} · 回答完自动发送`;
+}
+
 function buildConversationContext(turns: AgentConversationTurn[]): AgentConversationContext | undefined {
   const history = turns
     .filter((turn) => turn.question.trim() && turn.result?.answer.trim())
@@ -2355,9 +2360,7 @@ export function EmbeddedAgentCopilot({
     const nextQueuedCount = queuedQueries.length + 1;
     setQueuedQueries((currentQueries) => [...currentQueries, nextQueuedQuery]);
     clearComposerQuery();
-    setComposerAssistHint(
-      nextQueuedCount > 1 ? `${nextQueuedCount} 句已排队 · 还可以继续输入` : "下一句已排队 · 还可以继续输入",
-    );
+    setComposerAssistHint(formatQueuedComposerHint(nextQueuedQuery, nextQueuedCount));
     shouldFocusComposerRef.current = true;
     focusComposerInput();
   }

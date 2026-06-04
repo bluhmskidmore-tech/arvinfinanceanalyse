@@ -2242,7 +2242,8 @@ select {
 .agent-chat-composer__hint {
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .agent-quick-entry {
