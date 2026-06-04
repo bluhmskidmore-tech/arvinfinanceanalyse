@@ -187,7 +187,7 @@ function supplyVendorLabel(value: string | null | undefined) {
     error: "异常",
     pending: "待确认",
   };
-  return labels[normalized] ?? "通道待确认";
+  return labels[normalized] ?? "供数待确认";
 }
 
 function supplyFallbackLabel(value: string | null | undefined) {
@@ -2727,7 +2727,7 @@ export default function StockAnalysisPage() {
                     data-testid="stock-analysis-stale-banner"
                     role="status"
                   >
-                    数据陈旧、通道异常或使用回退快照。下方结论仅供复核参考。
+                    数据陈旧、供数异常或使用回退快照。下方结论仅供复核参考。
                   </div>
                 ) : null}
 

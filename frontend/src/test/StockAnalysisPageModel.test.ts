@@ -471,7 +471,7 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.headline).toContain("今日市场状态：进攻");
     expect(summary.gateLabel).toBe("门控 2/4");
     expect(summary.exposureLabel).toBe("观察暴露 40%");
-    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量需复核 / 通道正常");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量需复核 / 供数正常");
     expect(summary.nextReviewAction).toContain("先复核 Alpha");
     expect(summary.nextReviewAction).toContain("距观察位");
     expect(summary.boundaryLabel).toContain("2 条边界");
@@ -538,7 +538,7 @@ describe("stockAnalysisPageModel", () => {
     const copy = inlineMeta.map((item) => item.text).join(" ");
 
     expect(inlineMeta.find((item) => item.key === "quality_flag")?.text).toBe("质量需复核");
-    expect(inlineMeta.find((item) => item.key === "vendor_status")?.text).toBe("通道待确认");
+    expect(inlineMeta.find((item) => item.key === "vendor_status")?.text).toBe("供数待确认");
     expect(inlineMeta.find((item) => item.key === "fallback_mode")?.text).toBe("回退待确认");
     expect(copy).toContain("sv_livermore_test");
     expect(copy).toContain("rv_livermore_market_gate_v1");
@@ -735,7 +735,7 @@ describe("stockAnalysisPageModel", () => {
       fallback_mode: "latest_snapshot",
     });
 
-    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 通道正常 / 回退快照");
+    expect(summary.dataFreshnessLabel).toBe("数据需复核 质量正常 / 供数正常 / 回退快照");
     expect(purpose.dataStatusLine).toContain("回退快照");
     expect(purpose.dataStatusLine).not.toContain("latest_snapshot");
   });
@@ -1972,7 +1972,7 @@ describe("stockAnalysisPageModel", () => {
     expect(summary.diagnosticsCount).toBe(1);
     expect(summary.dataGapCount).toBe(1);
     expect(summary.unsupportedCount).toBe(1);
-    expect(summary.freshnessLabel).toBe("新鲜度 质量需复核 / 通道正常 / 回退快照");
+    expect(summary.freshnessLabel).toBe("新鲜度 质量需复核 / 供数正常 / 回退快照");
     expect(summary.summaryLabel).toBe("3 条边界");
     expect(summary.detailLabel).toContain("诊断 1 / 缺口 1 / 阻断 1");
     expect(summary.topMessages.join(" ")).toContain("市场宽度输入不可用");

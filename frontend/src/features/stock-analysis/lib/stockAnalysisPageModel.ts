@@ -679,12 +679,12 @@ function localizeMetaQualityFlag(value: string | undefined): string {
 function localizeMetaVendorStatus(value: string | undefined): string {
   const normalized = (value ?? "pending").trim().toLowerCase();
   const labels: Record<string, string> = {
-    ok: "通道正常",
-    degraded: "通道降级",
-    error: "通道异常",
-    pending: "通道待确认",
+    ok: "供数正常",
+    degraded: "供数降级",
+    error: "供数异常",
+    pending: "供数待确认",
   };
-  return labels[normalized] ?? "通道待确认";
+  return labels[normalized] ?? "供数待确认";
 }
 
 function localizeFallbackMode(value: string | undefined): string {
@@ -2637,7 +2637,7 @@ export function buildClosedLoopSummary(
       status: lineageStatus,
       statusLabel: closedLoopStatusLabel("lineage", lineageStatus),
       tone: closedLoopTone("lineage", lineageStatus),
-      detail: `质量 ${localizeMetaQualityFlag(meta.quality_flag)} / 通道 ${localizeMetaVendorStatus(
+      detail: `质量 ${localizeMetaQualityFlag(meta.quality_flag)} / 供数状态 ${localizeMetaVendorStatus(
         meta.vendor_status,
       )}${
         fallbackMode !== "none" ? ` / ${localizeFallbackMode(fallbackMode)}` : ""

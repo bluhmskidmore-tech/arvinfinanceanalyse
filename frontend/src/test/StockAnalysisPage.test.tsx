@@ -1745,7 +1745,8 @@ describe("StockAnalysisPage", () => {
 
     const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
     expect(decisionPanel).toHaveTextContent("质量待确认");
-    expect(decisionPanel).toHaveTextContent("通道待确认");
+    expect(decisionPanel).toHaveTextContent("供数待确认");
+    expect(decisionPanel).not.toHaveTextContent("通道待确认");
     expect(decisionPanel).toHaveTextContent("回退待确认");
     expect(decisionPanel).not.toHaveTextContent("quality_vendor_unknown");
     expect(decisionPanel).not.toHaveTextContent("vendor_paused");
@@ -2480,9 +2481,10 @@ describe("StockAnalysisPage", () => {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
     });
 
-    expect(await screen.findByTestId("stock-analysis-stale-banner")).toHaveTextContent(
-      "仅供复核参考",
-    );
+    const staleBanner = await screen.findByTestId("stock-analysis-stale-banner");
+    expect(staleBanner).toHaveTextContent("供数异常");
+    expect(staleBanner).toHaveTextContent("仅供复核参考");
+    expect(staleBanner).not.toHaveTextContent("通道异常");
   });
 
   it("shows fallback snapshots as data that needs review", async () => {
