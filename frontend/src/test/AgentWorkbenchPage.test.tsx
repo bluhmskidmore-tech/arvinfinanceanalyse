@@ -4380,10 +4380,13 @@ describe("AgentWorkbenchPage", () => {
 
     await user.click(screen.getByRole("button", { name: "继续下钻期限桶" }));
 
-    const input = screen.getByLabelText("agent-question-input");
-    expect(input).toHaveValue("请基于当前 evidence 继续下钻：继续下钻期限桶");
+    const suggestedPrompt = "请基于当前 evidence 继续下钻：继续下钻期限桶";
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    expect(input).toHaveValue(suggestedPrompt);
     expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
     expect(input).toHaveFocus();
+    expect(input).toHaveProperty("selectionStart", suggestedPrompt.length);
+    expect(input).toHaveProperty("selectionEnd", suggestedPrompt.length);
     expect(screen.getByText("已填入建议追问 · Enter 发送")).toBeInTheDocument();
   });
 
