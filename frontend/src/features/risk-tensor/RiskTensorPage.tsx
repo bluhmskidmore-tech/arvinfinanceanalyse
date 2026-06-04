@@ -164,6 +164,13 @@ const KRD_FIELDS = [
   { key: "krd_30y", tenor: "30Y" },
 ] as const;
 
+function scrollRiskTensorTargetIntoView(target: HTMLElement | null | undefined) {
+  const scrollIntoView = target?.scrollIntoView;
+  if (typeof scrollIntoView === "function") {
+    scrollIntoView.call(target, { behavior: "smooth", block: "center" });
+  }
+}
+
 function riskTensorRawOrNull(value: RiskTensorDisplayValue): number | null {
   if (value === null || value === undefined) {
     return null;
@@ -1294,53 +1301,50 @@ export default function RiskTensorPage() {
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
-      document
-        .querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]')
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollRiskTensorTargetIntoView(
+        document.querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]'),
+      );
       return;
     }
     setSelectedTenor(dominantTenorRow.tenor);
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollRiskTensorTargetIntoView(
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]'),
+    );
   };
 
   const handleQualityDetailJump = () => {
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollRiskTensorTargetIntoView(
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]'),
+    );
   };
 
   const handleDv01ControlsJump = () => {
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-dv01-controls"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollRiskTensorTargetIntoView(
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-dv01-controls"]'),
+    );
   };
 
   const handleLiquidityDetailJump = () => {
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-liquidity-gap-detail"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollRiskTensorTargetIntoView(
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-liquidity-gap-detail"]'),
+    );
   };
 
   const handleIssuerConcentrationJump = () => {
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-issuer-concentration-detail"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollRiskTensorTargetIntoView(
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-issuer-concentration-detail"]'),
+    );
   };
 
   const handlePayloadChecklistJump = () => {
     const target =
       document.querySelector<HTMLElement>('[data-testid="risk-tensor-quality-payload-checklist"]') ??
       document.querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]');
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    scrollRiskTensorTargetIntoView(target);
   };
 
   const handleSectionJump = (targetTestId: string) => {
-    document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
+    scrollRiskTensorTargetIntoView(document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`));
   };
 
   const handleCopyQualityEvidence = () => {
@@ -1549,22 +1553,28 @@ export default function RiskTensorPage() {
       .catch(() => setPriorPeriodCopyStatus("failed"));
   };
 
+  const handleKrdTenorSelect = (row: (typeof tenorRows)[number], options?: { scrollToDrill?: boolean }) => {
+    if (row.magnitude === null) {
+      scrollRiskTensorTargetIntoView(
+        document.querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]'),
+      );
+      return;
+    }
+    setSelectedTenor(row.tenor);
+    if (options?.scrollToDrill) {
+      scrollRiskTensorTargetIntoView(
+        document.querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]'),
+      );
+    }
+  };
+
   const handleKrdChartClick = (params: KrdChartClickParams) => {
     const tenor = typeof params.name === "string" ? params.name : "";
     const row = tenorRows.find((item) => item.tenor === tenor);
     if (!row) {
       return;
     }
-    if (row.magnitude === null) {
-      document
-        .querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]')
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    setSelectedTenor(row.tenor);
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-tenor-drill"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    handleKrdTenorSelect(row, { scrollToDrill: true });
   };
 
   const handleRequiredInformationJump = () => {
@@ -1579,10 +1589,7 @@ export default function RiskTensorPage() {
     if (!targetTestId) {
       return;
     }
-    document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
+    scrollRiskTensorTargetIntoView(document.querySelector<HTMLElement>(`[data-testid="${targetTestId}"]`));
   };
 
   const radarChartOption = useMemo((): EChartsOption | null => {
@@ -2822,7 +2829,7 @@ export default function RiskTensorPage() {
                         aria-pressed={row.tenor === selectedTenor}
                         type="button"
                         style={chipButtonStyle(row.tenor === selectedTenor)}
-                        onClick={() => setSelectedTenor(row.tenor)}
+                        onClick={() => handleKrdTenorSelect(row)}
                       >
                         {row.tenor}
                       </button>

@@ -4053,6 +4053,51 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("keeps invalid KRD tenor chip clicks on the field review path", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_invalid_chip_click_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_krd_invalid_chip_click_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          krd_1y: "bad-krd",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const tenorDrill = await screen.findByTestId("risk-tensor-tenor-drill");
+      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
+      expect(within(tenorDrill).getByText("5Y", { selector: "strong" })).toBeInTheDocument();
+
+      await user.click(within(tenorDrill).getByRole("button", { name: "1Y" }));
+
+      expect(scrollTargets).toContain(qualityNote);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+      expect(within(tenorDrill).getByText("5Y", { selector: "strong" })).toBeInTheDocument();
+      expect(within(tenorDrill).queryByText("1Y", { selector: "strong" })).not.toBeInTheDocument();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("shows review and retry actions when every KRD bucket is unparseable", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
