@@ -2049,6 +2049,34 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("已填入快捷问题 · Enter 发送")).toBeInTheDocument();
   });
 
+  it("replaces a queued follow-up when a compact quick example fills the composer", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockReturnValueOnce(new Promise(() => undefined));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "quick replacement first turn");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("quick replacement first turn")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("agent-question-input"), "queued draft should be replaced by quick example");
+    await user.click(screen.getByTestId("agent-panel-queue-submit"));
+    expect(getQueuedFollowUpStatus()).toHaveTextContent("queued draft should be replaced by quick example");
+
+    const quickExamples = screen.getByLabelText("常用问题");
+    await user.click(
+      within(quickExamples).getByRole("button", {
+        name: "解释当前页面的主要结论和风险点",
+      }),
+    );
+
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("解释当前页面的主要结论和风险点");
+    expect(queryQueuedFollowUpStatus()).not.toBeInTheDocument();
+    expect(input).toHaveFocus();
+    expect(screen.getByText("已填入快捷问题 · Enter 发送")).toBeInTheDocument();
+  });
+
   it("loads remembered repo_path from localStorage", () => {
     window.localStorage.setItem(
       RECENT_REPO_PATHS_KEY,
@@ -4965,7 +4993,11 @@ describe("AgentWorkbenchPage", () => {
     await user.keyboard("{Escape}");
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-question-input")).not.toBeDisabled();
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).not.toBeDisabled();
+    expect(input).toHaveValue("escape should stop this answer");
+    expect(input).toHaveFocus();
+    expect(screen.getByText("已恢复到输入框 · 可编辑后重新发送")).toBeInTheDocument();
 
     await act(async () => {
       resolveCreateRun(
