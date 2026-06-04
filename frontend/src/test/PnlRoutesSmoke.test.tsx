@@ -1079,6 +1079,24 @@ describe("pnl routed pages smoke", () => {
         dimension: "instrument",
       });
     });
+    await waitFor(() => {
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
+        dimension: "bond_bucket",
+      });
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
+        dimension: "bond_bucket_monthly",
+      });
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
+        businessKey: "asset_zqtz_policy_financial_bond",
+        dimension: "monthly",
+      });
+    });
 
     downloadPnlByBusinessExcelMock.mockClear();
     await user.click(screen.getByLabelText("pnl-by-business-export-excel"));
