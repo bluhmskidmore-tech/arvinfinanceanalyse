@@ -2520,6 +2520,8 @@ export function EmbeddedAgentCopilot({
         setError(disabledError);
         updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: disabledError }));
         setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
+        shouldFocusComposerRef.current = true;
+        window.setTimeout(focusComposerInput, 0);
         return;
       }
 
@@ -2564,6 +2566,8 @@ export function EmbeddedAgentCopilot({
       setError(nextError);
       updateConversationTurn(turn.id, (currentTurn) => ({ ...currentTurn, error: nextError }));
       setComposerAssistHint("研究快捷入口失败 · 可重新点击或手动提问");
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
     } finally {
       setLoading(false);
     }

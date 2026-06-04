@@ -582,6 +582,36 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("研究快捷入口失败 · 可重新点击或手动提问")).toBeInTheDocument();
   });
 
+  it("refocuses the composer when a research shortcut fails after the user checks controls", async () => {
+    const user = userEvent.setup();
+    let resolveResearch!: (value: Response) => void;
+    const researchResponse = new Promise<Response>((resolve) => {
+      resolveResearch = resolve;
+    });
+    fetchMock.mockReturnValueOnce(researchResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    openShortcutDrawer();
+    await user.click(screen.getByRole("button", { name: /Stock Research/ }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("agent-conversation")).toHaveTextContent(
+        "Review landed stock research context",
+      ),
+    );
+
+    screen.getByTestId("agent-panel-submit").focus();
+    expect(screen.getByTestId("agent-panel-submit")).toHaveFocus();
+
+    await act(async () => {
+      resolveResearch(buildJsonResponse({}, 500));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
+  });
+
   it("submits the macro research shortcut with the macro research domain filter", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
