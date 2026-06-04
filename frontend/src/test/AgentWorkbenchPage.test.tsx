@@ -2941,31 +2941,37 @@ describe("AgentWorkbenchPage", () => {
       },
       "agent_run:regenerate-first",
     );
-    mockManagedRunResult(
-      fetchMock,
-      {
-        answer: "重新生成后的回答。",
-        cards: [],
-        evidence: {
-          tables_used: ["hermes_cli"],
-          filters_applied: {
-            provider: "hermes",
-            model: "gpt-5.5",
-            transport: "bridge",
-            toolsets: "file",
+    let resolveRegenerateResponse!: (value: Response) => void;
+    const regenerateResponse = new Promise<Response>((resolve) => {
+      resolveRegenerateResponse = resolve;
+    });
+    fetchMock.mockReturnValueOnce(regenerateResponse);
+    const regeneratePayload = buildJsonResponse(
+      buildManagedRunPayload(
+        {
+          answer: "重新生成后的回答。",
+          cards: [],
+          evidence: {
+            tables_used: ["hermes_cli"],
+            filters_applied: {
+              provider: "hermes",
+              model: "gpt-5.5",
+              transport: "bridge",
+              toolsets: "file",
+            },
+            evidence_rows: 1,
+            quality_flag: "ok",
           },
-          evidence_rows: 1,
-          quality_flag: "ok",
+          result_meta: {
+            trace_id: "tr_regenerate_second",
+            basis: "formal",
+            result_kind: "agent.hermes",
+          },
+          next_drill: [],
+          suggested_actions: [],
         },
-        result_meta: {
-          trace_id: "tr_regenerate_second",
-          basis: "formal",
-          result_kind: "agent.hermes",
-        },
-        next_drill: [],
-        suggested_actions: [],
-      },
-      "agent_run:regenerate-second",
+        "agent_run:regenerate-second",
+      ),
     );
 
     render(<AgentWorkbenchPage />);
@@ -2975,11 +2981,17 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("第一版回答。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重新生成" }));
+    screen.getByRole("button", { name: "停止" }).focus();
+    await act(async () => {
+      resolveRegenerateResponse(regeneratePayload);
+      await Promise.resolve();
+    });
 
     expect(await screen.findByText("重新生成后的回答。")).toBeInTheDocument();
     expect(screen.queryByText("第一版回答。")).not.toBeInTheDocument();
     expect(screen.getAllByText("regenerate this")).toHaveLength(1);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(2);
+    await waitFor(() => expect(screen.getByLabelText("agent-question-input")).toHaveFocus());
   });
 
   it("cues answer regeneration while the regenerate request is pending", async () => {

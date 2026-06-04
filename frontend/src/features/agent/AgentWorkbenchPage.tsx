@@ -2205,6 +2205,8 @@ export function EmbeddedAgentCopilot({
       await executeOrdinaryConversation(turn.question, turn.id, turn.conversationContext);
     } finally {
       setComposerAssistHint((currentHint) => (currentHint === rerunComposerHint ? null : currentHint));
+      shouldFocusComposerRef.current = true;
+      window.setTimeout(focusComposerInput, 0);
       setLoading(false);
     }
   }
