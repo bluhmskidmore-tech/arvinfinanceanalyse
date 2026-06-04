@@ -1460,6 +1460,7 @@ _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES = 20
 _CRISIS_COMMODITY_SHADOW_FORMULA_VERSION = "rv_macro_crisis_score_shadow_commodity_v1"
 _CRISIS_COMMODITY_SHADOW_WEIGHT = 0.05
 _CRISIS_COMMODITY_ADMISSION_RULE_VERSION = "rv_macro_crisis_commodity_admission_v1"
+_CRISIS_COMMODITY_APPROVAL_PACK_VERSION = "rv_macro_crisis_commodity_approval_pack_v1"
 _CRISIS_COMMODITY_ADMISSION_MIN_CRISIS_SAMPLES = 5
 _CRISIS_COMMODITY_ADMISSION_MIN_CORRELATION = 0.2
 
@@ -2634,8 +2635,13 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         current_score=_float_or_none(enriched.get("crisis_score")),
         coverage=commodity_coverage,
     )
-    enriched["commodity_candidate_admission"] = _crisis_commodity_candidate_admission(
+    commodity_admission = _crisis_commodity_candidate_admission(
         coverage=commodity_coverage,
+    )
+    enriched["commodity_candidate_admission"] = commodity_admission
+    enriched["commodity_candidate_approval_pack"] = _crisis_commodity_candidate_approval_pack(
+        admission=commodity_admission,
+        shadow_impact=enriched["shadow_impact"],
     )
     return enriched
 
@@ -3110,6 +3116,107 @@ def _crisis_commodity_max_abs_correlation(shadow: dict[str, object]) -> float | 
         if (value := _float_or_none(shadow.get(key))) is not None
     ]
     return round(max(values), 4) if values else None
+
+
+def _crisis_commodity_candidate_approval_pack(
+    *,
+    admission: dict[str, object],
+    shadow_impact: dict[str, object],
+) -> dict[str, object]:
+    items = [item for item in admission.get("items", []) if isinstance(item, dict)]
+    decision_counts = admission.get("decision_counts") if isinstance(admission.get("decision_counts"), dict) else {}
+    recommended_fields = [str(item.get("field") or "") for item in items if item.get("decision") == "recommend_include"]
+    watch_fields = [str(item.get("field") or "") for item in items if item.get("decision") == "watch"]
+    rejected_fields = [str(item.get("field") or "") for item in items if item.get("decision") == "do_not_include"]
+    summary = (
+        f"审批材料：建议纳入 {int(decision_counts.get('recommend_include') or 0)}，"
+        f"继续观察 {int(decision_counts.get('watch') or 0)}，"
+        f"暂不纳入 {int(decision_counts.get('do_not_include') or 0)}；"
+        "审批前不改变正式 Crisis Score。"
+    )
+    copy_text = _crisis_commodity_approval_copy_text(
+        summary=summary,
+        admission=admission,
+        shadow_impact=shadow_impact,
+        items=items,
+    )
+    return {
+        "pack_version": _CRISIS_COMMODITY_APPROVAL_PACK_VERSION,
+        "scope": "commodity_candidate_approval_read_only",
+        "source_rule_version": admission.get("rule_version"),
+        "shadow_formula_version": shadow_impact.get("formula_version"),
+        "decision_counts": {
+            "recommend_include": int(decision_counts.get("recommend_include") or 0),
+            "watch": int(decision_counts.get("watch") or 0),
+            "do_not_include": int(decision_counts.get("do_not_include") or 0),
+        },
+        "recommended_fields": recommended_fields,
+        "watch_fields": watch_fields,
+        "rejected_fields": rejected_fields,
+        "summary": summary,
+        "copy_text": copy_text,
+        "warnings": ["APPROVAL_PACK_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"],
+        "approval_required": True,
+        "official_score_unchanged": True,
+    }
+
+
+def _crisis_commodity_approval_copy_text(
+    *,
+    summary: str,
+    admission: dict[str, object],
+    shadow_impact: dict[str, object],
+    items: list[dict[str, object]],
+) -> str:
+    lines = [
+        "Crisis Score 商品候选审批材料",
+        summary,
+        f"规则版本 {admission.get('rule_version')}",
+        f"影子公式 {shadow_impact.get('formula_version')}",
+        f"正式 Crisis Score {_format_approval_number(shadow_impact.get('current_score'))}",
+        f"shadow score {_format_approval_number(shadow_impact.get('shadow_score'))}",
+        f"shadow delta {_format_approval_signed_number(shadow_impact.get('delta'))}",
+        "边界：审批前不改变正式 Crisis Score，不改变正式权重，不写入数据库。",
+        "候选明细：",
+    ]
+    lines.extend(_crisis_commodity_approval_item_line(item) for item in items)
+    return "\n".join(lines)
+
+
+def _crisis_commodity_approval_item_line(item: dict[str, object]) -> str:
+    return (
+        f"{item.get('label') or item.get('field')} · {item.get('decision_label')} · {item.get('reason')} · "
+        f"样本 {_format_approval_count(item.get('sample_count'))}/{_format_approval_count(item.get('minimum_sample_count'))} · "
+        f"危机样本 {_format_approval_count(item.get('crisis_sample_count'))}/"
+        f"{_format_approval_count(item.get('minimum_crisis_sample_count'))} · "
+        f"命中率 {_format_approval_percent(item.get('crisis_hit_rate'))} · "
+        f"最大相关 {_format_approval_number(item.get('max_abs_correlation'))}/"
+        f"{_format_approval_number(item.get('correlation_threshold'))} · "
+        f"source {item.get('source') or '缺失'} · series {item.get('series_id') or '缺失'} · "
+        "审批前不改变正式 Crisis Score"
+    )
+
+
+def _format_approval_count(value: object) -> str:
+    number = _int_or_none(value)
+    return str(number) if number is not None else "缺失"
+
+
+def _format_approval_percent(value: object) -> str:
+    number = _float_or_none(value)
+    return f"{number * 100:.1f}%" if number is not None else "缺失"
+
+
+def _format_approval_number(value: object) -> str:
+    number = _float_or_none(value)
+    return f"{number:.2f}" if number is not None else "缺失"
+
+
+def _format_approval_signed_number(value: object) -> str:
+    number = _float_or_none(value)
+    if number is None:
+        return "缺失"
+    return f"{number:+.2f}"
 
 
 def _crisis_commodity_candidate_decision(*, available: bool, date_alignment_status: str) -> dict[str, object]:

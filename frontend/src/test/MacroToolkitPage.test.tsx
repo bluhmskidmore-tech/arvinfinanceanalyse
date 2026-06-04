@@ -840,6 +840,15 @@ describe("MacroToolkitPage", () => {
     expect(commodityReviewConclusion).toHaveTextContent("样本 17/20");
     expect(commodityReviewConclusion).toHaveTextContent("下一步：先补齐历史样本和危机期样本");
     expect(commodityReviewConclusion).toHaveTextContent("审批前不改变正式 Crisis Score");
+    const approvalPack = within(commodityDecisionPanel).getByLabelText("商品候选审批材料");
+    expect(approvalPack).toHaveTextContent("商品候选审批材料");
+    expect(approvalPack).toHaveTextContent("rv_macro_crisis_commodity_approval_pack_v1");
+    expect(approvalPack).toHaveTextContent("建议纳入 0");
+    expect(approvalPack).toHaveTextContent("继续观察 2");
+    expect(approvalPack).toHaveTextContent("暂不纳入 4");
+    expect(approvalPack).toHaveTextContent("shadow delta +0.04");
+    expect(approvalPack).toHaveTextContent("审批前不改变正式 Crisis Score");
+    expect(within(approvalPack).getByRole("button", { name: "复制审批材料" })).toBeEnabled();
     const crisisShadowImpact = within(crisisEvidence).getByLabelText("Crisis Score v2 影子影响评估");
     expect(crisisShadowImpact).toHaveTextContent("Crisis Score v2 影子影响评估");
     expect(crisisShadowImpact).toHaveTextContent("正式 Crisis Score");
@@ -995,6 +1004,56 @@ describe("MacroToolkitPage", () => {
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Rebar futures · 危机样本检查 未通过 缺失/5"));
       expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不建议进入公式 4"));
       await waitFor(() => expect(promotionRulePack).toHaveTextContent("审计包已复制"));
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+      if (originalWindowClipboard) {
+        Object.defineProperty(window.navigator, "clipboard", originalWindowClipboard);
+      } else {
+        Reflect.deleteProperty(window.navigator, "clipboard");
+      }
+    }
+  });
+
+  it("copies the commodity admission approval pack from the full evidence panel", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const originalWindowClipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    try {
+      renderWorkbenchApp(["/macro-toolkit"]);
+
+      const crisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
+      const approvalPack = within(crisisEvidence).getByLabelText("商品候选审批材料");
+      fireEvent.click(within(approvalPack).getByRole("button", { name: "复制审批材料" }));
+
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Crisis Score 商品候选审批材料")),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("规则版本 rv_macro_crisis_commodity_admission_v1"),
+      );
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("影子公式 rv_macro_crisis_score_shadow_commodity_v1"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("shadow delta +0.04"));
+      expect(writeText).toHaveBeenCalledWith(
+        expect.stringContaining("Copper futures · 继续观察 · 相关性偏弱，需人工复核。"),
+      );
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("样本 41/20"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("危机样本 11/5"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("审批前不改变正式 Crisis Score"));
+      await waitFor(() => expect(approvalPack).toHaveTextContent("审批材料已复制"));
     } finally {
       if (originalClipboard) {
         Object.defineProperty(navigator, "clipboard", originalClipboard);

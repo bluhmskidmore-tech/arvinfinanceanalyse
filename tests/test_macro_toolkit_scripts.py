@@ -2357,6 +2357,28 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     assert admission_items["copper"]["source"] == "tushare"
     assert admission_items["copper"]["series_id"] == "CA.COPPER"
     assert admission_items["copper"]["used_in_official_score"] is False
+    approval_pack = crisis["result"]["commodity_candidate_approval_pack"]
+    assert approval_pack["pack_version"] == "rv_macro_crisis_commodity_approval_pack_v1"
+    assert approval_pack["scope"] == "commodity_candidate_approval_read_only"
+    assert approval_pack["source_rule_version"] == "rv_macro_crisis_commodity_admission_v1"
+    assert approval_pack["shadow_formula_version"] == "rv_macro_crisis_score_shadow_commodity_v1"
+    assert approval_pack["official_score_unchanged"] is True
+    assert approval_pack["approval_required"] is True
+    assert approval_pack["decision_counts"] == admission["decision_counts"]
+    assert approval_pack["recommended_fields"] == []
+    assert approval_pack["watch_fields"] == ["rebar", "iron_ore", "copper", "aluminum", "crude_oil", "gold"]
+    assert approval_pack["summary"] == "审批材料：建议纳入 0，继续观察 6，暂不纳入 0；审批前不改变正式 Crisis Score。"
+    assert approval_pack["copy_text"].startswith("Crisis Score 商品候选审批材料")
+    assert "规则版本 rv_macro_crisis_commodity_admission_v1" in approval_pack["copy_text"]
+    assert "影子公式 rv_macro_crisis_score_shadow_commodity_v1" in approval_pack["copy_text"]
+    assert "正式 Crisis Score" in approval_pack["copy_text"]
+    assert "shadow delta" in approval_pack["copy_text"]
+    assert "Copper futures · 继续观察 · 相关性偏弱，需人工复核。" in approval_pack["copy_text"]
+    assert "样本 41/20" in approval_pack["copy_text"]
+    assert "危机样本 11/5" in approval_pack["copy_text"]
+    assert "命中率 55.0%" in approval_pack["copy_text"]
+    assert "最大相关 0.00/0.20" in approval_pack["copy_text"]
+    assert "审批前不改变正式 Crisis Score" in approval_pack["copy_text"]
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["component_count"] == 5
 

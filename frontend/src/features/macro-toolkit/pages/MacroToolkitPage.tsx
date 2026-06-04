@@ -2165,12 +2165,14 @@ function CrisisCommodityClosurePanel({
 function CrisisCommodityShadowDecisionPanel({
   coverage,
   admission,
+  approvalPack,
   commodityInput = null,
   analysisMeta,
   analysisAsOfDate = null,
 }: {
   coverage: CrisisCommodityCoverage;
   admission: CrisisCommodityAdmission | null;
+  approvalPack: CrisisCommodityApprovalPack | null;
   commodityInput?: MacroToolkitInputEvidenceItem | null;
   analysisMeta?: ResultMeta | null;
   analysisAsOfDate?: string | null;
@@ -2246,6 +2248,7 @@ function CrisisCommodityShadowDecisionPanel({
         items={coverage.items}
         promotionItems={promotionItems}
       />
+      <CommodityCandidateApprovalPackPanel approvalPack={approvalPack} />
       <div className="macro-toolkit-crisis-shadow-decision__grid">
         {coverage.items.map((item) => (
           <div className="macro-toolkit-crisis-shadow-decision__item" key={item.field}>
@@ -2568,6 +2571,90 @@ function CommodityCandidateReviewConclusion({
   );
 }
 
+function CommodityCandidateApprovalPackPanel({
+  approvalPack,
+}: {
+  approvalPack: CrisisCommodityApprovalPack | null;
+}) {
+  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
+  const handleCopyApprovalPack = useCallback(async () => {
+    const clipboard =
+      (typeof navigator === "undefined" ? undefined : navigator.clipboard) ??
+      (typeof window === "undefined" ? undefined : window.navigator.clipboard);
+    const writeText = clipboard?.writeText;
+    if (!approvalPack || typeof writeText !== "function") {
+      setCopyStatus("error");
+      return;
+    }
+    try {
+      await writeText(approvalPack.copy_text);
+      setCopyStatus("success");
+    } catch {
+      setCopyStatus("error");
+    }
+  }, [approvalPack]);
+
+  if (!approvalPack) {
+    return null;
+  }
+
+  return (
+    <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选审批材料">
+      <div className="macro-toolkit-crisis-review-conclusion__head">
+        <div>
+          <span>商品候选审批材料</span>
+          <strong>{approvalPack.summary}</strong>
+        </div>
+        <small>{approvalPack.pack_version} · {approvalPack.scope}</small>
+        <small>shadow delta {formatSignedDeltaFromPack(approvalPack.copy_text)}</small>
+      </div>
+      <div className="macro-toolkit-tag-row" aria-label="商品候选审批材料警告">
+        {approvalPack.warnings.map((warning) => (
+          <Tag color="gold" key={warning}>
+            {warning}
+          </Tag>
+        ))}
+      </div>
+      <div className="macro-toolkit-crisis-review-conclusion__grid">
+        <div className="macro-toolkit-crisis-review-conclusion__item">
+          <span>建议纳入</span>
+          <strong>{approvalPack.decision_counts.recommend_include}</strong>
+          <small>{formatCommodityApprovalPackFields(approvalPack.recommended_fields)}</small>
+        </div>
+        <div className="macro-toolkit-crisis-review-conclusion__item">
+          <span>继续观察</span>
+          <strong>{approvalPack.decision_counts.watch}</strong>
+          <small>{formatCommodityApprovalPackFields(approvalPack.watch_fields)}</small>
+        </div>
+        <div className="macro-toolkit-crisis-review-conclusion__item">
+          <span>暂不纳入</span>
+          <strong>{approvalPack.decision_counts.do_not_include}</strong>
+          <small>{formatCommodityApprovalPackFields(approvalPack.rejected_fields)}</small>
+        </div>
+      </div>
+      <div className="macro-toolkit-crisis-promotion-rule-pack__actions">
+        <Button
+          aria-label="复制审批材料"
+          icon={<CopyOutlined aria-hidden="true" />}
+          size="small"
+          type="default"
+          onClick={() => void handleCopyApprovalPack()}
+        >
+          {copyStatus === "success" ? "已复制" : copyStatus === "error" ? "复制失败" : "复制审批材料"}
+        </Button>
+        {copyStatus !== "idle" ? (
+          <small
+            aria-label="审批材料复制状态"
+            className={`macro-toolkit-crisis-promotion-rule-pack__copy-status macro-toolkit-crisis-promotion-rule-pack__copy-status--${copyStatus}`}
+          >
+            {copyStatus === "success" ? "审批材料已复制" : "复制失败，请手动选择审批材料文本"}
+          </small>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function CommodityShadowActionQueue({
   reviewItems,
   shortItems,
@@ -2761,6 +2848,7 @@ function CrisisScoreEvidencePanel({
   const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
   const commodityShadowImpact = normalizeCommodityShadowImpact(rawResult.shadow_impact);
   const commodityAdmission = normalizeCommodityAdmission(rawResult.commodity_candidate_admission);
+  const commodityApprovalPack = normalizeCommodityApprovalPack(rawResult.commodity_candidate_approval_pack);
   const commodityShortRefreshProducts = commodityCoverage?.candidate_summary
     ? commodityShadowRefreshProducts(commodityCoverage.candidate_summary)
     : [];
@@ -2920,6 +3008,7 @@ function CrisisScoreEvidencePanel({
               />
               <CrisisCommodityShadowDecisionPanel
                 admission={commodityAdmission}
+                approvalPack={commodityApprovalPack}
                 coverage={commodityCoverage}
                 commodityInput={commodityInput ?? null}
                 analysisMeta={analysisMeta}
@@ -3689,6 +3778,22 @@ type CrisisCommodityAdmission = {
   next_step: string;
 };
 
+type CrisisCommodityApprovalPack = {
+  pack_version: string;
+  scope: string;
+  source_rule_version: string;
+  shadow_formula_version: string;
+  decision_counts: Record<CrisisCommodityAdmissionDecision, number>;
+  recommended_fields: string[];
+  watch_fields: string[];
+  rejected_fields: string[];
+  summary: string;
+  copy_text: string;
+  warnings: string[];
+  approval_required: boolean;
+  official_score_unchanged: boolean;
+};
+
 type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
 type CrisisGapGroupKey = "equity" | "liquidity" | "commodity" | "curve_credit" | "fx" | "other";
 type CrisisGapItem = {
@@ -3953,6 +4058,33 @@ function normalizeCommodityAdmissionDecision(value: unknown): CrisisCommodityAdm
     return value;
   }
   return "do_not_include";
+}
+
+function normalizeCommodityApprovalPack(value: unknown): CrisisCommodityApprovalPack | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    pack_version: typeof value.pack_version === "string" ? value.pack_version : "pack missing",
+    scope: typeof value.scope === "string" ? value.scope : "scope missing",
+    source_rule_version:
+      typeof value.source_rule_version === "string" ? value.source_rule_version : "source rule missing",
+    shadow_formula_version:
+      typeof value.shadow_formula_version === "string" ? value.shadow_formula_version : "shadow formula missing",
+    decision_counts: normalizeCommodityAdmissionDecisionCounts(value.decision_counts),
+    recommended_fields: normalizeStringList(value.recommended_fields),
+    watch_fields: normalizeStringList(value.watch_fields),
+    rejected_fields: normalizeStringList(value.rejected_fields),
+    summary: typeof value.summary === "string" ? value.summary : "审批材料摘要待确认",
+    copy_text: typeof value.copy_text === "string" ? value.copy_text : "",
+    warnings: normalizeStringList(value.warnings),
+    approval_required: value.approval_required === true,
+    official_score_unchanged: value.official_score_unchanged === true,
+  };
+}
+
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
 
 function toDisplayNumber(value: unknown) {
@@ -4227,6 +4359,15 @@ function formatCommodityAdmissionNextStep(item: CrisisCommodityAdmissionItem) {
     return "复核相关性与危机期命中率";
   }
   return item.next_step;
+}
+
+function formatCommodityApprovalPackFields(fields: string[]) {
+  return fields.length ? fields.join(" / ") : "无";
+}
+
+function formatSignedDeltaFromPack(copyText: string) {
+  const match = copyText.match(/shadow delta\s+([+-]?\d+(?:\.\d+)?)/);
+  return match?.[1] ?? "缺失";
 }
 
 function formatCommodityReviewConclusionMetrics(item: CrisisCommodityCoverageItem) {
