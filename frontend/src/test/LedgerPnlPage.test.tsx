@@ -499,6 +499,16 @@ describe("LedgerPnlPage", () => {
       quality_flag: "warning",
       source_version: "sv_ledger_pnl_empty",
       evidence_rows: 0,
+      next_drill: [
+        {
+          label: "核对总账报告日",
+          detail: "确认请求报告日是否存在于 /api/ledger-pnl/dates 返回列表。",
+        },
+        {
+          label: "核对总账源文件",
+          detail: "检查 product_category_source_dir 是否包含对应 YYYYMM 的总账对账工作簿。",
+        },
+      ],
       filters_applied: { report_date: "2026-05-31", currency: "ALL" },
     };
     const dataMeta: ResultMeta = {
@@ -509,6 +519,12 @@ describe("LedgerPnlPage", () => {
       quality_flag: "warning",
       source_version: "sv_ledger_pnl_empty",
       evidence_rows: 0,
+      next_drill: [
+        {
+          label: "核对明细证据",
+          detail: "补查 2026-05-31 的 canonical 总账事实行，避免把无证据结果解释为真实 0。",
+        },
+      ],
       filters_applied: { report_date: "2026-05-31", currency: "ALL" },
     };
 
@@ -583,6 +599,11 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("质量汇总预警 / 明细预警");
       expect(strip).toHaveTextContent("来源版本sv_ledger_pnl_empty");
       expect(strip).toHaveTextContent("正式契约缺失，正式值不可用");
+      expect(strip).toHaveTextContent("下一步补证");
+      expect(strip).toHaveTextContent("核对总账报告日");
+      expect(strip).toHaveTextContent("确认请求报告日是否存在于 /api/ledger-pnl/dates 返回列表。");
+      expect(strip).toHaveTextContent("核对总账源文件");
+      expect(strip).toHaveTextContent("补查 2026-05-31 的 canonical 总账事实行");
     });
 
     const cards = screen.getByTestId("ledger-pnl-summary-cards");

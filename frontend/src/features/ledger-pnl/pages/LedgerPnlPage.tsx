@@ -569,6 +569,53 @@ function formatEvidenceRows(meta: ResultMeta | null | undefined) {
   return typeof meta?.evidence_rows === "number" ? String(meta.evidence_rows) : "缺失";
 }
 
+type LedgerFunctionalDrill = {
+  key: string;
+  label: string;
+  detail: string;
+};
+
+function normalizeLedgerNextDrill(item: NonNullable<ResultMeta["next_drill"]>[number]): LedgerFunctionalDrill | null {
+  if (typeof item === "string") {
+    const label = item.trim();
+    return label ? { key: label, label, detail: "" } : null;
+  }
+  if (typeof item !== "object" || item === null) {
+    return null;
+  }
+  const label = typeof item.label === "string" ? item.label.trim() : "";
+  const detail = typeof item.detail === "string" ? item.detail.trim() : "";
+  if (!label && !detail) {
+    return null;
+  }
+  return {
+    key: `${label}|${detail}`,
+    label: label || "补证动作",
+    detail,
+  };
+}
+
+function collectLedgerNextDrills(
+  ...metas: Array<ResultMeta | null | undefined>
+): LedgerFunctionalDrill[] {
+  const seen = new Set<string>();
+  const rows: LedgerFunctionalDrill[] = [];
+  for (const meta of metas) {
+    for (const item of meta?.next_drill ?? []) {
+      const normalized = normalizeLedgerNextDrill(item);
+      if (!normalized || seen.has(normalized.key)) {
+        continue;
+      }
+      seen.add(normalized.key);
+      rows.push(normalized);
+      if (rows.length >= 3) {
+        return rows;
+      }
+    }
+  }
+  return rows;
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "");
 }
@@ -727,6 +774,7 @@ function LedgerFunctionalAuditStrip(props: {
   readErrors: unknown[];
 }) {
   const state = buildLedgerFunctionalAuditState(props);
+  const nextDrills = collectLedgerNextDrills(props.summaryMeta, props.dataMeta);
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -771,6 +819,19 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.formalStatus}</strong>
         </div>
       </div>
+      {nextDrills.length > 0 ? (
+        <div className="ledger-pnl-functional-strip__drill">
+          <span>下一步补证</span>
+          <div className="ledger-pnl-functional-strip__drill-list">
+            {nextDrills.map((drill) => (
+              <div key={drill.key} className="ledger-pnl-functional-strip__drill-item">
+                <strong>{drill.label}</strong>
+                {drill.detail ? <em>{drill.detail}</em> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
