@@ -1786,6 +1786,22 @@ function FormalIndicatorSourceContractPanel(props: {
             })}
           </div>
         </>
+      ) : props.contract?.sample_status === "missing_contract" ? (
+        <div className="ledger-pnl-analysis__source-contract-actions">
+          <div className="ledger-pnl-analysis__source-contract-actions-header">
+            <strong>缺契约补证动作</strong>
+            <span>登记 {props.contract.report_month || props.requestedReportMonth || "-"} 正式财务指标契约</span>
+          </div>
+          <div className="ledger-pnl-analysis__source-contract-action-list">
+            <article className="ledger-pnl-analysis__source-contract-action-item">
+              <strong>1</strong>
+              <div>
+                <span>从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。</span>
+                <small>正式值保持未接入，不能用分析候选值补齐。</small>
+              </div>
+            </article>
+          </div>
+        </div>
       ) : (
         <div className="ledger-pnl-analysis__empty">暂无正式财务指标源契约数据</div>
       )}
