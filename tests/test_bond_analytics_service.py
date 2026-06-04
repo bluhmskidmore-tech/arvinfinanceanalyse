@@ -449,6 +449,34 @@ def test_bond_analytics_dv01_risk_all_scope_groups_tenors_and_sorts_by_abs_dv01(
     get_settings.cache_clear()
 
 
+def test_bond_analytics_dv01_risk_all_scope_preserves_abs_share_contract(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="all", top_n=10)
+    result = payload["result"]
+    total_abs_dv01 = sum(_numeric_raw(row["dv01"]).copy_abs() for row in result["top_bonds"])
+
+    assert total_abs_dv01 > Decimal("0")
+    for row in result["top_bonds"]:
+        expected_share = _numeric_raw(row["dv01"]).copy_abs() / total_abs_dv01
+        assert _numeric_raw(row["dv01_share"]).quantize(Decimal("0.00000001")) == expected_share.quantize(
+            Decimal("0.00000001")
+        )
+
+    issuer_total_abs = sum(_numeric_raw(row["dv01"]).copy_abs() for row in result["top_issuers"])
+    assert issuer_total_abs == total_abs_dv01
+    for row in result["top_issuers"]:
+        expected_share = _numeric_raw(row["dv01"]).copy_abs() / total_abs_dv01
+        assert _numeric_raw(row["dv01_share"]).quantize(Decimal("0.00000001")) == expected_share.quantize(
+            Decimal("0.00000001")
+        )
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_dv01_all_scope_warns_when_unmapped_accounting_class_is_included(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()

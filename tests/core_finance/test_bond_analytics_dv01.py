@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from backend.app.core_finance.bond_analytics.dv01 import (
+    build_dv01_movement_attribution_payloads,
+    build_dv01_movement_bond_payloads,
     build_dv01_tenor_bucket_payloads,
     build_dv01_top_bond_payloads,
     build_dv01_top_issuer_payloads,
@@ -74,3 +76,67 @@ def test_dv01_core_keeps_face_weighted_duration_and_parallel_shock_order() -> No
         Decimal("25"),
         Decimal("-25"),
     ]
+
+
+def test_dv01_core_builds_movement_rows_and_attribution_payloads() -> None:
+    previous_rows = [
+        _movement_row("A-001", face="1000000", duration="3", dv01="300", accounting_class="OCI"),
+        _movement_row("X-001", face="100000", duration="5", dv01="50", accounting_class="OCI"),
+    ]
+    current_rows = [
+        _movement_row("A-001", face="1100000", duration="3.5", dv01="390", accounting_class="OCI"),
+        _movement_row("N-001", face="200000", duration="5", dv01="100", accounting_class="OCI"),
+        _movement_row("C-001", face="100000", duration="4", dv01="40", accounting_class="OCI"),
+    ]
+    previous_all_rows = [
+        *previous_rows,
+        _movement_row("C-001", face="100000", duration="4", dv01="40", accounting_class="TPL"),
+    ]
+    current_all_rows = [*current_rows]
+
+    movement_rows = build_dv01_movement_bond_payloads(
+        current_rows=current_rows,
+        previous_rows=previous_rows,
+        current_all_rows=current_all_rows,
+        previous_all_rows=previous_all_rows,
+    )
+    attribution = build_dv01_movement_attribution_payloads(
+        movement_rows,
+        total_delta_dv01=Decimal("180"),
+    )
+
+    by_code = {row["instrument_code"]: row for row in movement_rows}
+    assert by_code["A-001"]["estimated_dv01_from_face_duration"] == Decimal("385.00000")
+    assert by_code["A-001"]["dv01_estimate_gap"] == Decimal("5.00000")
+    assert by_code["A-001"]["reason_label"]
+    assert by_code["C-001"]["previous_accounting_class"] == "TPL"
+
+    by_driver = {row["driver_key"]: row for row in attribution}
+    assert by_driver["new_position"]["dv01_delta"] == Decimal("100")
+    assert by_driver["exited_position"]["dv01_delta"] == Decimal("-50")
+    assert by_driver["face_value_change"]["dv01_delta"] == Decimal("30.00")
+    assert by_driver["duration_change"]["dv01_delta"] == Decimal("50.0000")
+    assert by_driver["classification_change"]["dv01_delta"] == Decimal("40")
+    assert by_driver["residual"]["dv01_delta"] == Decimal("10.0000")
+    assert sum(row["dv01_delta"] for row in attribution) == Decimal("180")
+
+
+def _movement_row(
+    instrument_code: str,
+    *,
+    face: str,
+    duration: str,
+    dv01: str,
+    accounting_class: str,
+) -> dict[str, object]:
+    return {
+        "instrument_code": instrument_code,
+        "instrument_name": f"{instrument_code} Bond",
+        "issuer_name": f"{instrument_code} Issuer",
+        "rating": "AAA",
+        "tenor_bucket": "3-5Y",
+        "accounting_class": accounting_class,
+        "face_value": Decimal(face),
+        "modified_duration": Decimal(duration),
+        "dv01": Decimal(dv01),
+    }
