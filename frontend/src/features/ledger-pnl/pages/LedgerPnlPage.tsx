@@ -1164,6 +1164,20 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
+  if (props.isFormalContractLoading) {
+    const summaryRows = formatEvidenceRows(props.summaryMeta);
+    const detailRows = formatEvidenceRows(props.dataMeta);
+    return {
+      tone: "pending",
+      title: "总账候选解释可用，正式契约读取中",
+      detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；正式财务指标契约仍在读取，先不要形成正式财务指标结论。`,
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
   if (props.isFormalContractError) {
     const summaryRows = formatEvidenceRows(props.summaryMeta);
     const detailRows = formatEvidenceRows(props.dataMeta);
@@ -2878,12 +2892,7 @@ export default function LedgerPnlPage() {
         formalIndicatorSourceContract={formalIndicatorSourceContract}
         isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
         isFormalContractError={formalIndicatorSourceContractQuery.isError}
-        isLoading={
-          datesQuery.isLoading ||
-          summaryQuery.isLoading ||
-          dataQuery.isLoading ||
-          formalIndicatorSourceContractQuery.isLoading
-        }
+        isLoading={datesQuery.isLoading || summaryQuery.isLoading || dataQuery.isLoading}
         isError={datesQuery.isError || summaryQuery.isError || dataQuery.isError}
         readErrors={[datesQuery.error, summaryQuery.error, dataQuery.error]}
         explainabilityModel={ledgerExplainabilityModel}

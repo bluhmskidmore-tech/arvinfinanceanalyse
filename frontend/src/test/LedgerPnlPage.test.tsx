@@ -618,30 +618,54 @@ describe("LedgerPnlPage", () => {
         result: { dates: ["2026-03-31"] },
       })),
       getLedgerPnlSummary: vi.fn(async () => ({
-        result_meta: buildMeta("ledger_pnl.summary"),
+        result_meta: {
+          ...buildMeta("ledger_pnl.summary"),
+          evidence_rows: 1,
+        },
         result: {
           report_date: "2026-03-31",
           source_version: "sv_ledger_test",
-          ledger_monthly_pnl_core: money("0.00"),
-          ledger_monthly_pnl_all: money("0.00"),
+          ledger_monthly_pnl_core: money("1.00"),
+          ledger_monthly_pnl_all: money("1.00"),
           ledger_total_assets: money("0.00"),
           ledger_total_liabilities: money("0.00"),
           ledger_net_assets: money("0.00"),
-          by_currency: [],
-          by_account: [],
+          by_currency: [{ currency: "CNY", total_pnl: money("1.00") }],
+          by_account: [
+            {
+              account_code: "50101000001",
+              account_name: "短期信用贷款利息收入",
+              total_pnl: money("1.00"),
+              count: 1,
+            },
+          ],
         },
       })),
       getLedgerPnlData: vi.fn(async () => ({
-        result_meta: buildMeta("ledger_pnl.data"),
+        result_meta: {
+          ...buildMeta("ledger_pnl.data"),
+          evidence_rows: 1,
+        },
         result: {
           report_date: "2026-03-31",
           summary: {
             total_pnl_cnx: money("0.00"),
-            total_pnl_cny: money("0.00"),
-            total_pnl: money("0.00"),
-            count: 0,
+            total_pnl_cny: money("1.00"),
+            total_pnl: money("1.00"),
+            count: 1,
           },
-          items: [],
+          items: [
+            {
+              account_code: "50101000001",
+              account_name: "短期信用贷款利息收入",
+              currency: "CNY",
+              beginning_balance: money("0.00"),
+              ending_balance: money("1.00"),
+              monthly_pnl: money("1.00"),
+              daily_avg_balance: money("0.00"),
+              days_in_period: 31,
+            },
+          ],
         },
       })),
       getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
@@ -654,6 +678,15 @@ describe("LedgerPnlPage", () => {
 
     await waitFor(() => {
       expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202603");
+    });
+
+    const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账候选解释可用，正式契约读取中");
+      expect(strip).toHaveTextContent("汇总证据行1");
+      expect(strip).toHaveTextContent("明细证据行1");
+      expect(strip).not.toHaveTextContent("总账链路读取中");
+      expect(strip).not.toHaveTextContent("总账候选口径可分析");
     });
 
     const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
