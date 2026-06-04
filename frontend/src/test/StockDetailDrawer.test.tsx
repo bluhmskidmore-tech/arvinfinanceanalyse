@@ -393,6 +393,20 @@ describe("StockDetailDrawer", () => {
               payload_text: "Second row body text",
               payload_json: null,
             },
+            {
+              event_key: "e3",
+              received_at: "2026-05-08T10:45:00Z",
+              group_id: "g1",
+              content_type: "externalVendorNews",
+              serial_id: 3,
+              request_id: 1,
+              error_code: 0,
+              error_msg: "",
+              topic_code: "externalVendorTopic",
+              item_index: 0,
+              payload_text: "Third row body text",
+              payload_json: null,
+            },
           ],
         },
         { basis: "analytical", result_kind: "news.choice.latest" },
@@ -406,10 +420,13 @@ describe("StockDetailDrawer", () => {
     );
 
     const list = await screen.findByTestId("stock-detail-market-events-list");
-    expect(list.querySelectorAll("li")).toHaveLength(2);
+    expect(list.querySelectorAll("li")).toHaveLength(3);
     expect(screen.getAllByText("行业新闻")).toHaveLength(2);
+    expect(screen.getByText("事件分类待确认")).toBeInTheDocument();
     expect(list).not.toHaveTextContent("TOPIC_ONE");
     expect(list).not.toHaveTextContent("TOPIC_TWO");
+    expect(list).not.toHaveTextContent("externalVendorTopic");
+    expect(list).not.toHaveTextContent("externalVendorNews");
     expect(screen.getByText(/Brief headline about macro conditions/)).toBeInTheDocument();
   });
 

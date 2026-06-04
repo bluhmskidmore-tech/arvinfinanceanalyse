@@ -184,8 +184,20 @@ function choiceNewsTopicLabel(topicCode: string | null | undefined, contentType:
 
   const value = topicCode?.trim();
   if (!value) return "事件分类待确认";
+  if (isTechnicalChoiceNewsCode(contentType) || isTechnicalChoiceNewsCode(value)) return "事件分类待确认";
   if (/^[A-Z0-9_]+$/.test(value) || value.includes("_")) return "事件分类待确认";
   return value;
+}
+
+function isTechnicalChoiceNewsCode(value: string | null | undefined): boolean {
+  const normalized = value?.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (!normalized) return false;
+  return (
+    normalized.includes("externalvendor") ||
+    normalized.includes("vendorstatus") ||
+    normalized.includes("sourcetable") ||
+    normalized.includes("choicestock")
+  );
 }
 
 function formatCandidateHistoryReturn(value: number | null | undefined): string {
