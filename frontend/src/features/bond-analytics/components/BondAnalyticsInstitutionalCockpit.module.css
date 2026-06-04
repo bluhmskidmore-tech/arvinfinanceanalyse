@@ -362,6 +362,7 @@
   color: var(--moss-color-primary-800);
   font-style: normal;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -557,6 +558,7 @@
 .regionRow span {
   color: var(--moss-color-primary-800);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 

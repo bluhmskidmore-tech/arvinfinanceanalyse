@@ -301,6 +301,31 @@ describe("StockDetailDrawer", () => {
     expect(footerMeta).not.toHaveTextContent("vendor_stale");
   });
 
+  it("does not expose unknown stock detail footer governance codes", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(
+      buildStockDetailEnvelope({
+        meta: {
+          source_version: "sv_live",
+          rule_version: "rv_live",
+          quality_flag: "external_vendor_quality_state" as ApiQuality,
+          vendor_status: "external_vendor_feed_pending" as ResultMeta["vendor_status"],
+        },
+      }),
+    );
+
+    render(
+      <AppProviders client={client}>
+        <StockDetailDrawer stockCode="000001.SZ" stockName="Alpha" asOfDate="2026-04-29" onClose={() => undefined} />
+      </AppProviders>,
+    );
+
+    const footerMeta = await screen.findByTestId("stock-detail-footer-meta");
+    expect(footerMeta).toHaveTextContent("待确认");
+    expect(footerMeta).not.toHaveTextContent("external_vendor_quality_state");
+    expect(footerMeta).not.toHaveTextContent("external_vendor_feed_pending");
+  });
+
   it("shows the review context that opened the drawer", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());

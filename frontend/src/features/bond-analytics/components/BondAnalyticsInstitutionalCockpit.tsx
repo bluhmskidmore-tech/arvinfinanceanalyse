@@ -398,7 +398,7 @@ function DistributionDonut({
           <div key={item.key} className={styles.referenceDonutLegendRow}>
             <span style={{ background: item.color ?? dt.color.primary[500] }} />
             <strong>{item.label}</strong>
-            <em style={tabularNumsStyle}>{item.caption}</em>
+            <em>{item.caption}</em>
           </div>
         ))}
       </div>
@@ -495,7 +495,7 @@ function RegionDistributionPanel({
         {topItems.map((item) => (
           <div key={item.key} className={styles.regionRow}>
             <strong>{item.label}</strong>
-            <span style={tabularNumsStyle}>{item.caption}</span>
+            <span>{item.caption}</span>
           </div>
         ))}
       </div>

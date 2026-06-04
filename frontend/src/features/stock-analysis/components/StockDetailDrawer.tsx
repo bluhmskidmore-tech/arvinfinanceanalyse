@@ -120,7 +120,7 @@ const stockDetailMetaVendorLabels: Record<string, string> = {
 
 function stockDetailMetaLabel(value: string | null | undefined, labels: Record<string, string>) {
   const normalized = (value ?? "").trim().toLowerCase();
-  return labels[normalized] ?? value ?? stockDetailMetaPendingLabel;
+  return labels[normalized] ?? stockDetailMetaPendingLabel;
 }
 
 function rawStockDetailErrorMessage(error: unknown): string {
