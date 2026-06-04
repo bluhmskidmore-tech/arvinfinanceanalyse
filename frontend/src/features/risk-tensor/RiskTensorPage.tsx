@@ -623,13 +623,16 @@ export default function RiskTensorPage() {
   const [qualityWarningsCopiedStateKey, setQualityWarningsCopiedStateKey] = useState("");
   const [tensorErrorCopyStatus, setTensorErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [tensorErrorCopiedStateKey, setTensorErrorCopiedStateKey] = useState("");
+  const tensorErrorCopyRequestKeyRef = useRef("");
   const [blockedDateCopyStatus, setBlockedDateCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [blockedDateCopiedStateKey, setBlockedDateCopiedStateKey] = useState("");
+  const blockedDateCopyRequestKeyRef = useRef("");
   const [datesErrorCopyStatus, setDatesErrorCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesErrorCopiedStateKey, setDatesErrorCopiedStateKey] = useState("");
   const datesErrorCopyRequestKeyRef = useRef("");
   const [datesEmptyCopyStatus, setDatesEmptyCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [datesEmptyCopiedStateKey, setDatesEmptyCopiedStateKey] = useState("");
+  const datesEmptyCopyRequestKeyRef = useRef("");
   const [emptyPositionCopyStatus, setEmptyPositionCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const [emptyPositionCopiedStateKey, setEmptyPositionCopiedStateKey] = useState("");
   const emptyPositionCopyStateKeyRef = useRef("");
@@ -1688,6 +1691,7 @@ export default function RiskTensorPage() {
 
   const handleCopyTensorError = () => {
     const copiedStateKey = tensorErrorCopyStateKey;
+    tensorErrorCopyRequestKeyRef.current = copiedStateKey;
     if (!navigator.clipboard?.writeText) {
       setTensorErrorCopiedStateKey(copiedStateKey);
       setTensorErrorCopyStatus("failed");
@@ -1696,10 +1700,16 @@ export default function RiskTensorPage() {
     void navigator.clipboard
       .writeText(tensorErrorCopyText)
       .then(() => {
+        if (tensorErrorCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setTensorErrorCopiedStateKey(copiedStateKey);
         setTensorErrorCopyStatus("copied");
       })
       .catch(() => {
+        if (tensorErrorCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setTensorErrorCopiedStateKey(copiedStateKey);
         setTensorErrorCopyStatus("failed");
       });
@@ -1707,6 +1717,7 @@ export default function RiskTensorPage() {
 
   const handleCopyBlockedDate = () => {
     const copiedStateKey = blockedDateCopyStateKey;
+    blockedDateCopyRequestKeyRef.current = copiedStateKey;
     if (!navigator.clipboard?.writeText) {
       setBlockedDateCopiedStateKey(copiedStateKey);
       setBlockedDateCopyStatus("failed");
@@ -1715,10 +1726,16 @@ export default function RiskTensorPage() {
     void navigator.clipboard
       .writeText(blockedDateCopyText)
       .then(() => {
+        if (blockedDateCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setBlockedDateCopiedStateKey(copiedStateKey);
         setBlockedDateCopyStatus("copied");
       })
       .catch(() => {
+        if (blockedDateCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setBlockedDateCopiedStateKey(copiedStateKey);
         setBlockedDateCopyStatus("failed");
       });
@@ -1738,11 +1755,13 @@ export default function RiskTensorPage() {
   const clearDatesGovernanceCopyFeedback = () => {
     setBlockedDateCopyStatus("idle");
     setBlockedDateCopiedStateKey("");
+    blockedDateCopyRequestKeyRef.current = "";
     setDatesErrorCopyStatus("idle");
     setDatesErrorCopiedStateKey("");
     datesErrorCopyRequestKeyRef.current = "";
     setDatesEmptyCopyStatus("idle");
     setDatesEmptyCopiedStateKey("");
+    datesEmptyCopyRequestKeyRef.current = "";
   };
 
   const handleRetryDatesGovernance = () => {
@@ -1751,6 +1770,9 @@ export default function RiskTensorPage() {
   };
 
   const handleRetryTensorMainRead = () => {
+    setTensorErrorCopyStatus("idle");
+    setTensorErrorCopiedStateKey("");
+    tensorErrorCopyRequestKeyRef.current = "";
     void tensorQuery.refetch();
   };
 
@@ -1782,6 +1804,7 @@ export default function RiskTensorPage() {
 
   const handleCopyDatesEmpty = () => {
     const copiedStateKey = datesEmptyCopyStateKey;
+    datesEmptyCopyRequestKeyRef.current = copiedStateKey;
     if (!navigator.clipboard?.writeText) {
       setDatesEmptyCopiedStateKey(copiedStateKey);
       setDatesEmptyCopyStatus("failed");
@@ -1790,10 +1813,16 @@ export default function RiskTensorPage() {
     void navigator.clipboard
       .writeText(datesEmptyCopyText)
       .then(() => {
+        if (datesEmptyCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setDatesEmptyCopiedStateKey(copiedStateKey);
         setDatesEmptyCopyStatus("copied");
       })
       .catch(() => {
+        if (datesEmptyCopyRequestKeyRef.current !== copiedStateKey) {
+          return;
+        }
         setDatesEmptyCopiedStateKey(copiedStateKey);
         setDatesEmptyCopyStatus("failed");
       });

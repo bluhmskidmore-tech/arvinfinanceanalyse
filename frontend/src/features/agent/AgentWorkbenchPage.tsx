@@ -913,28 +913,28 @@ const GITNEXUS_QUICK_EXAMPLES = [
 const FINANCIAL_WORKFLOWS: FinancialWorkflowShortcut[] = [
   {
     id: "portfolio_review",
-    title: "Portfolio Review",
+    title: "组合复核",
     slashCommand: "/portfolio-review",
     description: "组合规模、久期和信用暴露",
     mappedIntents: ["portfolio_overview", "duration_risk", "credit_exposure"],
   },
   {
     id: "pnl_review",
-    title: "PnL Review",
+    title: "损益复核",
     slashCommand: "/pnl-review",
     description: "损益摘要、归因桥和产品损益",
     mappedIntents: ["pnl_summary", "pnl_bridge", "product_pnl"],
   },
   {
     id: "risk_memo",
-    title: "Risk Memo",
+    title: "风险纪要",
     slashCommand: "/risk-memo",
     description: "久期、信用暴露和风险张量",
     mappedIntents: ["duration_risk", "credit_exposure", "risk_tensor"],
   },
   {
     id: "market_brief",
-    title: "Market Brief",
+    title: "市场简报",
     slashCommand: "/market-brief",
     description: "市场数据和新闻入口",
     mappedIntents: ["market_data", "news"],

@@ -15,7 +15,7 @@ describe("SectionCard", () => {
     expect(defaultCard).not.toHaveAttribute("style");
 
     const passthroughStyle: CSSProperties = { marginTop: 12 };
-    rerender(createElement(SectionCard, { title: "Styled shell", style: passthroughStyle }, "Healthy content"));
+    rerender(createElement(SectionCard, { title: "Styled shell", style: passthroughStyle, children: "Healthy content" }));
 
     const styledCard = screen.getByText("Styled shell").closest(".ant-card");
     expect(styledCard).toHaveClass("section-card");

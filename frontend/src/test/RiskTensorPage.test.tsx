@@ -7139,6 +7139,75 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("keeps blocked report-date copy feedback cleared when retry returns the same evidence", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const blockedDatesResponse = {
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_same_evidence_retry"),
+      result: {
+        report_dates: [],
+        blocked_report_dates: [
+          {
+            report_date: "2026-02-27",
+            reason: "risk tensor source lineage is stale",
+          },
+        ],
+      },
+    };
+    const getRiskTensorDates = vi
+      .fn()
+      .mockResolvedValueOnce(blockedDatesResponse)
+      .mockResolvedValueOnce(blockedDatesResponse);
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    try {
+      renderRiskTensorRoute("/risk-tensor?report_date=2026-02-27", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const errorContext = await screen.findByTestId("risk-tensor-error-context");
+      const [, copyBlockedDate, retryDatesGovernance] = within(errorContext).getAllByRole("button");
+      await user.click(copyBlockedDate!);
+      await user.click(retryDatesGovernance!);
+
+      await waitFor(() => {
+        expect(getRiskTensorDates).toHaveBeenCalledTimes(2);
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const retriedErrorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(retriedErrorContext.querySelector(".risk-tensor-quality-detail__trace-feedback")).toBeNull();
+      expect(within(retriedErrorContext).queryByTestId("risk-tensor-blocked-date-manual-copy")).not.toBeInTheDocument();
+      expect(getRiskTensor).not.toHaveBeenCalled();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("lets users jump from blocked report date context to result metadata", async () => {
     const user = userEvent.setup();
     const scrollTargets: Element[] = [];
@@ -7538,6 +7607,64 @@ describe("RiskTensorPage", () => {
       const refreshedEmptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
       expect(refreshedEmptyState).not.toHaveTextContent("已复制空日期排查信息");
       expect(screen.queryByTestId("risk-tensor-dates-empty-manual-copy")).not.toBeInTheDocument();
+      expect(getRiskTensor).not.toHaveBeenCalled();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("keeps empty report-date copy feedback cleared when retry returns the same empty evidence", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const emptyDatesResponse = {
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_empty_same_evidence_retry"),
+      result: { report_dates: [] },
+    };
+    const getRiskTensorDates = vi.fn().mockResolvedValueOnce(emptyDatesResponse).mockResolvedValueOnce(emptyDatesResponse);
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    try {
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const emptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
+      const [, retryDatesGovernance, copyEmptyDates] = within(emptyState).getAllByRole("button");
+      await user.click(copyEmptyDates!);
+      await user.click(retryDatesGovernance!);
+
+      await waitFor(() => {
+        expect(getRiskTensorDates).toHaveBeenCalledTimes(2);
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const retriedEmptyState = await screen.findByTestId("risk-tensor-dates-empty-state");
+      expect(retriedEmptyState.querySelector(".risk-tensor-quality-detail__trace-feedback")).toBeNull();
+      expect(within(retriedEmptyState).queryByTestId("risk-tensor-dates-empty-manual-copy")).not.toBeInTheDocument();
       expect(getRiskTensor).not.toHaveBeenCalled();
     } finally {
       if (originalClipboard) {
@@ -8480,6 +8607,61 @@ describe("RiskTensorPage", () => {
 
       const retriedErrorContext = await screen.findByTestId("risk-tensor-error-context");
       expect(retriedErrorContext).not.toHaveTextContent("已复制排查信息");
+      expect(within(retriedErrorContext).queryByTestId("risk-tensor-error-manual-copy")).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("keeps risk tensor failure copy feedback cleared when retry returns the same failure evidence", async () => {
+    const user = userEvent.setup();
+    let resolveCopy: (() => void) | undefined;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve;
+        }),
+    );
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_error_same_evidence_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async () => {
+      throw new Error("Request failed: /api/risk/tensor?report_date=2026-03-15 (404)");
+    });
+
+    try {
+      renderRiskTensorRoute("/risk-tensor?report_date=2026-03-15", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const errorContext = await screen.findByTestId("risk-tensor-error-context");
+      const [, retryMainRead, copyTensorError] = within(errorContext).getAllByRole("button");
+      await user.click(copyTensorError!);
+      await user.click(retryMainRead!);
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      });
+
+      await act(async () => {
+        resolveCopy?.();
+      });
+
+      const retriedErrorContext = await screen.findByTestId("risk-tensor-error-context");
+      expect(retriedErrorContext.querySelector(".risk-tensor-quality-detail__trace-feedback")).toBeNull();
       expect(within(retriedErrorContext).queryByTestId("risk-tensor-error-manual-copy")).not.toBeInTheDocument();
     } finally {
       if (originalClipboard) {

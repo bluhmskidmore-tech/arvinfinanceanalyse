@@ -413,7 +413,7 @@ describe("AgentWorkbenchPage", () => {
 
     const shortcutDrawer = screen.getByText("快捷入口").closest("details");
     const stockResearchButton = screen.getByText("股票研究").closest("button");
-    const portfolioReviewButton = screen.getByText("Portfolio Review").closest("button");
+    const portfolioReviewButton = screen.getByText("组合复核").closest("button");
     expect(shortcutDrawer).not.toBeNull();
     expect(shortcutDrawer).not.toHaveAttribute("open");
     expect(stockResearchButton).not.toBeNull();
@@ -481,10 +481,10 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
     openShortcutDrawer();
 
-    expect(screen.getByRole("button", { name: /Portfolio Review/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /PnL Review/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Risk Memo/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Market Brief/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /组合复核/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /损益复核/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /风险纪要/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /市场简报/ })).toBeInTheDocument();
   });
 
   it("focuses the composer after launching a financial workflow", async () => {
@@ -494,7 +494,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
 
     expect(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL)).toHaveFocus();
   });
@@ -689,7 +689,7 @@ describe("AgentWorkbenchPage", () => {
     );
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -735,7 +735,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
     await waitFor(() => expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("/risk-memo"));
 
     screen.getByTestId("agent-panel-submit").focus();
@@ -757,7 +757,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
 
     const status = await findAgentTurnStatus();
     expect(status).toHaveTextContent("Workflow 执行进行中");
@@ -774,7 +774,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
 
     expect(await screen.findByText("智能体查询失败（500）")).toBeInTheDocument();
     expect(screen.getByText("Workflow 执行失败 · 可重新点击或手动提问")).toBeInTheDocument();
@@ -791,7 +791,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
     await waitFor(() => expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("/risk-memo"));
 
     screen.getByTestId("agent-panel-submit").focus();
@@ -1266,7 +1266,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     openShortcutDrawer();
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
     expect(await screen.findByText("Workflow Execution Steps")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "post workflow follow-up");
@@ -3850,7 +3850,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
     openShortcutDrawer();
 
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
     expect(await screen.findByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "local queued first turn");
@@ -3896,7 +3896,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
     openShortcutDrawer();
 
-    await user.click(screen.getByRole("button", { name: /Risk Memo/ }));
+    await user.click(screen.getByRole("button", { name: /风险纪要/ }));
     expect(await screen.findByText("Workflow 执行完成 · 可以继续追问")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "local queued fail first turn");

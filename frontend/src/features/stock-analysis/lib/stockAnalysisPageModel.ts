@@ -531,10 +531,10 @@ function buildHybridFusionEvidenceCards(
       { key: "cycle_score", label: "景气周期", value: formatNumber(item.cycle_score, 4) },
       {
         key: "lifecourt_proxy_score",
-        label: "生命法庭代理",
+        label: "生命法庭线索",
         value: formatNumber(item.lifecourt_proxy_score, 4),
       },
-      { key: "attention_score", label: "关注代理", value: formatNumber(item.attention_score, 4) },
+      { key: "attention_score", label: "关注线索", value: formatNumber(item.attention_score, 4) },
       { key: "price_confirm_score", label: "价格确认", value: formatNumber(item.price_confirm_score, 4) },
       { key: "crowding_penalty", label: "拥挤惩罚", value: formatNumber(item.crowding_penalty, 4) },
       {
@@ -568,7 +568,7 @@ function buildHybridFusionEvidenceCards(
       evidenceBullets,
       evidence,
       counterEvidence: [
-        "生命法庭层为代理信号，未接入真实大V文本、OCR/ASR或社交情绪生产线。",
+        "生命法庭层仍是观察线索，真实大V文本、OCR/ASR和社交情绪生产线仍待补。",
         "仅作观察与复核，不作为执行依据。",
         `来源命中：${sourceKinds}`,
       ],
@@ -581,10 +581,10 @@ function buildHybridFusionEvidenceCards(
         { key: "cycle_score", label: "景气周期", value: formatNumber(item.cycle_score, 6) },
         {
           key: "lifecourt_proxy_score",
-          label: "生命法庭代理",
+          label: "生命法庭线索",
           value: formatNumber(item.lifecourt_proxy_score, 6),
         },
-        { key: "attention_score", label: "关注代理", value: formatNumber(item.attention_score, 6) },
+        { key: "attention_score", label: "关注线索", value: formatNumber(item.attention_score, 6) },
         {
           key: "price_confirm_score",
           label: "价格确认",

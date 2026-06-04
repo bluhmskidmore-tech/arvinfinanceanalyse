@@ -2472,13 +2472,17 @@ describe("StockAnalysisPage", () => {
     expect(queue).toHaveTextContent("融合策略 / 复核队列");
     expect(queue).toHaveTextContent("Fusion Alpha");
     expect(queue).toHaveTextContent("融合分");
-    expect(queue).toHaveTextContent("生命法庭代理");
+    expect(queue).toHaveTextContent("生命法庭线索");
+    expect(queue).toHaveTextContent("关注线索");
     expect(queue).toHaveTextContent("+6 证据");
     expect(queue).not.toHaveTextContent("代理信号");
+    expect(queue).not.toHaveTextContent("生命法庭代理");
+    expect(queue).not.toHaveTextContent("关注代理");
 
     await user.click(within(queue).getByText("证据明细"));
 
-    expect(queue).toHaveTextContent("代理信号");
+    expect(queue).toHaveTextContent("生命法庭层仍是观察线索");
+    expect(queue).not.toHaveTextContent("代理信号");
     expect(queue).not.toHaveTextContent("买入");
   });
 
