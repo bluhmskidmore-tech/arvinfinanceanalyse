@@ -3120,7 +3120,7 @@ export function EmbeddedAgentCopilot({
                   answer={turnResult.answer}
                   testId={isEmbedded && turn.id === latestConversationTurn?.id ? "agent-panel-answer" : undefined}
                 />
-                <div className="agent-result-toolbar" aria-label="assistant-answer-actions">
+                <div className="agent-result-toolbar" aria-label="回答操作">
                   {canRegenerateAgentTurn(turn) ? (
                     <button
                       type="button"

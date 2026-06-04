@@ -17,6 +17,7 @@ const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
 const AGENT_CONVERSATION_LABEL = "Agent 对话记录";
 const AGENT_RESULT_DETAILS_LABEL = "回答依据与运行信息";
+const AGENT_ANSWER_ACTIONS_LABEL = "回答操作";
 const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
@@ -2829,6 +2830,7 @@ describe("AgentWorkbenchPage", () => {
     input.setSelectionRange(3, 3);
     const copyButton = screen.getByRole("button", { name: /复制回答/ });
     expect(copyButton).toHaveAccessibleName(/copy this answer/);
+    expect(screen.getByLabelText(AGENT_ANSWER_ACTIONS_LABEL)).toContainElement(copyButton);
     await user.click(copyButton);
 
     expect(writeText).toHaveBeenCalledWith("可复制的助手回答，只包含结论文本。");
