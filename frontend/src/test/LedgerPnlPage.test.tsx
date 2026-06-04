@@ -493,6 +493,76 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("后台未登记本月正式财务指标契约");
     expect(panel).not.toHaveTextContent("No frozen formal financial indicator contract is registered");
     expect(panel).toHaveTextContent("暂无正式财务指标源契约数据");
+
+    const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
+    expect(strip).toHaveTextContent("正式契约缺口");
+    expect(strip).toHaveTextContent("无正式契约明细");
+    expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
+  });
+
+  it("keeps the first-screen contract gap as read failure when formal contract lookup fails", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlFormalFinancialIndicators = vi.fn(async () => {
+      throw new Error("Request failed: /api/ledger-pnl/formal-financial-indicators?report_month=202603 (502)");
+    });
+
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.dates"),
+        result: { dates: ["2026-03-31"] },
+      })),
+      getLedgerPnlSummary: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.summary"),
+        result: {
+          report_date: "2026-03-31",
+          source_version: "sv_ledger_test",
+          ledger_monthly_pnl_core: money("1.00"),
+          ledger_monthly_pnl_all: money("1.00"),
+          ledger_total_assets: money("0.00"),
+          ledger_total_liabilities: money("0.00"),
+          ledger_net_assets: money("0.00"),
+          by_currency: [],
+          by_account: [
+            {
+              account_code: "50101000001",
+              account_name: "短期信用贷款利息收入",
+              total_pnl: money("1.00"),
+              count: 1,
+            },
+          ],
+        },
+      })),
+      getLedgerPnlData: vi.fn(async () => ({
+        result_meta: buildMeta("ledger_pnl.data"),
+        result: {
+          report_date: "2026-03-31",
+          summary: {
+            total_pnl_cnx: money("0.00"),
+            total_pnl_cny: money("1.00"),
+            total_pnl: money("1.00"),
+            count: 1,
+          },
+          items: [],
+        },
+      })),
+      getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+        result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+        result: { report_months: [] },
+      })),
+      getQdbGlMonthlyAnalysisWorkbook: vi.fn(),
+      getLedgerPnlFormalFinancialIndicators,
+    });
+
+    await waitFor(() => {
+      expect(getLedgerPnlFormalFinancialIndicators).toHaveBeenCalledWith("202603");
+    });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    expect(strip).toHaveTextContent("正式契约缺口");
+    expect(strip).toHaveTextContent("正式契约读取失败");
+    expect(strip).not.toHaveTextContent("无正式契约明细");
+    expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
   });
 
   it("puts the functional evidence verdict before monthly analysis and prevents empty ledger evidence from reading as zero", async () => {

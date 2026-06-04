@@ -638,9 +638,36 @@ function hasLedgerPnlEvidence(props: {
 
 function summarizeFormalIndicatorContractGaps(
   contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+  isLoading: boolean,
+  isError: boolean,
 ) {
+  if (isLoading) {
+    return {
+      label: "正式契约读取中",
+      formalPending: 0,
+      qdbCandidateAligned: 0,
+      needsReconciliation: 0,
+    };
+  }
+  if (isError) {
+    return {
+      label: "正式契约读取失败",
+      formalPending: 0,
+      qdbCandidateAligned: 0,
+      needsReconciliation: 0,
+    };
+  }
   const metrics = contract?.metrics ?? [];
+  if (metrics.length === 0) {
+    return {
+      label: "无正式契约明细",
+      formalPending: 0,
+      qdbCandidateAligned: 0,
+      needsReconciliation: 0,
+    };
+  }
   return {
+    label: null,
     formalPending: metrics.filter((metric) => metric.source_status === "formal_pending").length,
     qdbCandidateAligned: metrics.filter((metric) => metric.source_status === "candidate_qdb_aligned").length,
     needsReconciliation: metrics.filter((metric) => metric.source_status === "needs_reconciliation").length,
@@ -782,13 +809,19 @@ function LedgerFunctionalAuditStrip(props: {
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  isFormalContractLoading: boolean;
+  isFormalContractError: boolean;
   isLoading: boolean;
   isError: boolean;
   readErrors: unknown[];
 }) {
   const state = buildLedgerFunctionalAuditState(props);
   const nextDrills = collectLedgerNextDrills(props.datesMeta, props.summaryMeta, props.dataMeta);
-  const formalGapSummary = summarizeFormalIndicatorContractGaps(props.formalIndicatorSourceContract);
+  const formalGapSummary = summarizeFormalIndicatorContractGaps(
+    props.formalIndicatorSourceContract,
+    props.isFormalContractLoading,
+    props.isFormalContractError,
+  );
   return (
     <section
       data-testid="ledger-pnl-functional-audit-strip"
@@ -835,9 +868,8 @@ function LedgerFunctionalAuditStrip(props: {
         <div>
           <span>正式契约缺口</span>
           <strong>
-            正式待接入 {formalGapSummary.formalPending} / QDB候选{" "}
-            {formalGapSummary.qdbCandidateAligned} / 需对账{" "}
-            {formalGapSummary.needsReconciliation}
+            {formalGapSummary.label ??
+              `正式待接入 ${formalGapSummary.formalPending} / QDB候选 ${formalGapSummary.qdbCandidateAligned} / 需对账 ${formalGapSummary.needsReconciliation}`}
           </strong>
         </div>
       </div>
@@ -2077,6 +2109,8 @@ export default function LedgerPnlPage() {
         summaryMeta={summaryQuery.data?.result_meta}
         dataMeta={dataQuery.data?.result_meta}
         formalIndicatorSourceContract={formalIndicatorSourceContract}
+        isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
+        isFormalContractError={formalIndicatorSourceContractQuery.isError}
         isLoading={
           datesQuery.isLoading ||
           summaryQuery.isLoading ||
