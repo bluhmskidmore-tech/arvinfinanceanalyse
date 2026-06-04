@@ -837,6 +837,17 @@ function registeredPendingReleaseGate(
     : undefined;
 }
 
+function hasEmptyFormalContractMetrics(
+  contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined,
+) {
+  return Boolean(
+    contract &&
+      contract.sample_status !== "missing_contract" &&
+      contract.formal_use_allowed !== true &&
+      (contract.metrics?.length ?? 0) === 0,
+  );
+}
+
 function formalContractExecutionStatus(props: {
   contract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   isLoading: boolean;
@@ -851,6 +862,9 @@ function formalContractExecutionStatus(props: {
   }
   if (props.contract?.formal_use_allowed === true) {
     return "已读取正式契约";
+  }
+  if (hasEmptyFormalContractMetrics(props.contract)) {
+    return "待恢复契约明细";
   }
   const releaseGate = registeredPendingReleaseGate(props.contract);
   if (releaseGate) {
@@ -885,6 +899,9 @@ function formalContractReadbackAction(props: {
   if (props.contract?.formal_use_allowed === true) {
     return "已完成正式契约回读";
   }
+  if (hasEmptyFormalContractMetrics(props.contract)) {
+    return "恢复明细生成后重新读取正式契约";
+  }
   const releaseGate = registeredPendingReleaseGate(props.contract);
   if (releaseGate) {
     return releaseGate.readback_action?.trim() || "登记来源接入证据并重新读取正式契约";
@@ -913,6 +930,9 @@ function formalContractMaterialSummary(props: {
   if (props.isError) {
     return "等待恢复正式契约读取";
   }
+  if (hasEmptyFormalContractMetrics(props.contract)) {
+    return "正式契约明细缺失";
+  }
   if (registeredPendingReleaseGate(props.contract)) {
     return "登记包已读，等待放行证据";
   }
@@ -937,6 +957,9 @@ function formalContractRemediationConclusion(props: {
   }
   if (props.contract?.formal_use_allowed === true) {
     return "正式契约已放行；无需正式补证";
+  }
+  if (hasEmptyFormalContractMetrics(props.contract)) {
+    return "正式契约已读取但没有指标明细；先恢复明细生成，再回读正式契约";
   }
   const releaseGate = registeredPendingReleaseGate(props.contract);
   if (releaseGate) {
@@ -1075,6 +1098,7 @@ function buildLedgerFunctionalAuditState(props: {
     "缺失";
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
+  const emptyFormalContractMetrics = hasEmptyFormalContractMetrics(props.formalIndicatorSourceContract);
   const formalStatus = !props.requestedReportMonth
     ? "等待报告月份"
     : props.isFormalContractLoading
@@ -1085,6 +1109,8 @@ function buildLedgerFunctionalAuditState(props: {
         ? "正式值可用"
         : releaseGate
           ? "正式契约已登记，待放行"
+          : emptyFormalContractMetrics
+            ? "正式契约明细缺失，正式值不可用"
           : props.formalIndicatorSourceContract?.sample_status === "missing_contract"
             ? "正式契约缺失，正式值不可用"
             : "正式值不可用，仅作候选核对";
@@ -1185,6 +1211,20 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，正式契约读取失败",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但正式财务指标契约读取失败，不能形成正式财务指标结论。`,
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      formalStatus,
+    };
+  }
+  if (emptyFormalContractMetrics) {
+    const summaryRows = formatEvidenceRows(props.summaryMeta);
+    const detailRows = formatEvidenceRows(props.dataMeta);
+    return {
+      tone: "warning",
+      title: "总账候选解释可用，正式契约明细缺失",
+      detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但正式财务指标契约没有指标明细，不能形成正式财务指标结论。`,
       requestedDate,
       resolvedDate,
       asOfDate,
@@ -2225,6 +2265,13 @@ function buildFormalContractDecision(
       tone: "pending",
       title: "等待正式财务指标契约",
       detail: "选择报告日并解析出月份后读取契约状态。",
+    };
+  }
+  if (hasEmptyFormalContractMetrics(contract)) {
+    return {
+      tone: "warning",
+      title: "正式财务指标契约明细缺失",
+      detail: "契约头已返回，但没有任何指标明细；正式值不可用于展示。",
     };
   }
   const releaseGate = registeredPendingReleaseGate(contract);
