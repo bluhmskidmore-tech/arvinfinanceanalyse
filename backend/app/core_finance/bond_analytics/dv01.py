@@ -201,6 +201,164 @@ def dv01_scope_summary(rows: list[dict[str, object]]) -> dict[str, Decimal]:
     }
 
 
+def dv01_action_risk_level(
+    *,
+    total_dv01: Decimal,
+    warning_dv01: Decimal,
+    limit_dv01: Decimal,
+    has_rows: bool,
+) -> str:
+    if not has_rows:
+        return "no_data"
+    if total_dv01 >= limit_dv01:
+        return "breach"
+    if total_dv01 >= warning_dv01:
+        return "watch"
+    return "ok"
+
+
+def build_dv01_action_scenario_payloads(
+    *,
+    total_dv01: Decimal,
+    warning_dv01: Decimal,
+    limit_dv01: Decimal,
+    has_rows: bool,
+    shocks: list[Decimal] | tuple[Decimal, ...],
+) -> list[dict[str, object]]:
+    if not has_rows:
+        return []
+    return [
+        {
+            "scenario_name": f"rate_up_{shock}bp",
+            "shock_bp": shock,
+            "estimated_loss": (total_dv01 * shock).copy_abs(),
+            "loss_threshold": (limit_dv01 * shock).copy_abs(),
+            "risk_level": dv01_action_scenario_level(
+                estimated_loss=(total_dv01 * shock).copy_abs(),
+                warning_loss=(warning_dv01 * shock).copy_abs(),
+                limit_loss=(limit_dv01 * shock).copy_abs(),
+            ),
+        }
+        for shock in shocks
+    ]
+
+
+def dv01_action_scenario_level(
+    *,
+    estimated_loss: Decimal,
+    warning_loss: Decimal,
+    limit_loss: Decimal,
+) -> str:
+    if estimated_loss >= limit_loss:
+        return "breach"
+    if estimated_loss >= warning_loss:
+        return "watch"
+    return "ok"
+
+
+def build_dv01_action_tenor_payloads(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    dv01_to_reduce: Decimal,
+    top_n: int,
+) -> list[dict[str, object]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        tenor = str(row.get("tenor_bucket") or "UNKNOWN").strip() or "UNKNOWN"
+        grouped.setdefault(tenor, []).append(row)
+
+    items: list[dict[str, object]] = []
+    for tenor, bucket_rows in grouped.items():
+        dv01 = sum((safe_decimal(row.get("dv01")) for row in bucket_rows), ZERO)
+        items.append(
+            {
+                "tenor_bucket": tenor,
+                "dv01": dv01,
+                "dv01_share": dv01_share(dv01, total_abs_dv01),
+                "suggested_reduction_dv01": suggested_reduction_for_share(
+                    dv01,
+                    total_abs_dv01,
+                    dv01_to_reduce,
+                ),
+                "position_count": len(bucket_rows),
+            }
+        )
+    return sorted(items, key=lambda row: (safe_decimal(row["dv01"]).copy_abs(), str(row["tenor_bucket"])), reverse=True)[:top_n]
+
+
+def build_dv01_action_issuer_payloads(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    dv01_to_reduce: Decimal,
+    top_n: int,
+) -> list[dict[str, object]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        issuer = str(row.get("issuer_name") or "UNKNOWN").strip() or "UNKNOWN"
+        grouped.setdefault(issuer, []).append(row)
+
+    items: list[dict[str, object]] = []
+    for issuer, issuer_rows in grouped.items():
+        dv01 = sum((safe_decimal(row.get("dv01")) for row in issuer_rows), ZERO)
+        items.append(
+            {
+                "issuer_name": issuer,
+                "dv01": dv01,
+                "dv01_share": dv01_share(dv01, total_abs_dv01),
+                "suggested_reduction_dv01": suggested_reduction_for_share(
+                    dv01,
+                    total_abs_dv01,
+                    dv01_to_reduce,
+                ),
+                "position_count": len(issuer_rows),
+            }
+        )
+    return sorted(items, key=lambda row: (safe_decimal(row["dv01"]).copy_abs(), str(row["issuer_name"])), reverse=True)[:top_n]
+
+
+def build_dv01_action_bond_payloads(
+    rows: list[dict[str, object]],
+    *,
+    total_abs_dv01: Decimal,
+    dv01_to_reduce: Decimal,
+    top_n: int,
+) -> list[dict[str, object]]:
+    ordered = sorted(
+        rows,
+        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
+        reverse=True,
+    )
+    return [
+        {
+            "instrument_code": str(row.get("instrument_code") or ""),
+            "instrument_name": _optional_text(row.get("instrument_name")),
+            "issuer_name": _optional_text(row.get("issuer_name")),
+            "rating": _optional_text(row.get("rating")),
+            "tenor_bucket": str(row.get("tenor_bucket") or ""),
+            "accounting_class": str(row.get("accounting_class") or ""),
+            "face_value": safe_decimal(row.get("face_value")),
+            "market_value": safe_decimal(row.get("market_value")),
+            "modified_duration": safe_decimal(row.get("modified_duration")),
+            "dv01": safe_decimal(row.get("dv01")),
+            "dv01_share": dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
+            "suggested_reduction_dv01": suggested_reduction_for_share(
+                safe_decimal(row.get("dv01")),
+                total_abs_dv01,
+                dv01_to_reduce,
+            ),
+        }
+        for row in ordered[:top_n]
+    ]
+
+
+def suggested_reduction_for_share(dv01: Decimal, total_abs_dv01: Decimal, dv01_to_reduce: Decimal) -> Decimal:
+    if dv01_to_reduce <= ZERO or total_abs_dv01 <= ZERO:
+        return ZERO
+    return dv01_to_reduce * dv01_share(dv01, total_abs_dv01)
+
+
 def build_dv01_movement_bond_payloads(
     *,
     current_rows: list[dict[str, object]],

@@ -2270,34 +2270,52 @@ def get_dv01_action_plan(
     limit_usage = (total_dv01 / limit) if limit > ZERO else ZERO
     remaining_limit_dv01 = limit - total_dv01
     suggested_hedge_units = (dv01_to_reduce / hedge_unit) if hedge_unit > ZERO else ZERO
-    risk_level = _dv01_action_risk_level(total_dv01=total_dv01, warning_dv01=warning, limit_dv01=limit, has_rows=bool(rows))
-    warnings = [] if limit_config is not None else [DV01_ACTION_THRESHOLD_NOTE]
-    if not rows:
-        warnings.append(EMPTY_WARNING)
-
-    scenario_breaches = _build_dv01_action_scenarios(
+    risk_level = dv01_core.dv01_action_risk_level(
         total_dv01=total_dv01,
         warning_dv01=warning,
         limit_dv01=limit,
         has_rows=bool(rows),
     )
-    tenor_actions = _build_dv01_action_tenors(
-        rows,
-        total_abs_dv01=total_abs_dv01,
-        dv01_to_reduce=dv01_to_reduce,
-        top_n=top_n,
+    warnings = [] if limit_config is not None else [DV01_ACTION_THRESHOLD_NOTE]
+    if not rows:
+        warnings.append(EMPTY_WARNING)
+
+    scenario_breaches = _model_payloads(
+        dv01_core.build_dv01_action_scenario_payloads(
+            total_dv01=total_dv01,
+            warning_dv01=warning,
+            limit_dv01=limit,
+            has_rows=bool(rows),
+            shocks=DV01_ACTION_SHOCKS,
+        ),
+        DV01ActionScenarioBreach,
     )
-    issuer_actions = _build_dv01_action_issuers(
-        rows,
-        total_abs_dv01=total_abs_dv01,
-        dv01_to_reduce=dv01_to_reduce,
-        top_n=top_n,
+    tenor_actions = _model_payloads(
+        dv01_core.build_dv01_action_tenor_payloads(
+            rows,
+            total_abs_dv01=total_abs_dv01,
+            dv01_to_reduce=dv01_to_reduce,
+            top_n=top_n,
+        ),
+        DV01ActionTenorItem,
     )
-    bond_actions = _build_dv01_action_bonds(
-        rows,
-        total_abs_dv01=total_abs_dv01,
-        dv01_to_reduce=dv01_to_reduce,
-        top_n=top_n,
+    issuer_actions = _model_payloads(
+        dv01_core.build_dv01_action_issuer_payloads(
+            rows,
+            total_abs_dv01=total_abs_dv01,
+            dv01_to_reduce=dv01_to_reduce,
+            top_n=top_n,
+        ),
+        DV01ActionIssuerItem,
+    )
+    bond_actions = _model_payloads(
+        dv01_core.build_dv01_action_bond_payloads(
+            rows,
+            total_abs_dv01=total_abs_dv01,
+            dv01_to_reduce=dv01_to_reduce,
+            top_n=top_n,
+        ),
+        DV01ActionBondItem,
     )
     breach_count = int(risk_level == "breach") + sum(
         1 for row in scenario_breaches if row.risk_level in {"watch", "breach"}
@@ -2660,186 +2678,6 @@ def _parse_limit_effective_date(record: dict[str, object]) -> date | None:
         return date.fromisoformat(str(raw or "").strip())
     except ValueError:
         return None
-
-
-def _dv01_action_risk_level(
-    *,
-    total_dv01: Decimal,
-    warning_dv01: Decimal,
-    limit_dv01: Decimal,
-    has_rows: bool,
-) -> str:
-    if not has_rows:
-        return "no_data"
-    if total_dv01 >= limit_dv01:
-        return "breach"
-    if total_dv01 >= warning_dv01:
-        return "watch"
-    return "ok"
-
-
-def _dv01_action_scenario_level(
-    *,
-    estimated_loss: Decimal,
-    warning_loss: Decimal,
-    limit_loss: Decimal,
-) -> str:
-    if estimated_loss >= limit_loss:
-        return "breach"
-    if estimated_loss >= warning_loss:
-        return "watch"
-    return "ok"
-
-
-def _build_dv01_action_scenarios(
-    *,
-    total_dv01: Decimal,
-    warning_dv01: Decimal,
-    limit_dv01: Decimal,
-    has_rows: bool,
-) -> list[DV01ActionScenarioBreach]:
-    if not has_rows:
-        return []
-    scenarios: list[DV01ActionScenarioBreach] = []
-    for shock in DV01_ACTION_SHOCKS:
-        estimated_loss = (total_dv01 * shock).copy_abs()
-        warning_loss = (warning_dv01 * shock).copy_abs()
-        limit_loss = (limit_dv01 * shock).copy_abs()
-        scenarios.append(
-            DV01ActionScenarioBreach.model_validate(
-                promote_flat_payload(
-                    {
-                        "scenario_name": f"rate_up_{shock}bp",
-                        "shock_bp": shock,
-                        "estimated_loss": estimated_loss,
-                        "loss_threshold": limit_loss,
-                        "risk_level": _dv01_action_scenario_level(
-                            estimated_loss=estimated_loss,
-                            warning_loss=warning_loss,
-                            limit_loss=limit_loss,
-                        ),
-                    },
-                    DV01ActionScenarioBreach,
-                )
-            )
-        )
-    return scenarios
-
-
-def _suggested_reduction_for_share(dv01: Decimal, total_abs_dv01: Decimal, dv01_to_reduce: Decimal) -> Decimal:
-    if dv01_to_reduce <= ZERO or total_abs_dv01 <= ZERO:
-        return ZERO
-    return dv01_to_reduce * dv01_core.dv01_share(dv01, total_abs_dv01)
-
-
-def _build_dv01_action_tenors(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-    dv01_to_reduce: Decimal,
-    top_n: int,
-) -> list[DV01ActionTenorItem]:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for row in rows:
-        tenor = str(row.get("tenor_bucket") or "UNKNOWN").strip() or "UNKNOWN"
-        grouped.setdefault(tenor, []).append(row)
-    items: list[DV01ActionTenorItem] = []
-    for tenor, bucket_rows in grouped.items():
-        dv01 = sum((safe_decimal(row.get("dv01")) for row in bucket_rows), ZERO)
-        items.append(
-            DV01ActionTenorItem.model_validate(
-                promote_flat_payload(
-                    {
-                        "tenor_bucket": tenor,
-                        "dv01": dv01,
-                        "dv01_share": dv01_core.dv01_share(dv01, total_abs_dv01),
-                        "suggested_reduction_dv01": _suggested_reduction_for_share(
-                            dv01,
-                            total_abs_dv01,
-                            dv01_to_reduce,
-                        ),
-                        "position_count": len(bucket_rows),
-                    },
-                    DV01ActionTenorItem,
-                )
-            )
-        )
-    return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.tenor_bucket), reverse=True)[:top_n]
-
-
-def _build_dv01_action_issuers(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-    dv01_to_reduce: Decimal,
-    top_n: int,
-) -> list[DV01ActionIssuerItem]:
-    grouped: dict[str, list[dict[str, object]]] = {}
-    for row in rows:
-        issuer = str(row.get("issuer_name") or "UNKNOWN").strip() or "UNKNOWN"
-        grouped.setdefault(issuer, []).append(row)
-    items: list[DV01ActionIssuerItem] = []
-    for issuer, issuer_rows in grouped.items():
-        dv01 = sum((safe_decimal(row.get("dv01")) for row in issuer_rows), ZERO)
-        items.append(
-            DV01ActionIssuerItem.model_validate(
-                promote_flat_payload(
-                    {
-                        "issuer_name": issuer,
-                        "dv01": dv01,
-                        "dv01_share": dv01_core.dv01_share(dv01, total_abs_dv01),
-                        "suggested_reduction_dv01": _suggested_reduction_for_share(
-                            dv01,
-                            total_abs_dv01,
-                            dv01_to_reduce,
-                        ),
-                        "position_count": len(issuer_rows),
-                    },
-                    DV01ActionIssuerItem,
-                )
-            )
-        )
-    return sorted(items, key=lambda row: (safe_decimal(row.dv01.raw).copy_abs(), row.issuer_name), reverse=True)[:top_n]
-
-
-def _build_dv01_action_bonds(
-    rows: list[dict[str, object]],
-    *,
-    total_abs_dv01: Decimal,
-    dv01_to_reduce: Decimal,
-    top_n: int,
-) -> list[DV01ActionBondItem]:
-    ordered = sorted(
-        rows,
-        key=lambda row: (safe_decimal(row.get("dv01")).copy_abs(), str(row.get("instrument_code") or "")),
-        reverse=True,
-    )
-    return [
-        DV01ActionBondItem.model_validate(
-            promote_flat_payload(
-                {
-                    "instrument_code": str(row.get("instrument_code") or ""),
-                    "instrument_name": _optional_text(row.get("instrument_name")),
-                    "issuer_name": _optional_text(row.get("issuer_name")),
-                    "rating": _optional_text(row.get("rating")),
-                    "tenor_bucket": str(row.get("tenor_bucket") or ""),
-                    "accounting_class": str(row.get("accounting_class") or ""),
-                    "face_value": safe_decimal(row.get("face_value")),
-                    "market_value": safe_decimal(row.get("market_value")),
-                    "modified_duration": safe_decimal(row.get("modified_duration")),
-                    "dv01": safe_decimal(row.get("dv01")),
-                    "dv01_share": dv01_core.dv01_share(safe_decimal(row.get("dv01")), total_abs_dv01),
-                    "suggested_reduction_dv01": _suggested_reduction_for_share(
-                        safe_decimal(row.get("dv01")),
-                        total_abs_dv01,
-                        dv01_to_reduce,
-                    ),
-                },
-                DV01ActionBondItem,
-            )
-        )
-        for row in ordered[:top_n]
-    ]
 
 
 def _normalize_dv01_accounting_class(value: str) -> str:

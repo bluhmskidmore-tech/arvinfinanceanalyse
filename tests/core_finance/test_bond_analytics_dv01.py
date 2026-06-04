@@ -3,11 +3,16 @@ from __future__ import annotations
 from decimal import Decimal
 
 from backend.app.core_finance.bond_analytics.dv01 import (
+    build_dv01_action_bond_payloads,
+    build_dv01_action_issuer_payloads,
+    build_dv01_action_scenario_payloads,
+    build_dv01_action_tenor_payloads,
     build_dv01_movement_attribution_payloads,
     build_dv01_movement_bond_payloads,
     build_dv01_tenor_bucket_payloads,
     build_dv01_top_bond_payloads,
     build_dv01_top_issuer_payloads,
+    dv01_action_risk_level,
     dv01_share,
     expand_parallel_shocks,
     face_weighted_modified_duration,
@@ -121,6 +126,96 @@ def test_dv01_core_builds_movement_rows_and_attribution_payloads() -> None:
     assert sum(row["dv01_delta"] for row in attribution) == Decimal("180")
 
 
+def test_dv01_core_builds_action_plan_payloads() -> None:
+    rows = [
+        _movement_row(
+            "A-001",
+            face="1000000",
+            duration="8",
+            dv01="800",
+            accounting_class="OCI",
+            issuer_name="Issuer A",
+            tenor_bucket="7-10Y",
+        ),
+        _movement_row(
+            "B-001",
+            face="500000",
+            duration="7",
+            dv01="350",
+            accounting_class="OCI",
+            issuer_name="Issuer A",
+            tenor_bucket="7-10Y",
+        ),
+    ]
+    total_abs = total_abs_dv01(rows)
+
+    assert dv01_action_risk_level(
+        total_dv01=Decimal("1150"),
+        warning_dv01=Decimal("900"),
+        limit_dv01=Decimal("1000"),
+        has_rows=True,
+    ) == "breach"
+    assert dv01_action_risk_level(
+        total_dv01=Decimal("0"),
+        warning_dv01=Decimal("900"),
+        limit_dv01=Decimal("1000"),
+        has_rows=False,
+    ) == "no_data"
+
+    scenarios = build_dv01_action_scenario_payloads(
+        total_dv01=Decimal("1150"),
+        warning_dv01=Decimal("900"),
+        limit_dv01=Decimal("1000"),
+        has_rows=True,
+        shocks=[Decimal("10"), Decimal("25")],
+    )
+    tenor_actions = build_dv01_action_tenor_payloads(
+        rows,
+        total_abs_dv01=total_abs,
+        dv01_to_reduce=Decimal("250"),
+        top_n=2,
+    )
+    issuer_actions = build_dv01_action_issuer_payloads(
+        rows,
+        total_abs_dv01=total_abs,
+        dv01_to_reduce=Decimal("250"),
+        top_n=2,
+    )
+    bond_actions = build_dv01_action_bond_payloads(
+        rows,
+        total_abs_dv01=total_abs,
+        dv01_to_reduce=Decimal("250"),
+        top_n=2,
+    )
+
+    assert scenarios[0]["scenario_name"] == "rate_up_10bp"
+    assert scenarios[0]["estimated_loss"] == Decimal("11500")
+    assert scenarios[0]["loss_threshold"] == Decimal("10000")
+    assert scenarios[0]["risk_level"] == "breach"
+    assert scenarios[1]["scenario_name"] == "rate_up_25bp"
+    assert build_dv01_action_scenario_payloads(
+        total_dv01=Decimal("0"),
+        warning_dv01=Decimal("900"),
+        limit_dv01=Decimal("1000"),
+        has_rows=False,
+        shocks=[Decimal("10")],
+    ) == []
+
+    assert tenor_actions[0]["tenor_bucket"] == "7-10Y"
+    assert tenor_actions[0]["dv01"] == Decimal("1150")
+    assert tenor_actions[0]["dv01_share"] == Decimal("1")
+    assert tenor_actions[0]["suggested_reduction_dv01"] == Decimal("250")
+    assert tenor_actions[0]["position_count"] == 2
+
+    assert issuer_actions[0]["issuer_name"] == "Issuer A"
+    assert issuer_actions[0]["suggested_reduction_dv01"] == Decimal("250")
+
+    assert bond_actions[0]["instrument_code"] == "A-001"
+    assert bond_actions[0]["dv01_share"] == Decimal("800") / Decimal("1150")
+    assert bond_actions[0]["suggested_reduction_dv01"] == Decimal("250") * Decimal("800") / Decimal("1150")
+    assert bond_actions[1]["instrument_code"] == "B-001"
+
+
 def _movement_row(
     instrument_code: str,
     *,
@@ -128,15 +223,18 @@ def _movement_row(
     duration: str,
     dv01: str,
     accounting_class: str,
+    issuer_name: str | None = None,
+    tenor_bucket: str = "3-5Y",
 ) -> dict[str, object]:
     return {
         "instrument_code": instrument_code,
         "instrument_name": f"{instrument_code} Bond",
-        "issuer_name": f"{instrument_code} Issuer",
+        "issuer_name": issuer_name or f"{instrument_code} Issuer",
         "rating": "AAA",
-        "tenor_bucket": "3-5Y",
+        "tenor_bucket": tenor_bucket,
         "accounting_class": accounting_class,
         "face_value": Decimal(face),
+        "market_value": Decimal(face),
         "modified_duration": Decimal(duration),
         "dv01": Decimal(dv01),
     }
