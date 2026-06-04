@@ -355,6 +355,21 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         "evidence": "Page/API evidence that the homepage uses the read-only landed-data path.",
     }
 
+    for item in all_stage["ops_gap"]["required_boundary_confirmations"]:
+        row = (
+            f"| {item['confirmation']} | `{item['target']}` | "
+            f"{item['evidence']} |"
+        )
+        assert row in status
+
+    for item in all_stage["ops_gap"]["required_pre_enable_inputs"]:
+        row = f"| {item['input']} | `{item['target']}` | {item['evidence']} |"
+        assert row in status
+
+    for item in all_stage["ops_gap"]["required_post_enable_inputs"]:
+        row = f"| {item['input']} | `{item['target']}` | {item['evidence']} |"
+        assert row in status
+
 
 def test_tushare_news_backup_timer_ops_gap_packet_lists_external_inputs_without_enabling_timer() -> None:
     packet = TIMER_OPS_GAP_PACKET_PATH.read_text(encoding="utf-8")
