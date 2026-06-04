@@ -77,5 +77,13 @@ def _header_trust_enabled() -> bool:
     return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def validate_auth_startup_guardrails(settings: Settings) -> None:
+    if str(settings.environment).strip().lower() == "production" and _header_trust_enabled():
+        raise RuntimeError(
+            "production environment cannot trust X-User-Id/X-User-Role headers "
+            f"via {ROLE_HEADER_TRUST_ENV}"
+        )
+
+
 def _role_header_trust_enabled() -> bool:
     return _header_trust_enabled()
