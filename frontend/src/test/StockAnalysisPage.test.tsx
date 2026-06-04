@@ -3045,6 +3045,7 @@ describe("StockAnalysisPage", () => {
   });
 
   it("localizes unknown risk exit blocker reasons before showing the first-screen rail", async () => {
+    const sourceTableRiskExitSignal = "sourceTableRiskExitSignal";
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategy: buildStrategyPayload({
@@ -3052,7 +3053,7 @@ describe("StockAnalysisPage", () => {
           unsupported_outputs: [
             {
               key: "risk_exit",
-              reason: "external_vendor_risk_exit_signal_ready",
+              reason: sourceTableRiskExitSignal,
             },
           ],
           risk_exit: undefined,
@@ -3063,14 +3064,12 @@ describe("StockAnalysisPage", () => {
     const section = await screen.findByTestId("stock-analysis-risk-section");
     expect(section).toHaveTextContent("风险退出待补");
     expect(section).toHaveTextContent("风险退出待确认");
-    expect(section).not.toHaveTextContent("external_vendor_risk_exit_signal_ready");
-    expect(section).not.toHaveTextContent("external vendor risk exit signal ready");
+    expect(section).not.toHaveTextContent(sourceTableRiskExitSignal);
 
     await userEvent.click(within(section).getByText("供数原因"));
 
     expect(section).toHaveTextContent("风险退出待确认");
-    expect(section).not.toHaveTextContent("external_vendor_risk_exit_signal_ready");
-    expect(section).not.toHaveTextContent("external vendor risk exit signal ready");
+    expect(section).not.toHaveTextContent(sourceTableRiskExitSignal);
   });
 
   it("keeps risk rows compact until backend reason is requested", async () => {
@@ -3774,6 +3773,7 @@ describe("StockAnalysisPage", () => {
       row.signal_kind === "factor_screen"
         ? {
             ...row,
+            strategy_label: "sourceTableAlphaSignal",
             priority_label: "external_vendor_priority_state",
           }
         : row,
@@ -3790,7 +3790,84 @@ describe("StockAnalysisPage", () => {
 
     const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
     expect(row).toHaveTextContent("状态待确认");
+    expect(row).toHaveTextContent("策略待确认");
+    expect(row).not.toHaveTextContent("sourceTableAlphaSignal");
     expect(row).not.toHaveTextContent("external_vendor_priority_state");
+  });
+
+  it("renders unknown strategy priority rank bucket statuses as pending business copy", async () => {
+    const scorePayload = buildStrategyScorePayload();
+    const rowsWithVendorBucketStatus: LivermoreStrategyScorePayload["rows"] = scorePayload.rows.map((row) => {
+      if (row.signal_kind !== "factor_screen") {
+        return row;
+      }
+
+      return {
+        ...row,
+        diagnostics: row.diagnostics
+          ? {
+              ...row.diagnostics,
+              rank_buckets: row.diagnostics.rank_buckets.map((bucket) =>
+                !bucket.included_in_priority && bucket.priority_label === "降权观察"
+                  ? {
+                      ...bucket,
+                      priority_label: "sourceTableBucketState",
+                    }
+                  : bucket,
+              ),
+            }
+          : row.diagnostics,
+      };
+    });
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyScore: buildStrategyScorePayload({
+          rows: rowsWithVendorBucketStatus,
+          current_market_state_rows: rowsWithVendorBucketStatus,
+        }),
+      }),
+    });
+
+    const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
+    expect(row).toHaveTextContent("第 11-20 名 状态待确认");
+    expect(row).not.toHaveTextContent("sourceTableBucketState");
+  });
+
+  it("renders unknown strategy priority scope labels as pending business copy", async () => {
+    const scorePayload = buildStrategyScorePayload();
+    const rowsWithVendorScope: LivermoreStrategyScorePayload["rows"] = scorePayload.rows.map((row) => {
+      if (row.signal_kind !== "factor_screen") {
+        return row;
+      }
+
+      return {
+        ...row,
+        diagnostics: row.diagnostics
+          ? {
+              ...row.diagnostics,
+              priority_scope_label: "sourceTableScopeLabel",
+            }
+          : row.diagnostics,
+      };
+    });
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyScore: buildStrategyScorePayload({
+          rows: rowsWithVendorScope,
+          current_market_state_rows: rowsWithVendorScope,
+        }),
+      }),
+    });
+
+    const row = await screen.findByTestId("stock-analysis-market-priority-row-OVERHEAT-factor_screen");
+    expect(row).toHaveTextContent("排序范围待确认");
+    expect(row).not.toHaveTextContent("sourceTableScopeLabel");
+
+    const maturity = await screen.findByTestId("stock-analysis-candidate-maturity");
+    expect(maturity).toHaveTextContent("排序范围待确认");
+    expect(maturity).not.toHaveTextContent("sourceTableScopeLabel");
   });
 
   it("localizes strategy priority source-table failures without exposing backend tables", async () => {

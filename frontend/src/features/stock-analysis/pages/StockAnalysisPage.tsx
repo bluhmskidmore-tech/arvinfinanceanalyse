@@ -782,17 +782,31 @@ function closedLoopRailIcon(key: ClosedLoopRailKey) {
   return <DatabaseOutlined />;
 }
 
+function isTechnicalRiskExitReason(reason: string | null | undefined) {
+  const normalized = reason?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const compact = normalized?.replace(/_/g, "");
+  return (
+    normalized?.includes("external_vendor") ||
+    normalized?.includes("vendor_") ||
+    normalized?.includes("source_table") ||
+    compact?.includes("externalvendor") ||
+    compact?.includes("vendor") ||
+    compact?.includes("sourcetable") ||
+    compact?.includes("choicestock")
+  );
+}
+
 function riskExitBlockedSummary(reason: string | null | undefined) {
   const normalized = reason?.trim();
   if (!normalized) return "后端未供数";
-  if (normalized.toLowerCase().replace(/[\s-]+/g, "_").includes("external_vendor")) return "风险退出待确认";
+  if (isTechnicalRiskExitReason(normalized)) return "风险退出待确认";
   if (/position_snapshot|ACTIVE A-share/i.test(normalized)) return "持仓快照缺失";
   return compactText(normalized, 24);
 }
 
 function riskExitBlockedDetail(reason: string | null | undefined, key: string | null | undefined) {
   const normalized = reason?.trim();
-  if (normalized?.toLowerCase().replace(/[\s-]+/g, "_").includes("external_vendor")) return "风险退出待确认";
+  if (isTechnicalRiskExitReason(normalized)) return "风险退出待确认";
   return localizeStockBackendText(reason, key);
 }
 
@@ -1191,7 +1205,18 @@ function strategyDisplayLabel(label: string | null | undefined, signalKind?: str
   const value = label?.trim() || signalKind?.trim() || "";
   const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
   if (strategyBacktestLabels[normalized]) return strategyBacktestLabels[normalized];
-  if (normalized.includes("external_vendor") || normalized.includes("vendor_")) return "策略待确认";
+  const compact = normalized.replace(/_/g, "");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("source_table") ||
+    compact.includes("externalvendor") ||
+    compact.includes("vendor") ||
+    compact.includes("sourcetable") ||
+    compact.includes("choicestock")
+  ) {
+    return "策略待确认";
+  }
   return value || "策略待确认";
 }
 
@@ -1350,6 +1375,25 @@ function localizeRankRangeLabel(
   return value || fallback;
 }
 
+function strategyPriorityScopeLabel(label: string | null | undefined) {
+  const value = label?.trim();
+  if (!value) return "排序范围待确认";
+  const normalized = value.toLowerCase().replace(/[\s-]+/g, "_");
+  const compact = normalized.replace(/_/g, "");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("source_table") ||
+    compact.includes("externalvendor") ||
+    compact.includes("vendor") ||
+    compact.includes("sourcetable") ||
+    compact.includes("choicestock")
+  ) {
+    return "排序范围待确认";
+  }
+  return value;
+}
+
 function strategyRiskFlagLabel(label: string | null | undefined) {
   const value = label?.trim();
   if (!value) return "风险待确认";
@@ -1398,14 +1442,16 @@ function strategyPriorityDiagnosticLabels(row: StrategyPriorityRow): string[] {
   if (diagnostics.priority_scope_label) {
     const scopeStats = diagnostics.priority_scope_stats?.return_5d;
     const scopeStatsText = scopeStats ? backtestStatsText(scopeStats) : null;
-    labels.push(scopeStatsText ? `${diagnostics.priority_scope_label} ${scopeStatsText}` : diagnostics.priority_scope_label);
+    const scopeLabel = strategyPriorityScopeLabel(diagnostics.priority_scope_label);
+    labels.push(scopeStatsText ? `${scopeLabel} ${scopeStatsText}` : scopeLabel);
   }
   if (diagnostics.maturity?.status === "narrow") {
     labels.push(`${diagnostics.maturity.label} ${localizeStockBackendText(diagnostics.maturity.reason, row.signal_kind)}`);
   }
   for (const bucket of diagnostics.rank_buckets ?? []) {
-    if (!bucket.included_in_priority && bucket.priority_label === "降权观察") {
-      labels.push(`${localizeRankRangeLabel(bucket.label, bucket.rank_from, bucket.rank_to)} ${bucket.priority_label}`);
+    const bucketStatusLabel = strategyPriorityStatusLabel(bucket.priority_label);
+    if (!bucket.included_in_priority && (bucket.priority_label === "降权观察" || bucketStatusLabel === "状态待确认")) {
+      labels.push(`${localizeRankRangeLabel(bucket.label, bucket.rank_from, bucket.rank_to)} ${bucketStatusLabel}`);
     }
   }
   for (const flag of diagnostics.risk_flags ?? []) {
@@ -5679,7 +5725,7 @@ export default function StockAnalysisPage() {
                             </ul>
                           )}
                           <p className="stock-analysis-page__footnote">
-                            这里仅统计趋势与多因子的 T+5 共振；超跌反弹作为更长周期观察背景展示，不自动抬高复核排序。
+                            T+5 共振 · 超跌仅观察
                           </p>
                         </div>
               </StrategyModuleCard>
@@ -5725,7 +5771,7 @@ export default function StockAnalysisPage() {
                       </span>
                       <strong>{strategyPriorityHeadline}</strong>
                       <small>
-                        {strategyPriorityReason} 样本阈值 {strategyScorePayload?.min_sample ?? 20}，不输出交易动作。
+                        {strategyPriorityReason} · 阈值 {strategyScorePayload?.min_sample ?? 20} · 只读排序
                       </small>
                     </div>
                     {strategyPriorityRows.length > 0 ? (
@@ -5790,7 +5836,7 @@ export default function StockAnalysisPage() {
                           <strong>
                             {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
                             {strategyMaturityRow.diagnostics?.priority_scope_label
-                              ? ` / ${strategyMaturityRow.diagnostics.priority_scope_label}`
+                              ? ` / ${strategyPriorityScopeLabel(strategyMaturityRow.diagnostics.priority_scope_label)}`
                               : ""}
                           </strong>
                           <small>
@@ -5831,7 +5877,7 @@ export default function StockAnalysisPage() {
                           <strong>
                             {strategyDisplayLabel(strategyMaturityRow.strategy_label, strategyMaturityRow.signal_kind)}
                           </strong>
-                          <small>仅展开当前成熟进度表内可见快照，按快照日期和候选排名排序。</small>
+                          <small>快照明细 · 按排名</small>
                         </div>
                         {strategyMaturityDetailQuery.isLoading ? (
                           <p className="stock-analysis-page__empty">候选明细加载中。</p>
@@ -6042,12 +6088,12 @@ export default function StockAnalysisPage() {
                       </small>
                     </div>
                     <p className="stock-analysis-page__footnote">
-                      建议只用于复核排序，不自动改交易规则。
+                      复核排序 · 不改规则
                     </p>
                     <div className="stock-analysis-page__filter-status">
                       <span>三策略 T+5 排名</span>
                       <strong>{strategyOptimizationRows.length} 组</strong>
-                      <small>样本阈值 {strategyOptimizationPayload?.min_sample ?? 20}，按收益、胜率和样本成熟度展示。</small>
+                      <small>阈值 {strategyOptimizationPayload?.min_sample ?? 20} · 收益/胜率/成熟度</small>
                     </div>
                     {strategyOptimizationRows.length > 0 ? (
                       <div className="stock-analysis-page__table-wrap">

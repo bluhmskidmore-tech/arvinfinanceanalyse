@@ -137,7 +137,10 @@ describe("StockDetailDrawer", () => {
         stockCode: "000001.SZ",
       }),
     );
-    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("按股票代码匹配");
+    expect(screen.getByTestId("stock-detail-candidate-history")).toHaveTextContent("价格回报 · 快照累计");
+    expect(screen.getByTestId("stock-detail-candidate-history")).not.toHaveTextContent("backfill");
+    expect(screen.getByTestId("stock-detail-market-events-banner")).toHaveTextContent("市场事件 · 公告财报待补");
+    expect(screen.getByTestId("stock-detail-market-events-banner")).not.toHaveTextContent("payload");
   });
 
   it("shows the resolved data date separately when a requested date falls back", async () => {
@@ -676,6 +679,23 @@ describe("StockDetailDrawer", () => {
         return_20d: null,
         data_status: "missing_forward_return",
       },
+      {
+        snapshot_as_of_date: "2026-03-13",
+        stock_code: "000001.SZ",
+        stock_name: "H5",
+        signal_kind: "sourceTableAlphaSignal",
+        candidate_rank: 5,
+        sector_code: null,
+        sector_name: null,
+        selection_close: 9.8,
+        forward_trade_date_1d: null,
+        forward_trade_date_5d: null,
+        forward_trade_date_20d: null,
+        return_1d: null,
+        return_5d: null,
+        return_20d: null,
+        data_status: "complete",
+      },
     ];
     const histSpy = vi.spyOn(client, "getLivermoreCandidateHistory").mockResolvedValue(buildCandidateHistoryEnvelope(histItems));
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
@@ -722,6 +742,9 @@ describe("StockDetailDrawer", () => {
     expect(unknownStatusRow).not.toHaveTextContent("experimental_signal");
     expect(unknownStatusRow).toHaveTextContent("状态待确认");
     expect(unknownStatusRow).not.toHaveTextContent("missing_forward_return");
+    const sourceTableRow = screen.getByTestId("stock-detail-candidate-history-row-2026-03-13-5");
+    expect(sourceTableRow).toHaveTextContent("策略待确认");
+    expect(sourceTableRow).not.toHaveTextContent("sourceTableAlphaSignal");
   });
 
   it("shows dashes instead of non-finite candidate history returns", async () => {

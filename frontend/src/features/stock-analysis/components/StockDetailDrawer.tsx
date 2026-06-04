@@ -233,7 +233,20 @@ const candidateHistorySignalLabels: Record<string, string> = {
 
 function candidateHistorySignalLabel(value: string | null | undefined): string {
   const key = value?.trim() || "stock_candidate";
-  return candidateHistorySignalLabels[key] ?? "策略待确认";
+  const normalized = key.toLowerCase().replace(/[\s-]+/g, "_");
+  const compact = normalized.replace(/_/g, "");
+  if (
+    normalized.includes("external_vendor") ||
+    normalized.includes("vendor_") ||
+    normalized.includes("source_table") ||
+    compact.includes("externalvendor") ||
+    compact.includes("vendor") ||
+    compact.includes("sourcetable") ||
+    compact.includes("choicestock")
+  ) {
+    return "策略待确认";
+  }
+  return candidateHistorySignalLabels[normalized] ?? "策略待确认";
 }
 
 export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContext, onClose }: StockDetailDrawerProps) {
@@ -458,7 +471,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
             <section className="stock-detail-drawer__candidate-history" data-testid="stock-detail-candidate-history" aria-label="入选历史">
               <Text strong>入选历史</Text>
               <p className="stock-detail-drawer__candidate-history-note">
-                价格回报口径，不含分红/复权（P1 扩展）；首期不做历史 backfill，仅展示上线后累积的快照
+                价格回报 · 快照累计
               </p>
               {candidateHistoryQuery.isLoading ? (
                 <p className="stock-detail-drawer__candidate-history-loading" data-testid="stock-detail-candidate-history-loading">
@@ -529,7 +542,7 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                 role="note"
                 data-testid="stock-detail-market-events-banner"
               >
-                按股票代码匹配 Choice/Tushare 事件 payload（best effort）；公告、财报、基本面与资金流仍待治理或口径确认。
+                市场事件 · 公告财报待补
               </div>
               {choiceNewsQuery.isLoading ? (
                 <p className="stock-detail-drawer__market-events-loading" data-testid="stock-detail-market-events-loading">
