@@ -974,12 +974,9 @@ function NcdProxyEvidencePanel({
       ) : null}
       <p
         data-testid="cross-asset-ncd-proxy-warning"
-        style={{
-          margin: `${t.space[3]}px 0 0`,
-          color: isLoading ? t.color.neutral[500] : t.color.warning[800],
-          fontSize: t.fontSize[13],
-          lineHeight: t.lineHeight.relaxed,
-        }}
+        className={`cross-asset-ncd-proxy__warning${
+          isLoading ? " cross-asset-ncd-proxy__warning--loading" : ""
+        }`}
       >
         {isLoading ? "正在加载资金代理…" : evidence.proxyWarning}
       </p>
@@ -1428,7 +1425,7 @@ function CorrelationHeatmapPanel({ matrix }: { matrix: CorrelationMatrix }) {
         ))}
         {/* Rows */}
         {matrix.cells.map((row, ri) => (
-          <div key={`row-group-${matrix.keys[ri]}`} style={{ display: "contents" }}>
+          <div key={`row-group-${matrix.keys[ri]}`} className="ca-correlation__row-group">
             <div className="ca-correlation__cell ca-correlation__cell--header">
               {matrix.labels[ri]}
             </div>
@@ -1456,7 +1453,7 @@ function CorrelationHeatmapPanel({ matrix }: { matrix: CorrelationMatrix }) {
         <span>−1</span>
         <div className="ca-correlation__legend-bar" />
         <span>+1</span>
-        <span style={{ marginLeft: 8 }}>负相关 ← 中性 → 正相关</span>
+        <span className="ca-correlation__legend-label">负相关 ← 中性 → 正相关</span>
       </div>
     </section>
   );
@@ -1632,13 +1629,13 @@ function EquityBondERPPanel({ erp }: { erp: EquityBondERP }) {
           <div className="ca-erp__metrics">
             <div className="ca-erp__metric">
               <div className="ca-erp__metric-label">盈利收益率</div>
-              <div className="ca-erp__metric-value" style={{ color: t.color.neutral[900] }}>
+              <div className="ca-erp__metric-value">
                 {erp.earningsYieldPct?.toFixed(2)}%
               </div>
             </div>
             <div className="ca-erp__metric">
               <div className="ca-erp__metric-label">10Y国债</div>
-              <div className="ca-erp__metric-value" style={{ color: t.color.neutral[900] }}>
+              <div className="ca-erp__metric-value">
                 {erp.bondYieldPct?.toFixed(2)}%
               </div>
             </div>
@@ -2311,21 +2308,15 @@ export default function CrossAssetDriversPage() {
               }}
             >
               {!linkageReportDate ? (
-                <p style={{ color: t.color.neutral[600], fontSize: t.fontSize[14] }}>
+                <p className="cross-asset-linkage__missing-date">
                   缺少可用交易日，当前无法计算宏观-债券联动分析。
                 </p>
               ) : (
-                <div style={{ display: "grid", gap: t.space[4] }}>
+                <div className="cross-asset-linkage__body">
                   {macroBondLinkageWarnings.length > 0 ? (
                     <ul
                       data-testid="cross-asset-linkage-warning-list"
-                      style={{
-                        margin: 0,
-                        paddingLeft: t.space[5],
-                        color: t.color.neutral[600],
-                        fontSize: t.fontSize[13],
-                        lineHeight: t.lineHeight.relaxed,
-                      }}
+                      className="cross-asset-linkage__warnings"
                     >
                       {macroBondLinkageWarnings.map((warning) => (
                         <li key={warning}>{warning}</li>
@@ -2333,13 +2324,7 @@ export default function CrossAssetDriversPage() {
                     </ul>
                   ) : null}
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                      gap: t.space[3],
-                    }}
-                  >
+                  <div className="cross-asset-linkage__kpi-grid">
                     <div data-testid="cross-asset-linkage-composite-score">
                       <KpiCard
                         title="综合评分"
