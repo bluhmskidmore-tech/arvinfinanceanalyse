@@ -1256,6 +1256,49 @@ def test_market_data_trace_bundle_preserves_mixed_source_candidate_boundaries() 
         server.close()
 
 
+def test_stock_analysis_trace_bundle_preserves_observational_livermore_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "stock-analysis",
+            "/stock-analysis",
+            "GAP-STOCK-ANALYSIS-PAGE",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "stock-analysis"
+
+        assert payload["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
+        assert payload["frontend_route"] == "/stock-analysis"
+        assert payload["primary_api"] == "/ui/market-data/livermore"
+        assert "/ui/market-data/livermore/signal-confluence" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/stock-detail" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/candidate-history" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/strategy-score" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/strategy-optimization" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/cycle-proxy-backtest" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/candidate-history-portfolio-backtest" in payload["supporting_apis"]
+        assert "/ui/market-data/livermore/sector-rank-series" in payload["supporting_apis"]
+        assert payload["golden_samples"] == []
+        assert any("temporary-exception" in item for item in payload["truth_chain"])
+        assert any("observation-only" in item for item in payload["truth_chain"])
+        assert any("risk_exit" in item and "backend-owned" in item for item in payload["truth_chain"])
+        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("no PAGE-STOCK" in item for item in payload["verification_focus"])
+        assert any("trading instructions" in item for item in payload["guardrails"])
+        assert any("formal metric truth" in item for item in payload["guardrails"])
+        assert any("MTR-*" in item and "promote" in item for item in payload["guardrails"])
+        assert any("readiness" in item and "visible" in item for item in payload["guardrails"])
+    finally:
+        server.close()
+
+
 def test_macro_toolkit_trace_bundle_preserves_tooling_non_metric_boundaries() -> None:
     server = McpProcess("metric-contracts")
     try:
@@ -3075,6 +3118,119 @@ def test_lineage_evidence_mcp_maps_market_data_page_to_mixed_source_records(
         assert found_payload["records"][4]["record"]["is_actual_ncd_matrix"] is False
         assert found_payload["records"][5]["matched_query"] == "market_data.livermore"
         assert "livermore_position_snapshot" in found_payload["records"][5]["record"]["tables_used"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_stock_analysis_gap_to_observational_livermore_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "livermore:strategy",
+            "result_kind": "market_data.livermore",
+            "source_surface": "livermore_observation",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "tables_used": [
+                "fact_choice_macro_daily",
+                "livermore_position_snapshot",
+                "choice_stock_daily_observation",
+                "fact_livermore_gate_supplement_daily",
+            ],
+            "rule_version": "rv_livermore_strategy_v1",
+        },
+        {
+            "cache_key": "livermore:strategy-score",
+            "result_kind": "market_data.livermore.strategy_score",
+            "source_surface": "livermore_candidate_history",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "tables_used": ["livermore_candidate_history"],
+            "rule_version": "rv_livermore_strategy_score_v1",
+        },
+        {
+            "cache_key": "livermore:strategy-optimization",
+            "result_kind": "market_data.livermore.strategy_optimization",
+            "source_surface": "livermore_candidate_history",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "tables_used": ["livermore_candidate_history"],
+            "rule_version": "rv_livermore_strategy_optimization_v1",
+        },
+        {
+            "cache_key": "livermore:cycle-proxy-backtest",
+            "result_kind": "market_data.livermore.cycle_proxy_backtest",
+            "source_surface": "livermore_candidate_history",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "full_strategy_status": "blocked_missing_inputs",
+            "tables_used": ["livermore_candidate_history", "choice_stock_daily_observation"],
+            "rule_version": "rv_livermore_cycle_proxy_backtest_v1",
+        },
+        {
+            "cache_key": "livermore:signal-confluence",
+            "result_kind": "market_data.livermore.signal_confluence",
+            "source_surface": "livermore_observation",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "tables_used": ["choice_stock_daily_observation", "fact_livermore_gate_supplement_daily"],
+            "rule_version": "rv_livermore_signal_confluence_v1",
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for query in ("GAP-STOCK-ANALYSIS-PAGE", "stock-analysis", "/stock-analysis"):
+            found = server.request(
+                "tools/call",
+                {"name": "find_lineage_records", "arguments": {"query": query, "max_results": 10}},
+            )
+            found_payload = json.loads(found["content"][0]["text"])
+
+            assert found_payload["query"] == query
+            assert "GAP-STOCK-ANALYSIS-PAGE" in found_payload["expanded_queries"]
+            assert "/ui/market-data/livermore" in found_payload["expanded_queries"]
+            assert "/ui/market-data/livermore/strategy-score" in found_payload["expanded_queries"]
+            assert "/ui/market-data/livermore/strategy-optimization" in found_payload["expanded_queries"]
+            assert "/ui/market-data/livermore/cycle-proxy-backtest" in found_payload["expanded_queries"]
+            assert "/ui/market-data/livermore/candidate-history-portfolio-backtest" in found_payload["expanded_queries"]
+            assert "/ui/market-data/livermore/signal-confluence" in found_payload["expanded_queries"]
+            assert "market_data.livermore" in found_payload["expanded_queries"]
+            assert "market_data.livermore.strategy_score" in found_payload["expanded_queries"]
+            assert "market_data.livermore.strategy_optimization" in found_payload["expanded_queries"]
+            assert "market_data.livermore.cycle_proxy_backtest" in found_payload["expanded_queries"]
+            assert "market_data.livermore.signal_confluence" in found_payload["expanded_queries"]
+            assert "livermore_position_snapshot" in found_payload["expanded_queries"]
+            assert "choice_stock_daily_observation" in found_payload["expanded_queries"]
+            assert "fact_livermore_gate_supplement_daily" in found_payload["expanded_queries"]
+            assert "MTR-MKT-001" not in found_payload["expanded_queries"]
+            assert "MTR-STOCK-001" not in found_payload["expanded_queries"]
+            assert "PAGE-STOCK-ANALYSIS-001" not in found_payload["expanded_queries"]
+            assert "GS-PNL-OVERVIEW-A" not in found_payload["expanded_queries"]
+            assert "fact_formal_pnl_fi" not in found_payload["expanded_queries"]
+            assert "product_category_pnl_formal_read_model" not in found_payload["expanded_queries"]
+            assert "bond_dashboard.headline_kpis" not in found_payload["expanded_queries"]
+            result_kinds = {item["record"].get("result_kind") for item in found_payload["records"]}
+            assert "market_data.livermore" in result_kinds
+            assert "market_data.livermore.strategy_score" in result_kinds
+            assert "market_data.livermore.strategy_optimization" in result_kinds
+            assert "market_data.livermore.cycle_proxy_backtest" in result_kinds
+            assert "market_data.livermore.signal_confluence" in result_kinds
+            assert any(item["record"].get("formal_use_allowed") is False for item in found_payload["records"])
+            assert any(
+                item["record"].get("full_strategy_status") == "blocked_missing_inputs"
+                for item in found_payload["records"]
+            )
     finally:
         server.close()
 
