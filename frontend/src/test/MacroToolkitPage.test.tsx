@@ -1170,6 +1170,7 @@ describe("MacroToolkitPage", () => {
     await user.click(within(crisisEvidence).getAllByRole("button", { name: "按建议预估" })[0]!);
 
     expect(refreshCalls[0]).toEqual({
+      startDate: "2026-02-24",
       endDate: "2026-04-30",
       products: ["CU", "SC"],
       dryRun: true,
@@ -1410,6 +1411,7 @@ describe("MacroToolkitPage", () => {
     const gapList = within(crisisEvidence).getByLabelText("Crisis Score 缺口清单");
     await user.click(within(gapList).getAllByRole("button", { name: "按建议预估" })[0]!);
     expect(refreshCalls[0]).toEqual({
+      startDate: "2026-02-24",
       endDate: "2026-04-30",
       products: ["RB", "I", "AL", "AU"],
       dryRun: true,
@@ -1667,6 +1669,7 @@ describe("MacroToolkitPage", () => {
 
     expect(refreshCalls).toHaveLength(1);
     expect(refreshCalls[0]).toEqual({
+      startDate: "2026-02-24",
       endDate: "2026-04-30",
       products: ["RB", "I", "AL", "AU"],
       dryRun: true,
@@ -1695,6 +1698,7 @@ describe("MacroToolkitPage", () => {
     await user.click(gapRefreshButton);
 
     expect(refreshCalls[1]).toEqual({
+      startDate: "2026-02-24",
       endDate: "2026-04-30",
       products: ["RB", "I", "AL", "AU"],
       dryRun: false,
@@ -1863,6 +1867,7 @@ describe("MacroToolkitPage", () => {
     await user.click(within(gapList).getByRole("button", { name: "按建议刷新并重读" }));
 
     expect(refreshCalls[1]).toEqual({
+      startDate: "2026-02-24",
       endDate: "2026-04-30",
       products: ["RB", "I", "AL", "AU"],
       dryRun: false,

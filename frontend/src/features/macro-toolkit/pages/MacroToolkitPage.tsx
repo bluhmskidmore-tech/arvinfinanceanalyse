@@ -77,6 +77,7 @@ const MACRO_COMMODITY_SHADOW_RULE_VERSION = "shadow_rule_v1";
 const MACRO_COMMODITY_SHADOW_MIN_SAMPLES = 20;
 const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
 const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
+const MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS = 45;
 const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "RB", label: "螺纹钢", description: "黑色链条" },
   { value: "I", label: "铁矿石", description: "黑色链条" },
@@ -105,6 +106,7 @@ type CommodityRefreshOptions = {
   dryRun?: boolean;
   products?: string[];
   suggestedSelection?: string[];
+  startDate?: string;
 };
 type CommodityShortfallChange = {
   field: string;
@@ -820,6 +822,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     }
     try {
       const response = await client.refreshCommodityFutures({
+        startDate: options?.startDate,
         endDate: analysis?.as_of_date ?? undefined,
         products,
         dryRun,
@@ -1390,10 +1393,20 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 setCommodityShortfallEstimates([]);
               }}
               onPreviewCommodityRefreshProducts={(products) => {
-                void refreshCommodityFutures({ dryRun: true, products, suggestedSelection: products });
+                void refreshCommodityFutures({
+                  dryRun: true,
+                  products,
+                  suggestedSelection: products,
+                  startDate: suggestedCommodityRefreshStartDate(crisisScoreResult),
+                });
               }}
               onRefreshCommodityProducts={(products) => {
-                void refreshCommodityFutures({ dryRun: false, products, suggestedSelection: products });
+                void refreshCommodityFutures({
+                  dryRun: false,
+                  products,
+                  suggestedSelection: products,
+                  startDate: suggestedCommodityRefreshStartDate(crisisScoreResult),
+                });
               }}
             />
           ) : null}
@@ -3938,6 +3951,22 @@ function crisisCommodityShortItemsFromResult(
     (result as { commodity_coverage?: unknown }).commodity_coverage ?? result.result.commodity_coverage,
   );
   return coverage?.candidate_summary?.shadow_evaluation_short_items ?? [];
+}
+
+function suggestedCommodityRefreshStartDate(result: MacroToolkitCapabilityResult | null | undefined) {
+  const latestDates = crisisCommodityShortItemsFromResult(result)
+    .map((item) => item.latest_date)
+    .filter((date): date is string => Boolean(date));
+  if (!latestDates.length) {
+    return undefined;
+  }
+  const earliestLatestDate = latestDates.sort()[0];
+  const parsed = new Date(`${earliestLatestDate}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+  parsed.setUTCDate(parsed.getUTCDate() - MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS);
+  return parsed.toISOString().slice(0, 10);
 }
 
 function crisisCommodityShortItemsFromEnvelope(
