@@ -79,6 +79,10 @@
   font-size: 13px;
 }
 
+.accountingDv01Number {
+  font-variant-numeric: tabular-nums;
+}
+
 .accountingDv01Note {
   padding: 8px 12px;
   border-top: 1px solid var(--moss-color-neutral-100);
@@ -395,6 +399,17 @@
   justify-content: space-between;
   align-items: baseline;
   gap: var(--moss-space-3);
+}
+
+.statRowLabel {
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+}
+
+.statRowValue {
+  color: var(--moss-color-primary-900);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .progressHeader {

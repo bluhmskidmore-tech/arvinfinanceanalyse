@@ -21,8 +21,6 @@ import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 const { Text } = Typography;
 
 const dt = designTokens;
-const inkStrong = dt.color.primary[900];
-const muted = dt.color.neutral[700];
 const infoAccent = dt.color.info[500];
 const gradBar = `linear-gradient(90deg, ${dt.color.info[300]} 0%, ${infoAccent} 100%)`;
 const restrainedShadow = "0 8px 18px rgba(22, 35, 46, 0.05)";
@@ -186,10 +184,10 @@ function AccountingDv01SummaryPanel({
         {rows.map((row) => (
           <div className={styles.accountingDv01Row} key={row.value}>
             <strong>{row.label}</strong>
-            <span style={tabularNumsStyle}>{formatDurationDisplay(row.payload?.face_weighted_modified_duration)}</span>
-            <span style={tabularNumsStyle}>{formatNumericDisplay(row.payload?.total_dv01)}</span>
-            <span style={tabularNumsStyle}>{formatMoneyDisplay(row.payload?.total_face_value)}</span>
-            <span style={tabularNumsStyle}>
+            <span className={styles.accountingDv01Number}>{formatDurationDisplay(row.payload?.face_weighted_modified_duration)}</span>
+            <span className={styles.accountingDv01Number}>{formatNumericDisplay(row.payload?.total_dv01)}</span>
+            <span className={styles.accountingDv01Number}>{formatMoneyDisplay(row.payload?.total_face_value)}</span>
+            <span className={styles.accountingDv01Number}>
               {row.payload ? formatNumericString(row.payload.position_count) : "—"}
             </span>
           </div>
@@ -872,8 +870,8 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.statRow}>
-              <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权收益率</span>
-              <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{k ? formatPct(k.weighted_ytm) : "—"}</span>
+              <span className={styles.statRowLabel}>加权收益率</span>
+              <span className={styles.statRowValue}>{k ? formatPct(k.weighted_ytm) : "—"}</span>
             </div>
             <ProgressStack items={maturityRows} emptyText="暂无期限结构" />
             <MaturityColumnChart items={maturityRows} emptyText="暂无期限结构" />
