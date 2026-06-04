@@ -52,6 +52,24 @@ describe("AsyncSection", () => {
     expect(container.querySelector("section")).toHaveStyle({ height: "auto" });
   });
 
+  it("uses the extracted AsyncSection class while preserving token variables", () => {
+    const { container } = render(
+      <AsyncSection
+        title="layout"
+        isLoading={false}
+        isError={false}
+        isEmpty={false}
+        onRetry={() => undefined}
+      >
+        <div>loaded</div>
+      </AsyncSection>,
+    );
+
+    const section = container.querySelector("section");
+    expect(section).toHaveClass("async-section");
+    expect(section).toHaveStyle({ "--display-section-bg": "#ffffff" });
+  });
+
   it("renders empty state", () => {
     render(
       <AsyncSection

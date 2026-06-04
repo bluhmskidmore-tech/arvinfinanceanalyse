@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { displayTokens } from "../theme/displayTokens";
+import "./AsyncSection.css";
 
 type AsyncSectionProps = {
   title: string;
@@ -11,6 +12,21 @@ type AsyncSectionProps = {
   fillHeight?: boolean;
   onRetry: () => void;
   children: ReactNode;
+};
+
+type AsyncSectionStyle = CSSProperties & {
+  "--display-section-border": string;
+  "--display-section-radius": string;
+  "--display-section-bg": string;
+  "--display-section-shadow": string;
+  "--display-surface-track": string;
+  "--display-surface-track-alt": string;
+  "--display-text-muted": string;
+  "--display-text-error": string;
+  "--display-text-secondary": string;
+  "--display-retry-border": string;
+  "--display-retry-bg": string;
+  "--display-retry-text": string;
 };
 
 export function AsyncSection({
@@ -28,79 +44,58 @@ export function AsyncSection({
   if (isLoading) {
     content = (
       <>
-        <span style={{ color: displayTokens.text.muted }}>正在载入{title}</span>
-        <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
+        <span className="async-section__loading-text">正在载入{title}</span>
+        <div className="async-section__skeleton">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              style={{
-                height: 12,
-                borderRadius: 999,
-                background: index === 0 ? displayTokens.surface.track : displayTokens.surface.trackAlt,
-                width: index === 0 ? "76%" : index === 3 ? "61%" : "100%",
-              }}
-            />
+            <div key={index} className="async-section__skeleton-bar" />
           ))}
         </div>
       </>
     );
   } else if (isError) {
     content = (
-      <div style={{ display: "grid", gap: 12, alignItems: "start" }}>
-        <span style={{ color: displayTokens.text.error, fontWeight: 600 }}>数据载入失败。</span>
-        <span style={{ color: displayTokens.text.secondary }}>
+      <div className="async-section__error">
+        <span className="async-section__error-title">数据载入失败。</span>
+        <span className="async-section__error-message">
           当前页面保留重试入口，不在浏览器端自行拼接正式口径。
         </span>
-        <button
-          onClick={onRetry}
-          style={{
-            width: "fit-content",
-            border: displayTokens.interactive.retryBorder,
-            background: displayTokens.interactive.retryBg,
-            borderRadius: 12,
-            padding: "10px 16px",
-            color: displayTokens.interactive.retryText,
-            cursor: "pointer",
-          }}
-          type="button"
-        >
+        <button onClick={onRetry} className="async-section__retry" type="button">
           重试
         </button>
       </div>
     );
   } else if (isEmpty) {
-    content = <div style={{ color: displayTokens.text.muted }}>当前暂无可展示内容。</div>;
+    content = <div className="async-section__empty">当前暂无可展示内容。</div>;
   }
 
   const header =
     !title && !extra ? null : !title && extra ? (
-      <div style={{ marginBottom: 16 }}>{extra}</div>
+      <div className="async-section__extra">{extra}</div>
     ) : (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>{title}</span>
+      <div className="async-section__header">
+        <span className="async-section__title">{title}</span>
         {extra}
       </div>
     );
 
+  const sectionStyle: AsyncSectionStyle = {
+    height: fillHeight ? "100%" : "auto",
+    "--display-section-border": displayTokens.surface.sectionBorder,
+    "--display-section-radius": `${displayTokens.radius.section}px`,
+    "--display-section-bg": displayTokens.surface.section,
+    "--display-section-shadow": displayTokens.surface.sectionShadow,
+    "--display-surface-track": displayTokens.surface.track,
+    "--display-surface-track-alt": displayTokens.surface.trackAlt,
+    "--display-text-muted": displayTokens.text.muted,
+    "--display-text-error": displayTokens.text.error,
+    "--display-text-secondary": displayTokens.text.secondary,
+    "--display-retry-border": displayTokens.interactive.retryBorder,
+    "--display-retry-bg": displayTokens.interactive.retryBg,
+    "--display-retry-text": displayTokens.interactive.retryText,
+  };
+
   return (
-    <section
-      style={{
-        height: fillHeight ? "100%" : "auto",
-        padding: 24,
-        borderRadius: displayTokens.radius.section,
-        background: displayTokens.surface.section,
-        border: displayTokens.surface.sectionBorder,
-        boxShadow: displayTokens.surface.sectionShadow,
-      }}
-    >
+    <section className="async-section" style={sectionStyle}>
       {header}
       {content}
     </section>
