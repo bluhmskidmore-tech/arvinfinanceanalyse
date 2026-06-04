@@ -423,6 +423,11 @@
   font-weight: 700;
 }
 
+.progressCaption {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .progressList {
   display: grid;
   gap: 6px;

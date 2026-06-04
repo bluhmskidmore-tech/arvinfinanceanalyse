@@ -283,7 +283,7 @@ function ProgressStack({
         <div key={item.key} className={styles.referenceProgressRow}>
           <div className={styles.progressHeader}>
             <span>{item.label}</span>
-            <span style={tabularNumsStyle}>{item.caption}</span>
+            <span className={styles.progressCaption}>{item.caption}</span>
           </div>
           <div className={styles.referenceProgressTrack}>
             <div
