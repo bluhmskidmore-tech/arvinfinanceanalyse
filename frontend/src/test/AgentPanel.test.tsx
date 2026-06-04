@@ -228,6 +228,29 @@ describe("AgentPanel", () => {
     expect(input.style.height).toBe("");
   });
 
+  it("resets the expanded composer height after submitting a multiline draft", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(buildJsonResponse(buildAgentResult()));
+    renderAgentPanel();
+
+    const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    Object.defineProperty(input, "scrollHeight", {
+      configurable: true,
+      value: 168,
+    });
+
+    await user.type(input, "line one{Shift>}{Enter}{/Shift}line two{Shift>}{Enter}{/Shift}line three");
+    expect(input.style.height).toBe("168px");
+
+    await user.click(screen.getByTestId("agent-panel-submit"));
+
+    expect(await screen.findByText("Embedded Agent answered.")).toBeInTheDocument();
+    const dockedInput = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
+    expect(dockedInput).toHaveValue("");
+    expect(dockedInput.style.height).toBe("");
+    expect(dockedInput).toHaveFocus();
+  });
+
   it("keeps the composer in view after clearing a typed draft", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];

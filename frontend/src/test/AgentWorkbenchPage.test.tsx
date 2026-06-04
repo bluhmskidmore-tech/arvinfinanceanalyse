@@ -4936,7 +4936,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(composerAction);
 
     expect(await screen.findByText("已停止等待这次回答。")).toBeInTheDocument();
-    expect(screen.getByLabelText("agent-question-input")).toHaveValue("draft after stop");
+    const input = screen.getByLabelText("agent-question-input");
+    expect(input).toHaveValue("draft after stop");
+    expect(input).toHaveFocus();
     expect(screen.getByText("已停止回答 · 可继续发送当前输入")).toBeInTheDocument();
 
     await act(async () => {
