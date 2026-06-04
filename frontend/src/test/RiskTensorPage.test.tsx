@@ -4274,6 +4274,60 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users continue from an unparseable radar duration scope to payload field review", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_duration_scope_quality_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_duration_scope_quality_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          portfolio_modified_duration: "bad-duration",
+          rate_risk_market_value: "400000000",
+          rate_risk_dv01: "120000",
+          rate_risk_modified_duration: "4.2",
+          duration_excluded_market_value: "100000000",
+          duration_excluded_count: 2,
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-duration");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(durationScope);
+      const durationQualityNote = within(durationScope).getByTestId("risk-tensor-duration-quality-note");
+      expect(durationQualityNote).toHaveTextContent("portfolio_modified_duration");
+
+      await user.click(within(durationQualityNote).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("uses readable dynamic max values for radar axes", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

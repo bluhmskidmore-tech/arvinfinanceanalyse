@@ -711,6 +711,7 @@ export default function RiskTensorPage() {
   }, [result]);
   const issuerConcentrationIssue = result ? riskTensorScalarIssue(result.issuer_concentration_hhi) : null;
   const liquidityGapRatioIssue = result ? riskTensorScalarIssue(result.liquidity_gap_30d_ratio) : null;
+  const durationRadarIssue = result ? riskTensorScalarIssue(result.portfolio_modified_duration) : null;
   const kpiRadarIssues = invalidRadarRows.filter((row) => KPI_RADAR_ISSUE_KEYS.has(row.key));
 
   const dominantTenorRow = useMemo(() => {
@@ -2347,6 +2348,17 @@ export default function RiskTensorPage() {
                     tone={durationExclusionTone(result)}
                   />
                 </div>
+                {durationRadarIssue ? (
+                  <div className="risk-tensor-radar-quality" data-testid="risk-tensor-duration-quality-note">
+                    portfolio_modified_duration {durationRadarIssue}；该字段未参与前端雷达图数值。
+                    <button type="button" className="risk-tensor-brief__link-button" onClick={handlePayloadChecklistJump}>
+                      查看字段复核
+                    </button>
+                    <button type="button" className="risk-tensor-brief__link-button" onClick={handleRetryTensorMainRead}>
+                      重试主读面
+                    </button>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
