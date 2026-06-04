@@ -968,7 +968,7 @@ def test_operations_analysis_trace_bundle_preserves_mixed_source_boundaries() ->
         assert any("GAP-OPS-MACRO-FX" in item for item in payload["truth_chain"])
         assert any("supplemental topic-entry" in item for item in payload["guardrails"])
         assert any("temporary-exception" in item for item in payload["guardrails"])
-        assert any("MTR-OPS" in item for item in payload["guardrails"])
+        assert any("Do not create or promote MTR-OPS-* metrics" in item for item in payload["guardrails"])
     finally:
         server.close()
 
@@ -1659,6 +1659,135 @@ def test_lineage_evidence_mcp_maps_cube_query_page_to_allowed_source_tables(tmp_
         assert found_payload["records"][0]["matched_query"] == "fact_formal_pnl_fi"
         assert found_payload["records"][0]["stream"] == "source_manifest_latest"
         assert found_payload["records"][0]["record"]["tables_used"] == ["fact_formal_pnl_fi"]
+    finally:
+        server.close()
+
+
+def test_lineage_evidence_mcp_maps_executive_overview_page_to_overlay_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    records = [
+        {
+            "cache_key": "executive:overview",
+            "result_kind": "executive.overview",
+            "source_surface": "executive_overview",
+            "basis": "analytical",
+            "golden_sample": "GS-EXEC-OVERVIEW-A",
+            "metric_ids": [
+                "MTR-EXEC-001",
+                "MTR-EXEC-002",
+                "MTR-EXEC-003",
+                "MTR-EXEC-004",
+                "MTR-EXEC-004A",
+                "MTR-EXEC-004B",
+                "MTR-EXEC-004C",
+            ],
+            "tables_used": [
+                "fact_formal_zqtz_balance_daily",
+                "fact_formal_tyw_balance_daily",
+                "fact_formal_pnl_fi",
+                "fact_nonstd_pnl_bridge",
+                "zqtz_bond_daily_snapshot",
+                "tyw_interbank_daily_snapshot",
+                "fact_formal_bond_analytics_daily",
+            ],
+        },
+        {
+            "cache_key": "executive:overview:aum",
+            "result_kind": "executive.overview",
+            "metric_id": "MTR-EXEC-001",
+            "source_surface": "formal_balance",
+            "basis": "analytical",
+            "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+        },
+        {
+            "cache_key": "executive:overview:nim",
+            "result_kind": "executive.overview",
+            "metric_id": "MTR-EXEC-003",
+            "source_surface": "liability_analytics.yield_metrics",
+            "basis": "analytical",
+            "tables_used": ["zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"],
+        },
+        {
+            "cache_key": "balance:overview",
+            "result_kind": "balance-analysis.overview",
+            "page_id": "PAGE-BALANCE-001",
+            "golden_sample": "GS-BAL-OVERVIEW-A",
+        },
+        {
+            "cache_key": "pnl:overview",
+            "result_kind": "pnl.overview",
+            "page_id": "PAGE-PNL-001",
+            "golden_sample": "GS-PNL-OVERVIEW-A",
+        },
+        {
+            "cache_key": "risk:tensor",
+            "result_kind": "risk.tensor",
+            "page_id": "PAGE-RISK-001",
+            "golden_sample": "GS-RISK-A",
+        },
+    ]
+    (governance / "cache_manifest.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {
+                "name": "find_lineage_records",
+                "arguments": {"query": "PAGE-EXEC-OVERVIEW-001", "max_results": 10},
+            },
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-EXEC-OVERVIEW-001"
+        assert "/ui/home/overview" in found_payload["expanded_queries"]
+        assert "executive.overview" in found_payload["expanded_queries"]
+        assert "executive_overview" in found_payload["expanded_queries"]
+        assert "OverviewPayload" in found_payload["expanded_queries"]
+        assert "ExecutiveMetric" in found_payload["expanded_queries"]
+        assert "ExecutiveMetric.caliber_label" in found_payload["expanded_queries"]
+        assert "GS-EXEC-OVERVIEW-A" in found_payload["expanded_queries"]
+        assert "MTR-EXEC-001" in found_payload["expanded_queries"]
+        assert "MTR-EXEC-004C" in found_payload["expanded_queries"]
+        assert "formal_balance" in found_payload["expanded_queries"]
+        assert "fact_formal_zqtz_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_tyw_balance_daily" in found_payload["expanded_queries"]
+        assert "fact_formal_pnl_fi" in found_payload["expanded_queries"]
+        assert "fact_nonstd_pnl_bridge" in found_payload["expanded_queries"]
+        assert "liability_analytics.yield_metrics" in found_payload["expanded_queries"]
+        assert "zqtz_bond_daily_snapshot" in found_payload["expanded_queries"]
+        assert "tyw_interbank_daily_snapshot" in found_payload["expanded_queries"]
+        assert "fact_formal_bond_analytics_daily" in found_payload["expanded_queries"]
+        assert "PAGE-BALANCE-001" not in found_payload["expanded_queries"]
+        assert "balance-analysis.overview" not in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "PAGE-PNL-001" not in found_payload["expanded_queries"]
+        assert "pnl.overview" not in found_payload["expanded_queries"]
+        assert "GS-PNL-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "PAGE-RISK-001" not in found_payload["expanded_queries"]
+        assert "risk.tensor" not in found_payload["expanded_queries"]
+        assert "GS-RISK-A" not in found_payload["expanded_queries"]
+        assert "executive.pnl-attribution" not in found_payload["expanded_queries"]
+        assert "GS-EXEC-PNL-ATTR-A" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "executive.overview"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["basis"] == "analytical"
+        assert found_payload["records"][0]["record"]["golden_sample"] == "GS-EXEC-OVERVIEW-A"
+        assert found_payload["records"][1]["matched_query"] == "executive.overview"
+        assert found_payload["records"][1]["record"]["metric_id"] == "MTR-EXEC-001"
+        assert found_payload["records"][1]["record"]["source_surface"] == "formal_balance"
+        assert found_payload["records"][2]["matched_query"] == "executive.overview"
+        assert found_payload["records"][2]["record"]["metric_id"] == "MTR-EXEC-003"
+        assert found_payload["records"][2]["record"]["source_surface"] == "liability_analytics.yield_metrics"
     finally:
         server.close()
 
