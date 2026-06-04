@@ -839,7 +839,7 @@ export default function RiskTensorPage() {
           item.key === "dv01" && !result.dv01_controls
             ? "risk-tensor-dv01-missing-controls"
             : item.key === "duration" && !showDurationScope
-            ? "risk-tensor-kpi-grid"
+            ? "risk-tensor-duration-kpi"
             : RADAR_NAVIGATION_TARGETS[item.key];
         return {
           key: item.key,
@@ -2599,6 +2599,7 @@ export default function RiskTensorPage() {
                 value={displayStr(result.portfolio_modified_duration)}
                 detail="portfolio_modified_duration；按利率风险适用资产加权。"
                 unit="年"
+                testId="risk-tensor-duration-kpi"
               />
               <KpiCard
                 title="CS01"
