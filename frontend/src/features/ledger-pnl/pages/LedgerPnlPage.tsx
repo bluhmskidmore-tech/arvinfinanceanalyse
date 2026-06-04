@@ -1082,6 +1082,9 @@ function buildLedgerFunctionalAuditState(props: {
   dataMeta: ResultMeta | null | undefined;
   requestedReportMonth: string;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  hasMatchingAnalysisMonth: boolean;
+  isMonthlyAnalysisDatesLoading: boolean;
+  isMonthlyAnalysisDatesError: boolean;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
   isLoading: boolean;
@@ -1105,6 +1108,24 @@ function buildLedgerFunctionalAuditState(props: {
     metaString(props.dataMeta?.source_version) ??
     props.summary?.source_version ??
     "缺失";
+  const monthlyAnalysisStatus = !props.requestedReportMonth
+    ? "等待报告月份"
+    : props.isMonthlyAnalysisDatesLoading
+      ? "月度月份读取中"
+      : props.isMonthlyAnalysisDatesError
+        ? "月度月份读取失败"
+      : props.hasMatchingAnalysisMonth
+        ? `${props.requestedReportMonth} 已匹配`
+        : `${props.requestedReportMonth} 无匹配`;
+  const monthlyAnalysisAction = !props.requestedReportMonth
+    ? "先选择报告日生成 report_month"
+    : props.isMonthlyAnalysisDatesLoading
+      ? "等待月度分析月份读取完成"
+      : props.isMonthlyAnalysisDatesError
+        ? "恢复月度分析月份读取"
+      : props.hasMatchingAnalysisMonth
+        ? "月度分析工作簿已匹配"
+        : `补齐 ${props.requestedReportMonth} QDB 月度分析工作簿`;
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
   const emptyFormalContractMetrics = hasEmptyFormalContractMetrics(props.formalIndicatorSourceContract);
@@ -1133,6 +1154,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1148,6 +1171,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1160,6 +1185,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1172,6 +1199,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1184,6 +1213,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1196,6 +1227,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1210,6 +1243,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1224,6 +1259,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1238,6 +1275,59 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
+      formalStatus,
+    };
+  }
+  if (formalUseAllowed) {
+    return {
+      tone: "ok",
+      title: "正式财务指标可用",
+      detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
+      formalStatus,
+    };
+  }
+  if (releaseGate) {
+    return {
+      tone: "warning",
+      title: "正式财务指标已登记待放行",
+      detail:
+        releaseGate.blocking_reason?.trim() ||
+        "正式财务指标契约已登记，但尚未满足正式放行条件。",
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
+      formalStatus,
+    };
+  }
+  if (
+    props.requestedReportMonth &&
+    !props.isMonthlyAnalysisDatesLoading &&
+    !props.isMonthlyAnalysisDatesError &&
+    !props.hasMatchingAnalysisMonth
+  ) {
+    const summaryRows = formatEvidenceRows(props.summaryMeta);
+    const detailRows = formatEvidenceRows(props.dataMeta);
+    return {
+      tone: "warning",
+      title: "总账候选解释可用，月度分析工作簿缺失",
+      detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但 ${props.requestedReportMonth} 月度分析工作簿未匹配，不能复核 QDB 月度分析或正式指标落地状态。`,
+      requestedDate,
+      resolvedDate,
+      asOfDate,
+      sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1253,32 +1343,8 @@ function buildLedgerFunctionalAuditState(props: {
       resolvedDate,
       asOfDate,
       sourceVersion,
-      formalStatus,
-    };
-  }
-  if (formalUseAllowed) {
-    return {
-      tone: "ok",
-      title: "正式财务指标可用",
-      detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      formalStatus,
-    };
-  }
-  if (releaseGate) {
-    return {
-      tone: "warning",
-      title: "正式财务指标已登记待放行",
-      detail:
-        releaseGate.blocking_reason?.trim() ||
-        "正式财务指标契约已登记，但尚未满足正式放行条件。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
+      monthlyAnalysisStatus,
+      monthlyAnalysisAction,
       formalStatus,
     };
   }
@@ -1290,6 +1356,8 @@ function buildLedgerFunctionalAuditState(props: {
     resolvedDate,
     asOfDate,
     sourceVersion,
+    monthlyAnalysisStatus,
+    monthlyAnalysisAction,
     formalStatus,
   };
 }
@@ -1305,6 +1373,9 @@ function LedgerFunctionalAuditStrip(props: {
   dataMeta: ResultMeta | null | undefined;
   requestedReportMonth: string;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  hasMatchingAnalysisMonth: boolean;
+  isMonthlyAnalysisDatesLoading: boolean;
+  isMonthlyAnalysisDatesError: boolean;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
   isLoading: boolean;
@@ -1401,6 +1472,10 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.sourceVersion}</strong>
         </div>
         <div>
+          <span>月度工作簿</span>
+          <strong>{state.monthlyAnalysisStatus}</strong>
+        </div>
+        <div>
           <span>正式边界</span>
           <strong>{state.formalStatus}</strong>
         </div>
@@ -1458,6 +1533,14 @@ function LedgerFunctionalAuditStrip(props: {
                 {candidateEvidencePath}
               </button>
             )}
+          </div>
+          <div>
+            <span>月度分析工作簿</span>
+            <strong>{state.monthlyAnalysisStatus}</strong>
+          </div>
+          <div>
+            <span>月度补证路径</span>
+            <strong>{state.monthlyAnalysisAction}</strong>
           </div>
           <div>
             <span>正式补证路径</span>
@@ -2964,6 +3047,9 @@ export default function LedgerPnlPage() {
         dataMeta={dataQuery.data?.result_meta}
         requestedReportMonth={requestedAnalysisMonth}
         formalIndicatorSourceContract={formalIndicatorSourceContract}
+        hasMatchingAnalysisMonth={hasMatchingAnalysisMonth}
+        isMonthlyAnalysisDatesLoading={monthlyAnalysisDatesQuery.isLoading}
+        isMonthlyAnalysisDatesError={monthlyAnalysisDatesQuery.isError}
         isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
         isFormalContractError={formalIndicatorSourceContractQuery.isError}
         isLoading={datesQuery.isLoading || summaryQuery.isLoading || dataQuery.isLoading}
@@ -2989,19 +3075,26 @@ export default function LedgerPnlPage() {
             </div>
           </div>
           <span data-testid="ledger-pnl-monthly-analysis-month" className="ledger-pnl-analysis__month">
-            {selectedAnalysisMonth || (requestedAnalysisMonth ? `${requestedAnalysisMonth} 无匹配` : "暂无月份")}
+            {selectedAnalysisMonth ||
+              (monthlyAnalysisDatesQuery.isError
+                ? "月份读取失败"
+                : requestedAnalysisMonth
+                  ? `${requestedAnalysisMonth} 无匹配`
+                  : "暂无月份")}
           </span>
         </div>
-
-        {!hasMatchingAnalysisMonth && !monthlyAnalysisDatesQuery.isLoading ? (
-          <div data-testid="ledger-pnl-monthly-analysis-missing-month" className="ledger-pnl-analysis__empty">
-            当前报告日没有对应月度分析工作簿
-          </div>
-        ) : null}
 
         {monthlyAnalysisDatesQuery.isError ? (
           <div data-testid="ledger-pnl-monthly-analysis-error" className="ledger-pnl-analysis__empty">
             月度分析月份读取失败
+          </div>
+        ) : null}
+
+        {!hasMatchingAnalysisMonth &&
+        !monthlyAnalysisDatesQuery.isLoading &&
+        !monthlyAnalysisDatesQuery.isError ? (
+          <div data-testid="ledger-pnl-monthly-analysis-missing-month" className="ledger-pnl-analysis__empty">
+            当前报告日没有对应月度分析工作簿
           </div>
         ) : null}
 
