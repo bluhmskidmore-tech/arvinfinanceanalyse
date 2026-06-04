@@ -725,11 +725,11 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
-  if (!pnlEvidenceAvailable) {
+  if (props.selectedReportDateMissingFromDates) {
     return {
       tone: "warning",
-      title: "总账损益证据缺失",
-      detail: "汇总没有损益证据行，不能把总账明细或空汇总解释为真实 PnL 0。",
+      title: "报告日未列入可选清单",
+      detail: "接口仍按查询日期返回了总账切片，但需要核对日期清单和源文件登记。",
       requestedDate,
       resolvedDate,
       asOfDate,
@@ -737,11 +737,11 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
-  if (props.selectedReportDateMissingFromDates) {
+  if (!pnlEvidenceAvailable) {
     return {
       tone: "warning",
-      title: "报告日未列入可选清单",
-      detail: "接口仍按查询日期读取到了证据，但需要核对日期清单和源文件登记。",
+      title: "总账损益证据缺失",
+      detail: "汇总没有损益证据行，不能把总账明细或空汇总解释为真实 PnL 0。",
       requestedDate,
       resolvedDate,
       asOfDate,
