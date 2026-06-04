@@ -1070,6 +1070,11 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
               <strong>{props.surface.summary.backtestGateLabel}</strong>
               <small>{props.surface.summary.backtestGateDetailLabel}</small>
             </div>
+            <div className={`product-category-action-backtest__metric is-${props.surface.summary.backtestGateTone}`}>
+              <span>补样本任务</span>
+              <strong>{props.surface.summary.sampleRepairLabel}</strong>
+              <small>{props.surface.summary.sampleRepairDetailLabel}</small>
+            </div>
             <div className="product-category-action-backtest__metric">
               <span>复核工作量</span>
               <strong>{props.surface.summary.reviewWorkloadLabel}</strong>

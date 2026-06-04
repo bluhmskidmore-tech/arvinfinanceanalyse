@@ -831,6 +831,8 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("归因覆盖");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("回测闸口");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本不足");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本任务");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补 2 个月");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核工作量");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规则处置");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧 3");
@@ -838,7 +840,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧触发条件");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("低置信");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新信号校准复核");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核后执行");
+    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本后复核");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("P3 低样本复核");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("历史均值");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("当前证据");

@@ -422,6 +422,8 @@ export type ProductCategoryOperatingBacktestSurface = {
     backtestGateLabel: string;
     backtestGateDetailLabel: string;
     backtestGateTone: "positive" | "negative" | "neutral";
+    sampleRepairLabel: string;
+    sampleRepairDetailLabel: string;
     reviewWorkloadLabel: string;
     reviewWorkloadDetailLabel: string;
     dispositionLabel: string;
@@ -3042,6 +3044,9 @@ function productCategoryBacktestRuleDisposition(
   };
 }
 
+const PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT = 3;
+const PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT = 6;
+
 function productCategoryBacktestGate(input: {
   evaluatedMonthCount: number;
   signalCount: number;
@@ -3050,21 +3055,33 @@ function productCategoryBacktestGate(input: {
   backtestGateDetailLabel: string;
   backtestGateTone: "positive" | "negative" | "neutral";
 } {
-  const requiredMonthCount = 3;
-  const requiredSignalCount = 6;
-  const enoughHistory = input.evaluatedMonthCount >= requiredMonthCount;
-  const enoughSignals = input.signalCount >= requiredSignalCount;
+  const enoughHistory = input.evaluatedMonthCount >= PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT;
+  const enoughSignals = input.signalCount >= PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT;
   if (enoughHistory && enoughSignals) {
     return {
       backtestGateLabel: "可用于复核",
-      backtestGateDetailLabel: `连续回测 ${input.evaluatedMonthCount}/${requiredMonthCount} 个月；可评价信号 ${input.signalCount} 条，达到规则复核阈值`,
+      backtestGateDetailLabel: `连续回测 ${input.evaluatedMonthCount}/${PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT} 个月；可评价信号 ${input.signalCount} 条，达到规则复核阈值`,
       backtestGateTone: "positive",
     };
   }
   return {
     backtestGateLabel: "样本不足",
-    backtestGateDetailLabel: `连续回测 ${input.evaluatedMonthCount}/${requiredMonthCount} 个月；可评价信号 ${input.signalCount} 条，未达到规则放行阈值`,
+    backtestGateDetailLabel: `连续回测 ${input.evaluatedMonthCount}/${PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT} 个月；可评价信号 ${input.signalCount} 条，未达到规则放行阈值`,
     backtestGateTone: "negative",
+  };
+}
+
+function productCategoryBacktestSampleRepair(input: {
+  evaluatedMonthCount: number;
+  signalCount: number;
+}): {
+  sampleRepairLabel: string;
+  sampleRepairDetailLabel: string;
+} {
+  const missingMonthCount = Math.max(0, PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT - input.evaluatedMonthCount);
+  return {
+    sampleRepairLabel: missingMonthCount > 0 ? `补 ${missingMonthCount} 个月` : "补信号样本",
+    sampleRepairDetailLabel: `闸口需 ${PRODUCT_CATEGORY_BACKTEST_REQUIRED_MONTH_COUNT} 个月/${PRODUCT_CATEGORY_BACKTEST_REQUIRED_SIGNAL_COUNT} 条信号；当前 ${input.evaluatedMonthCount} 个月/${input.signalCount} 条信号`,
   };
 }
 
@@ -3346,6 +3363,10 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
     evaluatedMonthCount: evaluatedDates.length,
     signalCount: samples.length,
   });
+  const sampleRepair = productCategoryBacktestSampleRepair({
+    evaluatedMonthCount: evaluatedDates.length,
+    signalCount: samples.length,
+  });
   const latestReviewRows = productCategoryBacktestLatestReviewRows({
     latestActionRows,
     actionRows,
@@ -3369,6 +3390,8 @@ export function selectProductCategoryOperatingActionBacktestSurface(input: {
       backtestGateLabel: backtestGate.backtestGateLabel,
       backtestGateDetailLabel: backtestGate.backtestGateDetailLabel,
       backtestGateTone: backtestGate.backtestGateTone,
+      sampleRepairLabel: sampleRepair.sampleRepairLabel,
+      sampleRepairDetailLabel: sampleRepair.sampleRepairDetailLabel,
       reviewWorkloadLabel: reviewWorkload.reviewWorkloadLabel,
       reviewWorkloadDetailLabel: reviewWorkload.reviewWorkloadDetailLabel,
       dispositionLabel: ruleDisposition.dispositionLabel,

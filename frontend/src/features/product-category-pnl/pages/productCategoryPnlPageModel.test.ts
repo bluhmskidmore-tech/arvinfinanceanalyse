@@ -664,6 +664,8 @@ describe("productCategoryPnlPageModel", () => {
       backtestGateLabel: "样本不足",
       backtestGateDetailLabel: "连续回测 1/3 个月；可评价信号 3 条，未达到规则放行阈值",
       backtestGateTone: "negative",
+      sampleRepairLabel: "补 2 个月",
+      sampleRepairDetailLabel: "闸口需 3 个月/6 条信号；当前 1 个月/3 条信号",
       reviewWorkloadLabel: "P3 1",
       reviewWorkloadDetailLabel: "复核 1 条；P1 0 条，P2 0 条，P3 1 条",
       dispositionLabel: "收紧 1",
