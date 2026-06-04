@@ -1564,6 +1564,29 @@ describe("StockAnalysisPage", () => {
     expect(finalLayoutCss).not.toContain("grid-template-columns: repeat(3, minmax(0, 1fr)) 320px");
   });
 
+  it("keeps the desktop first screen in one main column plus right rail", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const closureStart = css.indexOf("Desktop layout closure");
+    const closureCss = css.slice(closureStart);
+
+    expect(closureStart).toBeGreaterThan(-1);
+    expect(closureCss).toMatch(
+      /@media \(min-width:\s*1280px\)[\s\S]*?\.stock-analysis-page__first-screen\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*328px\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-main"\],[\s\S]*?\[data-testid="stock-analysis-first-screen-workbench"\]\s*\{[\s\S]*?display:\s*contents\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\{[\s\S]*?grid-column:\s*2\s*\/\s*3\s*!important[\s\S]*?grid-row:\s*1\s*\/\s*span\s*5\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*2\s*!important[\s\S]*?grid-row:\s*4\s*!important/,
+    );
+    expect(closureCss).toMatch(
+      /@media \(min-width:\s*1600px\)[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*352px\s*!important/,
+    );
+  });
+
   it("surfaces backend supply status and stock selection on the first screen", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ metaOverrides: { quality_flag: "warning" } }),
@@ -1933,7 +1956,7 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-candidate-history-portfolio-backtest");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
-    expect(section).toHaveTextContent("源表缺失");
+    expect(section).toHaveTextContent("数据源缺失");
     expect(section).not.toHaveTextContent("Failed to fetch");
     expect(section).not.toHaveTextContent("source_table");
     expect(section).not.toHaveTextContent("choice_stock_portfolio_backtest");
@@ -1953,7 +1976,7 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-cycle-proxy-backtest");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
-    expect(section).toHaveTextContent("源表缺失");
+    expect(section).toHaveTextContent("数据源缺失");
     expect(section).not.toHaveTextContent("Failed to fetch");
     expect(section).not.toHaveTextContent("source_table");
     expect(section).not.toHaveTextContent("choice_stock_cycle_proxy_backtest");
@@ -3001,7 +3024,7 @@ describe("StockAnalysisPage", () => {
     });
 
     const errorPanel = await screen.findByTestId("stock-analysis-error-workbench");
-    expect(errorPanel).toHaveTextContent("源表缺失");
+    expect(errorPanel).toHaveTextContent("数据源缺失");
     expect(errorPanel).not.toHaveTextContent("Request failed");
     expect(errorPanel).not.toHaveTextContent("/ui/market-data/livermore");
     expect(errorPanel).not.toHaveTextContent("source_table");
@@ -3237,7 +3260,7 @@ describe("StockAnalysisPage", () => {
 
     expect(await screen.findByText("多日板块序列加载失败")).toBeInTheDocument();
     const panel = screen.getByTestId("stock-analysis-sector-series-panel");
-    expect(panel).toHaveTextContent("源表缺失");
+    expect(panel).toHaveTextContent("数据源缺失");
     expect(panel).not.toHaveTextContent("Failed to fetch");
     expect(panel).not.toHaveTextContent("/ui/market-data/livermore/sector-rank-series");
     expect(panel).not.toHaveTextContent("source_table");
@@ -3572,7 +3595,7 @@ describe("StockAnalysisPage", () => {
 
     const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
     await waitFor(() => expect(panel).toHaveTextContent("暂不可用"), { timeout: 3_000 });
-    expect(panel).toHaveTextContent("源表缺失");
+    expect(panel).toHaveTextContent("数据源缺失");
     expect(panel).not.toHaveTextContent("Failed to fetch");
     expect(panel).not.toHaveTextContent("source_table");
     expect(panel).not.toHaveTextContent("choice_stock_candidate_history");
@@ -3715,7 +3738,7 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-candidate-maturity");
     await waitFor(() => expect(section).toHaveTextContent("候选明细暂不可用"), { timeout: 3_000 });
-    expect(section).toHaveTextContent("源表缺失");
+    expect(section).toHaveTextContent("数据源缺失");
     expect(section).not.toHaveTextContent("Failed to fetch");
     expect(section).not.toHaveTextContent("source_table");
     expect(section).not.toHaveTextContent("choice_stock_candidate_history");
@@ -3881,14 +3904,14 @@ describe("StockAnalysisPage", () => {
 
     const section = await screen.findByTestId("stock-analysis-market-priority-summary");
     await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
-    expect(section).toHaveTextContent("源表缺失");
+    expect(section).toHaveTextContent("数据源缺失");
     expect(section).not.toHaveTextContent("Failed to fetch");
     expect(section).not.toHaveTextContent("source_table");
     expect(section).not.toHaveTextContent("choice_stock_strategy_score");
     expect(section).not.toHaveTextContent("/ui/market-data/livermore/strategy-score");
     const detail = within(section).getByTestId("stock-analysis-strategy-card-market-priority-detail");
     const summaryDetail = detail.querySelector(".stock-analysis-strategy-module-card__detail-line");
-    expect(summaryDetail).toHaveTextContent("必需源表缺失");
+    expect(summaryDetail).toHaveTextContent("必需数据源缺失");
     expect(summaryDetail).not.toHaveTextContent("无法连接策略分析服务");
   });
 
@@ -3952,7 +3975,7 @@ describe("StockAnalysisPage", () => {
 
     const card = await screen.findByTestId("stock-analysis-strategy-optimization");
     await waitFor(() => expect(card).toHaveTextContent("暂不可用"), { timeout: 3_000 });
-    expect(card).toHaveTextContent("源表缺失");
+    expect(card).toHaveTextContent("数据源缺失");
     expect(card).not.toHaveTextContent("Failed to fetch");
     expect(card).not.toHaveTextContent("source_table");
     expect(card).not.toHaveTextContent("choice_stock_strategy_optimization");

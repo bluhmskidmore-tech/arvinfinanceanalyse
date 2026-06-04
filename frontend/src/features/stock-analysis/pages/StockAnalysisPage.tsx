@@ -135,7 +135,7 @@ function localizeStockErrorMessage(message: string) {
     (normalized.includes("source_table") || normalized.includes("source table")) &&
     normalized.includes("missing")
   ) {
-    return "请求失败：必需源表缺失，稍后复核供数状态。";
+    return "请求失败：必需数据源缺失，稍后复核供数状态。";
   }
   if (
     normalized.includes("request failed") ||
