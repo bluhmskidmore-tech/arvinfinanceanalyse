@@ -4068,7 +4068,7 @@ describe("AgentWorkbenchPage", () => {
     expect(cssText).toContain("grid-template-columns: 1fr");
   });
 
-  it("queues a typed follow-up with Enter while the current answer is still running", async () => {
+  it("queues a multiline typed follow-up with Enter while the current answer is still running", async () => {
     const user = userEvent.setup();
     fetchMock.mockReturnValueOnce(new Promise(() => undefined));
 
@@ -4080,15 +4080,18 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("回答中 · Enter 排队下一句 · Shift+Enter 换行")).toBeInTheDocument();
 
     const input = screen.getByLabelText("agent-question-input") as HTMLTextAreaElement;
-    await user.type(input, "enter queued second turn");
+    await user.type(input, "enter queued second turn{Shift>}{Enter}{/Shift}with extra context");
     await user.keyboard("{Enter}");
 
+    const queuedQuestion = "enter queued second turn\nwith extra context";
     expect(getQueuedFollowUpStatus()).toHaveTextContent("enter queued second turn");
+    expect(getQueuedFollowUpStatus()).toHaveTextContent("with extra context");
     expect(screen.queryByText("已排队：enter queued second turn")).not.toBeInTheDocument();
     expect(screen.queryByText("当前回答完成后自动发送。")).not.toBeInTheDocument();
     expect(input).toHaveValue("");
     expect(input).toHaveFocus();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/agent/runs")).toHaveLength(1);
+    expect(window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY)).toBe(JSON.stringify([queuedQuestion]));
   });
 
   it("keeps a queued follow-up draft anchored to the composer while the active answer is running", async () => {
