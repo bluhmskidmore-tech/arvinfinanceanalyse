@@ -7,6 +7,7 @@ import { useApiClient } from "../../../api/client";
 import type { LivermoreStockDetailCandle } from "../../../api/contracts";
 import { BaseChart } from "../../../components/charts/BaseChart";
 import { designTokens } from "../../../theme/designSystem";
+import { localizeStrategyPanelErrorDetail } from "../lib/stockAnalysisPageModel";
 import { stockAnalysisPageCssVars } from "../lib/stockAnalysisTokens";
 import "./StockDetailDrawer.css";
 
@@ -120,6 +121,21 @@ const stockDetailMetaVendorLabels: Record<string, string> = {
 function stockDetailMetaLabel(value: string | null | undefined, labels: Record<string, string>) {
   const normalized = (value ?? "").trim().toLowerCase();
   return labels[normalized] ?? value ?? stockDetailMetaPendingLabel;
+}
+
+function rawStockDetailErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error == null) return "";
+  return String(error);
+}
+
+function stockDetailSubqueryErrorDescription(error: unknown, fallbackDescription: string): string {
+  const message = rawStockDetailErrorMessage(error);
+  const normalized = message.trim().toLowerCase().replace(/\s+/g, " ");
+  if (normalized.includes("source_table") || normalized.includes("source table")) {
+    return `${fallbackDescription} ${localizeStrategyPanelErrorDetail(message)}`;
+  }
+  return fallbackDescription;
 }
 
 export type StockDetailDrawerProps = {
@@ -442,7 +458,10 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                   type="warning"
                   showIcon
                   message="入选历史暂不可用"
-                  description="图表与因子仍可继续查看。"
+                  description={stockDetailSubqueryErrorDescription(
+                    candidateHistoryQuery.error,
+                    "图表与因子仍可继续查看。",
+                  )}
                   data-testid="stock-detail-candidate-history-error"
                 />
               ) : null}
@@ -510,7 +529,10 @@ export function StockDetailDrawer({ stockCode, stockName, asOfDate, reviewContex
                   type="warning"
                   showIcon
                   message="市场事件暂不可用"
-                  description="个股复核数据不受影响，可稍后刷新市场事件。"
+                  description={stockDetailSubqueryErrorDescription(
+                    choiceNewsQuery.error,
+                    "个股复核数据不受影响，可稍后刷新市场事件。",
+                  )}
                   data-testid="stock-detail-market-events-error"
                 />
               ) : null}

@@ -114,6 +114,10 @@ function strategyPanelErrorMessage(error: unknown) {
   return localizeStrategyPanelErrorDetail(message);
 }
 
+function rawErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function localizeStockErrorMessage(message: string) {
   const value = message.trim();
   const normalized = value.toLowerCase().replace(/\s+/g, " ");
@@ -126,6 +130,12 @@ function localizeStockErrorMessage(message: string) {
   }
   if (normalized.includes("not allowed") || normalized.includes("permission") || normalized.includes("forbidden")) {
     return "数据权限待确认，请联系管理员。";
+  }
+  if (
+    (normalized.includes("source_table") || normalized.includes("source table")) &&
+    normalized.includes("missing")
+  ) {
+    return "请求失败：必需源表缺失，稍后复核供数状态。";
   }
   if (
     normalized.includes("request failed") ||
@@ -2358,7 +2368,7 @@ export default function StockAnalysisPage() {
           isLoading: strategyScoreQuery.isLoading,
           isError: strategyScoreQuery.isError,
         }),
-        errorMessage: strategyScoreQuery.isError ? errorMessage(strategyScoreQuery.error) : undefined,
+        errorMessage: strategyScoreQuery.isError ? rawErrorMessage(strategyScoreQuery.error) : undefined,
       }),
     [
       strategyPriorityRows,
@@ -2385,7 +2395,7 @@ export default function StockAnalysisPage() {
           isLoading: strategyBacktestQuery.isLoading,
           isError: strategyBacktestQuery.isError,
         }),
-        errorMessage: strategyBacktestQuery.isError ? errorMessage(strategyBacktestQuery.error) : undefined,
+        errorMessage: strategyBacktestQuery.isError ? rawErrorMessage(strategyBacktestQuery.error) : undefined,
       }),
     [
       strategyBacktestPayload,
@@ -2412,7 +2422,7 @@ export default function StockAnalysisPage() {
           isError: strategyOptimizationQuery.isError,
         }),
         errorMessage: strategyOptimizationQuery.isError
-          ? errorMessage(strategyOptimizationQuery.error)
+          ? rawErrorMessage(strategyOptimizationQuery.error)
           : undefined,
       }),
     [
@@ -4618,7 +4628,7 @@ export default function StockAnalysisPage() {
                                   type="warning"
                                   showIcon
                                   message="多日板块序列加载失败"
-                                  description={errorMessage(sectorRankSeriesQuery.error)}
+                                  description={strategyPanelErrorMessage(sectorRankSeriesQuery.error)}
                                 />
                               ) : null}
                               {!sectorRankSeriesQuery.isFetching &&
@@ -5273,7 +5283,7 @@ export default function StockAnalysisPage() {
                     ) : null}
                     {candidateHistoryPortfolioBacktestQuery.isError ? (
                       <p className="stock-analysis-page__notice">
-                        组合回测暂不可用：{errorMessage(candidateHistoryPortfolioBacktestQuery.error)}
+                        组合回测暂不可用：{strategyPanelErrorMessage(candidateHistoryPortfolioBacktestQuery.error)}
                       </p>
                     ) : null}
                     {!candidateHistoryPortfolioBacktestQuery.isLoading &&
@@ -5340,7 +5350,7 @@ export default function StockAnalysisPage() {
                     ) : null}
                     {cycleProxyBacktestQuery.isError ? (
                       <p className="stock-analysis-page__notice">
-                        代理回测暂不可用：{errorMessage(cycleProxyBacktestQuery.error)}
+                        代理回测暂不可用：{strategyPanelErrorMessage(cycleProxyBacktestQuery.error)}
                       </p>
                     ) : null}
                     {!cycleProxyBacktestQuery.isLoading && !cycleProxyBacktestQuery.isError ? (
@@ -5815,7 +5825,7 @@ export default function StockAnalysisPage() {
                         ) : null}
                         {strategyMaturityDetailQuery.isError ? (
                           <p className="stock-analysis-page__notice">
-                            候选明细暂不可用：{errorMessage(strategyMaturityDetailQuery.error)}
+                            候选明细暂不可用：{strategyPanelErrorMessage(strategyMaturityDetailQuery.error)}
                           </p>
                         ) : null}
                         {!strategyMaturityDetailQuery.isLoading && !strategyMaturityDetailQuery.isError ? (
@@ -5891,7 +5901,7 @@ export default function StockAnalysisPage() {
                 ) : null}
                 {strategyBacktestQuery.isError ? (
                   <p className="stock-analysis-page__notice">
-                    策略回溯表现暂不可用：{errorMessage(strategyBacktestQuery.error)}
+                    策略回溯表现暂不可用：{strategyPanelErrorMessage(strategyBacktestQuery.error)}
                   </p>
                 ) : null}
                 {!strategyBacktestQuery.isLoading && !strategyBacktestQuery.isError ? (

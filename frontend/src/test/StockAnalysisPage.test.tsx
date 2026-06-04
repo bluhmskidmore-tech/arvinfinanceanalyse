@@ -1035,8 +1035,11 @@ function stockClient(options?: {
   confluence?: LivermoreSignalConfluencePayload;
   confluenceError?: Error;
   candidateHistory?: LivermoreCandidateHistoryPayload;
+  candidateHistoryError?: Error;
   candidateHistoryPortfolioBacktest?: LivermoreCandidateHistoryPortfolioBacktestPayload;
+  candidateHistoryPortfolioBacktestError?: Error;
   cycleProxyBacktest?: LivermoreCycleProxyBacktestPayload;
+  cycleProxyBacktestError?: Error;
   strategyScore?: LivermoreStrategyScorePayload;
   strategyScoreError?: Error;
   strategyOptimization?: LivermoreStrategyOptimizationPayload;
@@ -1073,15 +1076,22 @@ function stockClient(options?: {
         options?.confluence ?? buildConfluencePayload(),
       );
     },
-    getLivermoreCandidateHistory: async (): Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>> =>
-      buildMockApiEnvelope(
+    getLivermoreCandidateHistory: async (): Promise<ApiEnvelope<LivermoreCandidateHistoryPayload>> => {
+      if (options?.candidateHistoryError) {
+        throw options.candidateHistoryError;
+      }
+      return buildMockApiEnvelope(
         "market_data.livermore.candidate_history",
         options?.candidateHistory ?? buildCandidateHistoryPayload(),
-      ),
+      );
+    },
     getLivermoreCandidateHistoryPortfolioBacktest: async (): Promise<
       ApiEnvelope<LivermoreCandidateHistoryPortfolioBacktestPayload>
-    > =>
-      buildMockApiEnvelope(
+    > => {
+      if (options?.candidateHistoryPortfolioBacktestError) {
+        throw options.candidateHistoryPortfolioBacktestError;
+      }
+      return buildMockApiEnvelope(
         "market_data.livermore.candidate_history_portfolio_backtest",
         options?.candidateHistoryPortfolioBacktest ?? {
           status: "portfolio_proxy",
@@ -1117,9 +1127,13 @@ function stockClient(options?: {
           nav_series: [],
           rebalance_log: [],
         },
-      ),
-    getLivermoreCycleProxyBacktest: async (): Promise<ApiEnvelope<LivermoreCycleProxyBacktestPayload>> =>
-      buildMockApiEnvelope(
+      );
+    },
+    getLivermoreCycleProxyBacktest: async (): Promise<ApiEnvelope<LivermoreCycleProxyBacktestPayload>> => {
+      if (options?.cycleProxyBacktestError) {
+        throw options.cycleProxyBacktestError;
+      }
+      return buildMockApiEnvelope(
         "market_data.livermore.cycle_proxy_backtest",
         options?.cycleProxyBacktest ?? {
           status: "proxy",
@@ -1148,7 +1162,8 @@ function stockClient(options?: {
           },
           nav_series: [],
         },
-      ),
+      );
+    },
     getLivermoreStrategyScore: async (): Promise<ApiEnvelope<LivermoreStrategyScorePayload>> => {
       if (options?.strategyScoreError) {
         throw options.strategyScoreError;
@@ -1396,6 +1411,56 @@ describe("StockAnalysisPage", () => {
     expect(css).toMatch(
       /\.stock-analysis-page__mini-chart\s*>\s*\.stock-analysis-page__echart\s*>\s*div\s*\{[\s\S]*?height:\s*100%\s*!important/,
     );
+  });
+
+  it("keeps the stock dashboard aligned to homepage-style fine divider panels", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const finalLayoutStart = css.indexOf("Final homepage-rhythm pass");
+    const finalLayoutCss = css.slice(finalLayoutStart);
+
+    expect(finalLayoutStart).toBeGreaterThan(-1);
+    expect(finalLayoutCss).toContain('[data-testid="stock-analysis-tailwind-cockpit"]');
+    expect(finalLayoutCss).toContain("border-color: #dfe7f1");
+    expect(finalLayoutCss).toContain(".stock-analysis-page__dh-kpi-strip");
+    expect(finalLayoutCss).toContain(".stock-analysis-page__strategy-lens-grid");
+    expect(finalLayoutCss).toMatch(
+      /\.stock-analysis-page__strategy-lens-card\s*\{[\s\S]*?min-height:\s*46px/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\.stock-analysis-page__strategy-lens-detail\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(finalLayoutCss).toContain(".stock-analysis-page__review-workbench-strip");
+    expect(finalLayoutCss).toContain(".stock-analysis-page__consensus-workbench-strip");
+    expect(finalLayoutCss).toContain("box-shadow: none");
+    expect(finalLayoutCss).toMatch(
+      /@media \(min-width:\s*1600px\)[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)\s*320px/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /@media \(min-width:\s*1280px\)[\s\S]*?\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?min-height:\s*320px/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__sector-chart-wrap\s*\{[\s\S]*?min-height:\s*176px\s*!important/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__echart--sector-strength\s*\{[\s\S]*?height:\s*176px\s*!important/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*30px\s*72px/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\.stock-analysis-page__review-workbench-strip,[\s\S]*?\.stock-analysis-page__consensus-workbench-strip\s*\{[\s\S]*?height:\s*72px/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\]\s*\.stock-analysis-page__review-workbench-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-review-queue"\]\s*\.stock-analysis-page__review-workbench-strip svg\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__sector-workbench-strip svg\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(finalLayoutCss).toContain("min-height: 316px");
+    expect(finalLayoutCss).not.toContain("grid-template-columns: minmax(0, 1fr) 320px");
   });
 
   it("surfaces backend supply status and stock selection on the first screen", async () => {
@@ -1733,6 +1798,46 @@ describe("StockAnalysisPage", () => {
     expect(framework).not.toHaveTextContent("买入");
     expect(framework).not.toHaveTextContent("下单");
     expect(framework).not.toHaveTextContent("调仓");
+  });
+
+  it("localizes portfolio backtest source-table failures without exposing backend tables", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: buildCycleRotationFramework(),
+        }),
+        candidateHistoryPortfolioBacktestError: new Error(
+          "Failed to fetch portfolio backtest because source_table choice_stock_portfolio_backtest is missing.",
+        ),
+      }),
+    });
+
+    const section = await screen.findByTestId("stock-analysis-candidate-history-portfolio-backtest");
+    await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
+    expect(section).toHaveTextContent("源表缺失");
+    expect(section).not.toHaveTextContent("Failed to fetch");
+    expect(section).not.toHaveTextContent("source_table");
+    expect(section).not.toHaveTextContent("choice_stock_portfolio_backtest");
+  });
+
+  it("localizes cycle proxy backtest source-table failures without exposing backend tables", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategy: buildStrategyPayload({
+          cycle_rotation_framework: buildCycleRotationFramework(),
+        }),
+        cycleProxyBacktestError: new Error(
+          "Failed to fetch cycle proxy backtest because source_table choice_stock_cycle_proxy_backtest is missing.",
+        ),
+      }),
+    });
+
+    const section = await screen.findByTestId("stock-analysis-cycle-proxy-backtest");
+    await waitFor(() => expect(section).toHaveTextContent("暂不可用"), { timeout: 3_000 });
+    expect(section).toHaveTextContent("源表缺失");
+    expect(section).not.toHaveTextContent("Failed to fetch");
+    expect(section).not.toHaveTextContent("source_table");
+    expect(section).not.toHaveTextContent("choice_stock_cycle_proxy_backtest");
   });
 
   it("renders unknown cycle rotation inputs as pending boundaries instead of raw backend codes", async () => {
@@ -2767,6 +2872,23 @@ describe("StockAnalysisPage", () => {
     expect(errorPanel).not.toHaveTextContent("livermore");
   });
 
+  it("localizes strategy source-table failures without exposing backend tables", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        strategyError: new Error(
+          "Request failed: /ui/market-data/livermore because source_table choice_stock_strategy_payload is missing.",
+        ),
+      }),
+    });
+
+    const errorPanel = await screen.findByTestId("stock-analysis-error-workbench");
+    expect(errorPanel).toHaveTextContent("源表缺失");
+    expect(errorPanel).not.toHaveTextContent("Request failed");
+    expect(errorPanel).not.toHaveTextContent("/ui/market-data/livermore");
+    expect(errorPanel).not.toHaveTextContent("source_table");
+    expect(errorPanel).not.toHaveTextContent("choice_stock_strategy_payload");
+  });
+
   it("keeps the page usable when signal confluence fails", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({ confluenceError: new Error("confluence unavailable") }),
@@ -2984,7 +3106,11 @@ describe("StockAnalysisPage", () => {
   it("shows sector series failure alert without breaking sector bars", async () => {
     const user = userEvent.setup();
     const client = stockClient();
-    vi.spyOn(client, "getLivermoreSectorRankSeries").mockRejectedValue(new Error("series fetch failed"));
+    vi.spyOn(client, "getLivermoreSectorRankSeries").mockRejectedValue(
+      new Error(
+        "Failed to fetch sector rank series from /ui/market-data/livermore/sector-rank-series because source_table choice_stock_sector_rank_series is missing.",
+      ),
+    );
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
@@ -2992,7 +3118,12 @@ describe("StockAnalysisPage", () => {
     await user.click(screen.getByText("多日强弱"));
 
     expect(await screen.findByText("多日板块序列加载失败")).toBeInTheDocument();
-    expect(screen.getByText("series fetch failed")).toBeInTheDocument();
+    const panel = screen.getByTestId("stock-analysis-sector-series-panel");
+    expect(panel).toHaveTextContent("源表缺失");
+    expect(panel).not.toHaveTextContent("Failed to fetch");
+    expect(panel).not.toHaveTextContent("/ui/market-data/livermore/sector-rank-series");
+    expect(panel).not.toHaveTextContent("source_table");
+    expect(panel).not.toHaveTextContent("choice_stock_sector_rank_series");
     expect(screen.getByTestId("stock-analysis-sector-bars")).toBeInTheDocument();
   });
 
@@ -3312,6 +3443,23 @@ describe("StockAnalysisPage", () => {
     expect(factor.getByText("56.7% / +2.93% / 30条")).toBeInTheDocument();
   });
 
+  it("localizes strategy backtest source-table failures without exposing backend tables", async () => {
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({
+        candidateHistoryError: new Error(
+          "Failed to fetch strategy backtest because source_table choice_stock_candidate_history is missing.",
+        ),
+      }),
+    });
+
+    const panel = await screen.findByTestId("stock-analysis-strategy-backtest");
+    await waitFor(() => expect(panel).toHaveTextContent("暂不可用"), { timeout: 3_000 });
+    expect(panel).toHaveTextContent("源表缺失");
+    expect(panel).not.toHaveTextContent("Failed to fetch");
+    expect(panel).not.toHaveTextContent("source_table");
+    expect(panel).not.toHaveTextContent("choice_stock_candidate_history");
+  });
+
   it("renders current market strategy priority from the score API without trading action copy", async () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
@@ -3427,6 +3575,34 @@ describe("StockAnalysisPage", () => {
     expect(page).not.toHaveTextContent("调仓");
   });
 
+  it("localizes candidate maturity detail source-table failures without exposing backend tables", async () => {
+    const client = stockClient({
+      strategy: buildStrategyPayload({
+        market_gate: {
+          ...buildStrategyPayload().market_gate,
+          state: "OVERHEAT",
+        },
+      }),
+    });
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockImplementation(async (options) => {
+      if (options?.snapshotFrom === "2026-04-30" && options.snapshotTo === "2026-05-07") {
+        throw new Error(
+          "Failed to fetch candidate maturity detail because source_table choice_stock_candidate_history is missing.",
+        );
+      }
+      return buildMockApiEnvelope("market_data.livermore.candidate_history", buildCandidateHistoryPayload());
+    });
+
+    renderWorkbenchApp(["/stock-analysis"], { client });
+
+    const section = await screen.findByTestId("stock-analysis-candidate-maturity");
+    await waitFor(() => expect(section).toHaveTextContent("候选明细暂不可用"), { timeout: 3_000 });
+    expect(section).toHaveTextContent("源表缺失");
+    expect(section).not.toHaveTextContent("Failed to fetch");
+    expect(section).not.toHaveTextContent("source_table");
+    expect(section).not.toHaveTextContent("choice_stock_candidate_history");
+  });
+
   it("renders unknown strategy priority risk labels as pending business copy", async () => {
     const scorePayload = buildStrategyScorePayload();
     const rowsWithVendorRisk: LivermoreStrategyScorePayload["rows"] = scorePayload.rows.map((row) => {
@@ -3502,7 +3678,7 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], {
       client: stockClient({
         strategyScoreError: new Error(
-          "Failed to fetch priority because source_table choice_stock_strategy_score is missing.",
+          "Failed to fetch priority from /ui/market-data/livermore/strategy-score because source_table choice_stock_strategy_score is missing.",
         ),
       }),
     });
@@ -3513,6 +3689,11 @@ describe("StockAnalysisPage", () => {
     expect(section).not.toHaveTextContent("Failed to fetch");
     expect(section).not.toHaveTextContent("source_table");
     expect(section).not.toHaveTextContent("choice_stock_strategy_score");
+    expect(section).not.toHaveTextContent("/ui/market-data/livermore/strategy-score");
+    const detail = within(section).getByTestId("stock-analysis-strategy-card-market-priority-detail");
+    const summaryDetail = detail.querySelector(".stock-analysis-strategy-module-card__detail-line");
+    expect(summaryDetail).toHaveTextContent("必需源表缺失");
+    expect(summaryDetail).not.toHaveTextContent("无法连接策略分析服务");
   });
 
   it("shows the T+5 optimization diagnosis without turning it into trading rules", async () => {

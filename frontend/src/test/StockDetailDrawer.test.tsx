@@ -391,7 +391,11 @@ describe("StockDetailDrawer", () => {
   it("shows choice news error in isolation while chart and factors still render", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
-    vi.spyOn(client, "getChoiceNewsEvents").mockRejectedValue(new Error("news feed unavailable"));
+    vi.spyOn(client, "getChoiceNewsEvents").mockRejectedValue(
+      new Error(
+        "Request failed: /ui/news/choice-events/latest because source_table choice_stock_news_event is missing.",
+      ),
+    );
 
     render(
       <AppProviders client={client}>
@@ -404,7 +408,11 @@ describe("StockDetailDrawer", () => {
     const marketEventsError = await screen.findByTestId("stock-detail-market-events-error");
     expect(marketEventsError).toHaveTextContent("市场事件暂不可用");
     expect(marketEventsError).toHaveTextContent("个股复核数据不受影响");
-    expect(marketEventsError).not.toHaveTextContent("news feed unavailable");
+    expect(marketEventsError).toHaveTextContent("源表缺失");
+    expect(marketEventsError).not.toHaveTextContent("Request failed");
+    expect(marketEventsError).not.toHaveTextContent("/ui/news/choice-events/latest");
+    expect(marketEventsError).not.toHaveTextContent("source_table");
+    expect(marketEventsError).not.toHaveTextContent("choice_stock_news_event");
   });
 
   it("shows empty state when choice news returns no events", async () => {
@@ -727,7 +735,11 @@ describe("StockDetailDrawer", () => {
   it("shows candidate history error without breaking chart or factors", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getLivermoreStockDetail").mockResolvedValue(buildStockDetailEnvelope());
-    vi.spyOn(client, "getLivermoreCandidateHistory").mockRejectedValue(new Error("candidate history down"));
+    vi.spyOn(client, "getLivermoreCandidateHistory").mockRejectedValue(
+      new Error(
+        "Request failed: /ui/market-data/livermore/candidate-history because source_table choice_stock_candidate_history is missing.",
+      ),
+    );
     vi.spyOn(client, "getChoiceNewsEvents").mockResolvedValue(
       buildMockApiEnvelope(
         "news.choice.latest",
@@ -747,7 +759,11 @@ describe("StockDetailDrawer", () => {
     const candidateHistoryError = await screen.findByTestId("stock-detail-candidate-history-error");
     expect(candidateHistoryError).toHaveTextContent("入选历史暂不可用");
     expect(candidateHistoryError).toHaveTextContent("图表与因子仍可继续查看");
-    expect(candidateHistoryError).not.toHaveTextContent("candidate history down");
+    expect(candidateHistoryError).toHaveTextContent("源表缺失");
+    expect(candidateHistoryError).not.toHaveTextContent("Request failed");
+    expect(candidateHistoryError).not.toHaveTextContent("/ui/market-data/livermore/candidate-history");
+    expect(candidateHistoryError).not.toHaveTextContent("source_table");
+    expect(candidateHistoryError).not.toHaveTextContent("choice_stock_candidate_history");
   });
 
   it("shows empty state when candidate history has no rows", async () => {
