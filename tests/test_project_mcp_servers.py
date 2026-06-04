@@ -1582,6 +1582,48 @@ def test_lineage_evidence_mcp_maps_page_risk_contract_to_risk_tensor_records(tmp
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_agent_page_contract_to_agent_audit_records(tmp_path: Path) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "agent_audit.jsonl").write_text(
+        json.dumps(
+            {
+                "user_id": "agent_user",
+                "query_text": "explain pnl",
+                "tables_used": ["fact_formal_pnl_fi"],
+                "result_meta": {
+                    "result_kind": "agent.pnl_summary",
+                    "formal_use_allowed": True,
+                    "tables_used": ["fact_formal_pnl_fi"],
+                },
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-AGENT-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-AGENT-001"
+        assert "agent." in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "agent."
+        assert found_payload["records"][0]["stream"] == "agent_audit"
+        assert found_payload["records"][0]["record"]["result_meta"]["result_kind"] == "agent.pnl_summary"
+        assert found_payload["records"][0]["record"]["result_meta"]["tables_used"] == ["fact_formal_pnl_fi"]
+    finally:
+        server.close()
+
+
 def test_data_catalog_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None:
     missing_duckdb = tmp_path / "missing.duckdb"
     server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(missing_duckdb)})
