@@ -14,6 +14,7 @@ const GITNEXUS_STATUS_BUTTON = "GitNexus 状态";
 const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
 const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const AGENT_RUNTIME_STATUS_LABEL = "Agent 连接状态";
+const AGENT_DISABLED_STATUS_LABEL = "Agent 暂不可用";
 const AGENT_RESTORE_STATUS_LABEL = "正在恢复上次回答";
 const AGENT_RESTORE_ERROR_LABEL = "上次回答恢复失败";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
@@ -2422,7 +2423,7 @@ describe("AgentWorkbenchPage", () => {
         "智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
       ),
     ).toBeInTheDocument();
-    const disabledStatus = screen.getByRole("status", { name: "agent-disabled-status" });
+    const disabledStatus = screen.getByRole("status", { name: AGENT_DISABLED_STATUS_LABEL });
     expect(disabledStatus).toHaveClass("agent-callout", "agent-callout--warning");
   });
 

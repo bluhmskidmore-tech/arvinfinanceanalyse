@@ -3300,7 +3300,7 @@ export function EmbeddedAgentCopilot({
         <div
           className="agent-callout agent-callout--warning"
           role="status"
-          aria-label="agent-disabled-status"
+          aria-label="Agent 暂不可用"
         >
           智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
         </div>
