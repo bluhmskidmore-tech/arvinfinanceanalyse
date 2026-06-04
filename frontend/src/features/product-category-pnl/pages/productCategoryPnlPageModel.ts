@@ -378,6 +378,8 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   actionKind: ProductCategoryOperatingActionKind;
   actionLabel: string;
   reviewLabel: string;
+  riskRankLabel: string;
+  riskReasonLabel: string;
   reasonLabel: string;
   impactLabel: string;
   evidenceLabel: string;
@@ -2876,6 +2878,15 @@ function productCategoryBacktestLatestReviewRows(input: {
   calibrationRows: ProductCategoryOperatingBacktestCalibrationRow[];
 }): ProductCategoryOperatingBacktestLatestReviewRow[] {
   const actionRowsByAction = new Map(input.actionRows.map((row) => [row.actionKind, row]));
+  const riskRankForCalibration = (calibration: ProductCategoryOperatingBacktestCalibrationRow) => {
+    if (calibration.confidenceLabel === "高置信") {
+      return "P1 高置信复核";
+    }
+    if (calibration.confidenceLabel === "中置信") {
+      return "P2 中样本复核";
+    }
+    return "P3 低样本复核";
+  };
   const tightenRowsByAction = new Map(
     input.calibrationRows
       .filter((row) => row.recommendationLabel === "收紧触发条件")
@@ -2894,6 +2905,8 @@ function productCategoryBacktestLatestReviewRows(input: {
       actionKind: row.actionKind,
       actionLabel: row.actionLabel,
       reviewLabel: "复核后执行",
+      riskRankLabel: riskRankForCalibration(calibration),
+      riskReasonLabel: `${calibration.confidenceLabel}；${calibration.reasonLabel.replace(/^命中率 [^，]+，/, "")}`,
       reasonLabel: `历史回测建议${calibration.recommendationLabel}：${calibration.reasonLabel}`,
       impactLabel: actionRow
         ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`

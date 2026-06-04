@@ -3933,7 +3933,8 @@ describe("StockAnalysisPage", () => {
     expect(card).toHaveTextContent("待成熟");
     expect(card).toHaveTextContent("最新待成熟日期 2026-05-13");
     expect(card).not.toHaveTextContent("pending");
-    expect(card).toHaveTextContent("建议只用于复核排序，不自动改交易规则");
+    expect(card).toHaveTextContent("复核排序 · 不改规则");
+    expect(card).not.toHaveTextContent("建议只用于复核排序，不自动改交易规则");
     expect(card).not.toHaveTextContent("买入");
     expect(card).not.toHaveTextContent("下单");
   });

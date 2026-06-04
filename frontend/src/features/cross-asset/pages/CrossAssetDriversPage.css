@@ -1369,6 +1369,11 @@
   background: var(--ca-card);
 }
 
+.cross-asset-trend-chart__canvas {
+  width: 100%;
+  height: 420px;
+}
+
 .cross-asset-drivers-page__panel-title {
   margin: 0 0 14px;
   font-size: 1rem;
@@ -2028,6 +2033,21 @@
   font-weight: 800;
 }
 
+.cross-asset-drivers-page__driver-stance--bull {
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-600);
+}
+
+.cross-asset-drivers-page__driver-stance--bear {
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-600);
+}
+
+.cross-asset-drivers-page__driver-stance--neutral {
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-600);
+}
+
 .cross-asset-drivers-page__driver-list {
   margin: 0;
   padding-left: 16px;
@@ -2073,6 +2093,18 @@
 
 .cross-asset-drivers-page__tabular-cell {
   font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-drivers-page__eval-tone--bull {
+  color: var(--moss-color-success-600);
+}
+
+.cross-asset-drivers-page__eval-tone--bear {
+  color: var(--moss-color-danger-600);
+}
+
+.cross-asset-drivers-page__eval-tone--warning {
+  color: var(--moss-color-warning-500);
 }
 
 .cross-asset-drivers-page__heatmap td:nth-child(2),

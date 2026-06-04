@@ -1586,6 +1586,11 @@ export default function RiskTensorPage() {
         handleKrdTenorSelect(row, { scrollToDrill: true });
         return;
       }
+      const qualityNote = document.querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]');
+      if (qualityNote) {
+        scrollRiskTensorTargetIntoView(qualityNote);
+        return;
+      }
     }
     handleSectionJump(targetTestId);
   };

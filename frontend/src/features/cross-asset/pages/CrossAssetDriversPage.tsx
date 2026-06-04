@@ -42,7 +42,7 @@ import {
   type CrossAssetResearchViewCard,
   type CrossAssetTransmissionAxisRow,
 } from "../lib/crossAssetDriversPageModel";
-import { buildDriverColumns, buildEnvironmentTags, driverStanceStyle } from "../lib/crossAssetDriversModel";
+import { buildDriverColumns, buildEnvironmentTags } from "../lib/crossAssetDriversModel";
 import { buildCrossAssetTrendOption, buildCrossAssetTrendSummary } from "../lib/crossAssetTrendChart";
 import {
   buildCorrelationMatrix,
@@ -2052,12 +2052,6 @@ export default function CrossAssetDriversPage() {
     macroBondLinkageQuery.isLoading,
   ]);
 
-  const evalColor = {
-    bull: t.color.semantic.profit,
-    bear: t.color.semantic.loss,
-    warning: t.color.warning[500],
-  } as const;
-
   return (
     <section
       className="cross-asset-drivers-page"
@@ -2162,7 +2156,9 @@ export default function CrossAssetDriversPage() {
                       <td>{row.indicator}</td>
                       <td className="cross-asset-drivers-page__tabular-cell">{row.current}</td>
                       <td className="cross-asset-drivers-page__tabular-cell">{row.mid}</td>
-                      <td style={{ color: evalColor[row.evalTone] }}>{row.eval}</td>
+                      <td className={`cross-asset-drivers-page__eval-tone cross-asset-drivers-page__eval-tone--${row.evalTone}`}>
+                        {row.eval}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2173,25 +2169,19 @@ export default function CrossAssetDriversPage() {
               <TransmissionAxesPanel rows={transmissionAxisRows} />
               <AssetClassAnalysisPanel rows={assetClassAnalysisRows} equityEvidenceItems={equityEvidenceItems} />
               <div className="cross-asset-drivers-page__drivers-grid cross-asset-drivers-page__drivers-grid--flat">
-                {drivers.map((col) => {
-                  const stanceStyle = driverStanceStyle(col.tone);
-                  return (
-                    <div key={col.title} className="cross-asset-drivers-page__driver-cell">
-                      <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
-                      <div
-                        className="cross-asset-drivers-page__driver-stance"
-                        style={{ background: stanceStyle.bg, color: stanceStyle.color }}
-                      >
-                        {col.stance}
-                      </div>
-                      <ul className="cross-asset-drivers-page__driver-list">
-                        {col.bullets.map((bullet) => (
-                          <li key={bullet}>{bullet}</li>
-                        ))}
-                      </ul>
+                {drivers.map((col) => (
+                  <div key={col.title} className="cross-asset-drivers-page__driver-cell">
+                    <div className="cross-asset-drivers-page__driver-title">{col.title}</div>
+                    <div className={`cross-asset-drivers-page__driver-stance cross-asset-drivers-page__driver-stance--${col.tone}`}>
+                      {col.stance}
                     </div>
-                  );
-                })}
+                    <ul className="cross-asset-drivers-page__driver-list">
+                      {col.bullets.map((bullet) => (
+                        <li key={bullet}>{bullet}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
               <div className="cross-asset-zone-analytics-grid">
                 <DriverWaterfallPanel bars={waterfallBars} env={env} />
@@ -2253,7 +2243,7 @@ export default function CrossAssetDriversPage() {
                           },
                         };
                       })()}
-                      style={{ height: 420, width: "100%" }}
+                      className="cross-asset-trend-chart__canvas"
                       notMerge
                       lazyUpdate
                     />

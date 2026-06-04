@@ -2011,6 +2011,66 @@ def test_lineage_evidence_mcp_maps_liability_analytics_page_to_mixed_source_reco
         server.close()
 
 
+def test_lineage_evidence_mcp_maps_bond_dashboard_page_to_candidate_bond_analytics_records(
+    tmp_path: Path,
+) -> None:
+    governance = tmp_path / "governance"
+    governance.mkdir()
+    (governance / "cache_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_key": "bond_dashboard:headline",
+                "result_kind": "bond_dashboard.headline_kpis",
+                "source_surface": "bond_analytics",
+                "basis": "analytical",
+                "tables_used": ["fact_formal_bond_analytics_daily"],
+                "golden_sample": "GS-BOND-HEADLINE-A",
+                "rule_version": "rv_bond_analytics_formal_materialize_v1",
+                "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+                "created_at": "2026-04-12T14:31:38.517141Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    server = McpProcess("lineage-evidence", env={"MOSS_GOVERNANCE_PATH": str(governance)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        found = server.request(
+            "tools/call",
+            {"name": "find_lineage_records", "arguments": {"query": "PAGE-BOND-001", "max_results": 5}},
+        )
+        found_payload = json.loads(found["content"][0]["text"])
+
+        assert found_payload["query"] == "PAGE-BOND-001"
+        assert "/api/bond-dashboard/headline-kpis" in found_payload["expanded_queries"]
+        assert "/api/bond-dashboard/risk-indicators" in found_payload["expanded_queries"]
+        assert "/api/bond-dashboard/business-type-metrics" in found_payload["expanded_queries"]
+        assert "bond_dashboard.headline_kpis" in found_payload["expanded_queries"]
+        assert "bond_dashboard.risk_indicators" in found_payload["expanded_queries"]
+        assert "bond_dashboard.business_type_metrics" in found_payload["expanded_queries"]
+        assert "bond_analytics" in found_payload["expanded_queries"]
+        assert "fact_formal_bond_analytics_daily" in found_payload["expanded_queries"]
+        assert "GS-BOND-HEADLINE-A" in found_payload["expanded_queries"]
+        assert "MTR-BOND-001" in found_payload["expanded_queries"]
+        assert "MTR-BOND-004" in found_payload["expanded_queries"]
+        assert "MTR-BAL-001" not in found_payload["expanded_queries"]
+        assert "GS-BAL-OVERVIEW-A" not in found_payload["expanded_queries"]
+        assert "PAGE-RISK-001" not in found_payload["expanded_queries"]
+        assert "GS-RISK-A" not in found_payload["expanded_queries"]
+        assert "qdb_general_ledger_workbook" not in found_payload["expanded_queries"]
+        assert found_payload["records"][0]["matched_query"] == "bond_dashboard.headline_kpis"
+        assert found_payload["records"][0]["stream"] == "cache_manifest"
+        assert found_payload["records"][0]["record"]["basis"] == "analytical"
+        assert found_payload["records"][0]["record"]["source_surface"] == "bond_analytics"
+        assert found_payload["records"][0]["record"]["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_maps_ledger_pnl_page_to_ledger_source_contracts(tmp_path: Path) -> None:
     governance = tmp_path / "governance"
     governance.mkdir()

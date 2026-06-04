@@ -1139,8 +1139,8 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
                       <strong>{row.categoryLabel}</strong>
                       <span>{row.actionLabel} · {row.reasonLabel}</span>
                     </div>
-                    <b>{row.reviewLabel}</b>
-                    <small>{row.impactLabel} · {row.evidenceLabel}</small>
+                    <b>{row.reviewLabel} · {row.riskRankLabel}</b>
+                    <small>{row.riskReasonLabel} · {row.impactLabel} · {row.evidenceLabel}</small>
                   </div>
                 ))}
               </div>
