@@ -419,6 +419,26 @@ describe("stockAnalysisPageModel", () => {
     expect(asOfMeta?.text).not.toBe("2026-05-08");
   });
 
+  it("localizes inline governance meta without exposing backend status codes", () => {
+    const inlineMeta = buildInlineMetaSegments(strategyPayload, {
+      quality_flag: "warning",
+      vendor_status: "vendor_unavailable",
+      fallback_mode: "external_vendor_snapshot",
+      source_version: "sv_livermore_test",
+      rule_version: "rv_livermore_market_gate_v1",
+    });
+    const copy = inlineMeta.map((item) => item.text).join(" ");
+
+    expect(inlineMeta.find((item) => item.key === "quality_flag")?.text).toBe("质量需复核");
+    expect(inlineMeta.find((item) => item.key === "vendor_status")?.text).toBe("通道待确认");
+    expect(inlineMeta.find((item) => item.key === "fallback_mode")?.text).toBe("回退待确认");
+    expect(copy).toContain("sv_livermore_test");
+    expect(copy).toContain("rv_livermore_market_gate_v1");
+    expect(copy).not.toContain("warning");
+    expect(copy).not.toContain("vendor_unavailable");
+    expect(copy).not.toContain("external_vendor_snapshot");
+  });
+
   it("keeps requested dates separate from missing data dates in evidence status", () => {
     const rows = buildStockAnalysisEvidenceStatus(
       {

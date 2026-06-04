@@ -218,6 +218,24 @@ describe("ProductCategoryPnlPage", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(20);
   });
 
+  it("opens an action queue closure drawer from an operating action row", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    const queue = await screen.findByTestId("product-category-operating-action-queue");
+    await user.click(await within(queue).findByRole("button", { name: /查看 买入返售 动作详情/ }));
+
+    const drawer = screen.getByTestId("product-category-operating-action-drawer");
+    expect(drawer).toHaveTextContent("动作闭环详情");
+    expect(drawer).toHaveTextContent("买入返售");
+    expect(drawer).toHaveTextContent("压降或限额复核");
+    expect(drawer).toHaveTextContent("核对正式表净营收、规模、收益率与归因变动");
+    expect(drawer).toHaveTextContent("净营收 -0.05 亿元");
+
+    await user.click(within(drawer).getByRole("button", { name: "关闭动作详情" }));
+    expect(screen.queryByTestId("product-category-operating-action-drawer")).not.toBeInTheDocument();
+  });
+
   it("renders monthly MoM operating attribution from the formal baseline", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>

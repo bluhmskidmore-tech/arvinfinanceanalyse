@@ -838,15 +838,33 @@ type ProductCategoryOperatingAnalysisSurface = ReturnType<
   typeof selectProductCategoryOperatingAnalysisSurface
 >;
 
+type ProductCategoryOperatingActionQueueRow =
+  ProductCategoryOperatingAnalysisSurface["actionQueue"]["rows"][number];
+
+function productCategoryOperatingActionRowKey(row: ProductCategoryOperatingActionQueueRow) {
+  return `${row.priorityLabel}-${row.categoryId}`;
+}
+
 function ProductCategoryOperatingAnalysisPanel(props: {
   surface: ProductCategoryOperatingAnalysisSurface;
 }) {
+  const [selectedActionRowKey, setSelectedActionRowKey] = useState<string | null>(null);
+  const selectedActionRow =
+    props.surface.actionQueue.rows.find(
+      (row) => productCategoryOperatingActionRowKey(row) === selectedActionRowKey,
+    ) ?? null;
   const quadrantGroups = [
     "core_profit_pool",
     "selective_growth",
     "scale_efficiency_watch",
     "shrink_or_reprice",
   ] as const;
+  useEffect(() => {
+    if (selectedActionRowKey && !selectedActionRow) {
+      setSelectedActionRowKey(null);
+    }
+  }, [selectedActionRow, selectedActionRowKey]);
+
   return (
     <section className="product-category-operating-analysis" data-testid="product-category-operating-analysis">
       <div className="product-category-operating-analysis__header">
@@ -961,25 +979,66 @@ function ProductCategoryOperatingAnalysisPanel(props: {
           <div className="product-category-operating-analysis__empty">{props.surface.actionQueue.emptyCopy}</div>
         ) : (
           <div className="product-category-operating-analysis__action-list">
-            {props.surface.actionQueue.rows.map((row) => (
-              <div className="product-category-operating-analysis__action-row" key={`${row.priorityLabel}-${row.categoryId}`}>
-                <div className="product-category-operating-analysis__action-main">
-                  <span className="product-category-operating-analysis__action-priority">{row.priorityLabel}</span>
-                  <div>
-                    <strong>{row.categoryLabel}</strong>
-                    <span>{row.actionLabel} · {row.triggerLabel}</span>
+            {props.surface.actionQueue.rows.map((row) => {
+              const rowKey = productCategoryOperatingActionRowKey(row);
+              return (
+                <div
+                  className="product-category-operating-analysis__action-row"
+                  key={rowKey}
+                >
+                  <div className="product-category-operating-analysis__action-main">
+                    <span className="product-category-operating-analysis__action-priority">{row.priorityLabel}</span>
+                    <div>
+                      <strong>{row.categoryLabel}</strong>
+                      <span>{row.actionLabel} · {row.triggerLabel}</span>
+                    </div>
+                  </div>
+                  <b className={`is-${row.tone}`}>{row.primaryMetricLabel}</b>
+                  <button
+                    aria-expanded={selectedActionRowKey === rowKey}
+                    type="button"
+                    className="product-category-operating-analysis__action-detail-button"
+                    onClick={() => setSelectedActionRowKey(rowKey)}
+                  >
+                    查看 {row.categoryLabel} 动作详情
+                  </button>
+                  <div className="product-category-operating-analysis__action-evidence">
+                    {row.evidenceItems.map((item) => (
+                      <small key={item}>{item}</small>
+                    ))}
                   </div>
                 </div>
-                <b className={`is-${row.tone}`}>{row.primaryMetricLabel}</b>
-                <div className="product-category-operating-analysis__action-evidence">
-                  {row.evidenceItems.map((item) => (
-                    <small key={item}>{item}</small>
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
+        {selectedActionRow ? (
+          <aside
+            className="product-category-operating-analysis__action-drawer"
+            data-testid="product-category-operating-action-drawer"
+          >
+            <div className="product-category-operating-analysis__action-drawer-head">
+              <div>
+                <span>动作闭环详情</span>
+                <h4>{selectedActionRow.categoryLabel}</h4>
+              </div>
+              <button type="button" onClick={() => setSelectedActionRowKey(null)}>
+                关闭动作详情
+              </button>
+            </div>
+            <div className="product-category-operating-analysis__action-drawer-body">
+              <p>
+                {selectedActionRow.actionLabel} · {selectedActionRow.triggerLabel}
+              </p>
+              <p>核对正式表净营收、规模、收益率与归因变动。</p>
+              <div className="product-category-operating-analysis__action-drawer-evidence">
+                {selectedActionRow.evidenceItems.map((item) => (
+                  <small key={item}>{item}</small>
+                ))}
+              </div>
+            </div>
+          </aside>
+        ) : null}
       </article>
     </section>
   );

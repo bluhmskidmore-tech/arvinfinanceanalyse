@@ -628,6 +628,25 @@
   white-space: nowrap;
 }
 
+.product-category-operating-analysis__action-detail-button {
+  justify-self: end;
+  grid-column: 2;
+  padding: 5px 9px;
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-primary-700);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.product-category-operating-analysis__action-detail-button:hover,
+.product-category-operating-analysis__action-detail-button:focus-visible {
+  border-color: var(--moss-color-primary-400);
+  background: var(--moss-color-primary-50);
+}
+
 .product-category-operating-analysis__action-evidence {
   display: flex;
   flex-wrap: wrap;
@@ -640,6 +659,72 @@
   border-radius: var(--moss-radius-sm);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
+  font-size: 11px;
+}
+
+.product-category-operating-analysis__action-drawer {
+  display: grid;
+  gap: var(--moss-space-3);
+  margin-top: var(--moss-space-3);
+  padding: var(--moss-space-3);
+  border: 1px solid var(--moss-color-primary-200);
+  border-radius: var(--moss-radius-md);
+  background: var(--moss-color-primary-50);
+}
+
+.product-category-operating-analysis__action-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--moss-space-3);
+}
+
+.product-category-operating-analysis__action-drawer-head span {
+  color: var(--moss-color-primary-700);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.product-category-operating-analysis__action-drawer-head h4 {
+  margin: 2px 0 0;
+  color: var(--moss-color-neutral-900);
+  font-size: 16px;
+}
+
+.product-category-operating-analysis__action-drawer-head button {
+  padding: 5px 9px;
+  border: 1px solid var(--moss-color-neutral-300);
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.product-category-operating-analysis__action-drawer-body {
+  display: grid;
+  gap: var(--moss-space-2);
+}
+
+.product-category-operating-analysis__action-drawer-body p {
+  margin: 0;
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.product-category-operating-analysis__action-drawer-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.product-category-operating-analysis__action-drawer-evidence small {
+  padding: 4px 7px;
+  border-radius: var(--moss-radius-sm);
+  background: #ffffff;
+  color: var(--moss-color-neutral-700);
   font-size: 11px;
 }
 

@@ -985,9 +985,9 @@ export function buildInlineMetaSegments(
     { key: "as_of", text: payload.as_of_date ?? "日期待补" },
     { key: "source_version", text: extras.source_version ?? "待补" },
     { key: "rule_version", text: extras.rule_version ?? "待补" },
-    { key: "quality_flag", text: extras.quality_flag ?? "待补" },
-    { key: "vendor_status", text: extras.vendor_status ?? "待补" },
-    { key: "fallback_mode", text: extras.fallback_mode ?? "待补" },
+    { key: "quality_flag", text: extras.quality_flag ? localizeMetaQualityFlag(extras.quality_flag) : "待补" },
+    { key: "vendor_status", text: extras.vendor_status ? localizeMetaVendorStatus(extras.vendor_status) : "待补" },
+    { key: "fallback_mode", text: extras.fallback_mode ? localizeFallbackMode(extras.fallback_mode) : "待补" },
   ];
   return out;
 }

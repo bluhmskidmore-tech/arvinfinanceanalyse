@@ -1459,6 +1459,22 @@ describe("StockAnalysisPage", () => {
     expect(finalLayoutCss).toMatch(
       /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\.stock-analysis-page__sector-workbench-strip svg\s*\{[\s\S]*?display:\s*none/,
     );
+    expect(finalLayoutCss).toContain("Decision rail cleanup");
+    expect(finalLayoutCss).toMatch(
+      /\.stock-analysis-page__rail-verdict\s*\{[\s\S]*?border-width:\s*1px\s*0/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\.stock-analysis-page__rail-check-row,[\s\S]*?\.stock-analysis-page__rail-risk-row\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__rail-collapse\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__rail-risk-row:nth-child\(n \+ 3\)\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(finalLayoutCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__rail-risk-meta\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/,
+    );
     expect(finalLayoutCss).toContain("min-height: 316px");
     expect(finalLayoutCss).not.toContain("grid-template-columns: minmax(0, 1fr) 320px");
   });
