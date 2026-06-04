@@ -5876,6 +5876,10 @@ describe("AgentWorkbenchPage", () => {
     expect(input).toHaveValue("第一行\n第二行");
     expect(fetchMock).not.toHaveBeenCalled();
 
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(input).toHaveValue("第一行\n第二行");
+
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
