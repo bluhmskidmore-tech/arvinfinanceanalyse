@@ -382,6 +382,7 @@ export type ProductCategoryOperatingBacktestLatestReviewRow = {
   riskReasonLabel: string;
   reasonLabel: string;
   impactLabel: string;
+  releaseConditionLabel: string;
   evidenceLabel: string;
   checkItems: string[];
   tone: "positive" | "negative" | "neutral";
@@ -2918,6 +2919,18 @@ function productCategoryBacktestLatestReviewRows(input: {
       "核对正式归因闭合误差",
     ];
   };
+  const releaseConditionForAction = (actionKind: ProductCategoryOperatingActionKind): string => {
+    if (actionKind === "reprice_or_improve") {
+      return "放行条件：收益率转正改善且净营收不恶化";
+    }
+    if (actionKind === "shrink_or_limit") {
+      return "放行条件：净营收改善且规模不反弹";
+    }
+    if (actionKind === "selective_growth") {
+      return "放行条件：规模扩张且净营收为正";
+    }
+    return "放行条件：未解释差异下降且闭合误差可接受";
+  };
   const tightenRowsByAction = new Map(
     input.calibrationRows
       .filter((row) => row.recommendationLabel === "收紧触发条件")
@@ -2942,6 +2955,7 @@ function productCategoryBacktestLatestReviewRows(input: {
       impactLabel: actionRow
         ? `历史均值：净营收 ${actionRow.averageNetIncomeDeltaLabel} 亿元 · 收益率 ${actionRow.averageYieldDeltaBpLabel} · 规模 ${actionRow.averageScaleDeltaLabel} 亿元`
         : "历史均值：-",
+      releaseConditionLabel: releaseConditionForAction(row.actionKind),
       evidenceLabel: `${row.triggerLabel} · ${calibration.confidenceLabel} · ${calibration.evidenceLabel}`,
       checkItems: checkItemsForAction(row.actionKind),
       tone: "negative" as const,
