@@ -333,6 +333,8 @@ def _empty_contract(report_month: str) -> dict[str, Any]:
             "action_label": f"登记 {normalized_month} 正式财务指标契约",
             "action_detail": "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
             "required_artifact": f"{normalized_month} 正式财务指标 Excel 冻结样本",
+            "artifact_status": "missing",
+            "blocking_reason": f"未找到 {normalized_month} 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
             "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
             "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
         },

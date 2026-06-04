@@ -150,6 +150,8 @@ def test_formal_financial_indicator_registry_returns_empty_contract_for_unregist
         "action_label": "登记 202605 正式财务指标契约",
         "action_detail": "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
         "required_artifact": "202605 正式财务指标 Excel 冻结样本",
+        "artifact_status": "missing",
+        "blocking_reason": "未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
         "registration_target": "backend/app/core_finance/formal_financial_indicators.py",
         "verification": "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     }

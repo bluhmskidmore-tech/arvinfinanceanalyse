@@ -4511,6 +4511,8 @@ export type LedgerPnlFormalFinancialIndicatorRemediation = {
   action_label: string;
   action_detail: string;
   required_artifact: string;
+  artifact_status?: "missing" | "available" | string;
+  blocking_reason?: string;
   registration_target: string;
   verification: string;
 };

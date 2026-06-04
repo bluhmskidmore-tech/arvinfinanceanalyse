@@ -709,19 +709,27 @@ function buildFormalContractMaterialChecklist(
   remediation: LedgerPnlFormalFinancialIndicatorRemediation | undefined,
 ) {
   const hasRemediation = remediation !== undefined;
+  const hasMissingArtifact = remediation?.artifact_status === "missing";
   const rows = [
     { key: "artifact", label: "物料", value: remediation?.required_artifact?.trim() ?? "" },
+    { key: "blocking", label: "阻断", value: remediation?.blocking_reason?.trim() ?? "" },
     { key: "registration", label: "登记", value: remediation?.registration_target?.trim() ?? "" },
     { key: "verification", label: "验证", value: remediation?.verification?.trim() ?? "" },
   ];
-  const readyCount = rows.filter((row) => row.value.length > 0).length;
-  const totalCount = rows.length;
+  const readinessRows = rows.filter((row) => row.key !== "blocking");
+  const readyCount = hasMissingArtifact
+    ? 0
+    : readinessRows.filter((row) => row.value.length > 0).length;
+  const totalCount = hasMissingArtifact ? 1 : readinessRows.length;
   return {
     rows,
+    hasMissingArtifact,
     readyCount,
     totalCount,
     summary: !hasRemediation
       ? "无缺契约补证材料"
+      : hasMissingArtifact
+        ? `正式样本缺失 ${readyCount}/${totalCount}`
       : readyCount === totalCount
         ? `补证材料齐备 ${readyCount}/${totalCount}`
         : `补证材料待补 ${readyCount}/${totalCount}`,
@@ -744,6 +752,9 @@ function formalContractExecutionStatus(props: {
     return "已读取正式契约";
   }
   if (props.contract?.sample_status === "missing_contract") {
+    if (props.materialChecklist.hasMissingArtifact) {
+      return "待补齐正式样本";
+    }
     return props.materialChecklist.readyCount === props.materialChecklist.totalCount
       ? "待登记正式契约"
       : "待补齐材料";

@@ -302,6 +302,8 @@ function buildMissingFormalIndicatorContractPayload(): LedgerPnlFormalFinancialI
       action_label: "登记 202605 正式财务指标契约",
       action_detail: "从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。",
       required_artifact: "202605 正式财务指标 Excel 冻结样本",
+      artifact_status: "missing",
+      blocking_reason: "未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
       registration_target: "backend/app/core_finance/formal_financial_indicators.py",
       verification: "python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     },
@@ -848,13 +850,16 @@ describe("LedgerPnlPage", () => {
     expect(panel).toHaveTextContent("登记 202605 正式财务指标契约");
     expect(panel).toHaveTextContent("从 Excel 正式样本冻结 source contract，再重新核对 QDB 候选值。");
     const checklist = within(panel).getByTestId("ledger-pnl-formal-indicator-source-contract-material-checklist");
-    expect(checklist).toHaveTextContent("补证材料齐备 3/3");
+    expect(checklist).toHaveTextContent("正式样本缺失 0/1");
     expect(checklist).toHaveTextContent("物料202605 正式财务指标 Excel 冻结样本");
+    expect(checklist).toHaveTextContent(
+      "阻断未找到 202605 正式财务指标 Excel 冻结样本，不能登记正式契约或用 QDB 候选值回填。",
+    );
     expect(checklist).toHaveTextContent("登记backend/app/core_finance/formal_financial_indicators.py");
     expect(checklist).toHaveTextContent(
       "验证python -m pytest tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py -q",
     );
-    expect(checklist).toHaveTextContent("执行状态待登记正式契约");
+    expect(checklist).toHaveTextContent("执行状态待补齐正式样本");
     expect(checklist).toHaveTextContent("回读动作登记后刷新页面或重新查询正式契约接口");
 
     const strip = screen.getByTestId("ledger-pnl-functional-audit-strip");
@@ -1102,8 +1107,8 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("正式状态正式契约缺失，正式值不可用");
     expect(decisionPath).toHaveTextContent("候选解释可信度未闭合 · 覆盖率 60.00%");
     expect(decisionPath).toHaveTextContent("最短补证路径登记 202605 正式财务指标契约");
-    expect(decisionPath).toHaveTextContent("材料完整性补证材料齐备 3/3");
-    expect(decisionPath).toHaveTextContent("执行状态待登记正式契约");
+    expect(decisionPath).toHaveTextContent("材料完整性正式样本缺失 0/1");
+    expect(decisionPath).toHaveTextContent("执行状态待补齐正式样本");
     expect(decisionPath).toHaveTextContent("回读动作登记后刷新正式契约");
 
     const residualTable = await screen.findByTestId("ledger-pnl-residual-diagnostic-table");
@@ -2004,6 +2009,10 @@ describe("LedgerPnlPage", () => {
 
   it("uses the report_date query for ledger reads while the date list is still loading", async () => {
     const base = createApiClient({ mode: "mock" });
+    let resolveDates: ((value: ApiEnvelope<LedgerPnlDatesPayload>) => void) | undefined;
+    const datesRequest = new Promise<ApiEnvelope<LedgerPnlDatesPayload>>((resolve) => {
+      resolveDates = resolve;
+    });
     const getLedgerPnlSummary = vi.fn(async () => ({
       result_meta: buildMeta("ledger_pnl.summary"),
       result: {
@@ -2035,7 +2044,7 @@ describe("LedgerPnlPage", () => {
     renderLedgerPnlPage(
       {
         ...base,
-        getLedgerPnlDates: vi.fn(() => new Promise<ApiEnvelope<LedgerPnlDatesPayload>>(() => {})),
+        getLedgerPnlDates: vi.fn(() => datesRequest),
         getLedgerPnlSummary,
         getLedgerPnlData,
         getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
@@ -2058,6 +2067,10 @@ describe("LedgerPnlPage", () => {
     expect(screen.getByTestId("ledger-pnl-currency-summary-table")).not.toHaveTextContent(
       "暂无币种汇总数据",
     );
+    resolveDates?.({
+      result_meta: buildMeta("ledger_pnl.dates"),
+      result: { dates: ["2026-05-31"] },
+    });
   });
 
   it("keeps a manually selected report date instead of reverting to the initial query date", async () => {
