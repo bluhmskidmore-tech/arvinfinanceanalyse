@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type {
+  PnlByBusinessAnalysisRow,
   PnlByBusinessMonthlyBucket,
   PnlByBusinessPayload,
   PnlByBusinessYtdPayload,
   ResultMeta,
 } from "../../api/contracts";
 import {
+  buildPnlByBusinessSelectedDrilldownModel,
   buildPnlByBusinessPageModel,
   buildPnlByBusinessSelectionModel,
   formatAvgBalanceYi,
@@ -192,6 +194,68 @@ function formalPayload(partial: Partial<PnlByBusinessPayload> = {}): PnlByBusine
 }
 
 describe("pnlByBusinessPageModel", () => {
+  it("ranks selected business instrument drilldown without dropping null or zero numeric fields", () => {
+    const row = (partial: Partial<PnlByBusinessAnalysisRow>): PnlByBusinessAnalysisRow => ({
+      dimension_key: "fallback",
+      dimension_label: "fallback",
+      interest_income: "0",
+      fair_value_change: "0",
+      capital_gain: "0",
+      manual_adjustment: "0",
+      total_pnl: "0",
+      avg_balance: "0",
+      current_balance: "0",
+      annualized_yield_pct: null,
+      ftp_rate_pct: "1.600000",
+      ftp_cost: null,
+      ftp_net_pnl: null,
+      ftp_net_annualized_yield_pct: null,
+      asset_count: 1,
+      ...partial,
+    });
+
+    const model = buildPnlByBusinessSelectedDrilldownModel([
+      row({
+        dimension_key: "bond_positive",
+        dimension_label: "240001.IB 贡献券",
+        total_pnl: "200000",
+        ftp_net_pnl: "10000",
+      }),
+      row({
+        dimension_key: "bond_zero",
+        dimension_label: "240002.IB 零损益券",
+        total_pnl: "0",
+        ftp_net_pnl: null,
+      }),
+      row({
+        dimension_key: "bond_drag",
+        dimension_label: "240003.IB 拖累券",
+        total_pnl: "-300000",
+        ftp_net_pnl: "-80000",
+      }),
+      row({
+        dimension_key: "bond_small_drag",
+        dimension_label: "240004.IB 小拖累券",
+        total_pnl: "-100000",
+        ftp_net_pnl: "-20000",
+      }),
+    ]);
+
+    expect(model.topContributionRows.map((item) => item.dimension_label)).toEqual([
+      "240001.IB 贡献券",
+      "240002.IB 零损益券",
+      "240004.IB 小拖累券",
+    ]);
+    expect(model.topDragRows.map((item) => item.dimension_label)).toEqual([
+      "240003.IB 拖累券",
+      "240004.IB 小拖累券",
+    ]);
+    expect(model.negativeFtpRows.map((item) => item.dimension_label)).toEqual([
+      "240003.IB 拖累券",
+      "240004.IB 小拖累券",
+    ]);
+  });
+
   it("keeps zero average balance present and filters ZQTZ parent rows without changing totals", () => {
     expect(formatAvgBalanceYi(0)).toBe("0.00");
     expect(formatAvgBalanceYi("abc")).toBe("日均缺失");

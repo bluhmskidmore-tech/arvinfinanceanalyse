@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
@@ -252,6 +252,22 @@ function buildPnlClient(): ApiClient {
         assets_count: 1,
       },
       {
+        row_key: "asset_zqtz_credit_bond",
+        sort_order: 67,
+        business_type: "信用债",
+        interest_income: "0.00",
+        fair_value_change: "0.00",
+        capital_gain: "0.00",
+        manual_adjustment: "0.00",
+        total_pnl: "0.00",
+        current_balance: "70000000.00",
+        balance_yield_pct: "0.0000",
+        source_kind: "zqtz",
+        source_note: "ZQTZ_ASSET_BOND_ROWS",
+        proportion: "0.000000",
+        assets_count: 2,
+      },
+      {
         row_key: "asset_zqtz_detail_local_currency_special_account_cost",
         sort_order: 88,
         business_type: "其中：本币专户（成本法）",
@@ -455,6 +471,35 @@ function buildPnlClient(): ApiClient {
       },
     ],
   };
+  const byBusinessCreditInstrumentAnalysis: PnlByBusinessAnalysisPayload = {
+    ...byBusinessAnalysis,
+    business_key: "asset_zqtz_credit_bond",
+    dimension: "instrument",
+    rows: [
+      {
+        ...byBusinessAnalysis.rows[0],
+        dimension_key: "240002.IB",
+        dimension_label: "240002.IB 信用债贡献券",
+        total_pnl: "40000.00",
+        avg_balance: "70000000.00",
+        current_balance: "70000000.00",
+        ftp_cost: "95123.29",
+        ftp_net_pnl: "-55123.29",
+        ftp_net_annualized_yield_pct: "-0.945000",
+      },
+      {
+        ...byBusinessAnalysis.rows[0],
+        dimension_key: "240003.IB",
+        dimension_label: "240003.IB 信用债拖累券",
+        total_pnl: "-10000.00",
+        avg_balance: "30000000.00",
+        current_balance: "30000000.00",
+        ftp_cost: "40767.12",
+        ftp_net_pnl: "-50767.12",
+        ftp_net_annualized_yield_pct: "-1.991667",
+      },
+    ],
+  };
   const yearlyBusiness: PnlYearlyBusinessSummaryPayload = {
     year: 2025,
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
@@ -548,10 +593,12 @@ function buildPnlClient(): ApiClient {
       result: {
         ...(options.dimension === "bond_bucket"
           ? byBusinessBondBucketAnalysis
-          : options.dimension === "bond_bucket_monthly"
-            ? byBusinessBondBucketMonthlyAnalysis
+            : options.dimension === "bond_bucket_monthly"
+              ? byBusinessBondBucketMonthlyAnalysis
             : options.dimension === "instrument"
-              ? byBusinessNegativeInstrumentAnalysis
+              ? options.businessKey === "asset_zqtz_credit_bond"
+                ? byBusinessCreditInstrumentAnalysis
+                : byBusinessNegativeInstrumentAnalysis
               : byBusinessAnalysis),
         year: options.year,
         as_of_date: options.asOfDate ?? "2025-12-31",
@@ -678,6 +725,13 @@ function buildPnlClient(): ApiClient {
           spot_balance: 100_000_000,
           avg_balance: 100_000_000,
           proportion: 100,
+          weighted_rate: null,
+        },
+        {
+          category: "信用债",
+          spot_balance: 70_000_000,
+          avg_balance: 70_000_000,
+          proportion: 70,
           weighted_rate: null,
         },
       ],
@@ -871,6 +925,12 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-bond-bucket-monthly")).toHaveTextContent("四类债券月度趋势");
       expect(screen.getByTestId("pnl-by-business-negative-ftp-list")).toHaveTextContent("负FTP后收益清单");
       expect(screen.getByTestId("pnl-by-business-negative-ftp-list")).toHaveTextContent("负FTP资产");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("证券级下钻");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("Top 贡献券");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("Top 拖累券");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("FTP 后为负");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240001.IB 负FTP资产");
       expect(screen.getByTestId("pnl-by-business-driver-overview")).toHaveTextContent("1.53%");
       expect(screen.getByTestId("pnl-by-business-analysis-panel")).toHaveTextContent("2025-12-31");
       expect(screen.getByTestId("pnl-by-business-analysis-table")).toHaveTextContent("1.00");
@@ -878,12 +938,45 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
       expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
     });
-    fireEvent.click(screen.getByRole("button", { name: /2025-12/ }));
+    fireEvent.click(screen.getByRole("button", { name: /信用债/ }));
+    await waitFor(() => {
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
+        businessKey: "asset_zqtz_credit_bond",
+        dimension: "instrument",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("信用债");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240002.IB 信用债贡献券");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent("240003.IB 信用债拖累券");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).not.toHaveTextContent("240001.IB 负FTP资产");
+    });
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "monthly" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("pnl-by-business-view-mode")).toHaveValue("monthly");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2025-12");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("月报业务种类明细");
+      expect(screen.getByTestId("pnl-by-business-monthly-breakdown")).toHaveTextContent("2 个月");
+    });
+    const monthlyBreakdown = screen.getByTestId("pnl-by-business-monthly-breakdown");
+    if (!screen.queryByTestId("pnl-by-business-monthly-table-2025-12")) {
+      fireEvent.click(within(monthlyBreakdown).getByRole("button", { name: /2025-12/ }));
+    }
     await waitFor(() => {
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("政策性金融债");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("手工调整（万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("FTP后收益（万元）");
       expect(screen.getByTestId("pnl-by-business-monthly-table-2025-12")).toHaveTextContent("-0.59");
+    });
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("pnl-by-business-view-mode")).toHaveValue("ytd");
     });
 
     fireEvent.change(screen.getByLabelText("pnl-by-business-report-date"), { target: { value: "2025-11-30" } });
@@ -1113,10 +1206,20 @@ describe("pnl routed pages smoke", () => {
         dimension: "bond_bucket",
       });
     });
+    await waitFor(() => {
+      expect(client.getPnlByBusinessAnalysis).toHaveBeenCalledWith({
+        year: 2025,
+        asOfDate: "2025-12-31",
+        businessKey: "asset_zqtz_policy_financial_bond",
+        dimension: "instrument",
+      });
+    });
     const dimensionsBeforeFirstPanelSettles = vi
       .mocked(client.getPnlByBusinessAnalysis)
       .mock.calls.map(([options]) => options.dimension);
-    expect(dimensionsBeforeFirstPanelSettles).toEqual(["bond_bucket"]);
+    expect(dimensionsBeforeFirstPanelSettles).toEqual(expect.arrayContaining(["bond_bucket", "instrument"]));
+    expect(dimensionsBeforeFirstPanelSettles).not.toContain("bond_bucket_monthly");
+    expect(dimensionsBeforeFirstPanelSettles).not.toContain("monthly");
 
     releaseBondBucket();
     await waitFor(() => {

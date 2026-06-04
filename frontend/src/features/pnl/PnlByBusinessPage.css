@@ -473,6 +473,71 @@
   color: var(--moss-color-neutral-600);
 }
 
+.pnl-by-business-selected-drilldown__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pnl-by-business-selected-drilldown__summary div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-neutral-50);
+}
+
+.pnl-by-business-selected-drilldown__summary small,
+.pnl-by-business-selected-drilldown__summary span {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-selected-drilldown__summary strong {
+  overflow: hidden;
+  color: var(--moss-color-neutral-900);
+  font-size: 14px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-selected-drilldown__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--moss-space-4);
+}
+
+.pnl-by-business-selected-drilldown__table td:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pnl-by-business-selected-drilldown__table td:first-child strong,
+.pnl-by-business-selected-drilldown__table td:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pnl-by-business-selected-drilldown__table td:first-child span,
+.pnl-by-business-selected-drilldown__empty {
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+}
+
+.pnl-by-business-selected-drilldown__empty {
+  margin: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
 .pnl-by-business-section-pill {
   flex: 0 0 auto;
   padding: 5px 10px;
@@ -768,6 +833,11 @@
 
   .pnl-by-business-insight-strip__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pnl-by-business-selected-drilldown__summary,
+  .pnl-by-business-selected-drilldown__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pnl-by-business-adjustment-actions {

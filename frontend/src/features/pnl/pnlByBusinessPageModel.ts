@@ -5,6 +5,7 @@ import type {
   PnlByBusinessMonthlyBucket,
   PnlByBusinessMonthlyItem,
   PnlByBusinessMonthlyPayload,
+  PnlByBusinessAnalysisRow,
   PnlByBusinessPayload,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
@@ -117,6 +118,12 @@ export type PnlByBusinessSelectionModel = {
   selectedBusinessRow: PnlByBusinessYtdItem | undefined;
 };
 
+export type PnlByBusinessSelectedDrilldownModel = {
+  topContributionRows: PnlByBusinessAnalysisRow[];
+  topDragRows: PnlByBusinessAnalysisRow[];
+  negativeFtpRows: PnlByBusinessAnalysisRow[];
+};
+
 type BuildPnlByBusinessPageModelInput = {
   viewMode: PnlByBusinessViewMode;
   selectedReportDate: string;
@@ -163,6 +170,48 @@ function numeric(raw: string | number | null | undefined): number | null {
   }
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+export function buildPnlByBusinessSelectedDrilldownModel(
+  rows: PnlByBusinessAnalysisRow[],
+  limit = 3,
+): PnlByBusinessSelectedDrilldownModel {
+  const byInputOrder = rows.map((row, index) => ({ row, index }));
+  const compareNumberDesc = (
+    left: { row: PnlByBusinessAnalysisRow; index: number },
+    right: { row: PnlByBusinessAnalysisRow; index: number },
+    field: keyof Pick<PnlByBusinessAnalysisRow, "total_pnl" | "ftp_net_pnl">,
+  ) => {
+    const leftValue = numeric(left.row[field]) ?? Number.NEGATIVE_INFINITY;
+    const rightValue = numeric(right.row[field]) ?? Number.NEGATIVE_INFINITY;
+    return rightValue - leftValue || left.index - right.index;
+  };
+  const compareNumberAsc = (
+    left: { row: PnlByBusinessAnalysisRow; index: number },
+    right: { row: PnlByBusinessAnalysisRow; index: number },
+    field: keyof Pick<PnlByBusinessAnalysisRow, "total_pnl" | "ftp_net_pnl">,
+  ) => {
+    const leftValue = numeric(left.row[field]) ?? Number.POSITIVE_INFINITY;
+    const rightValue = numeric(right.row[field]) ?? Number.POSITIVE_INFINITY;
+    return leftValue - rightValue || left.index - right.index;
+  };
+
+  return {
+    topContributionRows: [...byInputOrder]
+      .sort((left, right) => compareNumberDesc(left, right, "total_pnl"))
+      .slice(0, limit)
+      .map((item) => item.row),
+    topDragRows: [...byInputOrder]
+      .filter((item) => (numeric(item.row.total_pnl) ?? 0) < 0)
+      .sort((left, right) => compareNumberAsc(left, right, "total_pnl"))
+      .slice(0, limit)
+      .map((item) => item.row),
+    negativeFtpRows: [...byInputOrder]
+      .filter((item) => (numeric(item.row.ftp_net_pnl) ?? 0) < 0)
+      .sort((left, right) => compareNumberAsc(left, right, "ftp_net_pnl"))
+      .slice(0, limit)
+      .map((item) => item.row),
+  };
 }
 
 function formatPnlWan(raw: string | number | null | undefined) {
