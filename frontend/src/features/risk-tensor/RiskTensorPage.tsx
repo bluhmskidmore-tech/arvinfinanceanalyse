@@ -46,6 +46,7 @@ const PRIOR_CHANGE_NAVIGATION_TARGETS: Record<string, string> = {
 };
 
 const PRIOR_CHANGE_DV01_KEYS = new Set(["regulatory_dv01", "portfolio_dv01"]);
+const KPI_RADAR_ISSUE_KEYS = new Set(["portfolio_modified_duration", "portfolio_dv01", "portfolio_convexity", "cs01"]);
 
 const chartRowStyle = {
   display: "flex",
@@ -710,6 +711,7 @@ export default function RiskTensorPage() {
   }, [result]);
   const issuerConcentrationIssue = result ? riskTensorScalarIssue(result.issuer_concentration_hhi) : null;
   const liquidityGapRatioIssue = result ? riskTensorScalarIssue(result.liquidity_gap_30d_ratio) : null;
+  const kpiRadarIssues = invalidRadarRows.filter((row) => KPI_RADAR_ISSUE_KEYS.has(row.key));
 
   const dominantTenorRow = useMemo(() => {
     if (tenorRows.length === 0) {
@@ -2294,6 +2296,18 @@ export default function RiskTensorPage() {
                 tone={toneFromSignedDisplayString(yuanAsYiDisplay(result.total_market_value))}
               />
             </div>
+            {kpiRadarIssues.length > 0 ? (
+              <div className="risk-tensor-radar-quality" data-testid="risk-tensor-kpi-quality-note">
+                {kpiRadarIssues.map((row) => `${row.key} ${row.issue}`).join(" / ")}
+                ；相关字段未参与前端雷达图数值。
+                <button type="button" className="risk-tensor-brief__link-button" onClick={handlePayloadChecklistJump}>
+                  查看字段复核
+                </button>
+                <button type="button" className="risk-tensor-brief__link-button" onClick={handleRetryTensorMainRead}>
+                  重试主读面
+                </button>
+              </div>
+            ) : null}
 
             {showDurationScope ? (
               <section className="risk-tensor-duration-scope" data-testid="risk-tensor-duration-scope">

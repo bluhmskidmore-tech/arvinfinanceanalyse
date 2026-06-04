@@ -4225,6 +4225,55 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users continue from an unparseable radar KPI detail to payload field review", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_kpi_detail_quality_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_kpi_detail_quality_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          portfolio_convexity: "bad-convexity",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const kpiGrid = await screen.findByTestId("risk-tensor-kpi-grid");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-convexity");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(kpiGrid);
+      const kpiQualityNote = screen.getByTestId("risk-tensor-kpi-quality-note");
+      expect(kpiQualityNote).toHaveTextContent("portfolio_convexity");
+
+      await user.click(within(kpiQualityNote).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("uses readable dynamic max values for radar axes", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
