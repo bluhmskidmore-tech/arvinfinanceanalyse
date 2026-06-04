@@ -997,6 +997,8 @@ function buildLedgerFunctionalAuditState(props: {
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
+  isFormalContractLoading: boolean;
+  isFormalContractError: boolean;
   isLoading: boolean;
   isError: boolean;
   readErrors: unknown[];
@@ -1020,13 +1022,17 @@ function buildLedgerFunctionalAuditState(props: {
     "缺失";
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
-  const formalStatus = formalUseAllowed
-    ? "正式值可用"
-    : releaseGate
-      ? "正式契约已登记，待放行"
-      : props.formalIndicatorSourceContract?.sample_status === "missing_contract"
-        ? "正式契约缺失，正式值不可用"
-        : "正式值不可用，仅作候选核对";
+  const formalStatus = props.isFormalContractLoading
+    ? "正式契约读取中"
+    : props.isFormalContractError
+      ? "正式契约读取失败"
+      : formalUseAllowed
+        ? "正式值可用"
+        : releaseGate
+          ? "正式契约已登记，待放行"
+          : props.formalIndicatorSourceContract?.sample_status === "missing_contract"
+            ? "正式契约缺失，正式值不可用"
+            : "正式值不可用，仅作候选核对";
 
   if (props.isLoading) {
     return {
