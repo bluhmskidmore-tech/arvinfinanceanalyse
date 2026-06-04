@@ -4567,6 +4567,214 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users hand off diagnostics when DV01 control actions are empty", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_empty_actions_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_empty_actions_initial"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({
+              limit_status: "ok",
+              approved_limit_dv01: {
+                raw: 100,
+                unit: "dv01" as const,
+                display: "100.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              limit_usage_ratio: {
+                raw: 0.45,
+                unit: "ratio" as const,
+                display: "45.0%",
+                precision: 1,
+                sign_aware: false,
+              },
+              volatility_status: "ok",
+              daily_rate_volatility_bp: {
+                raw: 5,
+                unit: "bp" as const,
+                display: "5.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              control_actions: [],
+              control_message: "DV01 controls are configured, but action detail is empty.",
+              action_hint: "后端未返回控制动作明细，请核对控制动作生成链路。",
+            }),
+          },
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_empty_actions_retry"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            dv01_controls: dv01ControlsFixture({
+              limit_status: "ok",
+              approved_limit_dv01: {
+                raw: 100,
+                unit: "dv01" as const,
+                display: "100.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              limit_usage_ratio: {
+                raw: 0.45,
+                unit: "ratio" as const,
+                display: "45.0%",
+                precision: 1,
+                sign_aware: false,
+              },
+              volatility_status: "ok",
+              daily_rate_volatility_bp: {
+                raw: 5,
+                unit: "bp" as const,
+                display: "5.00",
+                precision: 2,
+                sign_aware: false,
+              },
+              control_actions: [
+                {
+                  key: "volatility_watch",
+                  title: "复核利率波动预警",
+                  status: "watch",
+                  evidence: "波动率源已接入。",
+                  action: "每日复核利率波动预警。",
+                },
+              ],
+              control_message: "DV01 controls are configured.",
+              action_hint: "继续按处置清单复核。",
+            }),
+          },
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+      const emptyActions = within(controls).getByTestId("risk-tensor-dv01-actions-empty");
+
+      expect(emptyActions).toHaveTextContent("后端未返回 DV01 控制动作明细");
+      expect(screen.queryByTestId("risk-tensor-dv01-actions")).not.toBeInTheDocument();
+
+      await user.click(within(emptyActions).getByRole("button", { name: "复制处置排查信息" }));
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 控制处置清单"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_empty_actions_initial"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("control_actions_count 0"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("control_actions 后端未返回处置动作"));
+      expect(emptyActions).toHaveTextContent("已复制处置清单");
+
+      await user.click(within(emptyActions).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      });
+      expect(await screen.findByTestId("risk-tensor-dv01-actions")).toHaveTextContent("复核利率波动预警");
+      expect(screen.queryByTestId("risk-tensor-dv01-actions-empty")).not.toBeInTheDocument();
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
+  it("shows manual diagnostics when empty DV01 control action copying fails", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {
+      throw new Error("clipboard unavailable");
+    });
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_empty_actions_copy_failure_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_empty_actions_copy_failure_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          dv01_controls: dv01ControlsFixture({
+            limit_status: "ok",
+            approved_limit_dv01: {
+              raw: 100,
+              unit: "dv01" as const,
+              display: "100.00",
+              precision: 2,
+              sign_aware: false,
+            },
+            limit_usage_ratio: {
+              raw: 0.45,
+              unit: "ratio" as const,
+              display: "45.0%",
+              precision: 1,
+              sign_aware: false,
+            },
+            volatility_status: "ok",
+            daily_rate_volatility_bp: {
+              raw: 5,
+              unit: "bp" as const,
+              display: "5.00",
+              precision: 2,
+              sign_aware: false,
+            },
+            control_actions: [],
+            control_message: "DV01 controls are configured, but action detail is empty.",
+            action_hint: "后端未返回控制动作明细，请核对控制动作生成链路。",
+          }),
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const emptyActions = await screen.findByTestId("risk-tensor-dv01-actions-empty");
+      await user.click(within(emptyActions).getByRole("button", { name: "复制处置排查信息" }));
+
+      await waitFor(() => {
+        expect(emptyActions).toHaveTextContent("复制失败，请手动选择处置清单");
+      });
+      const manualCopy = within(emptyActions).getByTestId("risk-tensor-dv01-actions-empty-manual-copy");
+      expect(manualCopy).toHaveTextContent("风险张量 DV01 控制处置清单");
+      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_empty_actions_copy_failure_2026-02-28");
+      expect(manualCopy).toHaveTextContent("control_actions_count 0");
+      expect(manualCopy).toHaveTextContent("control_actions 后端未返回处置动作");
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+    }
+  });
+
   it("lets users locate quality evidence and retry when DV01 control inputs are pending", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];

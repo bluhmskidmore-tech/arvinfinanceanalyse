@@ -984,11 +984,14 @@ export default function RiskTensorPage() {
     `volatility_status ${
       result?.dv01_controls ? dv01VolatilityLabel(result.dv01_controls.volatility_status) : "未提供"
     }`,
-    ...(result?.dv01_controls?.control_actions ?? []).flatMap((item) => [
-      `${item.key} ${item.status} ${item.title}`,
-      `证据 ${item.evidence}`,
-      `处置 ${item.action}`,
-    ]),
+    `control_actions_count ${result?.dv01_controls?.control_actions.length ?? 0}`,
+    ...(result?.dv01_controls?.control_actions.length
+      ? result.dv01_controls.control_actions.flatMap((item) => [
+          `${item.key} ${item.status} ${item.title}`,
+          `证据 ${item.evidence}`,
+          `处置 ${item.action}`,
+        ])
+      : ["control_actions 后端未返回处置动作", `action_hint ${result?.dv01_controls?.action_hint ?? "未提供"}`]),
   ].join("\n");
   const qualityWarningsCopyText = [
     "风险张量质量预警清单",
@@ -2530,7 +2533,51 @@ export default function RiskTensorPage() {
                       </article>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="risk-tensor-dv01-controls__empty" data-testid="risk-tensor-dv01-actions-empty">
+                    <span>后端未返回 DV01 控制动作明细</span>
+                    <p>请核对控制动作生成链路；页面不会在前端补写处置动作。</p>
+                    {!dv01ControlInputsPending ? (
+                      <>
+                        <button
+                          type="button"
+                          className="risk-tensor-quality-detail__trace-action"
+                          onClick={handleQualityDetailJump}
+                        >
+                          定位质量证据
+                        </button>
+                        <button
+                          type="button"
+                          className="risk-tensor-quality-detail__trace-action"
+                          onClick={handleRetryTensorMainRead}
+                        >
+                          重试主读面
+                        </button>
+                      </>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="risk-tensor-quality-detail__trace-action"
+                      onClick={handleCopyDv01ControlActions}
+                    >
+                      复制处置排查信息
+                    </button>
+                    {dv01ControlActionsCopyMessage ? (
+                      <small className="risk-tensor-quality-detail__trace-feedback" aria-live="polite">
+                        {dv01ControlActionsCopyMessage}
+                      </small>
+                    ) : null}
+                    {dv01ControlActionsCopyStatus === "failed" ? (
+                      <pre
+                        className="risk-tensor-quality-detail__manual-copy"
+                        data-testid="risk-tensor-dv01-actions-empty-manual-copy"
+                        tabIndex={0}
+                      >
+                        {dv01ControlActionsCopyText}
+                      </pre>
+                    ) : null}
+                  </div>
+                )}
 
                 <p className="risk-tensor-dv01-controls__action">{result.dv01_controls.action_hint}</p>
               </section>
