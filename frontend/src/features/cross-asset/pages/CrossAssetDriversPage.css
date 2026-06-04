@@ -525,6 +525,10 @@
   color: var(--ca-text);
 }
 
+.cross-asset-drivers-page__report-date {
+  font-variant-numeric: tabular-nums;
+}
+
 .cross-asset-decision-hero .moss-page-v2-decision-hero__report a,
 .cross-asset-market-link {
   color: var(--ca-slate);
@@ -2019,6 +2023,10 @@
   font-weight: 650;
 }
 
+.cross-asset-drivers-page__tabular-cell {
+  font-variant-numeric: tabular-nums;
+}
+
 .cross-asset-drivers-page__heatmap td:nth-child(2),
 .cross-asset-drivers-page__heatmap td:nth-child(3) {
   color: var(--ca-sub);
@@ -2090,6 +2098,7 @@
     monospace;
   font-size: 1.0625rem;
   font-weight: 850;
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   color: var(--ca-text);
   line-height: 1.15;
@@ -2970,6 +2979,10 @@
 .ca-waterfall__bar-status--ready,
 .ca-waterfall__bar-status--total {
   color: var(--ca-sage);
+}
+
+.cross-asset-linkage-portfolio-impact__value {
+  font-variant-numeric: tabular-nums;
 }
 
 .ca-waterfall__evidence {

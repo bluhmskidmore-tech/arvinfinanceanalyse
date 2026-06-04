@@ -15,7 +15,7 @@ import { AsyncSection } from "../../../components/AsyncSection";
 import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
 import { StatusPill } from "../../../components/StatusPill";
 import ReactECharts from "../../../lib/echarts";
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { designTokens } from "../../../theme/designSystem";
 import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { CrossAssetEventCalendar } from "../components/CrossAssetEventCalendar";
@@ -883,7 +883,7 @@ function MiniKpiCard({ kpi, compact = false }: { kpi: ResolvedCrossAssetKpi; com
       <div className="cross-asset-drivers-page__mini-kpi-main">
         <div className="cross-asset-drivers-page__mini-kpi-copy">
           <div className="cross-asset-drivers-page__mini-kpi-label">{kpi.label}</div>
-          <div className="cross-asset-drivers-page__mini-kpi-value" style={tabularNumsStyle}>
+          <div className="cross-asset-drivers-page__mini-kpi-value">
             {kpi.valueLabel}
           </div>
           <div className="cross-asset-drivers-page__mini-kpi-delta" style={{ color: stroke }}>
@@ -2075,7 +2075,7 @@ export default function CrossAssetDriversPage() {
           businessQuestion="外部变量今天怎样传导到债券？首屏只看体制、四维判断与关键指标。"
           reportDateSlot={
             <span>
-              数据日期 <strong style={tabularNumsStyle}>{crossAssetDataDate || linkageReportDate || "—"}</strong>
+              数据日期 <strong className="cross-asset-drivers-page__report-date">{crossAssetDataDate || linkageReportDate || "—"}</strong>
               {" · "}
               <Link to="/market-data">市场数据</Link>
             </span>
@@ -2163,8 +2163,8 @@ export default function CrossAssetDriversPage() {
                   {heatmapRows.map((row) => (
                     <tr key={row.id}>
                       <td>{row.indicator}</td>
-                      <td style={tabularNumsStyle}>{row.current}</td>
-                      <td style={tabularNumsStyle}>{row.mid}</td>
+                      <td className="cross-asset-drivers-page__tabular-cell">{row.current}</td>
+                      <td className="cross-asset-drivers-page__tabular-cell">{row.mid}</td>
                       <td style={{ color: evalColor[row.evalTone] }}>{row.eval}</td>
                     </tr>
                   ))}
@@ -2395,15 +2395,15 @@ export default function CrossAssetDriversPage() {
                       >
                         <div>
                           <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>利率变动</div>
-                          <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
+                          <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
                         </div>
                         <div>
                           <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>利差走阔</div>
-                          <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
+                          <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
                         </div>
                         <div>
                           <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>合计估算</div>
-                          <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                          <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
                         </div>
                       </div>
                     ) : (
