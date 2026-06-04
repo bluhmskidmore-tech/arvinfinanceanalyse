@@ -685,6 +685,51 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("lets users jump from first-screen no-required-action status to DV01 controls", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_required_action_jump_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_no_required_action_jump_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          warnings: [],
+          dv01_controls: dv01ControlsFixture({ control_actions: [] }),
+        } as RiskTensorPayload,
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
+      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
+      expect(requiredAction).toHaveTextContent("暂无必做项");
+
+      await user.click(requiredAction);
+
+      expect(scrollTargets).toContain(controls);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("lets users jump from the first-screen required information tile to quality detail", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -3457,6 +3502,70 @@ describe("RiskTensorPage", () => {
     expect(drill).toHaveTextContent("当前桶：3Y");
     expect(drill).toHaveTextContent("krd_5y 不可解析");
     expect(drill).toHaveTextContent("未参与前端主风险桶排序和图表数值");
+  });
+
+  it("lets users review and retry unparseable KRD bucket fields from the drilldown note", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_quality_actions_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi
+        .fn()
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_krd_quality_actions_initial"),
+          result: {
+            ...tensorResult("2026-02-28"),
+            krd_1y: "10000",
+            krd_3y: "90000",
+            krd_5y: "not-a-number",
+            krd_7y: "25000",
+            krd_10y: "15000",
+            krd_30y: "5000",
+          },
+        })
+        .mockResolvedValueOnce({
+          result_meta: buildMeta("risk.tensor", "tr_tensor_krd_quality_actions_success"),
+          result: tensorResult("2026-02-28"),
+        });
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const drill = await screen.findByTestId("risk-tensor-tenor-drill");
+      const qualityNote = within(drill).getByTestId("risk-tensor-krd-quality-note");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+
+      await user.click(within(qualityNote).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+
+      await user.click(within(qualityNote).getByRole("button", { name: "重试主读面" }));
+
+      await waitFor(() => {
+        expect(getRiskTensor).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.queryByTestId("risk-tensor-krd-quality-note")).not.toBeInTheDocument();
+      expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
+        "tr_tensor_krd_quality_actions_success",
+      );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("keeps unparseable radar dimensions out of chart magnitudes", async () => {

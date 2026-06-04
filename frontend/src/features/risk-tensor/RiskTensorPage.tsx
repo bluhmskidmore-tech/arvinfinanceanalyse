@@ -747,7 +747,7 @@ export default function RiskTensorPage() {
     firstRequiredAction?.title ??
     result?.warnings[0] ??
     "后端未返回必做控制动作，继续按质量标记和明细核对。";
-  const actionTileCanJump = Boolean(result && (requiredActions.length > 0 || result.warnings.length > 0));
+  const actionTileCanJump = Boolean(result && (requiredActions.length > 0 || result.dv01_controls || result.warnings.length > 0));
   const actionTileTone = !result?.dv01_controls || requiredActions.length > 0 || (result?.warnings.length ?? 0) > 0 ? "warning" : "ok";
   const showDurationScope = result ? hasDurationScopeDisclosure(result) : false;
   const radarNavigationItems = result
@@ -1293,7 +1293,13 @@ export default function RiskTensorPage() {
 
   const handleRequiredInformationJump = () => {
     const targetTestId =
-      requiredActions.length > 0 ? "risk-tensor-dv01-actions" : result?.warnings.length ? "risk-tensor-quality-detail" : null;
+      requiredActions.length > 0
+        ? "risk-tensor-dv01-actions"
+        : result?.warnings.length
+          ? "risk-tensor-quality-detail"
+          : result?.dv01_controls
+            ? "risk-tensor-dv01-controls"
+            : null;
     if (!targetTestId) {
       return;
     }
@@ -2286,6 +2292,20 @@ export default function RiskTensorPage() {
                     <div className="risk-tensor-tenor-drill__quality" data-testid="risk-tensor-krd-quality-note">
                       {invalidKrdRows.map((row) => `${row.key} ${riskTensorScalarIssue(row.value) ?? "不可解析"}`).join(" / ")}
                       ；未参与前端主风险桶排序和图表数值。
+                      <button
+                        type="button"
+                        className="risk-tensor-brief__link-button"
+                        onClick={handlePayloadChecklistJump}
+                      >
+                        查看字段复核
+                      </button>
+                      <button
+                        type="button"
+                        className="risk-tensor-brief__link-button"
+                        onClick={handleRetryTensorMainRead}
+                      >
+                        重试主读面
+                      </button>
                     </div>
                   ) : null}
                   <div style={chipRowStyle}>
