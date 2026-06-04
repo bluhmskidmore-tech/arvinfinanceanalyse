@@ -82,3 +82,13 @@
   background: var(--moss-color-warning-50);
   color: var(--moss-color-warning-700);
 }
+
+.data-section__retry-button {
+  width: fit-content;
+  padding: 10px 16px;
+  border: 1px solid #e4e9f0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--moss-color-neutral-900);
+  cursor: pointer;
+}

@@ -53,7 +53,10 @@ describe("DataSection · error", () => {
     const { onRetry } = renderWith({ kind: "error", message: "fetch failed" });
     expect(screen.getByTestId("data-section-error")).toBeInTheDocument();
     expect(screen.getByText(/fetch failed/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /重试/ }));
+    const retryButton = screen.getByRole("button", { name: /重试/ });
+    expect(retryButton).toHaveClass("data-section__retry-button");
+    expect(retryButton).not.toHaveAttribute("style");
+    await userEvent.click(retryButton);
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
