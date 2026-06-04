@@ -1,20 +1,7 @@
-import type { CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
-import {
-  ArrowRightOutlined,
-  BarChartOutlined,
-  DatabaseOutlined,
-  ExclamationCircleOutlined,
-  FundProjectionScreenOutlined,
-  InfoCircleOutlined,
-  LineChartOutlined,
-  LoadingOutlined,
-  SafetyCertificateOutlined,
-  StarFilled,
-  WarningOutlined,
-} from "@ant-design/icons";
 
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { LightIcon, type LightIconName } from "../../../components/LightIcon";
 import type {
   DashboardHomeView,
   HomeDataStateKind,
@@ -31,7 +18,116 @@ type TerminalHomeContentProps = {
   view: DashboardHomeView;
 };
 
+type EChartsOption = import("../../../lib/echarts").EChartsOption;
+
 const CHART_COLORS = ["#35679b", "#6f96c3", "#a8bfd8", "#3f8a6a", "#c76b66", "#b6c1cf"];
+const ReactECharts = lazy(() => import("../../../lib/echarts"));
+const CHART_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End", " ", "Space"]);
+
+function ChartFallback() {
+  return <div aria-hidden="true" className={styles.dhTerminalChartPlaceholder} />;
+}
+
+function useDeferredChartMount() {
+  const chartRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState(
+    () => typeof window === "undefined" || typeof window.IntersectionObserver === "undefined",
+  );
+  const [hasUserReachedCharts, setHasUserReachedCharts] = useState(
+    () =>
+      typeof window === "undefined" ||
+      typeof window.IntersectionObserver === "undefined" ||
+      window.scrollY > 0,
+  );
+
+  useEffect(() => {
+    if (isVisible) return;
+
+    if (typeof window === "undefined" || typeof window.IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return;
+    }
+
+    const chartNode = chartRef.current;
+    if (!chartNode) return;
+
+    const observer = new window.IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting || entry.intersectionRatio > 0)) {
+        setIsVisible(true);
+        observer.disconnect();
+      }
+    });
+
+    observer.observe(chartNode);
+    return () => observer.disconnect();
+  }, [isVisible]);
+
+  useEffect(() => {
+    if (hasUserReachedCharts) return;
+
+    if (typeof window === "undefined") {
+      setHasUserReachedCharts(true);
+      return;
+    }
+
+    if (window.scrollY > 0) {
+      setHasUserReachedCharts(true);
+      return;
+    }
+
+    function removeUserReachListeners() {
+      window.removeEventListener("scroll", markUserReachedCharts);
+      window.removeEventListener("wheel", markUserReachedCharts);
+      window.removeEventListener("touchmove", markUserReachedCharts);
+      window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    function markUserReachedCharts() {
+      setHasUserReachedCharts(true);
+      removeUserReachListeners();
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (CHART_REVEAL_KEYS.has(event.key)) {
+        markUserReachedCharts();
+      }
+    }
+
+    window.addEventListener("scroll", markUserReachedCharts);
+    window.addEventListener("wheel", markUserReachedCharts);
+    window.addEventListener("touchmove", markUserReachedCharts);
+    window.addEventListener("keydown", handleKeyDown);
+    return removeUserReachListeners;
+  }, [hasUserReachedCharts]);
+
+  return { chartRef, shouldMount: isVisible && hasUserReachedCharts };
+}
+
+function LazyEChart({
+  option,
+}: {
+  option: EChartsOption;
+}) {
+  const { chartRef, shouldMount } = useDeferredChartMount();
+
+  return (
+    <div ref={chartRef} className={styles.dhTerminalChartMount}>
+      {shouldMount ? (
+        <Suspense fallback={<ChartFallback />}>
+          <ReactECharts
+            option={option}
+            opts={{ renderer: "canvas" }}
+            notMerge
+            lazyUpdate
+            style={{ height: "100%", width: "100%" }}
+          />
+        </Suspense>
+      ) : (
+        <ChartFallback />
+      )}
+    </div>
+  );
+}
 
 function buildReportDatePath(path: string, reportDate: string): string {
   const trimmed = reportDate.trim();
@@ -76,10 +172,10 @@ function DataStateBadge({ kind, label }: { kind: HomeDataStateKind; label?: stri
 }
 
 function StateIcon({ kind }: { kind: HomeDataStateKind }) {
-  if (kind === "loading") return <LoadingOutlined />;
-  if (kind === "error" || kind === "backend-gap") return <ExclamationCircleOutlined />;
-  if (kind === "stale" || kind === "partial") return <WarningOutlined />;
-  return <InfoCircleOutlined />;
+  if (kind === "loading") return <LightIcon name="loading" />;
+  if (kind === "error" || kind === "backend-gap") return <LightIcon name="warning" />;
+  if (kind === "stale" || kind === "partial") return <LightIcon name="alert" />;
+  return <LightIcon name="info-circle" />;
 }
 
 function StateSurface({
@@ -286,12 +382,8 @@ function DistributionPanel({
       {hasData ? (
         <div className={styles.dhTerminalDistribution}>
           <div className={styles.dhTerminalChart}>
-            <ReactECharts
+            <LazyEChart
               option={chart === "pie" ? buildPieOption(slices) : buildBarOption(slices)}
-              opts={{ renderer: "canvas" }}
-              notMerge
-              lazyUpdate
-              style={{ height: "100%", width: "100%" }}
             />
           </div>
           <DistributionList slices={slices} />
@@ -305,7 +397,7 @@ function DistributionPanel({
 
 function TerminalKpiStrip({ view }: { view: DashboardHomeView }) {
   return (
-    <section data-testid="dashboard-home-hero" className={styles.dhTerminalHero}>
+    <section data-testid="dashboard-home-terminal-kpis" className={styles.dhTerminalHero}>
       {view.terminalKpis.map((kpi) => (
         <article
           key={kpi.id}
@@ -663,12 +755,8 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
           </div>
           <div className={styles.dhTerminalIncomeTrend}>
             <div className={styles.dhTerminalIncomeChart}>
-              <ReactECharts
+              <LazyEChart
                 option={buildIncomeTrendOption(view.incomeTrend)}
-                opts={{ renderer: "canvas" }}
-                notMerge
-                lazyUpdate
-                style={{ height: "100%", width: "100%" }}
               />
             </div>
             <div className={styles.dhTerminalIncomeList}>
@@ -690,15 +778,15 @@ function IncomeTrendPanel({ view }: { view: DashboardHomeView }) {
 }
 
 function QuickDrilldowns({ view }: { view: DashboardHomeView }) {
-  const icons = [BarChartOutlined, LineChartOutlined, SafetyCertificateOutlined, FundProjectionScreenOutlined, DatabaseOutlined, StarFilled];
+  const icons: LightIconName[] = ["bar-chart", "line-chart", "safety-certificate", "fund-projection", "database", "star"];
   return (
     <section data-testid="dashboard-home-bottom-grid" className={styles.dhTerminalBottom}>
       {view.quickDrilldowns.slice(0, 6).map((item, index) => {
-        const Icon = icons[index] ?? ArrowRightOutlined;
+        const iconName = icons[index] ?? "arrow-right";
         return (
           <Link key={item.id} to={item.path} className={`${styles.dhCard} ${styles.dhTerminalQuick}`}>
             <span>
-              <Icon />
+              <LightIcon name={iconName} />
             </span>
             <b>{item.label}</b>
             <em>进入</em>

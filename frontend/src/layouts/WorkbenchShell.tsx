@@ -1,23 +1,10 @@
-import {
-  AlertOutlined,
-  ApartmentOutlined,
-  AppstoreOutlined,
-  BankOutlined,
-  BarChartOutlined,
-  FileTextOutlined,
-  FundOutlined,
-  QuestionCircleOutlined,
-  SettingOutlined,
-  TeamOutlined,
-  TrophyOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { useApiClient } from "../api/clientContext";
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
+import { LightIcon } from "../components/LightIcon";
 import {
   findWorkbenchSectionByPath,
   pathMatchesWorkbenchSection,
@@ -34,17 +21,17 @@ import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceM
 import { DataModeRibbon } from "../components/DataModeRibbon";
 
 const iconMap: Record<string, ReactNode> = {
-  dashboard: <AppstoreOutlined />,
-  analysis: <BarChartOutlined />,
-  risk: <AlertOutlined />,
-  team: <TeamOutlined />,
-  kpi: <TrophyOutlined />,
-  decision: <ApartmentOutlined />,
-  bond: <BankOutlined />,
-  settings: <SettingOutlined />,
-  market: <FundOutlined />,
-  reports: <FileTextOutlined />,
-  agent: <ApartmentOutlined />,
+  dashboard: <LightIcon name="appstore" />,
+  analysis: <LightIcon name="bar-chart" />,
+  risk: <LightIcon name="alert" />,
+  team: <LightIcon name="team" />,
+  kpi: <LightIcon name="trophy" />,
+  decision: <LightIcon name="apartment" />,
+  bond: <LightIcon name="bank" />,
+  settings: <LightIcon name="settings" />,
+  market: <LightIcon name="fund" />,
+  reports: <LightIcon name="file-text" />,
+  agent: <LightIcon name="apartment" />,
 };
 
 function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
@@ -261,26 +248,26 @@ const shellUtilityEntries = [
     key: "reports",
     label: "\u62a5\u8868\u4e2d\u5fc3",
     to: "/reports",
-    icon: <FileTextOutlined />,
+    icon: <LightIcon name="file-text" />,
   },
   {
     key: "platform",
     label: "\u4e2d\u53f0\u914d\u7f6e",
     to: "/platform-config",
-    icon: <SettingOutlined />,
+    icon: <LightIcon name="settings" />,
   },
   {
     key: "help",
     label: "\u5e2e\u52a9\u6587\u6863",
     to: "/",
-    icon: <QuestionCircleOutlined />,
+    icon: <LightIcon name="question-circle" />,
   },
 ] as const;
 
 const _shellSupportEntries = [
-  { key: "reports", label: "鎶ヨ〃涓績", to: "/reports", icon: <FileTextOutlined /> },
-  { key: "platform", label: "涓彴閰嶇疆", to: "/platform-config", icon: <SettingOutlined /> },
-  { key: "help", label: "甯姪鏂囨。", to: "/", icon: <QuestionCircleOutlined /> },
+  { key: "reports", label: "鎶ヨ〃涓績", to: "/reports", icon: <LightIcon name="file-text" /> },
+  { key: "platform", label: "涓彴閰嶇疆", to: "/platform-config", icon: <LightIcon name="settings" /> },
+  { key: "help", label: "甯姪鏂囨。", to: "/", icon: <LightIcon name="question-circle" /> },
 ] as const;
 
 type PortfolioStage = {
@@ -965,7 +952,7 @@ export function WorkbenchShell() {
                   fontWeight: 700,
                 }}
               >
-                <UserOutlined />
+                <LightIcon name="user" />
                 <span>{"\u7ba1\u7406\u89c6\u89d2"}</span>
               </span>
               {shellUtilityEntries

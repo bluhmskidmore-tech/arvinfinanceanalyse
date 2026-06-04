@@ -2,6 +2,14 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
+.moss-light-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}
+
 @theme {
   --color-primary-50: var(--moss-color-primary-50);
   --color-primary-100: var(--moss-color-primary-100);
@@ -189,7 +197,7 @@
   --moss-motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --moss-motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
 
-  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif;
+  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --moss-font-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
   --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
 

@@ -1,5 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeAll, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../lib/echarts", () => ({
@@ -9,11 +9,54 @@ vi.mock("../lib/echarts", () => ({
 import { createApiClient, type ApiClient } from "../api/client";
 import type { DashboardHomeView } from "../features/workbench/dashboard-home/dashboardHomeView";
 import { TerminalHomeContent } from "../features/workbench/dashboard-home/TerminalHomeContent";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+type MockIntersectionObserver = {
+  observe: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  triggerAll: (entry?: Partial<IntersectionObserverEntry>) => void;
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+beforeAll(async () => {
+  await preloadWorkbenchRouteModules("dashboard-home");
+}, 20_000);
+
+function stubIntersectionObserver(): MockIntersectionObserver {
+  const callbacks: IntersectionObserverCallback[] = [];
+  const observer: MockIntersectionObserver = {
+    observe: vi.fn(),
+    disconnect: vi.fn(),
+    triggerAll: (entry = {}) => {
+      const target = (entry.target ?? document.createElement("div")) as Element;
+      for (const callback of callbacks) {
+        callback(
+          [
+            {
+              isIntersecting: false,
+              intersectionRatio: 0,
+              target,
+              ...entry,
+            } as IntersectionObserverEntry,
+          ],
+          {} as IntersectionObserver,
+        );
+      }
+    },
+  };
+  const MockObserver = vi.fn(function MockIntersectionObserver(callback: IntersectionObserverCallback) {
+    callbacks.push(callback);
+    return observer;
+  });
+
+  vi.stubGlobal("IntersectionObserver", MockObserver);
+  return observer;
+}
+
 
 function createRealModeHomeClient(overrides: Partial<ApiClient> = {}): ApiClient {
   const base = createApiClient({ mode: "real" });
@@ -29,6 +72,65 @@ function renderDashboardHome(client?: ApiClient) {
   return renderWorkbenchApp(["/"], {
     client: client ?? createApiClient({ mode: "mock" }),
   });
+}
+
+function stubIdleCallbacks() {
+  const callbacks = new Map<number, () => void>();
+  let nextHandle = 1;
+
+  vi.stubGlobal(
+    "requestIdleCallback",
+    vi.fn((callback: () => void) => {
+      const handle = nextHandle;
+      nextHandle += 1;
+      callbacks.set(handle, callback);
+      return handle;
+    }),
+  );
+  vi.stubGlobal(
+    "cancelIdleCallback",
+    vi.fn((handle: number) => {
+      callbacks.delete(handle);
+    }),
+  );
+
+  return {
+    pendingCount: () => callbacks.size,
+    runPending: () => {
+      const pending = Array.from(callbacks.values());
+      callbacks.clear();
+      for (const callback of pending) {
+        callback();
+      }
+    },
+  };
+}
+
+function createSupplementalHomeSpies(mockSnapshotSource: ApiClient) {
+  return {
+    getMarketDataRates: vi.fn(mockSnapshotSource.getMarketDataRates),
+    getCoreMetrics: vi.fn(mockSnapshotSource.getCoreMetrics),
+    getDailyChanges: vi.fn(mockSnapshotSource.getDailyChanges),
+    getBondDashboardHeadlineKpis: vi.fn(mockSnapshotSource.getBondDashboardHeadlineKpis),
+    getBondAnalyticsPortfolioHeadlines: vi.fn(mockSnapshotSource.getBondAnalyticsPortfolioHeadlines),
+    getBondDashboardPortfolioComparison: vi.fn(mockSnapshotSource.getBondDashboardPortfolioComparison),
+    getBondAnalyticsCreditSpreadMigration: vi.fn(mockSnapshotSource.getBondAnalyticsCreditSpreadMigration),
+    getBondAnalyticsReturnDecomposition: vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition),
+    getPnlCampisiFourEffects: vi.fn(mockSnapshotSource.getPnlCampisiFourEffects),
+    getBondAnalyticsYieldCurveTermStructure: vi.fn(mockSnapshotSource.getBondAnalyticsYieldCurveTermStructure),
+    getBalanceAnalysisDecisionItems: vi.fn(mockSnapshotSource.getBalanceAnalysisDecisionItems),
+    getResearchCalendarEvents: vi.fn(async () => []),
+    getChoiceNewsEvents: vi.fn(mockSnapshotSource.getChoiceNewsEvents),
+    getBondDashboardAssetStructure: vi.fn(mockSnapshotSource.getBondDashboardAssetStructure),
+    getBondDashboardMaturityStructure: vi.fn(mockSnapshotSource.getBondDashboardMaturityStructure),
+    getBondDashboardIndustryDistribution: vi.fn(mockSnapshotSource.getBondDashboardIndustryDistribution),
+    getBondDashboardRiskIndicators: vi.fn(mockSnapshotSource.getBondDashboardRiskIndicators),
+    getBondAnalyticsTopHoldings: vi.fn(mockSnapshotSource.getBondAnalyticsTopHoldings),
+    getBondAnalyticsPositionChanges: vi.fn(mockSnapshotSource.getBondAnalyticsPositionChanges),
+    getHomeResearchReports: vi.fn(mockSnapshotSource.getHomeResearchReports),
+    getHomeIncomeTrend: vi.fn(mockSnapshotSource.getHomeIncomeTrend),
+    getCockpitWarnings: vi.fn(mockSnapshotSource.getCockpitWarnings),
+  };
 }
 
 function createTerminalStateView(overrides: Partial<DashboardHomeView> = {}): DashboardHomeView {
@@ -199,6 +301,384 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
+  });
+
+  it("defers non-critical event feeds and income trend until the home snapshot has resolved", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    let releaseSnapshot: (() => void) | undefined;
+    const getResearchCalendarEvents = vi.fn(async () => []);
+    const getChoiceNewsEvents = vi.fn(async (options) =>
+      mockSnapshotSource.getChoiceNewsEvents(options),
+    );
+    const getHomeIncomeTrend = vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
+      mockSnapshotSource.getHomeIncomeTrend(...args),
+    );
+    const getBondAnalyticsTopHoldings = vi.fn(
+      async (...args: Parameters<ApiClient["getBondAnalyticsTopHoldings"]>) =>
+      mockSnapshotSource.getBondAnalyticsTopHoldings(...args),
+    );
+    const getBondAnalyticsPositionChanges = vi.fn(
+      async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) =>
+      mockSnapshotSource.getBondAnalyticsPositionChanges(...args),
+    );
+    const client = createRealModeHomeClient({
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+      getResearchCalendarEvents,
+      getChoiceNewsEvents,
+      getHomeIncomeTrend,
+      getBondAnalyticsTopHoldings,
+      getBondAnalyticsPositionChanges,
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    expect(getResearchCalendarEvents).not.toHaveBeenCalled();
+    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
+
+    releaseSnapshot?.();
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+      expect(getChoiceNewsEvents).toHaveBeenCalled();
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
+    });
+  });
+
+  it("does not start supplemental home queries until the snapshot resolves and idle work begins", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    let releaseSnapshot: (() => void) | undefined;
+    const idle = stubIdleCallbacks();
+
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...base,
+      ...supplementalCalls,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    for (const spy of Object.values(supplementalCalls)) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+
+    await act(async () => {
+      releaseSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    });
+    for (const spy of Object.values(supplementalCalls)) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+
+    await act(async () => {
+      idle.runPending();
+    });
+    await waitFor(() => {
+      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsTopHoldings).toHaveBeenCalled();
+      expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalled();
+      expect(supplementalCalls.getResearchCalendarEvents).toHaveBeenCalled();
+      expect(supplementalCalls.getChoiceNewsEvents).toHaveBeenCalled();
+      expect(supplementalCalls.getBalanceAnalysisDecisionItems).toHaveBeenCalled();
+    });
+  });
+
+  it("does not reuse an old idle gate for supplemental queries while a new report-date snapshot is pending", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+
+    let releaseLatestSnapshot: (() => void) | undefined;
+    let releaseNewSnapshot: (() => void) | undefined;
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...base,
+      ...supplementalCalls,
+      getHomeSnapshot: async (options) => {
+        if (options?.reportDate === "2026-03-31") {
+          await new Promise<void>((resolve) => {
+            releaseNewSnapshot = resolve;
+          });
+          const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+          return {
+            ...envelope,
+            result: {
+              ...envelope.result,
+              report_date: options.reportDate,
+            },
+          };
+        }
+        await new Promise<void>((resolve) => {
+          releaseLatestSnapshot = resolve;
+        });
+        const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: options?.reportDate ?? envelope.result.report_date,
+          },
+        };
+      },
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseLatestSnapshot).toBeDefined();
+    });
+
+    await act(async () => {
+      releaseLatestSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    });
+
+    const reportDateInput = await screen.findByLabelText("报告日");
+    await act(async () => {
+      fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
+    });
+    await waitFor(() => {
+      expect(releaseNewSnapshot).toBeDefined();
+    });
+
+    await act(async () => {
+      idle.runPending();
+    });
+    for (const spy of Object.values(supplementalCalls)) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+
+    await act(async () => {
+      releaseNewSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-page")).toBeInTheDocument();
+    });
+    for (const spy of Object.values(supplementalCalls)) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+  });
+
+  it("does not keep formal supplemental queries enabled while a new report-date snapshot is pending", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+
+    let releaseNewSnapshot: (() => void) | undefined;
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...base,
+      ...supplementalCalls,
+      getHomeSnapshot: async (options) => {
+        if (options?.reportDate === "2026-03-31") {
+          await new Promise<void>((resolve) => {
+            releaseNewSnapshot = resolve;
+          });
+        }
+        const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: options?.reportDate ?? envelope.result.report_date,
+          },
+        };
+      },
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    });
+    await act(async () => {
+      idle.runPending();
+    });
+    await waitFor(() => {
+      expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getCockpitWarnings).toHaveBeenCalledTimes(1);
+    });
+
+    const incomeTrendCallsBeforeSwitch = supplementalCalls.getHomeIncomeTrend.mock.calls.length;
+    const cockpitWarningCallsBeforeSwitch = supplementalCalls.getCockpitWarnings.mock.calls.length;
+    const reportDateInput = await screen.findByLabelText("报告日");
+    await act(async () => {
+      fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
+    });
+    await waitFor(() => {
+      expect(releaseNewSnapshot).toBeDefined();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(incomeTrendCallsBeforeSwitch);
+    expect(supplementalCalls.getCockpitWarnings).toHaveBeenCalledTimes(cockpitWarningCallsBeforeSwitch);
+
+    await act(async () => {
+      releaseNewSnapshot?.();
+    });
+  });
+
+  it("does not start supplemental queries when a requested report-date snapshot fails without prior data", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...base,
+      ...supplementalCalls,
+      getHomeSnapshot: async () => {
+        throw new Error("snapshot unavailable");
+      },
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    const reportDateInput = await screen.findByLabelText("报告日");
+    await act(async () => {
+      fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-hero")).toBeInTheDocument();
+    });
+    await act(async () => {
+      idle.runPending();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    for (const spy of Object.values(supplementalCalls)) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+  });
+
+  it("waits to request income trend until heavy bond lists have settled", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+    let releaseSnapshot: (() => void) | undefined;
+    let releaseTopHoldings: (() => void) | undefined;
+    let releaseIncomeTrend: (() => void) | undefined;
+    const getBondAnalyticsTopHoldings = vi.fn(async (...args: Parameters<ApiClient["getBondAnalyticsTopHoldings"]>) => {
+      await new Promise<void>((resolve) => {
+        releaseTopHoldings = resolve;
+      });
+      return mockSnapshotSource.getBondAnalyticsTopHoldings(...args);
+    });
+    const getBondAnalyticsPositionChanges = vi.fn(
+      async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) =>
+      mockSnapshotSource.getBondAnalyticsPositionChanges(...args),
+    );
+    const getHomeIncomeTrend = vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) => {
+      await new Promise<void>((resolve) => {
+        releaseIncomeTrend = resolve;
+      });
+      return mockSnapshotSource.getHomeIncomeTrend(...args);
+    });
+    const getBondAnalyticsReturnDecomposition = vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition);
+    const getPnlCampisiFourEffects = vi.fn(mockSnapshotSource.getPnlCampisiFourEffects);
+    const getBondAnalyticsYieldCurveTermStructure = vi.fn(
+      mockSnapshotSource.getBondAnalyticsYieldCurveTermStructure,
+    );
+    const client = createRealModeHomeClient({
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+      getBondAnalyticsTopHoldings,
+      getBondAnalyticsPositionChanges,
+      getHomeIncomeTrend,
+      getBondAnalyticsReturnDecomposition,
+      getPnlCampisiFourEffects,
+      getBondAnalyticsYieldCurveTermStructure,
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    expect(idle.pendingCount()).toBe(0);
+    await act(async () => {
+      releaseSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    });
+    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
+
+    await act(async () => {
+      idle.runPending();
+    });
+    await waitFor(() => {
+      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+      expect(releaseTopHoldings).toBeDefined();
+    });
+    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    releaseTopHoldings?.();
+    await waitFor(() => {
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
+      expect(releaseIncomeTrend).toBeDefined();
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
+    });
+
+    releaseIncomeTrend?.();
+  });
+
+  it("does not refetch market tape when only the snapshot report date resolves", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getMarketDataRates = vi.fn(base.getMarketDataRates);
+    const client: ApiClient = {
+      ...base,
+      getMarketDataRates,
+    };
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getMarketDataRates).toHaveBeenCalledTimes(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(getMarketDataRates).toHaveBeenCalledTimes(1);
   });
 
   it("uses mock-shaped first-screen content when the app is not using real APIs", async () => {
@@ -503,10 +983,12 @@ describe("DashboardHomePage", () => {
     expect(positionChanges).toHaveTextContent("+2.00pp");
     expect(positionChanges).toHaveTextContent("现值");
     const incomeTrend = await screen.findByTestId("dashboard-home-income-trend");
-    expect(incomeTrend).toHaveTextContent("组合");
-    expect(incomeTrend).toHaveTextContent("基准");
-    expect(incomeTrend).toHaveTextContent("超额");
-    expect(incomeTrend).toHaveTextContent("+1.20");
+    await waitFor(() => {
+      expect(incomeTrend).toHaveTextContent("组合");
+      expect(incomeTrend).toHaveTextContent("基准");
+      expect(incomeTrend).toHaveTextContent("超额");
+      expect(incomeTrend).toHaveTextContent("+1.20");
+    });
     expect(await screen.findByTestId("dashboard-home-research-reports")).toHaveTextContent("利率债周报");
     expect(screen.queryByTestId("dashboard-home-backend-gap-research-reports")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-home-backend-gap-position-changes")).not.toBeInTheDocument();
@@ -598,6 +1080,56 @@ describe("DashboardHomePage", () => {
   });
 
     */
+  it("defers dashboard chart runtime until visible chart regions are reached by user scroll", async () => {
+    const observer = stubIntersectionObserver();
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeContent
+          view={createTerminalStateView({
+            assetDistributionState: { kind: "ready", label: "ready" },
+            assetDistribution: [
+              { id: "bond", label: "Bond", value: "90.00", pct: "90.00%", pctRaw: 90 },
+              { id: "cash", label: "Cash", value: "10.00", pct: "10.00%", pctRaw: 10 },
+            ],
+            incomeTrendState: { kind: "ready", label: "ready" },
+            incomeTrend: [
+              {
+                id: "2026-04-30",
+                date: "2026-04-30",
+                portfolioPnl: "+0.90",
+                benchmarkPnl: "+0.60",
+                excessPnl: "+0.30",
+                portfolioRaw: 90_000_000,
+                benchmarkRaw: 60_000_000,
+                excessRaw: 30_000_000,
+              },
+            ],
+          })}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("CDB_INDEX / MoM");
+    expect(observer.observe).toHaveBeenCalled();
+    expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
+
+    await act(async () => {
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("scroll"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("dashboard-echarts-stub").length).toBeGreaterThan(0);
+    });
+  });
+
   it("renders supply and auction calendar items from the research calendar feed", async () => {
     const researchCalendarCalls: Array<{
       reportDate?: string;
@@ -657,7 +1189,7 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(calendar).toHaveTextContent("重大信息发布日期前瞻");
       expect(calendar).toHaveTextContent("国内外宏观新闻");
-      expect(calendar).toHaveTextContent("来源：Choice 宏观新闻");
+      expect(calendar).toHaveTextContent("Tushare 宏观快讯");
       expect(calendar).toHaveTextContent("数据截至");
       expect(calendar).toHaveTextContent("来源状态");
       expect(calendar).toHaveTextContent("刷新：");
@@ -673,6 +1205,9 @@ describe("DashboardHomePage", () => {
         "S888005004API",
         "C000003006",
         "C000003002",
+        "tushare.major_news",
+        "tushare.news.sina",
+        "tushare.npr",
       ]),
     );
   });

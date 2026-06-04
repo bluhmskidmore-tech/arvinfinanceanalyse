@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
 import { workbenchSections } from "../router/routes";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => ({
@@ -72,6 +73,14 @@ vi.mock("../features/positions/pages/PositionsPage", () => ({
           <option value="2025-12-31">2025-12-31</option>
         </select>
       </label>
+    </section>
+  ),
+}));
+
+vi.mock("../features/average-balance/pages/AverageBalancePage", () => ({
+  default: () => (
+    <section data-testid="average-balance-page">
+      <h1>日均余额分析</h1>
     </section>
   ),
 }));
@@ -172,8 +181,72 @@ vi.mock("../features/stock-analysis/pages/StockAnalysisPage", () => ({
   ),
 }));
 
+vi.mock("../features/news-events/NewsEventsPage", () => ({
+  default: () => (
+    <section data-testid="news-events-page">
+      <h1 data-testid="news-events-page-title">新闻事件</h1>
+      <label>
+        新闻主题
+        <select aria-label="news-events-topic-code" defaultValue="all">
+          <option value="all">全部</option>
+        </select>
+      </label>
+      <div data-testid="news-events-table" />
+    </section>
+  ),
+}));
+
+vi.mock("../features/balance-analysis/pages/BalanceAnalysisPage", () => ({
+  default: () => (
+    <section data-testid="balance-analysis-page">
+      <div data-testid="balance-analysis-overview-cards" />
+      <div data-testid="balance-analysis-table" />
+    </section>
+  ),
+}));
+
+vi.mock("../features/agent/AgentWorkbenchPage", () => ({
+  default: () => (
+    <section data-testid="agent-workbench-page">
+      <label>
+        agent-question-input
+        <textarea aria-label="agent-question-input" />
+      </label>
+    </section>
+  ),
+}));
+
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
+
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules(
+      "agent",
+      "balance-analysis",
+      "bond-analysis",
+      "bond-dashboard",
+      "cashflow-projection",
+      "cross-asset",
+      "dashboard-home",
+      "decision-items",
+      "kpi",
+      "ledger-pnl",
+      "liability-analytics",
+      "market-data",
+      "news-events",
+      "pnl",
+      "pnl-attribution",
+      "pnl-bridge",
+      "pnl-by-business",
+      "positions",
+      "product-category-pnl-audit",
+      "risk-tensor",
+      "stock-analysis",
+      "team-performance",
+      "platform-config",
+      "cube-query",
+    );
+  }, 20_000);
 
   it("exposes the current visible primary workbench entries", () => {
     expect(workbenchSections).toHaveLength(primaryWorkbenchNavigation.length);

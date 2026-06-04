@@ -415,7 +415,8 @@
   color: var(--dh-amber);
 }
 
-.dhStatusPillAlert :global(.anticon) {
+.dhStatusPillAlert :global(.anticon),
+.dhStatusPillAlert :global(.moss-light-icon) {
   color: var(--dh-red);
 }
 
@@ -1674,6 +1675,12 @@
   margin-bottom: var(--dh-space-2);
 }
 
+.dhTerminalDeferredPlaceholder {
+  min-height: 360px;
+  margin-top: var(--dh-space-2);
+  border-radius: 8px;
+}
+
 .dhTerminalJudgement,
 .dhTerminalKpi,
 .dhTerminalPanel,
@@ -2038,6 +2045,19 @@
 .dhTerminalChart {
   height: 132px;
   min-width: 0;
+}
+
+.dhTerminalChartMount {
+  width: 100%;
+  height: 100%;
+}
+
+.dhTerminalChartPlaceholder {
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(232, 241, 251, 0.72), rgba(247, 249, 252, 0.9));
 }
 
 .dhTerminalDistributionList {
@@ -2881,7 +2901,8 @@
   letter-spacing: 0.01em;
 }
 
-.dhAiCardHead :global(.anticon) {
+.dhAiCardHead :global(.anticon),
+.dhAiCardHead :global(.moss-light-icon) {
   color: var(--dh-card);
   font-size: 13px;
 }
@@ -3032,7 +3053,8 @@
   font-weight: 600 !important;
 }
 
-.dhDataNoteOk :global(.anticon) {
+.dhDataNoteOk :global(.anticon),
+.dhDataNoteOk :global(.moss-light-icon) {
   color: var(--dh-green);
 }
 
@@ -3044,7 +3066,8 @@
   font-weight: 600 !important;
 }
 
-.dhDataNoteWarning :global(.anticon) {
+.dhDataNoteWarning :global(.anticon),
+.dhDataNoteWarning :global(.moss-light-icon) {
   color: var(--dh-amber);
 }
 
