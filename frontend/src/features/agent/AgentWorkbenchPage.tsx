@@ -3224,6 +3224,7 @@ export function EmbeddedAgentCopilot({
               <button
                 type="button"
                 className="agent-callout__action"
+                aria-label={`继续输入：${turn.question}`}
                 onClick={focusComposerFromEmptyResult}
                 disabled={loading}
               >
@@ -3233,6 +3234,7 @@ export function EmbeddedAgentCopilot({
                 <button
                   type="button"
                   className="agent-callout__action"
+                  aria-label={`重新生成：${turn.question}`}
                   onClick={() => void regenerateAgentTurn(turn)}
                   disabled={loading}
                 >

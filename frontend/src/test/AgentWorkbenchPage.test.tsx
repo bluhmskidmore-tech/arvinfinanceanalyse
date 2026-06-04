@@ -5873,7 +5873,7 @@ describe("AgentWorkbenchPage", () => {
       screen.getByPlaceholderText(
         AGENT_PLACEHOLDER,
       ),
-      "x",
+      "empty fallback question",
     );
     await user.click(screen.getByRole("button", { name: "发送" }));
 
@@ -5891,10 +5891,14 @@ describe("AgentWorkbenchPage", () => {
     fireEvent.click(emptyResultSummary);
     expect(emptyResultDetails).toHaveAttribute("open");
     expect(screen.getByText("tr_empty")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "继续输入" }));
+    const continueInputButton = screen.getByRole("button", { name: /继续输入/ });
+    expect(continueInputButton).toHaveAccessibleName(/empty fallback question/);
+    await user.click(continueInputButton);
     expect(screen.getByLabelText("agent-question-input")).toHaveFocus();
     expect(screen.getByText("可以调整问题 · Enter 发送")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重新生成" }));
+    const emptyRegenerateButton = screen.getByRole("button", { name: /重新生成/ });
+    expect(emptyRegenerateButton).toHaveAccessibleName(/empty fallback question/);
+    await user.click(emptyRegenerateButton);
     expect(await screen.findByText("empty fallback regenerated answer")).toBeInTheDocument();
   });
 
