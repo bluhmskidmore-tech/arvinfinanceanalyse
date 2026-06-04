@@ -708,6 +708,8 @@ export default function RiskTensorPage() {
       { key: "liquidity_gap_30d_ratio", issue: riskTensorScalarIssue(result.liquidity_gap_30d_ratio) },
     ].filter((item): item is { key: string; issue: string } => Boolean(item.issue));
   }, [result]);
+  const issuerConcentrationIssue = result ? riskTensorScalarIssue(result.issuer_concentration_hhi) : null;
+  const liquidityGapRatioIssue = result ? riskTensorScalarIssue(result.liquidity_gap_30d_ratio) : null;
 
   const dominantTenorRow = useMemo(() => {
     if (tenorRows.length === 0) {
@@ -1269,6 +1271,9 @@ export default function RiskTensorPage() {
 
   const handlePrimaryTenorDrill = () => {
     if (!dominantTenorRow) {
+      document
+        .querySelector<HTMLElement>('[data-testid="risk-tensor-krd-quality-note"]')
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     setSelectedTenor(dominantTenorRow.tenor);
@@ -2783,6 +2788,17 @@ export default function RiskTensorPage() {
                   detail="issuer_top5_weight。"
                 />
               </div>
+              {issuerConcentrationIssue ? (
+                <div className="risk-tensor-radar-quality" data-testid="risk-tensor-issuer-quality-note">
+                  issuer_concentration_hhi {issuerConcentrationIssue}；该字段未参与前端雷达图数值。
+                  <button type="button" className="risk-tensor-brief__link-button" onClick={handlePayloadChecklistJump}>
+                    查看字段复核
+                  </button>
+                  <button type="button" className="risk-tensor-brief__link-button" onClick={handleRetryTensorMainRead}>
+                    重试主读面
+                  </button>
+                </div>
+              ) : null}
             </section>
 
             <section data-testid="risk-tensor-liquidity-gap-detail" aria-label="流动性现金流缺口明细">
@@ -2812,6 +2828,17 @@ export default function RiskTensorPage() {
                   testId="risk-tensor-liquidity-gap-ratio"
                 />
               </div>
+              {liquidityGapRatioIssue ? (
+                <div className="risk-tensor-radar-quality" data-testid="risk-tensor-liquidity-quality-note">
+                  liquidity_gap_30d_ratio {liquidityGapRatioIssue}；该字段未参与前端雷达图数值。
+                  <button type="button" className="risk-tensor-brief__link-button" onClick={handlePayloadChecklistJump}>
+                    查看字段复核
+                  </button>
+                  <button type="button" className="risk-tensor-brief__link-button" onClick={handleRetryTensorMainRead}>
+                    重试主读面
+                  </button>
+                </div>
+              ) : null}
             </section>
 
             <h2

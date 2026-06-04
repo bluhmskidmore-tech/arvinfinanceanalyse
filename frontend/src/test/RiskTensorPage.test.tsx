@@ -3981,6 +3981,54 @@ describe("RiskTensorPage", () => {
     }
   });
 
+  it("jumps from the first-screen primary bucket tile to KRD quality review when every KRD bucket is unparseable", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_all_invalid_tile_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_krd_all_invalid_tile_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          krd_1y: "bad",
+          krd_3y: "",
+          krd_5y: "undefined",
+          krd_7y: "bad",
+          krd_10y: "NaN",
+          krd_30y: "missing",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const brief = await screen.findByTestId("risk-tensor-brief");
+      const primaryBucketAction = within(brief).getByTestId("risk-tensor-primary-tenor-action");
+      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
+
+      await user.click(primaryBucketAction);
+
+      expect(scrollTargets).toContain(qualityNote);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
   it("keeps unparseable radar dimensions out of chart magnitudes", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -4072,6 +4120,106 @@ describe("RiskTensorPage", () => {
       expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
         "tr_tensor_radar_quality_actions_success",
       );
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users continue from an unparseable radar liquidity detail to payload field review", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_liquidity_detail_quality_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_liquidity_detail_quality_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          liquidity_gap_30d_ratio: "not-a-number",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const liquidityDetail = await screen.findByTestId("risk-tensor-liquidity-gap-detail");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-liq_ratio");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(liquidityDetail);
+      expect(within(liquidityDetail).getByTestId("risk-tensor-liquidity-quality-note")).toHaveTextContent(
+        "liquidity_gap_30d_ratio",
+      );
+
+      await user.click(within(liquidityDetail).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("lets users continue from an unparseable radar issuer detail to payload field review", async () => {
+    const user = userEvent.setup();
+    const scrollTargets: HTMLElement[] = [];
+    const scrollOptions: unknown[] = [];
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
+      scrollTargets.push(this);
+      scrollOptions.push(options);
+    });
+
+    try {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_issuer_detail_quality_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_issuer_detail_quality_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          issuer_concentration_hhi: "bad-hhi",
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const issuerDetail = await screen.findByTestId("risk-tensor-issuer-concentration-detail");
+      const payloadChecklist = await screen.findByTestId("risk-tensor-quality-payload-checklist");
+      const radarAction = await screen.findByTestId("risk-tensor-radar-action-hhi");
+
+      await user.click(radarAction);
+
+      expect(scrollTargets).toContain(issuerDetail);
+      expect(within(issuerDetail).getByTestId("risk-tensor-issuer-quality-note")).toHaveTextContent(
+        "issuer_concentration_hhi",
+      );
+
+      await user.click(within(issuerDetail).getByRole("button", { name: "查看字段复核" }));
+
+      expect(scrollTargets).toContain(payloadChecklist);
+      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
     }
