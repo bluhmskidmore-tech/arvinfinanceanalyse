@@ -1330,9 +1330,10 @@ export default function RiskTensorPage() {
   };
 
   const handlePayloadChecklistJump = () => {
-    document
-      .querySelector<HTMLElement>('[data-testid="risk-tensor-quality-payload-checklist"]')
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target =
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-quality-payload-checklist"]') ??
+      document.querySelector<HTMLElement>('[data-testid="risk-tensor-quality-detail"]');
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const handleSectionJump = (targetTestId: string) => {
