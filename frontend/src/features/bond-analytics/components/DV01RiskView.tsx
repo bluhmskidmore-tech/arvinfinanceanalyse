@@ -1316,6 +1316,17 @@ function DV01ReconciliationPanel({
         </div>
       </div>
 
+      {data?.warnings.length ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="明细口径提示"
+          description={data.warnings.map((warning, index) => (
+            <div key={index}>{warning}</div>
+          ))}
+        />
+      ) : null}
+
       {isError ? (
         <Alert
           type="error"

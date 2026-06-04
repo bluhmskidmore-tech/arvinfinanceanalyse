@@ -979,6 +979,37 @@ describe("DV01RiskView", () => {
     expect(within(table).queryByText("BOND-1")).not.toBeInTheDocument();
   });
 
+  it("renders backend reconciliation warnings for all-scope unmapped accounting classes", async () => {
+    const user = userEvent.setup();
+    const unmappedWarning =
+      "DV01 全部口径包含未映射会计分类：other；AC/OCI/TPL 正式分类验收不能用 all 行替代。";
+    const getDv01Risk = vi.fn(async (_reportDate: string, options?: { accountingClass?: string }) => ({
+      result_meta: resultMeta(),
+      result: payload({
+        accounting_class: options?.accountingClass ?? "OCI",
+        warnings: [],
+      }),
+    }));
+    const getDv01Reconciliation = vi.fn(async (_reportDate: string, options?: { accountingClass?: string }) => ({
+      result_meta: reconciliationMeta(),
+      result: reconciliationPayload({
+        accounting_class: options?.accountingClass ?? "OCI",
+        warnings: options?.accountingClass === "all" ? [unmappedWarning] : [],
+      }),
+    }));
+
+    renderView(getDv01Risk, getDv01Reconciliation);
+
+    await waitFor(() => expect(getDv01Reconciliation).toHaveBeenCalledTimes(1));
+    await user.click(within(screen.getByTestId("dv01-risk-accounting-class")).getByText("全部"));
+    await waitFor(() => expect(getDv01Reconciliation).toHaveBeenCalledTimes(2));
+
+    const panel = await screen.findByTestId("dv01-reconciliation-panel");
+    expect(panel).toHaveTextContent("未映射会计分类");
+    expect(panel).toHaveTextContent("other");
+    expect(panel).toHaveTextContent("AC/OCI/TPL 正式分类验收不能用 all 行替代");
+  });
+
   it("shows the governed empty state without deriving frontend metrics", async () => {
     const zero = (unit: Numeric["unit"]) =>
       formatRawAsNumeric({ raw: 0, unit, sign_aware: false });
