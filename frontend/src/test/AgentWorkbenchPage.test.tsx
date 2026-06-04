@@ -4094,6 +4094,13 @@ describe("AgentWorkbenchPage", () => {
     expect(window.localStorage.getItem(AGENT_QUEUED_QUERIES_KEY)).toBe(JSON.stringify([queuedQuestion]));
   });
 
+  it("keeps queued follow-up previews formatted for multiline drafts", () => {
+    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+
+    expect(cssText).toMatch(/\.agent-queued-draft__text\s*\{[^}]*white-space:\s*pre-wrap/s);
+    expect(cssText).toMatch(/\.agent-queued-draft__queue li span:last-child\s*\{[^}]*white-space:\s*pre-wrap/s);
+  });
+
   it("keeps a queued follow-up draft anchored to the composer while the active answer is running", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];

@@ -3766,6 +3766,7 @@ select {
   font-size: 14px;
   font-weight: 680;
   line-height: 1.45;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
@@ -3795,6 +3796,7 @@ select {
 
 .agent-queued-draft__queue li span:last-child {
   min-width: 0;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
