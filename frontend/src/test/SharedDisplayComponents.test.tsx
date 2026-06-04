@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ApiClientProvider, createApiClient } from "../api/client";
 import { AlertList } from "../components/AlertList";
 import { DataModeRibbon } from "../components/DataModeRibbon";
+import { StatusPill } from "../components/StatusPill";
 import { SummaryBlock } from "../components/SummaryBlock";
 import { designTokens } from "../theme/designSystem";
 
@@ -21,6 +22,15 @@ describe("shared display components style governance", () => {
     render(<SummaryBlock title="Conclusion" content="Use governed display tokens." />);
 
     expect(screen.getByText("Use governed display tokens.")).toHaveClass("summary-block__content");
+  });
+
+  it("renders status pills with extracted status classes", () => {
+    render(<StatusPill status="warning" label="Fallback" />);
+
+    const pill = screen.getByText("Fallback");
+    expect(pill).toHaveClass("status-pill");
+    expect(pill).toHaveAttribute("data-status", "warning");
+    expect(pill).not.toHaveAttribute("style");
   });
 
   it("marks the mock data ribbon with the global governance class", () => {
