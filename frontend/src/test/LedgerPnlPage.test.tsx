@@ -556,6 +556,7 @@ describe("LedgerPnlPage", () => {
 
     const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("正式状态正式契约已登记，待放行");
+    expect(decisionPath).toHaveTextContent("正式补证结论正式契约已登记待放行；补齐放行证据后再回读确认");
     expect(decisionPath).toHaveTextContent("执行状态已登记待放行");
     expect(decisionPath).toHaveTextContent(
       "回读动作登记来源接入证据并重新读取契约，确认 formal_use_allowed=false 保持到放行前",
@@ -657,6 +658,7 @@ describe("LedgerPnlPage", () => {
 
     const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("材料完整性等待正式契约读取");
+    expect(decisionPath).toHaveTextContent("正式补证结论等待正式契约读取后再判断补证闭环");
     expect(decisionPath).toHaveTextContent("执行状态读取正式契约中");
     expect(decisionPath).not.toHaveTextContent("无缺契约补证材料");
 
@@ -745,6 +747,7 @@ describe("LedgerPnlPage", () => {
 
     const decisionPath = screen.getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("正式状态正式值可用");
+    expect(decisionPath).toHaveTextContent("正式补证结论正式契约已放行；无需正式补证");
     expect(decisionPath).toHaveTextContent("材料完整性无缺契约补证材料");
     expect(decisionPath).toHaveTextContent("执行状态已读取正式契约");
     expect(decisionPath).toHaveTextContent("回读动作已完成正式契约回读");
@@ -1439,6 +1442,7 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("正式状态正式契约读取失败");
     expect(decisionPath).not.toHaveTextContent("正式状态正式值不可用，仅作候选核对");
     expect(decisionPath).toHaveTextContent("正式补证路径恢复读取后重新查询正式契约");
+    expect(decisionPath).toHaveTextContent("正式补证结论正式契约读取失败；先恢复读取，再复核正式契约");
     expect(decisionPath).not.toHaveTextContent("正式补证路径无正式契约补证路径");
     expect(strip).not.toHaveTextContent("无正式契约明细");
     expect(strip).not.toHaveTextContent("正式待接入 0 / QDB候选 0 / 需对账 0");
