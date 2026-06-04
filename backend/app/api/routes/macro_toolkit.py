@@ -1457,6 +1457,8 @@ _CRISIS_COMMODITY_FIELD_TO_PRODUCT = {
     "gold": "AU",
 }
 _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES = 20
+_CRISIS_COMMODITY_SHADOW_FORMULA_VERSION = "rv_macro_crisis_score_shadow_commodity_v1"
+_CRISIS_COMMODITY_SHADOW_WEIGHT = 0.05
 
 _CAPABILITY_INPUT_REQUIREMENTS = {
     "monetary_policy_stance": (
@@ -2618,11 +2620,16 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         "sources": _unique_sorted_texts(item.get("source") for item in inputs),
         "latest_dates": _unique_sorted_texts(item.get("latest_date") for item in inputs),
     }
-    enriched["commodity_coverage"] = _crisis_commodity_coverage(
+    commodity_coverage = _crisis_commodity_coverage(
         duckdb_path,
         report_date=report_date,
         start=start,
         crisis_history=crisis_history,
+    )
+    enriched["commodity_coverage"] = commodity_coverage
+    enriched["shadow_impact"] = _crisis_commodity_shadow_impact(
+        current_score=_float_or_none(enriched.get("crisis_score")),
+        coverage=commodity_coverage,
     )
     return enriched
 
@@ -2850,6 +2857,7 @@ def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.
     same_day = _series_corr(aligned["candidate_return"], aligned["crisis_score"])
     lead_1d = _series_corr(aligned["candidate_return"].shift(1), aligned["crisis_score"])
     lag_1d = _series_corr(aligned["candidate_return"].shift(-1), aligned["crisis_score"])
+    candidate_return_z = _latest_standard_score(aligned["candidate_return"])
     crisis_threshold = aligned["crisis_score"].quantile(0.75)
     crisis_rows = aligned[aligned["crisis_score"] >= crisis_threshold]
     hit_rate = None
@@ -2868,6 +2876,7 @@ def _crisis_commodity_shadow_evaluation(frame: pd.DataFrame, crisis_history: pd.
         "same_day_correlation": same_day,
         "lead_1d_correlation": lead_1d,
         "lag_1d_correlation": lag_1d,
+        "latest_return_z": candidate_return_z,
         "crisis_hit_rate": round(hit_rate, 2) if hit_rate is not None else None,
         "crisis_sample_count": int(len(crisis_rows)),
         "summary": (
@@ -2886,8 +2895,88 @@ def _series_corr(left: pd.Series, right: pd.Series) -> float | None:
     return round(float(value), 2) if pd.notna(value) else None
 
 
+def _latest_standard_score(series: pd.Series) -> float | None:
+    clean = series.dropna()
+    if len(clean) < _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES or clean.nunique() < 2:
+        return None
+    std = clean.std()
+    if pd.isna(std) or float(std) == 0.0:
+        return None
+    value = (clean.iloc[-1] - clean.mean()) / std
+    return round(float(value), 4) if pd.notna(value) else None
+
+
 def _format_shadow_metric(value: float | None) -> str:
     return "缺失" if value is None else f"{value:.2f}"
+
+
+def _crisis_commodity_shadow_impact(
+    *,
+    current_score: float | None,
+    coverage: dict[str, object],
+) -> dict[str, object]:
+    items = [item for item in coverage.get("items", []) if isinstance(item, dict)]
+    contributions = [
+        contribution
+        for item in items
+        if (contribution := _crisis_commodity_shadow_contribution(item)) is not None
+    ]
+    delta = round(sum(float(item["contribution"]) for item in contributions), 4) if contributions else 0.0
+    shadow_score = round(current_score + delta, 4) if current_score is not None else None
+    return {
+        "formula_version": _CRISIS_COMMODITY_SHADOW_FORMULA_VERSION,
+        "scope": "commodity_shadow_v2_read_only",
+        "current_score": round(current_score, 4) if current_score is not None else None,
+        "shadow_score": shadow_score,
+        "delta": delta,
+        "direction": _crisis_commodity_shadow_direction(delta),
+        "included_candidates": [str(item["field"]) for item in contributions],
+        "candidate_count": len(contributions),
+        "candidate_contributions": contributions,
+        "weights": {
+            "official_crisis_score": 1.0,
+            "commodity_shadow": _CRISIS_COMMODITY_SHADOW_WEIGHT,
+        },
+        "warnings": ["SHADOW_SCORE_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"],
+        "approval_required": True,
+        "official_score_unchanged": True,
+        "next_step": "先复核商品候选相关性和命中率，再确认 v2 权重；审批前不改变正式 Crisis Score。",
+    }
+
+
+def _crisis_commodity_shadow_contribution(item: dict[str, object]) -> dict[str, object] | None:
+    shadow = item.get("shadow_evaluation")
+    if not isinstance(shadow, dict) or shadow.get("status") != "review_ready":
+        return None
+    sample_count = int(shadow.get("sample_count") or 0)
+    if sample_count < _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES:
+        return None
+    candidate_return_z = _float_or_none(shadow.get("latest_return_z"))
+    if candidate_return_z is None:
+        return None
+    contribution = round(candidate_return_z * _CRISIS_COMMODITY_SHADOW_WEIGHT, 4)
+    return {
+        "field": str(item.get("field") or ""),
+        "label": str(item.get("label") or item.get("field") or ""),
+        "series_id": item.get("series_id"),
+        "source": item.get("source"),
+        "latest_date": item.get("latest_date"),
+        "sample_count": sample_count,
+        "candidate_metric": "daily_return_z",
+        "candidate_value": round(candidate_return_z, 4),
+        "weight": _CRISIS_COMMODITY_SHADOW_WEIGHT,
+        "contribution": contribution,
+        "used_in_official_score": False,
+        "status": "shadow_only",
+    }
+
+
+def _crisis_commodity_shadow_direction(delta: float) -> str:
+    if delta > 0.01:
+        return "higher_stress"
+    if delta < -0.01:
+        return "lower_stress"
+    return "unchanged"
 
 
 def _crisis_commodity_candidate_decision(*, available: bool, date_alignment_status: str) -> dict[str, object]:

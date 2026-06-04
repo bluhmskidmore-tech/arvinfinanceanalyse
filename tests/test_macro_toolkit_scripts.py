@@ -2300,6 +2300,38 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
         "approval_required": True,
         "next_step": "商品旁证进入 Crisis Score 公式前，需要先完成历史回测、相关性检验、权重审批和版本记录。",
     }
+    shadow_impact = crisis["result"]["shadow_impact"]
+    assert shadow_impact["formula_version"] == "rv_macro_crisis_score_shadow_commodity_v1"
+    assert shadow_impact["scope"] == "commodity_shadow_v2_read_only"
+    assert shadow_impact["current_score"] == crisis["result"]["crisis_score"]
+    assert shadow_impact["shadow_score"] == pytest.approx(
+        shadow_impact["current_score"] + shadow_impact["delta"],
+    )
+    assert shadow_impact["included_candidates"] == [
+        "rebar",
+        "iron_ore",
+        "copper",
+        "aluminum",
+        "crude_oil",
+        "gold",
+    ]
+    assert shadow_impact["candidate_count"] == 6
+    assert shadow_impact["approval_required"] is True
+    assert shadow_impact["official_score_unchanged"] is True
+    assert shadow_impact["weights"]["commodity_shadow"] == pytest.approx(0.05)
+    assert shadow_impact["weights"]["official_crisis_score"] == pytest.approx(1.0)
+    assert shadow_impact["warnings"] == ["SHADOW_SCORE_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"]
+    assert shadow_impact["direction"] in {"higher_stress", "lower_stress", "unchanged"}
+    assert shadow_impact["candidate_contributions"]
+    copper_contribution = next(item for item in shadow_impact["candidate_contributions"] if item["field"] == "copper")
+    assert copper_contribution["label"] == "Copper futures"
+    assert copper_contribution["series_id"] == "CA.COPPER"
+    assert copper_contribution["source"] == "tushare"
+    assert copper_contribution["sample_count"] == 41
+    assert copper_contribution["weight"] == pytest.approx(0.05)
+    assert copper_contribution["candidate_metric"] == "daily_return_z"
+    assert copper_contribution["used_in_official_score"] is False
+    assert copper_contribution["status"] == "shadow_only"
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["component_count"] == 5
 
