@@ -1459,6 +1459,9 @@ _CRISIS_COMMODITY_FIELD_TO_PRODUCT = {
 _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES = 20
 _CRISIS_COMMODITY_SHADOW_FORMULA_VERSION = "rv_macro_crisis_score_shadow_commodity_v1"
 _CRISIS_COMMODITY_SHADOW_WEIGHT = 0.05
+_CRISIS_COMMODITY_ADMISSION_RULE_VERSION = "rv_macro_crisis_commodity_admission_v1"
+_CRISIS_COMMODITY_ADMISSION_MIN_CRISIS_SAMPLES = 5
+_CRISIS_COMMODITY_ADMISSION_MIN_CORRELATION = 0.2
 
 _CAPABILITY_INPUT_REQUIREMENTS = {
     "monetary_policy_stance": (
@@ -2631,6 +2634,9 @@ def _compute_crisis_score_capability(duckdb_path: str | Path, report_date: date)
         current_score=_float_or_none(enriched.get("crisis_score")),
         coverage=commodity_coverage,
     )
+    enriched["commodity_candidate_admission"] = _crisis_commodity_candidate_admission(
+        coverage=commodity_coverage,
+    )
     return enriched
 
 
@@ -2977,6 +2983,133 @@ def _crisis_commodity_shadow_direction(delta: float) -> str:
     if delta < -0.01:
         return "lower_stress"
     return "unchanged"
+
+
+def _crisis_commodity_candidate_admission(*, coverage: dict[str, object]) -> dict[str, object]:
+    items = [item for item in coverage.get("items", []) if isinstance(item, dict)]
+    admission_items = [_crisis_commodity_candidate_admission_item(item) for item in items]
+    decision_counts = {
+        "recommend_include": sum(1 for item in admission_items if item["decision"] == "recommend_include"),
+        "watch": sum(1 for item in admission_items if item["decision"] == "watch"),
+        "do_not_include": sum(1 for item in admission_items if item["decision"] == "do_not_include"),
+    }
+    return {
+        "rule_version": _CRISIS_COMMODITY_ADMISSION_RULE_VERSION,
+        "scope": "commodity_candidate_admission_read_only",
+        "decision_counts": decision_counts,
+        "items": admission_items,
+        "warnings": ["CANDIDATE_ADMISSION_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"],
+        "approval_required": True,
+        "official_score_unchanged": True,
+        "next_step": _crisis_commodity_admission_next_step(decision_counts),
+    }
+
+
+def _crisis_commodity_candidate_admission_item(item: dict[str, object]) -> dict[str, object]:
+    shadow = item.get("shadow_evaluation")
+    shadow = shadow if isinstance(shadow, dict) else {}
+    sample_count = _int_or_none(shadow.get("sample_count"))
+    minimum_sample_count = _int_or_none(shadow.get("minimum_sample_count")) or _CRISIS_COMMODITY_SHADOW_MIN_SAMPLES
+    crisis_sample_count = _int_or_none(shadow.get("crisis_sample_count"))
+    crisis_hit_rate = _float_or_none(shadow.get("crisis_hit_rate"))
+    max_abs_correlation = _crisis_commodity_max_abs_correlation(shadow)
+    decision, reason, next_step = _crisis_commodity_admission_decision(
+        shadow_status=str(shadow.get("status") or ""),
+        sample_count=sample_count,
+        minimum_sample_count=minimum_sample_count,
+        crisis_sample_count=crisis_sample_count,
+        crisis_hit_rate=crisis_hit_rate,
+        max_abs_correlation=max_abs_correlation,
+    )
+    return {
+        "field": str(item.get("field") or ""),
+        "label": str(item.get("label") or item.get("field") or ""),
+        "decision": decision,
+        "decision_label": _crisis_commodity_admission_decision_label(decision),
+        "reason": reason,
+        "next_step": next_step,
+        "sample_count": sample_count,
+        "minimum_sample_count": minimum_sample_count,
+        "crisis_sample_count": crisis_sample_count,
+        "minimum_crisis_sample_count": _CRISIS_COMMODITY_ADMISSION_MIN_CRISIS_SAMPLES,
+        "crisis_hit_rate": crisis_hit_rate,
+        "max_abs_correlation": max_abs_correlation,
+        "correlation_threshold": _CRISIS_COMMODITY_ADMISSION_MIN_CORRELATION,
+        "latest_date": item.get("latest_date"),
+        "series_id": item.get("series_id"),
+        "source": item.get("source"),
+        "used_in_official_score": False,
+    }
+
+
+def _crisis_commodity_admission_decision(
+    *,
+    shadow_status: str,
+    sample_count: int | None,
+    minimum_sample_count: int,
+    crisis_sample_count: int | None,
+    crisis_hit_rate: float | None,
+    max_abs_correlation: float | None,
+) -> tuple[str, str, str]:
+    if (
+        shadow_status != "review_ready"
+        or sample_count is None
+        or sample_count < minimum_sample_count
+        or crisis_sample_count is None
+        or crisis_sample_count < _CRISIS_COMMODITY_ADMISSION_MIN_CRISIS_SAMPLES
+        or crisis_hit_rate is None
+    ):
+        return (
+            "do_not_include",
+            "样本不足，先补齐历史数据。",
+            "先补齐历史样本和危机期样本，再重新生成准入评估。",
+        )
+    if max_abs_correlation is None or max_abs_correlation < _CRISIS_COMMODITY_ADMISSION_MIN_CORRELATION:
+        return (
+            "watch",
+            "相关性偏弱，需人工复核。",
+            "复核相关性与危机期命中率，并检查异常点后再决定是否提交审批。",
+        )
+    return (
+        "recommend_include",
+        "影子指标满足准入检查，仍需审批确认。",
+        "提交人工复核、历史回测和 v2 权重审批。",
+    )
+
+
+def _crisis_commodity_admission_decision_label(decision: str) -> str:
+    if decision == "recommend_include":
+        return "建议纳入"
+    if decision == "watch":
+        return "继续观察"
+    return "暂不纳入"
+
+
+def _crisis_commodity_admission_next_step(decision_counts: dict[str, int]) -> str:
+    recommend_count = decision_counts["recommend_include"]
+    watch_count = decision_counts["watch"]
+    reject_count = decision_counts["do_not_include"]
+    if recommend_count == 0 and watch_count > 0 and reject_count == 0:
+        return f"{watch_count} 个商品候选继续观察；先复核相关性、危机期命中率和异常点，再提交 v2 权重审批。"
+    parts: list[str] = []
+    if recommend_count:
+        parts.append(f"{recommend_count} 个商品候选可提交人工复核和 v2 权重审批")
+    if watch_count:
+        parts.append(f"{watch_count} 个商品候选继续观察")
+    if reject_count:
+        parts.append(f"{reject_count} 个商品候选先补齐历史样本")
+    if not parts:
+        return "暂无可用商品候选；先补齐商品期货历史数据。"
+    return "；".join(parts) + "；审批前不改变正式 Crisis Score。"
+
+
+def _crisis_commodity_max_abs_correlation(shadow: dict[str, object]) -> float | None:
+    values = [
+        abs(value)
+        for key in ("same_day_correlation", "lead_1d_correlation", "lag_1d_correlation")
+        if (value := _float_or_none(shadow.get(key))) is not None
+    ]
+    return round(max(values), 4) if values else None
 
 
 def _crisis_commodity_candidate_decision(*, available: bool, date_alignment_status: str) -> dict[str, object]:
@@ -3798,6 +3931,11 @@ def _float_or_none(value: object) -> float | None:
     if pd.isna(parsed):
         return None
     return parsed
+
+
+def _int_or_none(value: object) -> int | None:
+    number = _float_or_none(value)
+    return int(number) if number is not None else None
 
 
 def _coerce_frame_date(value: object) -> date | None:

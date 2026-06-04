@@ -2332,6 +2332,31 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     assert copper_contribution["candidate_metric"] == "daily_return_z"
     assert copper_contribution["used_in_official_score"] is False
     assert copper_contribution["status"] == "shadow_only"
+    admission = crisis["result"]["commodity_candidate_admission"]
+    assert admission["rule_version"] == "rv_macro_crisis_commodity_admission_v1"
+    assert admission["scope"] == "commodity_candidate_admission_read_only"
+    assert admission["official_score_unchanged"] is True
+    assert admission["approval_required"] is True
+    assert admission["decision_counts"] == {
+        "recommend_include": 0,
+        "watch": 6,
+        "do_not_include": 0,
+    }
+    assert admission["warnings"] == ["CANDIDATE_ADMISSION_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"]
+    assert admission["next_step"] == "6 个商品候选继续观察；先复核相关性、危机期命中率和异常点，再提交 v2 权重审批。"
+    admission_items = {item["field"]: item for item in admission["items"]}
+    assert set(admission_items) == {"rebar", "iron_ore", "copper", "aluminum", "crude_oil", "gold"}
+    assert admission_items["copper"]["decision"] == "watch"
+    assert admission_items["copper"]["decision_label"] == "继续观察"
+    assert admission_items["copper"]["reason"] == "相关性偏弱，需人工复核。"
+    assert admission_items["copper"]["sample_count"] == 41
+    assert admission_items["copper"]["minimum_sample_count"] == 20
+    assert admission_items["copper"]["crisis_sample_count"] == 11
+    assert admission_items["copper"]["crisis_hit_rate"] == pytest.approx(0.55)
+    assert admission_items["copper"]["max_abs_correlation"] == pytest.approx(0.0)
+    assert admission_items["copper"]["source"] == "tushare"
+    assert admission_items["copper"]["series_id"] == "CA.COPPER"
+    assert admission_items["copper"]["used_in_official_score"] is False
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["component_count"] == 5
 

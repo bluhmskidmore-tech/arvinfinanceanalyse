@@ -2164,11 +2164,13 @@ function CrisisCommodityClosurePanel({
 
 function CrisisCommodityShadowDecisionPanel({
   coverage,
+  admission,
   commodityInput = null,
   analysisMeta,
   analysisAsOfDate = null,
 }: {
   coverage: CrisisCommodityCoverage;
+  admission: CrisisCommodityAdmission | null;
   commodityInput?: MacroToolkitInputEvidenceItem | null;
   analysisMeta?: ResultMeta | null;
   analysisAsOfDate?: string | null;
@@ -2239,7 +2241,11 @@ function CrisisCommodityShadowDecisionPanel({
         shortItems={shortQueueItems}
         summary={summary}
       />
-      <CommodityCandidateReviewConclusion items={coverage.items} promotionItems={promotionItems} />
+      <CommodityCandidateReviewConclusion
+        admission={admission}
+        items={coverage.items}
+        promotionItems={promotionItems}
+      />
       <div className="macro-toolkit-crisis-shadow-decision__grid">
         {coverage.items.map((item) => (
           <div className="macro-toolkit-crisis-shadow-decision__item" key={item.field}>
@@ -2477,12 +2483,54 @@ function CrisisCommodityShadowImpactPanel({
 }
 
 function CommodityCandidateReviewConclusion({
+  admission,
   items,
   promotionItems,
 }: {
+  admission: CrisisCommodityAdmission | null;
   items: CrisisCommodityCoverageItem[];
   promotionItems: CommodityPromotionRuleItem[];
 }) {
+  if (admission) {
+    return (
+      <div className="macro-toolkit-crisis-review-conclusion" aria-label="商品候选复核结论">
+        <div className="macro-toolkit-crisis-review-conclusion__head">
+          <div>
+            <span>商品候选复核结论</span>
+            <strong>
+              商品候选准入评估：建议纳入 {admission.decision_counts.recommend_include} · 继续观察{" "}
+              {admission.decision_counts.watch} · 暂不纳入 {admission.decision_counts.do_not_include}
+            </strong>
+          </div>
+          <small>{admission.rule_version} · {admission.scope}</small>
+          <small>审批前不改变正式 Crisis Score</small>
+        </div>
+        {admission.warnings.length ? (
+          <div className="macro-toolkit-tag-row" aria-label="商品候选准入警告">
+            {admission.warnings.map((warning) => (
+              <Tag color="gold" key={warning}>
+                {warning}
+              </Tag>
+            ))}
+          </div>
+        ) : null}
+        <div className="macro-toolkit-crisis-review-conclusion__grid">
+          {admission.items.map((item) => (
+            <div className="macro-toolkit-crisis-review-conclusion__item" key={item.field}>
+              <div className="macro-toolkit-capability-result-head">
+                <span>{item.label || item.field}</span>
+                <Tag color={commodityAdmissionDecisionColor(item.decision)}>{item.decision_label}</Tag>
+              </div>
+              <strong>{item.reason}</strong>
+              <small>{formatCommodityAdmissionMetrics(item)}</small>
+              <small>下一步：{formatCommodityAdmissionNextStep(item)}</small>
+            </div>
+          ))}
+        </div>
+        <small className="macro-toolkit-crisis-shadow-impact__note">{admission.next_step}</small>
+      </div>
+    );
+  }
   const promotionByField = new Map(promotionItems.map((item) => [item.field, item]));
   const readyCount = promotionItems.filter((item) => item.status === "ready_for_review").length;
   const manualCount = promotionItems.filter((item) => item.status === "manual_review").length;
@@ -2712,6 +2760,7 @@ function CrisisScoreEvidencePanel({
   const commodityInput = inputEvidence.find(isNanhuaCrisisInput);
   const commodityCoverage = normalizeCommodityCoverage(rawResult.commodity_coverage);
   const commodityShadowImpact = normalizeCommodityShadowImpact(rawResult.shadow_impact);
+  const commodityAdmission = normalizeCommodityAdmission(rawResult.commodity_candidate_admission);
   const commodityShortRefreshProducts = commodityCoverage?.candidate_summary
     ? commodityShadowRefreshProducts(commodityCoverage.candidate_summary)
     : [];
@@ -2870,6 +2919,7 @@ function CrisisScoreEvidencePanel({
                 shadowImpact={commodityShadowImpact}
               />
               <CrisisCommodityShadowDecisionPanel
+                admission={commodityAdmission}
                 coverage={commodityCoverage}
                 commodityInput={commodityInput ?? null}
                 analysisMeta={analysisMeta}
@@ -3606,6 +3656,39 @@ type CrisisCommodityShadowImpact = {
   next_step: string;
 };
 
+type CrisisCommodityAdmissionDecision = "recommend_include" | "watch" | "do_not_include";
+
+type CrisisCommodityAdmissionItem = {
+  field: string;
+  label: string;
+  decision: CrisisCommodityAdmissionDecision;
+  decision_label: string;
+  reason: string;
+  next_step: string;
+  sample_count: number | null;
+  minimum_sample_count: number | null;
+  crisis_sample_count: number | null;
+  minimum_crisis_sample_count: number | null;
+  crisis_hit_rate: number | null;
+  max_abs_correlation: number | null;
+  correlation_threshold: number | null;
+  latest_date: string | null;
+  series_id: string | null;
+  source: string | null;
+  used_in_official_score: boolean;
+};
+
+type CrisisCommodityAdmission = {
+  rule_version: string;
+  scope: string;
+  decision_counts: Record<CrisisCommodityAdmissionDecision, number>;
+  items: CrisisCommodityAdmissionItem[];
+  warnings: string[];
+  approval_required: boolean;
+  official_score_unchanged: boolean;
+  next_step: string;
+};
+
 type MacroToolkitInputEvidenceItem = NonNullable<MacroToolkitInputEvidence["inputs"]>[number];
 type CrisisGapGroupKey = "equity" | "liquidity" | "commodity" | "curve_credit" | "fx" | "other";
 type CrisisGapItem = {
@@ -3810,6 +3893,66 @@ function normalizeCommodityShadowContribution(value: unknown): CrisisCommoditySh
     used_in_official_score: value.used_in_official_score === true,
     status: typeof value.status === "string" ? value.status : "status missing",
   };
+}
+
+function normalizeCommodityAdmission(value: unknown): CrisisCommodityAdmission | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    rule_version: typeof value.rule_version === "string" ? value.rule_version : "rule missing",
+    scope: typeof value.scope === "string" ? value.scope : "scope missing",
+    decision_counts: normalizeCommodityAdmissionDecisionCounts(value.decision_counts),
+    items: Array.isArray(value.items)
+      ? value.items.map(normalizeCommodityAdmissionItem).filter((item) => item !== null)
+      : [],
+    warnings: Array.isArray(value.warnings) ? value.warnings.map((item) => String(item)).filter(Boolean) : [],
+    approval_required: value.approval_required === true,
+    official_score_unchanged: value.official_score_unchanged === true,
+    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
+  };
+}
+
+function normalizeCommodityAdmissionDecisionCounts(value: unknown): Record<CrisisCommodityAdmissionDecision, number> {
+  const record = isRecord(value) ? value : {};
+  return {
+    recommend_include: typeof record.recommend_include === "number" ? record.recommend_include : 0,
+    watch: typeof record.watch === "number" ? record.watch : 0,
+    do_not_include: typeof record.do_not_include === "number" ? record.do_not_include : 0,
+  };
+}
+
+function normalizeCommodityAdmissionItem(value: unknown): CrisisCommodityAdmissionItem | null {
+  if (!isRecord(value) || typeof value.field !== "string") {
+    return null;
+  }
+  return {
+    field: value.field,
+    label: typeof value.label === "string" ? value.label : value.field,
+    decision: normalizeCommodityAdmissionDecision(value.decision),
+    decision_label: typeof value.decision_label === "string" ? value.decision_label : "准入结论待确认",
+    reason: typeof value.reason === "string" ? value.reason : "准入原因待确认",
+    next_step: typeof value.next_step === "string" ? value.next_step : "下一步待确认",
+    sample_count: typeof value.sample_count === "number" ? value.sample_count : null,
+    minimum_sample_count: typeof value.minimum_sample_count === "number" ? value.minimum_sample_count : null,
+    crisis_sample_count: typeof value.crisis_sample_count === "number" ? value.crisis_sample_count : null,
+    minimum_crisis_sample_count:
+      typeof value.minimum_crisis_sample_count === "number" ? value.minimum_crisis_sample_count : null,
+    crisis_hit_rate: typeof value.crisis_hit_rate === "number" ? value.crisis_hit_rate : null,
+    max_abs_correlation: typeof value.max_abs_correlation === "number" ? value.max_abs_correlation : null,
+    correlation_threshold: typeof value.correlation_threshold === "number" ? value.correlation_threshold : null,
+    latest_date: typeof value.latest_date === "string" ? value.latest_date : null,
+    series_id: typeof value.series_id === "string" ? value.series_id : null,
+    source: typeof value.source === "string" ? value.source : null,
+    used_in_official_score: value.used_in_official_score === true,
+  };
+}
+
+function normalizeCommodityAdmissionDecision(value: unknown): CrisisCommodityAdmissionDecision {
+  if (value === "recommend_include" || value === "watch" || value === "do_not_include") {
+    return value;
+  }
+  return "do_not_include";
 }
 
 function toDisplayNumber(value: unknown) {
@@ -4045,6 +4188,45 @@ function commodityReviewConclusionColor(status: CommodityPromotionRuleStatus) {
     return "gold";
   }
   return "red";
+}
+
+function commodityAdmissionDecisionColor(decision: CrisisCommodityAdmissionDecision) {
+  if (decision === "recommend_include") {
+    return "green";
+  }
+  if (decision === "watch") {
+    return "gold";
+  }
+  return "red";
+}
+
+function formatCommodityAdmissionMetrics(item: CrisisCommodityAdmissionItem) {
+  const sampleText =
+    item.decision === "do_not_include" || item.sample_count == null
+      ? `样本 ${item.sample_count ?? "缺失"}/${item.minimum_sample_count ?? MACRO_COMMODITY_SHADOW_MIN_SAMPLES}`
+      : `样本 ${item.sample_count}`;
+  return [
+    sampleText,
+    `危机样本 ${item.crisis_sample_count ?? "缺失"}`,
+    `命中率 ${formatPercent(item.crisis_hit_rate)}`,
+    `最大相关 ${formatSignedDecimal(item.max_abs_correlation)}`,
+    item.latest_date ? `最新 ${item.latest_date}` : null,
+    item.source ? `来源 ${item.source}` : null,
+    item.series_id ? `series ${item.series_id}` : null,
+    item.used_in_official_score ? "已纳入正式 Crisis Score" : "审批前不改变正式 Crisis Score",
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+}
+
+function formatCommodityAdmissionNextStep(item: CrisisCommodityAdmissionItem) {
+  if (item.decision === "recommend_include") {
+    return "提交人工复核与权重审批";
+  }
+  if (item.decision === "watch") {
+    return "复核相关性与危机期命中率";
+  }
+  return item.next_step;
 }
 
 function formatCommodityReviewConclusionMetrics(item: CrisisCommodityCoverageItem) {
