@@ -557,4 +557,86 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(tableProv).not.toHaveTextContent("2026-02-28");
     });
   });
+
+  it("surfaces product-category result_meta in the first-screen data status strip", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const assetTotal = productCategoryRow({
+      category_id: "asset_total",
+      category_name: "资产合计",
+      side: "asset",
+      business_net_income: "120000000",
+      is_total: true,
+    });
+    const liabilityTotal = productCategoryRow({
+      category_id: "liability_total",
+      category_name: "负债合计",
+      side: "liability",
+      business_net_income: "-20000000",
+      is_total: true,
+    });
+    const grandTotal = productCategoryRow({
+      category_id: "grand_total",
+      category_name: "合计",
+      side: "total",
+      business_net_income: "100000000",
+      is_total: true,
+    });
+
+    renderPage({
+      ...base,
+      getProductCategoryDates: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_product_dates_status_strip",
+          basis: "formal" as const,
+          result_kind: "product-category.dates",
+          formal_use_allowed: true,
+          source_version: "sv_product_dates_status_strip",
+          vendor_version: "vv_none",
+          rule_version: "rv_product_category_pnl_formal_v1",
+          cache_version: "cv_product_category_pnl_formal_v1",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-10T09:10:00Z",
+        },
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getProductCategoryPnl: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_product_category_status_strip",
+          basis: "formal" as const,
+          result_kind: "product-category.pnl",
+          formal_use_allowed: true,
+          source_version: "sv_operations_status_strip",
+          vendor_version: "vv_none",
+          rule_version: "rv_product_category_pnl_formal_v1",
+          cache_version: "cv_product_category_pnl_formal_v1",
+          quality_flag: "stale" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "latest_snapshot" as const,
+          scenario_flag: false,
+          generated_at: "2026-05-02T08:30:00Z",
+        },
+        result: {
+          report_date: "2026-02-28",
+          view: "monthly",
+          available_views: ["monthly", "qtd", "ytd", "year_to_report_month_end"],
+          scenario_rate_pct: null,
+          rows: [assetTotal, liabilityTotal, grandTotal],
+          asset_total: assetTotal,
+          liability_total: liabilityTotal,
+          grand_total: grandTotal,
+        },
+      })),
+    });
+
+    const statusStrip = await screen.findByTestId("operations-data-status-strip");
+    await waitFor(() => {
+      expect(statusStrip).toHaveTextContent("质量标记：陈旧");
+      expect(statusStrip).toHaveTextContent("降级模式：最新快照降级");
+      expect(statusStrip).toHaveTextContent("生成时间：2026-05-02T08:30:00Z");
+      expect(statusStrip).toHaveTextContent("来源版本：sv_operations_status_strip");
+    });
+  });
 });

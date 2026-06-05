@@ -8,6 +8,7 @@ import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
 import {
+  DataStatusStrip,
   PageFilterTray,
   PageHeader,
   PageSurfacePanel,
@@ -424,6 +425,25 @@ function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
   return `口径 ${basis} · 质量 ${quality} · 供应 ${vendor}${fb}`;
 }
 
+function formatResultMetaQuality(flag: ResultMeta["quality_flag"]) {
+  const labels: Record<ResultMeta["quality_flag"], string> = {
+    ok: "正常",
+    warning: "预警",
+    error: "错误",
+    stale: "陈旧",
+    missing: "缺失",
+  };
+  return labels[flag] ?? flag;
+}
+
+function formatResultMetaFallback(mode: ResultMeta["fallback_mode"]) {
+  const labels: Record<ResultMeta["fallback_mode"], string> = {
+    none: "未降级",
+    latest_snapshot: "最新快照降级",
+  };
+  return labels[mode] ?? mode;
+}
+
 export default function OperationsAnalysisPage() {
   const client = useApiClient();
 
@@ -820,6 +840,23 @@ export default function OperationsAnalysisPage() {
               </label>
             </FilterBar>
           </PageFilterTray>
+
+          <DataStatusStrip testId="operations-data-status-strip">
+            {productCategoryPnlQuery.data?.result_meta ? (
+              <>
+                <span>
+                  质量标记：{formatResultMetaQuality(productCategoryPnlQuery.data.result_meta.quality_flag)}
+                </span>
+                <span>
+                  降级模式：{formatResultMetaFallback(productCategoryPnlQuery.data.result_meta.fallback_mode)}
+                </span>
+                <span>生成时间：{productCategoryPnlQuery.data.result_meta.generated_at}</span>
+                <span>来源版本：{productCategoryPnlQuery.data.result_meta.source_version}</span>
+              </>
+            ) : (
+              <span>产品分类损益元信息加载中</span>
+            )}
+          </DataStatusStrip>
 
           <p className="operations-analysis-page__provenance" data-testid="operations-hero-provenance">
             {client.mode === "real"
