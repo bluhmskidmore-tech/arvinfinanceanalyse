@@ -82,6 +82,19 @@ function resultMetaQualityLabel(value: string | undefined): string {
   return value ?? "待定";
 }
 
+function resultMetaLine(meta: CubeQueryResult["result_meta"]): string {
+  return [
+    `追踪编号=${meta.trace_id}`,
+    `basis=${meta.basis}`,
+    `formal_use_allowed=${String(meta.formal_use_allowed)}`,
+    `source_version=${meta.source_version}`,
+    `vendor_status=${meta.vendor_status}`,
+    `fallback_mode=${meta.fallback_mode}`,
+    `quality_flag=${resultMetaQualityLabel(meta.quality_flag)}`,
+    `generated_at=${meta.generated_at}`,
+  ].join(" · ");
+}
+
 function buildFiltersMap(rows: FilterRow[]): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const row of rows) {
@@ -601,8 +614,7 @@ export default function CubeQueryPage() {
           style={{ display: "block", marginTop: 12 }}
           data-testid="cube-result-meta"
         >
-          追踪编号={lastResult.result_meta.trace_id} · 来源版本=
-          {lastResult.result_meta.source_version} · 质量标记={resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
+          {resultMetaLine(lastResult.result_meta)}
         </Text>
       ) : null}
     </div>
