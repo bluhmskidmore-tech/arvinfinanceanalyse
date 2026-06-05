@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { extname, relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +18,30 @@ const FORMAL_PNL_V1_CSS_PATH = resolve(
   "src/features/pnl/FormalPnlV1Page.css",
 );
 const WORKBENCH_SHELL_PATH = resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx");
+const SRC_ROOT = resolve(process.cwd(), "src");
+const AG_GRID_INSTITUTIONAL_IMPORT_RE =
+  /import\s+["'][^"']*styles\/agGridInstitutional\.css["'];?/;
+
+const AG_GRID_INSTITUTIONAL_SKIN_OWNERS = [
+  {
+    importer: "src/features/balance-analysis/components/BalanceContributionRow.tsx",
+    owner: "workbench",
+  },
+  {
+    importer: "src/features/balance-analysis/pages/BalanceAnalysisPage.tsx",
+    owner: "workbench",
+  },
+  {
+    importer: "src/features/pnl/FormalPnlV1Page.tsx",
+    owner: "page",
+    ownerCssPath: "src/features/pnl/FormalPnlV1Page.css",
+    ownerSelector: ".formal-pnl-v1-grid-shell",
+  },
+  {
+    importer: "src/features/pnl/PnlBridgePage.tsx",
+    owner: "workbench",
+  },
+] as const;
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -39,6 +63,41 @@ function parseMossCssVars(css: string): Map<string, string> {
 
 function normalizeHex(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function toRepoPosixPath(absolutePath: string): string {
+  return relative(process.cwd(), absolutePath).replace(/\\/g, "/");
+}
+
+function listRuntimeSourceFiles(directory: string): string[] {
+  const entries = readdirSync(directory, { withFileTypes: true });
+
+  return entries.flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (["__tests__", "styles", "test", "tests"].includes(entry.name)) {
+        return [];
+      }
+      return listRuntimeSourceFiles(path);
+    }
+
+    if (!entry.isFile()) {
+      return [];
+    }
+
+    if (path.endsWith(".d.ts") || /\.test\.[tj]sx?$/.test(path)) {
+      return [];
+    }
+
+    return [".js", ".jsx", ".ts", ".tsx"].includes(extname(path)) ? [path] : [];
+  });
+}
+
+function listInstitutionalAgGridImporters(): string[] {
+  return listRuntimeSourceFiles(SRC_ROOT)
+    .filter((path) => AG_GRID_INSTITUTIONAL_IMPORT_RE.test(readFileSync(path, "utf8")))
+    .map(toRepoPosixPath)
+    .sort();
 }
 
 describe("shellTokens", () => {
@@ -209,6 +268,32 @@ describe("globalCss design token bridge (:root)", () => {
     expect(agGridCss).toContain("--ag-background-color");
     expect(workbenchShellSource).toContain("workbench-shell-grid--desktop-aligned");
     expect(globalCss).not.toContain("ag-theme-alpine");
+  });
+
+  it("keeps institutional AG Grid skin imports tied to explicit owners", () => {
+    const agGridCss = readFileSync(AG_GRID_INSTITUTIONAL_CSS_PATH, "utf8");
+    const discoveredImporters = listInstitutionalAgGridImporters();
+    const contractedImporters = AG_GRID_INSTITUTIONAL_SKIN_OWNERS.map(
+      (contract) => contract.importer,
+    ).sort();
+
+    expect(discoveredImporters).toEqual(contractedImporters);
+    expect(agGridCss).toContain(
+      ".workbench-shell-grid--desktop-aligned :where(.ag-theme-alpine, .ag-theme-quartz)",
+    );
+
+    AG_GRID_INSTITUTIONAL_SKIN_OWNERS.forEach((contract) => {
+      if (contract.owner !== "page") {
+        return;
+      }
+
+      const importerSource = readFileSync(resolve(process.cwd(), contract.importer), "utf8");
+      const ownerCss = readFileSync(resolve(process.cwd(), contract.ownerCssPath), "utf8");
+
+      expect(importerSource).toContain(contract.ownerSelector.slice(1));
+      expect(ownerCss).toContain(contract.ownerSelector);
+      expect(agGridCss).toContain(`${contract.ownerSelector},`);
+    });
   });
 
   it("keeps dashboard-home compatibility styles rooted to known page owners", () => {
