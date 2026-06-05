@@ -575,6 +575,82 @@ function formatMetaQuality(meta: ResultMeta | null | undefined) {
   return value ? (labels[value] ?? value) : "缺失";
 }
 
+function resolvedLedgerReportDate(
+  meta: ResultMeta | null | undefined,
+  payloadReportDate: string | null | undefined,
+) {
+  return metaString(meta?.resolved_report_date) ?? metaString(payloadReportDate);
+}
+
+function hasLedgerPayloadOrMeta(
+  meta: ResultMeta | null | undefined,
+  payload: LedgerPnlSummaryPayload | LedgerPnlDataPayload | undefined,
+) {
+  return Boolean(meta || payload);
+}
+
+function ledgerReportDateResolution(props: {
+  selectedReportDate: string;
+  summary: LedgerPnlSummaryPayload | undefined;
+  data: LedgerPnlDataPayload | undefined;
+  summaryMeta: ResultMeta | null | undefined;
+  dataMeta: ResultMeta | null | undefined;
+}) {
+  const requestedDate = props.selectedReportDate.trim();
+  if (!requestedDate) {
+    return {
+      status: "等待报告日",
+      action: "先选择报告日",
+      blockingDetail: null,
+    };
+  }
+
+  const hasSummaryEvidence = hasLedgerPayloadOrMeta(props.summaryMeta, props.summary);
+  const hasDetailEvidence = hasLedgerPayloadOrMeta(props.dataMeta, props.data);
+  if (!hasSummaryEvidence && !hasDetailEvidence) {
+    return {
+      status: "等待总账返回",
+      action: "等待汇总/明细报告日返回",
+      blockingDetail: null,
+    };
+  }
+
+  const summaryResolvedDate = resolvedLedgerReportDate(props.summaryMeta, props.summary?.report_date);
+  const detailResolvedDate = resolvedLedgerReportDate(props.dataMeta, props.data?.report_date);
+  const missingSegments = [
+    hasSummaryEvidence && !summaryResolvedDate ? "汇总=缺失" : null,
+    hasDetailEvidence && !detailResolvedDate ? "明细=缺失" : null,
+  ].filter((segment): segment is string => Boolean(segment));
+  const mismatchSegments = [
+    summaryResolvedDate && summaryResolvedDate !== requestedDate ? `汇总=${summaryResolvedDate}` : null,
+    detailResolvedDate && detailResolvedDate !== requestedDate ? `明细=${detailResolvedDate}` : null,
+  ].filter((segment): segment is string => Boolean(segment));
+
+  if (mismatchSegments.length > 0) {
+    const detail = `请求 ${requestedDate}，${mismatchSegments.join("，")}`;
+    return {
+      status: `解析回退：${detail}`,
+      action: "先恢复请求报告日对应源文件，再解释本日损益",
+      blockingDetail: detail,
+    };
+  }
+
+  if (missingSegments.length > 0) {
+    const detail = `请求 ${requestedDate}，${missingSegments.join("，")}`;
+    return {
+      status: "解析报告日缺失",
+      action: "补 resolved_report_date/report_date 元数据后再解释本日损益",
+      blockingDetail: detail,
+    };
+  }
+
+  return {
+    status: "请求/解析一致",
+    action: "报告日一致，可继续分析",
+    blockingDetail: null,
+  };
+}
+
 function collectSourceRiskSegments(label: string, meta: ResultMeta | null | undefined) {
   const segments: string[] = [];
   const fallbackMode = metaString(meta?.fallback_mode);
@@ -1238,6 +1314,13 @@ function buildLedgerFunctionalAuditState(props: {
   const ledgerSliceAction = ledgerSliceMismatch ? "核对汇总/明细元数据后再解释残差" : "切片一致，可解释残差";
   const ledgerSourceStatus = formatLedgerSourceStatus(props.summaryMeta, props.dataMeta);
   const ledgerSourceAction = formatLedgerSourceAction(props.summaryMeta, props.dataMeta);
+  const ledgerReportDateState = ledgerReportDateResolution({
+    selectedReportDate: props.selectedReportDate,
+    summary: props.summary,
+    data: props.data,
+    summaryMeta: props.summaryMeta,
+    dataMeta: props.dataMeta,
+  });
   const sharedState = {
     requestedDate,
     resolvedDate,
@@ -1249,6 +1332,8 @@ function buildLedgerFunctionalAuditState(props: {
     ledgerSliceAction,
     ledgerSourceStatus,
     ledgerSourceAction,
+    ledgerReportDateStatus: ledgerReportDateState.status,
+    ledgerReportDateAction: ledgerReportDateState.action,
     monthlyAnalysisStatus,
     monthlyAnalysisAction,
   };
@@ -1324,6 +1409,15 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账损益证据缺失",
       detail: "汇总没有损益证据行，不能把总账明细或空汇总解释为真实 PnL 0。",
+      ...sharedState,
+      formalStatus,
+    };
+  }
+  if (ledgerReportDateState.blockingDetail) {
+    return {
+      tone: "warning",
+      title: "总账报告日解析回退",
+      detail: `${ledgerReportDateState.blockingDetail}；本次不能当作 ${requestedDate} 的总账损益解释。`,
       ...sharedState,
       formalStatus,
     };
@@ -1538,6 +1632,10 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.ledgerReadStatus}</strong>
         </div>
         <div>
+          <span>报告日匹配</span>
+          <strong>{state.ledgerReportDateStatus}</strong>
+        </div>
+        <div>
           <span>总账切片</span>
           <strong>{state.ledgerSliceStatus}</strong>
         </div>
@@ -1611,6 +1709,10 @@ function LedgerFunctionalAuditStrip(props: {
           <div>
             <span>总账恢复路径</span>
             <strong>{state.ledgerReadAction}</strong>
+          </div>
+          <div>
+            <span>报告日处理路径</span>
+            <strong>{state.ledgerReportDateAction}</strong>
           </div>
           <div>
             <span>切片处理路径</span>

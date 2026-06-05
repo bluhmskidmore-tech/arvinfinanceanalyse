@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
@@ -10,6 +10,7 @@ import type {
   LedgerPositionsData,
   LedgerPositionsOptions,
 } from "../api/ledgerClient";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const metadata = {
@@ -168,6 +169,10 @@ function buildClient(
 }
 
 describe("LedgerDashboardPage", () => {
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules("bank-ledger-dashboard");
+  }, 20_000);
+
   it("renders ledger KPI units, trace metadata, and raw-yuan position rows", async () => {
     const client = buildClient();
     renderWorkbenchApp(["/bank-ledger-dashboard"], { client });

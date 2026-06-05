@@ -3,10 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "@testing-library/react";
 import { RouterProvider } from "react-router-dom";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
 
 import { createApiClient, type ApiClient, ApiClientProvider } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 import { routerFuture } from "../router/routerFuture";
 
@@ -181,6 +182,10 @@ function renderLedgerWithRouter(initialEntry: string, client: ApiClient) {
 }
 
 describe("ledger-pnl routed page smoke", () => {
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules("ledger-pnl");
+  }, 20_000);
+
   it("renders the live /ledger-pnl workbench route", async () => {
     renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());
 
