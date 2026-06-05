@@ -41,6 +41,7 @@ type UseDashboardHomeBodyDataOptions = {
   loadBasicData: boolean;
   loadEventFeeds: boolean;
   loadSecondaryEventFeeds: boolean;
+  loadBondNewsFeeds: boolean;
   loadFormalData: boolean;
 };
 
@@ -50,6 +51,7 @@ export function useDashboardHomeBodyData({
   loadBasicData,
   loadEventFeeds,
   loadSecondaryEventFeeds,
+  loadBondNewsFeeds,
   loadFormalData,
 }: UseDashboardHomeBodyDataOptions) {
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
@@ -171,7 +173,7 @@ export function useDashboardHomeBodyData({
         }),
       retry: false,
       staleTime: 60_000,
-      enabled: loadSecondaryEventFeeds && Boolean(DASHBOARD_BOND_NEWS_PROBE_TOPIC),
+      enabled: loadBondNewsFeeds && Boolean(DASHBOARD_BOND_NEWS_PROBE_TOPIC),
     }],
   });
   const bondNewsProbeQuery = bondNewsProbeQueries[0];
@@ -179,7 +181,7 @@ export function useDashboardHomeBodyData({
     bondNewsProbeQuery?.data?.result.events.some((event) => event.error_code === 0),
   );
   const loadRemainingBondNews =
-    loadSecondaryEventFeeds &&
+    loadBondNewsFeeds &&
     Boolean(bondNewsProbeQuery?.isSuccess) &&
     bondNewsProbeHasRows;
   const remainingBondNewsQueries = useQueries({

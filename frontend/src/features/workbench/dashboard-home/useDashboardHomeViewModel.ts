@@ -21,6 +21,12 @@ const EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
 const SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
 const SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
 const SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
+const BOND_NEWS_FEED_IDLE_MIN_DELAY_MS = 1_000;
+const BOND_NEWS_FEED_IDLE_TIMEOUT_MS = 1_200;
+const BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS = 900;
+const FORMAL_CONTEXT_IDLE_MIN_DELAY_MS = 1_000;
+const FORMAL_CONTEXT_IDLE_TIMEOUT_MS = 1_200;
+const FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS = 900;
 
 function useDeferredReportDateGate(
   reportDate: string | undefined,
@@ -110,6 +116,22 @@ function useSecondaryEventFeedDataGate(reportDate: string | undefined) {
   });
 }
 
+function useBondNewsFeedDataGate(reportDate: string | undefined) {
+  return useDeferredReportDateGate(reportDate, {
+    minDelayMs: BOND_NEWS_FEED_IDLE_MIN_DELAY_MS,
+    idleTimeoutMs: BOND_NEWS_FEED_IDLE_TIMEOUT_MS,
+    timeoutFallbackMs: BOND_NEWS_FEED_TIMEOUT_FALLBACK_MS,
+  });
+}
+
+function useFormalContextDataGate(reportDate: string | undefined) {
+  return useDeferredReportDateGate(reportDate, {
+    minDelayMs: FORMAL_CONTEXT_IDLE_MIN_DELAY_MS,
+    idleTimeoutMs: FORMAL_CONTEXT_IDLE_TIMEOUT_MS,
+    timeoutFallbackMs: FORMAL_CONTEXT_TIMEOUT_FALLBACK_MS,
+  });
+}
+
 export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapshotBoundary) {
   const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
   const [formalContextReportDate, setFormalContextReportDate] = useState<string | null>(null);
@@ -144,9 +166,30 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
       ? supplementalReportDate
       : undefined,
   );
+  const hasBondNewsFeedData = useBondNewsFeedDataGate(
+    hasDeferredSupplementalReportDate &&
+      hasBodyDetailData &&
+      hasEventFeedData &&
+      hasSecondaryEventFeedData
+      ? supplementalReportDate
+      : undefined,
+  );
+  const hasFormalContextData = useFormalContextDataGate(
+    hasDeferredSupplementalReportDate &&
+      hasBodyDetailData &&
+      hasEventFeedData &&
+      hasSecondaryEventFeedData &&
+      hasBondNewsFeedData
+      ? supplementalReportDate
+      : undefined,
+  );
   const hasDeferredFormalContext =
     hasDeferredSupplementalReportDate &&
     hasBodyDetailData &&
+    hasEventFeedData &&
+    hasSecondaryEventFeedData &&
+    hasBondNewsFeedData &&
+    hasFormalContextData &&
     Boolean(supplementalReportDate) &&
     formalContextReportDate === supplementalReportDate;
 
@@ -182,6 +225,12 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
       hasBodyDetailData &&
       hasEventFeedData &&
       hasSecondaryEventFeedData,
+    loadBondNewsFeeds:
+      hasDeferredSupplementalReportDate &&
+      hasBodyDetailData &&
+      hasEventFeedData &&
+      hasSecondaryEventFeedData &&
+      hasBondNewsFeedData,
     loadFormalData: hasDeferredFormalContext,
   });
 

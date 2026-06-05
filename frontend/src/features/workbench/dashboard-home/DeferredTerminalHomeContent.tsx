@@ -1,9 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 import { useDashboardHomeSupplementalHydration } from "./useDashboardHomeSupplementalHydration";
-import styles from "./dashboardHome.module.css";
+import styles from "./dashboardHomeShell.module.css";
 
 const DeferredTerminalHomeBody = lazy(() =>
   import("./DeferredTerminalHomeBody").then((module) => ({
@@ -27,17 +27,48 @@ type DeferredTerminalHomeContentProps = {
   onFirstScreenHydrated?: (hydration: DashboardHomeFirstScreenHydration) => void;
 };
 
+function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydration): string {
+  return JSON.stringify({
+    reportDate: hydration.reportDate,
+    headerStatus: hydration.headerStatus,
+    decisionRail: hydration.decisionRail,
+    terminalKpis: hydration.terminalKpis.map((kpi) => ({
+      id: kpi.id,
+      value: kpi.value,
+      unit: kpi.unit,
+      delta: kpi.delta,
+      deltaTone: kpi.deltaTone,
+      state: kpi.state,
+    })),
+    keyRiskStrip: hydration.keyRiskStrip.map((item) => ({
+      id: item.id,
+      value: item.value,
+      delta: item.delta,
+      deltaTone: item.deltaTone,
+    })),
+  });
+}
+
 export function DeferredTerminalHomeContent({
   snapshotBoundary,
   userReachedDeferredContent,
   onFirstScreenHydrated,
 }: DeferredTerminalHomeContentProps) {
   const firstScreenHydration = useDashboardHomeSupplementalHydration(snapshotBoundary);
+  const hydrationSignature = useMemo(
+    () => firstScreenHydrationSignature(firstScreenHydration),
+    [firstScreenHydration],
+  );
+  const emittedHydrationSignatureRef = useRef<string | null>(null);
   const [loadBody, setLoadBody] = useState(false);
 
   useEffect(() => {
+    if (emittedHydrationSignatureRef.current === hydrationSignature) {
+      return;
+    }
+    emittedHydrationSignatureRef.current = hydrationSignature;
     onFirstScreenHydrated?.(firstScreenHydration);
-  }, [firstScreenHydration, onFirstScreenHydrated]);
+  }, [firstScreenHydration, hydrationSignature, onFirstScreenHydrated]);
 
   useEffect(() => {
     if (userReachedDeferredContent) {
