@@ -695,6 +695,51 @@ function formatLedgerSourceAction(
     : "来源状态正常，可继续分析";
 }
 
+function missingLedgerSourceEvidenceFields(label: string, meta: ResultMeta | null | undefined, payloadReturned: boolean) {
+  if (!meta) {
+    return payloadReturned ? [`${label} result_meta 缺失`] : [];
+  }
+  const fields = [
+    metaString(meta.source_version) ? null : `${label} source_version 缺失`,
+    metaString(meta.rule_version) ? null : `${label} rule_version 缺失`,
+    metaString(meta.cache_version) ? null : `${label} cache_version 缺失`,
+    (meta.tables_used?.length ?? 0) > 0 ? null : `${label} tables_used 缺失`,
+  ];
+  return fields.filter((field): field is string => Boolean(field));
+}
+
+function ledgerSourceEvidenceState(
+  summary: LedgerPnlSummaryPayload | undefined,
+  data: LedgerPnlDataPayload | undefined,
+  summaryMeta: ResultMeta | null | undefined,
+  dataMeta: ResultMeta | null | undefined,
+) {
+  const missingFields = [
+    ...missingLedgerSourceEvidenceFields("汇总", summaryMeta, Boolean(summary)),
+    ...missingLedgerSourceEvidenceFields("明细", dataMeta, Boolean(data)),
+  ];
+  if (missingFields.length > 0) {
+    const detail = missingFields.join("；");
+    return {
+      status: detail,
+      action: "补齐总账来源版本、规则版本、缓存版本和表清单",
+      blockingDetail: detail,
+    };
+  }
+  if (!summaryMeta && !dataMeta) {
+    return {
+      status: "等待总账返回",
+      action: "等待汇总/明细来源证据返回",
+      blockingDetail: null,
+    };
+  }
+  return {
+    status: "来源证据完整",
+    action: "来源证据完整，可继续分析",
+    blockingDetail: null,
+  };
+}
+
 function formatEvidenceRows(meta: ResultMeta | null | undefined) {
   return typeof meta?.evidence_rows === "number" ? String(meta.evidence_rows) : "缺失";
 }
@@ -1314,6 +1359,12 @@ function buildLedgerFunctionalAuditState(props: {
   const ledgerSliceAction = ledgerSliceMismatch ? "核对汇总/明细元数据后再解释残差" : "切片一致，可解释残差";
   const ledgerSourceStatus = formatLedgerSourceStatus(props.summaryMeta, props.dataMeta);
   const ledgerSourceAction = formatLedgerSourceAction(props.summaryMeta, props.dataMeta);
+  const ledgerSourceEvidence = ledgerSourceEvidenceState(
+    props.summary,
+    props.data,
+    props.summaryMeta,
+    props.dataMeta,
+  );
   const ledgerReportDateState = ledgerReportDateResolution({
     selectedReportDate: props.selectedReportDate,
     summary: props.summary,
@@ -1332,6 +1383,8 @@ function buildLedgerFunctionalAuditState(props: {
     ledgerSliceAction,
     ledgerSourceStatus,
     ledgerSourceAction,
+    ledgerSourceEvidenceStatus: ledgerSourceEvidence.status,
+    ledgerSourceEvidenceAction: ledgerSourceEvidence.action,
     ledgerReportDateStatus: ledgerReportDateState.status,
     ledgerReportDateAction: ledgerReportDateState.action,
     monthlyAnalysisStatus,
@@ -1418,6 +1471,15 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账报告日解析回退",
       detail: `${ledgerReportDateState.blockingDetail}；本次不能当作 ${requestedDate} 的总账损益解释。`,
+      ...sharedState,
+      formalStatus,
+    };
+  }
+  if (ledgerSourceEvidence.blockingDetail) {
+    return {
+      tone: "warning",
+      title: "总账来源证据不完整",
+      detail: `${ledgerSourceEvidence.blockingDetail}；本次只能补来源证据，不能当作可追踪候选解释。`,
       ...sharedState,
       formalStatus,
     };
@@ -1644,6 +1706,10 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.ledgerSourceStatus}</strong>
         </div>
         <div>
+          <span>来源证据</span>
+          <strong>{state.ledgerSourceEvidenceStatus}</strong>
+        </div>
+        <div>
           <span>月度工作簿</span>
           <strong>{state.monthlyAnalysisStatus}</strong>
         </div>
@@ -1721,6 +1787,10 @@ function LedgerFunctionalAuditStrip(props: {
           <div>
             <span>来源处理路径</span>
             <strong>{state.ledgerSourceAction}</strong>
+          </div>
+          <div>
+            <span>来源证据处理路径</span>
+            <strong>{state.ledgerSourceEvidenceAction}</strong>
           </div>
           <div>
             <span>月度分析工作簿</span>
