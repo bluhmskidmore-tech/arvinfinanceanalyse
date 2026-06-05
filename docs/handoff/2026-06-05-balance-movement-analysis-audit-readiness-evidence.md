@@ -52,13 +52,24 @@ Do not read this packet as:
 
 ## Fresh Evidence
 
-These commands were run fresh in this packet.
+These checks were run fresh for the 2026-06-06 evidence update.
+
+| Evidence | Command | Result |
+| --- | --- | --- |
+| Live smoke / freshness | `powershell -ExecutionPolicy Bypass -File scripts/codex-page-smoke.ps1 -PageSlug balance-movement-analysis -CheckLive` | API and route reachable; freshness passed with `read_model=2026-05-31`, `upstream=2026-05-31`, `status=fresh` |
+| Frontend page test | `npm run test -- src/test/BalanceMovementAnalysisPage.test.tsx` from `frontend/` | 1 file passed; 17 tests passed |
+| Diff whitespace check | `git diff --check -- docs/handoff/2026-06-05-balance-movement-analysis-audit-readiness-evidence.md docs/handoff/balance-movement-analysis-first-screen-2026-06-05.png` | Exit 0 |
+| Browser first-screen evidence | Isolated Playwright screenshot for `http://127.0.0.1:5888/balance-movement-analysis` | Captured `docs/handoff/balance-movement-analysis-first-screen-2026-06-05.png`; report date `2026-05-31`, currency `CNX`, freshness strip, evidence strip, and main conclusion visible |
+| Live UI/API payload review | `Invoke-RestMethod` for `/ui/balance-movement-analysis/dates` and `/ui/balance-movement-analysis?report_date=2026-05-31&currency_basis=CNX` | Dates/detail payloads returned formal CNX data, `quality_flag=ok`, `fallback_mode=none`, freshness `fresh`, matched buckets `3/3`, `reconciliation_diff_total=0E-8`, `evidence_rows=192` |
+
+## Prior Packet Evidence
+
+These checks are inherited from the earlier audit-readiness packet and were not
+rerun during the 2026-06-06 evidence update.
 
 | Evidence | Command | Result |
 | --- | --- | --- |
 | Page readiness gate | `powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 -PageSlug balance-movement-analysis` | Pass-style static readiness output; page remains `candidate_or_pending`, no dedicated golden sample, owner approval pending |
-| Live smoke / freshness | `powershell -ExecutionPolicy Bypass -File scripts/codex-page-smoke.ps1 -PageSlug balance-movement-analysis -CheckLive` | API and route reachable; freshness passed with `read_model=2026-05-31`, `upstream=2026-05-31`, `status=fresh` |
-| Frontend page test | `npm run test -- src/test/BalanceMovementAnalysisPage.test.tsx` from `frontend/` | 1 file passed; 17 tests passed |
 | Backend service/materialize/core tests | `python -m pytest tests/test_accounting_asset_movement_service.py tests/test_accounting_asset_movement_materialize.py tests/test_accounting_asset_movement_core.py -q` | 26 passed |
 | Backend API tests | `python -m pytest tests/test_accounting_asset_movement_api.py -q` | 4 passed |
 | Native smoke-script tests | `python -m pytest tests/test_native_dev_scripts.py::test_codex_page_smoke_supports_balance_movement_analysis_checklist_only tests/test_native_dev_scripts.py::test_codex_page_smoke_balance_movement_check_live_fails_when_report_dates_missing tests/test_native_dev_scripts.py::test_codex_page_smoke_balance_movement_check_live_passes_with_fresh_dates_payload -q` | 3 passed |
@@ -66,9 +77,6 @@ These commands were run fresh in this packet.
 | Narrow ESLint | `npx eslint src/features/balance-movement-analysis/pages/BalanceMovementAnalysisPage.tsx src/test/BalanceMovementAnalysisPage.test.tsx` from `frontend/` | Passed |
 | Frontend debt audit | `npm run debt:audit` from `frontend/` | Passed; no growth over baseline |
 | Frontend production build | `npm run build` from `frontend/` | Passed; Vite production build completed |
-| Diff whitespace check | `git diff --check` | Exit 0; line-ending warnings only in unrelated dirty files |
-| Browser first-screen evidence | Isolated Playwright screenshot for `http://127.0.0.1:5888/balance-movement-analysis` | Captured `docs/handoff/balance-movement-analysis-first-screen-2026-06-05.png`; report date `2026-05-31`, currency `CNX`, freshness strip, evidence strip, and main conclusion visible |
-| Live UI/API payload review | `Invoke-RestMethod` for `/ui/balance-movement-analysis/dates` and `/ui/balance-movement-analysis?report_date=2026-05-31&currency_basis=CNX` | Dates/detail payloads returned formal CNX data, `quality_flag=ok`, `fallback_mode=none`, freshness `fresh`, matched buckets `3/3`, `reconciliation_diff_total=0E-8`, `evidence_rows=192` |
 
 ## Browser Evidence
 
