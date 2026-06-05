@@ -31,7 +31,11 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="pnl-attribution-echarts-stub" />,
 }));
 
-function buildResultMeta(resultKind: string, traceId = "tr_pnl_attribution_test"): ResultMeta {
+function buildResultMeta(
+  resultKind: string,
+  traceId = "tr_pnl_attribution_test",
+  overrides: Partial<ResultMeta> = {},
+): ResultMeta {
   return {
     trace_id: traceId,
     basis: "formal",
@@ -51,6 +55,7 @@ function buildResultMeta(resultKind: string, traceId = "tr_pnl_attribution_test"
     filters_applied: {},
     evidence_rows: 1,
     next_drill: [],
+    ...overrides,
   };
 }
 
@@ -237,6 +242,56 @@ describe("PnlAttributionPage", () => {
     const advancedMeta = screen.getByTestId("pnl-attribution-advanced-view-meta");
     expect(advancedMeta).toHaveTextContent("Carry / Roll-down");
     expect(advancedMeta).toHaveTextContent("Campisi");
+  });
+
+  it("labels degraded active-tab result_meta in current_view_meta", async () => {
+    const user = userEvent.setup();
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+    client.getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+        formal_fi_report_dates: ["2026-03-31", "2026-02-28"],
+        nonstd_bridge_report_dates: [],
+      },
+    }));
+    client.getProductCategoryDates = vi.fn(async () => ({
+      result_meta: buildResultMeta("product_category_pnl.dates"),
+      result: {
+        report_dates: ["2026-03-31", "2026-02-28"],
+      },
+    }));
+    const getVolumeRateAttribution = client.getVolumeRateAttribution.bind(client);
+    client.getVolumeRateAttribution = vi.fn(async (options) => {
+      const envelope = await getVolumeRateAttribution(options);
+      return {
+        ...envelope,
+        result_meta: buildResultMeta("pnl.volume_rate", "tr_pnl_attr_degraded", {
+          quality_flag: "warning",
+          fallback_mode: "latest_snapshot",
+          generated_at: "2026-04-10T00:00:00Z",
+        }),
+      };
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <PnlAttributionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "规模 / 利率效应" }));
+
+    const currentViewMeta = await screen.findByTestId("pnl-attribution-current-view-meta");
+    expect(currentViewMeta).toHaveTextContent("质量标记：预警");
+    expect(currentViewMeta).toHaveTextContent("降级模式：最新快照降级");
+    expect(currentViewMeta).toHaveTextContent("生成时间");
+    expect(currentViewMeta).toHaveTextContent("2026-04-10T00:00:00Z");
   });
 
   it("keeps legacy Campisi panels visible when decision-grade endpoint is unavailable", async () => {
