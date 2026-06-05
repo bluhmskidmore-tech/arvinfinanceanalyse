@@ -13,6 +13,7 @@ const AG_GRID_INSTITUTIONAL_CSS_PATH = resolve(
   process.cwd(),
   "src/styles/agGridInstitutional.css",
 );
+const WORKBENCH_SHELL_PATH = resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx");
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -193,11 +194,13 @@ describe("globalCss design token bridge (:root)", () => {
 
   it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {
     const agGridCss = readFileSync(AG_GRID_INSTITUTIONAL_CSS_PATH, "utf8");
+    const workbenchShellSource = readFileSync(WORKBENCH_SHELL_PATH, "utf8");
 
     expect(agGridCss).toContain(
-      ".workbench-shell-grid--institutional-console :where(.ag-theme-alpine, .ag-theme-quartz)",
+      ".workbench-shell-grid--desktop-aligned :where(.ag-theme-alpine, .ag-theme-quartz)",
     );
     expect(agGridCss).toContain("--ag-background-color");
+    expect(workbenchShellSource).toContain("workbench-shell-grid--desktop-aligned");
     expect(globalCss).not.toContain("ag-theme-alpine");
   });
 
