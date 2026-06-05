@@ -142,6 +142,17 @@ function resultMetaSubline(meta: ResultMeta | undefined) {
   return `口径=${resultMetaBasisLabel(meta.basis)} · 质量=${resultMetaQualityLabel(meta.quality_flag)} · 供应商=${resultMetaVendorLabel(meta.vendor_status)} · 降级=${resultMetaFallbackLabel(meta.fallback_mode)}`;
 }
 
+function resultMetaAuditLine(meta: ResultMeta | undefined) {
+  if (!meta) {
+    return null;
+  }
+  return [
+    `vendor_version=${meta.vendor_version || "—"}`,
+    `generated_at=${meta.generated_at || "—"}`,
+    `fallback_date=${meta.fallback_date || "—"}`,
+  ].join(" · ");
+}
+
 export default function DecisionItemsPage() {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -404,11 +415,14 @@ export default function DecisionItemsPage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: t.space[1] }}>
+        <div data-testid="decision-items-result-meta" style={{ display: "grid", gap: t.space[1] }}>
           <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500], fontWeight: 600 }}>结果元信息</div>
           <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[800] }}>{formatMetaLine(resultMeta)}</div>
           {resultMetaSubline(resultMeta) ? (
             <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500] }}>{resultMetaSubline(resultMeta)}</div>
+          ) : null}
+          {resultMetaAuditLine(resultMeta) ? (
+            <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500] }}>{resultMetaAuditLine(resultMeta)}</div>
           ) : null}
         </div>
       </section>
