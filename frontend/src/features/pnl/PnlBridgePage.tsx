@@ -6,6 +6,7 @@ import { AgGridReact } from "ag-grid-react";
 import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+import "../../styles/agGridInstitutional.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";

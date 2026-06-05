@@ -9,6 +9,10 @@ import { shellTokens } from "../theme/tokens";
 import { workbenchTheme } from "../theme/theme";
 
 const GLOBAL_CSS_PATH = resolve(process.cwd(), "src/styles/global.css");
+const AG_GRID_INSTITUTIONAL_CSS_PATH = resolve(
+  process.cwd(),
+  "src/styles/agGridInstitutional.css",
+);
 
 function stripCssComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -183,7 +187,18 @@ describe("globalCss design token bridge (:root)", () => {
     expect(globalCss).toContain(".moss-page-v2-evidence-panel");
     expect(globalCss).toContain(".moss-page-v2-state-surface");
     expect(globalCss).toContain(".workbench-shell-grid--cockpit");
+    expect(globalCss).not.toContain("ag-theme-alpine");
     expect(globalCss).toContain(".dashboard-home-shell");
+  });
+
+  it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {
+    const agGridCss = readFileSync(AG_GRID_INSTITUTIONAL_CSS_PATH, "utf8");
+
+    expect(agGridCss).toContain(
+      ".workbench-shell-grid--institutional-console :where(.ag-theme-alpine, .ag-theme-quartz)",
+    );
+    expect(agGridCss).toContain("--ag-background-color");
+    expect(globalCss).not.toContain("ag-theme-alpine");
   });
 
   it("keeps dashboard-home compatibility styles rooted to known page owners", () => {
