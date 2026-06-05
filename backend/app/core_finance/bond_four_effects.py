@@ -5,11 +5,15 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import Any, Dict
 
+logger = logging.getLogger(__name__)
+
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
+from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 
 from .bond_duration import (
     estimate_convexity_bond,
@@ -33,10 +37,18 @@ def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
 
             if pd.isna(v):
                 continue
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.exception("_get_bond_field: pd.isna check failed for key=%r", k)
             pass
         return v
     return default
+
+
+def _annual_rate_decimal(value: Any) -> Decimal:
+    normalized = normalize_annual_rate_to_decimal(value)
+    if normalized is None:
+        return Decimal("0")
+    return Decimal(str(normalized))
 
 
 def compute_bond_four_effects(
@@ -46,7 +58,7 @@ def compute_bond_four_effects(
     spread_change: Decimal,
     report_date: date,
     coupon_frequency: int = 2,
-) -> Dict[str, Decimal]:
+) -> dict[str, Decimal | bool | list[str]]:
     """
     单券四效应：income / treasury / spread / selection + total_return。
 
@@ -58,23 +70,25 @@ def compute_bond_four_effects(
       否则退化为 total_price_change + income_return（净价变动 + 票息估算），
       此时 selection_effect 会系统性吸收面值/市值差异（折溢价债券误差约 5-10%）。
     """
-    coupon = safe_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
+    coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
     face = safe_decimal(_get_bond_field(bond, "face_value_start", "face_value"))
     mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
     mv_end = safe_decimal(_get_bond_field(bond, "market_value_end"))
     bond_code = str(_get_bond_field(bond, "bond_code", default=""))
     asset_class = _get_bond_field(bond, "asset_class_start", "asset_class", default="")
     ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
-    ytm = safe_decimal(ytm_raw) if ytm_raw is not None else None
+    ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
 
     # 应计利息（全价基准）
     ai_start_raw = _get_bond_field(bond, "accrued_interest_start", "accrued_interest", default=None)
     ai_end_raw = _get_bond_field(bond, "accrued_interest_end", default=None)
+    _ai_partial = (ai_start_raw is None) != (ai_end_raw is None)  # 只有一端有值
     has_accrued = ai_start_raw is not None and ai_end_raw is not None
     ai_start = safe_decimal(ai_start_raw) if has_accrued else Decimal("0")
     ai_end = safe_decimal(ai_end_raw) if has_accrued else Decimal("0")
 
     mat = _get_bond_field(bond, "maturity_date_start", "maturity_date")
+    _mat_parse_failed = False
     if mat is not None and hasattr(mat, "date"):
         mat_date = mat.date()
     elif mat is not None:
@@ -82,8 +96,18 @@ def compute_bond_four_effects(
             if hasattr(mat, "year"):
                 mat_date = date(mat.year, mat.month, mat.day) if hasattr(mat, "day") else date(mat.year, mat.month, 1)
             else:
-                mat_date = date.today()
-        except Exception:
+                _mat_parse_failed = True
+                logger.warning(
+                    "compute_bond_four_effects: maturity_date parse failed for bond %s, skipping duration calc",
+                    bond_code,
+                )
+                mat_date = None
+        except (ValueError, TypeError, AttributeError):
+            _mat_parse_failed = True
+            logger.warning(
+                "compute_bond_four_effects: maturity_date parse failed for bond %s, skipping duration calc",
+                bond_code,
+            )
             mat_date = None
     else:
         mat_date = None
@@ -91,7 +115,7 @@ def compute_bond_four_effects(
     income_return = coupon * face * Decimal(str(num_days)) / Decimal("365")
 
     if mat_date is None:
-        mod_dur = Decimal("0.01")
+        mod_dur = Decimal("0")
     else:
         macaulay = estimate_duration(
             maturity_date=mat_date,
@@ -102,7 +126,9 @@ def compute_bond_four_effects(
             wind_metrics=None,
             coupon_frequency=coupon_frequency,
         )
-        ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0.01")
+        # modified_duration_from_macaulay returns duration unchanged when ytm <= 0,
+        # so passing 0 is safe and avoids the arbitrary 0.01 proxy.
+        ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0")
         mod_dur = modified_duration_from_macaulay(
             duration=macaulay,
             ytm=ytm_for_mod,
@@ -128,6 +154,28 @@ def compute_bond_four_effects(
         selection_effect = Decimal("0")
         total_return = income_return
 
+    diagnostics: list[str] = []
+    if _mat_parse_failed:
+        diagnostics.append("maturity_date_parse_failed")
+    if mat_date is None:
+        diagnostics.append("mod_dur_fallback_zero")
+    log_id = bond_code or str(
+        _get_bond_field(bond, "instrument_code", "instrument_id", default="") or "UNKNOWN"
+    )
+    if _ai_partial:
+        diagnostics.append("accrued_interest_partial")
+        logger.warning(
+            "bond %s: only one side of accrued_interest present "
+            "(start=%r, end=%r), falling back to clean-price basis",
+            log_id, ai_start_raw, ai_end_raw,
+        )
+    elif not has_accrued:
+        diagnostics.append("accrued_interest_missing")
+        logger.warning(
+            "bond %s: accrued_interest missing on both sides, falling back to clean-price basis",
+            log_id,
+        )
+
     return {
         "income_return": income_return,
         "treasury_effect": treasury_effect,
@@ -136,6 +184,8 @@ def compute_bond_four_effects(
         "total_return": total_return,
         "total_price_change": total_price_change,
         "mod_duration": mod_dur,
+        "has_accrued_interest": has_accrued,
+        "diagnostics": diagnostics,
     }
 
 
@@ -146,7 +196,7 @@ def compute_bond_six_effects(
     spread_change: Decimal,
     report_date: date,
     coupon_frequency: int = 2,
-) -> Dict[str, Decimal]:
+) -> dict[str, Decimal | bool | list[str]]:
     """
     六效应（票息 / 利率 / 利差 / 凸性 / 交叉 / 再投资 + 选券残差）。
 
@@ -179,11 +229,13 @@ def compute_bond_six_effects(
             "total_return": fx["total_return"],
             "total_price_change": fx["total_price_change"],
             "mod_duration": fx["mod_duration"],
+            "has_accrued_interest": fx["has_accrued_interest"],
+            "diagnostics": list(fx["diagnostics"]),
         }
 
-    coupon = safe_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
+    coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
     ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
-    ytm = safe_decimal(ytm_raw) if ytm_raw is not None else None
+    ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
     mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
     mat = _get_bond_field(bond, "maturity_date_start", "maturity_date")
     if mat is not None and hasattr(mat, "date"):
@@ -194,7 +246,8 @@ def compute_bond_six_effects(
                 mat_date = date(mat.year, mat.month, mat.day) if hasattr(mat, "day") else date(mat.year, mat.month, 1)
             else:
                 mat_date = None
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("compute_bond_convexity_standalone: date coercion failed for maturity_date")
             mat_date = None
     else:
         mat_date = None
@@ -215,7 +268,9 @@ def compute_bond_six_effects(
             wind_metrics=None,
             coupon_frequency=coupon_frequency,
         )
-        ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0.01")
+        # modified_duration_from_macaulay returns duration unchanged when ytm <= 0,
+        # so passing 0 is safe and avoids the arbitrary 0.01 proxy.
+        ytm_for_mod = ytm if ytm and ytm > Decimal("0") else coupon if coupon > Decimal("0") else Decimal("0")
         convexity = estimate_convexity_bond(macaulay, ytm_for_mod, wind_convexity=None, coupon_frequency=coupon_frequency)
 
     convexity_effect = Decimal("0.5") * convexity * (dy * dy + ds * ds) * mv_start
@@ -241,4 +296,6 @@ def compute_bond_six_effects(
         "total_return": total_return,
         "total_price_change": fx["total_price_change"],
         "mod_duration": fx["mod_duration"],
+        "has_accrued_interest": fx["has_accrued_interest"],
+        "diagnostics": list(fx["diagnostics"]),
     }

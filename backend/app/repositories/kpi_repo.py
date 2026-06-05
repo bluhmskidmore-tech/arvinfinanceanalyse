@@ -58,7 +58,15 @@ class KpiRepository:
     dsn: str
 
     def __post_init__(self) -> None:
-        self.engine = create_engine(_normalize_sqlalchemy_dsn(self.dsn), future=True)
+        normalized_dsn = _normalize_sqlalchemy_dsn(self.dsn)
+        connect_args: dict[str, object] = {}
+        if normalized_dsn.startswith("postgresql+psycopg://"):
+            connect_args["connect_timeout"] = 1
+        self.engine = create_engine(
+            normalized_dsn,
+            future=True,
+            connect_args=connect_args,
+        )
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
             Base.metadata.create_all(
@@ -70,8 +78,11 @@ class KpiRepository:
                 ],
             )
 
+    def session(self):
+        return self._session_factory()
+
     def list_owners(self, *, year: int | None = None, is_active: bool | None = None) -> list[dict[str, object]]:
-        with self._session_factory() as session:
+        with self.session() as session:
             stmt = select(KpiOwner)
             if year is not None:
                 stmt = stmt.where(KpiOwner.year == int(year))
@@ -108,7 +119,7 @@ class KpiRepository:
             period_type=period_type,
             period_value=period_value,
         )
-        with self._session_factory() as session:
+        with self.session() as session:
             owner = session.get(KpiOwner, int(owner_id))
             if owner is None:
                 raise ValueError(f"Unknown KPI owner_id={owner_id}")

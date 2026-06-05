@@ -48,7 +48,7 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
                 "ingest_batch_id": "batch-fi",
                 "trace_id": "trace-fi",
                 "approval_status": "approved",
-                "event_semantics": "realized_formal",
+                "event_semantics": "realized_incremental",
                 "realized_flag": True,
             }
         ],
@@ -96,6 +96,7 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
     assert payload["report_date"] == "2025-12-31"
     assert payload["formal_fi_rows"] == 1
     assert payload["nonstd_bridge_rows"] == 1
+    assert payload["pnl_by_business_precompute_records"] > 0
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -111,11 +112,20 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
             from fact_nonstd_pnl_bridge
             """
         ).fetchall()
+        precompute_count = conn.execute(
+            """
+            select count(*)
+            from fact_pnl_by_business_precompute
+            where year = 2025
+              and as_of_date = '2025-12-31'
+            """
+        ).fetchone()[0]
     finally:
         conn.close()
 
     assert fi_rows == [("2025-12-31", "240001.IB", Decimal("11.50"), "src-v1")]
     assert bridge_rows == [("2025-12-31", "BOND-001", Decimal("100.00"), "trace-001,trace-002")]
+    assert precompute_count == payload["pnl_by_business_precompute_records"]
 
     repo = repo_module.PnlRepository(str(duckdb_path))
     assert repo.list_formal_fi_report_dates() == ["2025-12-31"]
@@ -197,7 +207,7 @@ def test_pnl_materialize_task_converts_usd_fi_rows_with_month_end_fx(tmp_path):
                 "fx_base_currency": "USD",
                 "source_version": "src-v-usd",
                 "approval_status": "approved",
-                "event_semantics": "realized_formal",
+                "event_semantics": "realized_incremental",
                 "realized_flag": True,
             }
         ],
@@ -269,7 +279,7 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
                 "currency_basis": "CNY",
                 "source_version": "src-v1",
                 "approval_status": "approved",
-                "event_semantics": "realized_formal",
+                "event_semantics": "realized_incremental",
                 "realized_flag": True,
             }
         ],
@@ -292,7 +302,7 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
                 "currency_basis": "CNY",
                 "source_version": "src-v2",
                 "approval_status": "approved",
-                "event_semantics": "realized_formal",
+                "event_semantics": "realized_incremental",
                 "realized_flag": True,
             }
         ],
@@ -376,6 +386,38 @@ def test_pnl_materialize_task_writes_recognized_formal_totals_not_standardized_t
                 "event_semantics": "mark_to_market",
                 "realized_flag": False,
             },
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "TPL-REALIZED-FORMAL-BUT-OVERLAP-NOT-PROVEN",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "T",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "5.00",
+                "capital_gain_517": "4.00",
+                "manual_adjustment": "3.00",
+                "currency_basis": "CNY",
+                "source_version": "src-recognition",
+                "approval_status": "pending",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            },
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "TPL-INCREMENTAL",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "T",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "5.00",
+                "capital_gain_517": "4.00",
+                "manual_adjustment": "3.00",
+                "currency_basis": "CNY",
+                "source_version": "src-recognition",
+                "approval_status": "pending",
+                "event_semantics": "realized_incremental",
+                "realized_flag": True,
+            },
         ],
         nonstd_rows_by_type={},
         duckdb_path=str(duckdb_path),
@@ -400,6 +442,20 @@ def test_pnl_materialize_task_writes_recognized_formal_totals_not_standardized_t
         ("AC-001", Decimal("0.00"), Decimal("4.00"), Decimal("3.00"), Decimal("17.00")),
         ("OCI-001", Decimal("0.00"), Decimal("4.00"), Decimal("0.00"), Decimal("14.00")),
         ("TPL-001", Decimal("5.00"), Decimal("0.00"), Decimal("0.00"), Decimal("15.00")),
+        (
+            "TPL-INCREMENTAL",
+            Decimal("5.00"),
+            Decimal("4.00"),
+            Decimal("0.00"),
+            Decimal("19.00"),
+        ),
+        (
+            "TPL-REALIZED-FORMAL-BUT-OVERLAP-NOT-PROVEN",
+            Decimal("5.00"),
+            Decimal("0.00"),
+            Decimal("0.00"),
+            Decimal("15.00"),
+        ),
     ]
 
 

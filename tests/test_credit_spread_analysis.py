@@ -63,6 +63,37 @@ def test_compute_bond_spreads_basic():
     assert row.weight == Decimal("1")
 
 
+def test_compute_bond_spreads_uses_face_value_for_spread_dv01():
+    module = load_module(
+        f"tests._credit_spread_analysis.core_{uuid.uuid4().hex}",
+        "backend/app/core_finance/credit_spread_analysis.py",
+    )
+
+    rows = module.compute_bond_spreads(
+        bond_rows=[
+            {
+                "instrument_code": "CB-FACE",
+                "instrument_name": "credit bond",
+                "asset_class_std": "credit",
+                "rating": "AAA",
+                "tenor_bucket": "3Y",
+                "ytm": Decimal("0.035"),
+                "modified_duration": Decimal("2.5"),
+                "market_value": Decimal("100"),
+                "face_value": Decimal("1000"),
+            },
+        ],
+        treasury_curve={
+            "1Y": Decimal("2.00"),
+            "5Y": Decimal("3.00"),
+        },
+    )
+
+    row = rows[0]
+    assert row.spread_dv01 == Decimal("0.25")
+    assert row.spread_dv01 != Decimal("0.025")
+
+
 def test_spread_term_structure_aggregation():
     module = load_module(
         f"tests._credit_spread_analysis.core_{uuid.uuid4().hex}",

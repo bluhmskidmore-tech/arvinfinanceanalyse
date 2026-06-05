@@ -9,17 +9,18 @@ Covers:
 - Full Campisi attribution: income + treasury + spread + selection = total_return
 - Edge cases: flat curve, zero spread, missing curve data
 """
-import pytest
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.campisi import (
-    interpolate_treasury_yield_pct,
     _coerce_percent_curve,
     benchmark_yield_change_decimal,
-    credit_spread_change_decimal,
     campisi_attribution,
+    credit_spread_change_decimal,
     infer_credit_rating_from_asset_class,
+    interpolate_treasury_yield_pct,
 )
 
 
@@ -43,7 +44,7 @@ class TestTreasuryYieldInterpolation:
         assert interpolate_treasury_yield_pct(market, 30.0) == 4.0
 
     def test_interpolate_between_tenors(self):
-        """Linear interpolation between tenors."""
+        """Interpolation between tenors (cubic spline may differ from strict linear midpoint)."""
         market = {
             "treasury_1y": 2.0,
             "treasury_3y": 3.0,
@@ -52,10 +53,10 @@ class TestTreasuryYieldInterpolation:
             "treasury_10y": 5.0,
             "treasury_30y": 6.0,
         }
-        # Between 1y and 3y: 2.0 + (3.0 - 2.0) * (2 - 1) / (3 - 1) = 2.5
-        assert interpolate_treasury_yield_pct(market, 2.0) == 2.5
-        # Between 3y and 5y: 3.0 + (4.0 - 3.0) * (4 - 3) / (5 - 3) = 3.5
-        assert interpolate_treasury_yield_pct(market, 4.0) == 3.5
+        # Between 1y and 3y: cubic spline value near 2.5 (linear midpoint)
+        assert interpolate_treasury_yield_pct(market, 2.0) == pytest.approx(2.5, abs=0.15)
+        # Between 3y and 5y: cubic spline value near 3.5
+        assert interpolate_treasury_yield_pct(market, 4.0) == pytest.approx(3.5, abs=0.15)
 
     def test_extrapolate_below_min_tenor(self):
         """Values below 1y should return 1y yield."""
@@ -121,6 +122,20 @@ class TestRateUnitCoercion:
         assert result["treasury_1y"] == pytest.approx(2.55, abs=1e-6)
         assert result["treasury_3y"] == pytest.approx(2.80, abs=1e-6)
         assert result["treasury_5y"] == pytest.approx(3.10, abs=1e-6)
+
+    def test_low_percent_input_under_two_is_not_scaled(self):
+        """Chinese government yields can be valid percent values below 2%."""
+        market = {
+            "treasury_1y": 1.42,
+            "treasury_3y": 1.58,
+            "treasury_5y": 1.68,
+            "treasury_7y": 1.81,
+            "treasury_10y": 1.91,
+            "treasury_30y": 1.95,
+        }
+        result = _coerce_percent_curve(market)
+        assert result["treasury_1y"] == pytest.approx(1.42)
+        assert result["treasury_10y"] == pytest.approx(1.91)
 
     def test_mixed_zero_values(self):
         """Zero values should not trigger scaling."""
@@ -339,6 +354,28 @@ class TestFullCampisiAttribution:
             + totals["selection_effect"]
         )
         assert abs(sum_effects - totals["total_return"]) < 1.0  # Within 1 yuan
+
+    def test_full_price_total_return_uses_accrued_interest_when_available(self):
+        """Campisi total return should use full-price change when accrued interest is supplied."""
+        positions = [
+            {
+                "bond_code": "AI.IB",
+                "instrument_id": "AI.IB",
+                "market_value_start": 1000.0,
+                "market_value_end": 1010.0,
+                "face_value_start": 1000.0,
+                "coupon_rate_start": 0.03,
+                "yield_to_maturity_start": 0.03,
+                "asset_class_start": "credit AAA",
+                "maturity_date_start": date(2028, 12, 31),
+                "accrued_interest_start": 5.0,
+                "accrued_interest_end": 8.0,
+            }
+        ]
+
+        result = campisi_attribution(positions, {}, {}, date(2026, 1, 1), date(2026, 1, 31))
+
+        assert result.totals["total_return"] == pytest.approx(13.0)
 
     def test_ac_class_zeroes_market_effects(self):
         """AC class bonds should have zero treasury/spread/selection effects."""

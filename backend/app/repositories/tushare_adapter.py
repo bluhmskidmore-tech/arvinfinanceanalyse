@@ -28,12 +28,40 @@ from backend.app.schemas.vendor import (
 )
 
 TUSHARE_TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
+_GOVERNANCE_SETTINGS_MODULE = "backend.app.governance.settings"
+
+
+def resolve_tushare_token_with_settings_fallback(settings: Any) -> str:
+    """Env `MOSS_TUSHARE_TOKEN` first; then `settings.tushare_token` (config / .env).
+
+    Shared by services that need optional Tushare calls with explicit no-token handling.
+    """
+    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+    if token:
+        return token
+    return str(getattr(settings, "tushare_token", "") or "").strip()
+
+
+def _load_settings_for_token_fallback() -> Any | None:
+    try:
+        from backend.app.governance.settings import get_settings
+    except ModuleNotFoundError as exc:
+        missing_name = str(getattr(exc, "name", "") or "")
+        if missing_name in {
+            "backend",
+            "backend.app",
+            "backend.app.governance",
+            _GOVERNANCE_SETTINGS_MODULE,
+        }:
+            return None
+        raise
+    return get_settings()
 
 
 def _require_tushare_token() -> str:
-    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+    token = resolve_tushare_token_with_settings_fallback(_load_settings_for_token_fallback())
     if not token:
-        msg = f"{TUSHARE_TOKEN_ENV} is not set; export it or add to config before calling Tushare macro fetch."
+        msg = f"{TUSHARE_TOKEN_ENV} is not set; export it or add to config/.env before calling Tushare macro fetch."
         raise RuntimeError(msg)
     return token
 
@@ -42,9 +70,17 @@ def _import_tushare_pro():
     try:
         import tushare as ts  # noqa: PLC0415
     except Exception as exc:
-        msg = "The `tushare` package is not installed or cannot be imported; install it for live Tushare macro fetch."
+        msg = (
+            "The `tushare` package is not installed or cannot be imported; "
+            "install it for live Tushare vendor calls."
+        )
         raise RuntimeError(msg) from exc
     return ts
+
+
+def import_tushare_pro():
+    """Lazy-import the tushare package. Raises :class:`RuntimeError` on import failure."""
+    return _import_tushare_pro()
 
 
 def _month_to_trade_date(month: str) -> str:
@@ -97,23 +133,55 @@ def _rows_from_cn_gdp(df: Any) -> list[dict[str, object]]:
     return rows
 
 
+def _rows_from_cn_ppi(df: Any) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in df.to_dict(orient="records"):
+        month = record.get("month")
+        value = record.get("ppi_yoy")
+        if value is None:
+            continue
+        rows.append(
+            {
+                "trade_date": _month_to_trade_date(str(month)),
+                "value": float(value),
+            }
+        )
+    return rows
+
+
+def _rows_from_cn_money(df: Any) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in df.to_dict(orient="records"):
+        month = record.get("month")
+        value = record.get("m2_yoy")
+        if value is None:
+            continue
+        rows.append(
+            {
+                "trade_date": _month_to_trade_date(str(month)),
+                "value": float(value),
+            }
+        )
+    return rows
+
+
 @dataclass
 class VendorAdapter(VendorAdapterBase):
     vendor_name: str = "tushare"
 
     def preflight(self) -> VendorPreflightResult:
-        token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+        token = resolve_tushare_token_with_settings_fallback(_load_settings_for_token_fallback())
         if not token:
             return VendorPreflightResult(
                 vendor_name=self.vendor_name,
                 ok=False,
                 status="missing_config",
                 supports_live_fetch=False,
-                detail=f"{TUSHARE_TOKEN_ENV} must be set before live fetch is enabled.",
+                detail=f"{TUSHARE_TOKEN_ENV} must be set in process env or config/.env before live fetch is enabled.",
             )
         try:
             __import__("tushare")
-        except Exception:
+        except ImportError:
             return VendorPreflightResult(
                 vendor_name=self.vendor_name,
                 ok=False,
@@ -136,14 +204,23 @@ class VendorAdapter(VendorAdapterBase):
         )
 
     def fetch_macro_snapshot_skeleton(self) -> dict[str, object]:
-        """Fixture-shaped payload for M1; live Tushare macro fetch remains TODO."""
-        return {
-            "vendor_kind": "tushare_macro",
-            "rows": [
-                {"trade_date": "2026-01-01", "series_id": "GDP.Y", "value": 5.2},
-            ],
-            "note": "Fixture only; real Tushare API not implemented.",
-        }
+        """Delegate to live fetch for the first registered seed series.
+
+        Falls back to an empty payload if the token is missing or import fails.
+        """
+        from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES  # noqa: PLC0415
+
+        first_id = TUSHARE_M2A_SERIES[0]["series_id"] if TUSHARE_M2A_SERIES else None
+        if first_id is None:
+            return {"vendor_kind": "tushare_macro", "rows": [], "note": "No seed series registered."}
+        try:
+            return self.fetch_macro_snapshot(first_id)
+        except (RuntimeError, ValueError):
+            return {
+                "vendor_kind": "tushare_macro",
+                "rows": [],
+                "note": f"Live Tushare fetch for {first_id!r} failed; token or package may be missing.",
+            }
 
     def fetch_macro_snapshot(self, series_id: str) -> dict[str, object]:
         """Call Tushare pro API for a registered M2a series; returns JSON-serializable payload."""
@@ -156,20 +233,29 @@ class VendorAdapter(VendorAdapterBase):
         ts = _import_tushare_pro()
         pro = ts.pro_api(token)
         api = cfg["tushare_api"]
-        if api == "cn_cpi":
-            frame = pro.cn_cpi()
-        elif api == "cn_gdp":
-            frame = pro.cn_gdp()
-        else:
+        _FETCH_DISPATCH: dict[str, Any] = {
+            "cn_cpi": lambda: pro.cn_cpi(),
+            "cn_gdp": lambda: pro.cn_gdp(),
+            "cn_ppi": lambda: pro.cn_ppi(),
+            "cn_money": lambda: pro.cn_m(),
+        }
+        _PARSE_DISPATCH: dict[str, Any] = {
+            "cn_cpi": _rows_from_cn_cpi,
+            "cn_gdp": _rows_from_cn_gdp,
+            "cn_ppi": _rows_from_cn_ppi,
+            "cn_money": _rows_from_cn_money,
+        }
+        fetcher = _FETCH_DISPATCH.get(api)
+        parser = _PARSE_DISPATCH.get(api)
+        if fetcher is None or parser is None:
             msg = f"Unsupported tushare_api {api!r} for {series_id}"
             raise ValueError(msg)
 
+        frame = fetcher()
         if frame is None or len(frame) == 0:
             rows: list[dict[str, object]] = []
-        elif api == "cn_cpi":
-            rows = _rows_from_cn_cpi(frame)
         else:
-            rows = _rows_from_cn_gdp(frame)
+            rows = parser(frame)
 
         return {
             "vendor_kind": "tushare_macro",

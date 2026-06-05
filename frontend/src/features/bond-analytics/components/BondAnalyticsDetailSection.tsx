@@ -10,6 +10,7 @@ import {
   getBondAnalyticsModuleDefinition,
   type BondAnalyticsModuleKey,
 } from "../lib/bondAnalyticsModuleRegistry";
+import styles from "./BondAnalyticsDetailSection.module.css";
 
 const ReturnDecompositionView = lazy(() =>
   import("./ReturnDecompositionView").then((module) => ({
@@ -24,6 +25,11 @@ const BenchmarkExcessView = lazy(() =>
 const KRDCurveRiskView = lazy(() =>
   import("./KRDCurveRiskView").then((module) => ({
     default: module.KRDCurveRiskView,
+  })),
+);
+const DV01RiskView = lazy(() =>
+  import("./DV01RiskView").then((module) => ({
+    default: module.DV01RiskView,
   })),
 );
 const CreditSpreadView = lazy(() =>
@@ -53,14 +59,15 @@ const TopHoldingsView = lazy(() =>
 );
 
 const TAB_ITEMS: Array<{ key: BondAnalyticsModuleKey; label: string }> = [
-  { key: "return-decomposition", label: "Return decomposition" },
-  { key: "benchmark-excess", label: "Benchmark excess" },
-  { key: "krd-curve-risk", label: "KRD curve risk" },
-  { key: "credit-spread", label: "Credit spread" },
-  { key: "portfolio-headlines", label: "Portfolio headlines" },
-  { key: "top-holdings", label: "Top holdings" },
-  { key: "action-attribution", label: "Action attribution" },
-  { key: "accounting-audit", label: "Accounting audit" },
+  { key: "return-decomposition", label: "收益分解" },
+  { key: "benchmark-excess", label: "基准超额" },
+  { key: "krd-curve-risk", label: "KRD 曲线风险" },
+  { key: "dv01-risk", label: "DV01 风险" },
+  { key: "credit-spread", label: "信用利差" },
+  { key: "portfolio-headlines", label: "组合头条" },
+  { key: "top-holdings", label: "重仓券" },
+  { key: "action-attribution", label: "动作归因" },
+  { key: "accounting-audit", label: "会计分类审计" },
 ];
 
 interface BondAnalyticsDetailSectionProps {
@@ -107,6 +114,10 @@ function renderActiveModule(
     return <KRDCurveRiskView reportDate={reportDate} scenarioSet={scenarioSet} />;
   }
 
+  if (activeTab === "dv01-risk") {
+    return <DV01RiskView reportDate={reportDate} />;
+  }
+
   if (activeTab === "credit-spread") {
     return <CreditSpreadView reportDate={reportDate} spreadScenarios={spreadScenarios} />;
   }
@@ -145,19 +156,22 @@ export function BondAnalyticsDetailSection({
 
   return (
     <section
-      style={{ display: "flex", flexDirection: "column", gap: 12 }}
+      className={styles.detailSection}
       data-testid="bond-analysis-detail-section"
       data-module-key={activeTab}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>Analysis details</h3>
-        <div style={{ color: "#8090a8", fontSize: 13 }}>
-          Currently viewing: {activeModule.label}
+      <div className={styles.header} data-testid="bond-analysis-detail-header">
+        <div className={styles.headingStack}>
+          <h3 className={styles.title}>分析明细</h3>
+          <p className={styles.description}>{activeModule.description}</p>
         </div>
-        <div style={{ color: "#5c6b82", fontSize: 13 }}>{activeModule.description}</div>
+        <div className={styles.activeModule}>
+          当前查看：{activeModule.label}
+        </div>
       </div>
 
       <Tabs
+        className={styles.tabRail}
         activeKey={activeTab}
         onChange={(key) => onActiveTabChange(key as BondAnalyticsModuleKey)}
         items={TAB_ITEMS.map((item) => ({
@@ -170,14 +184,14 @@ export function BondAnalyticsDetailSection({
       <Suspense
         fallback={
           <div
-            style={{ color: "#8090a8", fontSize: 13 }}
+            className={styles.loadingState}
             data-testid="bond-analysis-detail-loading"
           >
-            Loading panel...
+            正在加载面板...
           </div>
         }
       >
-        <div>
+        <div className={styles.contentFrame} data-testid="bond-analysis-detail-content">
           {renderActiveModule(
             activeTab,
             reportDate,

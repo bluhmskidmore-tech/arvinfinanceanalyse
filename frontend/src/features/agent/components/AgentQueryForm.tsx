@@ -1,8 +1,11 @@
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent, Ref } from "react";
 
 import { shellTokens as t } from "../../../theme/tokens";
 
 type AgentQueryFormProps = {
+  compact?: boolean;
+  showAdvancedTools?: boolean;
+  pageContext?: { page_id: string };
   repoPath: string;
   onRepoPathChange: (value: string) => void;
   quickExamples: readonly string[];
@@ -22,9 +25,33 @@ type AgentQueryFormProps = {
   query: string;
   onQueryChange: (value: string) => void;
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
+  inputRef?: Ref<HTMLTextAreaElement>;
 };
 
+function formatQuickExampleLabel(example: string) {
+  return example
+    .replace("请给我看 ", "")
+    .replace("GitNexus context", "GitNexus 上下文")
+    .replace("GitNexus processes", "GitNexus 流程");
+}
+
+function buildPromptPlaceholder(pageContext?: { page_id: string }) {
+  if (pageContext?.page_id) {
+    return "直接问当前页：主要结论？异常点？下一步复核什么？";
+  }
+  return "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
+}
+
+function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, loading: boolean) {
+  return !loading && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing;
+}
+
+const primaryQuickExampleCount = 2;
+
 export function AgentQueryForm({
+  compact = false,
+  showAdvancedTools = true,
+  pageContext,
   repoPath,
   onRepoPathChange,
   quickExamples,
@@ -44,239 +71,146 @@ export function AgentQueryForm({
   query,
   onQueryChange,
   onSubmit,
+  inputRef,
 }: AgentQueryFormProps) {
+  const primaryQuickExamples = quickExamples.slice(0, primaryQuickExampleCount);
+  const advancedQuickExamples = quickExamples.slice(primaryQuickExampleCount);
+
   return (
-    <>
-      <div
-        style={{
-          marginTop: 16,
-          marginBottom: 20,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <label
-          style={{
-            display: "grid",
-            gap: 8,
-            color: t.colorTextSecondary,
-            fontSize: 13,
-          }}
-        >
-          <span>GitNexus Repo Path</span>
-          <input
-            aria-label="repo-path-input"
-            type="text"
-            placeholder="例如：F:\\MOSS-SYSTEM-V1"
-            value={repoPath}
-            onChange={(event) => onRepoPathChange(event.target.value)}
-            style={{
-              padding: "11px 14px",
-              borderRadius: 14,
-              border: `1px solid ${t.colorBorder}`,
-              background: t.colorBgCanvas,
-              color: t.colorTextPrimary,
-              fontSize: 14,
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
-        </label>
+    <div className={compact ? "agent-chat-composer agent-chat-composer--compact" : "agent-chat-composer"}>
+      {!compact ? (
+        <>
+          <div className="agent-chat-composer__header">
+            <div>
+              <div className="agent-chat-composer__title">问 Agent</div>
+            </div>
+            <div className="agent-chat-composer__hint">Enter 发送 · Shift+Enter 换行</div>
+          </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          {quickExamples.map((example) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => onQuickExample(example)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: `1px solid ${t.colorBorder}`,
-                background: t.colorBgCanvas,
-                color: t.colorTextSecondary,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {example.replace("请给我看 ", "")}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={isCurrentRepoPinned ? onUnpinCurrentRepo : onPinCurrentRepo}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: `1px solid ${t.colorBorder}`,
-              background: isCurrentRepoPinned ? t.colorBgMuted : t.colorBgCanvas,
-              color: t.colorTextSecondary,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            {isCurrentRepoPinned ? "取消固定当前 Repo" : "固定当前 Repo"}
-          </button>
-          <button
-            type="button"
-            onClick={onLoadProcesses}
-            disabled={processLoading}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: `1px solid ${t.colorBorder}`,
-              background: t.colorBgCanvas,
-              color: t.colorTextSecondary,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: processLoading ? "default" : "pointer",
-              opacity: processLoading ? 0.72 : 1,
-            }}
-          >
-            {processLoading ? "读取中..." : "读取 Processes"}
-          </button>
-        </div>
+          <div className="agent-chat-composer__quick-row" aria-label="常用问题">
+            {primaryQuickExamples.map((example) => (
+              <button
+                key={example}
+                type="button"
+                className="agent-chat-composer__quick-button"
+                onClick={() => onQuickExample(example)}
+              >
+                {formatQuickExampleLabel(example)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr) auto",
-            gap: 10,
-            alignItems: "end",
-          }}
-        >
-          <label
-            style={{
-              display: "grid",
-              gap: 8,
-              color: t.colorTextSecondary,
-              fontSize: 13,
-            }}
-          >
-            <span>Process Search</span>
-            <input
-              aria-label="process-search-input"
-              type="text"
-              placeholder="按流程名过滤"
-              value={processSearch}
-              onChange={(event) => onProcessSearchChange(event.target.value)}
-              style={{
-                padding: "11px 14px",
-                borderRadius: 14,
-                border: `1px solid ${t.colorBorder}`,
-                background: t.colorBgCanvas,
-                color: t.colorTextPrimary,
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </label>
-          <label
-            style={{
-              display: "grid",
-              gap: 8,
-              color: t.colorTextSecondary,
-              fontSize: 13,
-            }}
-          >
-            <span>Process Name</span>
-            <select
-              aria-label="process-name-select"
-              value={selectedProcess}
-              onChange={(event) => onSelectedProcessChange(event.target.value)}
-              style={{
-                padding: "11px 14px",
-                borderRadius: 14,
-                border: `1px solid ${t.colorBorder}`,
-                background: t.colorBgCanvas,
-                color: t.colorTextPrimary,
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            >
-              <option value="">请选择流程</option>
-              {filteredProcesses.map((processName) => (
-                <option key={processName} value={processName}>
-                  {processName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={onViewSelectedProcess}
-            disabled={!selectedProcess || loading}
-            style={{
-              padding: "12px 16px",
-              borderRadius: 14,
-              border: `1px solid ${t.colorBorder}`,
-              background: t.colorBgCanvas,
-              color: t.colorTextSecondary,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: !selectedProcess || loading ? "default" : "pointer",
-              opacity: !selectedProcess || loading ? 0.72 : 1,
-            }}
-          >
-            查看所选流程
-          </button>
-        </div>
-      </div>
-
-      <form
-        onSubmit={(event) => void onSubmit(event)}
-        style={{
-          display: "flex",
-          gap: 12,
-          marginTop: 20,
-          marginBottom: 24,
-        }}
-      >
-        <input
-          type="text"
-          placeholder="例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱..."
+      <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
+        <textarea
+          aria-label="agent-question-input"
+          data-testid="agent-panel-question"
+          className="agent-chat-composer__input"
+          ref={inputRef}
+          rows={compact ? 2 : 3}
+          placeholder={buildPromptPlaceholder(pageContext)}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          style={{
-            flex: 1,
-            padding: "12px 16px",
-            borderRadius: 14,
-            border: `1px solid ${t.colorBorder}`,
-            background: t.colorBgCanvas,
-            color: t.colorTextPrimary,
-            fontSize: 15,
-            outline: "none",
-            boxSizing: "border-box",
+          onKeyDown={(event) => {
+            if (shouldSubmitByEnter(event, loading)) {
+              event.preventDefault();
+              void onSubmit();
+            }
           }}
         />
         <button
           type="submit"
+          data-testid="agent-panel-submit"
           disabled={loading}
-          style={{
-            padding: "12px 24px",
-            borderRadius: 14,
-            border: "none",
-            background: t.colorAccent,
-            color: t.colorBgCanvas,
-            fontSize: 15,
-            fontWeight: 600,
-            cursor: loading ? "default" : "pointer",
-            opacity: loading ? 0.72 : 1,
-          }}
+          className="agent-chat-composer__send"
+          style={{ background: t.colorAccent }}
         >
-          {loading ? "查询中..." : "查询"}
+          {loading ? "发送中..." : "发送"}
         </button>
       </form>
-    </>
+
+      {showAdvancedTools ? (
+        <details className="agent-chat-composer__advanced">
+          <summary>高级工具：GitNexus / 流程图谱</summary>
+          <div className="agent-chat-composer__advanced-body">
+            <label className="agent-chat-composer__field">
+              <span>GitNexus 仓库路径</span>
+              <input
+                aria-label="repo-path-input"
+                type="text"
+                placeholder="例如：F:\\MOSS-SYSTEM-V1"
+                value={repoPath}
+                onChange={(event) => onRepoPathChange(event.target.value)}
+              />
+            </label>
+
+            <div className="agent-chat-composer__tool-row">
+              {advancedQuickExamples.map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  className="agent-chat-composer__tool-button"
+                  onClick={() => onQuickExample(example)}
+                >
+                  {formatQuickExampleLabel(example)}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="agent-chat-composer__tool-button"
+                onClick={isCurrentRepoPinned ? onUnpinCurrentRepo : onPinCurrentRepo}
+              >
+                {isCurrentRepoPinned ? "取消固定当前仓库" : "固定当前仓库"}
+              </button>
+              <button
+                type="button"
+                className="agent-chat-composer__tool-button"
+                onClick={onLoadProcesses}
+                disabled={processLoading}
+              >
+                {processLoading ? "读取中..." : "读取流程"}
+              </button>
+            </div>
+
+            <div className="agent-chat-composer__process-grid">
+              <label className="agent-chat-composer__field">
+                <span>流程搜索</span>
+                <input
+                  aria-label="process-search-input"
+                  type="text"
+                  placeholder="按流程名过滤"
+                  value={processSearch}
+                  onChange={(event) => onProcessSearchChange(event.target.value)}
+                />
+              </label>
+              <label className="agent-chat-composer__field">
+                <span>流程名称</span>
+                <select
+                  aria-label="process-name-select"
+                  value={selectedProcess}
+                  onChange={(event) => onSelectedProcessChange(event.target.value)}
+                >
+                  <option value="">请选择流程</option>
+                  {filteredProcesses.map((processName) => (
+                    <option key={processName} value={processName}>
+                      {processName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="agent-chat-composer__secondary-action"
+                onClick={onViewSelectedProcess}
+                disabled={!selectedProcess || loading}
+              >
+                查看所选流程
+              </button>
+            </div>
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }

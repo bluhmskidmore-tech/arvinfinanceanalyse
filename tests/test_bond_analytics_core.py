@@ -8,7 +8,6 @@ import pytest
 
 from backend.app.core_finance.bond_analytics import common
 from backend.app.core_finance.bond_analytics.read_models import (
-    compute_benchmark_excess,
     summarize_return_decomposition,
 )
 from tests.helpers import load_module
@@ -125,6 +124,34 @@ def test_resolve_period_mom_ytd_ttm(
 )
 def test_get_tenor_bucket(years: float, bucket: str) -> None:
     assert common.get_tenor_bucket(years) == bucket
+
+
+def test_portfolio_risk_duration_excludes_no_maturity_rows_from_denominator() -> None:
+    summary = _read_models_module().summarize_portfolio_risk(
+        [
+            {
+                "market_value": Decimal("100"),
+                "maturity_date": date(2030, 1, 1),
+                "macaulay_duration": Decimal("4.2"),
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("20"),
+                "dv01": Decimal("4"),
+            },
+            {
+                "market_value": Decimal("300"),
+                "maturity_date": None,
+                "macaulay_duration": Decimal("0"),
+                "modified_duration": Decimal("0"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+        ]
+    )
+
+    assert summary["total_market_value"] == Decimal("400")
+    assert summary["portfolio_dv01"] == Decimal("4")
+    assert summary["portfolio_duration"] == Decimal("4.2")
+    assert summary["portfolio_modified_duration"] == Decimal("4")
 
 
 def test_convexity_effect_with_curve_data() -> None:

@@ -97,6 +97,8 @@ function yieldPayload(reportDate: string): LiabilityYieldMetricsPayload {
       market_liability_cost: numeric(0.021, "pct", true),
       nim: numeric(0.01, "pct", true),
     },
+    history: [],
+    scatter: [],
   };
 }
 
@@ -212,19 +214,33 @@ describe("LiabilityAnalyticsPage", () => {
       getLiabilityRiskBuckets: vi.fn(async () => riskPayload("2025-12-31")),
       getLiabilityYieldMetrics: vi.fn(async () => yieldPayload("2025-12-31")),
       getLiabilityCounterparty: vi.fn(async () => counterpartyPayload("2025-12-31")),
+      getCockpitWarnings: vi.fn(async () => ({
+        result_meta: meta("liability.cockpit_warnings"),
+        result: {
+          report_date: "2025-12-31",
+          watch_items: [],
+          alert_events: [],
+        },
+      })),
+      getContributionSplit: vi.fn(async () => ({
+        result_meta: meta("liability.contribution_split"),
+        result: {
+          report_date: "2025-12-31",
+          contributions: [],
+        },
+      })),
       getLiabilitiesMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_total_liabilities: null, ytd_avg_liability_cost: null })),
       getLiabilityAdbMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_assets: 0, ytd_avg_liabilities: 0, ytd_asset_yield: null, ytd_liability_cost: null, ytd_nim: null, unit: "percent" })),
     });
 
     expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
     await screen.findByTestId("liability-conclusion");
-    expect(screen.getAllByText((content) => content.includes("待统一预警/限额接口")).length).toBeGreaterThan(0);
-    expect(screen.getByText((content) => content.includes("保留时间轴卡位"))).toBeInTheDocument();
-    expect(screen.getByText((content) => content.includes("缺少真实分项拆解接口"))).toBeInTheDocument();
-    expect(screen.getByText((content) => content.includes("指标字典与口径尚未冻结"))).toBeInTheDocument();
-    expect(screen.getByText((content) => content.includes("保留关键日历卡位"))).toBeInTheDocument();
+    expect(await screen.findByText(/当前无待关注事项/)).toBeInTheDocument();
+    expect(await screen.findByText(/未触发预警阈值/)).toBeInTheDocument();
+    expect(await screen.findByText(/所选报告日无可用拆分数据/)).toBeInTheDocument();
+    expect(await screen.findByText(/指标字典与口径尚未冻结/)).toBeInTheDocument();
+    expect(await screen.findByText(/保留关键日历卡位/)).toBeInTheDocument();
     expect(screen.getByText("异常预警")).toBeInTheDocument();
-    expect(screen.getByText("待定")).toBeInTheDocument();
     expect(screen.queryByText((content) => content.includes("114.54"))).not.toBeInTheDocument();
     expect(screen.queryByText("0.21%")).not.toBeInTheDocument();
   });

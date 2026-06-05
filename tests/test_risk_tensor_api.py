@@ -34,9 +34,12 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result"]["report_date"] == REPORT_DATE
     assert payload["result"]["bond_count"] == 3
     assert isinstance(payload["result"]["portfolio_dv01"], dict)
+    assert isinstance(payload["result"]["regulatory_dv01"], dict)
     assert isinstance(payload["result"]["cs01"], dict)
     assert isinstance(payload["result"]["portfolio_convexity"], dict)
     assert payload["result"]["portfolio_dv01"]["unit"] == "dv01"
+    assert payload["result"]["regulatory_dv01"]["unit"] == "dv01"
+    assert payload["result"]["regulatory_dv01"]["raw"] == payload["result"]["portfolio_dv01"]["raw"]
     assert payload["result"]["asset_cashflow_30d"]["raw"] == 14.0
     assert payload["result"]["liability_cashflow_30d"]["raw"] == 0.0
     assert (
@@ -157,7 +160,7 @@ def test_risk_tensor_api_returns_non_empty_degraded_tensor_when_materialized_sna
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result"]["bond_count"] == 3
     assert payload["result"]["quality_flag"] == "warning"
-    assert any("Unsupported tenor buckets" in warning for warning in payload["result"]["warnings"])
+    assert any("Non-standard tenor buckets remapped" in warning for warning in payload["result"]["warnings"])
     assert any("without maturity_date" in warning for warning in payload["result"]["warnings"])
 
     get_settings.cache_clear()

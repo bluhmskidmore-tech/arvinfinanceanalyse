@@ -6,6 +6,12 @@ from backend.app.agent.schemas.agent_response import (
     AgentEnvelope,
     AgentEvidence,
     AgentResultMeta,
+    AgentSuggestedAction,
+)
+from backend.app.agent.schemas.agent_run import (
+    AgentRunCreateResponse,
+    AgentRunRecord,
+    AgentRunStatusResponse,
 )
 
 __all__ = [
@@ -15,6 +21,9 @@ __all__ = [
     "AgentEnvelope",
     "AgentEvidence",
     "AgentQueryRequest",
+    "AgentRunCreateResponse",
+    "AgentRunRecord",
+    "AgentRunStatusResponse",
     "AgentResultMeta",
+    "AgentSuggestedAction",
 ]
-

@@ -1,18 +1,23 @@
 {
   "result_meta": {
-    "trace_id": "tr_68449da9e2bc",
+    "trace_id": "tr_43c200d579a2",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
     "source_version": "sv_risk_tensor__sv_bond_snap_1",
     "vendor_version": "vv_none",
-    "rule_version": "rv_risk_tensor_formal_materialize_v1",
-    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+    "rule_version": "rv_risk_tensor_formal_materialize_v2",
+    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
     "quality_flag": "warning",
     "vendor_status": "ok",
     "fallback_mode": "none",
+    "requested_report_date": "2026-03-31",
+    "resolved_report_date": "2026-03-31",
     "scenario_flag": false,
-    "generated_at": "2026-04-19T03:13:34.099366Z",
+    "as_of_date": "2026-03-31",
+    "date_basis": "formal_snapshot",
+    "fallback_date": null,
+    "generated_at": "2026-05-31T07:44:21.980839Z",
     "filters_applied": {},
     "tables_used": [],
     "evidence_rows": null,
@@ -22,9 +27,16 @@
   "result": {
     "report_date": "2026-03-31",
     "portfolio_dv01": {
-      "raw": 0.41281987,
+      "raw": 0.42748515,
       "unit": "dv01",
-      "display": "0.41",
+      "display": "0.43",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "regulatory_dv01": {
+      "raw": 0.42748515,
+      "unit": "dv01",
+      "display": "0.43",
       "precision": 2,
       "sign_aware": false
     },
@@ -57,37 +69,37 @@
       "sign_aware": true
     },
     "krd_10y": {
-      "raw": 0.11250583,
+      "raw": 0.12054196,
       "unit": "ratio",
-      "display": "+0.11",
+      "display": "+0.12",
       "precision": 2,
       "sign_aware": true
     },
     "krd_30y": {
-      "raw": 0.0,
+      "raw": 0.30694319,
       "unit": "ratio",
-      "display": "+0.00",
+      "display": "+0.31",
       "precision": 2,
       "sign_aware": true
     },
     "cs01": {
-      "raw": 0.41281987,
+      "raw": 0.42748515,
       "unit": "dv01",
-      "display": "0.41",
+      "display": "0.43",
       "precision": 2,
       "sign_aware": false
     },
     "portfolio_convexity": {
-      "raw": 145.79197672,
+      "raw": 180.77409483,
       "unit": "ratio",
-      "display": "145.79",
+      "display": "180.77",
       "precision": 2,
       "sign_aware": false
     },
     "portfolio_modified_duration": {
-      "raw": 9.62284069,
+      "raw": 12.245511,
       "unit": "ratio",
-      "display": "9.62",
+      "display": "12.25",
       "precision": 2,
       "sign_aware": false
     },
@@ -161,11 +173,137 @@
       "precision": 2,
       "sign_aware": false
     },
+    "rate_risk_market_value": {
+      "raw": 330.0,
+      "unit": "yuan",
+      "display": "330.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "rate_risk_dv01": {
+      "raw": 0.42748515,
+      "unit": "dv01",
+      "display": "0.43",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "rate_risk_modified_duration": {
+      "raw": 12.245511,
+      "unit": "ratio",
+      "display": "12.25",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "duration_excluded_market_value": {
+      "raw": 99.0,
+      "unit": "yuan",
+      "display": "99.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "duration_excluded_count": 1,
     "bond_count": 3,
     "quality_flag": "warning",
     "warnings": [
-      "Unsupported tenor buckets excluded from minimal KRD tensor: 20Y",
+      "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y",
+      "1 rows carry market_value=99.00000000 and are excluded from portfolio duration denominator: 1 without maturity_date; 0 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
       "Excluded 1 rows without maturity_date from liquidity gap calculation."
-    ]
+    ],
+    "prior_period_change": {
+      "status": "no_prior",
+      "comparison_report_date": null,
+      "summary": "暂无可比较的上一报告日；当前仅展示截面风险。",
+      "dominant_krd_bucket": "30Y",
+      "previous_dominant_krd_bucket": null,
+      "dominant_krd_shifted": false,
+      "metrics": []
+    },
+    "dv01_controls": {
+      "basis": "regulatory_dv01",
+      "limit_status": "pending_configuration",
+      "approved_limit_dv01": null,
+      "limit_usage_ratio": null,
+      "volatility_status": "pending_market_volatility",
+      "daily_rate_volatility_bp": null,
+      "dominant_krd_bucket": "30Y",
+      "dominant_krd": {
+        "raw": 0.30694319,
+        "unit": "ratio",
+        "display": "+0.31",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "stress_scenarios": [
+        {
+          "scenario_key": "parallel_up_10bp",
+          "label": "+10bp",
+          "shock_bp": {
+            "raw": 10.0,
+            "unit": "bp",
+            "display": "+10 bp",
+            "precision": 0,
+            "sign_aware": true
+          },
+          "estimated_pnl_impact": {
+            "raw": -4.2748515,
+            "unit": "yuan",
+            "display": "-4.27",
+            "precision": 2,
+            "sign_aware": true
+          }
+        },
+        {
+          "scenario_key": "parallel_up_25bp",
+          "label": "+25bp",
+          "shock_bp": {
+            "raw": 25.0,
+            "unit": "bp",
+            "display": "+25 bp",
+            "precision": 0,
+            "sign_aware": true
+          },
+          "estimated_pnl_impact": {
+            "raw": -10.68712875,
+            "unit": "yuan",
+            "display": "-10.69",
+            "precision": 2,
+            "sign_aware": true
+          }
+        }
+      ],
+      "operating_judgement": "当前监管口径 DV01 0.43；+10bp 平行上行估算影响 -4.27；主风险桶 30Y。审批限额与利率波动源未接入前，暂不判定超限。",
+      "control_actions": [
+        {
+          "key": "approved_dv01_limit",
+          "title": "配置审批限额",
+          "status": "required",
+          "evidence": "审批 DV01 限额未接入。",
+          "action": "接入投委会或风控审批后的总 DV01 限额，再计算使用率与预警带。"
+        },
+        {
+          "key": "rate_volatility_input",
+          "title": "接入利率波动",
+          "status": "required",
+          "evidence": "日度利率波动率未接入。",
+          "action": "接入曲线波动率后，把 DV01 敞口转换成日度波动损益观察。"
+        },
+        {
+          "key": "bucket_sub_limits",
+          "title": "拆分期限桶限额",
+          "status": "required",
+          "evidence": "当前主风险桶为 30Y。",
+          "action": "为 1Y/3Y/5Y/7Y/10Y/30Y 设置桶位限额，避免总 DV01 合规但期限错配。"
+        },
+        {
+          "key": "stress_escalation",
+          "title": "固化冲击升级",
+          "status": "required",
+          "evidence": "+10bp 估算影响 -4.27；+25bp 估算影响 -10.69。",
+          "action": "将标准冲击纳入日例会；超过授权阈值时进入减久期、套保或审批升级流程。"
+        }
+      ],
+      "control_message": "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
+      "action_hint": "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。"
+    }
   }
 }

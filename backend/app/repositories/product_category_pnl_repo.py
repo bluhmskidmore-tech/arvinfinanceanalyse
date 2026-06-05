@@ -6,6 +6,10 @@ from dataclasses import dataclass
 import duckdb
 
 
+class ProductCategoryPnlStorageError(RuntimeError):
+    pass
+
+
 @dataclass
 class ProductCategoryPnlRepository:
     path: str
@@ -20,8 +24,12 @@ class ProductCategoryPnlRepository:
                 order by report_date desc
                 """
             ).fetchall()
-        except duckdb.Error:
-            return []
+        except duckdb.Error as exc:
+            if _is_missing_read_model_error(exc):
+                return []
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model is temporarily unavailable."
+            ) from exc
         finally:
             if "conn" in locals():
                 conn.close()
@@ -38,8 +46,12 @@ class ProductCategoryPnlRepository:
                 limit 1
                 """
             ).fetchone()
-        except duckdb.Error:
-            return "sv_product_category_empty"
+        except duckdb.Error as exc:
+            if _is_missing_read_model_error(exc):
+                return "sv_product_category_empty"
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model is temporarily unavailable."
+            ) from exc
         finally:
             if "conn" in locals():
                 conn.close()
@@ -83,8 +95,12 @@ class ProductCategoryPnlRepository:
                 """,
                 [report_date, view],
             ).fetchall()
-        except duckdb.Error:
-            return []
+        except duckdb.Error as exc:
+            if _is_missing_read_model_error(exc):
+                return []
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model is temporarily unavailable."
+            ) from exc
         finally:
             if "conn" in locals():
                 conn.close()
@@ -120,3 +136,29 @@ class ProductCategoryPnlRepository:
             item["children"] = json.loads(str(item.pop("children_json") or "[]"))
             parsed_rows.append(item)
         return parsed_rows
+
+
+def _is_missing_read_model_error(exc: duckdb.Error) -> bool:
+    message = str(exc).lower()
+    if (
+        ("cannot open file" in message or "cannot open database" in message)
+        and any(
+            marker in message
+            for marker in (
+                "no such file",
+                "database does not exist",
+                "system cannot find",
+                "找不到指定",
+                "不存在",
+            )
+        )
+    ):
+        return True
+    return (
+        "product_category_pnl_formal_read_model" in message
+        and (
+            "does not exist" in message
+            or "catalog error" in message
+            or "table with name" in message
+        )
+    )

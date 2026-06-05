@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from typing import Any, Iterable, Mapping
+
+logger = logging.getLogger(__name__)
 
 from .attribution_core import get_tenor_bucket
 from .bond_duration import estimate_duration, modified_duration_from_macaulay
@@ -63,7 +66,8 @@ def _coerce_date(value: Any) -> date | None:
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -80,10 +84,31 @@ def _get_market_value(position: Any) -> Decimal:
     )
 
 
+def _get_face_value(position: Any, *, fallback_market_value: Decimal) -> Decimal:
+    face_value = safe_decimal(
+        _get_value(
+            position,
+            "face_value_cny",
+            "face_value",
+            "face_value_amount",
+            "face_value_end",
+            "face_value_start",
+            "face_value_native",
+            default=Decimal("0"),
+        )
+    )
+    return face_value if face_value > Decimal("0") else fallback_market_value
+
+
 def interpolate_curve_rate(
     curve: Mapping[str, Any],
     tenor: str,
 ) -> Decimal:
+    """Interpolate a rate for ``tenor`` on a tenor→rate curve.
+
+    Delegates to ``curve_engine`` cubic spline when ≥ 3 recognized tenors;
+    falls back to linear otherwise.  Signature unchanged.
+    """
     if not curve:
         return Decimal("0")
     if tenor in curve:
@@ -93,31 +118,31 @@ def interpolate_curve_rate(
     if target_years is None:
         return Decimal("0")
 
-    points: list[tuple[float, Decimal]] = []
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
+
+    points: list[CurvePoint] = []
     for label, rate in curve.items():
         years = CURVE_TENOR_YEARS.get(str(label))
         if years is not None:
-            points.append((years, safe_decimal(rate)))
-    points.sort(key=lambda item: item[0])
+            points.append(CurvePoint(years=years, rate=safe_decimal(rate)))
+    points.sort(key=lambda item: item.years)
 
     if not points:
         return Decimal("0")
-    if target_years <= points[0][0]:
-        return points[0][1]
-    if target_years >= points[-1][0]:
-        return points[-1][1]
 
-    for index in range(len(points) - 1):
-        left_years, left_rate = points[index]
-        right_years, right_rate = points[index + 1]
-        if left_years <= target_years <= right_years:
-            span = right_years - left_years
-            if span <= 0:
-                return left_rate
-            weight = Decimal(str(target_years - left_years)) / Decimal(str(span))
-            return left_rate + weight * (right_rate - left_rate)
-
-    return Decimal("0")
+    if len(points) >= 3:
+        fitted = _build_spline(points)
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=tuple(points))
+    return _engine_interpolate(fitted, target_years)
 
 
 def _get_tenor_bucket(position: Any, *, report_date: date | None = None) -> str:
@@ -181,6 +206,7 @@ def _build_credit_position_metrics(
         market_value = _get_market_value(position)
         if market_value <= Decimal("0"):
             continue
+        face_value = _get_face_value(position, fallback_market_value=market_value)
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
@@ -211,6 +237,7 @@ def _build_credit_position_metrics(
             {
                 "bond_code": bond_code,
                 "market_value": market_value,
+                "face_value": face_value,
                 "duration": duration,
                 "spread_duration": spread_duration,
                 "spread": get_credit_spread(
@@ -218,7 +245,7 @@ def _build_credit_position_metrics(
                     spread_curves=spread_curves,
                     report_date=report_date,
                 ),
-                "dv01": market_value * spread_duration / Decimal("10000"),
+                "dv01": face_value * spread_duration / Decimal("10000"),
                 "rating": str(_get_value(position, "agency_rating", default="AA") or "AA"),
                 "issuer": str(
                     _get_value(position, "credit_name", "counterparty", "issuer_name", default="UNKNOWN")

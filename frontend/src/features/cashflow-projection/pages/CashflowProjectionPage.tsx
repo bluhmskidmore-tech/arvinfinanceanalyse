@@ -1,90 +1,112 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Col, Row, Select, Space, Spin, Table, Typography } from "antd";
+import { Alert, Select, Spin, Table, Typography } from "antd";
 
-import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
+import { useApiClient } from "../../../api/client";
 import { DataSection } from "../../../components/DataSection";
-import { FilterBar } from "../../../components/FilterBar";
+import type { DataSectionState } from "../../../components/DataSection.types";
+import { modeBadgeStyle } from "../../../components/page/pageStyles";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { KpiCard } from "../../workbench/components/KpiCard";
-import { shellTokens as t } from "../../../theme/tokens";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
+import {
+  selectCashflowMonthlyProjectionSeries,
+  selectCashflowProjectionRiskReadout,
+} from "./cashflowProjectionPageModel";
+import styles from "./CashflowProjectionPage.module.css";
 
-const pageStyle = { maxWidth: 1280, margin: "0 auto" } as const;
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
+type ConclusionTone = "positive" | "negative" | "neutral" | "pending";
 
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 860,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-function SectionLead(props: {
-  eyebrow: string;
+type Conclusion = {
   title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
-}
+  body: string;
+  tone: ConclusionTone;
+};
 
-function buildConclusion(durationGap: Numeric | undefined) {
+type KpiSpec = {
+  key: string;
+  testId: string;
+  title: string;
+  value: Numeric;
+  detail: string;
+  priority: "primary" | "supporting" | "supplemental";
+  tone?: "default" | "positive" | "negative" | "warning";
+};
+
+type RailPoint = {
+  label: string;
+  height: number;
+  tone: "positive" | "negative" | "neutral";
+};
+
+function buildConclusion(durationGap: Numeric | undefined): Conclusion {
   const raw = durationGap?.raw;
   if (raw === null || raw === undefined) {
     return {
       title: "当前结论",
       body: "久期缺口待确认，先核对报告日与上游现金流分桶是否齐备。",
+      tone: "pending",
     };
   }
   if (raw > 0.05) {
     return {
       title: "当前结论",
       body: "资产久期长于负债，当前为正久期缺口。",
+      tone: "positive",
     };
   }
   if (raw < -0.05) {
     return {
       title: "当前结论",
       body: "负债久期长于资产，当前为负久期缺口。",
+      tone: "negative",
     };
   }
   return {
     title: "当前结论",
     body: "资产与负债久期基本匹配，缺口已收敛到接近平衡区间。",
+    tone: "neutral",
   };
+}
+
+function trendLabel(value: Numeric | undefined): string {
+  const raw = value?.raw;
+  if (raw === null || raw === undefined) return "待确认";
+  if (raw > 0) return "正缺口";
+  if (raw < 0) return "负缺口";
+  return "接近平衡";
+}
+
+function toYi(raw: number): number {
+  return raw / 100_000_000;
+}
+
+function axisYiLabel(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  return `${toYi(value).toFixed(1)}亿`;
+}
+
+function tooltipYi(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return `${toYi(value).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} 亿`;
+}
+
+function buildProjectionRail(
+  monthlySeries: ReturnType<typeof selectCashflowMonthlyProjectionSeries>,
+): RailPoint[] {
+  if (!monthlySeries) return [];
+  const values = monthlySeries.cumulativeNet.slice(0, 24);
+  const maxAbs = Math.max(1, ...values.map((value) => Math.abs(value)));
+  return values.map((value, index) => ({
+    label: monthlySeries.categories[index] ?? "",
+    height: Math.max(10, Math.round((Math.abs(value) / maxAbs) * 42)),
+    tone: value > 0 ? "positive" : value < 0 ? "negative" : "neutral",
+  }));
 }
 
 export default function CashflowProjectionPage() {
@@ -116,256 +138,365 @@ export default function CashflowProjectionPage() {
       }),
     [projectionQuery.data, projectionQuery.isLoading, projectionQuery.isError],
   );
+  const sectionState = useMemo<DataSectionState>(() => {
+    if (datesQuery.isLoading && !effectiveDate) {
+      return { kind: "loading" };
+    }
+    if (!effectiveDate && !datesQuery.isLoading) {
+      return {
+        kind: "empty",
+        hint: "未取得可用报告日，现金流预测暂无法展示。",
+      };
+    }
+    return adapted.state;
+  }, [adapted.state, datesQuery.isLoading, effectiveDate]);
   const vm = adapted.vm;
   const conclusion = buildConclusion(vm?.kpis.durationGap);
+  const monthlySeries = useMemo(() => selectCashflowMonthlyProjectionSeries(vm), [vm]);
+  const riskReadout = useMemo(() => selectCashflowProjectionRiskReadout(vm), [vm]);
+  const projectionRail = useMemo(() => buildProjectionRail(monthlySeries), [monthlySeries]);
+  const kpis = useMemo<KpiSpec[]>(() => {
+    if (!vm) return [];
+    return [
+      {
+        key: "duration-gap",
+        testId: "cashflow-kpi-duration-gap",
+        title: "久期缺口（年）",
+        value: vm.kpis.durationGap,
+        detail: "资产久期 - 负债久期",
+        priority: "primary",
+        tone:
+          vm.kpis.durationGap.raw === null || vm.kpis.durationGap.raw === undefined
+            ? "warning"
+            : vm.kpis.durationGap.raw < 0
+              ? "negative"
+              : "positive",
+      },
+      {
+        key: "dv01",
+        testId: "cashflow-kpi-dv01",
+        title: "1bp 敏感度",
+        value: vm.kpis.rateSensitivity1bp,
+        detail: "利率变动对估值的边际影响",
+        priority: "primary",
+      },
+      {
+        key: "asset-duration",
+        testId: "cashflow-kpi-asset-dur",
+        title: "资产久期（年）",
+        value: vm.kpis.assetDuration,
+        detail: "资产侧久期",
+        priority: "supporting",
+      },
+      {
+        key: "liability-duration",
+        testId: "cashflow-kpi-liability-dur",
+        title: "负债久期（年）",
+        value: vm.kpis.liabilityDuration,
+        detail: "负债侧久期",
+        priority: "supporting",
+      },
+      {
+        key: "equity-duration",
+        testId: "cashflow-kpi-equity-dur",
+        title: "权益久期（年）",
+        value: vm.kpis.equityDuration,
+        detail: "权益侧久期",
+        priority: "supplemental",
+      },
+      {
+        key: "reinvest-risk",
+        testId: "cashflow-kpi-reinvest",
+        title: "再投资风险（12M）",
+        value: vm.kpis.reinvestmentRisk12m,
+        detail: "12 个月再投资风险",
+        priority: "supplemental",
+        tone: "warning",
+      },
+    ];
+  }, [vm]);
 
   const chartOption = useMemo((): EChartsOption | null => {
-    const buckets = vm?.monthlyBuckets ?? [];
-    if (!buckets.length) {
+    if (!monthlySeries) {
       return null;
     }
-    const cats = buckets.map((b) => b.yearMonth);
-    const asset = buckets.map((b) => b.assetInflow.raw ?? 0);
-    const liab = buckets.map((b) => b.liabilityOutflow.raw ?? 0);
-    const cum = buckets.map((b) => b.cumulativeNet.raw ?? 0);
     return {
-      grid: { left: 56, right: 24, top: 32, bottom: 40 },
-      tooltip: { trigger: "axis" },
-      legend: { data: ["资产流入", "负债流出", "累计净现金流"] },
-      xAxis: { type: "category", data: cats, axisLabel: { rotate: 30 } },
+      color: [
+        designTokens.color.success[500],
+        designTokens.color.danger[500],
+        designTokens.color.info[500],
+      ],
+      animationDuration: 420,
+      grid: { left: 64, right: 24, top: 54, bottom: 50 },
+      tooltip: {
+        trigger: "axis",
+        valueFormatter: (value) => tooltipYi(Number(value)),
+      },
+      legend: {
+        top: 8,
+        right: 8,
+        itemWidth: 10,
+        itemHeight: 10,
+        textStyle: { color: designTokens.color.neutral[700], fontSize: 12 },
+        data: ["资产流入", "负债流出", "累计净现金流"],
+      },
+      xAxis: {
+        type: "category",
+        data: monthlySeries.categories,
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+        axisLabel: { color: designTokens.color.neutral[500], rotate: 30 },
+      },
       yAxis: [
-        { type: "value", name: "当月流量", splitLine: { lineStyle: { color: "#eef2f7" } } },
-        { type: "value", name: "累计", splitLine: { show: false } },
+        {
+          type: "value",
+          name: "当月流量",
+          nameTextStyle: { color: designTokens.color.neutral[500] },
+          axisLabel: { color: designTokens.color.neutral[500], formatter: axisYiLabel },
+          splitLine: { lineStyle: { color: designTokens.color.neutral[200] } },
+        },
+        {
+          type: "value",
+          name: "累计",
+          nameTextStyle: { color: designTokens.color.neutral[500] },
+          axisLabel: { color: designTokens.color.neutral[500], formatter: axisYiLabel },
+          splitLine: { show: false },
+        },
       ],
       series: [
         {
           name: "资产流入",
           type: "bar",
-          data: asset,
-          itemStyle: { color: "#389e0d" },
+          data: monthlySeries.assetInflow,
+          barMaxWidth: 22,
+          itemStyle: { borderRadius: [4, 4, 0, 0] },
         },
         {
           name: "负债流出",
           type: "bar",
-          data: liab,
-          itemStyle: { color: "#cf1322" },
+          data: monthlySeries.liabilityOutflow,
+          barMaxWidth: 22,
+          itemStyle: { borderRadius: [4, 4, 0, 0] },
         },
         {
           name: "累计净现金流",
           type: "line",
           yAxisIndex: 1,
-          data: cum,
+          data: monthlySeries.cumulativeNet,
           smooth: true,
           symbolSize: 6,
-          lineStyle: { width: 2, color: "#1d4ed8" },
+          lineStyle: { width: 3 },
+          emphasis: { focus: "series" },
         },
       ],
     };
-  }, [vm?.monthlyBuckets]);
+  }, [monthlySeries]);
 
   return (
-    <section data-testid="cashflow-projection-page" style={pageStyle}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <Typography.Title
-            level={2}
-            style={{ marginBottom: 8 }}
-            data-testid="cashflow-page-title"
-          >
+    <section data-testid="cashflow-projection-page" className={styles.page}>
+      <div className={styles.hero}>
+        <div className={styles.heroMain}>
+          <div className={styles.eyebrowRow}>
+            <span className={styles.eyebrow}>Cashflow projection</span>
+            <span
+              style={{
+                ...modeBadgeStyle,
+                background:
+                  client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+                color:
+                  client.mode === "real"
+                    ? displayTokens.apiMode.realForeground
+                    : displayTokens.apiMode.mockForeground,
+              }}
+            >
+              {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+            </span>
+          </div>
+          <Typography.Title level={2} className={styles.title} data-testid="cashflow-page-title">
             现金流预测
           </Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0, maxWidth: 860, lineHeight: 1.75 }}>
-            久期缺口、利率敏感度与 24 个月现金流分桶；报告日来自资产负债分析可用日期。
+          <Typography.Paragraph className={styles.subtitle}>
+            用同一报告日串起久期缺口、利率敏感度、月度现金流分桶和 12 个月到期资产。
           </Typography.Paragraph>
         </div>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
-        </span>
+
+        <div className={styles.datePanel}>
+          <Typography.Text className={styles.filterLabel}>报告日</Typography.Text>
+          <Select
+            aria-label="cashflow-report-date"
+            className={styles.dateSelect}
+            placeholder={datesQuery.isLoading ? "加载日期..." : "选择报告日"}
+            loading={datesQuery.isLoading}
+            value={effectiveDate || undefined}
+            options={dateOptions.map((d) => ({ value: d, label: d }))}
+            onChange={(v) => setReportDate(v)}
+            disabled={!dateOptions.length && !reportDate}
+          />
+        </div>
       </div>
 
-      <FilterBar style={{ marginBottom: 20 }}>
-        <div>
-          <Typography.Text type="secondary">报告日</Typography.Text>
-          <div style={{ marginTop: 4 }}>
-            <Select
-              aria-label="cashflow-report-date"
-              style={{ minWidth: 200 }}
-              placeholder={datesQuery.isLoading ? "加载日期…" : "选择报告日"}
-              loading={datesQuery.isLoading}
-              value={effectiveDate || undefined}
-              options={dateOptions.map((d) => ({ value: d, label: d }))}
-              onChange={(v) => setReportDate(v)}
-              disabled={!dateOptions.length && !reportDate}
-            />
-          </div>
-        </div>
-      </FilterBar>
-
       <DataSection
-        title="现金流预测结果"
-        state={adapted.state}
+        title=""
+        state={sectionState}
         onRetry={() => {
-          void projectionQuery.refetch();
+          if (effectiveDate) {
+            void projectionQuery.refetch();
+          } else {
+            void datesQuery.refetch();
+          }
         }}
-        extra={
-          effectiveDate ? (
-            <Typography.Text type="secondary">{`报告日 ${effectiveDate}`}</Typography.Text>
-          ) : null
-        }
       >
         {projectionQuery.isLoading ? (
-          <div style={{ textAlign: "center", padding: 48 }}>
+          <div className={styles.loadingState}>
             <Spin />
           </div>
         ) : projectionQuery.isError ? (
           <Alert type="error" message="加载现金流预测失败，请稍后重试。" showIcon />
         ) : vm ? (
-          <>
-            <Card
+          <div className={styles.contentStack}>
+            <div
               data-testid="cashflow-conclusion"
-              style={{
-                marginBottom: 20,
-                borderRadius: 16,
-                border: `1px solid ${t.colorBorderSoft}`,
-                background: "#f7fbff",
-              }}
+              className={`${styles.decisionDeck} ${styles[`decisionDeck_${conclusion.tone}`]}`}
             >
-              <Space direction="vertical" size={6}>
-                <Typography.Text style={{ fontSize: 12, fontWeight: 700, color: "#56708f" }}>
-                  {conclusion.title}
-                </Typography.Text>
-                <Typography.Title level={4} style={{ margin: 0 }}>
-                  {conclusion.body}
-                </Typography.Title>
-                <Typography.Text type="secondary">
-                  {`报告日 ${vm.reportDate} · 久期缺口 ${vm.kpis.durationGap.display}`}
-                </Typography.Text>
-              </Space>
-            </Card>
-
-            <SectionLead
-              eyebrow="Overview"
-              title="现金流概览"
-              description="先看久期缺口、资产负债久期和敏感度，再进入月度投影与到期资产列表，保持阅读顺序与其他标准页一致。"
-            />
-            <div style={summaryGridStyle}>
-              <div data-testid="cashflow-kpi-duration-gap">
-                <KpiCard
-                  title="久期缺口（年）"
-                  value={vm.kpis.durationGap.display}
-                  detail="资产久期 - 负债久期"
-                  valueVariant="text"
-                />
+              <div className={styles.decisionCopy}>
+                <span className={styles.conclusionLabel}>{conclusion.title}</span>
+                <h2>{conclusion.body}</h2>
+                <p>{`报告日 ${vm.reportDate} · 久期缺口来自 /api/cashflow-projection`}</p>
               </div>
-              <div data-testid="cashflow-kpi-asset-dur">
-                <KpiCard title="资产久期（年）" value={vm.kpis.assetDuration.display} detail="资产侧久期" valueVariant="text" />
+              <div className={styles.decisionMetric}>
+                <span>{trendLabel(vm.kpis.durationGap)}</span>
+                <strong>{vm.kpis.durationGap.display}</strong>
               </div>
-              <div data-testid="cashflow-kpi-liability-dur">
-                <KpiCard
-                  title="负债久期（年）"
-                  value={vm.kpis.liabilityDuration.display}
-                  detail="负债侧久期"
-                  valueVariant="text"
-                />
+              <div className={styles.decisionFacts}>
+                <div>
+                  <span>资产久期</span>
+                  <strong>{vm.kpis.assetDuration.display}</strong>
+                </div>
+                <div>
+                  <span>负债久期</span>
+                  <strong>{vm.kpis.liabilityDuration.display}</strong>
+                </div>
+                <div>
+                  <span>1bp 敏感度</span>
+                  <strong>{vm.kpis.rateSensitivity1bp.display}</strong>
+                </div>
               </div>
-              <div data-testid="cashflow-kpi-dv01">
-                <KpiCard
-                  title="1bp 敏感度"
-                  value={vm.kpis.rateSensitivity1bp.display}
-                  detail="利率敏感度"
-                  valueVariant="text"
-                />
-              </div>
-              <div data-testid="cashflow-kpi-equity-dur">
-                <KpiCard title="权益久期（年）" value={vm.kpis.equityDuration.display} detail="权益侧久期" valueVariant="text" />
-              </div>
-              <div data-testid="cashflow-kpi-reinvest">
-                <KpiCard
-                  title="再投资风险（12M）"
-                  value={vm.kpis.reinvestmentRisk12m.display}
-                  detail="12 个月再投资风险"
-                  valueVariant="text"
-                />
-              </div>
+              {projectionRail.length ? (
+                <div className={styles.rail} aria-label="24个月累计净现金流轨迹">
+                  <div className={styles.railHeader}>
+                    <span>24M 累计净现金流轨迹</span>
+                    <span>亿元口径图表见下方</span>
+                  </div>
+                  <div className={styles.railBars}>
+                    {projectionRail.map((point, index) => (
+                      <span
+                        key={`${point.label}-${index}`}
+                        title={point.label}
+                        className={`${styles.railBar} ${styles[`railBar_${point.tone}`]}`}
+                        style={{ height: point.height }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            <SectionLead
-              eyebrow="Projection"
-              title="月度投影"
-              description="图表区继续展示 24 个月现金流投影，右侧保留补充指标，不改变现有图表与数据口径。"
-            />
-            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-              <Col xs={24} lg={16}>
-                <Card
-                  data-testid="cashflow-monthly-chart"
-                  size="small"
-                  title="月度现金流投影"
-                  style={{
-                    borderRadius: 16,
-                    border: `1px solid ${t.colorBorderSoft}`,
-                    minHeight: 360,
-                  }}
-                >
-                  {chartOption ? (
-                    <ReactECharts option={chartOption} style={{ height: 320 }} />
-                  ) : (
-                    <Typography.Text type="secondary">暂无分桶数据</Typography.Text>
-                  )}
-                </Card>
-              </Col>
-              <Col xs={24} lg={8}>
-                <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                  <Card size="small" title="权益久期（年）">
-                    <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
-                      {vm.kpis.equityDuration.display}
-                    </Typography.Text>
-                  </Card>
-                  <Card size="small" title="再投资风险（12M）">
-                    <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
-                      {vm.kpis.reinvestmentRisk12m.display}
-                    </Typography.Text>
-                  </Card>
-                </Space>
-              </Col>
-            </Row>
+            <section className={styles.panel}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <span className={styles.sectionEyebrow}>总览</span>
+                  <h2>现金流概览</h2>
+                </div>
+                <p>核心缺口已经在首屏抬高；这里保留完整 KPI 便于复核。</p>
+              </div>
+              <div className={styles.metricStrip}>
+                {kpis.map((item) => (
+                  <div
+                    key={item.key}
+                    data-testid={item.testId}
+                    className={`${styles.metricCell} ${styles[`metricCell_${item.priority}`]} ${
+                      item.tone ? styles[`metricCell_${item.tone}`] : ""
+                    }`}
+                  >
+                    <span>{item.title}</span>
+                    <strong>{item.value.display}</strong>
+                    <small>{item.detail}</small>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-            <SectionLead
-              eyebrow="Maturity"
-              title="到期资产与提示"
-              description="Top10 到期资产列表和 warning 区保持现有契约，只调整为更清晰的阅读层级。"
-            />
-            <Card
-              size="small"
-              title="12 个月内 Top10 到期资产"
-              style={{ marginBottom: 16, borderRadius: 16, border: `1px solid ${t.colorBorderSoft}` }}
-            >
+            <section className={styles.projectionGrid}>
+              <div className={styles.chartPanel} data-testid="cashflow-monthly-chart">
+                <div className={styles.sectionHeader}>
+                  <div>
+                    <span className={styles.sectionEyebrow}>预测</span>
+                    <h2>月度投影</h2>
+                  </div>
+                  <p>24 个月资产流入、负债流出和累计净现金流，单位按亿元显示。</p>
+                </div>
+                {chartOption ? (
+                  <ReactECharts option={chartOption} className={styles.chart} />
+                ) : (
+                  <div className={styles.emptyChart}>暂无分桶数据</div>
+                )}
+              </div>
+
+              <aside
+                className={`${styles.sidePanel} ${
+                  riskReadout ? styles[`sidePanel_${riskReadout.tone}`] : ""
+                }`}
+                data-testid="cashflow-risk-readout"
+              >
+                {riskReadout ? (
+                  <>
+                    <div className={styles.riskHeader}>
+                      <span>累计净流风险读数</span>
+                      <strong>{riskReadout.summary}</strong>
+                      <p>基于月度分桶的展示读数，不替代正式风险评级。</p>
+                    </div>
+                    <div className={styles.riskRows}>
+                      <div className={styles.riskRow}>
+                        <span>最弱累计月</span>
+                        <strong>{riskReadout.worstCumulativeMonth}</strong>
+                        <em>{riskReadout.worstCumulativeDisplay}</em>
+                      </div>
+                      <div className={styles.riskRow}>
+                        <span>最大负债流出</span>
+                        <strong>{riskReadout.largestOutflowMonth}</strong>
+                        <em>{riskReadout.largestOutflowDisplay}</em>
+                      </div>
+                      <div className={styles.riskRow}>
+                        <span>期末累计净流</span>
+                        <strong>{riskReadout.finalCumulativeDisplay}</strong>
+                        <em>{riskReadout.negativeCumulativeMonths} 个负值月</em>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className={styles.riskEmpty}>暂无月度分桶，无法生成累计净流读数。</div>
+                )}
+                <div className={styles.sideNote}>
+                  指标定义仍以现金流预测接口返回为准，本页只调整展示层级。
+                </div>
+              </aside>
+            </section>
+
+            <section className={styles.tablePanel}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <span className={styles.sectionEyebrow}>到期</span>
+                  <h2>到期资产与提示</h2>
+                </div>
+                <p>12 个月内前十到期资产，保留原始表格字段和金额展示。</p>
+              </div>
               <Table
                 data-testid="cashflow-top-assets-table"
                 size="small"
                 pagination={false}
                 rowKey={(r) => r.instrumentCode}
                 dataSource={vm.topMaturingAssets}
+                scroll={{ x: 760 }}
                 columns={[
                   { title: "代码", dataIndex: "instrumentCode" },
                   { title: "名称", dataIndex: "instrumentName" },
@@ -384,7 +515,7 @@ export default function CashflowProjectionPage() {
                   },
                 ]}
               />
-            </Card>
+            </section>
 
             {vm.warnings?.length ? (
               <Alert
@@ -392,7 +523,7 @@ export default function CashflowProjectionPage() {
                 showIcon
                 message="提示"
                 description={
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  <ul className={styles.warningList}>
                     {vm.warnings.map((w) => (
                       <li key={w}>{w}</li>
                     ))}
@@ -400,7 +531,7 @@ export default function CashflowProjectionPage() {
                 }
               />
             ) : null}
-          </>
+          </div>
         ) : null}
       </DataSection>
     </section>

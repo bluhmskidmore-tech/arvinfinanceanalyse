@@ -15,8 +15,13 @@
 - `result.bond_count == 3`.
 - `result.quality_flag == "warning"`.
 - `warnings` contains:
-  - `Unsupported tenor buckets`
+  - `Non-standard tenor buckets remapped`
+  - `excluded from portfolio duration denominator`
   - `without maturity_date`
+- `duration_excluded_count == 1`.
+- `duration_excluded_market_value.raw == 99.0`.
+- `rate_risk_market_value.raw == 330.0`.
+- `rate_risk_modified_duration.raw == portfolio_modified_duration.raw`.
 
 ## Reconciliation
 

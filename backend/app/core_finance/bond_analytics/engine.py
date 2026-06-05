@@ -7,12 +7,14 @@ from decimal import Decimal
 from typing import Any
 
 from backend.app.core_finance.bond_analytics.common import (
+    ACCOUNTING_BASIS_RISK_CLASS_RULE_IDS,
     classify_asset_class,
     estimate_convexity,
     estimate_duration,
     estimate_modified_duration,
     get_accounting_rule_trace,
     get_tenor_bucket,
+    map_accounting_basis_to_risk_class,
     map_accounting_class,
     safe_decimal,
 )
@@ -99,8 +101,15 @@ def compute_bond_analytics_rows(
             if part
         )
         asset_class_std = classify_asset_class(asset_class_surface)
-        accounting_class = map_accounting_class(accounting_source)
-        accounting_rule_id, _ = get_accounting_rule_trace(accounting_source)
+        accounting_class_from_basis = map_accounting_basis_to_risk_class(
+            _as_text(snapshot_row.get("accounting_basis"))
+        )
+        if accounting_class_from_basis is not None:
+            accounting_class = accounting_class_from_basis
+            accounting_rule_id = ACCOUNTING_BASIS_RISK_CLASS_RULE_IDS[accounting_class]
+        else:
+            accounting_class = map_accounting_class(accounting_source)
+            accounting_rule_id, _ = get_accounting_rule_trace(accounting_source)
 
         coupon_rate = _normalize_rate_decimal(snapshot_row.get("coupon_rate"))
         interest_mode = _as_text(snapshot_row.get("interest_mode"))
@@ -112,8 +121,29 @@ def compute_bond_analytics_rows(
             report_date=report_date,
             maturity_date=maturity_date,
         )
-        market_value = safe_decimal(snapshot_row.get("market_value_native"))
-        market_value_native = market_value
+        currency_code = _as_text(snapshot_row.get("currency_code"))
+        face_value_native = safe_decimal(snapshot_row.get("face_value_native"))
+        face_value_cny = snapshot_row.get("face_value_cny")
+        face_value = (
+            safe_decimal(face_value_cny)
+            if (
+                not _is_cny_currency(currency_code)
+                and face_value_cny is not None
+                and str(face_value_cny).strip() != ""
+            )
+            else face_value_native
+        )
+        market_value_native = safe_decimal(snapshot_row.get("market_value_native"))
+        market_value_cny = snapshot_row.get("market_value_cny")
+        market_value = (
+            safe_decimal(market_value_cny)
+            if (
+                not _is_cny_currency(currency_code)
+                and market_value_cny is not None
+                and str(market_value_cny).strip() != ""
+            )
+            else market_value_native
+        )
         if years_to_maturity == Decimal("0"):
             macaulay_duration = Decimal("0")
             modified_duration = Decimal("0")
@@ -135,7 +165,7 @@ def compute_bond_analytics_rows(
                 macaulay_duration,
                 ytm or Decimal("0"),
             )
-            dv01 = market_value * modified_duration / Decimal("10000")
+            dv01 = face_value * modified_duration / Decimal("10000")
         is_credit = asset_class_std == "credit"
 
         analytics_rows.append(
@@ -153,8 +183,8 @@ def compute_bond_analytics_rows(
                 rating=_as_text(snapshot_row.get("rating")),
                 accounting_class=accounting_class,
                 accounting_rule_id=accounting_rule_id,
-                currency_code=_as_text(snapshot_row.get("currency_code")),
-                face_value=safe_decimal(snapshot_row.get("face_value_native")),
+                currency_code=currency_code,
+                face_value=face_value,
                 market_value_native=market_value_native,
                 market_value=market_value,
                 amortized_cost=safe_decimal(snapshot_row.get("amortized_cost_native")),
@@ -229,6 +259,10 @@ def _first_non_blank(*values: Any) -> str:
         if text:
             return text
     return ""
+
+
+def _is_cny_currency(value: str) -> bool:
+    return value.upper() in {"CNY", "RMB", "CNH"}
 
 
 def _optional_decimal(value: Any) -> Decimal | None:

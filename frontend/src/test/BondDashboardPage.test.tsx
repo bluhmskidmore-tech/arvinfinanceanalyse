@@ -1,14 +1,44 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
+import { CreditRatingBlocks } from "../features/bond-dashboard/components/CreditRatingBlocks";
+import { IndustryTable } from "../features/bond-dashboard/components/IndustryTable";
+import { MaturityStructureChart } from "../features/bond-dashboard/components/MaturityStructureChart";
 import BondDashboardPage from "../features/bond-dashboard/pages/BondDashboardPage";
+import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="bond-dashboard-echarts-stub" />,
+  default: ({ option }: { option: unknown }) => (
+    <div data-testid="bond-dashboard-echarts-stub" data-option={JSON.stringify(option)} />
+  ),
 }));
+
+function resultMeta(resultKind: string): ResultMeta {
+  return {
+    trace_id: `tr_${resultKind}`,
+    basis: "formal",
+    result_kind: resultKind,
+    formal_use_allowed: true,
+    source_version: "sv",
+    vendor_version: "vv",
+    rule_version: "rv",
+    cache_version: "cv",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-19T00:00:00Z",
+  };
+}
+
+const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+const pct = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
+const ratio = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+const dv01 = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
 
 describe("BondDashboardPage", () => {
   it("shows title and KPI cards when mock data loads", async () => {
@@ -54,9 +84,14 @@ describe("BondDashboardPage", () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByRole("combobox", { name: "bond-dashboard-report-date" });
+    const reportDateInput = await screen.findByRole("combobox", { name: "bond-dashboard-report-date" });
+    await waitFor(() => {
+      expect(reportDateInput).not.toBeDisabled();
+    });
     const initial = spy.mock.calls.length;
-    await user.click(screen.getByRole("combobox", { name: "bond-dashboard-report-date" }));
+    const reportDateSelect = reportDateInput.closest(".ant-select");
+    expect(reportDateSelect).not.toBeNull();
+    fireEvent.mouseDown(reportDateSelect!.querySelector(".ant-select-selector")!);
     const listbox = await screen.findByRole("listbox");
     await user.click(within(listbox).getByText("2026-02-28"));
 
@@ -101,5 +136,302 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-page-state")).toHaveTextContent("暂无可用报告日");
     });
     expect(screen.getByRole("combobox", { name: "bond-dashboard-report-date" })).toBeDisabled();
+  });
+
+  it("uses backend headline numerics for weighted yield and duration in the portfolio table footer", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis"),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(100_000_000_000),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025656206199),
+          weighted_duration: ratio(4.1367831054),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(1000),
+          bond_count: 3,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardPortfolioComparison = async () => ({
+      result_meta: resultMeta("bond_dashboard.portfolio_comparison"),
+      result: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            portfolio_name: "Rate + credit",
+            total_market_value: yuan(40_000_000_000),
+            weighted_ytm: pct(0.035),
+            weighted_duration: ratio(5),
+            total_dv01: dv01(500),
+            bond_count: 2,
+          },
+          {
+            portfolio_name: "Other heavy",
+            total_market_value: yuan(60_000_000_000),
+            weighted_ytm: pct(0),
+            weighted_duration: ratio(0),
+            total_dv01: dv01(0),
+            bond_count: 1,
+          },
+        ],
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "债券总览" });
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
+      expect(screen.getByTestId("bond-dashboard-portfolio-summary-duration")).toHaveTextContent("4.14");
+    });
+  });
+
+  it("renders non-zero dashboard values from Numeric API payloads", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis"),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(343_822_795_478.69),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.02565621),
+          weighted_duration: ratio(4.13678311),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(106_155_944.31),
+          bond_count: 251,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardRiskIndicators = async () => ({
+      result_meta: resultMeta("bond_dashboard.risk_indicators"),
+      result: {
+        report_date: "2026-04-30",
+        total_market_value: yuan(343_822_795_478.69),
+        total_dv01: dv01(106_155_944.31),
+        weighted_duration: ratio(4.13678311),
+        credit_ratio: ratio(0.29250449),
+        weighted_convexity: ratio(0.03),
+        total_spread_dv01: dv01(31_000_000),
+        reinvestment_ratio_1y: ratio(0.12),
+      },
+    });
+    client.getBondDashboardPortfolioComparison = async () => ({
+      result_meta: resultMeta("bond_dashboard.portfolio_comparison"),
+      result: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            portfolio_name: "Core book",
+            total_market_value: yuan(343_822_795_478.69),
+            weighted_ytm: pct(0.02565621),
+            weighted_duration: ratio(4.13678311),
+            total_dv01: dv01(106_155_944.31),
+            bond_count: 251,
+          },
+        ],
+      },
+    });
+    client.getBondBusinessTypeMetrics = async () => ({
+      result_meta: resultMeta("bond_dashboard.business_type_metrics"),
+      result: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            name: "Core book",
+            market_value: "343822795478.69",
+            weighted_avg_ytm_pct: "2.565621",
+            weighted_avg_duration: "4.13678311",
+            duration_source: "position_duration",
+          },
+        ],
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const scaleCard = await screen.findByTestId("bond-dashboard-kpi-total_market_value");
+    expect(scaleCard.textContent?.replace(/,/g, "")).toContain("3438.23");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-conclusion")).toHaveTextContent("29.3%");
+      expect(screen.getByTestId("bond-dashboard-risk-row-credit_ratio")).toHaveTextContent("29.25%");
+      expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
+      expect(screen.getByTestId("bond-dashboard-business-type-metrics")).toHaveTextContent("2.57%");
+    });
+  });
+
+  it("renders credit-rating percentages from ratio Numeric values", () => {
+    render(
+      <CreditRatingBlocks
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          group_by: "rating",
+          total_market_value: yuan(200),
+          items: [
+            { category: "AAA", total_market_value: yuan(199), bond_count: 1, percentage: pct(0.995) },
+            { category: "AA", total_market_value: yuan(1), bond_count: 1, percentage: pct(0.005) },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("99.50%")).toBeInTheDocument();
+    expect(screen.getByText("0.50%")).toBeInTheDocument();
+  });
+
+  it("renders industry percentages from ratio Numeric values", () => {
+    render(
+      <IndustryTable
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          items: [
+            {
+              industry_name: "金融业",
+              total_market_value: yuan(1),
+              bond_count: 1,
+              percentage: pct(0.005),
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("0.50")).toBeInTheDocument();
+  });
+
+  it("passes percent-point data to the maturity structure line chart", () => {
+    render(
+      <MaturityStructureChart
+        loading={false}
+        data={{
+          report_date: "2026-04-30",
+          total_market_value: yuan(200),
+          items: [
+            { maturity_bucket: "7天内", total_market_value: yuan(1), bond_count: 1, percentage: pct(0.005) },
+          ],
+        }}
+      />,
+    );
+
+    const option = JSON.parse(screen.getByTestId("bond-dashboard-echarts-stub").dataset.option ?? "{}");
+    expect(option.series[1].data).toEqual([0.5]);
+  });
+
+  it("loads the first-screen decision data before lower dashboard panels", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const calls: string[] = [];
+    client.getBondDashboardDates = async () => {
+      calls.push("dates");
+      return {
+        result_meta: resultMeta("bond_dashboard.dates"),
+        result: { report_dates: ["2026-04-30"] },
+      };
+    };
+    client.getBondDashboardHeadlineKpis = async () => {
+      calls.push("headline");
+      return {
+        result_meta: resultMeta("bond_dashboard.headline_kpis"),
+        result: {
+          report_date: "2026-04-30",
+          prev_report_date: null,
+          kpis: {
+            total_market_value: yuan(100_000_000),
+            unrealized_pnl: yuan(0),
+            weighted_ytm: pct(0.025),
+            weighted_duration: ratio(4.1),
+            weighted_coupon: pct(0.02),
+            credit_spread_median: pct(0.01),
+            total_dv01: dv01(100),
+            bond_count: 1,
+          },
+          prev_kpis: null,
+        },
+      };
+    };
+    client.getBondDashboardRiskIndicators = async () => {
+      calls.push("risk");
+      return {
+        result_meta: resultMeta("bond_dashboard.risk_indicators"),
+        result: {
+          report_date: "2026-04-30",
+          total_market_value: yuan(100_000_000),
+          credit_ratio: pct(0.4),
+          weighted_duration: ratio(4.1),
+          weighted_convexity: ratio(0.03),
+          total_dv01: dv01(100),
+          total_spread_dv01: dv01(40),
+          reinvestment_ratio_1y: pct(0.12),
+        },
+      };
+    };
+    const lowerPanelMethods = [
+      "getBondDashboardAssetStructure",
+      "getBondDashboardYieldDistribution",
+      "getBondDashboardPortfolioComparison",
+      "getBondDashboardSpreadAnalysis",
+      "getBondDashboardMaturityStructure",
+      "getBondDashboardIndustryDistribution",
+      "getBondBusinessTypeMetrics",
+    ] as const;
+    for (const method of lowerPanelMethods) {
+      vi.spyOn(client, method).mockImplementation(async () => {
+        calls.push(method);
+        throw new Error(`${method} should wait for first-screen queries`);
+      });
+    }
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(calls).toEqual(["dates", "headline", "risk"]);
+    });
+    expect(await screen.findByTestId("bond-dashboard-conclusion")).toHaveTextContent("当前结论");
   });
 });

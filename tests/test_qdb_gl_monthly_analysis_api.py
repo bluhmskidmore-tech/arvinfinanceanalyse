@@ -3,8 +3,21 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
+
+
+def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "auth-scope.db"
+    dsn = f"sqlite:///{sqlite_path.as_posix()}"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", dsn)
+    UserScopeRepository(dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="qdb_gl_monthly_analysis.adjustment",
+        action="write",
+    )
 
 
 def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
@@ -34,6 +47,7 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
     assert workbook_payload["result"]["report_month"] == "202602"
     assert [sheet["title"] for sheet in workbook_payload["result"]["sheets"]] == [
         "经营概览",
+        "财务指标落地状态",
         "3位科目总览",
         "资产结构",
         "负债结构",
@@ -44,7 +58,66 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
         "11位偏离TOP",
         "异动预警",
         "外币分析",
+        "分部基础规模",
+        "公司规模",
+        "零售规模",
+        "金融市场规模",
+        "收益率分析（总账可复算）",
+        "存款利息拆分",
+        "母公司营收分项",
     ]
+
+    get_settings.cache_clear()
+
+
+def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601")
+    _write_month_pair(source_dir, "202602")
+
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/qdb-gl-monthly-analysis/workbook",
+        params={"report_month": "202602"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "prior_month:202601" in payload["result_meta"]["source_version"]
+    assert "segment_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    segment_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "segment_scale_compare"
+    )
+    assert segment_sheet["title"] == "分部规模同比环比"
+    assert any(row["口径"] == "时点环比" for row in segment_sheet["rows"])
+    assert "financial_market_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    market_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "financial_market_scale_compare"
+    )
+    assert market_sheet["title"] == "金融市场规模同比环比"
+    assert any(row["指标"] == "同业负债" and row["口径"] == "月日均环比" for row in market_sheet["rows"])
+    assert "company_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    company_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "company_scale_compare"
+    )
+    assert company_sheet["title"] == "公司规模同比环比"
+    assert any(row["指标"] == "公司贷款合计" and row["口径"] == "时点环比" for row in company_sheet["rows"])
+    assert "retail_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    retail_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "retail_scale_compare"
+    )
+    assert retail_sheet["title"] == "零售规模同比环比"
+    assert any(row["指标"] == "零售存款合计" and row["口径"] == "时点环比" for row in retail_sheet["rows"])
+    assert "income_rate_analysis" in [sheet["key"] for sheet in payload["result"]["sheets"]]
+    income_sheet = next(
+        sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "income_rate_analysis"
+    )
+    assert income_sheet["title"] == "收益率分析（总账可复算）"
+    assert any(row["指标"] == "公司贷款利息收入" for row in income_sheet["rows"])
 
     get_settings.cache_clear()
 
@@ -120,6 +193,7 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
 
 def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
 
@@ -158,6 +232,38 @@ def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monke
     get_settings.cache_clear()
 
 
+def test_api_rejects_invalid_manual_adjustment_payload(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.post(
+        "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+        json={
+            "report_month": "2026-02",
+            "adjustment_class": "mapping_adjustment",
+            "target": {},
+            "operator": "PATCH",
+            "value": "",
+            "approval_status": "approved",
+            "unexpected": "field",
+        },
+    )
+
+    assert response.status_code == 422
+
+    listed = client.get(
+        "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+        params={"report_month": "202602"},
+    )
+    assert listed.status_code == 200
+    assert listed.json()["adjustment_count"] == 0
+    get_settings.cache_clear()
+
+
 def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
     governance_dir = tmp_path / "governance"
@@ -186,6 +292,7 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
     assert scenario_payload["result"]["scenario_name"] == "threshold-stress"
     assert [sheet["key"] for sheet in scenario_payload["result"]["sheets"]] == [
         "overview",
+        "financial_indicator_status",
         "summary_3d",
         "asset_structure",
         "liability_structure",
@@ -196,6 +303,13 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
         "top_11d",
         "alerts",
         "foreign_currency",
+        "segment_base_scale",
+        "company_scale",
+        "retail_scale",
+        "financial_market_scale",
+        "income_rate_analysis",
+        "deposit_interest_split",
+        "parent_company_revenue_components",
     ]
     alerts_sheet = next(
         sheet for sheet in scenario_payload["result"]["sheets"] if sheet["key"] == "alerts"
@@ -211,6 +325,7 @@ def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
@@ -256,6 +371,7 @@ def test_api_workbook_rebuild_applies_approved_mapping_adjustments(tmp_path, mon
     source_dir.mkdir(parents=True)
     _write_month_pair(source_dir, "202602")
 
+    _grant_qdb_adjustment_write(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()

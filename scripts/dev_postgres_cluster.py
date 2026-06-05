@@ -33,6 +33,10 @@ RUNTIME_DUCKDB_SEED_TABLES = (
     "fact_formal_zqtz_balance_daily",
     "fact_formal_tyw_balance_daily",
 )
+RUNTIME_GOVERNANCE_SEED_FILES = (
+    "cache_manifest.jsonl",
+    "cache_build_run.jsonl",
+)
 
 
 @dataclass(frozen=True)
@@ -136,19 +140,7 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
         )
 
     if not _is_port_open(config.host, config.port):
-        _run_checked(
-            [
-                str(config.bin_dir / "pg_ctl.exe"),
-                "-D",
-                str(config.data_dir),
-                "-l",
-                str(config.log_file),
-                "-o",
-                f" -h {config.host} -p {config.port} ",
-                "-w",
-                "start",
-            ]
-        )
+        _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
 
     _ensure_role_and_database(config)
@@ -389,6 +381,41 @@ def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> No
             ),
         ]
     )
+    _seed_dev_user_scopes(config)
+
+
+def _seed_dev_user_scopes(config: DevPostgresClusterConfig) -> None:
+    _run_checked(
+        [
+            str(config.bin_dir / "psql.exe"),
+            "-h",
+            config.host,
+            "-p",
+            str(config.port),
+            "-U",
+            "postgres",
+            "-d",
+            config.database,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            (
+                "INSERT INTO user_role_scope "
+                "(user_id, role, resource, action, scope_key, scope_value, is_active, created_at, updated_at) "
+                "SELECT '*', NULL, 'choice_news.data', 'read', NULL, NULL, TRUE, NOW(), NOW() "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM user_role_scope "
+                "WHERE user_id = '*' "
+                "AND role IS NULL "
+                "AND resource = 'choice_news.data' "
+                "AND action = 'read' "
+                "AND scope_key IS NULL "
+                "AND scope_value IS NULL "
+                "AND is_active IS TRUE"
+                ");"
+            ),
+        ]
+    )
 
 
 def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:
@@ -401,6 +428,7 @@ def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:
         if source.exists() and not target.exists():
             shutil.copy2(source, target)
     _seed_runtime_duckdb_from_repo_if_needed(config)
+    _seed_runtime_governance_from_repo_if_needed(config)
 
 
 def _find_kpi_bootstrap_file(config: DevPostgresClusterConfig) -> Path | None:
@@ -447,13 +475,36 @@ def _seed_runtime_duckdb_from_repo_if_needed(config: DevPostgresClusterConfig) -
     shutil.copy2(repo_duckdb, runtime_duckdb)
 
 
-def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:
-    if _duckdb_has_seed_data(config.runtime_duckdb_path):
-        return config.runtime_root
+def _seed_runtime_governance_from_repo_if_needed(config: DevPostgresClusterConfig) -> None:
+    if not _duckdb_has_seed_data(config.runtime_duckdb_path):
+        return
 
+    repo_governance = config.repo_root / "data" / "governance"
+    if not repo_governance.exists():
+        return
+
+    config.runtime_governance_path.mkdir(parents=True, exist_ok=True)
+    for file_name in RUNTIME_GOVERNANCE_SEED_FILES:
+        source = repo_governance / file_name
+        target = config.runtime_governance_path / file_name
+        if source.exists() and not target.exists():
+            shutil.copy2(source, target)
+
+
+def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:
+    """Pick DuckDB + sidecar dir for MOSS_* paths.
+
+    Prefer ``data/moss.duckdb`` whenever it already carries seed rows so local
+    materialization scripts (which default to ``data/``) match ``dev-api`` / ``dev-env``.
+
+    If the repo db is empty but ``runtime-clean`` was populated (smoke copy), use runtime.
+    """
     repo_data_root = config.repo_root / "data"
     if _duckdb_has_seed_data(repo_data_root / "moss.duckdb"):
         return repo_data_root
+
+    if _duckdb_has_seed_data(config.runtime_duckdb_path):
+        return config.runtime_root
 
     return config.runtime_root
 
@@ -515,6 +566,24 @@ def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | N
         return True
     except subprocess.CalledProcessError:
         return False
+
+
+def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
+    subprocess.Popen(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "-l",
+            str(config.log_file),
+            "-o",
+            f" -h {config.host} -p {config.port} ",
+            "-W",
+            "start",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def _wait_for_postgres_ready(

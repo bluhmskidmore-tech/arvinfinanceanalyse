@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Avoid jsdom canvas/ECharts teardown errors; do not assert chart pixels. */
@@ -166,6 +167,17 @@ function createCreditSpreadDetailResult(
   };
 }
 
+function renderWithProviders(client: ReturnType<typeof createApiClient>, ui: React.ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ApiClientProvider client={client}>{ui}</ApiClientProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe("CreditSpreadView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -193,11 +205,7 @@ describe("CreditSpreadView", () => {
       })),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <CreditSpreadView reportDate="2026-03-31" />
-      </ApiClientProvider>,
-    );
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
 
     expect(await screen.findByTestId("credit-spread-shell-lead")).toHaveTextContent(
       "信用利差概览",
@@ -218,8 +226,11 @@ describe("CreditSpreadView", () => {
     expect(client.getCreditSpreadAnalysisDetail).toHaveBeenCalledWith("2026-03-31");
 
     expect(screen.getByText("信用债市值")).toBeInTheDocument();
-    expect(screen.getByText("Spread DV01 (万元/bp)")).toBeInTheDocument();
+    expect(screen.getByText("50.00 亿")).toBeInTheDocument();
+    expect(screen.getByText("利差 DV01（万元/bp）")).toBeInTheDocument();
     expect(screen.getByText("加权平均利差（个券）")).toBeInTheDocument();
+    expect(screen.getByText("30.00 亿")).toBeInTheDocument();
+    expect(screen.getByText("-120 万")).toBeInTheDocument();
 
     expect(screen.getByText("利差情景冲击")).toBeInTheDocument();
     expect(screen.getByText("信用债分布")).toBeInTheDocument();
@@ -235,6 +246,7 @@ describe("CreditSpreadView", () => {
 
     expect(screen.getByText("评级迁徙情景")).toBeInTheDocument();
     expect(screen.getByText("mig_aa_to_a")).toBeInTheDocument();
+    expect(screen.getByText("2.00 亿")).toBeInTheDocument();
 
     expect(screen.getByText("信用集中度")).toBeInTheDocument();
   });
@@ -257,11 +269,7 @@ describe("CreditSpreadView", () => {
       }),
     };
 
-    render(
-      <ApiClientProvider client={client}>
-        <CreditSpreadView reportDate="2026-03-31" />
-      </ApiClientProvider>,
-    );
+    renderWithProviders(client, <CreditSpreadView reportDate="2026-03-31" />);
 
     expect(await screen.findByText("信用债数量")).toBeInTheDocument();
     expect(await screen.findByText("提示")).toBeInTheDocument();

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import calendar
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.cashflow_projection import (
     project_bond_cashflows,
@@ -15,6 +18,11 @@ from backend.app.core_finance.cashflow_projection import (
 from backend.app.core_finance.interest_mode import (
     classify_interest_rate_style,
     resolve_interest_payment_frequency,
+)
+from backend.app.core_finance.risk_tensor_regulatory_scope import (
+    DEFAULT_REGULATORY_DV01_SCOPE_RULES,
+    RegulatoryDv01ScopeRule,
+    row_in_regulatory_dv01_scope,
 )
 
 ZERO = Decimal("0")
@@ -27,6 +35,18 @@ SUPPORTED_KRD_BUCKETS = {
     "30Y": "krd_30y",
 }
 
+# Non-standard tenors mapped to nearest supported KRD bucket.
+KRD_BUCKET_FALLBACK: dict[str, str] = {
+    "2Y": "krd_3y",
+    "4Y": "krd_5y",
+    "6Y": "krd_7y",
+    "8Y": "krd_10y",
+    "9Y": "krd_10y",
+    "15Y": "krd_10y",
+    "20Y": "krd_30y",
+    "25Y": "krd_30y",
+}
+
 
 def _safe_decimal(value: object) -> Decimal:
     if value is None:
@@ -35,7 +55,8 @@ def _safe_decimal(value: object) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("_safe_decimal: failed to convert %r", type(value).__name__)
         return ZERO
 
 
@@ -47,6 +68,7 @@ def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
 class PortfolioRiskTensor:
     report_date: date
     portfolio_dv01: Decimal
+    regulatory_dv01: Decimal
     krd_1y: Decimal
     krd_3y: Decimal
     krd_5y: Decimal
@@ -75,20 +97,37 @@ def compute_portfolio_risk_tensor(
     bond_analytics_rows: list[dict],
     report_date: date,
     liability_rows: list[dict] | None = None,
+    regulatory_scope_rules: list[RegulatoryDv01ScopeRule] | tuple[RegulatoryDv01ScopeRule, ...] | None = None,
 ) -> PortfolioRiskTensor:
     rows = list(bond_analytics_rows or [])
     liabilities = list(liability_rows or [])
     warnings: list[str] = []
+    scope_rules = (
+        DEFAULT_REGULATORY_DV01_SCOPE_RULES
+        if regulatory_scope_rules is None
+        else tuple(regulatory_scope_rules)
+    )
 
     total_market_value = _sum_field(rows, "market_value")
     portfolio_dv01 = _sum_field(rows, "dv01")
+    regulatory_dv01 = _sum_field(
+        [row for row in rows if row_in_regulatory_dv01_scope(row, scope_rules)],
+        "dv01",
+    )
     krd_values = _aggregate_krd_values(rows, warnings)
     cs01 = sum(
         (_safe_decimal(row.get("spread_dv01")) for row in rows if _is_credit(row.get("is_credit"))),
         ZERO,
     )
-    portfolio_convexity = _weighted_average(rows, "convexity", total_market_value)
-    portfolio_modified_duration = _weighted_average(rows, "modified_duration", total_market_value)
+    _warn_duration_exclusion_inputs(rows, warnings)
+    duration_rows = _duration_denominator_rows(rows)
+    duration_market_value = _sum_field(duration_rows, "market_value")
+    portfolio_convexity = _weighted_average(duration_rows, "convexity", duration_market_value)
+    portfolio_modified_duration = _weighted_average(
+        duration_rows,
+        "modified_duration",
+        duration_market_value,
+    )
     issuer_hhi, issuer_top5 = _issuer_concentration_metrics(rows, total_market_value)
     (
         liquidity_gap_30d,
@@ -115,6 +154,7 @@ def compute_portfolio_risk_tensor(
     return PortfolioRiskTensor(
         report_date=report_date,
         portfolio_dv01=portfolio_dv01,
+        regulatory_dv01=regulatory_dv01,
         krd_1y=krd_values["krd_1y"],
         krd_3y=krd_values["krd_3y"],
         krd_5y=krd_values["krd_5y"],
@@ -144,19 +184,37 @@ def _aggregate_krd_values(
     rows: list[dict[str, Any]],
     warnings: list[str],
 ) -> dict[str, Decimal]:
+    """Aggregate per-row DV01 into the 6 standard KRD buckets.
+
+    Non-standard tenor buckets (2Y, 15Y, 20Y, etc.) are remapped to the nearest
+    supported bucket via ``KRD_BUCKET_FALLBACK``.  Truly unknown buckets with
+    non-zero DV01 are excluded and reported in ``warnings``.
+    """
     krd_values = {field_name: ZERO for field_name in SUPPORTED_KRD_BUCKETS.values()}
     unsupported_buckets: set[str] = set()
+    remapped_buckets: set[str] = set()
 
     for row in rows:
         tenor_bucket = str(row.get("tenor_bucket") or "")
         dv01 = _safe_decimal(row.get("dv01"))
         field_name = SUPPORTED_KRD_BUCKETS.get(tenor_bucket)
         if field_name is None:
-            if tenor_bucket and dv01 != ZERO:
+            # Try fallback mapping before discarding.
+            field_name = KRD_BUCKET_FALLBACK.get(tenor_bucket)
+            if field_name is not None:
+                remapped_buckets.add(tenor_bucket)
+            elif tenor_bucket and dv01 != ZERO:
                 unsupported_buckets.add(tenor_bucket)
-            continue
+                continue
+            else:
+                continue
         krd_values[field_name] += dv01
 
+    if remapped_buckets:
+        warnings.append(
+            "Non-standard tenor buckets remapped to nearest KRD bucket: "
+            + ", ".join(sorted(remapped_buckets))
+        )
     if unsupported_buckets:
         warnings.append(
             "Unsupported tenor buckets excluded from minimal KRD tensor: "
@@ -166,7 +224,61 @@ def _aggregate_krd_values(
     return krd_values
 
 
+def _warn_duration_exclusion_inputs(rows: list[dict[str, Any]], warnings: list[str]) -> None:
+    excluded_rows = _duration_excluded_rows(rows)
+    if not excluded_rows:
+        return
+    excluded_market_value = sum(
+        (_safe_decimal(row.get("market_value")) for row in excluded_rows),
+        ZERO,
+    )
+    missing_maturity_count = sum(
+        1 for row in excluded_rows if row.get("maturity_date") is None
+    )
+    non_positive_duration_count = sum(
+        1
+        for row in excluded_rows
+        if row.get("maturity_date") is not None
+        and _safe_decimal(row.get("modified_duration")) <= ZERO
+    )
+    warnings.append(
+        f"{len(excluded_rows)} rows carry market_value={excluded_market_value} and are "
+        "excluded from portfolio duration denominator: "
+        f"{missing_maturity_count} without maturity_date; "
+        f"{non_positive_duration_count} with non-positive modified_duration. "
+        "DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated."
+    )
+
+
+def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if _is_duration_denominator_row(row)]
+
+
+def _duration_excluded_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if _safe_decimal(row.get("market_value")) != ZERO
+        and not _is_duration_denominator_row(row)
+    ]
+
+
+def _is_duration_denominator_row(row: dict[str, Any]) -> bool:
+    return (
+        row.get("maturity_date") is not None
+        and _safe_decimal(row.get("modified_duration")) > ZERO
+        and _safe_decimal(row.get("market_value")) != ZERO
+    )
+
+
 def _resolve_face_value(row: dict[str, Any]) -> Decimal:
+    """Return face_value for coupon cashflow projection, falling back to market_value.
+
+    When the source bond analytics fact row lacks an explicit ``face_value`` column
+    (e.g. imported from legacy balance snapshots that only carry MV), market_value is
+    used as an approximation.  This is acceptable for near-par bonds but may overstate
+    coupon cashflows for deep-discount or premium positions.
+    """
     if row.get("face_value") is not None:
         return _safe_decimal(row.get("face_value"))
     return _safe_decimal(row.get("market_value"))

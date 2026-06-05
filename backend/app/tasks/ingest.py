@@ -1,5 +1,4 @@
 import os
-
 from pathlib import Path
 
 from backend.app.governance.settings import get_settings
@@ -25,7 +24,7 @@ def _ingest_demo_manifest(
     source_family_allowlist: list[str] | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
-    governance_path = Path(governance_dir or getattr(settings, "governance_path", Path("data/governance")))
+    governance_path = Path(governance_dir or str(settings.governance_path))
     service = IngestService(
         data_root=Path(data_root) if data_root is not None else resolve_data_input_root(),
         manifest_repo=SourceManifestRepository(

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 
 import { FormalResultMetaPanel } from "../components/page/FormalResultMetaPanel";
 import type { ResultMeta } from "../api/contracts";
+import { buildMockMeta } from "../mocks/mockApiEnvelope";
 
 function buildMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -17,25 +18,32 @@ function buildMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
     vendor_status: "ok",
     fallback_mode: "none",
     scenario_flag: false,
+    as_of_date: "2026-04-17",
     generated_at: "2026-04-17T02:00:00Z",
     ...overrides,
   };
 }
 
 describe("FormalResultMetaPanel", () => {
-  it("renders structured provenance fields and optional evidence data", () => {
-    render(
+  it("renders structured provenance fields, as_of_date, and status badges", () => {
+    const { container } = render(
       <FormalResultMetaPanel
         testId="formal-meta-panel"
         sections={[
           {
             key: "data",
-            title: "正式明细",
+            title: "Formal detail",
+            vendor_status: "vendor_stale",
+            fallback_mode: "latest_snapshot",
             meta: buildMeta({
               tables_used: ["fact_formal_pnl_fi"],
               filters_applied: { report_date: "2025-12-31", basis: "formal" },
+              requested_report_date: "2026-04-16",
+              resolved_report_date: "2026-04-17",
+              date_basis: "formal_snapshot",
+              fallback_date: "2026-04-15",
               evidence_rows: 42,
-              next_drill: ["portfolio", { dimension: "issuer", label: "发行人" }],
+              next_drill: ["portfolio", { dimension: "issuer", label: "Issuer" }],
             }),
           },
         ]}
@@ -43,31 +51,60 @@ describe("FormalResultMetaPanel", () => {
     );
 
     const panel = screen.getByTestId("formal-meta-panel");
-    expect(panel).toHaveTextContent("正式明细");
+    expect(panel).toHaveTextContent("Formal detail");
     expect(panel).toHaveTextContent("tr_formal_meta");
     expect(panel).toHaveTextContent("sv_formal_meta");
     expect(panel).toHaveTextContent("vv_none");
     expect(panel).toHaveTextContent("rv_formal_meta");
     expect(panel).toHaveTextContent("cv_formal_meta");
-    expect(panel).toHaveTextContent("vendor_status");
-    expect(panel).toHaveTextContent("fallback_mode");
+    expect(panel).toHaveTextContent("2026-04-16");
+    expect(panel).toHaveTextContent("2026-04-17");
+    expect(panel).toHaveTextContent("formal_snapshot");
+    expect(panel).toHaveTextContent("2026-04-15");
     expect(panel).toHaveTextContent("fact_formal_pnl_fi");
     expect(panel).toHaveTextContent('"report_date":"2025-12-31"');
     expect(panel).toHaveTextContent("42");
     expect(panel).toHaveTextContent("portfolio");
-    expect(panel).toHaveTextContent('"dimension":"issuer","label":"发行人"');
+    expect(panel).toHaveTextContent('"dimension":"issuer","label":"Issuer"');
+    expect(container.querySelectorAll("[title]").length).toBeGreaterThan(0);
   });
 
   it("renders an empty state when no section has meta", () => {
     render(
       <FormalResultMetaPanel
         testId="formal-meta-empty"
-        sections={[{ key: "dates", title: "报告日列表", meta: null }]}
+        sections={[{ key: "dates", title: "Dates", meta: null }]}
       />,
     );
 
     expect(screen.getByTestId("formal-meta-empty")).toHaveTextContent(
-      "当前还没有可展示的 provenance envelope。",
+      "当前还没有可展示的溯源信封。",
     );
+  });
+  it("shows a missing-state label when as_of_date is not provided", () => {
+    render(
+      <FormalResultMetaPanel
+        testId="formal-meta-missing-date"
+        sections={[
+          {
+            key: "data",
+            title: "Formal detail",
+            meta: buildMeta({ as_of_date: undefined }),
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("formal-meta-missing-date")).toHaveTextContent("未提供");
+  });
+
+  it("buildMockMeta leaves as_of_date unset unless overridden", () => {
+    expect(buildMockMeta("pnl.data").as_of_date).toBeUndefined();
+    expect(
+      {
+        ...buildMockMeta("pnl.data"),
+        as_of_date: "2026-04-17",
+      }.as_of_date,
+    ).toBe("2026-04-17");
   });
 });

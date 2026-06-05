@@ -8,10 +8,11 @@ V3 一键数据导入 Pipeline — 从 archive 中的 XLS 到完整的 DuckDB �
 执行顺序：
   1. snapshot_materialize — 解析 XLS → zqtz_bond_daily_snapshot + tyw_interbank_daily_snapshot
   2. source_preview_refresh — 生成 source preview 表（前端经营分析页依赖）
-  3. bond_analytics_materialize — 计算久期/DV01/凸性 → fact_formal_bond_analytics_daily
-  4. balance_analysis_materialize — 计算资产负债余额 → fact_formal_zqtz/tyw_balance_daily
-  5. pnl_materialize — 物化 PnL（如果有 FI损益 XLS）
-  6. product_category_pnl — 物化产品类别损益（如果有总账对账 Excel）
+  3. balance_analysis_materialize — 计算 formal CNY 余额与会计计量分类
+  4. bond_analytics_materialize — 基于 formal CNY 计算久期/DV01/凸性
+  5. risk_tensor_materialize — 基于 bond analytics 计算风险张量
+  6. pnl_materialize — 物化 PnL（如果有 FI损益 XLS）
+  7. product_category_pnl — 物化产品类别损益（如果有总账对账 Excel）
 """
 from __future__ import annotations
 
@@ -65,7 +66,7 @@ def run_pipeline():
     Path(duckdb_path).parent.mkdir(parents=True, exist_ok=True)
 
     # ── Step 1: Snapshot Materialize ──────────────────────────────
-    _step("1/6 Snapshot Materialize (XLS → DuckDB snapshot tables)")
+    _step("1/7 Snapshot Materialize (XLS → DuckDB snapshot tables)")
     t0 = time.time()
     try:
         from backend.app.tasks.snapshot_materialize import _materialize_standard_snapshots
@@ -87,7 +88,7 @@ def run_pipeline():
         traceback.print_exc()
 
     # ── Step 2: Source Preview Refresh ────────────────────────────
-    _step("2/6 Source Preview Refresh")
+    _step("2/7 Source Preview Refresh")
     t0 = time.time()
     try:
         from backend.app.tasks.source_preview_refresh import _refresh_source_preview_cache
@@ -103,8 +104,29 @@ def run_pipeline():
         import traceback
         traceback.print_exc()
 
-    # ── Step 3: Bond Analytics Materialize ────────────────────────
-    _step("3/6 Bond Analytics Materialize (duration/DV01/convexity)")
+    # ── Step 3: Balance Analysis Materialize ──────────────────────
+    _step("3/7 Balance Analysis Materialize (formal balance daily)")
+    t0 = time.time()
+    try:
+        from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline
+        result = run_formal_balance_pipeline.fn(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            archive_dir=archive_dir,
+            data_root=str(Path(settings.data_input_root).resolve()),
+        )
+        status = result.get("status", "unknown") if isinstance(result, dict) else "done"
+        print(f"  ✓ Balance analysis: {status}")
+        print(f"  ({_elapsed(t0)})")
+    except ImportError:
+        print("  ✗ Failed: formal_balance_pipeline task is unavailable.")
+    except Exception as exc:
+        print(f"  ✗ Failed: {exc}")
+        import traceback
+        traceback.print_exc()
+
+    # ── Step 4: Bond Analytics Materialize ────────────────────────
+    _step("4/7 Bond Analytics Materialize (duration/DV01/convexity)")
     t0 = time.time()
     try:
         # 先获取可用的 report_dates
@@ -139,29 +161,43 @@ def run_pipeline():
         import traceback
         traceback.print_exc()
 
-    # ── Step 4: Balance Analysis Materialize ──────────────────────
-    _step("4/6 Balance Analysis Materialize (formal balance daily)")
+    # ── Step 5: Risk Tensor Materialize ──────────────────────────
+    _step("5/7 Risk Tensor Materialize")
     t0 = time.time()
     try:
-        from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline
-        result = run_formal_balance_pipeline.fn(
-            duckdb_path=duckdb_path,
-            governance_dir=governance_dir,
-            archive_dir=archive_dir,
-            data_root=str(Path(settings.data_input_root).resolve()),
-        )
-        status = result.get("status", "unknown") if isinstance(result, dict) else "done"
-        print(f"  ✓ Balance analysis: {status}")
-        print(f"  ({_elapsed(t0)})")
-    except ImportError:
-        print("  ✗ Failed: formal_balance_pipeline task is unavailable.")
+        import duckdb
+        conn = duckdb.connect(duckdb_path, read_only=True)
+        try:
+            dates = conn.execute(
+                "SELECT DISTINCT CAST(report_date AS VARCHAR) FROM fact_formal_bond_analytics_daily ORDER BY 1 DESC"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        report_dates = [str(row[0]) for row in dates]
+        if not report_dates:
+            print("  ⚠ No report dates in fact_formal_bond_analytics_daily, skipping.")
+        else:
+            from backend.app.tasks.risk_tensor_materialize import materialize_risk_tensor_facts
+            for rd in report_dates[:3]:
+                try:
+                    result = materialize_risk_tensor_facts.fn(
+                        report_date=rd,
+                        duckdb_path=duckdb_path,
+                        governance_dir=governance_dir,
+                    )
+                    status = result.get("status", "unknown") if isinstance(result, dict) else "done"
+                    print(f"  ✓ {rd}: {status}")
+                except Exception as exc:
+                    print(f"  ✗ {rd}: {exc}")
+            print(f"  ({_elapsed(t0)})")
     except Exception as exc:
         print(f"  ✗ Failed: {exc}")
         import traceback
         traceback.print_exc()
 
-    # ── Step 5: PnL Materialize ───────────────────────────────────
-    _step("5/6 PnL Materialize")
+    # ── Step 6: PnL Materialize ───────────────────────────────────
+    _step("6/7 PnL Materialize")
     t0 = time.time()
     try:
         import duckdb
@@ -204,8 +240,8 @@ def run_pipeline():
         import traceback
         traceback.print_exc()
 
-    # ── Step 6: Product Category PnL ──────────────────────────────
-    _step("6/6 Product Category PnL Materialize")
+    # ── Step 7: Product Category PnL ──────────────────────────────
+    _step("7/7 Product Category PnL Materialize")
     t0 = time.time()
     try:
         source_dir = str(Path(settings.product_category_source_dir).resolve())

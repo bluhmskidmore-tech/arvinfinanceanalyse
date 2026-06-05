@@ -4,9 +4,20 @@ import { useSearchParams } from "react-router-dom";
 
 import type { Numeric } from "../../api/contracts";
 import { useApiClient } from "../../api/client";
+import { apiQueryKeys } from "../../api/queryKeys";
+import { KpiCard } from "../../components/KpiCard";
+import {
+  controlBarStyle,
+  summaryGridStyle,
+  tableShellStyle,
+  tableStyle,
+  tdStyle,
+  thStyle,
+} from "../../components/page/pageStyles";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { designTokens } from "../../theme/designSystem";
+import { shellTokens } from "../../theme/tokens";
 import {
   formatRatioAsPercent,
   limitTone,
@@ -22,62 +33,20 @@ const LIMITS = {
   below_aa_max: 0.2,
 } as const;
 
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
-} as const;
-
 const controlStyle = {
   minWidth: 180,
   padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
+  borderRadius: designTokens.radius.md,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: shellTokens.colorBgSurface,
+  color: designTokens.color.neutral[900],
 } as const;
-
-const tableShellStyle = {
-  overflowX: "auto",
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
-  marginTop: 0,
-} as const;
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-} as const;
-
-const thStyle = {
-  textAlign: "left" as const,
-  padding: "10px 12px",
-  borderBottom: "1px solid #e4ebf5",
-  color: "#5c6b82",
-  fontSize: 13,
-};
-
-const tdStyle = {
-  padding: "12px",
-  borderBottom: "1px solid #eef2f7",
-  color: "#162033",
-};
 
 const blockTitleStyle = {
   margin: "24px 0 0",
   fontSize: 16,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const grid2x2Style = {
@@ -91,7 +60,7 @@ const panelTitleStyle = {
   margin: "0 0 8px",
   fontSize: 14,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 function displayStr(value: string | Numeric | undefined) {
@@ -124,7 +93,7 @@ function toneColor(tone: LimitTone) {
   if (tone === "near") {
     return "#c9a227";
   }
-  return "#162033";
+  return designTokens.color.neutral[900];
 }
 
 function toneBackground(tone: LimitTone) {
@@ -159,8 +128,8 @@ function ConcentrationTable({
     <div>
       <h3 style={panelTitleStyle}>{title}</h3>
       {m ? (
-        <p style={{ margin: "0 0 8px", fontSize: 12, color: "#8090a8" }}>
-          HHI {displayStr(m.hhi)} · Top5 {displayStr(m.top5_concentration)}
+        <p style={{ margin: "0 0 8px", fontSize: 12, color: designTokens.color.neutral[500] }}>
+          HHI {displayStr(m.hhi)} · 前五 {displayStr(m.top5_concentration)}
         </p>
       ) : null}
       <div style={tableShellStyle}>
@@ -175,7 +144,7 @@ function ConcentrationTable({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={3} style={{ ...tdStyle, color: "#8090a8" }}>
+                <td colSpan={3} style={{ ...tdStyle, color: designTokens.color.neutral[500] }}>
                   暂无明细
                 </td>
               </tr>
@@ -233,16 +202,13 @@ export default function ConcentrationMonitorPage() {
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
 
   const creditQuery = useQuery({
-    queryKey: ["concentration-monitor", "credit-spread-migration", reportDate],
-    queryFn: async (): Promise<CreditSpreadMigrationResponse> => {
-      const envelope = await client.getBondAnalyticsCreditSpreadMigration(reportDate);
-      return envelope.result;
-    },
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(client.mode, reportDate),
+    queryFn: () => client.getBondAnalyticsCreditSpreadMigration(reportDate),
     enabled: Boolean(reportDate),
     retry: false,
   });
 
-  const credit = creditQuery.data;
+  const credit = creditQuery.data?.result;
   const issuer = credit?.concentration_by_issuer;
   const maxSingleWeight = parseRatio(issuer?.top_items?.[0]?.weight);
   const top5 = parseRatio(issuer?.top5_concentration);
@@ -260,7 +226,7 @@ export default function ConcentrationMonitorPage() {
         tone: limitTone(maxSingleWeight, LIMITS.issuer_single_max),
       },
       {
-        label: "发行人 Top5 集中度",
+        label: "发行人前五集中度",
         currentDisplay: displayStr(issuer?.top5_concentration),
         currentNum: top5,
         limitDisplay: String(LIMITS.issuer_top5_max),
@@ -321,7 +287,7 @@ export default function ConcentrationMonitorPage() {
             marginTop: 10,
             marginBottom: 0,
             maxWidth: 860,
-            color: "#5c6b82",
+            color: designTokens.color.neutral[600],
             fontSize: 15,
             lineHeight: 1.75,
           }}
@@ -334,7 +300,7 @@ export default function ConcentrationMonitorPage() {
 
       <div style={controlBarStyle}>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             aria-label="concentration-monitor-report-date"
             value={reportDate}
@@ -354,7 +320,7 @@ export default function ConcentrationMonitorPage() {
           </select>
         </label>
         {explicitReportDate ? (
-          <span style={{ alignSelf: "flex-end", color: "#8090a8", fontSize: 13 }}>
+          <span style={{ alignSelf: "flex-end", color: designTokens.color.neutral[500], fontSize: 13 }}>
             已由 URL <code style={{ fontSize: 12 }}>?report_date=</code> 固定
           </span>
         ) : null}
@@ -380,7 +346,7 @@ export default function ConcentrationMonitorPage() {
                 tone={limitToneToKpi(limitTone(parseRatio(issuer?.hhi), LIMITS.hhi_warning))}
               />
               <KpiCard
-                title="发行人 Top5 集中度"
+                title="发行人前五集中度"
                 value={formatRatioAsPercent(displayStr(issuer?.top5_concentration))}
                 detail="来自 concentration_by_issuer.top5_concentration。"
                 tone={limitToneToKpi(limitTone(parseRatio(issuer?.top5_concentration), LIMITS.issuer_top5_max))}
@@ -401,7 +367,7 @@ export default function ConcentrationMonitorPage() {
               />
             </div>
 
-            <h2 style={blockTitleStyle}>分项集中度（Top 市值）</h2>
+            <h2 style={blockTitleStyle}>分项集中度（前列市值）</h2>
             <div style={grid2x2Style}>
               <ConcentrationTable title="发行人集中度" metricsKey="concentration_by_issuer" data={credit} />
               <ConcentrationTable title="行业集中度" metricsKey="concentration_by_industry" data={credit} />
@@ -410,7 +376,7 @@ export default function ConcentrationMonitorPage() {
             </div>
 
             <h2 style={blockTitleStyle}>限额预警（展示对照）</h2>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "#5c6b82" }}>
+            <p style={{ margin: "8px 0 0", fontSize: 13, color: designTokens.color.neutral[600] }}>
               超限标红，达到限额 80% 以上未超限标黄。阈值为本页常量 LIMITS，非后端下发。
             </p>
             <div style={{ ...tableShellStyle, marginTop: 12 }}>
@@ -433,7 +399,7 @@ export default function ConcentrationMonitorPage() {
                         : row.tone === "near"
                           ? "接近限额"
                           : "正常";
-                    const cellColor = missing ? "#5c6b82" : toneColor(row.tone);
+                    const cellColor = missing ? designTokens.color.neutral[600] : toneColor(row.tone);
                     const cellBg = missing ? "#f6f9fc" : toneBackground(row.tone);
                     return (
                       <tr key={row.label}>
@@ -448,7 +414,7 @@ export default function ConcentrationMonitorPage() {
                         >
                           {row.currentDisplay}
                           {"note" in row && row.note ? (
-                            <span style={{ display: "block", fontSize: 11, color: "#8090a8" }}>
+                            <span style={{ display: "block", fontSize: 11, color: designTokens.color.neutral[500] }}>
                               {row.note}
                             </span>
                           ) : null}

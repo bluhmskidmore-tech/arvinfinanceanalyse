@@ -129,8 +129,9 @@ def test_kpi_repository_normalizes_postgres_dsn_to_psycopg(monkeypatch):
     class DummyEngine:
         dialect = type("Dialect", (), {"name": "postgresql"})()
 
-    def fake_create_engine(dsn, future=True):
+    def fake_create_engine(dsn, future=True, connect_args=None):
         captured["dsn"] = dsn
+        captured["connect_args"] = connect_args
         return DummyEngine()
 
     monkeypatch.setattr(repo_module, "create_engine", fake_create_engine)
@@ -139,3 +140,4 @@ def test_kpi_repository_normalizes_postgres_dsn_to_psycopg(monkeypatch):
     repo_module.KpiRepository("postgresql://moss:moss@127.0.0.1:55432/moss")
 
     assert captured["dsn"] == "postgresql+psycopg://moss:moss@127.0.0.1:55432/moss"
+    assert captured["connect_args"] == {"connect_timeout": 1}

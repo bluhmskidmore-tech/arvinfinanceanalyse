@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>跨资产驱动 — MOSS 真实槽位与契约数据 · 风格参考（静态稿）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700&family=Noto+Sans+SC:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <!-- 结构仍对齐桌面前端；字体与版式按 Claude 系审美重排：暖纸白、衬线标题、人文无衬线 UI、等宽数字 -->
+  <style>
+    :root {
+      --font-sans: "Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      --font-serif: "Newsreader", "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+      /* 暖中性纸面，接近 Claude 产品常用的温润底（非冷灰） */
+      --bg: #faf8f5;
+      --card: #fffcf8;
+      --card-subtle: #fffaf4;
+      --border: #e5e0d8;
+      --text: #1c1917;
+      --subtext: #5f5850;
+      --muted: #8a8279;
+      --blue: #1d4ed8;
+      --blue-soft: #eff4ff;
+      --green: #15803d;
+      --green-soft: #f0fdf4;
+      --orange: #c2410c;
+      --orange-soft: #fff7ed;
+      --red: #b91c1c;
+      --red-soft: #fef2f2;
+      --purple: #6d28d9;
+      --purple-soft: #f3e8ff;
+      --teal: #0f766e;
+      --teal-soft: #f0fdfa;
+      --neutral-tone: #44403b;
+      --neutral-soft: #f5f0ea;
+      --shadow-sm: 0 1px 0 rgba(28, 25, 23, 0.04), 0 2px 12px rgba(28, 25, 23, 0.06);
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --sidebar-width: 256px;
+      --rhythm: 28px;
+      font-family: var(--font-sans);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+      font-weight: 400;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    .app-shell {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, #f7f2eb 0%, #f2ebe3 100%);
+      padding: 28px 14px 28px 22px;
+    }
+    .sidebar__brand { display: flex; align-items: center; gap: 12px; margin-bottom: 36px; }
+    .sidebar__mark {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(145deg, #292524, #1c1917);
+      color: #faf8f5; display: grid; place-items: center;
+      font-family: var(--font-serif);
+      font-weight: 600;
+      font-size: 1.05rem;
+      letter-spacing: 0.02em;
+    }
+    .sidebar__title { font-family: var(--font-serif); font-size: 1.5rem; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; }
+    .nav-list { display: flex; flex-direction: column; gap: 4px; }
+    .nav-item, .nav-item--disabled {
+      position: relative; display: flex; align-items: center; gap: 12px; min-height: auto;
+      border-radius: 10px; padding: 10px 14px; font-size: 0.9375rem; color: var(--text);
+      letter-spacing: 0.01em;
+    }
+    .nav-item__body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+    .nav-item__meta {
+      font-family: var(--font-mono); font-size: 0.62rem; font-weight: 500; color: var(--muted);
+      line-height: 1.35; word-break: break-all; opacity: 0.92;
+    }
+    .nav-item__dot { width: 6px; height: 6px; border-radius: 999px; background: #d4cfc7; border: none; }
+    .nav-item--active {
+      background: rgba(29, 78, 216, 0.08);
+      color: var(--blue);
+      font-weight: 600;
+    }
+    .nav-item--active .nav-item__dot { background: var(--blue); }
+    .nav-item--active::before {
+      content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+      border-radius: 999px; background: var(--blue);
+    }
+    .nav-item--disabled { color: var(--muted); opacity: 0.65; cursor: not-allowed; }
+    .sidebar__footer {
+      position: absolute; bottom: 28px; left: 22px; right: 14px;
+      display: flex; flex-direction: column; gap: 10px; color: var(--muted); font-size: 0.8125rem; font-weight: 500;
+    }
+    /* 主区铺满「侧栏以右」整列，勿再套 max-width，否则大屏幕上右侧整块空白 */
+    .main-content {
+      min-width: 0;
+      width: 100%;
+      max-width: none;
+      padding: 32px clamp(24px, 3.5vw, 56px) 48px;
+      align-self: stretch;
+    }
+    .page-stack {
+      display: flex;
+      flex-direction: column;
+      gap: var(--rhythm);
+      width: 100%;
+    }
+    .page-header { display: flex; flex-direction: column; gap: 20px; }
+    .page-header__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; flex-wrap: wrap; }
+    .page-header__lede { max-width: 36em; }
+    .page-eyebrow {
+      font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 10px;
+    }
+    .page-title {
+      font-family: var(--font-sans);
+      font-size: clamp(1.5rem, 2.2vw, 1.875rem);
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .page-subtitle { margin-top: 8px; font-size: 0.9375rem; color: var(--subtext); font-weight: 400; line-height: 1.6; max-width: 40em; }
+    .page-header__right { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+    .page-header__meta { display: flex; gap: 12px; align-items: center; color: var(--subtext); font-size: 0.8125rem; }
+    .page-header__actions { display: flex; gap: 8px; }
+    .action-button {
+      border: 1px solid var(--border); background: var(--card);
+      border-radius: 10px;
+      padding: 9px 16px; color: var(--text); cursor: default;
+      font-size: 0.8125rem; font-weight: 600;
+      box-shadow: 0 1px 0 rgba(28, 25, 23, 0.04);
+    }
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 10px; }
+    .filter-chip {
+      min-width: 168px; border: 1px solid var(--border); background: var(--card);
+      border-radius: 10px; padding: 12px 16px;
+    }
+    .filter-chip__label { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .filter-chip__value { margin-top: 4px; font-size: 0.9rem; font-weight: 600; color: var(--text); }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 6px; border-radius: 999px;
+      padding: 5px 11px; font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 999px; }
+    .metrics-grid {
+      display: grid;
+      /* 4×2：避免 8 列在窄主栏下压成单字换行 */
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 16px 18px;
+      min-width: 0;
+    }
+    .metric-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: var(--radius-lg);
+      padding: 16px 16px 14px;
+      box-shadow: var(--shadow-sm);
+    }
+    .metric-card__label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--subtext);
+      line-height: 1.3;
+      word-break: keep-all;
+    }
+    .metric-card__row {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+      min-width: 0;
+    }
+    .metric-card__value {
+      font-family: var(--font-mono);
+      font-size: clamp(1.125rem, 1.4vw, 1.5rem);
+      font-weight: 600;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      min-width: 0;
+      flex: 1;
+      word-break: keep-all;
+    }
+    .metric-card__note {
+      margin-top: 10px;
+      font-size: 0.8125rem;
+      color: var(--subtext);
+      line-height: 1.5;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+    .metric-card__spark { flex-shrink: 0; width: 64px; height: 30px; opacity: 0.95; }
+    .content-grid {
+      display: grid;
+      gap: 20px;
+      align-items: start;
+    }
+    .content-grid--split {
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    }
+    .content-grid--pair {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    @media (max-width: 1024px) {
+      .content-grid--split, .content-grid--pair { grid-template-columns: 1fr; }
+    }
+    .section-card {
+      min-width: 0; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 24px 26px; box-shadow: var(--shadow-sm);
+    }
+    .section-card__header { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #efe9e1; }
+    .section-card__title {
+      font-size: 1rem; font-weight: 700; line-height: 1.35; letter-spacing: -0.02em;
+    }
+    .summary-text { display: flex; flex-direction: column; gap: 1em; font-size: 0.95rem; line-height: 1.75; color: var(--text); max-width: 58ch; }
+    .summary-text p { margin: 0; }
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    .tag { font-size: 0.75rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; }
+    .heatmap-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; font-size: 0.875rem; }
+    .heatmap-table th { color: var(--muted); font-weight: 600; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; text-align: left; padding: 0 10px 6px 0; }
+    .heatmap-table td { padding: 10px 10px 10px 0; vertical-align: middle; }
+    .heatmap-table td:first-child { font-weight: 500; color: var(--text); }
+    .heatmap-cell {
+      display: inline-flex; align-items: center; justify-content: center; min-width: 68px; min-height: 34px;
+      border-radius: 8px; padding: 5px 9px; font-size: 0.75rem; font-weight: 600;
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    }
+    .module-entry-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+    .module-entry {
+      border: 1px solid var(--border); background: var(--card-subtle); border-radius: 14px; padding: 18px;
+    }
+    .module-entry__title { display: flex; align-items: center; gap: 8px; font-weight: 600; flex-wrap: wrap; }
+    .summary-bullets { margin: 8px 0 0; padding-left: 1.1em; color: var(--subtext); font-size: 0.85rem; line-height: 1.55; }
+    .task-item { display: grid; gap: 6px; padding: 16px 0; border-top: 1px solid #efe9e1; }
+    .task-item:first-child { border-top: none; padding-top: 0; }
+    .task-item__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .task-item__header strong { font-size: 0.9rem; font-weight: 600; }
+    .list-detail { color: var(--subtext); font-size: 0.85rem; line-height: 1.65; }
+    .calendar-item { display: grid; gap: 6px; padding: 16px 0; border-top: 1px solid #efe9e1; }
+    .calendar-item:first-child { border-top: none; padding-top: 0; }
+    .chart-box { display: flex; flex-direction: column; gap: 16px; }
+    .chart-note { font-size: 0.85rem; color: var(--subtext); line-height: 1.7; max-width: 60ch; }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: 12px 16px; }
+    .chart-legend__item { display: flex; align-items: center; gap: 6px; color: var(--subtext); font-size: 0.75rem; font-weight: 500; }
+    .chart-legend__swatch { width: 16px; height: 3px; border-radius: 999px; }
+    .line-chart-wrap { width: 100%; height: 220px; }
+    .ref-banner {
+      font-size: 0.75rem; color: var(--muted); padding: 10px 16px; background: #f2ebe4;
+      border-radius: 10px; border: 1px solid #e5ddd4; line-height: 1.55;
+    }
+    .ref-banner--inset { margin: 0 0 4px; }
+    .ref-banner code { font-family: var(--font-mono); font-size: 0.7rem; }
+    .market-group-callout {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px;
+      margin-top: 4px; padding: 10px 12px; border-radius: 10px; background: var(--card-subtle);
+      border: 1px solid var(--border); font-size: 0.75rem; color: var(--subtext); line-height: 1.5;
+    }
+    .market-group-callout__title { font-weight: 600; color: var(--text); font-size: 0.72rem; letter-spacing: 0.04em; }
+    .market-group-callout code { font-family: var(--font-mono); font-size: 0.65rem; }
+    @media (max-width: 1200px) {
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .module-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 1180px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .main-content { padding: 24px 20px 40px; max-width: none; }
+    }
+    @media (max-width: 520px) {
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__mark">M</div>
+        <div class="sidebar__title">MOSS</div>
+      </div>
+      <nav class="nav-list" aria-label="主导航">
+        <a class="nav-item" href="#"><span class="nav-item__dot"></span><span class="nav-item__body"><span>驾驶舱</span><span class="nav-item__meta">key: dashboard · path: /</span></span></a>
+        <a class="nav-item" href="#"><span class="nav-item__dot"></span><span class="nav-item__body"><span>经营分析</span><span class="nav-item__meta">key: operations-analysis · path: /operations-analysis</span></span></a>
+        <a class="nav-item" href="#"><span class="nav-item__dot"></span><span class="nav-item__body"><span>债券分析</span><span class="nav-item__meta">key: bond-analysis · path: /bond-analysis</span></span></a>
+        <a class="nav-item nav-item--active" href="#"><span class="nav-item__dot"></span><span class="nav-item__body"><span>跨资产驱动</span><span class="nav-item__meta">key: cross-asset · path: /cross-asset</span></span></a>
+        <span class="nav-item--disabled"><span class="nav-item__dot"></span><span class="nav-item__body"><span>团队绩效</span><span class="nav-item__meta">key: team-performance · path: /team-performance</span></span></span>
+        <span class="nav-item--disabled"><span class="nav-item__dot"></span><span class="nav-item__body"><span>决策事项</span><span class="nav-item__meta">key: decision-items · path: /decision-items</span></span></span>
+        <a class="nav-item" href="#"><span class="nav-item__dot"></span><span class="nav-item__body"><span>资产负债分析</span><span class="nav-item__meta">key: balance-analysis · path: /balance-analysis</span></span></a>
+        <a class="nav-item" href="#"><span class="nav-item__dot"></span><span class="nav-item__body"><span>市场数据</span><span class="nav-item__meta">key: market-data · path: /market-data</span></span></a>
+        <span class="nav-item--disabled"><span class="nav-item__dot"></span><span class="nav-item__body"><span>中台配置</span><span class="nav-item__meta">key: platform-config · path: /platform-config</span></span></span>
+        <span class="nav-item--disabled"><span class="nav-item__dot"></span><span class="nav-item__body"><span>报表中心</span><span class="nav-item__meta">key: reports-center · path: /reports</span></span></span>
+      </nav>
+      <div class="sidebar__footer">
+        <span>帮助文档</span>
+        <span>系统设置</span>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <p class="ref-banner ref-banner--inset">
+        <strong>数据层：</strong>KPI 标签/槽位/<code>series_id</code> 来自 <code>frontend/src/features/cross-asset/lib/crossAssetKpiModel.ts</code>（<code>CROSS_ASSET_KPI_SLOTS</code>）；数值样例对齐 <code>crossAssetDriversPageModel.test.ts</code> 中 <code>makePoint</code>；研究四卡键名对齐 <code>MacroBondResearchView</code>；右侧小表对齐 <code>CrossAssetDriversPage.tsx</code> 侧栏「宏观-债市相关性」列名（corr 3M/6M）。<strong>侧栏 <code>key</code> / <code>path</code></strong> 与 <code>frontend/src/mocks/navigation.ts</code> 中 <code>workbenchNavigation</code> 条目标注一致（无单独 <code>MODULE_NAV_ITEMS</code> 常量）。<strong>非生产抓包。</strong>不修改 MOSS 业务源码。
+      </p>
+      <div class="page-stack">
+        <header class="page-header">
+          <div class="page-header__top">
+            <div class="page-header__lede">
+              <div class="page-eyebrow">市场工作台</div>
+              <h1 class="page-title">跨资产驱动</h1>
+              <p class="page-subtitle">数据日期 <strong>2026-04-10</strong>（与测试夹具 <code>trade_date</code> 一致）· 这页只回答：外部变量怎样传导到债券；完整序列见市场数据页 — 与现网 <code>PageHeader</code> 文案同构。</p>
+            </div>
+            <div class="page-header__right">
+              <div class="page-header__meta">
+                <span class="status-pill" style="background:var(--blue-soft);color:var(--blue)">
+                  <span class="status-dot" style="background:var(--blue)"></span>Mock Mode
+                </span>
+                <span>latest <code>generated_at</code>：2026-04-10T09:00:00Z</span>
+              </div>
+              <div class="page-header__actions">
+                <button type="button" class="action-button">刷新</button>
+                <button type="button" class="action-button">导出</button>
+              </div>
+            </div>
+          </div>
+          <div class="filter-bar">
+            <div class="filter-chip"><div class="filter-chip__label">report_date</div><div class="filter-chip__value">2026-04-10</div></div>
+            <div class="filter-chip"><div class="filter-chip__label">linkage</div><div class="filter-chip__value">macro_bond_linkage.analysis</div></div>
+            <div class="filter-chip"><div class="filter-chip__label">choice latest</div><div class="filter-chip__value">macro.choice.latest</div></div>
+            <div class="filter-chip"><div class="filter-chip__label">basis</div><div class="filter-chip__value">analytical</div></div>
+          </div>
+          <div class="market-group-callout" role="note">
+            <span class="market-group-callout__title">市场工作台</span>
+            <span>组 <code>key: market</code> · 默认进组路由 <code>defaultPath: /market-data</code>。本页为其中一节：</span>
+            <span><code>key: cross-asset</code> · <code>path: /cross-asset</code></span>
+            <span>同组还有 <code>market-data</code> → <code>/market-data</code>、<code>news-events</code> → <code>/news-events</code>（见 <code>workbenchSectionGroups</code>）。</span>
+          </div>
+        </header>
+
+        <div class="section-card">
+          <div class="section-card__header">
+            <div class="section-card__title">投资研究判断</div>
+          </div>
+          <p style="margin:0 0 14px;font-size:0.85rem;color:var(--subtext);line-height:1.6;max-width:62ch">
+            四键 <code>duration</code> / <code>curve</code> / <code>credit</code> / <code>instrument</code>，字段见 <code>MacroBondResearchView</code>。下为与测试用例同结构的示例句，非当日投研结论。
+          </p>
+          <div class="module-entry-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+            <div class="module-entry">
+              <div style="font-size:0.65rem;color:var(--muted);font-weight:600;margin-bottom:6px;">久期判断 · duration</div>
+              <p style="margin:0;font-size:0.85rem;color:var(--text);line-height:1.5;">Duration view turns constructive as liquidity stays easy.</p>
+              <div class="tag-row" style="margin-top:10px"><span class="tag" style="background:var(--green-soft);color:var(--green)">ready · high</span></div>
+            </div>
+            <div class="module-entry">
+              <div style="font-size:0.65rem;color:var(--muted);font-weight:600;margin-bottom:6px;">曲线判断 · curve</div>
+              <p style="margin:0;font-size:0.85rem;color:var(--text);line-height:1.5;">Front-end carry still benefits from easier funding.</p>
+              <div class="tag-row" style="margin-top:10px"><span class="tag" style="background:var(--blue-soft);color:var(--blue)">ready · medium</span></div>
+            </div>
+            <div class="module-entry">
+              <div style="font-size:0.65rem;color:var(--muted);font-weight:600;margin-bottom:6px;">信用判断 · credit</div>
+              <p style="margin:0;font-size:0.85rem;color:var(--text);line-height:1.5;">Credit should stay selective while credit spread remains the dominant linkage.</p>
+              <div class="tag-row" style="margin-top:10px"><span class="tag" style="background:var(--orange-soft);color:var(--orange)">ready · medium</span></div>
+            </div>
+            <div class="module-entry">
+              <div style="font-size:0.65rem;color:var(--muted);font-weight:600;margin-bottom:6px;">品种判断 · instrument</div>
+              <p style="margin:0;font-size:0.85rem;color:var(--text);line-height:1.5;">Prefer rates and high-grade credit over lower-quality carry.</p>
+              <div class="tag-row" style="margin-top:10px"><span class="tag" style="background:var(--purple-soft);color:var(--purple)">ready · medium</span></div>
+            </div>
+          </div>
+        </div>
+
+        <p style="margin:0;font-size:0.8rem;color:var(--muted);font-weight:600;letter-spacing:0.06em;">环境上下文 · KPI（前 8 条头线条目）</p>
+        <div class="metrics-grid" id="metricGrid"></div>
+
+        <div class="content-grid content-grid--split">
+          <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">市场判断</div>
+            </div>
+            <div class="summary-text">
+              <p>以下为示意摘要：外部约束边际偏强，流动性仍提供缓冲；久期风格偏中性。</p>
+            </div>
+            <div class="tag-row">
+              <span class="tag" style="background:var(--green-soft);color:var(--green)">主导因素 · 海外利率</span>
+              <span class="tag" style="background:var(--orange-soft);color:var(--orange)">次要因素 · 政策预期</span>
+              <span class="tag" style="background:var(--blue-soft);color:var(--blue)">风格 · 均衡</span>
+            </div>
+          </div>
+          <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">宏观-债市相关性（Top）</div>
+            </div>
+            <p style="margin:0 0 12px;font-size:0.8rem;color:var(--subtext);line-height:1.55">滚动相关结果，仅供对照；不替代个券估值分位。</p>
+            <table class="heatmap-table">
+              <thead>
+                <tr><th>指标</th><th>corr(3M)</th><th>corr(6M)</th><th>方向</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>工业增加值:当月同比 → 国债 (10Y)</td>
+                  <td><span class="heatmap-cell" style="background:var(--neutral-soft);color:var(--neutral-tone)">-0.18</span></td>
+                  <td><span class="heatmap-cell" style="background:var(--neutral-soft);color:var(--neutral-tone)">-0.11</span></td>
+                  <td><span class="heatmap-cell" style="background:var(--orange-soft);color:var(--orange)">Negative</span></td>
+                </tr>
+                <tr>
+                  <td>M2 同比 → 信用债</td>
+                  <td><span class="heatmap-cell" style="background:var(--neutral-soft);color:var(--neutral-tone)">0.21</span></td>
+                  <td><span class="heatmap-cell" style="background:var(--neutral-soft);color:var(--neutral-tone)">0.15</span></td>
+                  <td><span class="heatmap-cell" style="background:var(--green-soft);color:var(--green)">Positive</span></td>
+                </tr>
+                <tr>
+                  <td>US CPI → 汇率中间价</td>
+                  <td><span class="heatmap-cell" style="background:var(--neutral-soft);color:var(--neutral-tone)">-0.19</span></td>
+                  <td><span class="heatmap-cell" style="background:var(--neutral-soft);color:var(--neutral-tone)">-0.11</span></td>
+                  <td><span class="heatmap-cell" style="background:var(--red-soft);color:var(--red)">Negative</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">驱动拆解（buildDriverColumns · environment_score）</div>
+            </div>
+          <div class="module-entry-grid">
+            <div class="module-entry">
+              <div class="module-entry__title">
+                <span class="status-pill" style="background:var(--green-soft);color:var(--green)"><span class="status-dot" style="background:var(--green)"></span>流动性</span>
+                <span class="status-pill" style="background:var(--green-soft);color:var(--green)"><span class="status-dot" style="background:var(--green)"></span>偏多</span>
+              </div>
+              <div style="color:var(--subtext);font-size:14px;margin-top:8px">强度：强</div>
+              <ul class="summary-bullets">
+                <li>DR007 仍处低位</li>
+                <li>NCD 压力暂未显性化</li>
+              </ul>
+            </div>
+            <div class="module-entry">
+              <div class="module-entry__title">
+                <span class="status-pill" style="background:var(--red-soft);color:var(--red)"><span class="status-dot" style="background:var(--red)"></span>海外约束</span>
+                <span class="status-pill" style="background:var(--red-soft);color:var(--red)"><span class="status-dot" style="background:var(--red)"></span>偏空</span>
+              </div>
+              <div style="color:var(--subtext);font-size:14px;margin-top:8px">强度：中</div>
+              <ul class="summary-bullets">
+                <li>10Y 美债上行</li>
+                <li>中美利差仍偏窄</li>
+              </ul>
+            </div>
+            <div class="module-entry">
+              <div class="module-entry__title">
+                <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)"><span class="status-dot" style="background:var(--orange)"></span>增长预期</span>
+                <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)"><span class="status-dot" style="background:var(--orange)"></span>中性偏空债</span>
+              </div>
+              <div style="color:var(--subtext);font-size:14px;margin-top:8px">强度：中</div>
+              <ul class="summary-bullets">
+                <li>A股与黑色回暖</li>
+                <li>长端下行阻力增加</li>
+              </ul>
+            </div>
+            <div class="module-entry">
+              <div class="module-entry__title">
+                <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)"><span class="status-dot" style="background:var(--orange)"></span>通胀扰动</span>
+                <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)"><span class="status-dot" style="background:var(--orange)"></span>弱偏空</span>
+              </div>
+              <div style="color:var(--subtext);font-size:14px;margin-top:8px">强度：弱</div>
+              <ul class="summary-bullets">
+                <li>原油连续抬升</li>
+                <li>仍停留预期层面</li>
+              </ul>
+            </div>
+            <div class="module-entry">
+              <div class="module-entry__title">
+                <span class="status-pill" style="background:var(--blue-soft);color:var(--blue)"><span class="status-dot" style="background:var(--blue)"></span>风险偏好</span>
+                <span class="status-pill" style="background:var(--blue-soft);color:var(--blue)"><span class="status-dot" style="background:var(--blue)"></span>边际回暖</span>
+              </div>
+              <div style="color:var(--subtext);font-size:14px;margin-top:8px">强度：中</div>
+              <ul class="summary-bullets">
+                <li>权益偏强</li>
+                <li>信用继续压缩空间有限</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-grid content-grid--split">
+          <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">跨资产走势（近20日，统一基准 = 100）</div>
+            </div>
+            <div class="chart-box">
+              <div class="line-chart-wrap" id="lineChart"></div>
+              <p class="chart-note">与 <code>buildCrossAssetTrendOption(latestSeries)</code> 一致：近 20 交易日、首日=100 归一化；下列图例为展示用，真实序列集合以 API 返回为准。</p>
+              <div class="chart-legend">
+                <div class="chart-legend__item"><span class="chart-legend__swatch" style="background:var(--blue)"></span>10Y国债 E1000180</div>
+                <div class="chart-legend__item"><span class="chart-legend__swatch" style="background:var(--red)"></span>10Y美债 E1003238</div>
+                <div class="chart-legend__item"><span class="chart-legend__swatch" style="background:var(--green)"></span>沪深300 EMM01843735</div>
+                <div class="chart-legend__item"><span class="chart-legend__swatch" style="background:var(--orange)"></span>布油 CA.BRENT</div>
+                <div class="chart-legend__item"><span class="chart-legend__swatch" style="background:var(--teal)"></span>DR007 CA.DR007</div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">市场候选动作</div>
+            </div>
+            <div class="list-stack">
+              <div class="task-item">
+                <div class="task-item__header">
+                  <strong>关注 5Y 国债</strong>
+                  <span class="status-pill" style="background:var(--red-soft);color:var(--red)">高</span>
+                </div>
+                <div class="list-detail">触发：资金继续偏松；逻辑：中段赔率优于长端。</div>
+              </div>
+              <div class="task-item">
+                <div class="task-item__header">
+                  <strong>观察 1Y AAA 存单</strong>
+                  <span class="status-pill" style="background:var(--red-soft);color:var(--red)">高</span>
+                </div>
+                <div class="list-detail">触发：存单利差维持高位；逻辑：短端配置价值回升。</div>
+              </div>
+              <div class="task-item">
+                <div class="task-item__header">
+                  <strong>暂不追 10Y 长端</strong>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">触发：美债上行 + 油价扰动；逻辑：长端估值已偏贵。</div>
+              </div>
+              <div class="task-item">
+                <div class="task-item__header">
+                  <strong>信用仅做票息</strong>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">触发：AAA 3Y 仍处低分位；逻辑：继续压缩空间有限。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-grid content-grid--split content-grid--pair">
+          <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">事件与供给日历</div>
+            </div>
+            <div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>03-05</strong> 国债招标</span>
+                  <span class="status-pill" style="background:var(--red-soft);color:var(--red)">高</span>
+                </div>
+                <div class="list-detail">可能压制长端 · 供给日历</div>
+              </div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>03-08</strong> 同业存单集中到期</span>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">短端关注 · 资金日历</div>
+              </div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>03-10</strong> 美国非农</span>
+                  <span class="status-pill" style="background:var(--red-soft);color:var(--red)">高</span>
+                </div>
+                <div class="list-detail">影响美债 · 海外日历</div>
+              </div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>03-12</strong> CPI 数据</span>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">关注通胀 · 通胀日历</div>
+              </div>
+            </div>
+          </div>
+          <div class="section-card">
+            <div class="section-card__header">
+              <div class="section-card__title">观察名单</div>
+            </div>
+            <div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>5Y国开</strong> 利差分位 74%</span>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">等待供给落地 · 观察名单</div>
+              </div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>1Y AAA存单</strong> 分位 81%</span>
+                  <span class="status-pill" style="background:var(--red-soft);color:var(--red)">高</span>
+                </div>
+                <div class="list-detail">接近配置窗口 · 观察名单</div>
+              </div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>AA+ 3Y 城投</strong> 分位 14%</span>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">不宜追压缩 · 观察名单</div>
+              </div>
+              <div class="calendar-item">
+                <div class="task-item__header">
+                  <span><strong>10Y 国债</strong> 分位 18%</span>
+                  <span class="status-pill" style="background:var(--orange-soft);color:var(--orange)">中</span>
+                </div>
+                <div class="list-detail">等待回调 · 观察名单</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      const tones = {
+        blue: { line: '#1d4ed8' },
+        red: { line: '#b91c1c' },
+        orange: { line: '#c2410c' },
+        teal: { line: '#0f766e' },
+        green: { line: '#15803d' },
+        purple: { line: '#6d28d9' }
+      };
+      const metrics = [
+        { label: '10Y国债', value: '1.94%', note: '利率锚 · E1000180', tone: 'blue', sparkline: [1.98, 1.97, 1.96, 1.95, 1.94, 1.95, 1.94, 1.94] },
+        { label: '10Y美债', value: '4.10%', note: '外部约束 · E1003238', tone: 'red', sparkline: [3.98, 4.0, 4.02, 4.04, 4.06, 4.08, 4.05, 4.1] },
+        { label: '中美10Y利差', value: '-210bp', note: '利差 · EM1（或合成）', tone: 'orange', sparkline: [-180, -190, -195, -200, -205, -210, -212, -210] },
+        { label: '银拆(7D)', value: '1.82%', note: '流动性 · CA.DR007', tone: 'teal', sparkline: [1.9, 1.86, 1.84, 1.82, 1.81, 1.83, 1.82, 1.82] },
+        { label: '金融条件指数', value: '3924.5', note: '风险情绪 · EMM01843735', tone: 'green', sparkline: [3780, 3810, 3840, 3860, 3880, 3900, 3910, 3924.5] },
+        { label: '沪深300市盈率', value: '12.4', note: '估值 · CA.CSI300_PE', tone: 'blue', sparkline: [12.9, 12.7, 12.6, 12.5, 12.5, 12.4, 12.4, 12.4] },
+        { label: '沪深300前十大权重', value: '42.3%', note: '大市值 · CA.MEGA_CAP_WEIGHT', tone: 'orange', sparkline: [41.2, 41.5, 41.8, 42, 42.1, 42.2, 42.3, 42.3] },
+        { label: '沪深300前五大权重', value: '28.6%', note: '大市值 · CA.MEGA_CAP_TOP5_WEIGHT', tone: 'orange', sparkline: [27.5, 27.8, 28, 28.2, 28.4, 28.5, 28.6, 28.6] }
+      ];
+      const w = 68, h = 32;
+      function sparkSvg(values, tone) {
+        const min = Math.min.apply(null, values);
+        const max = Math.max.apply(null, values);
+        const range = max - min || 1;
+        const pts = values.map(function (v, i) {
+          const x = (i / (values.length - 1)) * w;
+          const y = h - ((v - min) / range) * h;
+          return x + ',' + y;
+        });
+        const last = pts[pts.length - 1].split(',').map(Number);
+        const col = tones[tone].line;
+        return (
+          '<svg class="metric-card__spark" viewBox="0 0 ' + w + ' ' + h + '" fill="none" aria-hidden="true">' +
+          '<polyline points="' + pts.join(' ') + '" stroke="' + col + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />' +
+          '<circle cx="' + last[0] + '" cy="' + last[1] + '" r="2.8" fill="' + col + '" />' +
+          '</svg>'
+        );
+      }
+      var grid = document.getElementById('metricGrid');
+      metrics.forEach(function (m) {
+        var el = document.createElement('article');
+        el.className = 'metric-card';
+        el.innerHTML =
+          '<div class="metric-card__label">' + m.label + '</div>' +
+          '<div class="metric-card__row">' +
+          '<div class="metric-card__value">' + m.value + '</div>' +
+          sparkSvg(m.sparkline, m.tone) +
+          '</div>' +
+          '<div class="metric-card__note">' + m.note + '</div>';
+        grid.appendChild(el);
+      });
+
+      const chart = {
+        labels: ['D1', 'D4', 'D7', 'D10', 'D13', 'D16', 'D20'],
+        series: [
+          { name: '10Y国债', values: [100.0, 100.6, 100.2, 99.8, 99.5, 100.1, 100.8], tone: 'blue' },
+          { name: '10Y美债', values: [100.0, 100.5, 101.0, 101.6, 102.0, 102.5, 103.0], tone: 'red' },
+          { name: '沪深300', values: [100.0, 99.6, 100.0, 100.8, 101.2, 101.8, 102.5], tone: 'green' },
+          { name: '布油', values: [100.0, 100.7, 101.2, 101.9, 102.6, 103.4, 104.5], tone: 'orange' },
+          { name: 'DR007', values: [100.0, 99.8, 99.6, 99.5, 99.8, 99.9, 100.0], tone: 'teal' }
+        ],
+        min: 99,
+        max: 105
+      };
+      const cw = 600, ch = 200, pad = 24;
+      const innerW = cw - pad * 2, innerH = ch - pad * 2;
+      function yScale(v) {
+        return pad + innerH - ((v - chart.min) / (chart.max - chart.min)) * innerH;
+      }
+      function xScale(i) {
+        return pad + (i / (chart.labels.length - 1)) * innerW;
+      }
+      var paths = chart.series
+        .map(function (s) {
+          var d = s.values
+            .map(function (v, i) {
+              return (i ? 'L' : 'M') + xScale(i) + ' ' + yScale(v);
+            })
+            .join(' ');
+          return '<path d="' + d + '" fill="none" stroke="' + tones[s.tone].line + '" stroke-width="2.2" stroke-linejoin="round" />';
+        })
+        .join('');
+      var xLabs = chart.labels
+        .map(function (lab, i) {
+          return '<text x="' + xScale(i) + '" y="' + (ch - 4) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" fill="#8a8279">' + lab + '</text>';
+        })
+        .join('');
+      document.getElementById('lineChart').innerHTML =
+        '<svg class="line-chart-wrap" viewBox="0 0 ' + cw + ' ' + ch + '" width="100%" height="220" style="min-height:220px">' +
+        '<line x1="' + pad + '" y1="' + yScale(100) + '" x2="' + (cw - pad) + '" y2="' + yScale(100) + '" stroke="#e5e0d8" stroke-dasharray="4 4" />' +
+        paths + xLabs + '</svg>';
+    })();
+  </script>
+</body>
+</html>

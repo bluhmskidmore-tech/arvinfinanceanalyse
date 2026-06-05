@@ -6,10 +6,10 @@ import type { BondAnalyticsTruthStrip } from "../features/bond-analytics/lib/bon
 
 function createTruthStrip(): BondAnalyticsTruthStrip {
   return {
-    title: "Truth and provenance",
+    title: "真值与证据",
     items: [
-      { key: "basis", label: "Basis", value: "Formal", tone: "success" },
-      { key: "freshness", label: "Freshness", value: "2026-04-10 12:00", tone: "neutral" },
+      { key: "basis", label: "口径", value: "正式口径", tone: "success" },
+      { key: "freshness", label: "新鲜度", value: "2026-04-10 12:00", tone: "neutral" },
     ],
   };
 }
@@ -23,28 +23,28 @@ describe("BondAnalyticsMarketContextStrip", () => {
         reportDate="2026-03-31"
         periodType="MoM"
         leadModuleLabel="动作归因"
-        leadPromotionLabel="Headline eligible"
+        leadPromotionLabel="可进入头条"
         truthStrip={truthStrip}
       />,
     );
 
     expect(screen.getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
-    expect(screen.getByText("Bond analytics cockpit")).toBeInTheDocument();
+    expect(screen.getByText("债券分析驾驶舱")).toBeInTheDocument();
     expect(screen.getByText("债券分析")).toBeInTheDocument();
-    expect(screen.getByText("Governed homepage")).toBeInTheDocument();
+    expect(screen.getByText("受治理首页")).toBeInTheDocument();
 
-    expect(screen.getByText("Report date")).toBeInTheDocument();
+    expect(screen.getByText("报告日")).toBeInTheDocument();
     expect(screen.getByText("2026-03-31")).toBeInTheDocument();
-    expect(screen.getByText("Period")).toBeInTheDocument();
+    expect(screen.getByText("期间")).toBeInTheDocument();
     expect(screen.getByText("月度环比")).toBeInTheDocument();
-    expect(screen.getByText("Drill lead")).toBeInTheDocument();
+    expect(screen.getByText("下钻主线")).toBeInTheDocument();
     expect(screen.getByText("动作归因")).toBeInTheDocument();
-    expect(screen.getByText("Headline eligible")).toBeInTheDocument();
+    expect(screen.getByText("可进入头条")).toBeInTheDocument();
 
     const strip = screen.getByTestId("bond-analysis-truth-strip");
-    expect(within(strip).getByText("Basis")).toBeInTheDocument();
-    expect(within(strip).getByText("Formal")).toBeInTheDocument();
-    expect(within(strip).getByText("Freshness")).toBeInTheDocument();
+    expect(within(strip).getByText("口径")).toBeInTheDocument();
+    expect(within(strip).getByText("正式口径")).toBeInTheDocument();
+    expect(within(strip).getByText("新鲜度")).toBeInTheDocument();
     expect(within(strip).getByText("2026-04-10 12:00")).toBeInTheDocument();
   });
 });

@@ -1,9 +1,19 @@
+import logging
 
 import duckdb
+from fastapi import FastAPI
 from backend.app.governance.settings import get_settings
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
 
 
 def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_path, monkeypatch):
@@ -23,6 +33,25 @@ def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_p
     assert payload["result_meta"]["fallback_mode"] == "none"
     assert payload["result"]["read_target"] == "duckdb"
     assert payload["result"]["series"] == []
+    get_settings.cache_clear()
+
+
+def test_market_data_rates_logs_api_perf(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "empty-rates-perf.duckdb"))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get("/ui/market-data/rates")
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/market-data/rates")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind")
     get_settings.cache_clear()
 
 
@@ -186,6 +215,414 @@ def test_choice_macro_latest_supports_legacy_catalog_schema(
     assert "vendor_series_code" not in payload["result"]["series"][0]
     assert "batch_id" not in payload["result"]["series"][0]
     assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_b"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_reads_persisted_market_data_categories(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-persisted-categories.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table market_data_series_category (
+              series_id varchar,
+              category_key varchar,
+              category_label varchar,
+              source_surface varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              policy_note varchar,
+              catalog_version varchar,
+              batch_id varchar,
+              updated_at varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                '2026-04-09',
+                1.82,
+                'daily',
+                'pct',
+                'sv_choice_macro_20260409',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                'choice',
+                'vv_choice_batch_b',
+                'daily',
+                'pct'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into market_data_series_category values
+              (
+                'cn_repo_7d',
+                'fallback',
+                'Fallback latest-only series',
+                'choice_macro',
+                'latest',
+                'single',
+                'persisted category read path',
+                '2026-04-11.choice-macro.v2',
+                'fallback_latest_single',
+                '2026-04-09T14:00:00Z',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.choice_series_latest()
+    row = payload["result"]["series"][0]
+    assert row["series_id"] == "cn_repo_7d"
+    assert row["refresh_tier"] == "fallback"
+    assert row["fetch_mode"] == "latest"
+    assert row["fetch_granularity"] == "single"
+    assert row["policy_note"] == "persisted category read path"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_exposes_vendor_name_without_vendor_code(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-latest-vendor-name.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              vendor_series_code varchar,
+              batch_id varchar,
+              catalog_version varchar,
+              theme varchar,
+              is_core boolean,
+              tags_json varchar,
+              request_options varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'CA.MEGA_CAP_WEIGHT',
+                '沪深300前十大权重合计',
+                '2026-04-10',
+                23.5367,
+                'daily',
+                '%',
+                'sv_tushare_index_weight',
+                'vv_tushare_index_weight',
+                'rv_public_cross_asset_headline_v1',
+                'ok',
+                'public_cross_asset_refresh:2026-04-10'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'CA.MEGA_CAP_WEIGHT',
+                '沪深300前十大权重合计',
+                'tushare',
+                'vv_tushare_index_weight',
+                'daily',
+                '%',
+                'index_weight:000300.SH.top10_weight',
+                'public_cross_asset_headline',
+                '2026-04-21.public-cross-asset-headline.v1',
+                'macro_market',
+                true,
+                '["tushare","market","equity","mega_cap","cross_asset"]',
+                'lookback_days=60',
+                'date_slice',
+                'batch',
+                'stable',
+                'Tushare index_weight top10 concentration supplement for mega-cap equity leadership'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.choice_series_latest()
+
+    point = payload["result"]["series"][0]
+    assert point["series_id"] == "CA.MEGA_CAP_WEIGHT"
+    assert point["vendor_name"] == "tushare"
+    assert "vendor_series_code" not in point
+    assert "batch_id" not in point
+    get_settings.cache_clear()
+
+
+def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    calls: list[tuple[str, int | None]] = []
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            calls.append(("choice", backfill_days))
+            return {
+                "status": "completed",
+                "run_id": "choice_macro_refresh:test",
+                "series_count": 2,
+                "vendor_version": "vv_choice",
+                "source_version": "sv_choice",
+                "cache_key": "macro.choice.latest",
+            }
+
+    def _public_refresh() -> dict[str, object]:
+        calls.append(("public_cross_asset", None))
+        return {
+            "status": "completed",
+            "run_id": "public_cross_asset_refresh:test",
+            "series_count": 3,
+            "row_count": 20,
+            "warnings": ["tushare index_weight used latest available date"],
+        }
+
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+    monkeypatch.setattr(route_module, "ensure_user_allowed", lambda **_kwargs: None)
+
+    payload = route_module.choice_series_refresh(auth=route_module.AuthContext(), backfill_days=7)
+
+    assert calls == [("choice", 7), ("public_cross_asset", None)]
+    assert payload["status"] == "completed"
+    assert payload["run_id"] == "choice_macro_refresh:test"
+    assert payload["choice_macro"]["series_count"] == 2
+    assert payload["public_cross_asset"]["series_count"] == 3
+    assert payload["public_cross_asset"]["row_count"] == 20
+    assert payload["warnings"] == ["tushare index_weight used latest available date"]
+
+
+def test_choice_macro_refresh_keeps_auth_dependency_contract():
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+
+    route = next(
+        item
+        for item in app.routes
+        if getattr(item, "path", "") == "/ui/macro/choice-series/refresh"
+    )
+
+    assert [dependency.name for dependency in route.dependant.dependencies] == ["auth"]
+    assert "auth" not in [param.name for param in route.dependant.body_params]
+    assert "backfill_days" in [param.name for param in route.dependant.query_params]
+
+
+def test_choice_macro_latest_filters_persisted_market_data_categories(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-category-filter.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table market_data_series_category (
+              series_id varchar,
+              category_key varchar,
+              category_label varchar,
+              source_surface varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              policy_note varchar,
+              catalog_version varchar,
+              batch_id varchar,
+              updated_at varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('M_STABLE', 'Stable Series', '2026-04-09', 1.0, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run'),
+              ('M_FALLBACK', 'Fallback Series', '2026-04-09', 2.0, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run'),
+              ('M_ISOLATED', 'Isolated Series', '2026-04-09', 3.0, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run')
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              ('M_STABLE', 'Stable Series', 'choice', 'vv', 'daily', 'pct'),
+              ('M_FALLBACK', 'Fallback Series', 'choice', 'vv', 'daily', 'pct'),
+              ('M_ISOLATED', 'Isolated Series', 'choice', 'vv', 'daily', 'pct')
+            """
+        )
+        conn.execute(
+            """
+            insert into market_data_series_category values
+              ('M_STABLE', 'stable', 'Stable governed series', 'choice_macro', 'date_slice', 'batch', 'stable category', 'catalog-v1', 'stable_batch', '2026-04-09T14:00:00Z', 'run'),
+              ('M_FALLBACK', 'fallback', 'Fallback latest-only series', 'choice_macro', 'latest', 'single', 'fallback category', 'catalog-v1', 'fallback_single', '2026-04-09T14:00:00Z', 'run'),
+              ('M_ISOLATED', 'isolated', 'Isolated vendor-pending series', 'choice_macro', 'latest', 'single', 'isolated category', 'catalog-v1', 'isolated_single', '2026-04-09T14:00:00Z', 'run')
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    default_response = client.get("/ui/macro/choice-series/latest")
+    fallback_response = client.get("/ui/macro/choice-series/latest", params={"category": "fallback"})
+    isolated_response = client.get("/ui/macro/choice-series/latest", params={"category": "isolated"})
+    stable_response = client.get("/ui/macro/choice-series/latest", params={"category": "stable"})
+    invalid_response = client.get("/ui/macro/choice-series/latest", params={"category": "duration"})
+
+    assert default_response.status_code == 200
+    assert fallback_response.status_code == 200
+    assert isolated_response.status_code == 200
+    assert stable_response.status_code == 200
+    assert invalid_response.status_code == 422
+
+    default_payload = default_response.json()
+    fallback_payload = fallback_response.json()
+    isolated_payload = isolated_response.json()
+    stable_payload = stable_response.json()
+
+    assert [item["series_id"] for item in default_payload["result"]["series"]] == [
+        "M_FALLBACK",
+        "M_STABLE",
+    ]
+    assert [item["series_id"] for item in fallback_payload["result"]["series"]] == ["M_FALLBACK"]
+    assert [item["series_id"] for item in isolated_payload["result"]["series"]] == ["M_ISOLATED"]
+    assert [item["series_id"] for item in stable_payload["result"]["series"]] == ["M_STABLE"]
+    assert fallback_payload["result"]["series"][0]["policy_note"] == "fallback category"
     get_settings.cache_clear()
 
 

@@ -13,10 +13,14 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
-from backend.app.governance.settings import get_settings
+from backend.app.governance.settings import Settings, get_settings
+from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
-from backend.app.services.product_category_pnl_service import AVAILABLE_VIEWS
-from backend.app.services.product_category_pnl_service import _product_category_completeness_check
+from backend.app.services.product_category_pnl_service import (
+    AVAILABLE_VIEWS,
+    _product_category_completeness_check,
+    _resolve_product_category_refresh_source_dir,
+)
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -85,12 +89,111 @@ def test_product_category_completeness_check_flags_inconsistent_totals() -> None
     assert check["diff"] == -1.0
 
 
+def test_product_category_detail_rejects_invalid_view(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "weekly"},
+    )
+
+    assert response.status_code == 422
+    assert "Unsupported product-category view='weekly'" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_detail_returns_404_when_read_model_is_missing(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    )
+
+    assert response.status_code == 404
+    assert "No product-category read model rows" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_dates_returns_503_when_read_model_is_locked(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+    dates_envelope = route_module.product_category_dates_envelope
+    storage_error = dates_envelope.__globals__["ProductCategoryPnlStorageError"]
+
+    class LockedProductCategoryPnlRepository:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def list_report_dates(self):
+            raise storage_error("locked")
+
+    monkeypatch.setitem(
+        dates_envelope.__globals__,
+        "ProductCategoryPnlRepository",
+        LockedProductCategoryPnlRepository,
+    )
+
+    response = client.get("/ui/pnl/product-category/dates")
+
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_detail_returns_503_when_read_model_is_locked(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+    pnl_envelope = route_module.product_category_pnl_envelope
+    storage_error = pnl_envelope.__globals__["ProductCategoryPnlStorageError"]
+
+    class LockedAnalysisService:
+        def execute(self, _query):
+            raise storage_error("locked")
+
+    monkeypatch.setitem(
+        pnl_envelope.__globals__,
+        "build_analysis_service",
+        lambda _duckdb_path: LockedAnalysisService(),
+    )
+
+    response = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    )
+
+    assert response.status_code == 503
+    assert "temporarily unavailable" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_detail_does_not_mask_unexpected_value_errors(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+
+    def raise_unexpected_value_error(*_args, **_kwargs):
+        raise ValueError("unexpected product-category failure")
+
+    monkeypatch.setattr(
+        route_module,
+        "product_category_pnl_envelope",
+        raise_unexpected_value_error,
+    )
+
+    with pytest.raises(ValueError, match="unexpected product-category failure"):
+        client.get(
+            "/ui/pnl/product-category",
+            params={"report_date": "2026-02-28", "view": "monthly"},
+        )
+    get_settings.cache_clear()
+
+
 def _load_product_category_pnl_service_module():
     """Return the module object used by API code (patch attributes here, not via string paths)."""
     return importlib.import_module("backend.app.services.product_category_pnl_service")
 
 
-def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
+def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     source_dir.mkdir(parents=True)
@@ -141,10 +244,22 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
         scenario_n = conn.execute(
             "select count(*) from product_category_pnl_scenario_read_model"
         ).fetchone()[0]
+        baseline_rates = conn.execute(
+            """
+            select report_date, cast(baseline_ftp_rate_pct as varchar)
+            from product_category_pnl_formal_read_model
+            where category_id = 'asset_total' and view = 'monthly'
+            order by report_date
+            """
+        ).fetchall()
     finally:
         conn.close()
     assert formal_n > 0
     assert scenario_n == 0
+    assert baseline_rates == [
+        ("2026-01-31", "1.600000"),
+        ("2026-02-28", "1.600000"),
+    ]
 
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
@@ -238,6 +353,24 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
         row for row in feb_monthly_payload["result"]["rows"] if row["category_id"] == "bond_tpl"
     )
     assert Decimal(str(feb_bond["cnx_cash"])) > 0
+    feb_asset_total = feb_monthly_payload["result"]["asset_total"]
+    feb_liability_total = feb_monthly_payload["result"]["liability_total"]
+    feb_grand_total = feb_monthly_payload["result"]["grand_total"]
+    assert Decimal(str(feb_asset_total["baseline_ftp_rate_pct"])) == Decimal("1.60")
+    assert abs(
+        Decimal(str(feb_grand_total["cny_net"]))
+        - (
+            Decimal(str(feb_asset_total["cny_net"]))
+            + Decimal(str(feb_liability_total["cny_net"]))
+        )
+    ) <= Decimal("0.00000001")
+    assert abs(
+        Decimal(str(feb_grand_total["foreign_net"]))
+        - (
+            Decimal(str(feb_asset_total["foreign_net"]))
+            + Decimal(str(feb_liability_total["foreign_net"]))
+        )
+    ) <= Decimal("0.00000001")
 
     scenario_response = client.get(
         "/ui/pnl/product-category",
@@ -364,8 +497,85 @@ def test_product_category_pnl_all_views_determinism_and_meta_contract(tmp_path, 
     get_settings.cache_clear()
 
 
-def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path, monkeypatch):
-    """当前实现中 ytd 与 year_to_report_month_end 共用当月事实与相同 FTP 天数口径（非「真 YTD 多月合并」）；结果负载应一致。"""
+def test_product_category_ytd_accumulates_monthly_pnl_from_year_start_without_balance_double_count(
+    tmp_path,
+    monkeypatch,
+):
+    """YTD sums Jan..report-month PnL flows without summing prior month ending balances."""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
+        {
+            "report_date": "2026-01-31",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "account_code": "51402010001",
+            "currency": "CNX",
+            "account_name": "Prior month adjustment must not be double counted into selected report month YTD",
+            "ending_balance": "-10",
+        },
+    )
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    jan_monthly = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-01-31", "view": "monthly"},
+    ).json()
+    feb_monthly = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    ).json()
+    ytd = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "ytd"},
+    ).json()
+
+    jan_bond = next(row for row in jan_monthly["result"]["rows"] if row["category_id"] == "bond_tpl")
+    feb_bond = next(row for row in feb_monthly["result"]["rows"] if row["category_id"] == "bond_tpl")
+    ytd_bond = next(row for row in ytd["result"]["rows"] if row["category_id"] == "bond_tpl")
+    jan_grand_total = jan_monthly["result"]["grand_total"]
+    feb_grand_total = feb_monthly["result"]["grand_total"]
+    ytd_grand_total = ytd["result"]["grand_total"]
+
+    expected_bond_cash = Decimal(str(jan_bond["cnx_cash"])) + Decimal(str(feb_bond["cnx_cash"]))
+    assert Decimal(str(ytd_bond["cnx_cash"])) == expected_bond_cash
+    assert Decimal(str(ytd_bond["cnx_cash"])) != Decimal(str(feb_bond["cnx_cash"]))
+
+    for field in ("business_net_income", "cny_net", "foreign_net"):
+        expected_total = Decimal(str(jan_grand_total[field])) + Decimal(str(feb_grand_total[field]))
+        assert abs(Decimal(str(ytd_grand_total[field])) - expected_total) <= Decimal("0.00000001")
+    assert ytd["result_meta"]["quality_flag"] == "ok"
+    get_settings.cache_clear()
+
+
+def test_product_category_partial_ytd_returns_warning_and_matches_year_to_report_month_end(
+    tmp_path,
+    monkeypatch,
+):
+    """Missing year months are allowed as partial YTD, but the governed response must be visibly warning."""
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     source_dir.mkdir(parents=True)
@@ -401,7 +611,7 @@ def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path,
     ).json()
 
     def _normalize_view_labels(payload: dict) -> dict:
-        """ytd 与 year_to_report_month_end 仅行内 view 标签不同，数值与结构应对齐。"""
+        """ytd and year_to_report_month_end differ only by view labels under current governed rules."""
         p = copy.deepcopy(payload)
         sentinel = "normalized_view"
         p["view"] = sentinel
@@ -413,6 +623,8 @@ def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path,
         return p
 
     assert _normalize_view_labels(ytd["result"]) == _normalize_view_labels(ytre["result"])
+    assert ytd["result_meta"]["quality_flag"] == "warning"
+    assert ytre["result_meta"]["quality_flag"] == "warning"
     assert ytd["result_meta"]["source_version"] == ytre["result_meta"]["source_version"]
     assert ytd["result_meta"]["rule_version"] == ytre["result_meta"]["rule_version"]
     assert ytd["result_meta"]["cache_version"] == ytre["result_meta"]["cache_version"]
@@ -505,7 +717,7 @@ def test_monthly_and_qtd_views_produce_distinct_formal_results_when_multimonth_q
     get_settings.cache_clear()
 
 
-def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
+def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -577,9 +789,105 @@ def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_product_category_refresh_resolves_repo_source_dir_in_development(tmp_path):
+    runtime_root = tmp_path / "runtime"
+    configured_dir = runtime_root / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    configured_dir.mkdir(parents=True)
+
+    repo_root = tmp_path / "repo"
+    repo_source_dir = repo_root / "data_input" / configured_dir.name
+    repo_source_dir.mkdir(parents=True)
+    _write_month_pair(repo_source_dir, "202602", january=False)
+
+    settings = Settings(
+        duckdb_path=str(runtime_root / "moss.duckdb"),
+        governance_path=runtime_root / "governance",
+        product_category_source_dir=configured_dir,
+        environment="development",
+    )
+
+    assert _resolve_product_category_refresh_source_dir(
+        settings,
+        repo_root=repo_root,
+    ) == repo_source_dir.resolve()
+
+
+def test_product_category_refresh_does_not_resolve_repo_source_dir_in_production(tmp_path):
+    runtime_root = tmp_path / "runtime"
+    configured_dir = runtime_root / "data_input" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    configured_dir.mkdir(parents=True)
+
+    repo_root = tmp_path / "repo"
+    repo_source_dir = repo_root / "data_input" / configured_dir.name
+    repo_source_dir.mkdir(parents=True)
+    _write_month_pair(repo_source_dir, "202602", january=False)
+
+    settings = Settings(
+        duckdb_path=str(runtime_root / "moss.duckdb"),
+        governance_path=runtime_root / "governance",
+        product_category_source_dir=configured_dir,
+        environment="production",
+    )
+
+    assert _resolve_product_category_refresh_source_dir(
+        settings,
+        repo_root=repo_root,
+    ) == configured_dir
+
+
+def test_product_category_refresh_empty_source_keeps_existing_read_model(tmp_path, monkeypatch):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    empty_source_dir = tmp_path / "empty" / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    empty_source_dir.mkdir(parents=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+        run_id="pcat-seed",
+    )
+
+    repo = ProductCategoryPnlRepository(str(duckdb_path))
+    assert repo.list_report_dates() == ["2026-02-28"]
+
+    with pytest.raises(ValueError, match="No product-category source pairs found"):
+        task_module.materialize_product_category_pnl.fn(
+            duckdb_path=str(duckdb_path),
+            source_dir=str(empty_source_dir),
+            governance_dir=str(governance_dir),
+            run_id="pcat-empty-source",
+        )
+
+    assert repo.list_report_dates() == ["2026-02-28"]
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("run_id") == "pcat-empty-source"
+    ]
+    assert records[-1]["status"] == "failed"
+    assert "existing read model was left untouched" in records[-1]["error_message"]
+    get_settings.cache_clear()
+
+
 def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timestamps(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -635,6 +943,7 @@ def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timest
 def test_product_category_refresh_returns_409_when_refresh_is_already_in_progress(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
@@ -688,6 +997,7 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
 def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fails(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -724,6 +1034,7 @@ def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fai
 def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -769,6 +1080,7 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
 def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
@@ -825,6 +1137,7 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
 def test_product_category_refresh_reconciles_stale_queued_run_and_requeues(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
@@ -925,6 +1238,7 @@ def test_product_category_refresh_status_completed_has_terminal_trigger_and_stab
 def test_sync_fallback_governance_latest_record_matches_refresh_run(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -1015,6 +1329,7 @@ def test_materialize_failure_appends_error_message_to_governance(
 def test_manual_adjustment_not_in_formal_read_model_until_rematerialize(
     tmp_path,
     monkeypatch,
+    seed_wildcard_scope,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
@@ -1126,7 +1441,7 @@ def test_product_category_refresh_status_returns_503_when_status_backend_fails(
     get_settings.cache_clear()
 
 
-def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monkeypatch):
+def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -1310,7 +1625,56 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_manual_adjustment_list_supports_exact_id_and_current_state_paging(tmp_path, monkeypatch):
+def test_manual_adjustment_create_contract_returns_422_for_backend_validation_errors(
+    tmp_path, monkeypatch
+):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    valid_payload = {
+        "report_date": "2026-02-28",
+        "operator": "DELTA",
+        "approval_status": "approved",
+        "account_code": "51402010001",
+        "currency": "CNX",
+        "account_name": "Test account",
+    }
+
+    missing_amounts = client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json=valid_payload,
+    )
+    assert missing_amounts.status_code == 422
+    assert any(
+        item["loc"] == ["body"]
+        and item["type"] == "value_error"
+        and "At least one adjustment value is required." in item["msg"]
+        for item in missing_amounts.json()["detail"]
+    )
+
+    blank_account = client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json={**valid_payload, "account_code": "", "monthly_pnl": "1"},
+    )
+    assert blank_account.status_code == 422
+    assert any(
+        item["loc"] == ["body", "account_code"]
+        and item["type"] == "string_too_short"
+        for item in blank_account.json()["detail"]
+    )
+
+    invalid_currency = client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json={**valid_payload, "currency": "USD", "monthly_pnl": "1"},
+    )
+    assert invalid_currency.status_code == 422
+    assert any(
+        item["loc"] == ["body", "currency"]
+        and item["type"] == "literal_error"
+        for item in invalid_currency.json()["detail"]
+    )
+    get_settings.cache_clear()
+
+
+def test_manual_adjustment_list_supports_exact_id_and_current_state_paging(tmp_path, monkeypatch, seed_wildcard_scope):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -1727,6 +2091,7 @@ def test_manual_adjustment_export_locks_csv_order_under_sort_and_range(tmp_path,
         report_date="2026-02-28",
         approval_status="pending",
         account_code="100",
+        account_name='Account "B"',
     )
     _append_adjustment_event(
         repo,
@@ -1759,6 +2124,7 @@ def test_manual_adjustment_export_locks_csv_order_under_sort_and_range(tmp_path,
         "adj-c",
     ]
     assert [row["account_code"] for row in current_rows] == ["100", "200"]
+    assert current_rows[0]["account_name"] == 'Account "B"'
     assert [row["adjustment_id"] for row in event_rows] == [
         "adj-c",
         "adj-b",
@@ -1792,6 +2158,7 @@ def _append_adjustment_event(
     report_date: str,
     approval_status: str,
     account_code: str,
+    account_name: str | None = None,
 ) -> None:
     repo.append(
         PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
@@ -1804,7 +2171,7 @@ def _append_adjustment_event(
             "approval_status": approval_status,
             "account_code": account_code,
             "currency": "CNX",
-            "account_name": f"Account {account_code}",
+            "account_name": account_name or f"Account {account_code}",
             "monthly_pnl": "1",
         },
     )
@@ -1880,8 +2247,12 @@ def _write_average_workbook(path: Path, report_date: str, *, january: bool) -> N
 
 def _ledger_rows(currency: str, *, january: bool) -> list[list[object]]:
     cny = currency == "CNY"
-    scale = lambda a, b: b if cny else a
-    pnl = lambda a, b: b if cny else a
+
+    def scale(a: object, b: object) -> object:
+        return b if cny else a
+
+    def pnl(a: object, b: object) -> object:
+        return b if cny else a
 
     rows: list[list[object]] = []
 
@@ -1991,3 +2362,65 @@ def _pnl_row(account_code: str, account_name: str, currency: str, monthly_pnl: f
     if monthly_pnl >= 0:
         return [int(account_code), account_name, currency, 0, 0, monthly_pnl, -monthly_pnl]
     return [int(account_code), account_name, currency, 0, abs(monthly_pnl), 0, abs(monthly_pnl)]
+
+
+def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persisted_ytd(
+    tmp_path, monkeypatch,
+) -> None:
+    """Home headline resolver: when formal ytd rows are deleted, recompute from canonical facts."""
+    import sys
+
+    import duckdb
+
+    from backend.app.services import product_category_pnl_service as pcs
+
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    assert task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )["status"] == "completed"
+
+    anchor = "2026-02-28"
+    env = pcs.product_category_pnl_envelope(str(duckdb_path), anchor, "ytd")
+    ref_grand = float(env["result"]["grand_total"]["business_net_income"])
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "delete from product_category_pnl_formal_read_model where view = 'ytd'"
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(pcs.ProductCategoryReadModelNotFoundError):
+        pcs.product_category_pnl_envelope(str(duckdb_path), anchor, "ytd")
+
+    resolved = pcs.resolve_product_category_ytd_payload_for_home_snapshot(
+        str(duckdb_path),
+        str(governance_dir),
+        anchor,
+        float(get_settings().ftp_rate_pct),
+    )
+    assert resolved is not None
+    assert float(resolved.grand_total.business_net_income) == pytest.approx(ref_grand, rel=1e-9, abs=1e-6)
+
+    get_settings.cache_clear()

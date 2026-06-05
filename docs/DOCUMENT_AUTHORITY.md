@@ -9,14 +9,35 @@
 1. `AGENTS.md`
 2. `prd-moss-agent-analytics-os.md`
 3. `docs/MOSS-V2 系统架构说明`
-4. `docs/CODEX_HANDOFF.md`
-5. `docs/IMPLEMENTATION_PLAN.md`
-6. `docs/calc_rules.md`
-7. `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md`（产品类别余额/日均/规模读模型；别名页面 `balance-analysis`以本文与代码为准）
-8. `docs/data_contracts.md`
-9. `docs/CACHE_SPEC.md`
-10. `docs/acceptance_tests.md`
-11. `MOSS 系统：取值逻辑、计算层与规则总览`
+4. `docs/calc_rules.md`
+5. `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md`（产品类别余额/日均/规模读模型；别名页面 `balance-analysis`以本文与代码为准）
+6. `docs/data_contracts.md`
+7. `docs/CACHE_SPEC.md`
+8. `docs/acceptance_tests.md`
+9. `MOSS 系统：取值逻辑、计算层与规则总览`
+
+## Current-State Navigation
+
+For current repo state, use this read path:
+
+1. `AGENTS.md`
+2. `docs/DOCUMENT_AUTHORITY.md`
+3. `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
+
+`docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` is navigation/index only. It cannot grant scope, override boundary docs, or elevate supporting artifacts into repo-level authority.
+
+## Role-Specific Reference Docs
+
+The following docs remain useful, but they are not the repo-level current-state entrypoint:
+
+- `docs/CODEX_HANDOFF.md`
+  - repo background and reference handoff
+- `docs/IMPLEMENTATION_PLAN.md`
+  - phase / implementation reference plan
+- `docs/page_contracts.md`
+  - page-level contracts to read after repo-level current-state lookup is clear
+- `docs/plans/market-workbench-cursor-prompts.md`
+  - 市场工作台（`/market-data` 及相关路由）**Cursor 可执行外围任务**的拆分与验收提示；用于与 `PAGE-MKT-001`（`docs/page_contracts.md` §13.8）对齐执行顺序，**不**改变上文权威顺序，也不将其中措辞升格为指标定义或 formal 口径
 
 ## 冲突处理
 
@@ -24,6 +45,7 @@
 - 如果 `历史逻辑参考` 与 `正式实现边界` 冲突，以 `AGENTS.md`、`PRD`、`V2` 为准。
 - 如果 `前端便利` 与 `正式金融计算唯一入口` 冲突，以 `backend/app/core_finance/` 唯一入口为准。
 - 如果 `计划材料` 与 `当前执行边界` 冲突，以权威文档中的当前边界说明和 dated execution update 为准。
+- 如果 `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` 与 `AGENTS.md` / `docs/DOCUMENT_AUTHORITY.md` / applicable dated execution update 冲突，以后者为准，并把 entrypoint 视为待更新的 navigation doc。
 
 ## Backend Canonical Gate
 
@@ -63,7 +85,9 @@
 - `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`
 - `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md`
 - `docs/CURRENT_EXECUTION_UPDATE_2026-04-12.md`
-- 最新的“当前代码状态 vs 当前阶段边界”摘要见 `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`
+- repo-level current-state navigation 入口见 `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
+- dated execution update 的选择按 active-lane applicability，不按 recency alone
+- 当前“代码状态 vs 阶段边界”摘要源见 `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`
 
 其作用范围用于：
 
@@ -84,15 +108,15 @@ repo-wide `Phase 2` 当前明确不放开的范围包括：
   - `/ui/home/alerts`
   - `/ui/home/contribution`
 - `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
-- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+- `qdb_gl_monthly_analysis` 等仍未晋升的 analytical-only / compatibility 模块
 - 无关工作流的 `next slice`
 - broad frontend rollout
 
 当前这些排除面的运行语义应按以下方式理解：
 
 - excluded executive surfaces：显式 `503 fail-closed`
-- reserved `cube-query` public routes：显式 `503 reserved surface`
-- reserved liability-analytics compatibility public routes：显式 `503 reserved surface`
+- `cube-query` public routes 已开放为受控 query surface；当前只按已覆盖事实表与 `result_meta` 声明查询结果口径，不等同于新增页面级正式指标真值面
+- liability-analytics public routes 已开放为 analytical compatibility surface；必须显式保留 mixed-source / compat 边界，不得误写为 formal balance/PnL truth
 - retained frontend entries：placeholder / compat / hidden，不代表已晋升 live governed page
 
 ## PnL 附录（fixture 对照）

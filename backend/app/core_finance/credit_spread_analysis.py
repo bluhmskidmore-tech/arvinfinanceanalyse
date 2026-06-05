@@ -96,6 +96,9 @@ def compute_bond_spreads(
         benchmark_yield = _resolve_benchmark_yield(full_curve, tenor_bucket)
         ytm_pct = _normalize_ytm_to_pct(row.get("ytm"))
         market_value = safe_decimal(row.get("market_value"))
+        face_value = safe_decimal(row.get("face_value"))
+        if face_value == ZERO:
+            face_value = market_value
         spread_duration = safe_decimal(row.get("modified_duration"))
         credit_spread = (ytm_pct - benchmark_yield) * Decimal("100")
         spread_rows.append(
@@ -108,7 +111,7 @@ def compute_bond_spreads(
                 benchmark_yield=_q8(benchmark_yield),
                 credit_spread=_q8(credit_spread),
                 spread_duration=_q8(spread_duration),
-                spread_dv01=_q8(market_value * spread_duration / Decimal("10000")),
+                spread_dv01=_q8(face_value * spread_duration / Decimal("10000")),
                 market_value=_q8(market_value),
                 weight=_q8(market_value / total_credit_mv),
             )

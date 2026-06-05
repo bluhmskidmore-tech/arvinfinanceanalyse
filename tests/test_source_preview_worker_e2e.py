@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import ROOT, load_module
 from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
@@ -35,6 +36,17 @@ def _write_minimal_fx_official_csv(path: Path) -> None:
         "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward\n"
         "2025-12-31,USD,CNY,7.20000000,TEST_CSV,true,false\n",
         encoding="utf-8-sig",
+    )
+
+
+def _grant_refresh_scope(tmp_path, monkeypatch, *, user_id: str, resource: str) -> None:
+    sqlite_path = tmp_path / f"{user_id}-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource=resource,
+        action="refresh",
     )
 
 
@@ -61,6 +73,14 @@ def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    _grant_refresh_scope(
+        tmp_path,
+        monkeypatch,
+        user_id="source-preview-refresh-user",
+        resource="source_preview.source_foundation",
+    )
     get_settings.cache_clear()
     _reset_source_preview_modules()
 
@@ -72,7 +92,10 @@ def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
         time.sleep(1.5)
 
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
-        refresh_response = client.post("/ui/preview/source-foundation/refresh")
+        refresh_response = client.post(
+            "/ui/preview/source-foundation/refresh",
+            headers={"X-User-Id": "source-preview-refresh-user"},
+        )
 
         assert refresh_response.status_code == 200
         refresh_payload = refresh_response.json()
@@ -139,6 +162,13 @@ def test_product_category_refresh_real_worker_e2e(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
     monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    _grant_refresh_scope(
+        tmp_path,
+        monkeypatch,
+        user_id="product-category-refresh-user",
+        resource="product_category_pnl",
+    )
     get_settings.cache_clear()
     _reset_source_preview_modules()
 
@@ -152,6 +182,7 @@ def test_product_category_refresh_real_worker_e2e(tmp_path, monkeypatch):
         client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
         refresh_response = client.post(
             "/ui/pnl/product-category/refresh",
+            headers={"X-User-Id": "product-category-refresh-user"},
         )
 
         assert refresh_response.status_code == 200
@@ -213,6 +244,13 @@ def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
     monkeypatch.setenv("MOSS_FX_OFFICIAL_SOURCE_PATH", str(fx_csv))
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    _grant_refresh_scope(
+        tmp_path,
+        monkeypatch,
+        user_id="balance-analysis-refresh-user",
+        resource="balance_analysis",
+    )
     get_settings.cache_clear()
     _reset_source_preview_modules()
 
@@ -227,6 +265,7 @@ def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
         refresh_response = client.post(
             "/ui/balance-analysis/refresh",
             params={"report_date": "2025-12-31"},
+            headers={"X-User-Id": "balance-analysis-refresh-user"},
         )
 
         assert refresh_response.status_code == 200
@@ -287,6 +326,13 @@ def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    _grant_refresh_scope(
+        tmp_path,
+        monkeypatch,
+        user_id="bond-analytics-refresh-user",
+        resource="bond_analytics",
+    )
     get_settings.cache_clear()
     _reset_source_preview_modules()
 
@@ -301,6 +347,7 @@ def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
         refresh_response = client.post(
             "/api/bond-analytics/refresh",
             params={"report_date": "2026-03-31"},
+            headers={"X-User-Id": "bond-analytics-refresh-user"},
         )
 
         assert refresh_response.status_code == 200

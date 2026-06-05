@@ -21,6 +21,7 @@ def test_liability_analytics_routes_fail_closed_while_surface_remains_reserved(
     for path, params in (
         ("/api/risk/buckets", {"report_date": "2026-01-31"}),
         ("/api/analysis/yield_metrics", {"report_date": "2026-01-31"}),
+        ("/api/analysis/yield-by-period", {"year": "2026", "period_type": "monthly"}),
         ("/api/analysis/liabilities/counterparty", {"report_date": "2026-01-31", "top_n": "10"}),
         ("/api/liabilities/monthly", {"year": "2026"}),
     ):
@@ -54,3 +55,17 @@ def test_liability_analytics_monthly_route_still_validates_year_bounds(
 
     response = client.get("/api/liabilities/monthly", params={"year": "1999"})
     assert response.status_code == 422
+
+
+def test_yield_by_period_returns_envelope_with_empty_periods_on_empty_db(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get("/api/analysis/yield-by-period", params={"year": "2026", "period_type": "monthly"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result_meta"]["result_kind"] == "liability_analytics.yield_by_period"
+    assert body["result"]["year"] == 2026
+    assert body["result"]["period_type"] == "monthly"
+    assert body["result"]["periods"] == []

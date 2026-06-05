@@ -14,6 +14,9 @@ vi.mock("../features/bond-analytics/components/BenchmarkExcessView", () => ({
 vi.mock("../features/bond-analytics/components/KRDCurveRiskView", () => ({
   KRDCurveRiskView: () => <div data-testid="mock-detail-krd-curve-risk" />,
 }));
+vi.mock("../features/bond-analytics/components/DV01RiskView", () => ({
+  DV01RiskView: () => <div data-testid="mock-detail-dv01-risk" />,
+}));
 vi.mock("../features/bond-analytics/components/CreditSpreadView", () => ({
   CreditSpreadView: () => <div data-testid="mock-detail-credit-spread" />,
 }));
@@ -46,6 +49,7 @@ const TAB_MODULE_CASES: Array<{
   { activeTab: "return-decomposition", mockTestId: "mock-detail-return-decomposition" },
   { activeTab: "benchmark-excess", mockTestId: "mock-detail-benchmark-excess" },
   { activeTab: "krd-curve-risk", mockTestId: "mock-detail-krd-curve-risk" },
+  { activeTab: "dv01-risk", mockTestId: "mock-detail-dv01-risk" },
   { activeTab: "credit-spread", mockTestId: "mock-detail-credit-spread" },
   { activeTab: "portfolio-headlines", mockTestId: "mock-detail-portfolio-headlines" },
   { activeTab: "top-holdings", mockTestId: "mock-detail-top-holdings" },
@@ -70,11 +74,17 @@ describe("BondAnalyticsDetailSection", () => {
         />,
       );
 
-      expect(screen.getByRole("heading", { name: "Analysis details" })).toBeInTheDocument();
-      expect(screen.getByText(`Currently viewing: ${def.label}`, { exact: true })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "分析明细" })).toBeInTheDocument();
+      expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
+        "data-module-key",
+        activeTab,
+      );
+      expect(screen.getByTestId("bond-analysis-detail-header")).toBeInTheDocument();
+      expect(screen.getByText(`当前查看：${def.label}`, { exact: true })).toBeInTheDocument();
       expect(screen.getByText(def.description, { exact: true })).toBeInTheDocument();
 
       expect(await screen.findByTestId(mockTestId)).toBeInTheDocument();
+      expect(screen.getByTestId("bond-analysis-detail-content")).toBeInTheDocument();
     },
   );
 
@@ -92,7 +102,7 @@ describe("BondAnalyticsDetailSection", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Credit spread" }));
+    await user.click(screen.getByRole("tab", { name: "信用利差" }));
 
     expect(onActiveTabChange).toHaveBeenCalledTimes(1);
     expect(onActiveTabChange).toHaveBeenCalledWith("credit-spread");

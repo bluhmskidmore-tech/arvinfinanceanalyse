@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.tushare_adapter import VendorAdapter
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES
 from backend.app.tasks.tushare_macro_ingest import run_tushare_macro_ingest_once
@@ -28,9 +29,12 @@ def test_run_tushare_macro_ingest_once_e2e_mocked(
     def _get_settings() -> _StubSettings:
         return _StubSettings(duckdb_path=str(db), governance_path=str(gov))
 
-    monkeypatch.setattr(
-        "backend.app.tasks.tushare_macro_ingest.get_settings",
-        _get_settings,
+    task_globals = run_tushare_macro_ingest_once.__globals__
+    monkeypatch.setitem(task_globals, "get_settings", _get_settings)
+    monkeypatch.setitem(
+        task_globals,
+        "RawZoneRepository",
+        lambda: RawZoneRepository(local_raw_path=str(tmp_path / "raw")),
     )
     payload_base = {
         "vendor_kind": "tushare_macro",
@@ -45,7 +49,7 @@ def test_run_tushare_macro_ingest_once_e2e_mocked(
                 "series_id": series_id,
             }
 
-    monkeypatch.setattr("backend.app.tasks.tushare_macro_ingest.VendorAdapter", _ApiStub)
+    monkeypatch.setitem(task_globals, "VendorAdapter", _ApiStub)
     out = run_tushare_macro_ingest_once("task-batch-1")
     assert out["ingest_batch_id"] == "task-batch-1"
     results = out["results"]
@@ -66,7 +70,13 @@ def test_run_tushare_macro_ingest_once_auto_batch_id(
     def _get_settings() -> _StubSettings:
         return _StubSettings(duckdb_path=str(db), governance_path=str(gov))
 
-    monkeypatch.setattr("backend.app.tasks.tushare_macro_ingest.get_settings", _get_settings)
+    task_globals = run_tushare_macro_ingest_once.__globals__
+    monkeypatch.setitem(task_globals, "get_settings", _get_settings)
+    monkeypatch.setitem(
+        task_globals,
+        "RawZoneRepository",
+        lambda: RawZoneRepository(local_raw_path=str(tmp_path / "raw")),
+    )
 
     class _ApiStub(VendorAdapter):
         def fetch_macro_snapshot(self, series_id: str) -> dict[str, object]:  # type: ignore[override]
@@ -77,7 +87,7 @@ def test_run_tushare_macro_ingest_once_auto_batch_id(
                 "rows": [],
             }
 
-    monkeypatch.setattr("backend.app.tasks.tushare_macro_ingest.VendorAdapter", _ApiStub)
+    monkeypatch.setitem(task_globals, "VendorAdapter", _ApiStub)
     out = run_tushare_macro_ingest_once()
     assert str(out["ingest_batch_id"]).startswith("tushare-macro-")
     assert len(str(out["ingest_batch_id"]).split("-")[-1]) == 8

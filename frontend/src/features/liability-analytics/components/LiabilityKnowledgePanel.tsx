@@ -71,7 +71,7 @@ export function LiabilityKnowledgePanel({
           这些材料来自本机 Obsidian 金融市场笔记，帮助把当前页的负债结构、流动性约束和管理层解释口径对齐。
         </Text>
         {notes.map((note, index) => (
-          <div key={note.id}>
+          <div key={`${note.id || note.source_path || note.title}-${index}`}>
             {index > 0 ? <Divider style={{ margin: "0 0 16px" }} /> : null}
             <Card size="small" style={noteCardStyle}>
               <Space direction="vertical" size={10} style={{ width: "100%" }}>
@@ -83,8 +83,8 @@ export function LiabilityKnowledgePanel({
                 {note.key_questions.length > 0 ? (
                   <Space direction="vertical" size={4} style={{ width: "100%" }}>
                     <Text strong>关键追问</Text>
-                    {note.key_questions.map((question) => (
-                      <Text key={question}>• {question}</Text>
+                    {note.key_questions.map((question, questionIndex) => (
+                      <Text key={`${question}-${questionIndex}`}>• {question}</Text>
                     ))}
                   </Space>
                 ) : null}

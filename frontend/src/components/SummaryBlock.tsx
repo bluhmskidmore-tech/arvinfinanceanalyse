@@ -1,5 +1,6 @@
 import { Tag } from "antd";
 
+import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 
 export type SummaryBlockProps = {
@@ -20,8 +21,8 @@ export function SummaryBlock({ title, content, tags }: SummaryBlockProps) {
       <p
         style={{
           margin: 0,
-          fontSize: 14,
-          color: "#31425b",
+          fontSize: designTokens.fontSize[14],
+          color: shellTokens.colorTextSecondary,
           lineHeight: 1.8,
         }}
       >

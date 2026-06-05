@@ -14,12 +14,10 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-import pytest
 
 from backend.app.core_finance.krd import (
     KRD_TENORS,
     STANDARD_KRD_SCENARIOS,
-    aggregate_krd_by_asset_class,
     build_krd_position_metrics,
     classify_asset_class,
     compute_krd_by_tenor,
@@ -43,10 +41,12 @@ def _make_bond(
     sub_type: str = "国债",
     asset_class: str = "交易性金融资产",
     coupon_frequency: int = 2,
+    face_value: str | None = None,
 ) -> dict:
     return {
         "bond_code": bond_code,
         "market_value": Decimal(market_value),
+        "face_value": Decimal(face_value) if face_value is not None else Decimal(market_value),
         "coupon_rate": Decimal(coupon_rate),
         "yield_to_maturity": Decimal(ytm),
         "maturity_date": maturity_date,
@@ -114,7 +114,7 @@ class TestBuildKrdPositionMetrics:
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
         m = metrics[0]
         for field in ("bond_code", "market_value", "duration", "modified_duration",
-                      "convexity", "dv01", "weight", "tenor_bucket",
+                      "convexity", "dv01", "face_value", "weight", "tenor_bucket",
                       "asset_class", "accounting_class"):
             assert field in m, f"Missing field: {field}"
 
@@ -153,11 +153,37 @@ class TestBuildKrdPositionMetrics:
         assert bucket not in long_buckets, f"Short bond landed in long bucket: {bucket}"
 
     def test_dv01_formula(self):
-        """DV01 = market_value * modified_duration / 10000"""
+        """DV01 = face_value * modified_duration / 10000"""
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
         m = metrics[0]
-        expected_dv01 = m["market_value"] * m["modified_duration"] / Decimal("10000")
+        expected_dv01 = m["face_value"] * m["modified_duration"] / Decimal("10000")
         assert abs(m["dv01"] - expected_dv01) < Decimal("0.01")
+
+    def test_dv01_uses_face_value_when_it_differs_from_market_value(self):
+        bond = _make_bond(
+            "FACE",
+            "500000",
+            "0.0300",
+            "0.0300",
+            date(2031, 1, 1),
+            REPORT_DATE,
+            face_value="1000000",
+        )
+        metrics = build_krd_position_metrics([bond], report_date=REPORT_DATE)
+        m = metrics[0]
+
+        face_basis_dv01 = m["face_value"] * m["modified_duration"] / Decimal("10000")
+        market_basis_dv01 = m["market_value"] * m["modified_duration"] / Decimal("10000")
+        assert abs(m["dv01"] - face_basis_dv01) < Decimal("0.01")
+        assert abs(m["dv01"] - market_basis_dv01) > Decimal("0.01")
+
+    def test_zero_wind_modified_duration_is_preserved(self):
+        metrics = build_krd_position_metrics(
+            [BOND_5Y],
+            report_date=REPORT_DATE,
+            wind_metrics={"B5Y": {"mod_duration": Decimal("0")}},
+        )
+        assert metrics[0]["modified_duration"] == Decimal("0")
 
 
 # ---------------------------------------------------------------------------
@@ -202,10 +228,9 @@ class TestComputeKrdByTenor:
         result = compute_krd_by_tenor([BOND_5Y], report_date=REPORT_DATE)
         krd_sum = sum(r["krd"] for r in result)
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
-        macaulay_dur = metrics[0]["duration"]
-        # KRD sum == weight * duration == 1 * duration for single bond
-        assert abs(krd_sum - macaulay_dur) < Decimal("0.001"), (
-            f"KRD sum {krd_sum} != Macaulay duration {macaulay_dur}"
+        modified_dur = metrics[0]["modified_duration"]
+        assert abs(krd_sum - modified_dur) < Decimal("0.001"), (
+            f"KRD sum {krd_sum} != modified duration {modified_dur}"
         )
 
     def test_parallel_shift_krd_sum_approx_modified_duration(self):
@@ -222,11 +247,8 @@ class TestComputeKrdByTenor:
         portfolio_mod_dur = sum(
             m["weight"] * m["modified_duration"] for m in metrics
         )
-        # KRD sum is weight * Macaulay; portfolio_mod_dur is weight * modified.
-        # They should be within ~10 % of each other for typical bonds.
-        ratio = abs(krd_sum - portfolio_mod_dur) / (portfolio_mod_dur + Decimal("0.0001"))
-        assert ratio < Decimal("0.15"), (
-            f"KRD sum {krd_sum} too far from portfolio mod_dur {portfolio_mod_dur}"
+        assert abs(krd_sum - portfolio_mod_dur) < Decimal("0.001"), (
+            f"KRD sum {krd_sum} != portfolio mod_dur {portfolio_mod_dur}"
         )
 
     def test_zero_coupon_bond_krd_at_maturity_bucket(self):

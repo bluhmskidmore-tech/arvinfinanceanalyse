@@ -297,14 +297,30 @@ def compute_benchmark_excess(
 
 def summarize_portfolio_risk(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total_market_value = _sum(rows, "market_value")
+    duration_rows = _duration_denominator_rows(rows)
     return {
         "bond_count": len(rows),
         "total_market_value": total_market_value,
-        "portfolio_duration": _weighted(rows, "macaulay_duration"),
-        "portfolio_modified_duration": _weighted(rows, "modified_duration"),
-        "portfolio_convexity": _weighted(rows, "convexity"),
+        "portfolio_duration": _weighted(duration_rows, "macaulay_duration"),
+        "portfolio_modified_duration": _weighted(duration_rows, "modified_duration"),
+        "portfolio_convexity": _weighted(duration_rows, "convexity"),
         "portfolio_dv01": _sum(rows, "dv01"),
     }
+
+
+def _duration_denominator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    eligible: list[dict[str, Any]] = []
+    for row in rows:
+        has_maturity = row.get("maturity_date") is not None
+        if "maturity_date" not in row:
+            has_maturity = safe_decimal(row.get("years_to_maturity")) > ZERO
+        if (
+            has_maturity
+            and safe_decimal(row.get("modified_duration")) > ZERO
+            and safe_decimal(row.get("market_value")) != ZERO
+        ):
+            eligible.append(row)
+    return eligible
 
 
 def build_krd_distribution(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -692,10 +708,8 @@ def _weighted_average_spread(
 ) -> Decimal:
     if not rows or not aaa_credit_curve_current or not treasury_curve_current:
         return ZERO
-    total_market_value = _sum(rows, "market_value")
-    if total_market_value == ZERO:
-        return ZERO
     weighted_spread = ZERO
+    effective_market_value = ZERO
     for row in rows:
         years_to_maturity = _to_years(row.get("years_to_maturity"))
         market_value = safe_decimal(row.get("market_value"))
@@ -705,7 +719,11 @@ def _weighted_average_spread(
             treasury_curve_current, years_to_maturity
         )
         weighted_spread += spread * market_value
-    return weighted_spread / total_market_value
+        effective_market_value += market_value
+    if effective_market_value == ZERO:
+        return ZERO
+    # Denominator is MV of rows that contributed to the numerator; rows with spread=0 still add MV here.
+    return weighted_spread / effective_market_value
 
 
 def _weighted_spread_change(
@@ -717,7 +735,7 @@ def _weighted_spread_change(
     treasury_curve_prior: dict[str, Decimal] | None,
     total_market_value: Decimal,
 ) -> Decimal:
-    if not rows or total_market_value == ZERO:
+    if not rows or total_market_value <= ZERO:
         return ZERO
     total_spread_effect = ZERO
     for row in rows:

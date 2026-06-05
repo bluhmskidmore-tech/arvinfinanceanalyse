@@ -153,11 +153,13 @@ describe("KRDCurveRiskView", () => {
       "计算时间：2026-04-10T00:00:00Z",
     );
     expect(screen.getByText("parallel_shift_bp 10")).toBeInTheDocument();
-    expect(screen.getByText("利率贡献")).toBeInTheDocument();
-    expect(screen.getByText("凸性贡献")).toBeInTheDocument();
+    expect(screen.getAllByText("利率贡献").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("凸性贡献").length).toBeGreaterThan(0);
 
     expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
     expect(screen.getByText("rate")).toBeInTheDocument();
+    expect(screen.getByText("8.00 亿")).toBeInTheDocument();
+    expect(screen.getByText("-50 万")).toBeInTheDocument();
   });
 
   it("shows scenario by_asset_class breakdown when scenario row is expanded", async () => {
@@ -186,11 +188,11 @@ describe("KRDCurveRiskView", () => {
     const panel = await screen.findByTestId("krd-scenario-by-asset-class");
     expect(within(panel).getByText("rate")).toBeInTheDocument();
     expect(within(panel).getByText("credit")).toBeInTheDocument();
-    expect(within(panel).getByText("经济口径")).toBeInTheDocument();
+    expect(within(panel).getAllByText("经济口径").length).toBeGreaterThan(0);
     expect(within(panel).getByTestId("krd-scenario-by-asset-class-extra-keys")).toHaveTextContent(
       "pnl_other_bucket",
     );
-    expect(within(panel).getByText("pnl_other_bucket")).toBeInTheDocument();
+    expect(within(panel).getAllByText("pnl_other_bucket").length).toBeGreaterThan(0);
   });
 
   it("renders warning alert when warnings exist", async () => {

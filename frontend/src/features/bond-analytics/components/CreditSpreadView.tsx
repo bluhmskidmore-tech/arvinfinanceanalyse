@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
+import { apiQueryKeys } from "../../../api/queryKeys";
 import type { Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type {
@@ -12,7 +14,7 @@ import type {
   CreditSpreadMigrationResponse,
 } from "../types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { formatWan, formatBp } from "../utils/formatters";
+import { formatWan, formatYi, formatBp } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 const dt = designTokens;
@@ -69,7 +71,7 @@ const migrationColumns = [
     title: "涉及市值",
     dataIndex: "affected_market_value",
     key: "affected_market_value",
-    render: formatWan,
+    render: formatYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
@@ -93,7 +95,7 @@ const issuerConcentrationColumns = [
     title: "市值",
     dataIndex: "market_value",
     key: "market_value",
-    render: formatWan,
+    render: formatYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
 ];
@@ -128,7 +130,7 @@ const spreadDetailColumns = [
     title: "市值",
     dataIndex: "market_value",
     key: "market_value",
-    render: formatWan,
+    render: formatYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
 ];
@@ -438,7 +440,7 @@ const ISSUER_SLICE_COLORS = [
 function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   return {
     title: {
-      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  Top5 ${metrics.top5_concentration.display}`,
+      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  前五 ${metrics.top5_concentration.display}`,
       left: "center",
       top: dt.space[1],
       textStyle: { fontSize: dt.fontSize[11], color: dt.color.neutral[600] },
@@ -447,7 +449,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
       trigger: "item",
       formatter: (p) => {
         const item = p as { name: string; value: number; percent: number };
-        return `${item.name}: ${formatWan(item.value)} (${item.percent}%)`;
+        return `${item.name}: ${formatYi(item.value)} (${item.percent}%)`;
       },
     },
     series: [
@@ -481,7 +483,7 @@ function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChar
           | { name: string; marketValueRaw: Numeric; weight: Numeric }
           | undefined;
         if (!d || typeof d !== "object") return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
+        return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     graphic: {
@@ -544,56 +546,33 @@ const DEFAULT_SPREAD_SCENARIOS = "10,25,50";
 
 export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_SCENARIOS }: Props) {
   const client = useApiClient();
-  const [summaryData, setSummaryData] = useState<CreditSpreadMigrationResponse | null>(null);
-  const [detailData, setDetailData] = useState<CreditSpreadAnalysisResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  const summaryQuery = useQuery({
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(
+      client.mode,
+      reportDate,
+      spreadScenarios,
+    ),
+    queryFn: () =>
+      spreadScenarios === DEFAULT_SPREAD_SCENARIOS
+        ? client.getBondAnalyticsCreditSpreadMigration(reportDate)
+        : client.getBondAnalyticsCreditSpreadMigration(reportDate, { spreadScenarios }),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
+  const detailQuery = useQuery({
+    queryKey: ["credit-spread-analysis", "detail", client.mode, reportDate],
+    queryFn: () => client.getCreditSpreadAnalysisDetail(reportDate),
+    enabled: Boolean(reportDate),
+    retry: false,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      setDetailError(null);
-      try {
-        const [summaryResult, detailResult] = await Promise.allSettled([
-          spreadScenarios === DEFAULT_SPREAD_SCENARIOS
-            ? client.getBondAnalyticsCreditSpreadMigration(reportDate)
-            : client.getBondAnalyticsCreditSpreadMigration(reportDate, { spreadScenarios }),
-          client.getCreditSpreadAnalysisDetail(reportDate),
-        ]);
-
-        if (cancelled) {
-          return;
-        }
-
-        if (summaryResult.status === "rejected") {
-          throw summaryResult.reason;
-        }
-
-        setSummaryData(summaryResult.value.result);
-        if (detailResult.status === "fulfilled") {
-          setDetailData(detailResult.value.result);
-        } else {
-          setDetailData(null);
-          setDetailError(
-            detailResult.reason instanceof Error ? detailResult.reason.message : "unknown error",
-          );
-        }
-      } catch (e: unknown) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    if (reportDate) fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, reportDate, spreadScenarios]);
-
-  const data = summaryData;
+  const data = summaryQuery.data?.result ?? null;
+  const detailData = detailQuery.data?.result ?? null;
+  const detailError = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : "未知错误"
+    : null;
 
   const spreadChartOption = useMemo((): EChartsOption | null => {
     if (!data?.spread_scenarios?.length) return null;
@@ -683,8 +662,11 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
     return { kind: "empty" as const };
   }, [data]);
 
-  if (loading) return <Spin style={{ display: "block", margin: `${dt.space[8]}px auto` }} />;
-  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
+  if (summaryQuery.isLoading) return <Spin style={{ display: "block", margin: `${dt.space[8]}px auto` }} />;
+  if (summaryQuery.isError) {
+    const message = summaryQuery.error instanceof Error ? summaryQuery.error.message : String(summaryQuery.error);
+    return <Alert type="error" message={`加载失败：${message}`} />;
+  }
   if (!data) return null;
 
   const mergedWarnings = Array.from(
@@ -704,9 +686,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: dt.space[4] }}>
       <SectionLead
-        eyebrow="Credit Spread"
+        eyebrow="信用利差"
         title="信用利差概览"
-        description="按报告日读取后端信用利差 read model；页面只展示利差、DV01、OCI 敏感度与明细，不在前端补算正式风险指标。"
+        description="按报告日读取后端信用利差读模型；页面只展示利差、DV01、OCI 敏感度与明细，不在前端补算正式风险指标。"
         testId="credit-spread-shell-lead"
       />
       <Row gutter={16}>
@@ -719,14 +701,14 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           <Card size="small">
             <Statistic
               title="信用债市值"
-              value={formatWan(displayCreditMarketValue)}
+              value={formatYi(displayCreditMarketValue)}
               suffix={`(${(bondNumericRaw(data.credit_weight) * 100).toFixed(1)}%)`}
             />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Spread DV01 (万元/bp)" value={data.spread_dv01.display} />
+            <Statistic title="利差 DV01（万元/bp）" value={data.spread_dv01.display} />
           </Card>
         </Col>
         <Col span={6}>
@@ -739,10 +721,10 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       <Card title="OCI敏感度" size="small">
         <Row gutter={16}>
           <Col span={8}>
-            <Statistic title="OCI信用债敞口" value={formatWan(data.oci_credit_exposure)} />
+            <Statistic title="OCI信用债敞口" value={formatYi(data.oci_credit_exposure)} />
           </Col>
           <Col span={8}>
-            <Statistic title="OCI Spread DV01" value={data.oci_spread_dv01.display} />
+            <Statistic title="OCI 利差 DV01" value={data.oci_spread_dv01.display} />
           </Col>
           <Col span={8}>
             <Statistic title="利差走阔25bp影响" value={formatWan(data.oci_sensitivity_25bp)} />
@@ -751,7 +733,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       </Card>
 
       <SectionLead
-        eyebrow="Scenario"
+        eyebrow="场景"
         title="利差冲击与信用分布"
         description="利差情景、评级迁徙和评级/期限分布沿用后端返回字段，前端只负责图表化展示。"
         testId="credit-spread-scenario-lead"
@@ -773,6 +755,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}
@@ -796,7 +779,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   textAlign: "center",
                 }}
               >
-                {data.concentration_by_rating?.dimension ?? "评级"}（Top 市值）
+                {data.concentration_by_rating?.dimension ?? "评级"}（前列市值）
               </div>
               {creditDistributionView.ratingOption ? (
                 <ReactECharts
@@ -827,7 +810,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   textAlign: "center",
                 }}
               >
-                {data.concentration_by_tenor?.dimension ?? "期限"}（Top 市值）
+                {data.concentration_by_tenor?.dimension ?? "期限"}（前列市值）
               </div>
               {creditDistributionView.tenorOption ? (
                 <ReactECharts
@@ -867,9 +850,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       </Card>
 
       <SectionLead
-        eyebrow="Detail"
+        eyebrow="明细"
         title="期限结构与集中度明细"
-        description="深度明细端点可用时展示期限结构、历史分位和高低利差个券；不可用时保留 summary 并显示提示。"
+        description="深度明细端点可用时展示期限结构、历史分位和高低利差个券；不可用时保留汇总并显示提示。"
         testId="credit-spread-detail-lead"
       />
       {detailData && (
@@ -934,6 +917,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-top`}
                   pagination={false}
                   size="small"
+                  scroll={{ y: 400 }}
                 />
               </Card>
             </Col>
@@ -945,6 +929,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-bottom`}
                   pagination={false}
                   size="small"
+                  scroll={{ y: 400 }}
                 />
               </Card>
             </Col>
@@ -966,7 +951,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                       textAlign: "center",
                     }}
                   >
-                    {data.concentration_by_issuer.dimension} HHI {data.concentration_by_issuer.hhi.display} Top5{" "}
+                    {data.concentration_by_issuer.dimension} HHI {data.concentration_by_issuer.hhi.display} 前五{" "}
                     {data.concentration_by_issuer.top5_concentration.display}
                   </div>
                   <Row gutter={16} align="middle">
@@ -977,6 +962,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                         rowKey={(r) => r.name}
                         pagination={false}
                         size="small"
+                        scroll={{ y: 400 }}
                       />
                     </Col>
                     <Col xs={24} md={12}>
@@ -1017,6 +1003,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            scroll={{ y: 400 }}
           />
         </Card>
       )}

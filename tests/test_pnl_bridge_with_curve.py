@@ -64,7 +64,7 @@ def test_roll_down_nonzero_when_curve_available():
         },
     )
 
-    assert rows[0].roll_down == Decimal("2.00")
+    assert rows[0].roll_down == Decimal("-2.00")
 
 
 def test_treasury_curve_nonzero_when_both_curves_available():

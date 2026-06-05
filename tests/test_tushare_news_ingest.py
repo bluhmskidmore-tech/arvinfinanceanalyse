@@ -68,6 +68,13 @@ def _install_fake(monkeypatch: pytest.MonkeyPatch, pro: _FakePro) -> None:
 
 def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setitem(
+        ingest_tushare_npr_to_choice_news.__globals__,
+        "_resolve_tushare_token",
+        lambda: "test-token",
+    )
+    today = datetime.now().date()
+    recent_day = today.strftime("%Y-%m-%d")
 
     policy_rows = [
         {
@@ -83,7 +90,7 @@ def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.Monk
     ]
     cctv_rows_by_date: dict[str, list[dict[str, object]]] = {}
     for offset in range(3):
-        d = (datetime.now().date() - timedelta(days=offset)).strftime("%Y%m%d")
+        d = (today - timedelta(days=offset)).strftime("%Y%m%d")
         cctv_rows_by_date[d] = [{"date": d, "title": f"联播{offset}", "content": "联播正文"}]
     major_rows = [
         {
@@ -102,6 +109,10 @@ def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.Monk
             "rating": "买入",
         }
     ]
+    policy_rows[0]["pubtime"] = f"{recent_day} 10:00:00"
+    news_rows[0]["datetime"] = f"{recent_day} 11:00:00"
+    major_rows[0]["pub_time"] = f"{recent_day} 09:00:00"
+    research_rows[0]["pub_date"] = recent_day
 
     pro = _FakePro(
         policy_rows=policy_rows,
@@ -155,10 +166,75 @@ def test_ingest_writes_all_five_streams(tmp_path: Path, monkeypatch: pytest.Monk
         conn.close()
 
 
+def test_ingest_strips_html_from_news_payload_and_warehouse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setitem(
+        ingest_tushare_npr_to_choice_news.__globals__,
+        "_resolve_tushare_token",
+        lambda: "test-token",
+    )
+    recent_day = datetime.now().date().strftime("%Y-%m-%d")
+    pro = _FakePro(
+        news_rows=[
+            {
+                "datetime": f"{recent_day} 11:00:00",
+                "title": "<span>Rates &amp; Credit</span>",
+                "content": "<p>Yield&nbsp;<b>down</b></p>",
+            }
+        ]
+    )
+    _install_fake(monkeypatch, pro)
+
+    db = tmp_path / "news-html.duckdb"
+    result = ingest_tushare_npr_to_choice_news(
+        str(db),
+        limit=1,
+        news_limit=1,
+        cctv_lookback_days=1,
+        major_lookback_hours=1,
+        research_lookback_days=1,
+    )
+
+    assert result["news"]["inserted"] == 1
+    conn = duckdb.connect(str(db), read_only=True)
+    try:
+        payload_text = conn.execute(
+            "select payload_text from choice_news_event where group_id = 'tushare_news'"
+        ).fetchone()[0]
+        assert "<" not in str(payload_text)
+        assert ">" not in str(payload_text)
+        assert "Rates & Credit" in str(payload_text)
+        assert "Yield down" in str(payload_text)
+
+        title, content, summary = conn.execute(
+            """
+            select title, content, summary
+            from fact_news_event
+            where source = 'tushare_news'
+            limit 1
+            """
+        ).fetchone()
+        warehouse_text = " ".join(str(value or "") for value in (title, content, summary))
+        assert "<" not in warehouse_text
+        assert ">" not in warehouse_text
+        assert "Rates & Credit" in warehouse_text
+        assert "Yield down" in warehouse_text
+    finally:
+        conn.close()
+
+
 def test_one_block_failure_does_not_break_others(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setitem(
+        ingest_tushare_npr_to_choice_news.__globals__,
+        "_resolve_tushare_token",
+        lambda: "test-token",
+    )
+    recent_day = datetime.now().date().strftime("%Y-%m-%d")
 
     class _BrokenResearch(_FakePro):
         def research_report(self, **_kwargs: object) -> _FakeFrame:
@@ -166,7 +242,7 @@ def test_one_block_failure_does_not_break_others(
 
     pro = _BrokenResearch(
         policy_rows=[
-            {"pubtime": "2026-04-21 10:00:00", "title": "T", "pcode": "P", "puborg": "X"}
+            {"pubtime": f"{recent_day} 10:00:00", "title": "T", "pcode": "P", "puborg": "X"}
         ],
     )
     _install_fake(monkeypatch, pro)
@@ -192,5 +268,10 @@ def test_ingest_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     import backend.app.services.tushare_news_ingest_service as mod
 
     monkeypatch.setattr(mod, "_resolve_tushare_token", lambda: "")
+    monkeypatch.setitem(
+        ingest_tushare_npr_to_choice_news.__globals__,
+        "_resolve_tushare_token",
+        lambda: "",
+    )
     with pytest.raises(RuntimeError, match="MOSS_TUSHARE_TOKEN"):
         ingest_tushare_npr_to_choice_news(str(tmp_path / "x.duckdb"), limit=1)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 import json
 import csv
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_balance_analysis_materialize_flow import (
     _patch_skip_fx_refresh,
@@ -23,11 +25,20 @@ from tests.test_balance_analysis_materialize_flow import (
 )
 
 
+def _perf_records(caplog, endpoint: str):
+    return [
+        record
+        for record in caplog.records
+        if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
+    ]
+
+
 def _configure_and_materialize(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
     task_mod = load_module(
@@ -57,6 +68,23 @@ def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: s
         role=role,
         resource="balance_analysis.decision_status",
         action="write",
+    )
+
+
+def _seed_balance_refresh_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    sqlite_path = tmp_path / "auth-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id=user_id,
+        role=None,
+        resource="balance_analysis",
+        action="refresh",
     )
 
 
@@ -304,6 +332,74 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "liability_total_amortized_cost_amount": "72.00000000",
         "asset_total_accrued_interest_amount": "36.00000000",
         "liability_total_accrued_interest_amount": "14.40000000",
+        "metric_definitions": [
+            {
+                "key": "asset_total_market_value_amount",
+                "label": "资产市值合计",
+                "source_field": "market_value_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸市值金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "asset_total_amortized_cost_amount",
+                "label": "资产摊余成本合计",
+                "source_field": "amortized_cost_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "asset_total_accrued_interest_amount",
+                "label": "资产应计利息合计",
+                "source_field": "accrued_interest_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式资产头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_market_value_amount",
+                "label": "负债市值合计",
+                "source_field": "market_value_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸市值金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_amortized_cost_amount",
+                "label": "负债摊余成本合计",
+                "source_field": "amortized_cost_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸摊余成本金额合计；后端返回元，页面按亿元展示。",
+            },
+            {
+                "key": "liability_total_accrued_interest_amount",
+                "label": "负债应计利息合计",
+                "source_field": "accrued_interest_amount",
+                "raw_unit": "yuan",
+                "display_unit": "yi_yuan",
+                "basis": "formal",
+                "source_surface": "formal_balance",
+                "applies_to": ["overview", "summary", "detail"],
+                "description": "正式负债头寸应计利息金额合计；后端返回元，页面按亿元展示。",
+            },
+        ],
     }
 
     workbook_response = client.get(
@@ -425,13 +521,13 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
     assert payload["result"]["position_scope"] == "all"
     assert payload["result"]["currency_basis"] == "CNY"
     assert payload["result"]["columns"] == [
-        {"key": "title", "label": "Title"},
-        {"key": "action_label", "label": "Action"},
-        {"key": "severity", "label": "Severity"},
-        {"key": "reason", "label": "Reason"},
-        {"key": "source_section", "label": "Source Section"},
-        {"key": "rule_id", "label": "Rule Id"},
-        {"key": "rule_version", "label": "Rule Version"},
+        {"key": "title", "label": "标题"},
+        {"key": "action_label", "label": "动作"},
+        {"key": "severity", "label": "等级"},
+        {"key": "reason", "label": "原因"},
+        {"key": "source_section", "label": "来源区块"},
+        {"key": "rule_id", "label": "规则编号"},
+        {"key": "rule_version", "label": "规则版本"},
     ]
     assert payload["result"]["rows"][0]["decision_key"]
     assert payload["result"]["rows"][0]["latest_status"] == {
@@ -943,6 +1039,32 @@ def test_balance_analysis_overview_returns_422_for_invalid_filters(tmp_path, mon
     get_settings.cache_clear()
 
 
+def test_balance_analysis_overview_logs_api_perf(tmp_path, monkeypatch, caplog):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    with caplog.at_level(logging.INFO, logger="backend.app.api.perf"):
+        response = client.get(
+            "/ui/balance-analysis/overview",
+            params={
+                "report_date": "2025-12-31",
+                "position_scope": "all",
+                "currency_basis": "CNY",
+            },
+        )
+
+    assert response.status_code == 200
+    records = _perf_records(caplog, "/ui/balance-analysis/overview")
+    assert records
+    record = records[-1]
+    assert record.getMessage() == "moss_api_perf"
+    assert getattr(record, "duration_ms") >= 0
+    assert getattr(record, "result_kind") == "balance-analysis.overview"
+    assert getattr(record, "trace_id")
+    assert getattr(record, "duckdb_statement_count") is None
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_summary_api_returns_paginated_rows(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
@@ -1192,6 +1314,7 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1257,6 +1380,62 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_balance_analysis_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
+    sqlite_path = tmp_path / "auth-refresh-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    calls: list[str] = []
+
+    def fake_refresh(_settings, *, report_date: str):
+        calls.append(report_date)
+        return {"status": "queued", "run_id": "balance-refresh-test", "report_date": report_date}
+
+    monkeypatch.setattr(route_mod, "refresh_balance_analysis", fake_refresh)
+
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    denied = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers={"X-User-Id": "balance-refresh-user"},
+    )
+    assert denied.status_code == 403
+    assert calls == []
+
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="balance-refresh-user",
+        role=None,
+        resource="balance_analysis",
+        action="refresh",
+    )
+
+    allowed = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers={"X-User-Id": "balance-refresh-user"},
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["run_id"] == "balance-refresh-test"
+    assert calls == ["2025-12-31"]
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_refresh_returns_409_when_same_report_date_is_already_in_progress(
     tmp_path,
     monkeypatch,
@@ -1265,6 +1444,7 @@ def test_balance_analysis_refresh_returns_409_when_same_report_date_is_already_i
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1319,6 +1499,7 @@ def test_balance_analysis_refresh_returns_503_when_queue_dispatch_fails_without_
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
@@ -1367,6 +1548,7 @@ def test_balance_analysis_refresh_reconciles_stale_inflight_run_and_requeues(
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
     get_settings.cache_clear()
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 

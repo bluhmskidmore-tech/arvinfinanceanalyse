@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
+import re
 from datetime import UTC, datetime, timedelta
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -13,21 +16,25 @@ import duckdb
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.news_warehouse_repo import purge_expired_news_events, upsert_news_event
+from backend.app.repositories.tushare_adapter import (
+    TUSHARE_TOKEN_ENV,
+    resolve_tushare_token_with_settings_fallback,
+)
 from backend.app.tasks.choice_news import ensure_choice_news_event_schema
 
-TUSHARE_TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
-"""新闻来源标识，见 Tushare `pro.news` 文档（如 sina、eastmoney、cls）。"""
+logger = logging.getLogger(__name__)
+
+# TUSHARE_TOKEN_ENV: single source tushare_adapter; re-imported for legacy imports of this module.
 TUSHARE_NEWS_SRC_ENV = "MOSS_TUSHARE_NEWS_SRC"
+# 新闻来源标识，见 Tushare `pro.news` 文档（如 sina、eastmoney、cls）
 
 
 def _resolve_tushare_token() -> str:
     """Read token from process env first; fall back to MOSS Settings (config/.env)."""
-    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
-    if token:
-        return token
     try:
-        return str(getattr(get_settings(), "tushare_token", "") or "").strip()
+        return resolve_tushare_token_with_settings_fallback(get_settings())
     except Exception:
+        logger.warning("Failed to resolve tushare token from settings, returning empty", exc_info=True)
         return ""
 
 
@@ -40,7 +47,7 @@ def _resolve_tushare_news_src(default: str = "sina") -> str:
         if configured:
             return configured
     except Exception:
-        pass
+        logger.debug("Failed to read tushare_news_src from settings", exc_info=True)
     return default
 
 # `pro.npr` is "National Policy Repository" — Tushare's `policy_brief` does NOT exist.
@@ -122,12 +129,19 @@ def _first_nonempty(record: dict[str, Any], keys: list[str]) -> str:
     return ""
 
 
+def _strip_html(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"<[^>]+>", " ", unescape(text))
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def _extract_content_for_warehouse(record: dict[str, Any]) -> str:
     for key in ("content", "content_html", "abstr", "abstract", "summary"):
         value = record.get(key)
         if value is None:
             continue
-        text = str(value).strip()
+        text = _strip_html(str(value).strip())
         if text and text.lower() != "nan":
             return text
     return ""
@@ -175,8 +189,8 @@ def _ingest_simple_block(
         if int(exists_row[0] if exists_row is not None else 0) > 0:
             skipped += 1
             continue
-        title = _first_nonempty(record, title_keys)
-        body = _first_nonempty(record, body_keys)
+        title = _strip_html(_first_nonempty(record, title_keys))
+        body = _strip_html(_first_nonempty(record, body_keys))
         if title and body:
             payload_text = f"{title} — {body[:280]}{'…' if len(body) > 280 else ''}"
         else:
@@ -349,8 +363,8 @@ def _ingest_news_block(
         if int(exists_row[0] if exists_row is not None else 0) > 0:
             skipped += 1
             continue
-        title = str(record.get("title") or "").strip()
-        content = str(record.get("content") or "").strip()
+        title = _strip_html(str(record.get("title") or "").strip())
+        content = _strip_html(str(record.get("content") or "").strip())
         payload_text = title if not content else f"{title} — {content[:280]}{'…' if len(content) > 280 else ''}"
         payload_json = json.dumps(record, ensure_ascii=False, default=str)
         received_at = _normalize_received_at(record.get("datetime"))
@@ -474,10 +488,12 @@ def ingest_tushare_npr_to_choice_news(
         try:
             purged = _purge_expired_choice_news_events(conn)
         except Exception:
+            logger.warning("Failed to purge expired choice_news_event rows", exc_info=True)
             purged = 0
         try:
             purged_warehouse = purge_expired_news_events(conn)
         except Exception:
+            logger.warning("Failed to purge expired warehouse news events", exc_info=True)
             purged_warehouse = 0
     finally:
         conn.close()
@@ -544,6 +560,7 @@ def _ingest_cctv_news_block(
             )
         except Exception:
             # Per-day failure (often "no data" on weekends) — keep aggregating others.
+            logger.debug("CCTV news ingest failed for date %s, skipping", date_str, exc_info=True)
             continue
         for key in aggregate:
             aggregate[key] += block[key]

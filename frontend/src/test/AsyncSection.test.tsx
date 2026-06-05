@@ -21,6 +21,37 @@ describe("AsyncSection", () => {
     expect(screen.getByText("正在载入收益归因")).toBeInTheDocument();
   });
 
+  it("keeps full-height layout by default and allows local opt-out", () => {
+    const { container, rerender } = render(
+      <AsyncSection
+        title="layout"
+        isLoading={false}
+        isError={false}
+        isEmpty={false}
+        onRetry={() => undefined}
+      >
+        <div>loaded</div>
+      </AsyncSection>,
+    );
+
+    expect(container.querySelector("section")).toHaveStyle({ height: "100%" });
+
+    rerender(
+      <AsyncSection
+        title="layout"
+        isLoading={false}
+        isError={false}
+        isEmpty={false}
+        fillHeight={false}
+        onRetry={() => undefined}
+      >
+        <div>loaded</div>
+      </AsyncSection>,
+    );
+
+    expect(container.querySelector("section")).toHaveStyle({ height: "auto" });
+  });
+
   it("renders empty state", () => {
     render(
       <AsyncSection

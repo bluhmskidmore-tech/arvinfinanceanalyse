@@ -26,6 +26,7 @@ def _tensor(**kwargs: object):
     base: dict[str, object] = {
         "report_date": date(2026, 3, 31),
         "portfolio_dv01": Decimal("0"),
+        "regulatory_dv01": Decimal("0"),
         "krd_1y": Decimal("0"),
         "krd_3y": Decimal("0"),
         "krd_5y": Decimal("0"),

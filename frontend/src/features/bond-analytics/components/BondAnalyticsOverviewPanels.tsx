@@ -1,4 +1,5 @@
 import { designTokens } from "../../../theme/designSystem";
+import type { CalendarItem } from "../../../components/CalendarList";
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type {
@@ -11,7 +12,7 @@ import type {
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
 import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
-import PerformanceComparison from "./PerformanceComparison";
+import { BondAnalyticsOverviewMidCharts } from "./BondAnalyticsOverviewMidCharts";
 import RiskTrendChart from "./RiskTrendChart";
 import BondEventCalendar from "./BondEventCalendar";
 
@@ -38,14 +39,15 @@ export interface BondAnalyticsOverviewPanelsProps {
   isAnalyticsRefreshing?: boolean;
   analyticsRefreshError?: string | null;
   lastAnalyticsRefreshRunId?: string | null;
+  calendarItems?: CalendarItem[];
 }
 
 export function BondAnalyticsOverviewPanels({
-  dateOptions,
+  dateOptions: _dateOptions,
   reportDate,
-  onReportDateChange,
+  onReportDateChange: _onReportDateChange,
   periodType,
-  onPeriodTypeChange,
+  onPeriodTypeChange: _onPeriodTypeChange,
   assetClass,
   onAssetClassChange,
   accountingClass,
@@ -61,10 +63,18 @@ export function BondAnalyticsOverviewPanels({
   isAnalyticsRefreshing = false,
   analyticsRefreshError = null,
   lastAnalyticsRefreshRunId = null,
+  calendarItems = [],
 }: BondAnalyticsOverviewPanelsProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: dt.space[3] }}>
-      <div style={{ display: "grid", gap: dt.space[3] }} data-testid="bond-analysis-top-cockpit">
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "grid", gap: 8 }} data-testid="bond-analysis-top-cockpit">
+        <BondAnalyticsInstitutionalCockpit
+          reportDate={reportDate}
+          actionAttribution={actionAttributionResult}
+          topAnomalies={overviewModel.topAnomalies}
+          onOpenModuleDetail={onOpenModuleDetail}
+        />
+
         <BondAnalyticsMarketContextStrip
           reportDate={reportDate}
           periodType={periodType}
@@ -73,12 +83,26 @@ export function BondAnalyticsOverviewPanels({
           truthStrip={overviewModel.truthStrip}
         />
 
-        <BondAnalyticsFilterActionStrip
-          dateOptions={dateOptions}
+        <BondAnalyticsOverviewMidCharts
           reportDate={reportDate}
-          onReportDateChange={onReportDateChange}
           periodType={periodType}
-          onPeriodTypeChange={onPeriodTypeChange}
+          assetClass={assetClass}
+          accountingClass={accountingClass}
+        />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: dt.space[3],
+            alignItems: "start",
+          }}
+        >
+          <RiskTrendChart />
+          <BondEventCalendar items={calendarItems} />
+        </div>
+
+        <BondAnalyticsFilterActionStrip
           assetClass={assetClass}
           onAssetClassChange={onAssetClassChange}
           accountingClass={accountingClass}
@@ -92,30 +116,7 @@ export function BondAnalyticsOverviewPanels({
           analyticsRefreshError={analyticsRefreshError}
           lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
         />
-
-        <BondAnalyticsInstitutionalCockpit
-          reportDate={reportDate}
-          actionAttribution={actionAttributionResult}
-          topAnomalies={overviewModel.topAnomalies}
-          onOpenModuleDetail={onOpenModuleDetail}
-        />
-
-        <PerformanceComparison />
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: dt.space[3],
-            alignItems: "start",
-          }}
-        >
-          <RiskTrendChart />
-          <BondEventCalendar />
-        </div>
       </div>
     </div>
   );
 }
-
-export default BondAnalyticsOverviewPanels;

@@ -31,7 +31,9 @@ def test_duckdb_bootstrap_creates_expected_tables(tmp_path, monkeypatch):
     assert "fact_formal_pnl_fi" in names
     assert "phase1_materialize_runs" in names
     assert "fx_daily_mid" in names
+    assert "market_data_series_category" in names
     assert "choice_news_event" in names
+    assert "choice_stock_factor_snapshot" in names
 
 
 def test_duckdb_bootstrap_skipped_when_flag_set(tmp_path, monkeypatch):

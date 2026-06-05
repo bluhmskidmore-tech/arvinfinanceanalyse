@@ -6,9 +6,12 @@ from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
 from backend.app.services.liability_analytics_service import (
+    cockpit_warnings_payload,
+    contribution_split_payload,
     liabilities_monthly_payload,
     liability_counterparty_payload,
     liability_risk_buckets_payload,
+    liability_yield_by_period_payload,
     liability_yield_metrics_payload,
 )
 from backend.app.services.liability_knowledge_service import (
@@ -51,6 +54,21 @@ def liability_yield_metrics(
     )
 
 
+@router.get("/api/analysis/yield-by-period")
+def liability_yield_by_period(
+    year: int = Query(..., ge=2000, le=2100, description="Calendar year for period rollups."),
+    period_type: str = Query(
+        "monthly",
+        description="V1-compatible period grouping: monthly | quarterly | yearly.",
+    ),
+) -> dict[str, object]:
+    return liability_yield_by_period_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        year=year,
+        period_type=period_type,
+    )
+
+
 @router.get("/api/analysis/liabilities/counterparty")
 def liability_counterparty(
     report_date: str | None = Query(None, description="Report date in YYYY-MM-DD format."),
@@ -78,3 +96,25 @@ def liabilities_monthly(
 @router.get("/ui/liability/business-context")
 def liability_business_context() -> dict[str, object]:
     return liability_knowledge_brief_envelope()
+
+
+@router.get("/api/analysis/liabilities/cockpit-warnings")
+def liability_cockpit_warnings(
+    report_date: str | None = Query(None, description="Report date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    validated = _validate_optional_report_date(report_date)
+    return cockpit_warnings_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        report_date=validated,
+    )
+
+
+@router.get("/api/analysis/liabilities/contribution-split")
+def liability_contribution_split(
+    report_date: str | None = Query(None, description="Report date in YYYY-MM-DD format."),
+) -> dict[str, object]:
+    validated = _validate_optional_report_date(report_date)
+    return contribution_split_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        report_date=validated,
+    )

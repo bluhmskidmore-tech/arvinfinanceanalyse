@@ -51,6 +51,35 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
+def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(tmp_path):
+    """Regression: avoid stale runtime-clean/moss.duckdb shadowing a fuller data/moss.duckdb."""
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(repo_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
+
+    runtime_root = repo_root / "tmp-governance" / "runtime-clean"
+    runtime_duckdb = runtime_root / "moss.duckdb"
+    runtime_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(runtime_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-01-02')")
+
+    config = module.build_cluster_config(repo_root)
+    env = module.build_env_mapping(config)
+
+    assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
+    assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
+    assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
+
+
 def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp_path):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -131,6 +160,54 @@ def test_prepare_runtime_clean_paths_seeds_runtime_duckdb_from_repo_when_runtime
             "select report_date from fact_formal_bond_analytics_daily order by report_date"
         ).fetchall()
     assert rows == [("2026-02-28",)]
+
+
+def test_prepare_runtime_clean_paths_seeds_formal_governance_with_runtime_duckdb(tmp_path):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    source_root = repo_root / "data_input"
+    source_root.mkdir(parents=True, exist_ok=True)
+    runtime_root = repo_root / "tmp-governance" / "runtime-clean"
+    runtime_data_input = runtime_root / "data_input"
+    runtime_data_input.mkdir(parents=True, exist_ok=True)
+
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(repo_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
+
+    repo_governance = repo_root / "data" / "governance"
+    repo_governance.mkdir(parents=True, exist_ok=True)
+    for file_name in module.RUNTIME_GOVERNANCE_SEED_FILES:
+        (repo_governance / file_name).write_text(
+            f'{{"stream": "{file_name}"}}\n',
+            encoding="utf-8",
+        )
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=repo_root / "tmp-governance" / "pgdev" / "data",
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=runtime_root,
+        runtime_duckdb_path=runtime_root / "moss.duckdb",
+        runtime_governance_path=runtime_root / "governance",
+        runtime_archive_path=runtime_root / "archive",
+        runtime_data_input_path=runtime_data_input,
+    )
+
+    module._prepare_runtime_clean_paths(config)
+
+    for file_name in module.RUNTIME_GOVERNANCE_SEED_FILES:
+        assert (runtime_root / "governance" / file_name).read_text(encoding="utf-8") == (
+            f'{{"stream": "{file_name}"}}\n'
+        )
 
 
 def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runtime_duckdb_is_empty(
@@ -330,6 +407,58 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
+def test_command_up_starts_postgres_without_pg_ctl_wait(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    bin_dir = repo_root / "pgbin"
+    data_dir = repo_root / "tmp-governance" / "pgdev" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=bin_dir,
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=data_dir,
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    port_checks = {"count": 0}
+    popen_commands: list[list[str]] = []
+
+    def fake_is_port_open(_host, _port):
+        port_checks["count"] += 1
+        return port_checks["count"] > 1
+
+    monkeypatch.setattr(module, "_is_port_open", fake_is_port_open)
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda args, **kwargs: popen_commands.append(args) or object(),
+    )
+    monkeypatch.setattr(module, "_wait_for_postgres_ready", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "_ensure_role_and_database", lambda _config: None)
+    monkeypatch.setattr(module, "_apply_alembic_migrations_and_grants", lambda _config: None)
+    monkeypatch.setattr(module, "_bootstrap_kpi_if_available", lambda _config: None)
+    monkeypatch.setattr(module, "_prepare_runtime_clean_paths", lambda _config: None)
+
+    payload = module.command_up(config)
+
+    pg_ctl_start = popen_commands[0]
+    assert "-W" in pg_ctl_start
+    assert "-w" not in pg_ctl_start
+    assert "start" in pg_ctl_start
+    assert payload["running"] is True
+    assert payload["action"] == "up"
+
+
 def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeout(
     tmp_path,
     monkeypatch,
@@ -394,7 +523,39 @@ def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeou
     module._apply_alembic_migrations_and_grants(config)
 
     assert recorded_waits == [{"database": config.database, "attempts": 5, "retry_delay_seconds": 1.0}]
-    assert recorded_grants, "expected post-alembic GRANT statement to run after retry succeeds"
+    assert recorded_grants, "expected post-alembic GRANT statements to run after retry succeeds"
+    assert any("choice_news.data" in " ".join(args) for args in recorded_grants)
+
+
+def test_seed_dev_user_scopes_grants_choice_news_read_once(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=tmp_path / "repo",
+        bin_dir=tmp_path / "pgbin",
+        cluster_root=tmp_path / "tmp-governance" / "pgdev",
+        data_dir=tmp_path / "tmp-governance" / "pgdev" / "data",
+        log_file=tmp_path / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=tmp_path / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=tmp_path / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=tmp_path / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=tmp_path / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=tmp_path / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(module, "_run_checked", lambda args, *, capture_output=False: calls.append(args) or "")
+
+    module._seed_dev_user_scopes(config)
+
+    assert len(calls) == 1
+    command = " ".join(calls[0])
+    assert "INSERT INTO user_role_scope" in command
+    assert "choice_news.data" in command
+    assert "read" in command
+    assert "WHERE NOT EXISTS" in command
 
 
 def test_resolve_python_executable_prefers_path_python(monkeypatch):

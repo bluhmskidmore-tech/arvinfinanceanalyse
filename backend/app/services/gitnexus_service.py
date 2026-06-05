@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services.gitnexus_mcp_client import GitNexusMcpClient
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_WINDOWS_PATH_RE = re.compile(r"([A-Za-z]:\\[^\s\"'<>|?*]+)")
+_PATH_WITH_GITNEXUS_RE = re.compile(r"(?P<path>(?:[A-Za-z]:\\|/)[^\s\"'<>|?*]+?)(?:\\\\|/)?\\.gitnexus")
 _PROCESS_NAME_RE = re.compile(r"gitnexus\s+process(?:/|\s+)(?P<name>[^\r\n]+)", re.IGNORECASE)
 _GITNEXUS_TRACE_COLUMNS = ["step", "symbol", "file", "module_group", "edge_label"]
 
@@ -33,14 +34,15 @@ def build_gitnexus_status_payload(request: AgentQueryRequest) -> dict[str, Any]:
     process_name = _resolve_process_name(request)
     mcp_bundle = None
     mcp_error = None
-    try:
-        mcp_bundle = GitNexusMcpClient(repo_path).read_bundle(process_name=process_name)
-        if mcp_bundle.get("repo_name"):
-            resource_repo_name = str(mcp_bundle["repo_name"])
-            context_uri = f"gitnexus://repo/{resource_repo_name}/context"
-            processes_uri = f"gitnexus://repo/{resource_repo_name}/processes"
-    except Exception as exc:  # pragma: no cover - exercised via fallback assertions
-        mcp_error = str(exc)
+    if process_name or (mcp_configured and _request_wants_mcp_bundle(request, process_name=process_name)):
+        try:
+            mcp_bundle = GitNexusMcpClient(repo_path).read_bundle(process_name=process_name)
+            if mcp_bundle.get("repo_name"):
+                resource_repo_name = str(mcp_bundle["repo_name"])
+                context_uri = f"gitnexus://repo/{resource_repo_name}/context"
+                processes_uri = f"gitnexus://repo/{resource_repo_name}/processes"
+        except Exception as exc:  # pragma: no cover - exercised via fallback assertions
+            mcp_error = str(exc)
 
     quality_flag = "ok" if mcp_bundle else ("warning" if mcp_configured else "warning")
     repo_name = repo_path.name or str(repo_path)
@@ -177,9 +179,9 @@ def _resolve_repo_path(request: AgentQueryRequest) -> Path:
         if value:
             return _normalize_repo_path(str(value))
 
-    question_match = _WINDOWS_PATH_RE.search(request.question)
+    question_match = _PATH_WITH_GITNEXUS_RE.search(request.question)
     if question_match:
-        return _normalize_repo_path(question_match.group(1))
+        return _normalize_repo_path(question_match.group("path"))
 
     return _REPO_ROOT
 
@@ -195,11 +197,38 @@ def _resolve_process_name(request: AgentQueryRequest) -> str | None:
     return None
 
 
+def _request_wants_mcp_bundle(
+    request: AgentQueryRequest,
+    *,
+    process_name: str | None,
+) -> bool:
+    if process_name:
+        return True
+    explicit = str(request.context.get("gitnexus_mcp") or "").strip().lower()
+    if explicit in {"1", "true", "yes", "context", "processes"}:
+        return True
+    normalized = str(request.question or "").strip().lower()
+    return any(token in normalized for token in ("context", "processes"))
+
+
 def _normalize_repo_path(raw_path: str) -> Path:
-    candidate = Path(raw_path.strip().strip("\"'"))
+    candidate = Path(raw_path.strip().strip("\"'")).resolve()
     if candidate.name == ".gitnexus":
-        return candidate.parent
+        candidate = candidate.parent
+    if not any(candidate == root or root in candidate.parents for root in _allowed_repo_roots()):
+        raise ValueError(f"GitNexus repo_path is outside allowed roots: {candidate}")
     return candidate
+
+
+def _allowed_repo_roots() -> list[Path]:
+    configured = os.environ.get("MOSS_GITNEXUS_ALLOWED_REPO_ROOTS", "").strip()
+    roots = [_REPO_ROOT.resolve()]
+    if configured:
+        for item in configured.split(os.pathsep):
+            value = item.strip()
+            if value:
+                roots.append(Path(value).resolve())
+    return roots
 
 
 def _gitnexus_mcp_configured(repo_path: Path) -> bool:

@@ -1,7 +1,7 @@
 import { Button, Card } from "antd";
 
 import type { AssetStructurePayload } from "../../../api/contracts";
-import { formatYi, nativeToNumber } from "../utils/format";
+import { formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
 
 const RATING_ORDER = [
   "AAA",
@@ -59,7 +59,7 @@ export function CreditRatingBlocks({
         ) : (
           items.map((it) => {
             const w = (nativeToNumber(it.total_market_value) / total) * 100;
-            const percentage = nativeToNumber(it.percentage);
+            const percentage = formatRatePercent(it.percentage);
             const bg =
               RATING_COLORS[it.category.trim().toUpperCase()] ??
               (it.category.includes("A") ? "#ff4d4f" : "#8c8c8c");
@@ -81,7 +81,7 @@ export function CreditRatingBlocks({
               >
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{it.category || "—"}</div>
                 <div style={{ fontSize: 13, marginTop: 6 }}>{formatYi(it.total_market_value)} 亿</div>
-                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>{percentage.toFixed(2)}%</div>
+                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>{percentage}%</div>
               </div>
             );
           })

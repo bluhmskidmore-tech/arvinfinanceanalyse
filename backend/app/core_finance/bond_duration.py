@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
@@ -32,12 +32,14 @@ def _coerce_date_like(value: object | None) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date_like: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date_like: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -58,7 +60,8 @@ def _estimate_duration_proxy_years(
 
     try:
         return max(0.0, (maturity - report).days / 365.0)
-    except Exception:
+    except (TypeError, OverflowError) as exc:
+        logger.exception("_estimate_duration_proxy_years: date subtraction failed for bond %s", bond_code)
         return 3.0
 
 
@@ -68,53 +71,60 @@ def compute_macaulay_duration(
     ytm: Decimal,
     frequency: int = 1,
 ) -> Decimal:
-    n = float(years_to_maturity)
-    c = float(coupon_rate)
-    y = float(ytm)
+    _ZERO = Decimal("0")
+    _ONE = Decimal("1")
+    _TWO = Decimal("2")
+    _QUARTER = Decimal("0.25")
+    _TINY = Decimal("0.0001")
+    _FLOOR = Decimal("0.1")
 
-    if n <= 0:
-        return Decimal("0")
-    if n <= 0.25:
+    if years_to_maturity <= _ZERO:
+        return _ZERO
+    if years_to_maturity <= _QUARTER:
         return years_to_maturity
 
-    if c <= 0:
+    if coupon_rate <= _ZERO:
         return years_to_maturity
 
-    if y <= 0.0001:
-        if c <= 0:
+    if frequency <= 0:
+        frequency = 1
+    freq_d = Decimal(frequency)
+
+    if ytm <= _TINY:
+        if coupon_rate <= _ZERO:
             return years_to_maturity
-        factor = 1.0 - c * n / (2.0 * (1.0 + c * n))
-        return Decimal(str(round(n * max(factor, 0.1), 4)))
+        factor = _ONE - coupon_rate * years_to_maturity / (_TWO * (_ONE + coupon_rate * years_to_maturity))
+        if factor < _FLOOR:
+            factor = _FLOOR
+        return (years_to_maturity * factor).quantize(Decimal("0.0001"))
 
     try:
-        n_periods = round(n * frequency)
+        n_periods = int((years_to_maturity * freq_d).to_integral_value())
         if n_periods <= 0:
             n_periods = 1
-        c_per = c / frequency
-        y_per = y / frequency
+        c_per = coupon_rate / freq_d
+        y_per = ytm / freq_d
 
-        one_plus_y = 1.0 + y_per
-        pow_n = one_plus_y**n_periods
+        one_plus_y = _ONE + y_per
+        pow_n = one_plus_y ** n_periods  # int exponent — Decimal supports this
 
         term1 = one_plus_y / y_per
 
         numer = one_plus_y + n_periods * (c_per - y_per)
-        denom = c_per * (pow_n - 1.0) + y_per
+        denom = c_per * (pow_n - _ONE) + y_per
 
-        if abs(denom) < 1e-12:
+        if abs(denom) < Decimal("1E-12"):
             return years_to_maturity
 
         term2 = numer / denom
-        mac_dur_years = (term1 - term2) / frequency
+        mac_dur_years = (term1 - term2) / freq_d
 
-        if mac_dur_years <= 0 or mac_dur_years > n:
-            return years_to_maturity
-        if math.isnan(mac_dur_years) or math.isinf(mac_dur_years):
+        if mac_dur_years <= _ZERO or mac_dur_years > years_to_maturity:
             return years_to_maturity
 
-        return Decimal(str(round(mac_dur_years, 4)))
+        return mac_dur_years.quantize(Decimal("0.0001"))
 
-    except (OverflowError, ZeroDivisionError, ValueError):
+    except (OverflowError, ZeroDivisionError, ValueError, InvalidOperation):
         return years_to_maturity
 
 
@@ -211,6 +221,8 @@ def modified_duration_from_macaulay(
     if ytm <= Decimal("-0.99"):
         return duration
     if ytm <= 0:
+        return duration
+    if coupon_frequency <= 0:
         return duration
     divisor = Decimal("1") + ytm / Decimal(str(coupon_frequency))
     if divisor <= 0:

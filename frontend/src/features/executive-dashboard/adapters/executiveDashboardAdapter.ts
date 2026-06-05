@@ -15,9 +15,14 @@ import type {
   Numeric,
   OverviewPayload,
   PnlAttributionPayload,
+  ProductCategoryMonthlyHeadlinePayload,
+  ProductCategoryYtdHeadlinePayload,
   ResultMeta,
   VerdictPayload,
+  VerdictReason,
+  VerdictSuggestion,
 } from "../../../api/contracts";
+import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { Tone } from "../../../utils/tone";
 import { sanitizeMetricDetail, sanitizeMetricLabel } from "../lib/sanitizeMetricCopy";
@@ -27,6 +32,7 @@ type MetricTone = "positive" | "neutral" | "warning" | "negative";
 export type DashboardOverviewMetricVM = {
   id: string;
   label: string;
+  caliberLabel: string | null;
   value: Numeric;
   delta: Numeric;
   tone: MetricTone;
@@ -60,6 +66,27 @@ export type DashboardAdapterInput = {
   attributionLoading: boolean;
   attributionError: boolean;
   verdictPayload?: VerdictPayload | null;
+  snapshotFetchErrorDetail?: string;
+  domainsEffectiveDate?: Record<string, string>;
+  /** 与 overview 同源快照；缺省表示未随快照下发 */
+  productCategoryYtd?: ProductCategoryYtdHeadlinePayload | null;
+  /** 与 product-category-pnl monthly 页脚同源快照；缺省表示未随快照下发 */
+  productCategoryMonthly?: ProductCategoryMonthlyHeadlinePayload | null;
+};
+
+export type DashboardProductCategoryYtdVM = {
+  summaryPnlLabel: string;
+  summaryPnlDisplay: string;
+  summaryPnlDetail: string;
+  intermediateLabel: string;
+  intermediateDisplay: string;
+  intermediateDetail: string;
+};
+
+export type DashboardProductCategoryMonthlyVM = {
+  monthlyIncomeLabel: string;
+  monthlyIncomeDisplay: string;
+  monthlyIncomeDetail: string;
 };
 
 export type DashboardAdapterOutput = {
@@ -73,14 +100,94 @@ export type DashboardAdapterOutput = {
     state: DataSectionState;
     meta: ResultMeta | null;
   };
+  productCategoryYtd: {
+    vm: DashboardProductCategoryYtdVM | null;
+    state: DataSectionState;
+  };
+  productCategoryMonthly: {
+    vm: DashboardProductCategoryMonthlyVM | null;
+    state: DataSectionState;
+  };
   verdict: VerdictPayload | null;
+  domainsEffectiveDate: Record<string, string>;
+  datesDiverged: boolean;
 };
+
+function buildProductCategoryYtdVM(
+  headline: ProductCategoryYtdHeadlinePayload | null | undefined,
+): DashboardProductCategoryYtdVM | null {
+  if (!headline) {
+    return null;
+  }
+  const summaryPnl = headline.summary_pnl ?? headline.operating_income;
+  const summaryPnlDetail = headline.summary_pnl_detail ?? headline.operating_income_detail;
+  return {
+    summaryPnlLabel: "汇总损益",
+    summaryPnlDisplay: summaryPnl.display,
+    summaryPnlDetail: sanitizeMetricDetail(summaryPnlDetail),
+    intermediateLabel: "中间业务收入",
+    intermediateDisplay: headline.intermediate_business_income.display,
+    intermediateDetail: sanitizeMetricDetail(headline.intermediate_business_income_detail),
+  };
+}
+
+function buildProductCategoryMonthlyVM(
+  headline: ProductCategoryMonthlyHeadlinePayload | null | undefined,
+): DashboardProductCategoryMonthlyVM | null {
+  if (!headline) {
+    return null;
+  }
+  return {
+    monthlyIncomeLabel: "月度损益",
+    monthlyIncomeDisplay: headline.monthly_income.display,
+    monthlyIncomeDetail: sanitizeMetricDetail(headline.monthly_income_detail),
+  };
+}
+
+function deriveProductCategoryYtdState(input: {
+  isLoading: boolean;
+  isError: boolean;
+  fetchErrorDetail?: string;
+  headline: ProductCategoryYtdHeadlinePayload | null | undefined;
+}): DataSectionState {
+  if (input.isLoading) {
+    return { kind: "loading" };
+  }
+  if (input.isError) {
+    const secondary = reservedFetchSecondaryMessage(input.fetchErrorDetail);
+    return secondary ? { kind: "error", message: secondary } : { kind: "error" };
+  }
+  if (!input.headline) {
+    return { kind: "empty", hint: "当前快照未包含产品分类损益 ytd 摘要（可能为读模型不可用）。" };
+  }
+  return { kind: "ok" };
+}
+
+function deriveProductCategoryMonthlyState(input: {
+  isLoading: boolean;
+  isError: boolean;
+  fetchErrorDetail?: string;
+  headline: ProductCategoryMonthlyHeadlinePayload | null | undefined;
+}): DataSectionState {
+  if (input.isLoading) {
+    return { kind: "loading" };
+  }
+  if (input.isError) {
+    const secondary = reservedFetchSecondaryMessage(input.fetchErrorDetail);
+    return secondary ? { kind: "error", message: secondary } : { kind: "error" };
+  }
+  if (!input.headline) {
+    return { kind: "empty", hint: "当前快照未包含产品分类损益 monthly 摘要（可能为读模型不可用）。" };
+  }
+  return { kind: "ok" };
+}
 
 export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOutput {
   const overviewState = deriveStateFromEnvelope({
     env: input.overviewEnv,
     isLoading: input.overviewLoading,
     isError: input.overviewError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
     emptyIf: (result) => !result || !Array.isArray(result.metrics) || result.metrics.length === 0,
   });
 
@@ -88,11 +195,34 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
     env: input.attributionEnv,
     isLoading: input.attributionLoading,
     isError: input.attributionError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
     emptyIf: (result) => !result || !Array.isArray(result.segments) || result.segments.length === 0,
   });
 
   const overviewVM = buildOverviewVM(input.overviewEnv?.result);
   const attributionVM = buildAttributionVM(input.attributionEnv?.result);
+
+  const ytdHeadline = input.productCategoryYtd ?? null;
+  const productCategoryYtdState = deriveProductCategoryYtdState({
+    isLoading: input.overviewLoading,
+    isError: input.overviewError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
+    headline: ytdHeadline,
+  });
+  const productCategoryYtdVm = buildProductCategoryYtdVM(ytdHeadline);
+  const monthlyHeadline = input.productCategoryMonthly ?? null;
+  const productCategoryMonthlyState = deriveProductCategoryMonthlyState({
+    isLoading: input.overviewLoading,
+    isError: input.overviewError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
+    headline: monthlyHeadline,
+  });
+  const productCategoryMonthlyVm = buildProductCategoryMonthlyVM(monthlyHeadline);
+
+  const domains = input.domainsEffectiveDate ?? {};
+  const domainValues = Object.values(domains).filter((v) => typeof v === "string" && v.trim());
+  const uniqueDates = new Set(domainValues);
+  const datesDiverged = uniqueDates.size > 1;
 
   return {
     overview: {
@@ -105,8 +235,69 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
       state: attributionState,
       meta: input.attributionEnv?.result_meta ?? null,
     },
+    productCategoryYtd: {
+      vm: productCategoryYtdVm,
+      state: productCategoryYtdState,
+    },
+    productCategoryMonthly: {
+      vm: productCategoryMonthlyVm,
+      state: productCategoryMonthlyState,
+    },
     verdict: sanitizeVerdict(input.verdictPayload ?? null),
+    domainsEffectiveDate: domains,
+    datesDiverged,
   };
+}
+
+/**
+ * 将 API 可能返回的非常规标量（嵌套对象、无原型对象等）规范为可安全参与模板字符串与 JSX 的字符串，
+ * 避免 `String(x)` / `` `${x}` `` 抛出 “Cannot convert object to primitive value”。
+ */
+function coerceVerdictText(value: unknown, fallback: string): string {
+  if (value == null) {
+    return fallback;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "symbol") {
+    return fallback;
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  try {
+    return String(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function coerceVerdictLink(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return null;
+}
+
+function coerceVerdictTone(value: unknown): VerdictPayload["tone"] {
+  if (value === "positive" || value === "neutral" || value === "warning" || value === "negative") {
+    return value;
+  }
+  return "neutral";
 }
 
 /**
@@ -114,14 +305,32 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
  * 避免 hero strip 已经净化、但 verdict 仍然漏出表名/字段名/英文术语。
  */
 function sanitizeVerdict(verdict: VerdictPayload | null): VerdictPayload | null {
-  if (!verdict) return null;
+  if (!verdict || typeof verdict !== "object") {
+    return null;
+  }
+
+  const reasonsRaw = Array.isArray(verdict.reasons) ? verdict.reasons : [];
+  const suggestionsRaw = Array.isArray(verdict.suggestions) ? verdict.suggestions : [];
+
   return {
-    ...verdict,
-    reasons: verdict.reasons.map((r) => ({
-      ...r,
-      label: sanitizeMetricLabel(r.label),
-      detail: sanitizeMetricDetail(r.detail),
-    })),
+    conclusion: coerceVerdictText(verdict.conclusion, ""),
+    tone: coerceVerdictTone(verdict.tone),
+    reasons: reasonsRaw.map((raw) => {
+      const r = raw && typeof raw === "object" ? (raw as Partial<VerdictReason>) : {};
+      return {
+        label: sanitizeMetricLabel(coerceVerdictText(r.label, "")),
+        value: coerceVerdictText(r.value, "—"),
+        detail: sanitizeMetricDetail(coerceVerdictText(r.detail, "")),
+        tone: coerceVerdictTone(r.tone),
+      };
+    }),
+    suggestions: suggestionsRaw.map((raw) => {
+      const s = raw && typeof raw === "object" ? (raw as Partial<VerdictSuggestion>) : {};
+      return {
+        text: coerceVerdictText(s.text, ""),
+        link: coerceVerdictLink(s.link),
+      };
+    }),
   };
 }
 
@@ -132,6 +341,7 @@ function buildOverviewVM(result: OverviewPayload | undefined): DashboardOverview
     metrics: result.metrics.map((m) => ({
       id: m.id,
       label: m.label,
+      caliberLabel: m.caliber_label ?? null,
       value: m.value,
       delta: m.delta,
       tone: (m.tone as MetricTone) ?? "neutral",
@@ -162,14 +372,28 @@ function coerceTone(raw: string): Tone {
   return "neutral";
 }
 
+function reservedFetchSecondaryMessage(raw?: string): string | undefined {
+  if (!raw?.trim()) {
+    return undefined;
+  }
+  if (!isReservedBoundaryHttpMessage(raw)) {
+    return undefined;
+  }
+  return "该接口在当前发布边界中为保留面，本轮不可用；并非通用网络错误。";
+}
+
 function deriveStateFromEnvelope<T extends { metrics?: unknown; segments?: unknown }>(opts: {
   env: { result_meta: ResultMeta; result: T } | undefined;
   isLoading: boolean;
   isError: boolean;
+  fetchErrorDetail?: string;
   emptyIf: (result: T | undefined) => boolean;
 }): DataSectionState {
   if (opts.isLoading) return { kind: "loading" };
-  if (opts.isError) return { kind: "error" };
+  if (opts.isError) {
+    const secondary = reservedFetchSecondaryMessage(opts.fetchErrorDetail);
+    return secondary ? { kind: "error", message: secondary } : { kind: "error" };
+  }
   if (!opts.env) return { kind: "loading" };
 
   const meta = opts.env.result_meta;
@@ -226,9 +450,25 @@ function resolveRequestedDate(meta: ResultMeta): string | undefined {
 
 function describeMetaDetails(meta: ResultMeta): string {
   const parts: string[] = [];
-  if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`quality=${meta.quality_flag}`);
-  if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`vendor=${meta.vendor_status}`);
-  if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`fallback=${meta.fallback_mode}`);
-  if (meta.generated_at) parts.push(`generated_at=${meta.generated_at}`);
+  const quality =
+    meta.quality_flag === "warning"
+      ? "预警"
+      : meta.quality_flag === "error"
+        ? "错误"
+        : meta.quality_flag === "stale"
+          ? "陈旧"
+          : meta.quality_flag;
+  const vendor =
+    meta.vendor_status === "vendor_stale"
+      ? "供应商陈旧"
+      : meta.vendor_status === "vendor_unavailable"
+        ? "供应商不可用"
+        : meta.vendor_status;
+  const fallback =
+    meta.fallback_mode === "latest_snapshot" ? "最新快照降级" : meta.fallback_mode;
+  if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`质量=${quality}`);
+  if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`供应商=${vendor}`);
+  if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`降级=${fallback}`);
+  if (meta.generated_at) parts.push(`生成时间=${meta.generated_at}`);
   return parts.join(" · ");
 }

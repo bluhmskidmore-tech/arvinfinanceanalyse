@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
 from tests.test_bond_analytics_api import REPORT_DATE
@@ -25,7 +26,14 @@ def _configure_bond_analytics_api_env(tmp_path, monkeypatch) -> object:
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{(tmp_path / 'auth-scope.db').as_posix()}")
     get_settings.cache_clear()
+    UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="bond_analytics",
+        action="refresh",
+    )
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     return governance_dir

@@ -39,14 +39,14 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", () => ({
   BondAnalyticsFilterActionStrip: (props: {
-    reportDate: string;
-    periodType: string;
     onRefreshAnalytics?: () => void;
+    assetClass: string;
+    accountingClass: string;
   }) => (
     <div
       data-testid="mock-bond-filter-action-strip"
-      data-report-date={props.reportDate}
-      data-period-type={props.periodType}
+      data-asset-class={props.assetClass}
+      data-accounting-class={props.accountingClass}
     >
       <button type="button" data-testid="mock-filter-refresh" onClick={() => props.onRefreshAnalytics?.()}>
         trigger refresh
@@ -55,10 +55,8 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", 
   ),
 }));
 
-vi.mock("../features/bond-analytics/components/PerformanceComparison", () => ({
-  default: function MockPerformanceComparison() {
-    return <div data-testid="mock-performance-comparison" />;
-  },
+vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewMidCharts", () => ({
+  BondAnalyticsOverviewMidCharts: () => <div data-testid="mock-bond-mid-charts" />,
 }));
 
 vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
@@ -95,18 +93,18 @@ function createOverviewModel(): BondAnalyticsOverviewModel {
     reportDate: "2026-03-31",
     periodType: "MoM",
     truthStrip: {
-      title: "Truth and provenance",
+      title: "真值与证据",
       items: [
-        { key: "basis", label: "Basis", value: "Formal", tone: "neutral" },
+        { key: "basis", label: "口径", value: "正式口径", tone: "neutral" },
       ],
     },
     headlineTiles: [
       {
         key: "action-attribution",
-        label: "Headline Action Attribution",
+        label: "头条动作归因",
         value: "12",
-        caption: "Caption",
-        detail: "Detail",
+        caption: "说明",
+        detail: "明细",
       },
     ],
     readinessItems: [
@@ -184,18 +182,19 @@ describe("BondAnalyticsOverviewPanels", () => {
       "data-action-count",
       "4",
     );
-    expect(screen.getByTestId("mock-performance-comparison")).toBeInTheDocument();
+    expect(screen.queryByTestId("mock-bond-macro-bar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-mid-charts")).toBeInTheDocument();
     expect(screen.getByTestId("mock-risk-trend-chart")).toBeInTheDocument();
     expect(screen.getByTestId("mock-bond-event-calendar")).toBeInTheDocument();
 
     const market = screen.getByTestId("mock-bond-market-context-strip");
     expect(market).toHaveAttribute("data-report-date", "2026-03-31");
     expect(market).toHaveAttribute("data-lead-module", "Lead from overview model");
-    expect(market).toHaveAttribute("data-truth-title", "Truth and provenance");
+    expect(market).toHaveAttribute("data-truth-title", "真值与证据");
 
     const filter = screen.getByTestId("mock-bond-filter-action-strip");
-    expect(filter).toHaveAttribute("data-report-date", "2026-03-31");
-    expect(filter).toHaveAttribute("data-period-type", "MoM");
+    expect(filter).toHaveAttribute("data-asset-class", "all");
+    expect(filter).toHaveAttribute("data-accounting-class", "all");
 
     await user.click(screen.getByTestId("mock-filter-refresh"));
     expect(onRefreshAnalytics).toHaveBeenCalledTimes(1);

@@ -42,12 +42,14 @@ RULE_VERSION = YIELD_CURVE_MODULE.rule_version
 CACHE_VERSION = YIELD_CURVE_MODULE.cache_version
 
 SUPPORTED_CURVE_TYPES = ("treasury", "cdb", "aaa_credit")
+# Extended types available on demand (Choice-only): spot rate curves and Shibor.
+ALL_CURVE_TYPES = SUPPORTED_CURVE_TYPES + ("treasury_spot", "cdb_spot", "shibor")
 MAX_BACKTRACK_DAYS = 40
 
 
 def _normalize_curve_types(curve_types: tuple[str, ...]) -> tuple[str, ...]:
     normalized = tuple(str(curve_type).strip().lower() for curve_type in curve_types)
-    unsupported = sorted({curve_type for curve_type in normalized if curve_type not in SUPPORTED_CURVE_TYPES})
+    unsupported = sorted({curve_type for curve_type in normalized if curve_type not in ALL_CURVE_TYPES})
     if unsupported:
         joined = ", ".join(unsupported)
         raise FormalComputeMaterializeFailure(

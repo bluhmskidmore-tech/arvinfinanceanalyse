@@ -14,6 +14,9 @@ import {
   cockpitBodyStyle,
   cockpitInsetCardStyle,
 } from "./DashboardCockpitSection.styles";
+import { dashboardBondHeadlineQueryKey } from "./dashboardBondHeadlineQuery";
+import { GridContainer, GridItem } from "../../../components/GridContainer";
+import { KpiCard, type KpiCardProps } from "../../../components/KpiCard";
 
 type DashboardBondHeadlineSectionProps = {
   reportDate: string;
@@ -43,7 +46,7 @@ type HeadlineCell = {
   label: string;
   value: string;
   detail: string;
-  tone?: "positive" | "negative" | "neutral";
+  tone?: KpiCardProps["tone"];
 };
 
 function toState(
@@ -66,11 +69,13 @@ export function DashboardBondHeadlineSection({
 }: DashboardBondHeadlineSectionProps) {
   const client = useApiClient();
   const enabled = Boolean(reportDate.trim());
+  const normalizedReportDate = reportDate.trim();
   const query = useQuery({
-    queryKey: ["dashboard", "bond-headline-kpis", client.mode, reportDate],
-    queryFn: () => client.getBondDashboardHeadlineKpis(reportDate.trim()),
+    queryKey: dashboardBondHeadlineQueryKey(client.mode, normalizedReportDate),
+    queryFn: () => client.getBondDashboardHeadlineKpis(normalizedReportDate),
     enabled,
     retry: false,
+    staleTime: 60_000,
   });
 
   const payload = query.data?.result;
@@ -96,11 +101,13 @@ export function DashboardBondHeadlineSection({
       `YTM ${formatNumeric(formatRawAsNumeric({ raw: weightedYtm, unit: "pct", sign_aware: false }))}`,
     ].join(" / ");
 
-    const pnlTone = toneFromSignedNumber(unrealizedPnl) === "positive"
-      ? "positive"
-      : toneFromSignedNumber(unrealizedPnl) === "negative"
-        ? "negative"
-        : "neutral";
+    const signed = toneFromSignedNumber(unrealizedPnl);
+    const pnlTone: NonNullable<KpiCardProps["tone"]> =
+      signed === "positive"
+        ? "positive"
+        : signed === "negative"
+          ? "negative"
+          : "default";
 
     return {
       leadText,
@@ -119,12 +126,12 @@ export function DashboardBondHeadlineSection({
         {
           label: "加权到期收益率",
           value: formatNumeric(formatRawAsNumeric({ raw: weightedYtm, unit: "pct", sign_aware: false })),
-          detail: "组合收益率中枢",
+          detail: "持仓事实表 YTM，按 rate/credit 债券市值加权；非市场曲线重估。",
         },
         {
           label: "加权久期",
           value: formatNumeric(formatRawAsNumeric({ raw: weightedDuration, unit: "ratio", sign_aware: false })),
-          detail: "利率暴露中枢",
+          detail: "持仓事实表修正久期，按 rate/credit 债券市值加权。",
         },
         {
           label: "加权票息率",
@@ -158,7 +165,7 @@ export function DashboardBondHeadlineSection({
   return (
     <DashboardCockpitSection
       testId="dashboard-bond-headline-section"
-      eyebrow="Bond Headlines"
+      eyebrow="债券要点"
       title="债券组合头条"
       state={state}
       onRetry={() => void query.refetch()}
@@ -179,79 +186,19 @@ export function DashboardBondHeadlineSection({
             {leadText || "等待报告日后再生成债券组合的首屏状态判断。"}
           </p>
         </div>
-        <div
-          data-testid="dashboard-bond-headline-grid"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {cells.map((cell) => {
-            const toneColor =
-              cell.tone === "positive"
-                ? shellTokens.colorSuccess
-                : cell.tone === "negative"
-                  ? shellTokens.colorDanger
-                  : "#c9d4d2";
-            return (
-              <div
-                key={cell.label}
-                data-testid="dashboard-bond-headline-kpi"
-                style={{
-                  ...cockpitInsetCardStyle,
-                  position: "relative",
-                  overflow: "hidden",
-                  gap: 4,
-                  minHeight: 100,
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 3,
-                    background: toneColor,
-                    opacity: 0.85,
-                  }}
-                />
-                <span
-                  style={{
-                    color: shellTokens.colorTextMuted,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                  }}
-                >
-                  {cell.label}
-                </span>
-                <strong
-                  style={{
-                    color:
-                      cell.tone === "positive"
-                        ? shellTokens.colorSuccess
-                        : cell.tone === "negative"
-                          ? shellTokens.colorDanger
-                          : shellTokens.colorTextPrimary,
-                    fontSize: 26,
-                    lineHeight: 1.1,
-                    fontVariantNumeric: "tabular-nums",
-                    letterSpacing: "-0.02em",
-                    fontWeight: 700,
-                  }}
-                >
-                  {cell.value}
-                </strong>
-                <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, lineHeight: 1.45 }}>
-                  {cell.detail}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        <GridContainer testId="dashboard-bond-headline-grid" gutter={[16, 16]}>
+          {cells.map((cell) => (
+            <GridItem key={cell.label} span={6}>
+              <KpiCard
+                testId="dashboard-bond-headline-kpi"
+                title={cell.label}
+                value={cell.value}
+                detail={cell.detail}
+                tone={cell.tone}
+              />
+            </GridItem>
+          ))}
+        </GridContainer>
       </div>
     </DashboardCockpitSection>
   );

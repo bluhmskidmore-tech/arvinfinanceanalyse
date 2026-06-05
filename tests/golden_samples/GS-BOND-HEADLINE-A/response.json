@@ -1,0 +1,131 @@
+{
+  "result_meta": {
+    "trace_id": "tr_bfc8e06208b8",
+    "basis": "formal",
+    "result_kind": "bond_dashboard.headline_kpis",
+    "formal_use_allowed": true,
+    "source_version": "sv",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_bond_analytics_formal_materialize_v1",
+    "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-05-10T14:57:44.914593Z",
+    "filters_applied": {},
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": "bond_analytics"
+  },
+  "result": {
+    "report_date": "2026-03-31",
+    "prev_report_date": "2026-03-30",
+    "kpis": {
+      "total_market_value": {
+        "raw": 1000.0,
+        "unit": "yuan",
+        "display": "1,000.00",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "unrealized_pnl": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "weighted_ytm": {
+        "raw": 0.035,
+        "unit": "pct",
+        "display": "+3.50%",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "weighted_duration": {
+        "raw": 5.0,
+        "unit": "ratio",
+        "display": "5.00",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "weighted_coupon": {
+        "raw": 0.025,
+        "unit": "pct",
+        "display": "+2.50%",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "credit_spread_median": {
+        "raw": 0.04,
+        "unit": "pct",
+        "display": "+4.00%",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_dv01": {
+        "raw": 0.8,
+        "unit": "dv01",
+        "display": "0.80",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "bond_count": 3
+    },
+    "prev_kpis": {
+      "total_market_value": {
+        "raw": 300.0,
+        "unit": "yuan",
+        "display": "300.00",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "unrealized_pnl": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "weighted_ytm": {
+        "raw": 0.031,
+        "unit": "pct",
+        "display": "+3.10%",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "weighted_duration": {
+        "raw": 4.2,
+        "unit": "ratio",
+        "display": "4.20",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "weighted_coupon": {
+        "raw": 0.025,
+        "unit": "pct",
+        "display": "+2.50%",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "credit_spread_median": {
+        "raw": 0.035,
+        "unit": "pct",
+        "display": "+3.50%",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_dv01": {
+        "raw": 0.8,
+        "unit": "dv01",
+        "display": "0.80",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "bond_count": 2
+    }
+  },
+  "data_source": "bond_analytics_facts"
+}

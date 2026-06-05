@@ -4,22 +4,36 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 from backend.app.core_finance.bond_analytics.read_models import (
     build_krd_distribution,
     summarize_accounting_audit,
     summarize_credit,
     summarize_portfolio_risk,
 )
-from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
-
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
 SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
 BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
 
 _DASHBOARD_ASSET_GROUP_COLUMNS = frozenset({"bond_type", "rating", "portfolio_name", "tenor_bucket"})
+_DURATION_DENOMINATOR_SQL = (
+    "maturity_date is not null "
+    "and coalesce(modified_duration, 0) > 0 "
+    "and coalesce(market_value, 0) <> 0"
+)
+_MATURITY_DENOMINATOR_SQL = (
+    "maturity_date is not null "
+    "and coalesce(years_to_maturity, 0) > 0 "
+    "and coalesce(market_value, 0) <> 0"
+)
+_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL = (
+    f"asset_class_std in ('rate', 'credit') and {_DURATION_DENOMINATOR_SQL}"
+)
+_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL = (
+    f"case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then market_value else 0 end"
+)
 
 # Column name constants — single source of truth for row→dict mapping and INSERT ordering.
 
@@ -32,12 +46,15 @@ _SNAPSHOT_COLUMNS = (
     "account_category",
     "asset_class",
     "bond_type",
+    "business_type_primary",
     "issuer_name",
     "industry_name",
     "rating",
     "currency_code",
     "face_value_native",
+    "face_value_cny",
     "market_value_native",
+    "market_value_cny",
     "amortized_cost_native",
     "accrued_interest_native",
     "coupon_rate",
@@ -51,6 +68,8 @@ _SNAPSHOT_COLUMNS = (
     "rule_version",
     "ingest_batch_id",
     "trace_id",
+    "sub_type",
+    "accounting_basis",
 )
 
 _ANALYTICS_COLUMNS = (
@@ -98,6 +117,10 @@ _RISK_OVERVIEW_COLUMNS = (
     "report_date",
     "portfolio_modified_duration",
     "portfolio_dv01",
+    "ac_dv01",
+    "oci_dv01",
+    "tpl_dv01",
+    "other_dv01",
     "credit_market_value_ratio_pct",
     "weighted_years_to_maturity",
 )
@@ -111,6 +134,15 @@ _RISK_INDICATORS_KEYS = (
     "total_spread_dv01",
     "reinvestment_ratio_1y",
 )
+
+_DURATION_SCOPE_KEYS = (
+    "rate_risk_market_value",
+    "rate_risk_dv01",
+    "rate_risk_modified_duration",
+    "duration_excluded_market_value",
+    "duration_excluded_count",
+)
+_Q8 = Decimal("0.00000001")
 
 
 @dataclass
@@ -142,17 +174,107 @@ class BondAnalyticsRepository:
         try:
             if not _table_exists(conn, SNAPSHOT_TABLE):
                 return []
+            snapshot_market_value_cny_expr = (
+                "s.market_value_cny"
+                if _column_exists(conn, SNAPSHOT_TABLE, "market_value_cny")
+                else "null"
+            )
+            balance_join = ""
+            accounting_basis_expr = "null"
+            face_value_cny_expr = "s.face_value_native"
+            market_value_cny_expr = snapshot_market_value_cny_expr
+            if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+                balance_join = f"""
+                left join (
+                  select
+                    report_date,
+                    instrument_code_key,
+                    portfolio_name_key,
+                    cost_center_key,
+                    account_category_key,
+                    asset_class_key,
+                    bond_type_key,
+                    sub_type_key,
+                    business_type_primary_key,
+                    issuer_name_key,
+                    industry_name_key,
+                    rating_key,
+                    is_issuance_like_key,
+                    currency_code_key,
+                    max(accounting_basis) as accounting_basis,
+                    sum(face_value_amount) as face_value_amount,
+                    sum(market_value_amount) as market_value_amount
+                  from (
+                    select
+                      cast(report_date as varchar) as report_date,
+                      trim(coalesce(instrument_code, '')) as instrument_code_key,
+                      trim(coalesce(portfolio_name, '')) as portfolio_name_key,
+                      trim(coalesce(cost_center, '')) as cost_center_key,
+                      trim(coalesce(account_category, '')) as account_category_key,
+                      trim(coalesce(asset_class, '')) as asset_class_key,
+                      trim(coalesce(bond_type, '')) as bond_type_key,
+                      trim(coalesce(sub_type, '')) as sub_type_key,
+                      trim(coalesce(business_type_primary, '')) as business_type_primary_key,
+                      trim(coalesce(issuer_name, '')) as issuer_name_key,
+                      trim(coalesce(industry_name, '')) as industry_name_key,
+                      trim(coalesce(rating, '')) as rating_key,
+                      coalesce(is_issuance_like, false) as is_issuance_like_key,
+                      upper(trim(coalesce(currency_code, ''))) as currency_code_key,
+                      nullif(trim(accounting_basis), '') as accounting_basis,
+                      face_value_amount,
+                      market_value_amount
+                    from {BALANCE_ZQTZ_FACT_TABLE}
+                    where upper(trim(coalesce(currency_basis, ''))) = 'CNY'
+                      and lower(trim(coalesce(position_scope, ''))) = 'asset'
+                  ) balance_rows
+                  group by
+                    report_date,
+                    instrument_code_key,
+                    portfolio_name_key,
+                    cost_center_key,
+                    account_category_key,
+                    asset_class_key,
+                    bond_type_key,
+                    sub_type_key,
+                    business_type_primary_key,
+                    issuer_name_key,
+                    industry_name_key,
+                    rating_key,
+                    is_issuance_like_key,
+                    currency_code_key
+                ) b
+                  on cast(s.report_date as varchar) = b.report_date
+                 and trim(coalesce(s.instrument_code, '')) = b.instrument_code_key
+                 and trim(coalesce(s.portfolio_name, '')) = b.portfolio_name_key
+                 and trim(coalesce(s.cost_center, '')) = b.cost_center_key
+                 and trim(coalesce(s.account_category, '')) = b.account_category_key
+                 and trim(coalesce(s.asset_class, '')) = b.asset_class_key
+                 and trim(coalesce(s.bond_type, '')) = b.bond_type_key
+                 and trim(coalesce(s.sub_type, '')) = b.sub_type_key
+                 and trim(coalesce(s.business_type_primary, '')) = b.business_type_primary_key
+                 and trim(coalesce(s.issuer_name, '')) = b.issuer_name_key
+                 and trim(coalesce(s.industry_name, '')) = b.industry_name_key
+                 and trim(coalesce(s.rating, '')) = b.rating_key
+                 and coalesce(s.is_issuance_like, false) = b.is_issuance_like_key
+                 and upper(trim(coalesce(s.currency_code, ''))) = b.currency_code_key
+                """
+                accounting_basis_expr = "b.accounting_basis"
+                face_value_cny_expr = "coalesce(b.face_value_amount, s.face_value_native)"
+                market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
             rows = conn.execute(
                 f"""
-                select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                       account_category, asset_class, bond_type, issuer_name, industry_name, rating,
-                       currency_code, face_value_native, market_value_native, amortized_cost_native,
-                       accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
-                       overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-                       ingest_batch_id, trace_id
-                from {SNAPSHOT_TABLE}
-                where report_date = ?
-                order by instrument_code, portfolio_name, cost_center, currency_code
+                select s.report_date, s.instrument_code, s.instrument_name, s.portfolio_name, s.cost_center,
+                       s.account_category, s.asset_class, s.bond_type, s.business_type_primary,
+                       s.issuer_name, s.industry_name, s.rating,
+                       s.currency_code, s.face_value_native, {face_value_cny_expr} as face_value_cny, s.market_value_native,
+                       {market_value_cny_expr} as market_value_cny, s.amortized_cost_native,
+                       s.accrued_interest_native, s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
+                       s.overdue_days, s.is_issuance_like, s.interest_mode, s.source_version, s.rule_version,
+                       s.ingest_batch_id, s.trace_id, s.sub_type, {accounting_basis_expr} as accounting_basis
+                from {SNAPSHOT_TABLE} s
+                {balance_join}
+                where s.report_date = ?
+                order by s.instrument_code, s.portfolio_name, s.cost_center, s.currency_code
                 """,
                 [report_date],
             ).fetchall()
@@ -349,10 +471,24 @@ class BondAnalyticsRepository:
                 f"""
                 select
                   cast(report_date as varchar) as report_date,
-                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
+                  case
+                    when coalesce(sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_DURATION_DENOMINATOR_SQL} then modified_duration * market_value else 0 end)
+                       / sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as portfolio_modified_duration,
                   sum(dv01) as portfolio_dv01,
+                  sum(case when accounting_class = 'AC' then dv01 else 0 end) as ac_dv01,
+                  sum(case when accounting_class = 'OCI' then dv01 else 0 end) as oci_dv01,
+                  sum(case when accounting_class = 'TPL' then dv01 else 0 end) as tpl_dv01,
+                  sum(case when accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null then dv01 else 0 end) as other_dv01,
                   sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
-                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
+                  case
+                    when coalesce(sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_MATURITY_DENOMINATOR_SQL} then years_to_maturity * market_value else 0 end)
+                       / sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as weighted_years_to_maturity
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 group by report_date
@@ -365,11 +501,117 @@ class BondAnalyticsRepository:
         finally:
             conn.close()
 
+    def fetch_risk_overview_snapshots(
+        self,
+        *,
+        report_dates: list[str],
+    ) -> dict[str, dict[str, object]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return {}
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return {}
+            placeholders = ", ".join(["?"] * len(dates))
+            rows = conn.execute(
+                f"""
+                select
+                  cast(report_date as varchar) as report_date,
+                  case
+                    when coalesce(sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_DURATION_DENOMINATOR_SQL} then modified_duration * market_value else 0 end)
+                       / sum(case when {_DURATION_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as portfolio_modified_duration,
+                  sum(dv01) as portfolio_dv01,
+                  sum(case when accounting_class = 'AC' then dv01 else 0 end) as ac_dv01,
+                  sum(case when accounting_class = 'OCI' then dv01 else 0 end) as oci_dv01,
+                  sum(case when accounting_class = 'TPL' then dv01 else 0 end) as tpl_dv01,
+                  sum(case when accounting_class not in ('AC', 'OCI', 'TPL') or accounting_class is null then dv01 else 0 end) as other_dv01,
+                  sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
+                  case
+                    when coalesce(sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end), 0) > 0
+                    then sum(case when {_MATURITY_DENOMINATOR_SQL} then years_to_maturity * market_value else 0 end)
+                       / sum(case when {_MATURITY_DENOMINATOR_SQL} then market_value else 0 end)
+                    else 0
+                  end as weighted_years_to_maturity
+                from {FACT_TABLE}
+                where cast(report_date as varchar) in ({placeholders})
+                group by report_date
+                """,
+                dates,
+            ).fetchall()
+            return {
+                str(row[0]): dict(zip(_RISK_OVERVIEW_COLUMNS, row, strict=True))
+                for row in rows
+                if row and row[0] is not None
+            }
+        finally:
+            conn.close()
+
     def fetch_latest_risk_overview_snapshot(self) -> dict[str, object] | None:
         report_dates = self.list_report_dates()
         if not report_dates:
             return None
         return self.fetch_risk_overview_snapshot(report_date=report_dates[0])
+
+    def fetch_rate_risk_duration_scope(self, report_date: str) -> dict[str, object] | None:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return None
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return None
+            required_columns = ("market_value", "dv01", "modified_duration", "maturity_date")
+            if not all(_column_exists(conn, FACT_TABLE, column) for column in required_columns):
+                return None
+            row = conn.execute(
+                f"""
+                with scoped as (
+                  select
+                    coalesce(market_value, 0) as market_value,
+                    coalesce(dv01, 0) as dv01,
+                    coalesce(modified_duration, 0) as modified_duration,
+                    case
+                      when {_DURATION_DENOMINATOR_SQL}
+                      then 1 else 0
+                    end as in_duration_scope
+                  from {FACT_TABLE}
+                  where cast(report_date as varchar) = ?
+                )
+                select
+                  coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0)
+                    as rate_risk_market_value,
+                  coalesce(sum(case when in_duration_scope = 1 then dv01 else 0 end), 0)
+                    as rate_risk_dv01,
+                  case
+                    when coalesce(sum(case when in_duration_scope = 1 then market_value else 0 end), 0) > 0
+                    then sum(case when in_duration_scope = 1 then modified_duration * market_value else 0 end)
+                       / sum(case when in_duration_scope = 1 then market_value else 0 end)
+                    else 0
+                  end as rate_risk_modified_duration,
+                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then market_value else 0 end), 0)
+                    as duration_excluded_market_value,
+                  coalesce(sum(case when in_duration_scope = 0 and market_value <> 0 then 1 else 0 end), 0)
+                    as duration_excluded_count
+                from scoped
+                """,
+                [report_date],
+            ).fetchone()
+            if row is None:
+                return None
+            out = dict(zip(_DURATION_SCOPE_KEYS, row, strict=True))
+            out["duration_excluded_count"] = int(out["duration_excluded_count"] or 0)
+            for key in _DURATION_SCOPE_KEYS:
+                if key != "duration_excluded_count":
+                    out[key] = _decimal(out[key])
+            out["rate_risk_modified_duration"] = out["rate_risk_modified_duration"].quantize(_Q8)
+            return out
+        finally:
+            conn.close()
 
     def resolve_prior_curve_anchor_report_date(self, *, report_date: str) -> str | None:
         conn = _connect_read_only(self.path)
@@ -452,6 +694,47 @@ class BondAnalyticsRepository:
         finally:
             conn.close()
 
+    def fetch_business_type_metrics(self, report_date: str) -> list[dict[str, object]]:
+        """Aggregate by bond_type: market_value, YTM and modified_duration (market-value weighted)."""
+        ytm_norm = (
+            "(case when ytm is null then null "
+            "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
+        )
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return []
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return []
+            rows = conn.execute(
+                f"""
+                select
+                  cast(bond_type as varchar) as name,
+                  coalesce(sum(market_value), 0) as market_value,
+                  sum(({ytm_norm}) * market_value) / nullif(sum(market_value), 0) as weighted_avg_ytm,
+                  sum(coalesce(modified_duration, 0) * market_value)
+                    / nullif(sum(market_value), 0) as weighted_avg_duration
+                from {FACT_TABLE}
+                where cast(report_date as varchar) = ?
+                  and bond_type is not null
+                  and trim(cast(bond_type as varchar)) <> ''
+                group by bond_type
+                order by market_value desc
+                """,
+                [report_date],
+            ).fetchall()
+            return [
+                {
+                    "name": str(row[0]) if row[0] is not None else "",
+                    "market_value": row[1],
+                    "weighted_avg_ytm": row[2],
+                    "weighted_avg_duration": row[3],
+                }
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
     def fetch_dashboard_yield_distribution(self, report_date: str) -> list[dict[str, object]]:
         conn = _connect_read_only(self.path)
         if conn is None:
@@ -514,13 +797,17 @@ class BondAnalyticsRepository:
                   portfolio_name,
                   coalesce(sum(market_value), 0) as total_market_value,
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(ytm * market_value) / sum(market_value)
+                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    then sum(
+                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
+                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
                     else 0
                   end as weighted_ytm,
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(modified_duration * market_value) / sum(market_value)
+                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    then sum(
+                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
+                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
                     else 0
                   end as weighted_duration,
                   coalesce(sum(dv01), 0) as total_dv01,
@@ -673,8 +960,10 @@ class BondAnalyticsRepository:
                   coalesce(sum(market_value), 0) as total_market_value,
                   coalesce(sum(dv01), 0) as total_dv01,
                   case
-                    when coalesce(sum(market_value), 0) > 0
-                    then sum(modified_duration * market_value) / sum(market_value)
+                    when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+                    then sum(
+                      case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
+                    ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
                     else 0
                   end as weighted_duration,
                   case
@@ -743,16 +1032,6 @@ def _fetch_one_period_headline_kpis(
           coalesce(sum(amortized_cost), 0) as total_amortized_cost,
           coalesce(sum(accrued_interest), 0) as total_accrued_interest,
           case
-            when coalesce(sum(market_value), 0) > 0
-            then sum(ytm * market_value) / sum(market_value)
-            else 0
-          end as weighted_ytm,
-          case
-            when coalesce(sum(market_value), 0) > 0
-            then sum(modified_duration * market_value) / sum(market_value)
-            else 0
-          end as weighted_duration,
-          case
             when coalesce(sum(face_value), 0) > 0
             then sum(coupon_rate * face_value) / sum(face_value)
             else 0
@@ -766,6 +1045,7 @@ def _fetch_one_period_headline_kpis(
     ).fetchone()
     if row is None:
         return _empty_dashboard_headline_kpis_row()
+    weighted = _fetch_one_period_weighted_rate_duration_kpis(conn, report_date)
     return {
         "bond_count": int(row[0] or 0),
         "total_face_value": _decimal(row[1]),
@@ -773,11 +1053,46 @@ def _fetch_one_period_headline_kpis(
         "unrealized_pnl": _decimal(row[3]),
         "total_amortized_cost": _decimal(row[4]),
         "total_accrued_interest": _decimal(row[5]),
-        "weighted_ytm": _decimal(row[6]),
-        "weighted_duration": _decimal(row[7]),
-        "weighted_coupon": _decimal(row[8]),
-        "credit_spread_median": None if row[9] is None else _decimal(row[9]),
-        "total_dv01": _decimal(row[10]),
+        "weighted_ytm": weighted["weighted_ytm"],
+        "weighted_duration": weighted["weighted_duration"],
+        "weighted_coupon": _decimal(row[6]),
+        "credit_spread_median": None if row[7] is None else _decimal(row[7]),
+        "total_dv01": _decimal(row[8]),
+    }
+
+
+def _fetch_one_period_weighted_rate_duration_kpis(
+    conn: duckdb.DuckDBPyConnection,
+    report_date: str,
+) -> dict[str, Decimal]:
+    row = conn.execute(
+        f"""
+        select
+          case
+            when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+            then sum(
+              case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then ytm * market_value else 0 end
+            ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
+            else 0
+          end as weighted_ytm,
+          case
+            when coalesce(sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL}), 0) > 0
+            then sum(
+              case when {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL} then modified_duration * market_value else 0 end
+            ) / sum({_DASHBOARD_RATE_DURATION_MARKET_VALUE_SQL})
+            else 0
+          end as weighted_duration
+        from {FACT_TABLE}
+        where cast(report_date as varchar) = ?
+          and {_DASHBOARD_RATE_DURATION_ELIGIBLE_SQL}
+        """,
+        [report_date],
+    ).fetchone()
+    if row is None:
+        return {"weighted_ytm": Decimal("0"), "weighted_duration": Decimal("0")}
+    return {
+        "weighted_ytm": _decimal(row[0]),
+        "weighted_duration": _decimal(row[1]),
     }
 
 

@@ -1,15 +1,19 @@
 """Shared utilities for bond analytics calculations."""
 from __future__ import annotations
 
+import logging
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_AC,
     ACCOUNTING_BASIS_FVOCI,
+    ACCOUNTING_BASIS_FVTPL,
     derive_accounting_basis_value,
 )
+
+logger = logging.getLogger(__name__)
 
 # --- Decimal helpers ---
 
@@ -20,7 +24,8 @@ def safe_decimal(value) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError):
+        logger.exception("safe_decimal: failed to convert %r", type(value).__name__)
         return Decimal("0")
 
 
@@ -83,6 +88,23 @@ ACCOUNTING_RULES = [
     {"rule_id": "R021", "pattern": "FVTPL", "result": "TPL"},
     {"rule_id": "R022", "pattern": "TPL", "result": "TPL"},
 ]
+
+ACCOUNTING_BASIS_RISK_CLASS_RULE_IDS = {
+    "AC": "R001",
+    "OCI": "R010",
+    "TPL": "R020",
+}
+
+
+def map_accounting_basis_to_risk_class(accounting_basis: str | None) -> str | None:
+    normalized = str(accounting_basis or "").strip().upper()
+    if normalized == ACCOUNTING_BASIS_AC:
+        return "AC"
+    if normalized in {ACCOUNTING_BASIS_FVOCI, "OCI"}:
+        return "OCI"
+    if normalized in {ACCOUNTING_BASIS_FVTPL, "TPL"}:
+        return "TPL"
+    return None
 
 
 def map_accounting_class(asset_class: str) -> str:
@@ -147,7 +169,15 @@ def compute_macaulay_duration(
     if ytm <= 0:
         return years_to_maturity
 
-    n_periods = int(years_to_maturity * coupon_frequency)
+    raw_periods = years_to_maturity * Decimal(str(coupon_frequency))
+    full_periods = int(raw_periods)
+    fractional_period = raw_periods - Decimal(str(full_periods))
+    if full_periods > 0 and Decimal("0") < fractional_period <= Decimal("0.01"):
+        n_periods = full_periods
+        cashflow_years = Decimal(str(full_periods)) / Decimal(str(coupon_frequency))
+    else:
+        n_periods = int(raw_periods.to_integral_value(rounding=ROUND_CEILING))
+        cashflow_years = years_to_maturity
     if n_periods <= 0:
         return years_to_maturity
 
@@ -160,11 +190,21 @@ def compute_macaulay_duration(
     pv_sum = Decimal("0")
     price = Decimal("0")
 
+    first_period_years = (
+        cashflow_years
+        - (Decimal(str(n_periods - 1)) / Decimal(str(coupon_frequency)))
+    )
+    first_period_number = first_period_years * Decimal(str(coupon_frequency))
+
     for t in range(1, n_periods + 1):
-        discount = (Decimal("1") + y) ** t
+        payment_time_years = first_period_years + (
+            Decimal(str(t - 1)) / Decimal(str(coupon_frequency))
+        )
+        period_number = first_period_number + Decimal(str(t - 1))
+        discount = (Decimal("1") + y) ** period_number
         cf = c if t < n_periods else c + Decimal("1")
         pv = cf / discount
-        pv_sum += Decimal(str(t)) / Decimal(str(coupon_frequency)) * pv
+        pv_sum += payment_time_years * pv
         price += pv
 
     if price <= 0:
@@ -258,22 +298,32 @@ def build_curve_points(curve: dict[str, Decimal]) -> list[tuple[float, Decimal]]
 
 
 def interpolate_rate(points: list[tuple[float, Decimal]], target_years: float) -> Decimal:
+    """Interpolate a rate from sorted (years, rate) points.
+
+    Delegates to ``curve_engine`` cubic spline when ≥ 3 points are available;
+    falls back to piecewise linear otherwise.  Signature unchanged.
+    """
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+    )
+
     if not points:
         return Decimal("0")
-    if target_years <= points[0][0]:
-        return points[0][1]
-    if target_years >= points[-1][0]:
-        return points[-1][1]
-    for i in range(len(points) - 1):
-        y0, r0 = points[i]
-        y1, r1 = points[i + 1]
-        if y0 <= target_years <= y1:
-            span = y1 - y0
-            if span <= 0:
-                return r0
-            frac = Decimal(str((target_years - y0) / span))
-            return r0 + frac * (r1 - r0)
-    return points[-1][1]
+
+    curve_points = tuple(CurvePoint(years=y, rate=r) for y, r in sorted(points, key=lambda p: p[0]))
+    if len(curve_points) >= 3:
+        fitted = _build_spline(list(curve_points))
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=curve_points)
+    return _engine_interpolate(fitted, target_years)
 
 
 def build_full_curve(raw_curve: dict[str, Decimal]) -> dict[str, Decimal]:

@@ -4,14 +4,22 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
+import { apiQueryKeys } from "../../api/queryKeys";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
-import { bondChartMagnitude, bondNumericDisplay } from "../bond-analytics/adapters/bondAnalyticsAdapter";
+import {
+  bondChartMagnitude,
+  bondNumericDisplay,
+  bondNumericRaw,
+} from "../bond-analytics/adapters/bondAnalyticsAdapter";
 import type {
   CreditSpreadMigrationResponse,
   KRDCurveRiskResponse,
 } from "../bond-analytics/types";
+import { designTokens } from "../../theme/designSystem";
+import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
+import type { RiskTensorPayload } from "../../api/contracts";
 import {
   formatRatioAsPercent,
   parseDisplayNumber,
@@ -35,7 +43,7 @@ const controlBarStyle = {
 const tableShellStyle = {
   overflowX: "auto",
   borderRadius: 16,
-  border: "1px solid #e4ebf5",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
   background: "#ffffff",
   marginTop: 18,
 } as const;
@@ -49,31 +57,31 @@ const tableStyle = {
 const thStyle = {
   textAlign: "left" as const,
   padding: "10px 12px",
-  borderBottom: "1px solid #e4ebf5",
-  color: "#5c6b82",
+  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+  color: designTokens.color.neutral[600],
   fontSize: 13,
 };
 
 const tdStyle = {
   padding: "12px",
-  borderBottom: "1px solid #eef2f7",
-  color: "#162033",
+  borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+  color: designTokens.color.neutral[900],
 };
 
 const blockTitleStyle = {
   margin: "24px 0 0",
   fontSize: 16,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const drillDownIntroStyle = {
   margin: "28px 0 12px",
   padding: "14px 16px",
   borderRadius: 14,
-  border: "1px solid #e4ebf5",
-  background: "#f6f9fc",
-  color: "#5c6b82",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
+  color: designTokens.color.neutral[600],
   fontSize: 14,
   lineHeight: 1.65,
 } as const;
@@ -82,7 +90,7 @@ const drillCardStyle = {
   marginTop: 18,
   padding: 16,
   borderRadius: 16,
-  border: "1px solid #e4ebf5",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
   background: "#ffffff",
 } as const;
 
@@ -97,9 +105,9 @@ function drillChipStyle(active: boolean) {
   return {
     padding: "8px 12px",
     borderRadius: 999,
-    border: active ? "1px solid #1f5eff" : "1px solid #d7dfea",
-    background: active ? "#edf3ff" : "#ffffff",
-    color: active ? "#1f5eff" : "#162033",
+    border: active ? `1px solid ${designTokens.color.primary[600]}` : `1px solid ${shellTokens.colorBorderSoft}`,
+    background: active ? designTokens.color.primary[50] : "#ffffff",
+    color: active ? designTokens.color.primary[600] : designTokens.color.neutral[900],
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
@@ -116,16 +124,23 @@ function cellText(value: unknown) {
   return String(value);
 }
 
-function displayStr(value: string | undefined) {
-  if (value === undefined || value === "") {
-    return "—";
-  }
-  return value;
-}
-
 /** 仅用于 ECharts 轴值解析，不做组合层面的金融重算。 */
 function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
   return bondChartMagnitude(value);
+}
+
+function regulatoryDv01Display(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return "待接入";
+  }
+  return bondNumericDisplay(value);
+}
+
+function regulatoryDv01Tone(value: RiskTensorPayload["regulatory_dv01"]) {
+  if (value === null || value === undefined) {
+    return "warning";
+  }
+  return toneFromSignedDisplayString(bondNumericDisplay(value));
 }
 
 export default function RiskOverviewPage() {
@@ -140,6 +155,13 @@ export default function RiskOverviewPage() {
     queryFn: () => client.getRiskTensorDates(),
     retry: false,
   });
+
+  const blockedReportDates = datesQuery.data?.result.blocked_report_dates ?? [];
+  const selectedBlockedReportDate = explicitReportDate
+    ? blockedReportDates.find((entry) => entry.report_date === explicitReportDate)
+    : undefined;
+  const latestBlockedReportDate = [...blockedReportDates].sort((a, b) => b.report_date.localeCompare(a.report_date))[0];
+  const highlightedBlockedReportDate = selectedBlockedReportDate ?? latestBlockedReportDate;
 
   const reportDate = useMemo(() => {
     if (explicitReportDate) {
@@ -170,7 +192,7 @@ export default function RiskOverviewPage() {
   });
 
   const creditQuery = useQuery({
-    queryKey: ["risk-overview", "credit-spread-migration", reportDate],
+    queryKey: apiQueryKeys.bondAnalyticsCreditSpreadMigration(client.mode, reportDate),
     queryFn: () => client.getBondAnalyticsCreditSpreadMigration(reportDate),
     enabled: Boolean(reportDate),
     retry: false,
@@ -209,25 +231,28 @@ export default function RiskOverviewPage() {
       xAxis: {
         type: "category",
         data: labels,
-        axisLabel: { color: "#5c6b82" },
+        axisLabel: { color: designTokens.color.neutral[600] },
       },
       yAxis: {
         type: "value",
-        axisLabel: { color: "#5c6b82" },
+        axisLabel: { color: designTokens.color.neutral[600] },
         splitLine: { lineStyle: { color: "#eef2f7" } },
       },
       series: [
         {
           type: "bar",
           data,
-          itemStyle: { color: "#1f5eff", borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: designTokens.color.primary[600], borderRadius: [6, 6, 0, 0] },
         },
       ],
     };
   }, [tensorResult]);
 
-  const tenorRows = krd?.krd_buckets ?? [];
-  const issuerRows = credit?.concentration_by_issuer?.top_items ?? [];
+  const tenorRows = useMemo(() => krd?.krd_buckets ?? [], [krd?.krd_buckets]);
+  const issuerRows = useMemo(
+    () => credit?.concentration_by_issuer?.top_items ?? [],
+    [credit?.concentration_by_issuer?.top_items],
+  );
 
   useEffect(() => {
     if (tenorRows.length === 0) {
@@ -274,14 +299,14 @@ export default function RiskOverviewPage() {
             marginTop: 10,
             marginBottom: 0,
             maxWidth: 860,
-            color: "#5c6b82",
+            color: designTokens.color.neutral[600],
             fontSize: 15,
             lineHeight: 1.75,
           }}
         >
           主指标来自正式风险张量接口{" "}
           <code style={{ fontSize: 13 }}>/api/risk/tensor</code>
-          （与「风险张量」页同一主链）。下方 Bond Analytics 物化结果为下钻与补充视图，不在浏览器端做金融重算。
+          （与「风险张量」页同一主链）。下方债券分析物化结果为下钻与补充视图，不在浏览器端做金融重算。
         </p>
       </div>
 
@@ -292,7 +317,7 @@ export default function RiskOverviewPage() {
             borderRadius: 12,
             border: "1px solid #d7dfea",
             background: "#ffffff",
-            color: "#162033",
+            color: designTokens.color.neutral[900],
             fontSize: 14,
           }}
         >
@@ -304,10 +329,25 @@ export default function RiskOverviewPage() {
             <>
               报告日：<strong>{reportDate}</strong>
               <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
-                （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 指定）
+                （可通过地址栏报告日参数指定）
               </span>
             </>
           )}
+          {highlightedBlockedReportDate ? (
+            <>
+              <br />
+              <span data-testid="risk-overview-blocked-dates">
+                后端拦截陈旧日期：{blockedReportDates.length} 个。当前提示日期：{" "}
+                <strong>{highlightedBlockedReportDate.report_date}</strong>
+                {highlightedBlockedReportDate.reason
+                  ? ` (${highlightedBlockedReportDate.reason})`
+                  : null}
+                {selectedBlockedReportDate
+                  ? " 当前选择的报告日已被新鲜度校验拦截。"
+                  : null}
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -326,28 +366,34 @@ export default function RiskOverviewPage() {
             <>
               <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
                 <KpiCard
-                  title="组合 DV01"
-                  value={displayStr(tensorResult.portfolio_dv01)}
-                  detail="portfolio_dv01，后端字符串口径。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.portfolio_dv01))}
+                  title="估值口径 DV01"
+                  value={bondNumericDisplay(tensorResult.portfolio_dv01)}
+                  detail="portfolio_dv01，持仓估值敏感性口径，非监管限额口径。"
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.portfolio_dv01))}
+                />
+                <KpiCard
+                  title="监管口径 DV01"
+                  value={regulatoryDv01Display(tensorResult.regulatory_dv01)}
+                  detail="后端监管/限额口径字段；不得用估值 DV01 替代。"
+                  tone={regulatoryDv01Tone(tensorResult.regulatory_dv01)}
                 />
                 <KpiCard
                   title="修正久期"
-                  value={displayStr(tensorResult.portfolio_modified_duration)}
+                  value={bondNumericDisplay(tensorResult.portfolio_modified_duration)}
                   detail="portfolio_modified_duration。"
                   unit="年"
                 />
                 <KpiCard
                   title="CS01"
-                  value={displayStr(tensorResult.cs01)}
+                  value={bondNumericDisplay(tensorResult.cs01)}
                   detail="cs01（信用 spread 敏感度聚合）。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.cs01))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.cs01))}
                 />
                 <KpiCard
                   title="组合凸性"
-                  value={displayStr(tensorResult.portfolio_convexity)}
+                  value={bondNumericDisplay(tensorResult.portfolio_convexity)}
                   detail="portfolio_convexity。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.portfolio_convexity))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.portfolio_convexity))}
                 />
                 <KpiCard
                   title="债券只数"
@@ -357,10 +403,10 @@ export default function RiskOverviewPage() {
                 />
                 <KpiCard
                   title="总市值"
-                  value={displayStr(tensorResult.total_market_value)}
+                  value={bondNumericDisplay(tensorResult.total_market_value)}
                   detail="total_market_value。"
                   unit="亿"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.total_market_value))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.total_market_value))}
                 />
               </div>
 
@@ -369,10 +415,10 @@ export default function RiskOverviewPage() {
                   margin: "24px 0 12px",
                   fontSize: 16,
                   fontWeight: 600,
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                 }}
               >
-                KRD 分桶（DV01）
+                KRD 分桶（估值 DV01）
               </h2>
               {krdChartOption ? (
                 <ReactECharts option={krdChartOption} style={{ height: 320 }} />
@@ -383,7 +429,7 @@ export default function RiskOverviewPage() {
                   margin: "24px 0 12px",
                   fontSize: 16,
                   fontWeight: 600,
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                 }}
               >
                 集中度
@@ -391,18 +437,21 @@ export default function RiskOverviewPage() {
               <div style={summaryGridStyle}>
                 <KpiCard
                   title="发行人 HHI"
-                  value={displayStr(tensorResult.issuer_concentration_hhi)}
+                  value={bondNumericDisplay(tensorResult.issuer_concentration_hhi)}
                   detail="issuer_concentration_hhi。"
                   tone={
                     (() => {
-                      const n = parseDisplayNumber(displayStr(tensorResult.issuer_concentration_hhi));
+                      const n = parseDisplayNumber(bondNumericDisplay(tensorResult.issuer_concentration_hhi));
                       return n != null && n > 0.15 ? "warning" : "default";
                     })()
                   }
                 />
                 <KpiCard
                   title="前五大权重"
-                  value={formatRatioAsPercent(tensorResult.issuer_top5_weight, displayStr(tensorResult.issuer_top5_weight))}
+                  value={formatRatioAsPercent(
+                    String(bondNumericRaw(tensorResult.issuer_top5_weight)),
+                    bondNumericDisplay(tensorResult.issuer_top5_weight),
+                  )}
                   detail="issuer_top5_weight。"
                 />
               </div>
@@ -412,7 +461,7 @@ export default function RiskOverviewPage() {
                   margin: "24px 0 12px",
                   fontSize: 16,
                   fontWeight: 600,
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                 }}
               >
                 流动性缺口（市值）
@@ -420,25 +469,25 @@ export default function RiskOverviewPage() {
               <div style={summaryGridStyle}>
                 <KpiCard
                   title="30 日内到期市值"
-                  value={displayStr(tensorResult.liquidity_gap_30d)}
+                  value={bondNumericDisplay(tensorResult.liquidity_gap_30d)}
                   detail="liquidity_gap_30d。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.liquidity_gap_30d))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.liquidity_gap_30d))}
                 />
                 <KpiCard
                   title="90 日内到期市值"
-                  value={displayStr(tensorResult.liquidity_gap_90d)}
+                  value={bondNumericDisplay(tensorResult.liquidity_gap_90d)}
                   detail="liquidity_gap_90d。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.liquidity_gap_90d))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.liquidity_gap_90d))}
                 />
                 <KpiCard
                   title="30 日流动性缺口占比"
                   value={formatRatioAsPercent(
-                    tensorResult.liquidity_gap_30d_ratio,
-                    displayStr(tensorResult.liquidity_gap_30d_ratio),
+                    String(bondNumericRaw(tensorResult.liquidity_gap_30d_ratio)),
+                    bondNumericDisplay(tensorResult.liquidity_gap_30d_ratio),
                   )}
                   detail="liquidity_gap_30d_ratio。"
                   tone={(() => {
-                    const n = parseDisplayNumber(displayStr(tensorResult.liquidity_gap_30d_ratio));
+                    const n = parseDisplayNumber(bondNumericDisplay(tensorResult.liquidity_gap_30d_ratio));
                     if (n == null) {
                       return "default";
                     }
@@ -464,17 +513,26 @@ export default function RiskOverviewPage() {
                       : "1px solid #e8d9a8",
                   background:
                     tensorResult.quality_flag === "ok" ? "#f6f9fc" : "#fffbeb",
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                   fontSize: 14,
                 }}
               >
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                  质量标记：{tensorResult.quality_flag}
+                  质量标记：
+                  {tensorResult.quality_flag === "ok"
+                    ? "正常"
+                    : tensorResult.quality_flag === "warning"
+                      ? "预警"
+                      : tensorResult.quality_flag === "error"
+                        ? "错误"
+                        : tensorResult.quality_flag === "stale"
+                          ? "陈旧"
+                          : tensorResult.quality_flag}
                 </div>
                 {tensorResult.warnings.length === 0 ? (
-                  <div style={{ color: "#5c6b82" }}>无 warnings。</div>
+                  <div style={{ color: designTokens.color.neutral[600] }}>无预警。</div>
                 ) : (
-                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: designTokens.color.neutral[600] }}>
                     {tensorResult.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
@@ -487,7 +545,7 @@ export default function RiskOverviewPage() {
       </div>
 
       <div style={drillDownIntroStyle}>
-        <strong style={{ color: "#162033" }}>Bond Analytics 下钻与补充</strong>
+        <strong style={{ color: designTokens.color.neutral[900] }}>债券分析下钻与补充</strong>
         ：以下接口来自{" "}
         <code style={{ fontSize: 12 }}>/api/bond-analytics/krd-curve-risk</code> 与{" "}
         <code style={{ fontSize: 12 }}>/api/bond-analytics/credit-spread-migration</code>
@@ -509,7 +567,7 @@ export default function RiskOverviewPage() {
             <KpiCard
               title="组合久期"
               value={cellText(krd?.portfolio_duration)}
-              detail="portfolio_duration，Bond Analytics 物化口径。"
+              detail="portfolio_duration，债券分析物化口径。"
               tone={toneFromSignedDisplayString(cellText(krd?.portfolio_duration))}
             />
             <KpiCard
@@ -519,9 +577,9 @@ export default function RiskOverviewPage() {
               unit="年"
             />
             <KpiCard
-              title="DV01"
+              title="估值口径 DV01"
               value={cellText(krd?.portfolio_dv01)}
-              detail="portfolio_dv01。"
+              detail="portfolio_dv01，债券分析物化口径，非监管限额口径。"
               tone={toneFromSignedDisplayString(cellText(krd?.portfolio_dv01))}
             />
             <KpiCard
@@ -552,9 +610,9 @@ export default function RiskOverviewPage() {
 
           {selectedTenorRow ? (
             <div data-testid="risk-overview-tenor-drill" style={drillCardStyle}>
-              <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
-              <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
-                使用 Bond Analytics 的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
+              <div style={{ color: designTokens.color.neutral[900], fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 13, marginTop: 6 }}>
+                使用债券分析的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
               </div>
               <div style={drillChipRowStyle}>
                 {tenorRows.map((row) => (
@@ -568,11 +626,11 @@ export default function RiskOverviewPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 12, color: "#162033", fontSize: 14 }}>
+              <div style={{ marginTop: 12, color: designTokens.color.neutral[900], fontSize: 14 }}>
                 当前桶：<strong>{selectedTenorRow.tenor}</strong>
               </div>
-              <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
-                KRD：{selectedTenorRow.krd.display} · DV01：{selectedTenorRow.dv01.display} · 市值权重：
+              <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
+                KRD：{selectedTenorRow.krd.display} · 估值DV01：{selectedTenorRow.dv01.display} · 市值权重：
                 {selectedTenorRow.market_value_weight.display}
               </div>
             </div>
@@ -583,7 +641,7 @@ export default function RiskOverviewPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {["期限", "KRD", "DV01", "市值权重"].map((label) => (
+                  {["期限", "KRD", "DV01（估值）", "市值权重"].map((label) => (
                     <th key={label} style={thStyle}>
                       {label}
                     </th>
@@ -634,7 +692,7 @@ export default function RiskOverviewPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  {["资产类别", "市值", "久期", "DV01", "权重"].map((label) => (
+                  {["资产类别", "市值", "久期", "DV01（估值）", "权重"].map((label) => (
                     <th key={label} style={thStyle}>
                       {label}
                     </th>
@@ -688,7 +746,7 @@ export default function RiskOverviewPage() {
               tone={toneFromSignedDisplayString(cellText(credit?.credit_market_value))}
             />
             <KpiCard
-              title="Spread DV01"
+              title="利差 DV01"
               value={cellText(credit?.spread_dv01)}
               detail="spread_dv01。"
               tone={toneFromSignedDisplayString(cellText(credit?.spread_dv01))}
@@ -715,8 +773,8 @@ export default function RiskOverviewPage() {
 
           {selectedIssuerRow ? (
             <div data-testid="risk-overview-issuer-drill" style={drillCardStyle}>
-              <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>发行人维度下钻</div>
-              <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
+              <div style={{ color: designTokens.color.neutral[900], fontSize: 15, fontWeight: 600 }}>发行人维度下钻</div>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 13, marginTop: 6 }}>
                 使用信用利差迁移读面的 `concentration_by_issuer.top_items` 作为 issuer drill。
               </div>
               <div style={drillChipRowStyle}>
@@ -731,10 +789,10 @@ export default function RiskOverviewPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 12, color: "#162033", fontSize: 14 }}>
+              <div style={{ marginTop: 12, color: designTokens.color.neutral[900], fontSize: 14 }}>
                 当前发行人：<strong>{selectedIssuerRow.name}</strong>
               </div>
-              <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
+              <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
                 权重：{selectedIssuerRow.weight.display} · 市值：{selectedIssuerRow.market_value.display}
               </div>
             </div>

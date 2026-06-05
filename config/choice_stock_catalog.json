@@ -1,0 +1,143 @@
+{
+  "catalog_version": "choice_stock_live_probe_20260516_v2",
+  "vendor_name": "choice",
+  "generated_from": "live_choice_api_probe_20260501_and_20260516",
+  "policy_note": "Confirmed through local Choice API probes. Choice HIGHLIMIT/LOWLIMIT are limit flags, not limit-price inputs. When Choice CSD returns entitlement error 10001012, the backend materializer may fill daily OHLCV, turnover, trading status, and limit prices from the localized Tushare stock fallback with audit status completed_tushare_fallback. Tushare stk_limit up_limit/down_limit populate the same HIGHLIMIT/LOWLIMIT keys as numeric prices for limit_ratio-style derivation; they are not the Choice flag semantics.",
+  "fields": [
+    {
+      "input_family": "stock_universe",
+      "field_key": "a_share_universe_sector_001004",
+      "vendor_indicator": "001004",
+      "call": "sector",
+      "request_options": {
+        "Ispandas": 0,
+        "RECVtimeout": 10
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: sector('001004', as_of_date) returned SECUCODE/SECURITYSHORTNAME for A-share universe",
+      "confirmed_at": "2026-05-01T13:01:09+08:00",
+      "description": "A-share universe from Choice sector 001004."
+    },
+    {
+      "input_family": "sector_membership",
+      "field_key": "sw2021_industry_membership",
+      "vendor_indicator": "SW2021,SW2021CODE",
+      "call": "css",
+      "request_options": {
+        "EndDate": "__AS_OF_DATE__",
+        "ClassiFication": 1,
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: css(codes,'SW2021,SW2021CODE',EndDate=as_of_date,ClassiFication=1) returned industry names/codes",
+      "confirmed_at": "2026-05-01T13:02:04+08:00",
+      "description": "SW2021 level-1 sector name and sector code."
+    },
+    {
+      "input_family": "sector_strength",
+      "field_key": "daily_return_turnover_amplitude",
+      "vendor_indicator": "PCTCHANGE,TURN,AMPLITUDE",
+      "call": "csd",
+      "request_options": {
+        "RowIndex": 1,
+        "period": 1,
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: csd(codes,'PCTCHANGE,TURN,AMPLITUDE',as_of_date,as_of_date) returned numeric values",
+      "confirmed_at": "2026-05-01T13:02:34+08:00",
+      "unit": "Percentage points for PCTCHANGE, TURN, and AMPLITUDE (e.g. 1.2 means 1.2%). Matches Tushare fallback: pct_chg and turnover_rate fields are already in percent points; amplitude is ((high-low)/pre_close)*100.",
+      "description": "Daily percent change, turnover, and amplitude for sector ranking."
+    },
+    {
+      "input_family": "stock_ohlcv",
+      "field_key": "daily_ohlcv_amount",
+      "vendor_indicator": "OPEN,HIGH,LOW,CLOSE,VOLUME,AMOUNT",
+      "call": "csd",
+      "request_options": {
+        "RowIndex": 1,
+        "period": 1,
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: csd(codes,'OPEN,HIGH,LOW,CLOSE,VOLUME,AMOUNT',as_of_date,as_of_date) returned numeric OHLCV/amount",
+      "confirmed_at": "2026-05-01T13:02:34+08:00",
+      "description": "Daily OHLCV and amount."
+    },
+    {
+      "input_family": "stock_status",
+      "field_key": "daily_trade_status",
+      "vendor_indicator": "TRADESTATUS",
+      "call": "csd",
+      "request_options": {
+        "RowIndex": 1,
+        "period": 1,
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: csd(codes,'TRADESTATUS',as_of_date,as_of_date) returned normal trading status",
+      "confirmed_at": "2026-05-01T13:02:34+08:00",
+      "description": "Daily trading status."
+    },
+    {
+      "input_family": "limit_up_quality",
+      "field_key": "daily_limit_flags",
+      "vendor_indicator": "HIGHLIMIT,LOWLIMIT",
+      "call": "csd",
+      "request_options": {
+        "RowIndex": 1,
+        "period": 1,
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: csd(codes,'HIGHLIMIT,LOWLIMIT',as_of_date,as_of_date) returned yes/no limit flags",
+      "confirmed_at": "2026-05-01T13:02:34+08:00",
+      "description": "Daily up/down limit flags from Choice (HIGHLIMIT/LOWLIMIT are flags, not prices). Tushare fallback may place stk_limit prices in the same observation columns for limit_ratio; see policy_note."
+    },
+    {
+      "input_family": "limit_up_quality",
+      "field_key": "point_in_time_limit_streaks",
+      "vendor_indicator": "ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS",
+      "call": "css",
+      "request_options": {
+        "TradeDate": "__AS_OF_DATE__",
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: css(codes,'ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS',TradeDate=as_of_date) returned limit flags/streak counts",
+      "confirmed_at": "2026-05-01T13:02:34+08:00",
+      "description": "Point-in-time limit-up/down flags and streak counts."
+    },
+    {
+      "input_family": "concept_membership",
+      "field_key": "choice_concept_membership",
+      "vendor_indicator": "",
+      "call": "css",
+      "required": false,
+      "request_options": {
+        "TradeDate": "__AS_OF_DATE__",
+        "Ispandas": 0
+      },
+      "confirmed": false,
+      "confirmation_source": "",
+      "confirmed_at": "",
+      "description": "Optional real concept-board membership for Livermore theme breakout radar. Leave unconfirmed until a live Choice entitlement smoke test returns stock/concept rows; 2026-05-16 probes for CONCEPTCODE/CONCEPTNAME, CONCEPT_CODE/CONCEPTNAME, BKCODE/BKNAME, and THEMECODE/THEMENAME returned Choice service error 10000013."
+    },
+    {
+      "input_family": "intraday_movement",
+      "field_key": "choice_intraday_movement",
+      "vendor_indicator": "StockInfo",
+      "call": "ctr",
+      "required": false,
+      "request_options": {
+        "StartDate": "__AS_OF_DATE__",
+        "EndDate": "__AS_OF_DATE__",
+        "Ispandas": 0
+      },
+      "confirmed": true,
+      "confirmation_source": "live Choice probe: ctr('StockInfo','',StartDate=2026-05-13,EndDate=2026-05-13,Ispandas=0) returned SECURITYCODE/SECURITYSHORTNAME/TDATE/VCCHNAME/CHGRADIO/TURNOVER rows",
+      "confirmed_at": "2026-05-16T21:43:51+08:00",
+      "description": "Optional Choice StockInfo abnormal-trading event feed for Livermore theme breakout radar. Rows are stock-level events; concept fields remain blank unless Choice returns concept columns in a future entitlement."
+    }
+  ]
+}

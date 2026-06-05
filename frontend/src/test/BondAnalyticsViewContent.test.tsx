@@ -20,7 +20,7 @@ vi.mock("../app/jobs/polling", () => ({
 }));
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewPanels", () => ({
-  default: function MockBondAnalyticsOverviewPanels(props: Record<string, unknown>) {
+  BondAnalyticsOverviewPanels: function MockBondAnalyticsOverviewPanels(props: Record<string, unknown>) {
       latestOverviewProps = props;
       return (
         <div data-testid="mock-bond-analytics-overview-panels">
@@ -83,12 +83,6 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () =
     },
   };
 });
-
-vi.mock("../features/bond-analytics/components/PerformanceComparison", () => ({
-  default: function MockPerformanceComparison() {
-    return <div data-testid="mock-performance-comparison" />;
-  },
-}));
 
 vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
   default: function MockRiskTrendChart() {
@@ -231,6 +225,39 @@ describe("BondAnalyticsViewContent", () => {
       "action-attribution",
     );
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
+  });
+
+  it("loads research calendar events for the effective report date and passes them to the overview panels", async () => {
+    const getResearchCalendarEvents = vi.fn(async () => [
+      {
+        id: "rc_bond_001",
+        date: "2026-03-31",
+        title: "政策性金融债招标",
+        kind: "auction" as const,
+        severity: "high" as const,
+        amount_label: "420 亿元",
+        note: "国开行",
+      },
+    ]);
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+      getResearchCalendarEvents,
+    };
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+
+    await waitFor(() => {
+      expect(latestOverviewProps?.calendarItems).toEqual([
+        expect.objectContaining({
+          event: "政策性金融债招标",
+          level: "high",
+        }),
+      ]);
+    });
+
+    expect(getResearchCalendarEvents).toHaveBeenCalledWith({ reportDate: "2026-03-31" });
   });
 
   it("propagates overview interactions into the detail mock", async () => {

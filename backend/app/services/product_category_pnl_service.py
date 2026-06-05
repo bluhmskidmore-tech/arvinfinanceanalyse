@@ -1,29 +1,42 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import logging
+
+logger = logging.getLogger(__name__)
+
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 
+import duckdb
+
+from backend.app.core_finance import product_category_pnl_attribution as product_category_attribution
+from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
-from backend.app.core_finance.reconciliation_checks import completeness_check
+from backend.app.repositories.product_category_pnl_repo import (
+    ProductCategoryPnlRepository,
+    ProductCategoryPnlStorageError,
+)
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.product_category_pnl import (
+    ProductCategoryAttributionPayload,
     ProductCategoryCurrentSortField,
     ProductCategoryDatesPayload,
     ProductCategoryEventSortField,
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentListPayload,
     ProductCategoryManualAdjustmentPayload,
-    ProductCategorySortDirection,
     ProductCategoryManualAdjustmentUpdateRequest,
     ProductCategoryPnlPayload,
     ProductCategoryPnlRow,
+    ProductCategorySortDirection,
 )
 from backend.app.services.analysis_service import (
     UnifiedAnalysisService,
@@ -33,16 +46,18 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
+from backend.app.services.product_category_source_service import discover_source_pairs
 from backend.app.tasks.product_category_pnl import (
     PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
     PRODUCT_CATEGORY_PNL_LOCK,
     materialize_product_category_pnl,
+    product_category_pnl_payload_from_canonical_ytd_anchor,
 )
-
 
 RULE_VERSION = "rv_product_category_pnl_v1"
 CACHE_VERSION = "cv_product_category_pnl_v1"
 AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
+YTD_VIEWS = {"ytd", "year_to_report_month_end"}
 PENDING_SOURCE_VERSION = "sv_product_category_pending"
 PRODUCT_CATEGORY_JOB_NAME = "product_category_pnl"
 PRODUCT_CATEGORY_CACHE_KEY = "product_category_pnl.formal"
@@ -58,7 +73,16 @@ class ProductCategoryRefreshConflictError(RuntimeError):
     pass
 
 
+class ProductCategoryReadModelNotFoundError(LookupError):
+    pass
+
+
+class ProductCategoryReadModelUnavailableError(RuntimeError):
+    pass
+
+
 def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
+    source_dir = _resolve_product_category_refresh_source_dir(settings)
     try:
         with acquire_lock(
             _refresh_trigger_lock(),
@@ -93,15 +117,19 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
             try:
                 materialize_product_category_pnl.send(
                     duckdb_path=str(settings.duckdb_path),
-                    source_dir=str(settings.product_category_source_dir),
+                    source_dir=str(source_dir),
                     governance_dir=str(settings.governance_path),
                     run_id=run_id,
                 )
             except Exception:
+                logger.warning(
+                    "Async dispatch for product-category refresh failed, falling back to sync",
+                    exc_info=True,
+                )
                 try:
                     payload = materialize_product_category_pnl.fn(
                         duckdb_path=str(settings.duckdb_path),
-                        source_dir=str(settings.product_category_source_dir),
+                        source_dir=str(source_dir),
                         governance_dir=str(settings.governance_path),
                         run_id=run_id,
                     )
@@ -389,9 +417,10 @@ def refresh_product_category_pnl(settings: Settings) -> dict[str, object]:
 
 
 def run_product_category_refresh_sync(settings: Settings, run_id: str | None = None) -> dict[str, object]:
+    source_dir = _resolve_product_category_refresh_source_dir(settings)
     payload = materialize_product_category_pnl.fn(
         duckdb_path=str(settings.duckdb_path),
-        source_dir=str(settings.product_category_source_dir),
+        source_dir=str(source_dir),
         governance_dir=str(settings.governance_path),
         run_id=run_id,
     )
@@ -402,20 +431,129 @@ def run_product_category_refresh_sync(settings: Settings, run_id: str | None = N
     }
 
 
+def _resolve_product_category_refresh_source_dir(
+    settings: Settings,
+    *,
+    repo_root: Path | None = None,
+) -> Path:
+    configured_dir = Path(settings.product_category_source_dir)
+    if discover_source_pairs(configured_dir):
+        return configured_dir
+
+    root = repo_root or Path(__file__).resolve().parents[3]
+    repo_source_dir = root / "data_input" / configured_dir.name
+    if (
+        str(settings.environment).lower() == "development"
+        and repo_source_dir != configured_dir
+        and discover_source_pairs(repo_source_dir)
+    ):
+        return repo_source_dir.resolve()
+    return configured_dir
+
+
 def product_category_dates_envelope(duckdb_path: str) -> dict[str, object]:
     repo = ProductCategoryPnlRepository(duckdb_path)
-    payload = ProductCategoryDatesPayload(
-        report_dates=repo.list_report_dates(),
-    )
+    try:
+        report_dates = repo.list_report_dates()
+        source_version = repo.latest_source_version()
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
+
+    payload = ProductCategoryDatesPayload(report_dates=report_dates)
     meta = build_formal_result_meta(
         trace_id="tr_product_category_pnl_dates",
         result_kind="product_category_pnl.dates",
-        source_version=repo.latest_source_version(),
+        source_version=source_version,
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
     )
     return build_formal_result_envelope(
         result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def product_category_attribution_envelope(
+    duckdb_path: str,
+    report_date: str,
+    compare: str = "mom",
+) -> dict[str, object]:
+    if compare not in {"mom", "yoy"}:
+        raise ValueError(
+            f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'"
+        )
+
+    repo = ProductCategoryPnlRepository(duckdb_path)
+    prior_report_date = (
+        _previous_year_same_month_end(report_date) if compare == "yoy" else _previous_month_end(report_date)
+    )
+    try:
+        current_raw_rows = repo.fetch_rows(report_date, "monthly")
+        prior_raw_rows = repo.fetch_rows(prior_report_date, "monthly")
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
+
+    if not current_raw_rows:
+        raise ProductCategoryReadModelNotFoundError(
+            f"No product-category read model rows for report_date={report_date} view='monthly'."
+        )
+
+    if not prior_raw_rows:
+        payload = ProductCategoryAttributionPayload.model_validate(
+            product_category_attribution.build_incomplete_product_category_attribution_payload(
+                current_report_date=report_date,
+                prior_report_date=prior_report_date,
+                compare=compare,
+                reason="no_prior_year_same_month" if compare == "yoy" else "no_prior_month",
+            )
+        )
+        return build_formal_result_envelope(
+            result_meta=build_formal_result_meta(
+                trace_id="tr_product_category_pnl_attribution",
+                result_kind="product_category_pnl.attribution",
+                source_version=_source_version(current_raw_rows),
+                rule_version=RULE_VERSION,
+                cache_version=CACHE_VERSION,
+                quality_flag="warning",
+                filters_applied={
+                    "report_date": report_date,
+                    "compare": compare,
+                    "view": "monthly",
+                },
+                tables_used=["product_category_pnl_formal_read_model"],
+                evidence_rows=len(current_raw_rows),
+            ),
+            result_payload=payload.model_dump(mode="json"),
+        )
+
+    payload = ProductCategoryAttributionPayload.model_validate(
+        product_category_attribution.build_product_category_attribution_payload(
+            current_rows=_typed_product_category_rows(current_raw_rows),
+            prior_rows=_typed_product_category_rows(prior_raw_rows),
+            current_report_date=report_date,
+            prior_report_date=prior_report_date,
+            compare=compare,
+        )
+    )
+    return build_formal_result_envelope(
+        result_meta=build_formal_result_meta(
+            trace_id="tr_product_category_pnl_attribution",
+            result_kind="product_category_pnl.attribution",
+            source_version=_source_version(current_raw_rows),
+            rule_version=RULE_VERSION,
+            cache_version=CACHE_VERSION,
+            filters_applied={
+                "report_date": report_date,
+                "compare": compare,
+                "view": "monthly",
+            },
+            tables_used=["product_category_pnl_formal_read_model"],
+            evidence_rows=len(current_raw_rows) + len(prior_raw_rows),
+        ),
         result_payload=payload.model_dump(mode="json"),
     )
 
@@ -426,16 +564,26 @@ def product_category_pnl_envelope(
     view: str,
     scenario_rate_pct: float | None = None,
 ) -> dict[str, object]:
-    analysis_envelope = build_analysis_service(duckdb_path).execute(
-        AnalysisQuery(
-            consumer="product_category_pnl",
-            analysis_key="product_category_pnl",
-            report_date=report_date,
-            basis="scenario" if scenario_rate_pct is not None else "formal",
-            view=view,
-            scenario_rate_pct=scenario_rate_pct,
+    try:
+        analysis_envelope = build_analysis_service(duckdb_path).execute(
+            AnalysisQuery(
+                consumer="product_category_pnl",
+                analysis_key="product_category_pnl",
+                report_date=report_date,
+                basis="scenario" if scenario_rate_pct is not None else "formal",
+                view=view,
+                scenario_rate_pct=scenario_rate_pct,
+            )
         )
-    )
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
+    except ValueError as exc:
+        detail = str(exc)
+        if detail.startswith("No product-category read model rows"):
+            raise ProductCategoryReadModelNotFoundError(detail) from exc
+        raise
 
     typed_rows = [
         ProductCategoryPnlRow.model_validate(row)
@@ -449,6 +597,16 @@ def product_category_pnl_envelope(
         liability_total=liability_total,
         grand_total=grand_total,
     )
+    try:
+        partial_ytd = _is_partial_ytd_view(
+            report_dates=ProductCategoryPnlRepository(duckdb_path).list_report_dates(),
+            report_date=report_date,
+            view=view,
+        )
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
     payload = ProductCategoryPnlPayload(
         report_date=report_date,
         view=view,
@@ -461,12 +619,41 @@ def product_category_pnl_envelope(
     )
     result_meta = (
         analysis_envelope.result_meta.model_copy(update={"quality_flag": "warning"})
-        if completeness["breached"]
+        if completeness["breached"] or partial_ytd
         else analysis_envelope.result_meta
     )
     return build_formal_result_envelope(
         result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def resolve_product_category_ytd_payload_for_home_snapshot(
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    ftp_rate_pct: float,
+) -> ProductCategoryPnlPayload | None:
+    """Prefer persisted read-model ytd; fall back to canonical-facts recompute for home headline."""
+    try:
+        envelope = product_category_pnl_envelope(duckdb_path, report_date, "ytd")
+    except (
+        ProductCategoryReadModelNotFoundError,
+        ProductCategoryReadModelUnavailableError,
+        OSError,
+    ):
+        return product_category_pnl_payload_from_canonical_ytd_anchor(
+            duckdb_path, governance_dir, report_date, ftp_rate_pct
+        )
+
+    result_dict = envelope.get("result")
+    if isinstance(result_dict, dict):
+        try:
+            return ProductCategoryPnlPayload.model_validate(result_dict)
+        except Exception:
+            pass
+    return product_category_pnl_payload_from_canonical_ytd_anchor(
+        duckdb_path, governance_dir, report_date, ftp_rate_pct
     )
 
 
@@ -486,6 +673,67 @@ def _product_category_completeness_check(
         pnl_total=float(expected_total),
         threshold_yuan=0.01,
     )
+
+
+def _is_partial_ytd_view(*, report_dates: list[str], report_date: str, view: str) -> bool:
+    if view not in YTD_VIEWS:
+        return False
+    try:
+        target = date.fromisoformat(report_date)
+    except ValueError:
+        return False
+
+    available_months: set[int] = set()
+    for item in report_dates:
+        try:
+            item_date = date.fromisoformat(str(item))
+        except ValueError:
+            continue
+        if item_date.year == target.year and item_date.month <= target.month:
+            available_months.add(item_date.month)
+
+    expected_months = set(range(1, target.month + 1))
+    return not expected_months.issubset(available_months)
+
+
+def _typed_product_category_rows(rows: list[dict[str, object]]) -> list[ProductCategoryPnlRow]:
+    return [
+        ProductCategoryPnlRow.model_validate(
+            {
+                key: value
+                for key, value in row.items()
+                if key not in {"source_version", "rule_version"}
+            }
+        )
+        for row in rows
+    ]
+
+
+def _source_version(rows: list[dict[str, object]]) -> str:
+    for row in rows:
+        value = str(row.get("source_version") or "").strip()
+        if value:
+            return value
+    return "sv_product_category_empty"
+
+
+def _previous_month_end(report_date: str) -> str:
+    current = date.fromisoformat(report_date)
+    if current.month == 1:
+        year = current.year - 1
+        month = 12
+    else:
+        year = current.year
+        month = current.month - 1
+    first_next_month = date(year + (month // 12), (month % 12) + 1, 1)
+    return (first_next_month - timedelta(days=1)).isoformat()
+
+
+def _previous_year_same_month_end(report_date: str) -> str:
+    current = date.fromisoformat(report_date)
+    year = current.year - 1
+    day = monthrange(year, current.month)[1]
+    return date(year, current.month, day).isoformat()
 
 
 def _build_run_id() -> str:
@@ -727,7 +975,8 @@ def _build_adjustment_csv(
         values = []
         for header in headers:
             value = str(getattr(row, header, "") or "")
-            values.append(f'"{value.replace("\"", "\"\"")}"')
+            escaped = value.replace('"', '""')
+            values.append(f'"{escaped}"')
         return ",".join(values)
 
     sections = [

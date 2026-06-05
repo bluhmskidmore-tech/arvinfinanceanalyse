@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import {
+  externalDataQueryOptions,
+  nonCancellingRefetchOptions,
+} from "../../../app/externalDataRefreshPolicy";
 import type { ChoiceNewsEvent } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { shellTokens } from "../../../theme/tokens";
@@ -13,9 +17,6 @@ import { cockpitInsetCardStyle } from "./DashboardCockpitSection.styles";
 
 /** 与后端 limit 一致：最多展示 5 条，下拉切换阅读。 */
 const NEWS_DIGEST_LIMIT = 5;
-/** 每 2 小时自动刷新列表 */
-const NEWS_DIGEST_REFETCH_MS = 2 * 60 * 60 * 1000;
-
 type NewsKindKey = "all" | "policy" | "news" | "cctv" | "major" | "research";
 
 const KIND_OPTIONS: ReadonlyArray<{ key: NewsKindKey; label: string; groupId?: string }> = [
@@ -130,13 +131,18 @@ function toState(
   isLoading: boolean,
   isError: boolean,
   count: number,
+  digestKind: NewsKindKey,
 ): DataSectionState {
   if (isLoading) return { kind: "loading" };
   if (isError) return { kind: "error", message: "资讯加载失败" };
   if (count === 0) {
+    const hintAll =
+      "当前库中没有资讯条目（Choice 推送未入库、尚未执行 Tushare 拉取，或 DuckDB 为空）。可在下方从 Tushare 拉取要闻。";
+    const hintFiltered =
+      "当前分类下没有资讯。可切换到「全部」查看其它来源，或使用下方按钮从 Tushare 拉取该分类数据。";
     return {
       kind: "empty",
-      hint: "当前没有资讯条目（Choice 未同步或暂无数据）。可在下方从 Tushare 拉取要闻。",
+      hint: digestKind === "all" ? hintAll : hintFiltered,
     };
   }
   return { kind: "ok" };
@@ -158,7 +164,7 @@ export function DashboardNewsDigestSection() {
         groupId: activeKind.groupId,
       }),
     retry: false,
-    refetchInterval: NEWS_DIGEST_REFETCH_MS,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
   });
 
   const events = query.data?.result.events ?? [];
@@ -173,8 +179,8 @@ export function DashboardNewsDigestSection() {
   }, [kind]);
 
   const state = useMemo(
-    () => toState(query.isLoading, query.isError, events.length),
-    [query.isLoading, query.isError, events.length],
+    () => toState(query.isLoading, query.isError, events.length, kind),
+    [query.isLoading, query.isError, events.length, kind],
   );
 
   const emptyFooter =
@@ -194,7 +200,7 @@ export function DashboardNewsDigestSection() {
             void (async () => {
               try {
                 await client.ingestTushareNprNews({ limit: 20 });
-                await query.refetch();
+                await query.refetch(nonCancellingRefetchOptions);
               } catch (e) {
                 setIngestError(e instanceof Error ? e.message : "拉取失败");
               } finally {
@@ -226,11 +232,16 @@ export function DashboardNewsDigestSection() {
   return (
     <DashboardCockpitSection
       testId="dashboard-news-digest-section"
-      eyebrow="News Digest"
+      eyebrow="新闻摘要"
       title="市场资讯"
       state={state}
-      onRetry={() => void query.refetch()}
+      onRetry={() => void query.refetch(nonCancellingRefetchOptions)}
       emptyFooter={emptyFooter}
+      extra={
+        <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, fontWeight: 600 }}>
+          实时推送 · 不绑定报告日
+        </span>
+      }
     >
       <div data-testid="dashboard-news-digest-list" style={{ display: "grid", gap: 12 }}>
         <div

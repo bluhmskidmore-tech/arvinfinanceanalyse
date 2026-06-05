@@ -1,0 +1,198 @@
+{
+  "captured_at": "2026-05-23T07:16:09.928Z",
+  "base_url": "http://127.0.0.1:5888/",
+  "checks": [
+    {
+      "file": "dashboard-home-final-1440.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "bodyScrollWidth": 1440,
+      "bodyClientWidth": 1440,
+      "rootWidth": 1248,
+      "conclusionVisible": true,
+      "judgmentVisible": true,
+      "kpiCount": 6,
+      "depthZoneInitiallyRendered": false,
+      "actionQueueInitiallyRendered": false,
+      "decisionRailRendered": true,
+      "mockRibbonVisible": true,
+      "kpiBand": {
+        "x": 204,
+        "y": 219.84375,
+        "width": 1224,
+        "height": 108.421875,
+        "bottom": 328.265625
+      },
+      "marketPulse": {
+        "x": 204,
+        "y": 338.265625,
+        "width": 1224,
+        "height": 35.9375,
+        "bottom": 374.203125
+      },
+      "primaryAnalysis": {
+        "x": 204,
+        "y": 384.203125,
+        "width": 974,
+        "height": 433.21875,
+        "bottom": 817.421875
+      },
+      "noHorizontalOverflow": true
+    },
+    {
+      "file": "dashboard-home-final-768.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "bodyScrollWidth": 768,
+      "bodyClientWidth": 768,
+      "rootWidth": 768,
+      "conclusionVisible": true,
+      "judgmentVisible": true,
+      "kpiCount": 6,
+      "depthZoneInitiallyRendered": false,
+      "actionQueueInitiallyRendered": false,
+      "decisionRailRendered": true,
+      "mockRibbonVisible": true,
+      "kpiBand": {
+        "x": 14,
+        "y": 252.84375,
+        "width": 740,
+        "height": 313.1875,
+        "bottom": 566.03125
+      },
+      "marketPulse": {
+        "x": 14,
+        "y": 576.03125,
+        "width": 740,
+        "height": 63.875,
+        "bottom": 639.90625
+      },
+      "primaryAnalysis": {
+        "x": 14,
+        "y": 649.90625,
+        "width": 740,
+        "height": 1306.890625,
+        "bottom": 1956.796875
+      },
+      "noHorizontalOverflow": true
+    },
+    {
+      "viewport": {
+        "width": 767,
+        "height": 1024
+      },
+      "bodyScrollWidth": 767,
+      "bodyClientWidth": 767,
+      "rootWidth": 767,
+      "conclusionVisible": true,
+      "judgmentVisible": true,
+      "kpiCount": 6,
+      "depthZoneInitiallyRendered": false,
+      "actionQueueInitiallyRendered": false,
+      "decisionRailRendered": true,
+      "mockRibbonVisible": true,
+      "kpiBand": {
+        "x": 12,
+        "y": 278.84375,
+        "width": 743,
+        "height": 313.1875,
+        "bottom": 592.03125
+      },
+      "marketPulse": {
+        "x": 12,
+        "y": 604.03125,
+        "width": 743,
+        "height": 63.875,
+        "bottom": 667.90625
+      },
+      "primaryAnalysis": {
+        "x": 12,
+        "y": 679.90625,
+        "width": 743,
+        "height": 1306.890625,
+        "bottom": 1986.796875
+      },
+      "noHorizontalOverflow": true
+    },
+    {
+      "viewport": {
+        "width": 1023,
+        "height": 960
+      },
+      "bodyScrollWidth": 1023,
+      "bodyClientWidth": 1023,
+      "rootWidth": 1023,
+      "conclusionVisible": true,
+      "judgmentVisible": true,
+      "kpiCount": 6,
+      "depthZoneInitiallyRendered": false,
+      "actionQueueInitiallyRendered": false,
+      "decisionRailRendered": true,
+      "mockRibbonVisible": true,
+      "kpiBand": {
+        "x": 14,
+        "y": 252.84375,
+        "width": 995,
+        "height": 313.1875,
+        "bottom": 566.03125
+      },
+      "marketPulse": {
+        "x": 14,
+        "y": 576.03125,
+        "width": 995,
+        "height": 63.875,
+        "bottom": 639.90625
+      },
+      "primaryAnalysis": {
+        "x": 14,
+        "y": 649.90625,
+        "width": 995,
+        "height": 1306.890625,
+        "bottom": 1956.796875
+      },
+      "noHorizontalOverflow": true
+    },
+    {
+      "viewport": {
+        "width": 1279,
+        "height": 960
+      },
+      "bodyScrollWidth": 1279,
+      "bodyClientWidth": 1279,
+      "rootWidth": 1087,
+      "conclusionVisible": true,
+      "judgmentVisible": true,
+      "kpiCount": 6,
+      "depthZoneInitiallyRendered": false,
+      "actionQueueInitiallyRendered": false,
+      "decisionRailRendered": true,
+      "mockRibbonVisible": true,
+      "kpiBand": {
+        "x": 204,
+        "y": 219.84375,
+        "width": 1063,
+        "height": 215.84375,
+        "bottom": 435.6875
+      },
+      "marketPulse": {
+        "x": 204,
+        "y": 445.6875,
+        "width": 1063,
+        "height": 63.875,
+        "bottom": 509.5625
+      },
+      "primaryAnalysis": {
+        "x": 204,
+        "y": 519.5625,
+        "width": 799,
+        "height": 433.21875,
+        "bottom": 952.78125
+      },
+      "noHorizontalOverflow": true
+    }
+  ]
+}

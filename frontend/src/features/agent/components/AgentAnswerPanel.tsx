@@ -1,12 +1,13 @@
 import { shellTokens as t } from "../../../theme/tokens";
 
-export function AgentAnswerPanel({ answer }: { answer: string }) {
+export function AgentAnswerPanel({ answer, testId }: { answer: string; testId?: string }) {
   if (!answer.trim()) {
     return null;
   }
 
   return (
     <div
+      data-testid={testId}
       style={{
         padding: 20,
         borderRadius: 16,

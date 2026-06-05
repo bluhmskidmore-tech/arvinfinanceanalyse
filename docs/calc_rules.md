@@ -117,6 +117,17 @@ amortized_cost_cny_daily = amortized_cost_native * fx_mid_rate
 accrued_interest_cny_daily = accrued_interest_native * fx_mid_rate
 ```
 
+## TYW Missing Source LOCF
+
+- If a TYW report date has no source manifest but the same report date has a ZQTZ
+  materialization run, the formal snapshot materializer may carry forward the
+  previous available TYW snapshot.
+- LOCF rows must be explicit:
+  - `rule_version = rv_snapshot_zqtz_tyw_v1__locf`
+  - `source_version` starts with `sv_tyw_locf_`
+  - `ingest_batch_id = locf:<prior_report_date>`
+  - `trace_id` starts with `locf:<report_date>:from:<prior_report_date>`
+
 ### 7.3 月均人民币值
 
 ```text
@@ -172,6 +183,16 @@ PnL Bridge 结构：
 - `convexity`
 - `issuer_concentration`
 - `liquidity_gap`
+
+DV01 口径：
+- 全局正式 DV01 使用面值口径：`face_value * modified_duration / 10000`。信用债 `spread_dv01` 与明细 `dv01` 同口径，按信用债明细行的面值与利差久期计算。
+- 正式事实表优先使用 CNY 面值字段；仅在旧的内存计算路径缺少面值字段时允许临时回退 `market_value`，不得把该回退解释为正式口径。
+
+Duration denominator rules:
+- `total_market_value` remains the full bond analytics market value.
+- `portfolio_modified_duration` is weighted only by rows with a real `maturity_date`, positive `modified_duration`, and non-zero `market_value`.
+- Fund-like or other no-maturity rows must not receive a synthetic maturity date. They are excluded from the duration denominator and disclosed through `duration_excluded_market_value` / `duration_excluded_count` in the risk tensor API.
+- `rate_risk_market_value`, `rate_risk_dv01`, and `rate_risk_modified_duration` expose the denominator used for the rate-risk duration view; `rate_risk_modified_duration` must reconcile to `portfolio_modified_duration`.
 
 流动性缺口规则：
 - `liquidity_gap_30d` / `liquidity_gap_90d` 必须按未来 30 / 90 天现金流口径计算，不得再按 `maturity_date` 对 `market_value` 做简单过滤。
@@ -240,9 +261,29 @@ PnL Bridge 结构：
 - 当前仓库已落地 governed formal compute / materialize、service / API 与首个 workbench consumer；已落地面以 `backend/app/core_finance/balance_analysis.py`、`backend/app/tasks/balance_analysis_materialize.py`、`backend/app/services/balance_analysis_service.py`、`backend/app/api/routes/balance_analysis.py` 与 `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx` 为准。
 - 本节不宣称超出上述已落地面的更多分析能力；后续扩展仍必须遵守 `backend/app/core_finance/` 唯一正式计算入口原则。
 
-## 13. 禁止事项
+### 12.6 Liability Yield / NIM CNY Weighting
+
+- `/api/analysis/yield_metrics` and executive NIM keep the existing formula: `nim = asset_yield - market_liability_cost`.
+- ZQTZ yield rows must prefer `fact_formal_zqtz_balance_daily` with `currency_basis='CNY'` and `position_scope in ('asset', 'liability')` so foreign-currency bond assets are weighted on the same CNY basis as formal balance analytics.
+- If formal CNY rows are unavailable for a requested date, the service may fall back to `zqtz_bond_daily_snapshot` for backward compatibility.
+- Direct `invest_type_std` from formal balance rows must be used for H/A/T weighting decisions; portfolio names such as `FIOA` must not drive H/A/T inference.
+
+## 13. Livermore 股票输入（观测层）
+
+本节只约束 Choice/Tushare 落地到 DuckDB 的股票**观测**字段如何读，不扩展正式损益口径；字段清单与探针证据以 `config/choice_stock_catalog.json` 与 `docs/choice_stock_catalog.md` 为准。
+
+- **涨跌幅、换手率、振幅（`daily_return_turnover_amplitude`）**：`PCTCHANGE`、`TURN`、`AMPLITUDE` 统一按**百分点**（percentage points）解释，例如 1.2 表示 1.2%；Tushare 回退路径与 `pct_chg`、换手率及由高低价与昨收计算的振幅标度一致。
+- **涨跌停列（`daily_limit_flags`）**：Choice 的 `HIGHLIMIT` / `LOWLIMIT` 为涨跌停**标志**，不是限价价格。Tushare `stk_limit` 回退将限价**价格**写入同名观测列时，用途是支撑 `limit_ratio` 等由价格派生的指标，不得与 Choice 标志语义混读。
+
+## 14. 禁止事项
 
 - 不允许在 endpoint 或前端实现任何正式公式
 - 不允许 Scenario 结果写入 Formal 事实表
 - 不允许静默降级为 0 且不打标记
 - 不允许未经测试修改 H/A/T、FX、516、发行类排除规则
+
+## PR-2 Formal PnL FVTPL 517 Guard
+
+- For `FVTPL`, `516` is the formal fair-value PnL component.
+- `517` is excluded from formal `total_pnl` by default to avoid double-counting prior `516`.
+- `FVTPL 517` may enter formal `total_pnl` only when `realized_flag=true` and `event_semantics` explicitly proves non-overlap with prior `516`, currently `realized_incremental` or `realized_no_prior_516`.

@@ -22,6 +22,7 @@ import { MetricEditModal } from "../components/MetricEditModal";
 import { MetricManageModal } from "../components/MetricManageModal";
 import { MetricTable } from "../components/MetricTable";
 import { OwnerList } from "../components/OwnerList";
+import "./KpiPerformancePage.css";
 
 const { Title, Text } = Typography;
 
@@ -254,9 +255,9 @@ export default function KpiPerformancePage() {
   }, [loadMetrics]);
 
   return (
-    <div style={{ display: "grid", gap: 20 }} data-testid="kpi-performance-page">
-      <div>
-        <Title level={3} style={{ marginBottom: 4 }}>
+    <div className="kpi-performance-page" data-testid="kpi-performance-page">
+      <div className="kpi-performance-page__header" data-testid="kpi-performance-header">
+        <Title level={3} className="kpi-performance-page__title">
           绩效考核
         </Title>
         <Text type="secondary">
@@ -264,23 +265,23 @@ export default function KpiPerformancePage() {
         </Text>
       </div>
 
-      <Card>
+      <Card className="kpi-performance-page__filters" data-testid="kpi-performance-filters">
         <Row gutter={[16, 16]} align="middle" justify="space-between">
           <Col flex="auto">
-            <Space wrap size="middle">
-              <div>
-                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>考核年度</div>
+            <Space wrap size="middle" data-testid="kpi-performance-filter-row">
+              <div className="kpi-performance-page__field">
+                <div className="kpi-performance-page__field-label">考核年度</div>
                 <Select
-                  style={{ width: 120 }}
+                  className="kpi-performance-page__select kpi-performance-page__select--year"
                   value={year}
                   options={yearOptions.map((y) => ({ label: `${y} 年`, value: y }))}
                   onChange={(v) => setYear(v)}
                 />
               </div>
-              <div>
-                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>时间维度</div>
+              <div className="kpi-performance-page__field">
+                <div className="kpi-performance-page__field-label">时间维度</div>
                 <Select
-                  style={{ width: 120 }}
+                  className="kpi-performance-page__select kpi-performance-page__select--period-type"
                   value={periodType}
                   options={[
                     { label: "按日期", value: "DAILY" },
@@ -299,10 +300,10 @@ export default function KpiPerformancePage() {
                 />
               </div>
               {periodType === "MONTH" ? (
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>月份</div>
+                <div className="kpi-performance-page__field">
+                  <div className="kpi-performance-page__field-label">月份</div>
                   <Select
-                    style={{ width: 100 }}
+                    className="kpi-performance-page__select kpi-performance-page__select--month"
                     value={periodValue}
                     options={monthOptions}
                     onChange={(v) => setPeriodValue(v)}
@@ -310,10 +311,10 @@ export default function KpiPerformancePage() {
                 </div>
               ) : null}
               {periodType === "QUARTER" ? (
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>季度</div>
+                <div className="kpi-performance-page__field">
+                  <div className="kpi-performance-page__field-label">季度</div>
                   <Select
-                    style={{ width: 140 }}
+                    className="kpi-performance-page__select kpi-performance-page__select--quarter"
                     value={periodValue}
                     options={quarterOptions}
                     onChange={(v) => setPeriodValue(v)}
@@ -321,8 +322,8 @@ export default function KpiPerformancePage() {
                 </div>
               ) : null}
               {periodType === "DAILY" ? (
-                <div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>截止日期</div>
+                <div className="kpi-performance-page__field">
+                  <div className="kpi-performance-page__field-label">截止日期</div>
                   <input
                     type="date"
                     value={formatDate(asOfDate)}
@@ -330,20 +331,14 @@ export default function KpiPerformancePage() {
                       const v = e.target.value;
                       if (v) setAsOfDate(new Date(`${v}T12:00:00`));
                     }}
-                    style={{
-                      width: 180,
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #d9d9d9",
-                      fontSize: 14,
-                    }}
+                    className="kpi-performance-page__date-input"
                   />
                 </div>
               ) : null}
             </Space>
           </Col>
           <Col>
-            <Space wrap>
+            <Space wrap data-testid="kpi-performance-action-row">
               <Button icon={<PlusOutlined />} disabled={!selectedOwner} onClick={handleAddMetric}>
                 新增指标
               </Button>
@@ -370,15 +365,7 @@ export default function KpiPerformancePage() {
           </Col>
         </Row>
         {lastFetchResult ? (
-          <div
-            style={{
-              marginTop: 16,
-              padding: 12,
-              background: "#f8fafc",
-              borderRadius: 8,
-              fontSize: 13,
-            }}
-          >
+          <div className="kpi-performance-page__fetch-result">
             <Space wrap>
               <Text>共 {lastFetchResult.total_metrics} 个指标</Text>
               <Text type="success">成功抓取 {lastFetchResult.fetched_count}</Text>
@@ -394,7 +381,11 @@ export default function KpiPerformancePage() {
         ) : null}
       </Card>
 
-      <Row gutter={20}>
+      <Row
+        gutter={[20, 20]}
+        className="kpi-performance-page__main-grid"
+        data-testid="kpi-performance-main-grid"
+      >
         <Col xs={24} lg={7}>
           <OwnerList
             owners={owners}
@@ -408,11 +399,14 @@ export default function KpiPerformancePage() {
         </Col>
         <Col xs={24} lg={17}>
           {selectedOwner ? (
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Space direction="vertical" size={16} className="kpi-performance-page__detail-stack">
               <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                <div
+                  className="kpi-performance-page__detail-header"
+                  data-testid="kpi-performance-detail-header"
+                >
                   <div>
-                    <Title level={4} style={{ marginBottom: 4 }}>
+                    <Title level={4} className="kpi-performance-page__owner-title">
                       {selectedOwner.owner_name}
                     </Title>
                     <Text type="secondary">
@@ -425,22 +419,12 @@ export default function KpiPerformancePage() {
                   </div>
                   <Space wrap>
                     {periodSummary ? (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "6px 12px",
-                          background: "#e6f4ff",
-                          borderRadius: 8,
-                          fontSize: 13,
-                        }}
-                      >
-                        <CalendarOutlined style={{ color: "#1677ff" }} />
-                        <Text strong style={{ color: "#0958d9" }}>
+                      <div className="kpi-performance-page__period-badge">
+                        <CalendarOutlined className="kpi-performance-page__period-badge-icon" />
+                        <Text strong className="kpi-performance-page__period-badge-text">
                           {periodSummary.period_label}
                         </Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
+                        <Text type="secondary" className="kpi-performance-page__period-badge-range">
                           ({periodSummary.period_start_date} ~ {periodSummary.period_end_date})
                         </Text>
                       </div>
@@ -462,13 +446,18 @@ export default function KpiPerformancePage() {
               />
             </Space>
           ) : (
-            <Card style={{ minHeight: 420, display: "grid", placeItems: "center" }}>
-              <div style={{ textAlign: "center", color: "#94a3b8" }}>
-                <TeamOutlined style={{ fontSize: 48, marginBottom: 12 }} />
-                <Title level={4} type="secondary">
-                  请选择考核对象
-                </Title>
-                <Text type="secondary">从左侧列表选择部室，查看绩效指标明细</Text>
+            <Card className="kpi-performance-page__empty-card">
+              <div
+                className="kpi-performance-page__empty-state"
+                data-testid="kpi-performance-empty-state"
+              >
+                <div className="kpi-performance-page__empty-copy">
+                  <TeamOutlined className="kpi-performance-page__empty-icon" />
+                  <Title level={4} type="secondary">
+                    请选择考核对象
+                  </Title>
+                  <Text type="secondary">从左侧列表选择部室，查看绩效指标明细</Text>
+                </div>
               </div>
             </Card>
           )}

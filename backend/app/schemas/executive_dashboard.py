@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from backend.app.schemas.common_numeric import Numeric
 
@@ -40,6 +40,7 @@ def _coerce_display_numeric(value: Any) -> Any:
 class ExecutiveMetric(BaseModel):
     id: str
     label: str
+    caliber_label: str | None = None
     value: Numeric
     delta: Numeric
     tone: str
@@ -213,17 +214,87 @@ class VerdictPayload(BaseModel):
     suggestions: list[VerdictSuggestion]
 
 
+class ProductCategoryYtdHeadlinePayload(BaseModel):
+    """产品分类损益 ytd 与专题页「汇总视图」对齐的首屏摘要（不含前端自算）。"""
+
+    view: Literal["ytd"] = "ytd"
+    summary_pnl: Numeric
+    summary_pnl_detail: str
+    operating_income: Numeric
+    operating_income_detail: str
+    intermediate_business_income: Numeric
+    intermediate_business_income_detail: str
+
+
+class ProductCategoryMonthlyHeadlinePayload(BaseModel):
+    """产品分类损益 monthly 与专题页「月度视图」页脚对齐的首屏摘要（不含前端自算）。"""
+
+    view: Literal["monthly"] = "monthly"
+    monthly_income: Numeric
+    monthly_income_detail: str
+
+
+class HomeResearchReportItem(BaseModel):
+    """Research report row for the dashboard home page."""
+
+    id: str
+    title: str
+    category: str
+    published_at: str
+    link: str | None = None
+    source: str
+    institution: str | None = None
+    source_status: Literal["ready", "empty", "stale"] = "ready"
+    summary: str | None = None
+
+
+class HomeResearchReportsPayload(BaseModel):
+    """Research report list backed by fact_news_event source_kind=research."""
+
+    report_date: str
+    source_status: Literal["ready", "empty", "stale"]
+    items: list[HomeResearchReportItem] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class HomeIncomeTrendPoint(BaseModel):
+    """Dashboard-home income trend point backed by product-category monthly PnL."""
+
+    date: str
+    portfolio_pnl: Numeric
+    benchmark_pnl: Numeric
+    excess_pnl: Numeric
+    basis: Literal["product_category_pnl_monthly"]
+    source_status: Literal["ready", "partial", "empty", "stale"]
+
+
+class HomeIncomeTrendPayload(BaseModel):
+    """Recent report-period income trend for dashboard-home terminal panels."""
+
+    report_date: str
+    window: int
+    source_status: Literal["ready", "partial", "empty", "stale"]
+    points: list[HomeIncomeTrendPoint] = Field(default_factory=list)
+    missing_components: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class HomeSnapshotPayload(BaseModel):
     """Authoritative unified home snapshot payload.
 
-    `mode="strict"`: `report_date` is the most recent day where **all four**
-    governed business domains (balance / pnl / liability / bond) are
-    available. `domains_missing=[]` and all four entries in
-    `domains_effective_date` equal `report_date`.
+    `mode="strict"`: `report_date` is the most recent day where **both**
+    business calibers (balance_sheet / pnl) are available.
+    `domains_missing=[]` and both entries in `domains_effective_date`
+    equal `report_date`.
 
     `mode="partial"`: user-requested or latest historical day; missing
-    business domains listed in `domains_missing`; per-domain effective_date
-    in `domains_effective_date` may diverge.
+    calibers listed in `domains_missing`; per-caliber effective_date in
+    `domains_effective_date` may diverge.
+
+    Calibers:
+      - ``balance_sheet``: AUM + NIM + DV01 — intersection of balance,
+        liability, and bond sub-source dates (same T+1 pipeline).
+      - ``pnl``: YTD P&L — independent formal build cycle.
 
     Design reference: docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md § 4.
     """
@@ -236,3 +307,5 @@ class HomeSnapshotPayload(BaseModel):
     domains_missing: list[str]
     domains_effective_date: dict[str, str]
     verdict: VerdictPayload | None = None
+    product_category_ytd: ProductCategoryYtdHeadlinePayload | None = None
+    product_category_monthly: ProductCategoryMonthlyHeadlinePayload | None = None
