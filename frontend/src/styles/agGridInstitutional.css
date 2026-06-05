@@ -1,0 +1,11 @@
+.workbench-shell-grid--institutional-console :where(.ag-theme-alpine, .ag-theme-quartz) {
+  --ag-background-color: var(--moss-institutional-surface-raised, #ffffff);
+  --ag-header-background-color: var(--moss-institutional-surface-muted, #f4f7fa);
+  --ag-odd-row-background-color: var(--moss-institutional-row-stripe, #f7f9fc);
+  --ag-row-hover-color: var(--moss-institutional-row-hover, #eef5ff);
+  --ag-border-color: var(--moss-institutional-border, #c9d4df);
+  --ag-header-foreground-color: var(--moss-institutional-text-muted, #5c6675);
+  --ag-foreground-color: var(--moss-institutional-text, #17212f);
+  --ag-font-family: var(--moss-font-sans);
+  --ag-font-size: 12px;
+}

@@ -5,6 +5,7 @@ import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+import "../../styles/agGridInstitutional.css";
 
 import { useApiClient } from "../../api/client";
 import type { LiabilityYieldKpi, Numeric, PnlBasis, PnlV1DetailRow } from "../../api/contracts";
