@@ -575,6 +575,50 @@ function formatMetaQuality(meta: ResultMeta | null | undefined) {
   return value ? (labels[value] ?? value) : "缺失";
 }
 
+function collectSourceRiskSegments(label: string, meta: ResultMeta | null | undefined) {
+  const segments: string[] = [];
+  const fallbackMode = metaString(meta?.fallback_mode);
+  const vendorStatus = metaString(meta?.vendor_status);
+  const scenarioFlag = meta?.scenario_flag === true;
+  if (fallbackMode && fallbackMode !== "none") {
+    segments.push(`${label} fallback=${fallbackMode}`);
+  }
+  if (vendorStatus && vendorStatus !== "ok") {
+    segments.push(`${label} vendor=${vendorStatus}`);
+  }
+  if (scenarioFlag) {
+    segments.push(`${label} scenario=true`);
+  }
+  return segments;
+}
+
+function ledgerSourceRiskSegments(
+  summaryMeta: ResultMeta | null | undefined,
+  dataMeta: ResultMeta | null | undefined,
+) {
+  return [
+    ...collectSourceRiskSegments("汇总", summaryMeta),
+    ...collectSourceRiskSegments("明细", dataMeta),
+  ];
+}
+
+function formatLedgerSourceStatus(
+  summaryMeta: ResultMeta | null | undefined,
+  dataMeta: ResultMeta | null | undefined,
+) {
+  const segments = ledgerSourceRiskSegments(summaryMeta, dataMeta);
+  return segments.length > 0 ? segments.join("；") : "来源正常";
+}
+
+function formatLedgerSourceAction(
+  summaryMeta: ResultMeta | null | undefined,
+  dataMeta: ResultMeta | null | undefined,
+) {
+  return ledgerSourceRiskSegments(summaryMeta, dataMeta).length > 0
+    ? "先确认降级/情景来源，再使用候选解释"
+    : "来源状态正常，可继续分析";
+}
+
 function formatEvidenceRows(meta: ResultMeta | null | undefined) {
   return typeof meta?.evidence_rows === "number" ? String(meta.evidence_rows) : "缺失";
 }
@@ -1192,6 +1236,8 @@ function buildLedgerFunctionalAuditState(props: {
   const ledgerSliceMismatch = firstMetaMismatch(props.summaryMeta, props.dataMeta);
   const ledgerSliceStatus = ledgerSliceMismatch ?? "汇总/明细切片一致";
   const ledgerSliceAction = ledgerSliceMismatch ? "核对汇总/明细元数据后再解释残差" : "切片一致，可解释残差";
+  const ledgerSourceStatus = formatLedgerSourceStatus(props.summaryMeta, props.dataMeta);
+  const ledgerSourceAction = formatLedgerSourceAction(props.summaryMeta, props.dataMeta);
   const sharedState = {
     requestedDate,
     resolvedDate,
@@ -1201,6 +1247,8 @@ function buildLedgerFunctionalAuditState(props: {
     ledgerReadAction,
     ledgerSliceStatus,
     ledgerSliceAction,
+    ledgerSourceStatus,
+    ledgerSourceAction,
     monthlyAnalysisStatus,
     monthlyAnalysisAction,
   };
@@ -1494,6 +1542,10 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.ledgerSliceStatus}</strong>
         </div>
         <div>
+          <span>来源状态</span>
+          <strong>{state.ledgerSourceStatus}</strong>
+        </div>
+        <div>
           <span>月度工作簿</span>
           <strong>{state.monthlyAnalysisStatus}</strong>
         </div>
@@ -1563,6 +1615,10 @@ function LedgerFunctionalAuditStrip(props: {
           <div>
             <span>切片处理路径</span>
             <strong>{state.ledgerSliceAction}</strong>
+          </div>
+          <div>
+            <span>来源处理路径</span>
+            <strong>{state.ledgerSourceAction}</strong>
           </div>
           <div>
             <span>月度分析工作簿</span>

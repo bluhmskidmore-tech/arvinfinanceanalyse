@@ -1352,6 +1352,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("明细证据行7751");
       expect(strip).toHaveTextContent("总账读取环节总账接口已读取");
       expect(strip).toHaveTextContent("总账切片汇总/明细切片一致");
+      expect(strip).toHaveTextContent("来源状态来源正常");
       expect(strip).toHaveTextContent("候选补证入口 候选链路已闭合，无需补证");
       expect(strip).toHaveTextContent("候选证据定位 残差诊断表 · 无需补证");
       expect(strip).not.toHaveTextContent("补证入口 暂无补证入口");
@@ -1362,6 +1363,7 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("候选补证路径候选链路已闭合，无需补证");
     expect(decisionPath).toHaveTextContent("总账恢复路径总账读取链路已闭合");
     expect(decisionPath).toHaveTextContent("切片处理路径切片一致，可解释残差");
+    expect(decisionPath).toHaveTextContent("来源处理路径来源状态正常，可继续分析");
     expect(decisionPath).toHaveTextContent("正式补证路径补齐 202605 正式财务指标 Excel 冻结样本");
     expect(decisionPath).toHaveTextContent(
       "正式补证结论202605 正式样本缺失；先补齐样本，再登记 source contract、回读正式契约并核对 QDB 候选值",
@@ -1875,6 +1877,9 @@ describe("LedgerPnlPage", () => {
       resolved_report_date: "2026-05-31",
       as_of_date: "2026-05-31",
       quality_flag: "warning",
+      vendor_status: "stale",
+      fallback_mode: "cache",
+      scenario_flag: true,
       source_version: "sv_ledger_pnl_empty",
       evidence_rows: 0,
       next_drill: [
@@ -1895,6 +1900,8 @@ describe("LedgerPnlPage", () => {
       resolved_report_date: "2026-05-31",
       as_of_date: "2026-05-31",
       quality_flag: "warning",
+      vendor_status: "partial",
+      fallback_mode: "synthetic",
       source_version: "sv_ledger_pnl_empty",
       evidence_rows: 0,
       next_drill: [
@@ -1975,6 +1982,9 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("汇总证据行0");
       expect(strip).toHaveTextContent("明细证据行0");
       expect(strip).toHaveTextContent("质量汇总预警 / 明细预警");
+      expect(strip).toHaveTextContent(
+        "来源状态汇总 fallback=cache；汇总 vendor=stale；汇总 scenario=true；明细 fallback=synthetic；明细 vendor=partial",
+      );
       expect(strip).toHaveTextContent("来源版本sv_ledger_pnl_empty");
       expect(strip).toHaveTextContent("正式契约缺失，正式值不可用");
       expect(strip).toHaveTextContent("下一步补证");
@@ -1983,6 +1993,9 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("核对总账源文件");
       expect(strip).toHaveTextContent("补查 2026-05-31 的 canonical 总账事实行");
     });
+
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("来源处理路径先确认降级/情景来源，再使用候选解释");
 
     const cards = screen.getByTestId("ledger-pnl-summary-cards");
     const monthlyAnalysis = screen.getByTestId("ledger-pnl-monthly-analysis-panel");
