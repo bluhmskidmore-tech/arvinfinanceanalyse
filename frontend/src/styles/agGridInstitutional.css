@@ -1,3 +1,4 @@
+.formal-pnl-v1-grid-shell,
 .workbench-shell-grid--desktop-aligned :where(.ag-theme-alpine, .ag-theme-quartz) {
   --ag-background-color: var(--moss-institutional-surface-raised, #ffffff);
   --ag-header-background-color: var(--moss-institutional-surface-muted, #f4f7fa);

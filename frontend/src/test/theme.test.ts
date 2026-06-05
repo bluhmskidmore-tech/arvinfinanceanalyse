@@ -13,6 +13,10 @@ const AG_GRID_INSTITUTIONAL_CSS_PATH = resolve(
   process.cwd(),
   "src/styles/agGridInstitutional.css",
 );
+const FORMAL_PNL_V1_CSS_PATH = resolve(
+  process.cwd(),
+  "src/features/pnl/FormalPnlV1Page.css",
+);
 const WORKBENCH_SHELL_PATH = resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx");
 
 function stripCssComments(source: string): string {
@@ -194,8 +198,11 @@ describe("globalCss design token bridge (:root)", () => {
 
   it("keeps AG Grid theme aliases out of the eager global stylesheet", () => {
     const agGridCss = readFileSync(AG_GRID_INSTITUTIONAL_CSS_PATH, "utf8");
+    const formalPnlCss = readFileSync(FORMAL_PNL_V1_CSS_PATH, "utf8");
     const workbenchShellSource = readFileSync(WORKBENCH_SHELL_PATH, "utf8");
 
+    expect(formalPnlCss).toContain(".formal-pnl-v1-grid-shell");
+    expect(agGridCss).toContain(".formal-pnl-v1-grid-shell,");
     expect(agGridCss).toContain(
       ".workbench-shell-grid--desktop-aligned :where(.ag-theme-alpine, .ag-theme-quartz)",
     );
