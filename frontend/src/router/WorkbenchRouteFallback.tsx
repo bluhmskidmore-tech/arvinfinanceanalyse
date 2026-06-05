@@ -1,7 +1,10 @@
+import styles from "./WorkbenchRouteFallback.module.css";
+
 export function WorkbenchRouteFallback() {
   return (
-    <div style={{ padding: 24, color: "#5c6b82" }} role="status">
-      页面载入中…
+    <div className={styles.routeFallback} role="status" aria-live="polite">
+      <span className={styles.routeFallbackMark} aria-hidden="true" />
+      <span>页面加载中</span>
     </div>
   );
 }

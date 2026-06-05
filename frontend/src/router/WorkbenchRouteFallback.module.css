@@ -1,0 +1,17 @@
+.routeFallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 24px;
+  color: var(--moss-color-text-muted, #5c6b82);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.routeFallbackMark {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--moss-color-accent, #2f6fed);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--moss-color-accent, #2f6fed) 12%, transparent);
+}
