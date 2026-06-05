@@ -873,6 +873,85 @@ function PercentileGauge({ sparkline }: { sparkline: number[] }) {
   );
 }
 
+type CrossAssetEvidenceGroupConfig = {
+  key: "rates_liquidity" | "equity_risk" | "commodity_inflation" | "fx_spread";
+  title: string;
+  cue: string;
+  summary: string;
+  kpiKeys: string[];
+};
+
+const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
+  {
+    key: "rates_liquidity",
+    title: "利率与流动性",
+    cue: "Bond anchor",
+    summary: "先看长端约束和资金锚，判断债券方向是否有顺风。",
+    kpiKeys: ["cn_gov_10y", "us_gov_10y", "money_market_7d"],
+  },
+  {
+    key: "equity_risk",
+    title: "权益风险偏好",
+    cue: "Risk appetite",
+    summary: "用指数、估值和权重结构判断风险偏好是否挤压债券。",
+    kpiKeys: ["financial_conditions", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
+  },
+  {
+    key: "commodity_inflation",
+    title: "商品通胀",
+    cue: "Inflation pulse",
+    summary: "把能源、黑色和有色拆开看，避免把商品噪声直接推成通胀结论。",
+    kpiKeys: ["brent", "steel", "copper", "aluminum"],
+  },
+  {
+    key: "fx_spread",
+    title: "汇率与中美利差",
+    cue: "External constraint",
+    summary: "汇率和利差共同决定外部压力的上限与节奏。",
+    kpiKeys: ["gov_spread", "usdcny"],
+  },
+];
+
+function CrossAssetEvidenceGroups({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
+  const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
+
+  return (
+    <div className="cross-asset-evidence-groups" data-testid="cross-asset-evidence-groups">
+      <div className="cross-asset-evidence-groups__grid" data-testid="cross-asset-kpi-band">
+        {CROSS_ASSET_EVIDENCE_GROUPS.map((group) => {
+          const groupKpis = group.kpiKeys
+            .map((key) => kpisByKey.get(key))
+            .filter((kpi): kpi is ResolvedCrossAssetKpi => Boolean(kpi));
+
+          return (
+            <section
+              key={group.key}
+              className="cross-asset-evidence-group"
+              data-testid={`cross-asset-evidence-group-${group.key}`}
+              aria-labelledby={`cross-asset-evidence-group-${group.key}-title`}
+            >
+              <div className="cross-asset-evidence-group__header">
+                <span className="cross-asset-evidence-group__cue">{group.cue}</span>
+                <h3 id={`cross-asset-evidence-group-${group.key}-title`}>
+                  {group.title}
+                </h3>
+                <p>{group.summary}</p>
+              </div>
+              <div className="cross-asset-metric-strip cross-asset-evidence-group__metrics">
+                {groupKpis.length > 0 ? (
+                  groupKpis.map((kpi) => <MiniKpiCard key={kpi.key} kpi={kpi} />)
+                ) : (
+                  <div className="cross-asset-evidence-group__empty">暂无可展示指标</div>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MiniKpiCard({ kpi, compact = false }: { kpi: ResolvedCrossAssetKpi; compact?: boolean }) {
   const stroke = sparkStroke[kpi.changeTone];
   return (
@@ -1385,15 +1464,15 @@ function MarketRegimePanel({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
   return (
     <div
       className="ca-regime"
-      style={{ background: regime.bgColor, borderColor: regime.color + "40" }}
+      style={{ background: regime.bgColor, borderColor: regime.color + "40", color: regime.color }}
       data-testid="cross-asset-regime-indicator"
     >
-      <span className="ca-regime__icon">{regime.icon}</span>
+      <span className="ca-regime__signal" aria-hidden="true" />
       <div className="ca-regime__body">
-        <div className="ca-regime__label" style={{ color: regime.color }}>
+        <div className="ca-regime__label">
           当前体制：{regime.label}
         </div>
-        <div className="ca-regime__desc" style={{ color: regime.color }}>
+        <div className="ca-regime__desc">
           {regime.description}
         </div>
       </div>
@@ -1921,9 +2000,6 @@ export default function CrossAssetDriversPage() {
 
   const env = useMemo(() => macroBondLinkage.environment_score ?? {}, [macroBondLinkage.environment_score]);
   const kpis = useMemo(() => resolveCrossAssetKpis(latestSeries), [latestSeries]);
-  const headlineKpis = useMemo(() => kpis.slice(0, 4), [kpis]);
-  const remainder = kpis.length % 4;
-  const kpiPlaceholderCount = remainder !== 0 ? 4 - remainder : 0;
   const trendOption = useMemo(() => buildCrossAssetTrendOption(latestSeries), [latestSeries]);
   const trendSummary = useMemo(() => buildCrossAssetTrendSummary(kpis), [kpis]);
   const correlationMatrix = useMemo(() => buildCorrelationMatrix(kpis), [kpis]);
@@ -2123,24 +2199,7 @@ export default function CrossAssetDriversPage() {
 
           <div className="cross-asset-decision-board" data-testid="cross-asset-decision-display">
             <CrossAssetDecisionZone testId="cross-asset-zone-evidence" title="证据与指标">
-              <div className="cross-asset-metric-strip" data-testid="cross-asset-kpi-band">
-                {kpis.map((kpi) => (
-                  <MiniKpiCard
-                    key={kpi.key}
-                    kpi={kpi}
-                    compact={headlineKpis.some((headline) => headline.key === kpi.key)}
-                  />
-                ))}
-                {remainder !== 0
-                  ? Array.from({ length: kpiPlaceholderCount }, (_, index) => (
-                      <div
-                        key={`kpi-placeholder-${index}`}
-                        className="cross-asset-drivers-page__kpi-placeholder"
-                        aria-hidden={true}
-                      />
-                    ))
-                  : null}
-              </div>
+              <CrossAssetEvidenceGroups kpis={kpis} />
               <table className="cross-asset-drivers-page__heatmap cross-asset-drivers-page__heatmap--flat">
                 <thead>
                   <tr>

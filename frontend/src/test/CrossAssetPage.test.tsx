@@ -74,6 +74,24 @@ describe("CrossAssetPage", () => {
     );
   });
 
+  it("keeps cross-asset evidence groups readable on narrow screens", () => {
+    const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
+
+    expect(css).toContain("@media (max-width: 900px)");
+    expect(css).toContain(".cross-asset-evidence-groups__grid,");
+    expect(css).toContain(".cross-asset-metric-strip {");
+    expect(css).toContain("grid-template-columns: 1fr;");
+  });
+
+  it("keeps metric card separators correct for odd two-column evidence groups", () => {
+    const css = readFileSync(CROSS_ASSET_DRIVERS_CSS_PATH, "utf8");
+
+    expect(css).toContain(
+      ".cross-asset-metric-strip .cross-asset-drivers-page__mini-kpi:nth-last-child(2):nth-child(odd)",
+    );
+    expect(css).not.toContain("nth-last-child(-n + 2)");
+  });
+
   it("renders dual-source stock evidence from the default mock latest-series contract", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
@@ -159,6 +177,34 @@ describe("CrossAssetPage", () => {
     expect(fullKpiBand.querySelectorAll(".cross-asset-drivers-page__mini-kpi").length).toBeGreaterThanOrEqual(4);
     expect(Boolean(researchViews.compareDocumentPosition(fullKpiBand) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
     expect(Boolean(fullKpiBand.compareDocumentPosition(livermoreStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
+  it("groups cross-asset evidence into homepage-style metric panels", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    const evidenceZone = await screen.findByTestId("cross-asset-zone-evidence");
+    const evidenceGroups = await screen.findByTestId("cross-asset-evidence-groups");
+    const fullKpiBand = await screen.findByTestId("cross-asset-kpi-band");
+    const heatmap = evidenceZone.querySelector(".cross-asset-drivers-page__heatmap");
+
+    expect(evidenceZone).toContainElement(evidenceGroups);
+    expect(evidenceGroups).toContainElement(fullKpiBand);
+    expect(evidenceGroups.querySelectorAll(".cross-asset-evidence-group")).toHaveLength(4);
+    expect(screen.getByTestId("cross-asset-evidence-group-rates_liquidity")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-evidence-group-equity_risk")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-evidence-group-commodity_inflation")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-evidence-group-fx_spread")).toBeInTheDocument();
+    expect(Boolean(evidenceGroups.compareDocumentPosition(heatmap!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
+  it("uses a styled signal mark instead of emoji for the market regime indicator", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    const regime = await screen.findByTestId("cross-asset-regime-indicator");
+    const mark = regime.querySelector(".ca-regime__signal");
+
+    expect(mark).toBeInTheDocument();
+    expect(regime).not.toHaveTextContent(/[🟢🔴🟠🔵🟣⚪]/u);
   });
 
   it("renders first-screen investment research judgments from backend additive fields", async () => {
