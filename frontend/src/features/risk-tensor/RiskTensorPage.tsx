@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { DataStatusStrip } from "../../components/page/PagePrimitives";
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
@@ -284,6 +285,9 @@ function fallbackModeLabel(mode: ResultMeta["fallback_mode"] | string | undefine
   }
   if (mode === "latest") {
     return "latest fallback";
+  }
+  if (mode === "latest_snapshot") {
+    return "最新快照降级";
   }
   if (mode === "mock") {
     return "mock fallback";
@@ -738,6 +742,16 @@ export default function RiskTensorPage() {
       >
         {result ? (
           <>
+            <DataStatusStrip
+              testId="risk-tensor-data-status"
+              className="risk-tensor-data-status"
+            >
+              <span>质量标记：{qualityFlagLabel(tensorMeta?.quality_flag ?? result.quality_flag)}</span>
+              <span>降级模式：{fallbackModeLabel(tensorMeta?.fallback_mode)}</span>
+              <span>生成时间：{tensorMeta?.generated_at ?? "未提供"}</span>
+              <span>来源版本：{compactVersion(tensorMeta?.source_version)}</span>
+            </DataStatusStrip>
+
             <section className="risk-tensor-brief" data-testid="risk-tensor-brief">
               <div className="risk-tensor-brief__lead" data-tone={qualityTone(result.quality_flag)}>
                 <span>风险判读</span>

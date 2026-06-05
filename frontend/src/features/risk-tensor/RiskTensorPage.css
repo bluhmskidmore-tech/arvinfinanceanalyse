@@ -27,6 +27,24 @@
   font-weight: 650;
 }
 
+.risk-tensor-data-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.risk-tensor-data-status span {
+  padding: 6px 9px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .risk-tensor-brief__lead {
   display: grid;
   gap: 8px;
