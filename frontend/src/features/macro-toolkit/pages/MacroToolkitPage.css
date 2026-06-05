@@ -402,6 +402,93 @@
   overflow-wrap: anywhere;
 }
 
+.macro-toolkit-committee-decision-language {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-left: 3px solid var(--macro-toolkit-info);
+  border-radius: var(--moss-radius-sm);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 82%, var(--macro-toolkit-info-soft));
+}
+
+.macro-toolkit-committee-decision-language__head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.macro-toolkit-committee-decision-language__head span,
+.macro-toolkit-committee-decision-language__item span {
+  color: var(--moss-color-text-muted);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.macro-toolkit-committee-decision-language__head strong,
+.macro-toolkit-committee-decision-language__item strong {
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-committee-decision-language__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.macro-toolkit-committee-decision-language__item {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-left: 3px solid var(--macro-toolkit-success);
+  border-radius: var(--moss-radius-sm);
+  background: var(--macro-toolkit-card);
+  color: inherit;
+  text-decoration: none;
+}
+
+.macro-toolkit-committee-decision-language__item--block {
+  border-left-color: var(--macro-toolkit-danger);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 84%, var(--macro-toolkit-danger-soft));
+}
+
+.macro-toolkit-committee-decision-language__item--pending {
+  border-left-color: var(--macro-toolkit-warning);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 84%, var(--macro-toolkit-warning-soft));
+}
+
+.macro-toolkit-committee-decision-language__item:hover,
+.macro-toolkit-committee-decision-language__item[aria-current="true"] {
+  border-color: var(--macro-toolkit-primary);
+  border-left-color: var(--macro-toolkit-primary);
+  background: var(--macro-toolkit-primary-soft);
+}
+
+.macro-toolkit-committee-decision-language__item small,
+.macro-toolkit-committee-decision-language__item em {
+  color: var(--moss-color-text-secondary);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-committee-decision-language__item em {
+  color: var(--macro-toolkit-primary);
+  font-weight: 900;
+}
+
 .macro-toolkit-committee-redline {
   display: grid;
   grid-template-columns: minmax(160px, 0.8fr) minmax(130px, 0.62fr) minmax(220px, 1.1fr);
@@ -4973,6 +5060,10 @@
   }
 
   .macro-toolkit-committee-checklist__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .macro-toolkit-committee-decision-language__grid {
     grid-template-columns: 1fr;
   }
 

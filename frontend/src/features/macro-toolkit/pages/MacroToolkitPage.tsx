@@ -2545,6 +2545,31 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           <strong>{committeeReviewedReceiptCount}</strong>
         </div>
       </div>
+      <div className="macro-toolkit-committee-decision-language" aria-label="投委会提交判断口径">
+        <div className="macro-toolkit-committee-decision-language__head">
+          <span>提交判断口径</span>
+          <strong>同源于提交判断矩阵</strong>
+        </div>
+        <div className="macro-toolkit-committee-decision-language__grid">
+          {committeeChecklistItems.map((item) => (
+            <a
+              key={item.key}
+              className={`macro-toolkit-committee-decision-language__item macro-toolkit-committee-decision-language__item--${item.status}`}
+              href={item.href}
+              aria-current={selectedEvidenceHref === item.href ? "true" : undefined}
+              onClick={() => {
+                setSelectedEvidenceHref(item.href);
+                setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(item.href));
+              }}
+            >
+              <span>{item.condition}</span>
+              <strong>{item.statusLabel}</strong>
+              <small>{item.owner}</small>
+              <em>证据入口</em>
+            </a>
+          ))}
+        </div>
+      </div>
       <div className="macro-toolkit-committee-redline" aria-label="投委会提交红线">
         <div className="macro-toolkit-committee-redline__decision">
           <span>提交红线</span>

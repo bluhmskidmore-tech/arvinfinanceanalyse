@@ -195,6 +195,20 @@ describe("MacroToolkitPage", () => {
     expect(committeeReadinessSummary).toHaveTextContent("1");
     expect(committeeReadinessSummary).toHaveTextContent("待复核回执");
     expect(committeeReadinessSummary).toHaveTextContent("0");
+    const committeeDecisionLanguage = within(investmentBrief).getByLabelText("投委会提交判断口径");
+    expect(committeeDecisionLanguage).toHaveTextContent("提交判断口径");
+    expect(committeeDecisionLanguage).toHaveTextContent("同源于提交判断矩阵");
+    expect(committeeDecisionLanguage).toHaveTextContent("证据口径");
+    expect(committeeDecisionLanguage).toHaveTextContent("已通过");
+    expect(committeeDecisionLanguage).toHaveTextContent("数据健康");
+    expect(committeeDecisionLanguage).toHaveTextContent("未通过");
+    expect(committeeDecisionLanguage).toHaveTextContent("策略供数");
+    expect(committeeDecisionLanguage).toHaveTextContent("待确认");
+    expect(committeeDecisionLanguage).toHaveTextContent("工具执行");
+    expect(within(committeeDecisionLanguage).getByRole("link", { name: /数据健康.*证据入口/s })).toHaveAttribute(
+      "href",
+      "#macro-toolkit-data-health-detail",
+    );
     expect(await screen.findByText("投研观点")).toBeInTheDocument();
     expect(houseView).toHaveTextContent("主信号");
     expect((await screen.findAllByText("87.5%")).length).toBeGreaterThan(0);
