@@ -265,3 +265,30 @@ class BondDashboardRiskIndicatorsPayload(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class BondDashboardBusinessTypeMetricItem(BaseModel):
+    name: str
+    market_value: str
+    weighted_avg_ytm_pct: str
+    weighted_avg_duration: str
+    duration_source: str = ""
+
+
+class BondDashboardBusinessTypeMetricsPayload(BaseModel):
+    report_date: str
+    items: list[BondDashboardBusinessTypeMetricItem] = Field(default_factory=list)
+
+
+class BondDashboardHomeSummaryPayload(BaseModel):
+    report_date: str
+    headline: BondDashboardHeadlinePayload
+    risk: BondDashboardRiskIndicatorsPayload
+    asset_type: BondDashboardAssetStructurePayload
+    asset_rating: BondDashboardAssetStructurePayload
+    maturity: BondDashboardMaturityStructurePayload
+    industry: BondDashboardIndustryDistributionPayload
+    yield_distribution: BondDashboardYieldDistributionPayload
+    portfolio_comparison: BondDashboardPortfolioComparisonPayload
+    spread: BondDashboardSpreadAnalysisPayload
+    business_type: BondDashboardBusinessTypeMetricsPayload

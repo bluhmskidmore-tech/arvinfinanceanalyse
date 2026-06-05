@@ -15,6 +15,11 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (handle: number) => void;
 };
 
+const HOME_DEFERRED_CONTENT_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End", " ", "Space"]);
+const HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS = 800;
+const HOME_DEFERRED_CONTENT_IDLE_TIMEOUT_MS = 1_200;
+const HOME_DEFERRED_CONTENT_TIMEOUT_FALLBACK_MS = 600;
+
 const DeferredTerminalHomeContent = lazy(() =>
   import("./DeferredTerminalHomeContent").then((module) => ({
     default: module.DeferredTerminalHomeContent,
@@ -50,37 +55,95 @@ function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydrat
 
 function useDeferredHomeContent(snapshotSettled: boolean) {
   const [shouldLoad, setShouldLoad] = useState(false);
+  const [userReachedDeferredContent, setUserReachedDeferredContent] = useState(false);
+
+  const markUserReached = useCallback(() => {
+    setUserReachedDeferredContent(true);
+    if (snapshotSettled) {
+      setShouldLoad(true);
+    }
+  }, [snapshotSettled]);
+
+  useEffect(() => {
+    if (shouldLoad || userReachedDeferredContent) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (HOME_DEFERRED_CONTENT_REVEAL_KEYS.has(event.key)) {
+        markUserReached();
+      }
+    };
+    const removeReachListeners = () => {
+      window.removeEventListener("scroll", markUserReached);
+      window.removeEventListener("wheel", markUserReached);
+      window.removeEventListener("touchmove", markUserReached);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+    window.addEventListener("scroll", markUserReached, { passive: true });
+    window.addEventListener("wheel", markUserReached, { passive: true });
+    window.addEventListener("touchmove", markUserReached, { passive: true });
+    window.addEventListener("keydown", handleKeyDown);
+
+    return removeReachListeners;
+  }, [markUserReached, shouldLoad, userReachedDeferredContent]);
 
   useEffect(() => {
     if (shouldLoad || !snapshotSettled) {
       return undefined;
     }
+    if (userReachedDeferredContent) {
+      setShouldLoad(true);
+      return undefined;
+    }
 
     let isActive = true;
+    const idleWindow = window as IdleWindow;
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+    let delayHandle: number | null = null;
+    const cancelScheduledWork = () => {
+      if (idleHandle != null) {
+        idleWindow.cancelIdleCallback?.(idleHandle);
+        idleHandle = null;
+      }
+      if (timeoutHandle != null) {
+        window.clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      if (delayHandle != null) {
+        window.clearTimeout(delayHandle);
+        delayHandle = null;
+      }
+    };
     const markReady = () => {
       if (isActive) {
+        cancelScheduledWork();
         setShouldLoad(true);
       }
     };
-    const idleWindow = window as IdleWindow;
-    if (idleWindow.requestIdleCallback) {
-      const idleHandle = idleWindow.requestIdleCallback(markReady, {
-        timeout: 1_200,
-      });
-      return () => {
-        isActive = false;
-        idleWindow.cancelIdleCallback?.(idleHandle);
-      };
-    }
 
-    const timeoutHandle = window.setTimeout(markReady, 250);
+    const scheduleDeferredContent = () => {
+      if (!isActive) {
+        return;
+      }
+      if (idleWindow.requestIdleCallback) {
+        idleHandle = idleWindow.requestIdleCallback(markReady, {
+          timeout: HOME_DEFERRED_CONTENT_IDLE_TIMEOUT_MS,
+        });
+        return;
+      }
+      timeoutHandle = window.setTimeout(markReady, HOME_DEFERRED_CONTENT_TIMEOUT_FALLBACK_MS);
+    };
+    delayHandle = window.setTimeout(scheduleDeferredContent, HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS);
+
     return () => {
       isActive = false;
-      window.clearTimeout(timeoutHandle);
+      cancelScheduledWork();
     };
-  }, [shouldLoad, snapshotSettled]);
+  }, [shouldLoad, snapshotSettled, userReachedDeferredContent]);
 
-  return shouldLoad;
+  return { shouldLoad, userReachedDeferredContent };
 }
 
 export default function DashboardHomePage() {
@@ -97,7 +160,10 @@ export default function DashboardHomePage() {
     effectiveReportDate,
     snapshotBoundary,
   } = useDashboardHomeFirstScreenViewModel();
-  const loadDeferredContent = useDeferredHomeContent(!snapshotQuery.isFetching);
+  const {
+    shouldLoad: loadDeferredContent,
+    userReachedDeferredContent,
+  } = useDeferredHomeContent(!snapshotQuery.isFetching);
   const [hydratedFirstScreen, setHydratedFirstScreen] =
     useState<HydratedFirstScreenState | null>(null);
   const activeReportDate = view.reportDate;
@@ -157,6 +223,7 @@ export default function DashboardHomePage() {
             <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
               <DeferredTerminalHomeContent
                 snapshotBoundary={snapshotBoundary}
+                userReachedDeferredContent={userReachedDeferredContent}
                 onFirstScreenHydrated={handleFirstScreenHydrated}
               />
             </Suspense>

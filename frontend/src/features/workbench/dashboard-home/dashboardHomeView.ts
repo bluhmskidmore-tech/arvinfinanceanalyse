@@ -31,24 +31,12 @@ import type {
   DashboardPnlAttributionVM,
 } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import {
-  DASHBOARD_ASSET_BARS_MOCK,
-  DASHBOARD_ATTRIBUTION_NOTE_MOCK,
-  DASHBOARD_ATTRIBUTION_WATERFALL_MOCK,
-  DASHBOARD_BALANCE_METRICS_MOCK,
   DASHBOARD_COCKPIT_HEADER_STATUS,
   DASHBOARD_COCKPIT_REPORT_DATE,
-  DASHBOARD_EXPOSURE_ROWS_MOCK,
-  DASHBOARD_INTERBANK_MOCK,
   DASHBOARD_MARKET_PULSE_MOCK,
-  DASHBOARD_PORTFOLIO_STATS_MOCK,
   DASHBOARD_QUICK_DRILLDOWN_MOCK,
-  DASHBOARD_RISK_ALERT_COUNTS_MOCK,
-  DASHBOARD_RISK_RADAR_MOCK,
-  DASHBOARD_RISK_TODOS_MOCK,
-  DASHBOARD_WATCHLIST_MOCK,
 } from "../dashboard/dashboardMockData";
 import { findAttributionExtremes, type HomeWaterfallItem } from "./dashboardHomeAttribution";
-import { buildHomeAttributionTabs } from "./adapters/buildHomeAttributionTabs";
 import {
   buildHomeBondNewsModel,
   type HomeBondNewsModel,
@@ -66,13 +54,6 @@ import {
   buildHomeResearchCalendarModel,
   type HomeResearchCalendarModel,
 } from "./adapters/buildHomeResearchCalendarModel";
-import { mapAssetStructureToHomeAssetBars } from "./adapters/mapAssetStructureToHomeAssetBars";
-import {
-  mapCockpitWarningsToRiskCards,
-  mapCockpitWarningsToWatchlist,
-} from "./adapters/mapCockpitWarningsToHomeRisk";
-import { mapHomeRiskRadar } from "./adapters/mapHomeRiskRadar";
-import { mapPortfolioComparisonToExposureRows } from "./adapters/mapPortfolioComparisonToExposureRows";
 import { mapMarketTape, type HomeMarketTicker } from "./dashboardHomeMarket";
 import { todayIsoDate as resolveTodayIsoDate } from "../pages/dashboardPageHelpers";
 
@@ -433,21 +414,6 @@ const HOME_RESEARCH_REPORT_FOCUS_TERMS = [
   "宏观",
 ] as const;
 
-const BALANCE_METRIC_SPECS: ReadonlyArray<{
-  id: string;
-  label: string;
-  metricIds: readonly string[];
-}> = [
-  { id: "assets", label: "总资产规模", metricIds: ["aum"] },
-  { id: "ytd-pnl", label: "年度损益", metricIds: ["yield"] },
-  { id: "nim", label: "净息差", metricIds: ["nim"] },
-  { id: "capital", label: "资本占用", metricIds: [] },
-  { id: "leverage", label: "杠杆率", metricIds: [] },
-  { id: "liquidity", label: "流动性覆盖率", metricIds: [] },
-  { id: "core-tier1", label: "核心一级资本充足率", metricIds: [] },
-  { id: "rwa", label: "风险加权资产", metricIds: [] },
-];
-
 const DASHBOARD_HOME_BACKEND_GAPS: readonly HomeBackendGap[] = [
   {
     id: "research-reports",
@@ -478,6 +444,13 @@ const DASHBOARD_HOME_BACKEND_GAPS: readonly HomeBackendGap[] = [
 const ACTIVE_DASHBOARD_HOME_BACKEND_GAPS = DASHBOARD_HOME_BACKEND_GAPS.filter(
   (gap) => !["research-reports", "position-changes", "income-trend"].includes(gap.id),
 );
+
+const MOCK_DISTRIBUTION_SLICES: readonly HomeDistributionSlice[] = [
+  { id: "gov", label: "利率债", value: "1,920.00 亿", pct: "51.78%", pctRaw: 51.78 },
+  { id: "credit", label: "信用债", value: "1,120.00 亿", pct: "30.20%", pctRaw: 30.2 },
+  { id: "financial", label: "金融债", value: "488.00 亿", pct: "13.16%", pctRaw: 13.16 },
+  { id: "cd", label: "同业存单", value: "180.10 亿", pct: "4.86%", pctRaw: 4.86 },
+];
 
 /** 从 Numeric.display 尾部剥离单位，避免与 Hero 硬编码单位叠加。 */
 export function stripDisplayUnit(display: string): { value: string; unit: string } {
@@ -513,23 +486,6 @@ function numericRaw(value: NumericLike): number | null {
       ? value.raw
       : Number(String(value.raw).replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function numericRawInYuan(value: NumericLike): number | null {
-  const parsed = numericRaw(value);
-  if (parsed == null || value == null) {
-    return null;
-  }
-  if (!isNumericObject(value)) {
-    return null;
-  }
-  if (value.unit === "yi") {
-    return parsed * 100_000_000;
-  }
-  if (value.unit === "yuan") {
-    return parsed;
-  }
-  return null;
 }
 
 function formatYi(rawYuan: number, signAware: boolean): string {
@@ -587,19 +543,6 @@ function formatDv01(raw: number): string {
   return raw.toLocaleString("en-US", {
     maximumFractionDigits: 2,
   });
-}
-
-function resolveInterbankNetTone(netRawYuan: number | null): HomeDeltaTone {
-  if (netRawYuan == null) {
-    return "flat";
-  }
-  if (netRawYuan < 0) {
-    return "up";
-  }
-  if (netRawYuan > 0) {
-    return "down";
-  }
-  return "flat";
 }
 
 function buildNumericDeltaFoot(
@@ -1268,13 +1211,6 @@ function buildKeyRiskStrip(
 }
 
 function buildMockView(): DashboardHomeView {
-  const waterfall = DASHBOARD_ATTRIBUTION_WATERFALL_MOCK.map((item) => ({
-    id: item.id,
-    label: item.label,
-    value: item.value,
-    tone: item.tone,
-  }));
-  const extremes = findAttributionExtremes(waterfall);
   const researchCalendar: HomeResearchCalendarModel = {
     items: [],
     status: "ready",
@@ -1312,8 +1248,8 @@ function buildMockView(): DashboardHomeView {
     yieldCurveTermStructure: null,
     creditSpreadMigration: null,
     attribution: {
-      maxDragLabel: extremes.maxDrag?.label ?? GAP,
-      maxContributionLabel: extremes.maxContribution?.label ?? GAP,
+      maxDragLabel: GAP,
+      maxContributionLabel: GAP,
     },
   });
 
@@ -1400,82 +1336,37 @@ function buildMockView(): DashboardHomeView {
       deltaTone: item.deltaTone === "up" ? "up" : item.deltaTone === "down" ? "down" : "flat",
       sparkline: item.sparkline,
     })),
-    portfolioStats: DASHBOARD_PORTFOLIO_STATS_MOCK.map((stat) => ({ ...stat })),
-    assetBars: DASHBOARD_ASSET_BARS_MOCK.map((bar, index) => ({
-      id: bar.id,
-      label: bar.label,
-      pct: bar.pct,
-      value: bar.value,
-      fillClass: (["blue", "redish", "greenish", "grey"] as const)[index % 4]!,
-    })),
-    assetBarsPlaceholder: false,
+    portfolioStats: [],
+    assetBars: [],
+    assetBarsPlaceholder: true,
     centerAum: { label: "总资产（账面）", value: "3,708.10 亿" },
     interbank: {
-      assets: DASHBOARD_INTERBANK_MOCK.assets,
-      liabilities: DASHBOARD_INTERBANK_MOCK.liabilities,
-      net: DASHBOARD_INTERBANK_MOCK.netPosition,
-      netTone: "up",
+      assets: GAP,
+      liabilities: GAP,
+      net: GAP,
+      netTone: "flat",
     },
-    attributionTabs: [
-      { id: "day", label: "日度", pnl: "-368.09 万", change: "-223.30 万", yield: "-0.10bp", changeTone: "up" },
-      { id: "week", label: "周度", pnl: GAP, change: GAP, yield: GAP, changeTone: "flat" },
-      { id: "month", label: "月度", pnl: "+6,428.31 万", change: "+1,032.45 万", yield: "+1.73bp", changeTone: "down" },
-      { id: "ytd", label: "YTD", pnl: GAP, change: GAP, yield: GAP, changeTone: "flat" },
-    ],
-    attributionWaterfall: waterfall,
+    attributionTabs: [],
+    attributionWaterfall: [],
     attributionInsights: {
-      maxDragLabel: extremes.maxDrag?.label ?? "利率变动",
-      maxDragValue: extremes.maxDrag?.value ?? "-512.34 万",
-      maxContributionLabel: extremes.maxContribution?.label ?? "信用利差",
-      maxContributionValue: extremes.maxContribution?.value ?? "+286.21 万",
+      maxDragLabel: GAP,
+      maxDragValue: GAP,
+      maxContributionLabel: GAP,
+      maxContributionValue: GAP,
     },
-    attributionNote: [...DASHBOARD_ATTRIBUTION_NOTE_MOCK],
-    riskCards: DASHBOARD_RISK_ALERT_COUNTS_MOCK.map((card) => ({
-      id: card.id,
-      label: card.label.replace("预警", ""),
-      count: card.count,
-      tone: card.tone === "warn" ? "warn" : card.tone === "down" ? "down" : "flat",
-    })),
-    riskCardsPlaceholder: false,
+    attributionNote: [],
+    riskCards: [],
+    riskCardsPlaceholder: true,
     riskRadar: {
-      dimensions: [...DASHBOARD_RISK_RADAR_MOCK.dimensions],
-      values: [...DASHBOARD_RISK_RADAR_MOCK.values],
-      placeholder: false,
+      dimensions: [],
+      values: [],
+      placeholder: true,
     },
-    todos: DASHBOARD_RISK_TODOS_MOCK.map((todo) => ({
-      id: todo.id,
-      title: todo.title,
-      priority: todo.priority as HomeTodo["priority"],
-    })),
-    watchlist: DASHBOARD_WATCHLIST_MOCK.map((item) => ({
-      id: item.id,
-      label: item.label,
-      count: item.count,
-    })),
-    watchlistPlaceholder: false,
-    exposureRows: DASHBOARD_EXPOSURE_ROWS_MOCK.map((row) => ({
-      id: row.id,
-      account: row.account,
-      type: row.type,
-      assetScale: row.assetScale,
-      weight: row.weight,
-      duration: row.duration,
-      dv01: row.dv01,
-      dailyPnl: row.dailyPnl,
-      tone: row.tone === "positive" ? "positive" : row.tone === "negative" ? "negative" : "neutral",
-    })),
-    balanceMetrics: DASHBOARD_BALANCE_METRICS_MOCK.map((metric) => ({
-      id: metric.id,
-      label: metric.label,
-      value: metric.value,
-      delta: metric.delta,
-      deltaTone:
-        metric.tone === "positive"
-          ? "down"
-          : metric.tone === "negative"
-            ? "up"
-            : "flat",
-    })),
+    todos: [],
+    watchlist: [],
+    watchlistPlaceholder: true,
+    exposureRows: [],
+    balanceMetrics: [],
     quickDrilldowns: DASHBOARD_QUICK_DRILLDOWN_MOCK.map((item) => ({
       id: item.id,
       label: item.label,
@@ -1585,30 +1476,15 @@ function buildMockView(): DashboardHomeView {
     })),
     holdingRows: [],
     holdingsState: displayState("backend-gap", "样例模式不展示正式重仓券"),
-    assetDistribution: DASHBOARD_ASSET_BARS_MOCK.slice(0, 5).map((bar) => ({
-      id: bar.id,
-      label: bar.label,
-      value: bar.value,
-      pct: `${bar.pct.toFixed(2)}%`,
-      pctRaw: bar.pct,
-    })),
+    assetDistribution: [...MOCK_DISTRIBUTION_SLICES],
     assetDistributionState: displayState("ready", "样例模式"),
-    ratingDistribution: DASHBOARD_ASSET_BARS_MOCK.slice(0, 5).map((bar) => ({
-      id: bar.id,
-      label: bar.label,
-      value: bar.value,
-      pct: `${bar.pct.toFixed(2)}%`,
-      pctRaw: bar.pct,
-    })),
+    ratingDistribution: [...MOCK_DISTRIBUTION_SLICES],
     ratingDistributionState: displayState("ready", "样例模式"),
     maturityDistribution: [],
     maturityDistributionState: displayState("backend-gap", "样例模式未提供期限结构"),
-    industryDistribution: DASHBOARD_ASSET_BARS_MOCK.slice(0, 5).map((bar) => ({
-      id: `industry-${bar.id}`,
-      label: bar.label,
-      value: bar.value,
-      pct: `${bar.pct.toFixed(2)}%`,
-      pctRaw: bar.pct,
+    industryDistribution: MOCK_DISTRIBUTION_SLICES.map((slice) => ({
+      ...slice,
+      id: `industry-${slice.id}`,
     })),
     industryDistributionState: displayState("ready", "样例模式"),
     riskExposureMetrics: [
@@ -1877,29 +1753,6 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
   const suggestions =
     verdict?.suggestions?.map((item) => item.text).filter(Boolean).slice(0, 3) ?? [];
 
-  const interbankAssetsRaw = numericRawInYuan(input.coreMetrics?.interbank_assets.total_amount);
-  const interbankLiabilitiesRaw = numericRawInYuan(
-    input.coreMetrics?.interbank_liabilities.total_amount,
-  );
-  const interbankNetRawYuan =
-    interbankAssetsRaw != null && interbankLiabilitiesRaw != null
-      ? interbankAssetsRaw - interbankLiabilitiesRaw
-      : null;
-
-  const highPriorityCount =
-    input.decisionItems?.filter((item) => item.severity === "high").length ?? input.alertCount;
-
-  const assetStructureMapped = mapAssetStructureToHomeAssetBars(
-    input.assetStructure,
-    reportDate,
-  );
-  const exposureMapped = mapPortfolioComparisonToExposureRows(
-    input.portfolioComparison,
-    reportDate,
-  );
-  const riskRadarMapped = mapHomeRiskRadar(input.portfolio, reportDate);
-  const cockpitWatchlist = mapCockpitWarningsToWatchlist(input.cockpitWarnings, reportDate);
-  const cockpitRiskCards = mapCockpitWarningsToRiskCards(input.cockpitWarnings, reportDate);
   const todayIsoDate = input.todayIsoDate?.trim() || resolveTodayIsoDate();
   const researchCalendar = buildHomeResearchCalendarModel({
     events: input.calendarEvents,
@@ -2056,59 +1909,20 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     coreKpis,
     riskMinis,
     marketTape,
-    portfolioStats: [
-      {
-        id: "books",
-        label: "组合数",
-        value:
-          input.portfolioComparison?.items?.length != null
-            ? `${input.portfolioComparison.items.length}`
-            : GAP,
-      },
-      {
-        id: "positions",
-        label: "持仓债券",
-        value:
-          headline?.kpis.bond_count != null
-            ? `${headline.kpis.bond_count.toLocaleString("en-US")} 只`
-            : GAP,
-      },
-      {
-        id: "coupon",
-        label: "平均票面利率",
-        value: headline ? numericDisplay(headline.kpis.weighted_coupon) : GAP,
-      },
-      {
-        id: "rating",
-        label: "主体评级",
-        value:
-          input.creditSpreadMigration?.concentration_by_rating?.top_items?.[0]?.name?.trim() ??
-          GAP,
-      },
-    ],
-    assetBars: assetStructureMapped.hasData ? assetStructureMapped.bars : [],
-    assetBarsPlaceholder: !assetStructureMapped.hasData,
+    portfolioStats: [],
+    assetBars: [],
+    assetBarsPlaceholder: true,
     centerAum: {
       label: "总资产（账面）",
       value: aumMetric ? `${numericDisplay(aumMetric.value)}` : GAP,
     },
     interbank: {
-      assets: input.coreMetrics
-        ? numericDisplay(input.coreMetrics.interbank_assets.total_amount)
-        : GAP,
-      liabilities: input.coreMetrics
-        ? numericDisplay(input.coreMetrics.interbank_liabilities.total_amount)
-        : GAP,
-      net: interbankNetRawYuan != null ? formatYiSigned(interbankNetRawYuan) : GAP,
-      netTone: resolveInterbankNetTone(interbankNetRawYuan),
+      assets: GAP,
+      liabilities: GAP,
+      net: GAP,
+      netTone: "flat",
     },
-    attributionTabs: buildHomeAttributionTabs({
-      reportDate,
-      attribution: input.attribution,
-      dailyChanges: input.dailyChanges,
-      productCategoryYtd: input.productCategoryYtd,
-      productCategoryMonthly: input.productCategoryMonthly,
-    }),
+    attributionTabs: [],
     attributionWaterfall: waterfall,
     attributionInsights: {
       maxDragLabel: formalAttributionExtremes?.maxDragLabel ?? extremes.maxDrag?.label ?? GAP,
@@ -2119,51 +1933,14 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
         formalAttributionExtremes?.maxContributionValue ?? extremes.maxContribution?.value ?? GAP,
     },
     attributionNote: verdict?.reasons?.map((reason) => reason.detail).filter(Boolean) ?? [],
-    riskCards: cockpitRiskCards.hasData
-      ? cockpitRiskCards.cards
-      : [
-          { id: "high", label: "高风险", count: highPriorityCount, tone: "up" as const },
-          { id: "mid", label: "中风险", count: 0, tone: "muted" as const },
-          { id: "low", label: "低风险", count: 0, tone: "muted" as const },
-        ],
-    riskCardsPlaceholder: false,
-    riskRadar: riskRadarMapped,
-    todos:
-      input.decisionItems?.slice(0, 4).map((item, index) => ({
-        id: `todo-${index}`,
-        title: item.title?.trim() || GAP,
-        priority:
-          item.severity === "high" ? "高" : item.severity === "medium" ? "中" : "低",
-      })) ?? [],
-    watchlist: cockpitWatchlist.hasData ? cockpitWatchlist.items : [],
-    watchlistPlaceholder: !cockpitWatchlist.hasData,
-    exposureRows: exposureMapped.hasData
-      ? exposureMapped.rows
-      : [
-          {
-            id: "exp-gap",
-            account: "组合暴露",
-            type: GAP,
-            assetScale: GAP,
-            weight: GAP,
-            duration: GAP,
-            dv01: GAP,
-            dailyPnl: GAP,
-            tone: "neutral" as const,
-          },
-        ],
-    balanceMetrics: BALANCE_METRIC_SPECS.map((spec) => {
-      if (spec.metricIds.length === 0) {
-        return { id: spec.id, label: spec.label, value: GAP, placeholder: true };
-      }
-      const metric = findMetric(input.metrics, spec.metricIds);
-      return {
-        id: spec.id,
-        label: spec.label,
-        value: metric ? numericDisplay(metric.value) : GAP,
-        placeholder: !metric,
-      };
-    }),
+    riskCards: [],
+    riskCardsPlaceholder: true,
+    riskRadar: { dimensions: [], values: [], placeholder: true },
+    todos: [],
+    watchlist: [],
+    watchlistPlaceholder: true,
+    exposureRows: [],
+    balanceMetrics: [],
     quickDrilldowns: DASHBOARD_QUICK_DRILLDOWN_MOCK.map((item) => ({
       id: item.id,
       label: item.label,
@@ -2174,7 +1951,7 @@ function buildRealView(input: MapToHomeViewInput): DashboardHomeView {
     macroBriefing,
     bondNews,
     marketContext,
-    liabilityWatchBasisNote: cockpitWatchlist.basisNote,
+    liabilityWatchBasisNote: null,
     decisionRail: {
       conclusion: buildDecisionRailConclusion(verdict, marketContext),
       maxDragLabel: decisionMaxDragLabel,

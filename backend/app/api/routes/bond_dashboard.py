@@ -12,6 +12,7 @@ from backend.app.services.bond_dashboard_service import (
     get_bond_dashboard_business_type_metrics,
     get_bond_dashboard_dates,
     get_bond_dashboard_headline_kpis,
+    get_bond_dashboard_home_summary,
     get_bond_dashboard_industry_distribution,
     get_bond_dashboard_maturity_structure,
     get_bond_dashboard_portfolio_comparison,
@@ -60,6 +61,18 @@ def headline_kpis(
     return timed_api_call(
         "/api/bond-dashboard/headline-kpis",
         lambda: get_bond_dashboard_headline_kpis(report_date),
+    )
+
+
+@router.get("/home-summary")
+def home_summary(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+):
+    _ensure_bond_dashboard_read_allowed(auth)
+    return timed_api_call(
+        "/api/bond-dashboard/home-summary",
+        lambda: get_bond_dashboard_home_summary(report_date),
     )
 
 

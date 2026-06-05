@@ -46,7 +46,7 @@ function EmptyRiskSurface() {
         <LightIcon name="info-circle" />
       </span>
       <b>关键风险暂无数据</b>
-      <small>当前路径没有可展示记录</small>
+      <small>当前口径没有可展示记录</small>
     </div>
   );
 }

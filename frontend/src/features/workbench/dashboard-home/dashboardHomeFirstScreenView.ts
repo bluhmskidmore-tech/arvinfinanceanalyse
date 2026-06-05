@@ -6,9 +6,9 @@ import type {
   VerdictPayload,
 } from "../../../api/contracts";
 import type {
-  DashboardOverviewMetricVM,
-  DashboardPnlAttributionVM,
-} from "../../executive-dashboard/adapters/executiveDashboardAdapter";
+  HomeSnapshotOverviewMetricVM,
+  HomeSnapshotPnlAttributionVM,
+} from "./dashboardHomeSnapshotAdapter";
 import {
   DASHBOARD_COCKPIT_HEADER_STATUS,
   DASHBOARD_COCKPIT_REPORT_DATE,
@@ -28,8 +28,8 @@ export type MapToHomeFirstScreenViewInput = {
   reportDate: string;
   useMockFallback: boolean;
   verdict: VerdictPayload | null;
-  metrics: readonly DashboardOverviewMetricVM[];
-  attribution: DashboardPnlAttributionVM | null;
+  metrics: readonly HomeSnapshotOverviewMetricVM[];
+  attribution: HomeSnapshotPnlAttributionVM | null;
   bondHeadline: BondDashboardHeadlinePayload | null;
   portfolio: BondPortfolioHeadlinesPayload | null;
   snapshotMeta: ResultMeta | null;
@@ -200,9 +200,9 @@ function numericDeltaDisplay(
 }
 
 function findMetric(
-  metrics: readonly DashboardOverviewMetricVM[],
+  metrics: readonly HomeSnapshotOverviewMetricVM[],
   ids: readonly string[],
-): DashboardOverviewMetricVM | undefined {
+): HomeSnapshotOverviewMetricVM | undefined {
   return metrics.find((metric) => ids.includes(metric.id));
 }
 
@@ -251,10 +251,10 @@ function terminalKpiFromNumeric(args: {
 }
 
 function buildTerminalKpis(args: {
-  aumMetric: DashboardOverviewMetricVM | undefined;
+  aumMetric: HomeSnapshotOverviewMetricVM | undefined;
   headline: BondDashboardHeadlinePayload | null;
   portfolio: BondPortfolioHeadlinesPayload | null;
-  attribution: DashboardPnlAttributionVM | null;
+  attribution: HomeSnapshotPnlAttributionVM | null;
 }): HomeTerminalKpi[] {
   const totalMarketValue =
     args.headline?.kpis.total_market_value ?? args.portfolio?.total_market_value ?? args.aumMetric?.value;

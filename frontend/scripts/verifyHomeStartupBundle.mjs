@@ -118,6 +118,10 @@ function isHomeSupplementalAsset(assetPath) {
   return /^assets\/homeSupplementalClient-[^/]+\.js$/.test(assetPath);
 }
 
+function isHomeMarketTickerAsset(assetPath) {
+  return /^assets\/homeMarketTickerClient-[^/]+\.js$/.test(assetPath);
+}
+
 function assertNoBlockedAssets(scope, assets, predicate, label) {
   const blocked = assets.filter(predicate);
   if (blocked.length > 0) {
@@ -196,6 +200,7 @@ const dashboardChunks = findAsset(/^DashboardHomePage-[^/]+\.js$/);
 const fullClientChunks = findAsset(/^client-[^/]+\.js$/);
 const homeSnapshotFetchChunks = findAsset(/^executiveHomeSnapshotFetch-[^/]+\.js$/);
 const homeExecutiveChunks = findAsset(/^homeExecutiveClient-[^/]+\.js$/);
+const homeMarketTickerChunks = findAsset(/^homeMarketTickerClient-[^/]+\.js$/);
 const homeSupplementalChunks = findAsset(/^homeSupplementalClient-[^/]+\.js$/);
 const chartChunks = findAsset(/^(?:echarts|echarts-for-react|echarts-misc|zrender)[^/]*\.js$/);
 
@@ -210,6 +215,9 @@ if (fullClientChunks.length !== 1) {
 }
 if (homeExecutiveChunks.length !== 1) {
   addFailure(`Expected exactly one home executive fast-path chunk, found ${homeExecutiveChunks.length}.`);
+}
+if (homeMarketTickerChunks.length !== 1) {
+  addFailure(`Expected exactly one home market ticker fast-path chunk, found ${homeMarketTickerChunks.length}.`);
 }
 if (homeSnapshotFetchChunks.length !== 1) {
   addFailure(`Expected exactly one home snapshot fetch helper chunk, found ${homeSnapshotFetchChunks.length}.`);
@@ -232,6 +240,12 @@ assertNoBlockedAssets(
   isHomeSupplementalAsset,
   "home supplemental chunk",
 );
+assertNoBlockedAssets(
+  "dist/index.html eager JS",
+  htmlInitialAssets,
+  isHomeMarketTickerAsset,
+  "home market ticker chunk",
+);
 assertNoEagerClientImplementation("dist/index.html eager JS", htmlInitialAssets);
 assertNoAgGridImplementation("dist/index.html eager JS", htmlInitialAssets);
 assertNoAgGridImplementation("dist/index.html eager CSS", htmlInitialStyleAssets);
@@ -250,6 +264,12 @@ if (entryAsset && dashboardChunks.length === 1) {
     homeRouteAssets,
     isHomeSupplementalAsset,
     "home supplemental chunk",
+  );
+  assertNoBlockedAssets(
+    "DashboardHomePage preload deps",
+    homeRouteAssets,
+    isHomeMarketTickerAsset,
+    "home market ticker chunk",
   );
   assertNoEagerClientImplementation("DashboardHomePage preload deps", homeRouteAssets);
   assertNoAgGridImplementation("DashboardHomePage preload deps", homeRouteAssets);
@@ -282,6 +302,36 @@ if (homeSupplementalChunks.length === 1) {
   }
 }
 
+if (homeMarketTickerChunks.length === 1) {
+  const homeMarketTickerSource = readText(join(assetsDir, homeMarketTickerChunks[0]));
+  const requiredMarkers = [
+    "/ui/market-data/rates",
+    "/ui/news/choice-events/latest",
+    "/ui/calendar/supply-auctions",
+  ];
+  const missingMarkers = requiredMarkers.filter((marker) => !homeMarketTickerSource.includes(marker));
+  if (missingMarkers.length > 0) {
+    addFailure(
+      `${homeMarketTickerChunks[0]} does not contain the lightweight home market ticker endpoints: ${missingMarkers.join(", ")}`,
+    );
+  }
+  const heavyMarketMarkers = [
+    "/ui/preview/source-foundation",
+    "/ui/market-data/livermore",
+    "/ui/market-data/catalog",
+    "/ui/macro/bond-linkage",
+  ];
+  const matchedHeavyMarkers = heavyMarketMarkers.filter((marker) => homeMarketTickerSource.includes(marker));
+  if (matchedHeavyMarkers.length > 0) {
+    addFailure(
+      `${homeMarketTickerChunks[0]} appears to contain full market-data endpoint implementations: ${matchedHeavyMarkers.join(", ")}`,
+    );
+  }
+  if (homeMarketTickerSource.includes("createApiClient")) {
+    addFailure(`${homeMarketTickerChunks[0]} should not import or compose the full ApiClient.`);
+  }
+}
+
 if (failures.length > 0) {
   console.error("[home-startup] Bundle guard failed:");
   for (const failure of failures) {
@@ -294,5 +344,5 @@ console.log("[home-startup] Bundle guard passed.");
 console.log(`- HTML eager JS: ${htmlInitialAssets.map((asset) => basename(asset)).join(", ")}`);
 console.log(`- HTML eager CSS: ${htmlInitialStyleAssets.map((asset) => basename(asset)).join(", ")}`);
 console.log(`- DashboardHomePage deps: ${homeRouteAssets.map((asset) => basename(asset)).join(", ")}`);
-console.log(`- Fast path chunks: ${[...homeSnapshotFetchChunks, ...homeExecutiveChunks, ...homeSupplementalChunks].join(", ")}`);
+console.log(`- Fast path chunks: ${[...homeSnapshotFetchChunks, ...homeExecutiveChunks, ...homeMarketTickerChunks, ...homeSupplementalChunks].join(", ")}`);
 console.log(`- Deferred chart chunks: ${chartChunks.join(", ")}`);

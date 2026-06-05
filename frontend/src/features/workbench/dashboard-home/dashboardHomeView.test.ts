@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from "vitest";
 
-import type { ChoiceNewsEvent, CoreMetricsResult, VerdictPayload } from "../../../api/contracts";
+import type { ChoiceNewsEvent, VerdictPayload } from "../../../api/contracts";
 import { mapToHomeView, stripDisplayUnit } from "./dashboardHomeView";
 
 const verdict: VerdictPayload = {
@@ -122,7 +122,7 @@ describe("mapToHomeView", () => {
     expect(view.coreKpis.every((kpi) => kpi.pending)).toBe(true);
     expect(view.marketTape).toHaveLength(0);
     expect(view.aiJudge.conclusion).toBe("test conclusion");
-    expect(view.attributionTabs).toHaveLength(4);
+    expect(view.attributionTabs).toHaveLength(0);
     expect(view.assetBarsPlaceholder).toBe(true);
     expect(view.riskRadar.placeholder).toBe(true);
   });
@@ -904,35 +904,38 @@ describe("mapToHomeView", () => {
     expect(view.attributionInsights.maxContributionLabel).toBe("credit spread");
   });
 
-  it("computes interbank net from core metrics raw yuan fields", () => {
-    const coreMetrics: CoreMetricsResult = {
-      report_date: "2026-04-30",
-      bond_investments: {
-        total_amount: numeric(0, "0"),
-        weighted_avg_rate: numeric(0, "0", "pct"),
-        change_amount: numeric(0, "0"),
-        change_pct: numeric(0, "0", "pct"),
-        top_3_details: [],
+  it("keeps retired interbank panel fields inert while active risk minis hydrate from headline data", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      bondHeadline: {
+        report_date: "2026-04-30",
+        prev_report_date: "2026-04-29",
+        kpis: {
+          total_market_value: numeric(1, "1 yi", "yi"),
+          unrealized_pnl: numeric(0, "0", "yi"),
+          weighted_ytm: numeric(3, "3%", "pct"),
+          weighted_duration: numeric(4.15, "4.15", "ratio"),
+          weighted_coupon: numeric(3, "3%", "pct"),
+          credit_spread_median: numeric(50, "50bp", "bp"),
+          total_dv01: numeric(10620.56, "10,620.56 wan", "dv01"),
+          bond_count: 100,
+        },
+        prev_kpis: {
+          total_market_value: numeric(1, "1 yi", "yi"),
+          unrealized_pnl: numeric(0, "0", "yi"),
+          weighted_ytm: numeric(3, "3%", "pct"),
+          weighted_duration: numeric(4.14, "4.14", "ratio"),
+          weighted_coupon: numeric(3, "3%", "pct"),
+          credit_spread_median: numeric(50, "50bp", "bp"),
+          total_dv01: numeric(10625.53, "10,625.53 wan", "dv01"),
+          bond_count: 100,
+        },
       },
-      interbank_assets: {
-        total_amount: numeric(21_991_000_000, "219.91 yi"),
-        weighted_avg_rate: numeric(0, "0", "pct"),
-        change_amount: numeric(0, "0"),
-        change_pct: numeric(0, "0", "pct"),
-        top_3_details: [],
-      },
-      interbank_liabilities: {
-        total_amount: numeric(67_907_000_000, "679.07 yi"),
-        weighted_avg_rate: numeric(0, "0", "pct"),
-        change_amount: numeric(0, "0"),
-        change_pct: numeric(0, "0", "pct"),
-        top_3_details: [],
-      },
-    };
-    const view = mapToHomeView({ ...baseRealInput, coreMetrics });
+    });
 
-    expect(view.interbank.net).toContain("-459.16");
-    expect(view.interbank.netTone).toBe("up");
+    expect(view.interbank.net).toBe("—");
+    expect(view.interbank.netTone).toBe("flat");
+    expect(view.riskMinis.find((mini) => mini.id === "dv01")?.value).toBe("10,620.56 wan");
   });
 
   it("builds dv01 foot delta from bond headline prev_kpis", () => {

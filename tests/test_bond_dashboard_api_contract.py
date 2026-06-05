@@ -51,6 +51,7 @@ def _perf_records(caplog, endpoint: str):
 
 _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
     ("/api/bond-dashboard/dates", {}),
+    ("/api/bond-dashboard/home-summary", {"report_date": REPORT_DATE}),
     ("/api/bond-dashboard/headline-kpis", {"report_date": REPORT_DATE}),
     ("/api/bond-dashboard/asset-structure", {"report_date": REPORT_DATE, "group_by": "bond_type"}),
     ("/api/bond-dashboard/yield-distribution", {"report_date": REPORT_DATE}),
@@ -174,6 +175,21 @@ def _assert_bond_dashboard_headline_candidate_envelope(payload: dict[str, Any]) 
     assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
 
 
+def _assert_bond_dashboard_home_summary_candidate_envelope(payload: dict[str, Any]) -> None:
+    _assert_result_envelope(payload, basis="analytical", formal_use_allowed=False)
+    meta = payload["result_meta"]
+    assert meta["result_kind"] == "bond_dashboard.home_summary"
+    assert meta["source_surface"] == "bond_analytics"
+    assert meta["quality_flag"] == "warning"
+    assert meta["scenario_flag"] is False
+    assert meta["requested_report_date"] == REPORT_DATE
+    assert meta["resolved_report_date"] == REPORT_DATE
+    assert meta["as_of_date"] == REPORT_DATE
+    assert meta["date_basis"] == "bond_dashboard_report_date"
+    assert meta["filters_applied"] == {"report_date": REPORT_DATE}
+    assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
+
+
 def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     for path, params in _BOND_DASHBOARD_CASES:
@@ -184,11 +200,28 @@ def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
         payload = response.json()
         if path.endswith("/headline-kpis"):
             _assert_bond_dashboard_headline_candidate_envelope(payload)
+        elif path.endswith("/home-summary"):
+            _assert_bond_dashboard_home_summary_candidate_envelope(payload)
         else:
             _assert_formal_envelope(payload)
         result = payload["result"]
         if path.endswith("/dates"):
             assert result.get("report_dates") == []
+        elif path.endswith("/home-summary"):
+            assert result.get("report_date") == REPORT_DATE
+            assert result["headline"].get("report_date") == REPORT_DATE
+            assert result["risk"].get("report_date") == REPORT_DATE
+            assert result["asset_type"].get("items") == []
+            assert result["asset_rating"].get("items") == []
+            assert result["maturity"].get("items") == []
+            assert result["industry"].get("items") == []
+            assert result["yield_distribution"].get("items") == []
+            assert result["portfolio_comparison"].get("items") == []
+            assert result["spread"].get("items") == []
+            assert result["business_type"].get("items") == []
+            cur = result["headline"]["kpis"]
+            _assert_numeric(cur["total_market_value"], unit="yuan", raw=0)
+            _assert_numeric(result["risk"]["credit_ratio"], unit="ratio", raw=0)
         elif path.endswith("/headline-kpis"):
             assert result.get("report_date") == REPORT_DATE
             assert result.get("kpis") is not None
@@ -258,6 +291,83 @@ def test_bond_dashboard_service_uses_shared_lineage_and_meta_helpers() -> None:
     assert "resolve_formal_facts_lineage" in src
     assert "build_formal_result_meta_from_lineage" in src
     assert "build_formal_result_envelope_from_lineage" in src
+
+
+def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(monkeypatch) -> None:
+    service_mod = load_module(
+        "tests._bond_dashboard_service_fact_cache",
+        "backend/app/services/bond_dashboard_service.py",
+    )
+    service_mod.clear_bond_dashboard_runtime_cache()
+
+    class FakeBondDashboardRepo:
+        fetch_fact_calls = 0
+
+        def list_report_dates(self):
+            return [REPORT_DATE]
+
+        def fetch_bond_analytics_rows(self, *, report_date):
+            assert report_date == REPORT_DATE
+            type(self).fetch_fact_calls += 1
+            return [
+                {
+                    "source_version": "sv_cached_fact",
+                    "rule_version": "rv_cached_fact",
+                }
+            ]
+
+        def fetch_dashboard_headline_kpis(self, report_date, prev_report_date=None):
+            assert report_date == REPORT_DATE
+            assert prev_report_date is None
+            row = {
+                "total_market_value": Decimal("1000"),
+                "unrealized_pnl": Decimal("0"),
+                "weighted_ytm": Decimal("0.03"),
+                "weighted_duration": Decimal("3"),
+                "weighted_coupon": Decimal("0.025"),
+                "credit_spread_median": Decimal("0.001"),
+                "total_dv01": Decimal("1"),
+                "bond_count": 1,
+            }
+            return {"current": row, "previous": None}
+
+        def fetch_dashboard_risk_indicators(self, report_date):
+            assert report_date == REPORT_DATE
+            return {
+                "total_market_value": Decimal("1000"),
+                "total_dv01": Decimal("1"),
+                "weighted_duration": Decimal("3"),
+                "credit_ratio": Decimal("0.2"),
+                "weighted_convexity": Decimal("0.1"),
+                "total_spread_dv01": Decimal("0.2"),
+                "reinvestment_ratio_1y": Decimal("0.1"),
+            }
+
+        def fetch_dashboard_portfolio_comparison(self, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "portfolio_name": "P1",
+                    "total_market_value": Decimal("1000"),
+                    "weighted_ytm": Decimal("0.03"),
+                    "weighted_duration": Decimal("3"),
+                    "total_dv01": Decimal("1"),
+                    "bond_count": 1,
+                }
+            ]
+
+    monkeypatch.setattr(service_mod, "_repo", FakeBondDashboardRepo)
+    monkeypatch.setattr(
+        service_mod,
+        "_duckdb_cache_version_token",
+        lambda: ("fake.duckdb", 1),
+    )
+
+    service_mod.get_bond_dashboard_headline_kpis(date.fromisoformat(REPORT_DATE))
+    service_mod.get_bond_dashboard_risk_indicators(date.fromisoformat(REPORT_DATE))
+    service_mod.get_bond_dashboard_portfolio_comparison(date.fromisoformat(REPORT_DATE))
+
+    assert FakeBondDashboardRepo.fetch_fact_calls == 1
 
 
 def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(tmp_path, monkeypatch) -> None:

@@ -258,6 +258,25 @@ export function shouldUseMacroNewsFallback(choiceNews: MacroNewsItemsResult): bo
   return choiceNews.newsStale;
 }
 
+export function shouldRequestHomeMacroNewsFallback(input: {
+  choiceEvents?: readonly ChoiceNewsEvent[] | null;
+  todayIsoDate: string;
+}): boolean {
+  const choiceNews = buildNewsItemsFromEvents({
+    events: input.choiceEvents,
+    todayIsoDate: input.todayIsoDate,
+    topicLabel: dashboardMacroNewsTopicLabel,
+    sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+    emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
+    statusWhenFresh: "source ok",
+    statusWhenStale: "source stale",
+    statusWhenEmpty: "source empty",
+    requirePolicyFundingRelevance: true,
+  });
+
+  return shouldUseMacroNewsFallback(choiceNews);
+}
+
 export function resolveHomeMacroNewsBriefing(input: {
   choiceEvents?: readonly ChoiceNewsEvent[] | null;
   fallbackEvents?: readonly ChoiceNewsEvent[] | null;

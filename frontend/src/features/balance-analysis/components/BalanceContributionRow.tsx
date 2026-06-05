@@ -3,6 +3,7 @@ import { AgGridReact } from "ag-grid-react";
 import type { ColDef, RowStyle } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
+import "../../../styles/agGridInstitutional.css";
 
 import { AlertList } from "../../../components/AlertList";
 import { useBalanceAnalysisThreeColumnGridStyle } from "./balanceAnalysisLayout";

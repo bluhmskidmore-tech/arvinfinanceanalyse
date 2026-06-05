@@ -2,7 +2,10 @@ import { useMemo, useRef } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { useApiClient, type ApiClient } from "../../../api/clientContext";
-import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
+import {
+  adaptHomeSnapshotForFirstScreen,
+  type HomeSnapshotAdapterOutput,
+} from "../dashboard-home/dashboardHomeSnapshotAdapter";
 
 type HomeSnapshotEnvelope = Awaited<ReturnType<ApiClient["getHomeSnapshot"]>>;
 
@@ -16,10 +19,10 @@ export type DashboardSnapshotBoundaryResult = {
   displayMode: ApiClient["mode"];
   snapshotQuery: UseQueryResult<HomeSnapshotEnvelope, Error>;
   isLiveDataFallback: boolean;
-  adapterOutput: ReturnType<typeof adaptDashboard>;
+  adapterOutput: HomeSnapshotAdapterOutput;
   snapshotResult: HomeSnapshotEnvelope["result"] | undefined;
-  overviewMeta: ReturnType<typeof adaptDashboard>["overview"]["meta"];
-  attributionMeta: ReturnType<typeof adaptDashboard>["attribution"]["meta"];
+  overviewMeta: HomeSnapshotAdapterOutput["overview"]["meta"];
+  attributionMeta: HomeSnapshotAdapterOutput["attribution"]["meta"];
   snapshotMeta: HomeSnapshotEnvelope["result_meta"] | null;
   initialEffectiveReportDate: string;
   supplementalReportDate: string | undefined;
@@ -64,44 +67,18 @@ export function useDashboardSnapshotBoundary({
         ? LIVE_SOURCE_UNAVAILABLE_WARNING
       : null;
 
-  const { overviewEnv, attributionEnv } = useMemo(() => {
-    const env = displayedSnapshot;
-    if (!env) {
-      return { overviewEnv: undefined, attributionEnv: undefined };
-    }
-    return {
-      overviewEnv: {
-        result_meta: env.result_meta,
-        result: env.result.overview,
-      },
-      attributionEnv: {
-        result_meta: env.result_meta,
-        result: env.result.attribution,
-      },
-    };
-  }, [displayedSnapshot]);
-
   const adapterOutput = useMemo(
     () =>
-      adaptDashboard({
-        overviewEnv,
-        attributionEnv,
-        overviewLoading: snapshotQuery.isLoading,
-        overviewError: snapshotQuery.isError && !displayedSnapshot,
-        attributionLoading: snapshotQuery.isLoading,
-        attributionError: snapshotQuery.isError && !displayedSnapshot,
-        verdictPayload: displayedSnapshot?.result.verdict ?? null,
+      adaptHomeSnapshotForFirstScreen({
+        snapshot: displayedSnapshot,
+        isLoading: snapshotQuery.isLoading,
+        isError: snapshotQuery.isError && !displayedSnapshot,
         snapshotFetchErrorDetail:
           snapshotQuery.isError && !displayedSnapshot && snapshotQuery.error instanceof Error
             ? snapshotQuery.error.message
             : undefined,
-        domainsEffectiveDate: displayedSnapshot?.result.domains_effective_date ?? {},
-        productCategoryYtd: displayedSnapshot?.result.product_category_ytd ?? null,
-        productCategoryMonthly: displayedSnapshot?.result.product_category_monthly ?? null,
       }),
     [
-      overviewEnv,
-      attributionEnv,
       snapshotQuery.isLoading,
       snapshotQuery.isError,
       snapshotQuery.error,

@@ -4,6 +4,7 @@ import type {
   AssetStructurePayload,
   BalanceAnalysisDecisionItemsPayload,
   BondDashboardHeadlinePayload,
+  BondDashboardHomeSummaryPayload,
   BondPositionChangesPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
@@ -31,6 +32,7 @@ export type HomeSupplementalClientMethods = Pick<
   | "getCoreMetrics"
   | "getDailyChanges"
   | "getBondDashboardHeadlineKpis"
+  | "getBondDashboardHomeSummary"
   | "getBondAnalyticsPortfolioHeadlines"
   | "getBondDashboardPortfolioComparison"
   | "getBondAnalyticsCreditSpreadMigration"
@@ -317,6 +319,12 @@ export function createRealHomeSupplementalClient({
         fetchImpl,
         baseUrl,
         `/api/bond-dashboard/headline-kpis?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondDashboardHomeSummary: (reportDate: string) =>
+      requestJson<BondDashboardHomeSummaryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/home-summary?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getBondAnalyticsPortfolioHeadlines: (reportDate: string) =>
       requestJson<BondPortfolioHeadlinesPayload>(

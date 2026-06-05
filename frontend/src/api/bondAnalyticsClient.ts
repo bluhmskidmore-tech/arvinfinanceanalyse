@@ -17,6 +17,7 @@ import type {
   BenchmarkExcessPayload,
   AssetStructurePayload,
   BondDashboardHeadlinePayload,
+  BondDashboardHomeSummaryPayload,
   BondPositionChangesPayload,
   CreditSpreadAnalysisPayload,
   CreditSpreadMigrationPayload,
@@ -36,6 +37,7 @@ import type {
 } from "./contracts";
 import { formatRawAsNumeric } from "../utils/format";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
+import { sampleBondBusinessTypeMetricRows } from "../fixtures/dashboardCoreWorkbenchSamples";
 import type { CashflowClientMethods } from "./cashflowClient";
 
 type BondAnalyticsCoreSurfaceMethods = {
@@ -46,6 +48,9 @@ type BondAnalyticsCoreSurfaceMethods = {
   getBondDashboardHeadlineKpis: (
     reportDate: string,
   ) => Promise<ApiEnvelope<BondDashboardHeadlinePayload>>;
+  getBondDashboardHomeSummary: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<BondDashboardHomeSummaryPayload>>;
   getBondDashboardAssetStructure: (
     reportDate: string,
     groupBy: string,
@@ -167,6 +172,7 @@ type BondDashboardClientMethods = Pick<
   BondAnalyticsClientMethods,
   | "getBondDashboardDates"
   | "getBondDashboardHeadlineKpis"
+  | "getBondDashboardHomeSummary"
   | "getBondDashboardAssetStructure"
   | "getBondDashboardYieldDistribution"
   | "getBondDashboardPortfolioComparison"
@@ -326,6 +332,38 @@ function normalizeCreditSpreadMigrationEnvelope(
       oci_credit_exposure: normalizeNumeric(source.oci_credit_exposure, "yuan", false),
       oci_spread_dv01: normalizeNumeric(source.oci_spread_dv01, "dv01", false),
       oci_sensitivity_25bp: normalizeNumeric(source.oci_sensitivity_25bp, "yuan", true),
+    },
+  };
+}
+
+function normalizePortfolioHeadlinesEnvelope(
+  envelope: ApiEnvelope<BondPortfolioHeadlinesPayload>,
+): ApiEnvelope<BondPortfolioHeadlinesPayload> {
+  const source = envelope.result as unknown as Record<string, unknown>;
+  const byAssetClass = Array.isArray(source.by_asset_class) ? source.by_asset_class : [];
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      total_market_value: normalizeNumeric(source.total_market_value, "yuan", false),
+      weighted_ytm: normalizeNumeric(source.weighted_ytm, "pct", true),
+      weighted_duration: normalizeNumeric(source.weighted_duration, "ratio", false),
+      weighted_coupon: normalizeNumeric(source.weighted_coupon, "pct", true),
+      total_dv01: normalizeNumeric(source.total_dv01, "dv01", false),
+      credit_weight: normalizeNumeric(source.credit_weight, "ratio", false),
+      issuer_hhi: normalizeNumeric(source.issuer_hhi, "ratio", false),
+      issuer_top5_weight: normalizeNumeric(source.issuer_top5_weight, "ratio", false),
+      by_asset_class: byAssetClass.map((item) => {
+        const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        return {
+          ...row,
+          asset_class: String(row.asset_class ?? ""),
+          market_value: normalizeNumeric(row.market_value, "yuan", false),
+          duration: normalizeNumeric(row.duration, "ratio", false),
+          dv01: normalizeNumeric(row.dv01, "dv01", false),
+          weight: normalizeNumeric(row.weight, "ratio", false),
+        };
+      }),
     },
   };
 }
@@ -895,7 +933,7 @@ export function createDemoBondDashboardClient(
   delay: Delay,
   ensureMockClientBundle: EnsureBondDashboardMockBundle,
 ): BondDashboardClientMethods {
-  return {
+  const methods: BondDashboardClientMethods = {
     async getBondDashboardDates() {
       await delay();
       return {
@@ -938,6 +976,53 @@ export function createDemoBondDashboardClient(
               credit_spread_median: zp(0.0089),
               total_dv01: zd(-128_900),
               bond_count: 415,
+            },
+          },
+          { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
+        ),
+        data_source: "bond_analytics_facts",
+      };
+    },
+    async getBondDashboardHomeSummary(reportDate: string) {
+      await delay();
+      const [
+        headline,
+        risk,
+        assetType,
+        assetRating,
+        maturity,
+        industry,
+        yieldDistribution,
+        portfolioComparison,
+        spread,
+      ] = await Promise.all([
+        methods.getBondDashboardHeadlineKpis(reportDate),
+        methods.getBondDashboardRiskIndicators(reportDate),
+        methods.getBondDashboardAssetStructure(reportDate, "bond_type"),
+        methods.getBondDashboardAssetStructure(reportDate, "rating"),
+        methods.getBondDashboardMaturityStructure(reportDate),
+        methods.getBondDashboardIndustryDistribution(reportDate),
+        methods.getBondDashboardYieldDistribution(reportDate),
+        methods.getBondDashboardPortfolioComparison(reportDate),
+        methods.getBondDashboardSpreadAnalysis(reportDate),
+      ]);
+      return {
+        ...(await ensureMockClientBundle()).buildMockApiEnvelope(
+          "bond_dashboard.home_summary",
+          {
+            report_date: reportDate,
+            headline: headline.result,
+            risk: risk.result,
+            asset_type: assetType.result,
+            asset_rating: assetRating.result,
+            maturity: maturity.result,
+            industry: industry.result,
+            yield_distribution: yieldDistribution.result,
+            portfolio_comparison: portfolioComparison.result,
+            spread: spread.result,
+            business_type: {
+              report_date: reportDate,
+              items: sampleBondBusinessTypeMetricRows,
             },
           },
           { basis: "analytical", formal_use_allowed: false, quality_flag: "warning" },
@@ -1174,6 +1259,7 @@ export function createDemoBondDashboardClient(
       };
     },
   };
+  return methods;
 }
 
 export function createRealBondAnalyticsClient(
@@ -1326,7 +1412,7 @@ export function createRealBondAnalyticsClient(
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/portfolio-headlines?report_date=${encodeURIComponent(reportDate)}`,
-      ),
+      ).then(normalizePortfolioHeadlinesEnvelope),
     getBondAnalyticsTopHoldings: (reportDate: string, topN = 20) => {
       const params = new URLSearchParams({
         report_date: reportDate,
@@ -1385,6 +1471,12 @@ export function createRealBondDashboardClient(
         fetchImpl,
         baseUrl,
         `/api/bond-dashboard/headline-kpis?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondDashboardHomeSummary: (reportDate: string) =>
+      requestJson<BondDashboardHomeSummaryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/home-summary?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getBondDashboardAssetStructure: (reportDate: string, groupBy: string) =>
       requestJson<AssetStructurePayload>(

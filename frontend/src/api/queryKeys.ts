@@ -12,6 +12,8 @@ export const apiQueryKeys = {
     ["market-data", "formal-rates", mode, normalizeReportDate(reportDate)] as const,
   bondDashboardHeadline: (mode: string, reportDate: string | null | undefined) =>
     ["bond-dashboard", "headline", mode, normalizeReportDate(reportDate)] as const,
+  bondDashboardHomeSummary: (mode: string, reportDate: string | null | undefined) =>
+    ["bond-dashboard", "home-summary", mode, normalizeReportDate(reportDate)] as const,
   bondAnalyticsPortfolioHeadlines: (mode: string, reportDate: string | null | undefined) =>
     ["bond-analytics", "portfolio-headlines", mode, normalizeReportDate(reportDate)] as const,
   bondAnalyticsDv01Risk: (

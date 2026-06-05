@@ -2,11 +2,113 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiQueryKeys } from "../../../api/queryKeys";
-import { sanitizeMetricCopy } from "../../executive-dashboard/lib/sanitizeMetricCopy";
-import { useDashboardData } from "../dashboard/hooks/useDashboardData";
 import { todayIsoDate } from "../pages/dashboardPageHelpers";
-import { mapToHomeView } from "./dashboardHomeView";
+import { mapToHomeBodyView } from "./dashboardHomeBodyView";
+import { useDashboardHomeBodyData } from "./useDashboardHomeBodyData";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+const BODY_DETAIL_IDLE_MIN_DELAY_MS = 1_000;
+const BODY_DETAIL_IDLE_TIMEOUT_MS = 1_200;
+const BODY_DETAIL_TIMEOUT_FALLBACK_MS = 900;
+const EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
+const EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
+const EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
+const SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
+const SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
+const SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
+
+function useDeferredReportDateGate(
+  reportDate: string | undefined,
+  timing: {
+    minDelayMs: number;
+    idleTimeoutMs: number;
+    timeoutFallbackMs: number;
+  },
+) {
+  const [readyReportDate, setReadyReportDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReadyReportDate(null);
+    if (!reportDate) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const idleWindow = window as IdleWindow;
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+    let delayHandle: number | null = null;
+    const cancelScheduledWork = () => {
+      if (idleHandle != null) {
+        idleWindow.cancelIdleCallback?.(idleHandle);
+        idleHandle = null;
+      }
+      if (timeoutHandle != null) {
+        window.clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      if (delayHandle != null) {
+        window.clearTimeout(delayHandle);
+        delayHandle = null;
+      }
+    };
+    const markReady = () => {
+      if (isActive) {
+        cancelScheduledWork();
+        setReadyReportDate(reportDate);
+      }
+    };
+    const scheduleReady = () => {
+      if (!isActive) {
+        return;
+      }
+      if (idleWindow.requestIdleCallback) {
+        idleHandle = idleWindow.requestIdleCallback(markReady, {
+          timeout: timing.idleTimeoutMs,
+        });
+        return;
+      }
+      timeoutHandle = window.setTimeout(markReady, timing.timeoutFallbackMs);
+    };
+    delayHandle = window.setTimeout(scheduleReady, timing.minDelayMs);
+
+    return () => {
+      isActive = false;
+      cancelScheduledWork();
+    };
+  }, [reportDate, timing.idleTimeoutMs, timing.minDelayMs, timing.timeoutFallbackMs]);
+
+  return readyReportDate === reportDate;
+}
+
+function useBodyDetailDataGate(reportDate: string | undefined) {
+  return useDeferredReportDateGate(reportDate, {
+    minDelayMs: BODY_DETAIL_IDLE_MIN_DELAY_MS,
+    idleTimeoutMs: BODY_DETAIL_IDLE_TIMEOUT_MS,
+    timeoutFallbackMs: BODY_DETAIL_TIMEOUT_FALLBACK_MS,
+  });
+}
+
+function useEventFeedDataGate(reportDate: string | undefined) {
+  return useDeferredReportDateGate(reportDate, {
+    minDelayMs: EVENT_FEED_IDLE_MIN_DELAY_MS,
+    idleTimeoutMs: EVENT_FEED_IDLE_TIMEOUT_MS,
+    timeoutFallbackMs: EVENT_FEED_TIMEOUT_FALLBACK_MS,
+  });
+}
+
+function useSecondaryEventFeedDataGate(reportDate: string | undefined) {
+  return useDeferredReportDateGate(reportDate, {
+    minDelayMs: SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS,
+    idleTimeoutMs: SECONDARY_EVENT_FEED_IDLE_TIMEOUT_MS,
+    timeoutFallbackMs: SECONDARY_EVENT_FEED_TIMEOUT_FALLBACK_MS,
+  });
+}
 
 export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapshotBoundary) {
   const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
@@ -18,10 +120,8 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     isLiveDataFallback,
     adapterOutput,
     snapshotResult,
-    snapshotMeta,
     initialEffectiveReportDate,
     supplementalReportDate,
-    reportDateDataWarning,
   } = snapshotBoundary;
 
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
@@ -33,8 +133,20 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
   const hasDeferredSupplementalReportDate =
     hasDeferredSupplementalData && hasSupplementalReportDate;
+  const hasBodyDetailData = useBodyDetailDataGate(
+    hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
+  );
+  const hasEventFeedData = useEventFeedDataGate(
+    hasDeferredSupplementalReportDate && hasBodyDetailData ? supplementalReportDate : undefined,
+  );
+  const hasSecondaryEventFeedData = useSecondaryEventFeedDataGate(
+    hasDeferredSupplementalReportDate && hasBodyDetailData && hasEventFeedData
+      ? supplementalReportDate
+      : undefined,
+  );
   const hasDeferredFormalContext =
     hasDeferredSupplementalReportDate &&
+    hasBodyDetailData &&
     Boolean(supplementalReportDate) &&
     formalContextReportDate === supplementalReportDate;
 
@@ -49,82 +161,36 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
   }, [initialEffectiveReportDate]);
 
   const {
-    coreMetricsQuery,
-    dailyChangesQuery,
     marketRatesQuery,
-    bondHeadlineQuery,
-    portfolioHeadlinesQuery,
-    portfolioComparisonQuery,
     creditSpreadMigrationQuery,
     returnDecompositionQuery,
     campisiFourEffectsQuery,
     yieldCurveTermStructureQuery,
-    decisionItemsQuery,
     researchCalendarQuery,
     macroNewsQueries,
     macroNewsFallbackQueries,
     bondNewsQueries,
     calendarStartDate,
     calendarEndDate,
-  } = useDashboardData({
+  } = useDashboardHomeBodyData({
     dataClient,
     supplementalReportDate,
-    effectiveReportDate: initialEffectiveReportDate,
-    loadSupplementalData: hasDeferredSupplementalData,
-    loadCalendarData: hasDeferredSupplementalReportDate,
-    loadEventFeedsData: hasDeferredSupplementalReportDate,
-    loadBondBucketYieldData: false,
-    loadBondBucketMonthlyData: false,
-    loadPortfolioSupplementData: hasDeferredFormalContext,
-    loadDecisionItemsData: hasDeferredSupplementalData,
+    loadBasicData: hasDeferredSupplementalData,
+    loadEventFeeds: hasDeferredSupplementalReportDate && hasBodyDetailData && hasEventFeedData,
+    loadSecondaryEventFeeds:
+      hasDeferredSupplementalReportDate &&
+      hasBodyDetailData &&
+      hasEventFeedData &&
+      hasSecondaryEventFeedData,
+    loadFormalData: hasDeferredFormalContext,
   });
 
-  const assetStructureQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardAssetStructure(
-      dataClient.mode,
-      supplementalReportDate,
-      "bond_type",
-    ),
-    queryFn: () => dataClient.getBondDashboardAssetStructure(supplementalReportDate ?? "", "bond_type"),
+  const homeSummaryQuery = useQuery({
+    queryKey: apiQueryKeys.bondDashboardHomeSummary(dataClient.mode, supplementalReportDate),
+    queryFn: () => dataClient.getBondDashboardHomeSummary(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
-  });
-
-  const ratingStructureQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardAssetStructure(
-      dataClient.mode,
-      supplementalReportDate,
-      "rating",
-    ),
-    queryFn: () => dataClient.getBondDashboardAssetStructure(supplementalReportDate ?? "", "rating"),
-    retry: false,
-    staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
-  });
-
-  const maturityStructureQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardMaturityStructure(dataClient.mode, supplementalReportDate),
-    queryFn: () => dataClient.getBondDashboardMaturityStructure(supplementalReportDate ?? ""),
-    retry: false,
-    staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
-  });
-
-  const industryDistributionQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardIndustryDistribution(dataClient.mode, supplementalReportDate),
-    queryFn: () => dataClient.getBondDashboardIndustryDistribution(supplementalReportDate ?? ""),
-    retry: false,
-    staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
-  });
-
-  const riskIndicatorsQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardRiskIndicators(dataClient.mode, supplementalReportDate),
-    queryFn: () => dataClient.getBondDashboardRiskIndicators(supplementalReportDate ?? ""),
-    retry: false,
-    staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
   });
 
   const topHoldingsQuery = useQuery({
@@ -132,7 +198,7 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", 8),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
   });
 
   const positionChangesQuery = useQuery({
@@ -140,26 +206,35 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getBondAnalyticsPositionChanges(supplementalReportDate ?? "", 5),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
   });
-  const heavyBondListsSettled = !topHoldingsQuery.isLoading && !positionChangesQuery.isLoading;
+  const heavyBondListsReady =
+    hasDeferredSupplementalReportDate &&
+    hasBodyDetailData &&
+    (topHoldingsQuery.isSuccess || topHoldingsQuery.isError) &&
+    (positionChangesQuery.isSuccess || positionChangesQuery.isError);
 
   useEffect(() => {
-    if (!hasDeferredSupplementalReportDate || !supplementalReportDate) {
+    if (!hasDeferredSupplementalReportDate || !hasBodyDetailData || !supplementalReportDate) {
       setFormalContextReportDate(null);
       return;
     }
-    if (heavyBondListsSettled) {
+    if (heavyBondListsReady) {
       setFormalContextReportDate(supplementalReportDate);
     }
-  }, [hasDeferredSupplementalReportDate, heavyBondListsSettled, supplementalReportDate]);
+  }, [
+    hasDeferredSupplementalReportDate,
+    hasBodyDetailData,
+    heavyBondListsReady,
+    supplementalReportDate,
+  ]);
 
   const researchReportsQuery = useQuery({
     queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, supplementalReportDate, 5),
     queryFn: () => dataClient.getHomeResearchReports(supplementalReportDate ?? "", 5),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
   });
 
   const incomeTrendQuery = useQuery({
@@ -170,19 +245,6 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     enabled: hasDeferredFormalContext,
   });
 
-  const cockpitWarningsQuery = useQuery({
-    queryKey: ["dashboard-home", "cockpit-warnings", dataClient.mode, supplementalReportDate ?? "pending-snapshot"],
-    queryFn: () => dataClient.getCockpitWarnings(supplementalReportDate ?? ""),
-    retry: false,
-    staleTime: 60_000,
-    enabled: hasDeferredFormalContext && dataClient.mode === "real",
-  });
-
-  const sanitizedMetrics = useMemo(
-    () =>
-      (adapterOutput.overview.vm?.metrics ?? []).map((metric) => sanitizeMetricCopy(metric)),
-    [adapterOutput.overview.vm?.metrics],
-  );
   const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
   const macroNewsEvents = useMemo(
     () => macroNewsQueries.flatMap((query) => query.data?.result.events ?? []),
@@ -193,8 +255,11 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     [macroNewsFallbackQueries],
   );
   const bondNewsEvents = useMemo(
-    () => bondNewsQueries.flatMap((query) => query.data?.result.events ?? []),
-    [bondNewsQueries],
+    () => [
+      ...macroNewsFallbackEvents,
+      ...bondNewsQueries.flatMap((query) => query.data?.result.events ?? []),
+    ],
+    [bondNewsQueries, macroNewsFallbackEvents],
   );
   const macroNewsLoading =
     macroNewsQueries.some((query) => query.isLoading) ||
@@ -207,45 +272,22 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
 
   const effectiveReportDate =
     snapshotReportDate || initialEffectiveReportDate;
-  const snapshotUnavailable =
-    dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
-  const snapshotStale =
-    dataClient.mode === "real" && Boolean(reportDateDataWarning) && Boolean(snapshotResult);
-
-  const alertCount = useMemo(() => {
-    if (useMockFallback) {
-      return 3;
-    }
-    const missing = snapshotResult?.domains_missing?.length ?? 0;
-    return missing > 0 ? missing : adapterOutput.verdict?.tone === "warning" ? 1 : 0;
-  }, [adapterOutput.verdict?.tone, snapshotResult?.domains_missing?.length, useMockFallback]);
-
   const view = useMemo(
     () =>
-      mapToHomeView({
+      mapToHomeBodyView({
         reportDate: effectiveReportDate,
         useMockFallback,
-        verdict: adapterOutput.verdict,
-        metrics: sanitizedMetrics,
         attribution: adapterOutput.attribution.vm,
-        coreMetrics: coreMetricsQuery.data?.result ?? null,
-        dailyChanges: dailyChangesQuery.data?.result ?? null,
-        bondHeadline: bondHeadlineQuery.data?.result ?? null,
-        portfolio: portfolioHeadlinesQuery.data?.result ?? null,
-        portfolioComparison: portfolioComparisonQuery.data?.result ?? null,
         creditSpreadMigration: creditSpreadMigrationQuery.data?.result ?? null,
         returnDecomposition: returnDecompositionQuery.data?.result ?? null,
         campisiFourEffects: campisiFourEffectsQuery.data?.result ?? null,
         yieldCurveTermStructure: yieldCurveTermStructureQuery.data?.result ?? null,
-        decisionItems: decisionItemsQuery.data?.result.rows ?? null,
         marketPoints: marketRatesQuery.data?.result.series ?? null,
-        productCategoryYtd: snapshotResult?.product_category_ytd ?? null,
-        productCategoryMonthly: snapshotResult?.product_category_monthly ?? null,
-        assetStructure: assetStructureQuery.data?.result ?? null,
-        ratingStructure: ratingStructureQuery.data?.result ?? null,
-        maturityStructure: maturityStructureQuery.data?.result ?? null,
-        industryDistribution: industryDistributionQuery.data?.result ?? null,
-        riskIndicators: riskIndicatorsQuery.data?.result ?? null,
+        assetStructure: homeSummaryQuery.data?.result.asset_type ?? null,
+        ratingStructure: homeSummaryQuery.data?.result.asset_rating ?? null,
+        maturityStructure: homeSummaryQuery.data?.result.maturity ?? null,
+        industryDistribution: homeSummaryQuery.data?.result.industry ?? null,
+        riskIndicators: homeSummaryQuery.data?.result.risk ?? null,
         topHoldings: topHoldingsQuery.data?.result ?? null,
         topHoldingsLoading: topHoldingsQuery.isLoading,
         topHoldingsError: topHoldingsQuery.isError,
@@ -258,7 +300,6 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
         incomeTrend: incomeTrendQuery.data?.result ?? null,
         incomeTrendLoading: incomeTrendQuery.isLoading,
         incomeTrendError: incomeTrendQuery.isError,
-        cockpitWarnings: cockpitWarningsQuery.data?.result ?? null,
         calendarEvents: researchCalendarQuery.data ?? null,
         calendarLoading: researchCalendarQuery.isLoading,
         calendarError: researchCalendarQuery.isError,
@@ -270,36 +311,20 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
         bondNewsEvents,
         macroNewsLoading,
         macroNewsError,
-        snapshotMeta,
-        marketMeta: marketRatesQuery.data?.result_meta ?? null,
-        alertCount,
-        snapshotUnavailable,
-        snapshotStale,
       }),
     [
       adapterOutput.attribution.vm,
-      adapterOutput.verdict,
-      alertCount,
       bondNewsEvents,
-      bondHeadlineQuery.data?.result,
-      coreMetricsQuery.data?.result,
       creditSpreadMigrationQuery.data?.result,
-      dailyChangesQuery.data?.result,
-      decisionItemsQuery.data?.result.rows,
       effectiveReportDate,
       marketRatesQuery.data?.result.series,
-      marketRatesQuery.data?.result_meta,
-      portfolioComparisonQuery.data?.result,
-      portfolioHeadlinesQuery.data?.result,
       returnDecompositionQuery.data?.result,
       campisiFourEffectsQuery.data?.result,
-      sanitizedMetrics,
-      snapshotMeta,
-      assetStructureQuery.data?.result,
-      ratingStructureQuery.data?.result,
-      maturityStructureQuery.data?.result,
-      industryDistributionQuery.data?.result,
-      riskIndicatorsQuery.data?.result,
+      homeSummaryQuery.data?.result.asset_type,
+      homeSummaryQuery.data?.result.asset_rating,
+      homeSummaryQuery.data?.result.maturity,
+      homeSummaryQuery.data?.result.industry,
+      homeSummaryQuery.data?.result.risk,
       topHoldingsQuery.data?.result,
       topHoldingsQuery.isLoading,
       topHoldingsQuery.isError,
@@ -313,7 +338,6 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
       incomeTrendQuery.isLoading,
       incomeTrendQuery.isError,
       yieldCurveTermStructureQuery.data?.result,
-      cockpitWarningsQuery.data?.result,
       calendarEndDate,
       calendarStartDate,
       dashboardTodayIsoDate,
@@ -324,10 +348,6 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
       researchCalendarQuery.data,
       researchCalendarQuery.isError,
       researchCalendarQuery.isLoading,
-      snapshotResult?.product_category_monthly,
-      snapshotResult?.product_category_ytd,
-      snapshotStale,
-      snapshotUnavailable,
       useMockFallback,
     ],
   );

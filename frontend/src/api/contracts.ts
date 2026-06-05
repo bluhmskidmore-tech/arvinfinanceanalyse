@@ -4960,6 +4960,20 @@ export type RiskIndicatorsPayload = {
   reinvestment_ratio_1y: Numeric;
 };
 
+export type BondDashboardHomeSummaryPayload = {
+  report_date: string;
+  headline: BondDashboardHeadlinePayload;
+  risk: RiskIndicatorsPayload;
+  asset_type: AssetStructurePayload;
+  asset_rating: AssetStructurePayload;
+  maturity: MaturityStructurePayload;
+  industry: IndustryDistPayload;
+  yield_distribution: YieldDistributionPayload;
+  portfolio_comparison: PortfolioComparisonPayload;
+  spread: SpreadAnalysisPayload;
+  business_type: BondBusinessTypeMetricsResult;
+};
+
 // --- Cube 多维查询 (`/api/cube`) ---
 export type CubeBasis = "formal" | "scenario" | "analytical";
 

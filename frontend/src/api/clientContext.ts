@@ -8,8 +8,8 @@ import {
 
 import type { ApiClient, ApiClientOptions, DataSourceMode } from "./client";
 import type { HomeExecutiveClientMethods } from "./homeExecutiveClient";
+import type { HomeMarketTickerClientMethods } from "./homeMarketTickerClient";
 import type { HomeSupplementalClientMethods } from "./homeSupplementalClient";
-import type { MarketDataClientMethods } from "./marketDataClient";
 import type { MacroToolkitClientMethods } from "./macroToolkitClient";
 
 export type { ApiClient, DataSourceMode } from "./client";
@@ -72,6 +72,7 @@ const HOME_SUPPLEMENTAL_METHODS = new Set<keyof HomeSupplementalClientMethods>([
   "getCoreMetrics",
   "getDailyChanges",
   "getBondDashboardHeadlineKpis",
+  "getBondDashboardHomeSummary",
   "getBondAnalyticsPortfolioHeadlines",
   "getBondDashboardPortfolioComparison",
   "getBondAnalyticsCreditSpreadMigration",
@@ -88,7 +89,7 @@ const HOME_SUPPLEMENTAL_METHODS = new Set<keyof HomeSupplementalClientMethods>([
   "getCockpitWarnings",
 ]);
 
-const MARKET_TICKER_METHODS = new Set<keyof MarketDataClientMethods>([
+const HOME_MARKET_TICKER_METHODS = new Set<keyof HomeMarketTickerClientMethods>([
   "getChoiceMacroLatest",
   "getMarketDataRates",
   "getChoiceNewsEvents",
@@ -101,9 +102,9 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
   const fetchImpl = options.fetchImpl ?? defaultFetch;
   let clientPromise: Promise<ApiClient> | null = null;
   let homeExecutiveClientPromise: Promise<HomeExecutiveClientMethods> | null = null;
+  let homeMarketTickerClientPromise: Promise<HomeMarketTickerClientMethods> | null = null;
   let homeSupplementalClientPromise: Promise<HomeSupplementalClientMethods> | null = null;
   let macroToolkitClientPromise: Promise<MacroToolkitClientMethods> | null = null;
-  let marketDataClientPromise: Promise<MarketDataClientMethods> | null = null;
 
   const loadClient = () => {
     if (!clientPromise) {
@@ -150,16 +151,16 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
     return homeSupplementalClientPromise;
   };
 
-  const loadMarketDataClient = () => {
-    if (!marketDataClientPromise) {
-      marketDataClientPromise = import("./marketDataClient").then(
-        ({ createMockMarketDataClient, createRealMarketDataClient }) =>
+  const loadHomeMarketTickerClient = () => {
+    if (!homeMarketTickerClientPromise) {
+      homeMarketTickerClientPromise = import("./homeMarketTickerClient").then(
+        ({ createMockHomeMarketTickerClient, createRealHomeMarketTickerClient }) =>
           mode === "mock"
-            ? createMockMarketDataClient()
-            : createRealMarketDataClient({ fetchImpl, baseUrl }),
+            ? createMockHomeMarketTickerClient()
+            : createRealHomeMarketTickerClient({ fetchImpl, baseUrl }),
       );
     }
-    return marketDataClientPromise;
+    return homeMarketTickerClientPromise;
   };
 
   return new Proxy(
@@ -192,9 +193,9 @@ export function createDeferredApiClient(options: ApiClientOptions = {}): ApiClie
             const method = client[property as keyof MacroToolkitClientMethods] as (...methodArgs: unknown[]) => unknown;
             return method(...args);
           }
-          if (MARKET_TICKER_METHODS.has(property as keyof MarketDataClientMethods)) {
-            const client = await loadMarketDataClient();
-            const method = client[property as keyof MarketDataClientMethods] as (...methodArgs: unknown[]) => unknown;
+          if (HOME_MARKET_TICKER_METHODS.has(property as keyof HomeMarketTickerClientMethods)) {
+            const client = await loadHomeMarketTickerClient();
+            const method = client[property as keyof HomeMarketTickerClientMethods] as (...methodArgs: unknown[]) => unknown;
             return method(...args);
           }
           const client = await loadClient();
