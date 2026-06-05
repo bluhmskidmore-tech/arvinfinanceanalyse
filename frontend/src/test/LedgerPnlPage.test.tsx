@@ -73,6 +73,19 @@ function buildAnalyticalMeta(resultKind: string): ResultMeta {
   };
 }
 
+function buildWarningAnalyticalMeta(resultKind: string): ResultMeta {
+  return {
+    ...buildAnalyticalMeta(resultKind),
+    source_version: "sv_qdb_gl_workbook_status_test",
+    vendor_version: "vv_qdb_gl_workbook_status_test",
+    quality_flag: "warning",
+    vendor_status: "vendor_stale",
+    fallback_mode: "latest_snapshot",
+    fallback_date: "2026-03-30",
+    generated_at: "2026-04-12T08:30:00Z",
+  };
+}
+
 function money(yuan: string, wan = "999.99"): LedgerMoneyValue {
   return {
     yuan,
@@ -613,6 +626,89 @@ describe("LedgerPnlPage", () => {
       "source_missing",
     );
     expect(screen.getByTestId("ledger-pnl-monthly-analysis-foreign-currency")).toHaveTextContent("AC债券投资");
+  });
+
+  it("surfaces active ledger and QDB result_meta in the first-screen status strip", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLedgerPnlDates = vi.fn(async () => ({
+      result_meta: buildMeta("ledger_pnl.dates"),
+      result: { dates: ["2026-03-31"] },
+    }));
+    const getLedgerPnlSummary = vi.fn(async () => ({
+      result_meta: {
+        ...buildMeta("ledger_pnl.summary"),
+        source_version: "sv_ledger_summary_status_test",
+        vendor_version: "vv_ledger_summary_status_test",
+        generated_at: "2026-04-12T08:10:00Z",
+      },
+      result: {
+        report_date: "2026-03-31",
+        source_version: "sv_ledger_summary_status_test",
+        ledger_monthly_pnl_core: money("0.00"),
+        ledger_monthly_pnl_all: money("0.00"),
+        ledger_total_assets: money("0.00"),
+        ledger_total_liabilities: money("0.00"),
+        ledger_net_assets: money("0.00"),
+        by_currency: [],
+        by_account: [],
+      },
+    }));
+    const getLedgerPnlData = vi.fn(async () => ({
+      result_meta: {
+        ...buildMeta("ledger_pnl.data"),
+        source_version: "sv_ledger_detail_status_test",
+        vendor_version: "vv_ledger_detail_status_test",
+      },
+      result: {
+        report_date: "2026-03-31",
+        summary: {
+          total_pnl_cnx: money("0.00"),
+          total_pnl_cny: money("0.00"),
+          total_pnl: money("0.00"),
+          count: 0,
+        },
+        items: [],
+      },
+    }));
+    const getQdbGlMonthlyAnalysisDates = vi.fn(async () => ({
+      result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+      result: { report_months: ["202603"] },
+    }));
+    const getQdbGlMonthlyAnalysisWorkbook = vi.fn(async () => ({
+      result_meta: buildWarningAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
+      result: {
+        report_month: "202603",
+        sheets: [],
+      },
+    }));
+
+    renderLedgerPnlPage({
+      ...base,
+      getLedgerPnlDates,
+      getLedgerPnlSummary,
+      getLedgerPnlData,
+      getQdbGlMonthlyAnalysisDates,
+      getQdbGlMonthlyAnalysisWorkbook,
+    });
+
+    const statusStrip = await screen.findByTestId("ledger-pnl-first-screen-status-strip");
+    await waitFor(() => {
+      expect(statusStrip).toHaveTextContent("Ledger汇总");
+      expect(statusStrip).toHaveTextContent("正式口径");
+      expect(statusStrip).toHaveTextContent("正常");
+      expect(statusStrip).toHaveTextContent("sv_ledger_summary_status_test");
+      expect(statusStrip).toHaveTextContent("vv_ledger_summary_status_test");
+      expect(statusStrip).toHaveTextContent("Ledger明细");
+      expect(statusStrip).toHaveTextContent("sv_ledger_detail_status_test");
+      expect(statusStrip).toHaveTextContent("QDB工作簿");
+      expect(statusStrip).toHaveTextContent("分析口径");
+      expect(statusStrip).toHaveTextContent("预警");
+      expect(statusStrip).toHaveTextContent("供应商陈旧");
+      expect(statusStrip).toHaveTextContent("最新快照降级");
+      expect(statusStrip).toHaveTextContent("2026-03-30");
+      expect(statusStrip).toHaveTextContent("sv_qdb_gl_workbook_status_test");
+      expect(statusStrip).toHaveTextContent("vv_qdb_gl_workbook_status_test");
+    });
   });
 
   it("does not fall back to an unrelated monthly analysis workbook", async () => {

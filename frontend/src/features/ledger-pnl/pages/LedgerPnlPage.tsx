@@ -9,7 +9,7 @@ import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { shellTokens } from "../../../theme/tokens";
 import { FilterBar } from "../../../components/FilterBar";
-import type { LedgerMoneyValue, QdbGlMonthlyAnalysisSheet } from "../../../api/contracts";
+import type { LedgerMoneyValue, QdbGlMonthlyAnalysisSheet, ResultMeta } from "../../../api/contracts";
 import "./LedgerPnlPage.css";
 
 const pageHeaderStyle = {
@@ -66,6 +66,73 @@ function formatAnalysisValue(value: unknown) {
     return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
   }
   return String(value);
+}
+
+function formatMetaValue(value: string | null | undefined) {
+  return value || "待定";
+}
+
+function resultMetaBasisLabel(value: ResultMeta["basis"] | undefined) {
+  if (value === "formal") return "正式口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "mock") return "模拟口径";
+  return "口径待定";
+}
+
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined) {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  if (value === "missing") return "缺失";
+  return "质量待定";
+}
+
+function resultMetaVendorLabel(value: ResultMeta["vendor_status"] | undefined) {
+  if (value === "ok") return "供应商正常";
+  if (value === "vendor_stale") return "供应商陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return "供应商待定";
+}
+
+function resultMetaFallbackLabel(meta: ResultMeta | undefined) {
+  if (!meta) return "回退待定";
+  const fallbackMode = meta.fallback_mode === "latest_snapshot" ? "最新快照降级" : "未降级";
+  return meta.fallback_date ? `${fallbackMode} · ${meta.fallback_date}` : fallbackMode;
+}
+
+function LedgerPnlResultMetaStatusCard({
+  title,
+  meta,
+}: {
+  title: string;
+  meta: ResultMeta | undefined;
+}) {
+  const sourceVersion = formatMetaValue(meta?.source_version);
+  const vendorVersion = formatMetaValue(meta?.vendor_version);
+  const fallback = resultMetaFallbackLabel(meta);
+
+  return (
+    <article className="ledger-pnl-meta-status__card">
+      <div className="ledger-pnl-meta-status__title">{title}</div>
+      <div className="ledger-pnl-meta-status__badges">
+        <span>{resultMetaBasisLabel(meta?.basis)}</span>
+        <span>{resultMetaQualityLabel(meta?.quality_flag)}</span>
+        <span>{resultMetaVendorLabel(meta?.vendor_status)}</span>
+        <span title={fallback}>{fallback}</span>
+      </div>
+      <div className="ledger-pnl-meta-status__line" title={sourceVersion}>
+        来源 {sourceVersion}
+      </div>
+      <div className="ledger-pnl-meta-status__line" title={vendorVersion}>
+        供应商 {vendorVersion}
+      </div>
+      <div className="ledger-pnl-meta-status__line" title={formatMetaValue(meta?.generated_at)}>
+        更新 {formatMetaValue(meta?.generated_at)}
+      </div>
+    </article>
+  );
 }
 
 function findAnalysisSheet(
@@ -415,6 +482,12 @@ export default function LedgerPnlPage() {
           {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
         </span>
       </div>
+
+      <section data-testid="ledger-pnl-first-screen-status-strip" className="ledger-pnl-meta-status">
+        <LedgerPnlResultMetaStatusCard title="Ledger汇总" meta={summaryQuery.data?.result_meta} />
+        <LedgerPnlResultMetaStatusCard title="Ledger明细" meta={dataQuery.data?.result_meta} />
+        <LedgerPnlResultMetaStatusCard title="QDB工作簿" meta={monthlyAnalysisWorkbookQuery.data?.result_meta} />
+      </section>
 
       <FilterBar style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
         <label>
