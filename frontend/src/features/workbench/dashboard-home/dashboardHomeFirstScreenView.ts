@@ -253,7 +253,7 @@ function reportDatePath(path: string | null | undefined, reportDate: string): st
     if (!DECISION_ACTION_ROUTES.has(url.pathname)) {
       return undefined;
     }
-    if (isConcreteReportDate(reportDate) && !url.searchParams.has("report_date")) {
+    if (isConcreteReportDate(reportDate)) {
       url.searchParams.set("report_date", reportDate);
     }
     return `${url.pathname}${url.search}${url.hash}`;

@@ -125,6 +125,38 @@ describe("dashboard home first-screen actions", () => {
     );
   });
 
+  it("overrides stale report dates from backend suggestion links", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict: {
+        ...verdict,
+        suggestions: [
+          {
+            text: "review linked duration date",
+            link: "/risk-tensor?report_date=2026-04-29&tab=dv01#bucket",
+          },
+        ],
+      },
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+    });
+
+    expect(decisionActions(view)).toEqual([
+      expect.objectContaining({
+        title: "review linked duration date",
+        to: "/risk-tensor?report_date=2026-04-30&tab=dv01#bucket",
+        sourceLabel: "risk-tensor",
+      }),
+    ]);
+  });
+
   it("does not fabricate clickable action links when the home snapshot is unavailable", () => {
     const view = mapToHomeFirstScreenView({
       reportDate: "2026-04-30",
