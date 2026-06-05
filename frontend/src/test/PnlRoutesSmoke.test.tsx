@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
 
 const { downloadPnlByBusinessExcelMock } = vi.hoisted(() => ({
   downloadPnlByBusinessExcelMock: vi.fn(),
@@ -31,6 +31,7 @@ import type {
   PnlYearlyBusinessSummaryPayload,
   ResultMeta,
 } from "../api/contracts";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const YIELD_ANALYSIS_SOURCE_PATHS = [
@@ -741,6 +742,10 @@ function buildPnlClient(): ApiClient {
 }
 
 describe("pnl routed pages smoke", () => {
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules("pnl", "pnl-bridge", "pnl-by-business");
+  }, 20_000);
+
   it("keeps /pnl yield analysis colors on the homepage blue-gray token family", () => {
     const source = YIELD_ANALYSIS_SOURCE_PATHS.map((path) => readFileSync(path, "utf8")).join("\n");
 
@@ -762,6 +767,10 @@ describe("pnl routed pages smoke", () => {
     expect(await screen.findByTestId("yield-analysis-page")).toBeInTheDocument();
     expect(await screen.findByTestId("yield-analysis-pnl-toolbar")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "收益分析", level: 1 })).toBeInTheDocument();
+    expect(screen.getByLabelText("收益数据来源筛选")).toBeInTheDocument();
+    expect(screen.getByLabelText("收益投资类型筛选")).toBeInTheDocument();
+    expect(screen.getByLabelText("收益投资组合筛选")).toBeInTheDocument();
+    expect(screen.getByLabelText("收益名称或代码搜索")).toBeInTheDocument();
     expect(screen.queryByText("Performance")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByLabelText("选择报表月份")).toHaveValue("2025-12-31");
@@ -770,6 +779,7 @@ describe("pnl routed pages smoke", () => {
       expect(screen.getByText("按维度排行（点击可筛选）")).toBeInTheDocument();
     });
     const pnlReadout = await screen.findByTestId("yield-analysis-pnl-readout");
+    expect(within(pnlReadout).getAllByRole("listitem")).toHaveLength(3);
     expect(pnlReadout).toHaveTextContent("筛选后合计损益");
     expect(pnlReadout).toHaveTextContent("+13.00 万");
     expect(pnlReadout).toHaveTextContent("主要贡献组合：Route FI");

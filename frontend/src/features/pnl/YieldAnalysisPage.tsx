@@ -597,7 +597,7 @@ export default function YieldAnalysisPage() {
                     ["517 投资收益", pnlDetailTotals.capitalGain],
                   ] as const
                 ).map(([label, val]) => (
-                  <div key={label} className="yield-pnl-breakdown__item" data-tone={pnlTone(val)}>
+                  <div key={label} role="listitem" className="yield-pnl-breakdown__item" data-tone={pnlTone(val)}>
                     <span className="yield-pnl-breakdown__label">{label}</span>
                     <span className="yield-pnl-breakdown__value">{fmtSignedWanYuan(val)}</span>
                   </div>

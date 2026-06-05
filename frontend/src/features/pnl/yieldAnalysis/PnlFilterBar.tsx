@@ -76,7 +76,12 @@ export function PnlFilterBar({
       <div className="pnl-filter-grid">
         <div>
           <div className="pnl-filter-field-label">数据来源</div>
-          <select value={filterSource} onChange={(e) => onSourceChange(e.target.value)} className="pnl-filter-control">
+          <select
+            aria-label="收益数据来源筛选"
+            value={filterSource}
+            onChange={(e) => onSourceChange(e.target.value)}
+            className="pnl-filter-control"
+          >
             {filterOptions.sources.map((s) => (
               <option key={s} value={s}>
                 {s === "ALL" ? "全部" : s}
@@ -86,7 +91,12 @@ export function PnlFilterBar({
         </div>
         <div>
           <div className="pnl-filter-field-label">投资类型</div>
-          <select value={filterInvestType} onChange={(e) => onInvestTypeChange(e.target.value)} className="pnl-filter-control">
+          <select
+            aria-label="收益投资类型筛选"
+            value={filterInvestType}
+            onChange={(e) => onInvestTypeChange(e.target.value)}
+            className="pnl-filter-control"
+          >
             {filterOptions.invests.map((s) => (
               <option key={s} value={s}>
                 {s === "ALL" ? "全部" : s}
@@ -96,7 +106,12 @@ export function PnlFilterBar({
         </div>
         <div>
           <div className="pnl-filter-field-label">投资组合</div>
-          <select value={filterPortfolio} onChange={(e) => onPortfolioChange(e.target.value)} className="pnl-filter-control">
+          <select
+            aria-label="收益投资组合筛选"
+            value={filterPortfolio}
+            onChange={(e) => onPortfolioChange(e.target.value)}
+            className="pnl-filter-control"
+          >
             {filterOptions.portfolios.map((s) => (
               <option key={s} value={s}>
                 {s === "ALL" ? "全部" : s}
@@ -107,6 +122,7 @@ export function PnlFilterBar({
         <div>
           <div className="pnl-filter-field-label">搜索名称或代码</div>
           <input
+            aria-label="收益名称或代码搜索"
             value={searchText}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="例如：国债 / 102000 / 同业存单"
