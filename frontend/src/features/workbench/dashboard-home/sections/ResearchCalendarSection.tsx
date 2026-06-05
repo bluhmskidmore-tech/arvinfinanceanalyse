@@ -1,8 +1,11 @@
+import { useEffect, useRef } from "react";
+
 import type { HomeMacroBriefingModel } from "../adapters/buildHomeMacroBriefingModel";
 import styles from "../dashboardHome.module.css";
 
 type ResearchCalendarSectionProps = {
   macroBriefing: HomeMacroBriefingModel;
+  focusPolicyFunding?: boolean;
 };
 
 function releaseImportanceClass(importance: string): string {
@@ -15,7 +18,23 @@ function releaseImportanceClass(importance: string): string {
   return "";
 }
 
-export function ResearchCalendarSection({ macroBriefing }: ResearchCalendarSectionProps) {
+export function ResearchCalendarSection({
+  macroBriefing,
+  focusPolicyFunding = false,
+}: ResearchCalendarSectionProps) {
+  const policyFundingPaneRef = useRef<HTMLDivElement | null>(null);
+  const summary = macroBriefing.policyFundingSummary;
+
+  useEffect(() => {
+    if (!focusPolicyFunding) {
+      return;
+    }
+
+    const pane = policyFundingPaneRef.current;
+    pane?.scrollIntoView?.({ block: "start" });
+    pane?.focus({ preventScroll: true });
+  }, [focusPolicyFunding, summary.headline]);
+
   return (
     <section data-testid="dashboard-home-research-calendar" className={styles.dhCalendarSection}>
       <article className={`${styles.dhCard} ${styles.dhMacroBriefingCard}`}>
@@ -59,11 +78,25 @@ export function ResearchCalendarSection({ macroBriefing }: ResearchCalendarSecti
             )}
           </div>
 
-          <div className={styles.dhMacroBriefingPane}>
+          <div
+            ref={policyFundingPaneRef}
+            className={`${styles.dhMacroBriefingPane} ${styles.dhPolicyFundingPane}`}
+            data-focused={focusPolicyFunding ? "true" : "false"}
+            data-testid="dashboard-home-policy-funding-pane"
+            tabIndex={-1}
+          >
             <div className={styles.dhMacroBriefingHeader}>
               <span>政策与资金面</span>
               <small>{macroBriefing.newsFreshnessLabel}</small>
             </div>
+            <div className={styles.dhPolicyFundingChips} aria-label="政策与资金面状态标签">
+              {summary.chips.map((chip) => (
+                <span key={chip.id} data-tone={chip.tone}>
+                  {chip.label}
+                </span>
+              ))}
+            </div>
+            <p className={styles.dhPolicyFundingHeadline}>{summary.headline}</p>
             <div className={styles.dhMacroTrustStrip} aria-label="政策与资金面数据状态">
               <span>{macroBriefing.newsSourceLabel}</span>
               <span>{macroBriefing.newsAsOfLabel}</span>
@@ -71,15 +104,25 @@ export function ResearchCalendarSection({ macroBriefing }: ResearchCalendarSecti
               <span>{macroBriefing.newsRefreshLabel}</span>
             </div>
             {macroBriefing.newsStale ? <span className={styles.dhMacroNewsStale}>新闻源偏旧</span> : null}
-            {macroBriefing.newsItems.length > 0 ? (
-              <div className={styles.dhMacroBriefingList}>
-                {macroBriefing.newsItems.map((item) => (
-                  <div key={item.id} className={styles.dhMacroNewsItem}>
-                    <span className={styles.dhMacroNewsTopic}>{item.topicLabel}</span>
-                    <span className={styles.dhMacroNewsBody}>
-                      <span className={styles.dhMacroNewsTitle}>{item.title}</span>
-                      <span className={styles.dhMacroBriefingMeta}>{item.timeLabel}</span>
-                    </span>
+            {summary.groups.length > 0 ? (
+              <div className={styles.dhPolicyFundingGroups}>
+                {summary.groups.map((group) => (
+                  <div key={group.id} className={styles.dhPolicyFundingGroup}>
+                    <div className={styles.dhPolicyFundingGroupHeader}>
+                      <span>{group.label}</span>
+                      <small>{group.countLabel}</small>
+                    </div>
+                    <div className={styles.dhMacroBriefingList}>
+                      {group.items.map((item) => (
+                        <div key={item.id} className={styles.dhMacroNewsItem}>
+                          <span className={styles.dhMacroNewsTopic}>{item.topicLabel}</span>
+                          <span className={styles.dhMacroNewsBody}>
+                            <span className={styles.dhMacroNewsTitle}>{item.title}</span>
+                            <span className={styles.dhMacroBriefingMeta}>{item.timeLabel}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -333,6 +333,103 @@ describe("mapToHomeView", () => {
     expect(view.bondNews.statusLabel).toBe("来源状态：偏旧");
   });
 
+  it("keeps broad industry, equity, and non-bond issuance stories out of bond news", () => {
+    const view = mapToHomeView({
+      ...baseRealInput,
+      todayIsoDate: "2026-06-01",
+      industryDistribution: {
+        report_date: "2026-04-30",
+        items: [
+          {
+            industry_name: "制造业",
+            total_market_value: numeric(100_000_000, "1.00 亿"),
+            bond_count: 1,
+            percentage: numeric(0.2, "20.00%", "pct"),
+          },
+        ],
+      },
+      bondNewsEvents: [
+        newsEvent({
+          event_key: "broad-industry",
+          received_at: "2026-06-01T12:00:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "ADP数据显示，美国制造业岗位增加8000个。",
+        }),
+        newsEvent({
+          event_key: "stock-rating",
+          received_at: "2026-06-01T11:50:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "摩根士丹利将某餐饮集团股票评级上调至增持。",
+        }),
+        newsEvent({
+          event_key: "stock-issuance",
+          received_at: "2026-06-01T11:40:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "某稀土公司将向商务部发行1610万股股票。",
+        }),
+        newsEvent({
+          event_key: "public-tender",
+          received_at: "2026-06-01T11:30:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "欧盟云计划很可能将大型科技企业排除在关键性公共招标之外。",
+        }),
+        newsEvent({
+          event_key: "game-publisher",
+          received_at: "2026-06-01T11:20:00+08:00",
+          topic_code: "tushare.major_news",
+          payload_text: "澳大利亚视频游戏开发商兼发行商普莱赛德宣布重组计划。",
+        }),
+        newsEvent({
+          event_key: "stock-subscription",
+          received_at: "2026-06-01T11:10:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "新股提示：北交所新股金戈新材今日申购，发行总数为1200万股。",
+        }),
+        newsEvent({
+          event_key: "share-asset-purchase",
+          received_at: "2026-06-01T11:00:00+08:00",
+          topic_code: "tushare.major_news",
+          payload_text: "预计增利4.7亿元，某上市公司拟发行股份购买资产并跨界半导体。",
+        }),
+        newsEvent({
+          event_key: "supply-agreement",
+          received_at: "2026-06-01T10:50:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "特斯拉撤回石墨供应协议，相关公司发行商称业务不受影响。",
+        }),
+        newsEvent({
+          event_key: "equity-strategy-funding",
+          received_at: "2026-06-01T10:40:00+08:00",
+          topic_code: "tushare.major_news",
+          payload_text:
+            "招商证券研报称，6月A股仍处盈利驱动的上行阶段，资金面虽受ETF持续净流出带来阶段性扰动。",
+        }),
+        newsEvent({
+          event_key: "sovereign-bond",
+          received_at: "2026-06-01T09:20:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "人民币绿色主权债券发行利率公布，认购倍数处于高位。",
+        }),
+        newsEvent({
+          event_key: "bond-issuance",
+          received_at: "2026-06-01T09:10:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "信用债发行提速，评级调整和兑付安排受关注。",
+        }),
+      ],
+      macroNewsLoading: false,
+      macroNewsError: false,
+    } as Parameters<typeof mapToHomeView>[0]);
+
+    expect(view.bondNews.holdingHits).toHaveLength(0);
+    expect(view.bondNews.marketNews).toHaveLength(0);
+    expect(view.bondNews.creditAndIssuanceNews.map((item) => item.title)).toEqual([
+      "人民币绿色主权债券发行利率公布，认购倍数处于高位。",
+      "信用债发行提速，评级调整和兑付安排受关注。",
+    ]);
+    expect(view.bondNews.asOfLabel).toBe("数据截至 06-01 09:20");
+  });
+
   it("falls back to Tushare macro news when Choice feed is stale", () => {
     const view = mapToHomeView({
       ...baseRealInput,

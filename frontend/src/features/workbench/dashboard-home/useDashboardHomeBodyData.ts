@@ -10,8 +10,8 @@ import {
   DASHBOARD_BOND_NEWS_TOPIC_LIMIT,
   DASHBOARD_BOND_NEWS_TOPICS,
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
-  DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
   DASHBOARD_MACRO_NEWS_TOPICS,
+  DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
 } from "../dashboard/dashboardMacroNewsTopics";
 import {
   getCampisiAttributionContext,
@@ -48,7 +48,6 @@ export function useDashboardHomeBodyData({
   supplementalReportDate,
   loadBasicData,
   loadEventFeeds,
-  loadSecondaryEventFeeds,
   loadBondNewsFeeds,
   loadFormalData,
 }: UseDashboardHomeBodyDataOptions) {
@@ -118,7 +117,7 @@ export function useDashboardHomeBodyData({
       Boolean(macroNewsProbeQuery?.isError) ||
       allMacroNewsQueries.every((query) => query.isSuccess || query.isError));
   const shouldLoadMacroNewsFallback =
-    loadSecondaryEventFeeds &&
+    loadEventFeeds &&
     macroNewsSettled &&
     (macroNewsProbeHasPermissionError ||
       Boolean(macroNewsProbeQuery?.isError) ||
@@ -130,10 +129,10 @@ export function useDashboardHomeBodyData({
 
   const macroNewsFallbackQueries = useQueries({
     queries: DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => ({
-      queryKey: ["dashboard", "macro-news-fallback", dataClient.mode, topic.code],
+      queryKey: ["dashboard", "macro-news-fallback", dataClient.mode, topic.code, topic.queryLimit],
       queryFn: () =>
         dataClient.getChoiceNewsEvents({
-          limit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT,
+          limit: topic.queryLimit,
           offset: 0,
           topicCode: topic.code,
       }),

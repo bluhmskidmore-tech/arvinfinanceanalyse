@@ -52,6 +52,22 @@ const BOND_MARKET_KEYWORDS = [
   "地方债",
   "政金债",
   "国开债",
+  "公司债",
+  "企业债",
+  "金融债",
+  "主权债",
+  "绿色债",
+  "可转债",
+  "可转换债",
+  "可交换债",
+  "中票",
+  "中期票据",
+  "短融",
+  "超短融",
+  "专项债",
+  "永续债",
+  "资产支持证券",
+  "ABS",
   "收益率",
   "久期",
   "信用利差",
@@ -60,7 +76,6 @@ const BOND_MARKET_KEYWORDS = [
   "DR007",
   "R007",
   "Shibor",
-  "资金面",
 ] as const;
 
 const CREDIT_AND_ISSUANCE_KEYWORDS = [
@@ -74,6 +89,31 @@ const CREDIT_AND_ISSUANCE_KEYWORDS = [
   "中标利率",
   "全场倍数",
   "边际倍数",
+] as const;
+
+const NON_BOND_CREDIT_AND_ISSUANCE_CONTEXTS = [
+  "股票评级",
+  "股票发行",
+  "股票",
+  "股价",
+  "增持",
+  "持平",
+  "减持",
+  "买入",
+  "卖出",
+  "认股权证",
+  "发行股票",
+  "发行股份",
+  "公共招标",
+  "发行商",
+  "发行总数",
+  "新股",
+  "申购",
+  "万股",
+  "股本",
+  "供应协议",
+  "合作协议",
+  "购买资产",
 ] as const;
 
 function normalizeToken(value: string | null | undefined): string {
@@ -153,7 +193,6 @@ function addCandidate(
 function buildMatchCandidates(input: {
   topHoldings?: BondTopHoldingsPayload | null;
   positionChanges?: BondPositionChangesPayload | null;
-  industryDistribution?: IndustryDistPayload | null;
 }): MatchCandidate[] {
   const candidates: MatchCandidate[] = [];
   const seen = new Set<string>();
@@ -168,10 +207,6 @@ function buildMatchCandidates(input: {
     addCandidate(candidates, seen, item.instrument_name, `命中持仓：${item.instrument_name}`, 3);
     addCandidate(candidates, seen, item.issuer_name, `命中发行人：${item.issuer_name}`, 2);
   }
-  for (const item of input.industryDistribution?.items ?? []) {
-    addCandidate(candidates, seen, item.industry_name, `命中行业：${item.industry_name}`, 1);
-  }
-
   return candidates.sort(
     (left, right) => right.priority - left.priority || right.value.length - left.value.length,
   );
@@ -190,6 +225,17 @@ function findHoldingHit(text: string, candidates: readonly MatchCandidate[]): st
 function includesAnyKeyword(text: string, keywords: readonly string[]): boolean {
   const normalizedText = text.toLowerCase();
   return keywords.some((keyword) => normalizedText.includes(keyword.toLowerCase()));
+}
+
+function isBondCreditOrIssuanceNews(text: string): boolean {
+  if (!includesAnyKeyword(text, CREDIT_AND_ISSUANCE_KEYWORDS)) {
+    return false;
+  }
+  const hasBondMarketContext = includesAnyKeyword(text, BOND_MARKET_KEYWORDS);
+  if (!hasBondMarketContext) {
+    return false;
+  }
+  return !includesAnyKeyword(text, NON_BOND_CREDIT_AND_ISSUANCE_CONTEXTS);
 }
 
 function toBondNewsItem(
@@ -237,7 +283,7 @@ export function buildHomeBondNewsModel(input: {
     }
     const text = `${title} ${eventText(event)}`;
     const holdingHit = findHoldingHit(text, candidates);
-    const isCreditOrIssuance = includesAnyKeyword(text, CREDIT_AND_ISSUANCE_KEYWORDS);
+    const isCreditOrIssuance = isBondCreditOrIssuanceNews(text);
     const isBondMarket = includesAnyKeyword(text, BOND_MARKET_KEYWORDS);
     if (!holdingHit && !isCreditOrIssuance && !isBondMarket) {
       continue;

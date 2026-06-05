@@ -39,6 +39,25 @@ export type HomeMacroSupplyItem = {
   label: string;
 };
 
+export type HomePolicyFundingChip = {
+  id: string;
+  label: string;
+  tone: "neutral" | "info" | "warning" | "danger";
+};
+
+export type HomePolicyFundingNewsGroup = {
+  id: string;
+  label: string;
+  countLabel: string;
+  items: readonly HomeMacroNewsItem[];
+};
+
+export type HomePolicyFundingSummary = {
+  headline: string;
+  chips: readonly HomePolicyFundingChip[];
+  groups: readonly HomePolicyFundingNewsGroup[];
+};
+
 export type HomeMacroBriefingModel = {
   releaseItems: readonly HomeMacroReleaseItem[];
   releaseWindowLabel: string;
@@ -51,6 +70,7 @@ export type HomeMacroBriefingModel = {
   newsAsOfLabel: string;
   newsStatusLabel: string;
   newsRefreshLabel: string;
+  policyFundingSummary: HomePolicyFundingSummary;
   supplyItems: readonly HomeMacroSupplyItem[];
 };
 
@@ -81,6 +101,35 @@ const MACRO_NEWS_RELAXED_FALLBACK_SOURCE_LABEL = "来源：Tushare 宏观快讯�
 const MACRO_NEWS_REFRESH_LABEL = "刷新：随页面查询读取已落库数据";
 const POLICY_FUNDING_EMPTY_MESSAGE = "政策与资金面：暂无债券相关更新";
 const macroReleaseCalendar = macroReleaseCalendarRaw as readonly MacroReleaseCalendarRow[];
+
+const POLICY_FUNDING_GROUP_DEFINITIONS: readonly {
+  id: string;
+  label: string;
+  patterns: readonly RegExp[];
+}[] = [
+  {
+    id: "public-market",
+    label: "央行/公开市场",
+    patterns: [
+      /央行|公开市场|逆回购|MLF|SLF|OMO|DR007|Shibor|银行间|货币市场|净投放|回笼|到期|流动性|资金面/i,
+    ],
+  },
+  {
+    id: "rates-bonds",
+    label: "利率/债券",
+    patterns: [/国债|美债|债券|债市|收益率|利率|基点|BP|长端|短端|期限利差|信用利差/i],
+  },
+  {
+    id: "overseas-macro",
+    label: "海外宏观",
+    patterns: [/美国|英国|日本|韩国|欧元区|欧洲|海外|美联储|英央行|日央行|欧洲央行|出口|通胀|CPI|PMI/i],
+  },
+];
+
+const OTHER_POLICY_FUNDING_GROUP = {
+  id: "other-macro",
+  label: "其他宏观",
+};
 
 function importanceLabel(importance: string): string {
   if (importance === "high") {
@@ -325,6 +374,19 @@ export function resolveHomeMacroNewsBriefing(input: {
     return choiceNews;
   }
 
+  if (input.isLoading && !input.fallbackEvents?.length) {
+    return {
+      newsItems: [],
+      newsMessage: "正在加载政策与资金面…",
+      newsStale: false,
+      newsFreshnessLabel: "加载中",
+      newsSourceLabel: MACRO_NEWS_FALLBACK_SOURCE_LABEL,
+      newsAsOfLabel: "数据截至：加载中",
+      newsStatusLabel: "来源状态：加载中",
+      newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    };
+  }
+
   const fallbackNews = buildNewsItemsFromEvents({
     events: input.fallbackEvents,
     todayIsoDate: input.todayIsoDate,
@@ -382,6 +444,95 @@ function buildSupplyItems(calendar: HomeResearchCalendarModel): HomeMacroSupplyI
   }));
 }
 
+function compactStatusLabel(label: string): string {
+  return label.replace(/^来源状态：/, "").trim();
+}
+
+function compactAsOfLabel(label: string): string {
+  return label.replace(/^数据截至\s*/, "数据截至 ").trim();
+}
+
+function pushUniqueChip(chips: HomePolicyFundingChip[], chip: HomePolicyFundingChip) {
+  if (!chip.label || chips.some((item) => item.label === chip.label)) {
+    return;
+  }
+  chips.push(chip);
+}
+
+function groupForPolicyFundingNews(item: HomeMacroNewsItem): { id: string; label: string } {
+  const text = `${item.topicLabel} ${item.title}`;
+  const matched = POLICY_FUNDING_GROUP_DEFINITIONS.find((group) =>
+    group.patterns.some((pattern) => pattern.test(text)),
+  );
+  return matched ?? OTHER_POLICY_FUNDING_GROUP;
+}
+
+function buildPolicyFundingGroups(newsItems: readonly HomeMacroNewsItem[]): HomePolicyFundingNewsGroup[] {
+  const grouped = new Map<string, { label: string; items: HomeMacroNewsItem[] }>();
+
+  newsItems.forEach((item) => {
+    const group = groupForPolicyFundingNews(item);
+    const current = grouped.get(group.id) ?? { label: group.label, items: [] };
+    current.items.push(item);
+    grouped.set(group.id, current);
+  });
+
+  return Array.from(grouped.entries()).map(([id, group]) => ({
+    id,
+    label: group.label,
+    countLabel: `${group.items.length} 条`,
+    items: group.items,
+  }));
+}
+
+function buildPolicyFundingChips(input: MacroNewsItemsResult): HomePolicyFundingChip[] {
+  const chips: HomePolicyFundingChip[] = [];
+  const statusLabel = compactStatusLabel(input.newsStatusLabel);
+  const sourceLabel = input.newsSourceLabel.replace(/^来源：/, "").trim();
+
+  if (statusLabel.includes("异常") || statusLabel.includes("错误") || statusLabel.includes("权限不足")) {
+    pushUniqueChip(chips, { id: "status-error", label: statusLabel, tone: "danger" });
+  } else if (input.newsStale || statusLabel.includes("偏旧")) {
+    pushUniqueChip(chips, { id: "status-stale", label: "新闻源偏旧", tone: "warning" });
+  } else if (statusLabel.includes("加载中")) {
+    pushUniqueChip(chips, { id: "status-loading", label: "加载中", tone: "info" });
+  } else if (statusLabel.includes("Tushare")) {
+    pushUniqueChip(chips, { id: "status-fallback", label: statusLabel, tone: "warning" });
+  } else if (statusLabel && !statusLabel.includes("暂无数据")) {
+    pushUniqueChip(chips, { id: "status", label: statusLabel, tone: "info" });
+  }
+
+  if (!chips.some((chip) => chip.id.startsWith("status")) && sourceLabel) {
+    pushUniqueChip(chips, { id: "source", label: sourceLabel, tone: "neutral" });
+  }
+
+  pushUniqueChip(chips, { id: "as-of", label: compactAsOfLabel(input.newsAsOfLabel), tone: "neutral" });
+  pushUniqueChip(chips, { id: "freshness", label: input.newsFreshnessLabel, tone: "neutral" });
+
+  return chips;
+}
+
+export function buildPolicyFundingSummary(input: MacroNewsItemsResult): HomePolicyFundingSummary {
+  const groups = buildPolicyFundingGroups(input.newsItems);
+  const chips = buildPolicyFundingChips(input);
+  if (input.newsItems.length === 0) {
+    return {
+      headline: "暂无可展示的政策与资金面快讯。",
+      chips,
+      groups,
+    };
+  }
+
+  const focusLabels = groups.slice(0, 2).map((group) => group.label);
+  const focusText =
+    focusLabels.length > 0 ? `，重点集中在${focusLabels.join("、")}。` : "。";
+  return {
+    headline: `${input.newsItems.length} 条政策与资金面快讯${focusText}`,
+    chips,
+    groups,
+  };
+}
+
 export function buildHomeMacroBriefingModel(input: {
   todayIsoDate: string;
   newsEvents?: readonly ChoiceNewsEvent[] | null;
@@ -405,6 +556,7 @@ export function buildHomeMacroBriefingModel(input: {
       releaseItems.length > 0 ? `未来 ${RELEASE_WINDOW_DAYS} 天 · ${releaseItems.length} 项` : `未来 ${RELEASE_WINDOW_DAYS} 天`,
     releaseMessage: releaseItems.length > 0 ? null : "暂无已维护发布日期，请补充配置清单。",
     ...news,
+    policyFundingSummary: buildPolicyFundingSummary(news),
     supplyItems: buildSupplyItems(input.supplyCalendar),
   };
 }

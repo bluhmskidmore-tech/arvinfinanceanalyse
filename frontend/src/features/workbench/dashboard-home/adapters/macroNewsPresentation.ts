@@ -91,10 +91,16 @@ export const HOME_POLICY_FUNDING_NEWS_KEYWORDS = [
   "Shibor",
   "国债收益率",
   "地方债",
-  "财政",
   "货币政策",
-  "资金面",
-  "流动性",
+] as const;
+
+const HOME_POLICY_FUNDING_CONTEXT_PATTERNS = [
+  /财政(?:政策|部|发力|支出|收入|赤字|预算|债务|扩张|收支|贴息|补贴|资金)/,
+  /(?:地方|中央|积极|扩张性|紧缩性)财政/,
+  /(?:央行|公开市场|银行间|债市|货币市场|流动性|逆回购|MLF|DR007|Shibor).{0,24}资金面/,
+  /资金面.{0,24}(?:央行|公开市场|银行间|债市|货币市场|流动性|逆回购|MLF|DR007|Shibor|平稳|宽松|收紧|紧张)/,
+  /(?:市场|银行间|资金|债市|货币|央行|公开市场|跨季|跨月)流动性/,
+  /流动性(?:投放|回笼|充裕|宽松|收紧|紧张|缺口|管理|支持|工具)/,
 ] as const;
 
 export function stripHtmlTags(raw: string): string {
@@ -136,8 +142,10 @@ export function isPolicyFundingRelevantForHomeBriefing(text: string): boolean {
     return false;
   }
   const normalizedLower = normalized.toLowerCase();
-  return HOME_POLICY_FUNDING_NEWS_KEYWORDS.some((keyword) =>
-    normalizedLower.includes(keyword.toLowerCase()),
+  return (
+    HOME_POLICY_FUNDING_NEWS_KEYWORDS.some((keyword) =>
+      normalizedLower.includes(keyword.toLowerCase()),
+    ) || HOME_POLICY_FUNDING_CONTEXT_PATTERNS.some((pattern) => pattern.test(normalized))
   );
 }
 

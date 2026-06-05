@@ -88,7 +88,14 @@ describe("macroNewsPresentation", () => {
 
   it("keeps only policy and funding news when requested", () => {
     expect(isPolicyFundingRelevantForHomeBriefing("央行公开市场净投放保持平稳")).toBe(true);
+    expect(isPolicyFundingRelevantForHomeBriefing("财政政策继续发力支持稳增长")).toBe(true);
+    expect(isPolicyFundingRelevantForHomeBriefing("银行间市场流动性保持充裕")).toBe(true);
     expect(isPolicyFundingRelevantForHomeBriefing("国际油价直线拉升")).toBe(false);
+    expect(isPolicyFundingRelevantForHomeBriefing("公司无限售流通股占总股本18.79%，流动性不足")).toBe(false);
+    expect(isPolicyFundingRelevantForHomeBriefing("采购工作受财政、法律、技术因素影响进展缓慢")).toBe(false);
+    expect(
+      isPolicyFundingRelevantForHomeBriefing("A股策略称资金面受ETF持续净流出影响，板块短期扰动"),
+    ).toBe(false);
     expect(
       shouldIncludeMacroNewsEvent(
         event({

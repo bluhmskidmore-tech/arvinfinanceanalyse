@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import styles from "./dashboardHomeShell.module.css";
 import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
@@ -19,6 +20,7 @@ const HOME_DEFERRED_CONTENT_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End
 const HOME_DEFERRED_CONTENT_IDLE_MIN_DELAY_MS = 800;
 const HOME_DEFERRED_CONTENT_IDLE_TIMEOUT_MS = 1_200;
 const HOME_DEFERRED_CONTENT_TIMEOUT_FALLBACK_MS = 600;
+const POLICY_FUNDING_DEEP_LINK_PATH = "/政策与资金面";
 
 const DeferredTerminalHomeContent = lazy(() =>
   import("./DeferredTerminalHomeContent").then((module) => ({
@@ -53,7 +55,15 @@ function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydrat
   });
 }
 
-function useDeferredHomeContent(snapshotSettled: boolean) {
+function isPolicyFundingDeepLink(pathname: string): boolean {
+  try {
+    return decodeURIComponent(pathname) === POLICY_FUNDING_DEEP_LINK_PATH;
+  } catch {
+    return pathname === POLICY_FUNDING_DEEP_LINK_PATH;
+  }
+}
+
+function useDeferredHomeContent(snapshotSettled: boolean, eagerLoad: boolean) {
   const [shouldLoad, setShouldLoad] = useState(false);
   const [userReachedDeferredContent, setUserReachedDeferredContent] = useState(false);
 
@@ -65,6 +75,12 @@ function useDeferredHomeContent(snapshotSettled: boolean) {
   }, [snapshotSettled]);
 
   useEffect(() => {
+    if (eagerLoad && snapshotSettled) {
+      setUserReachedDeferredContent(true);
+      setShouldLoad(true);
+      return undefined;
+    }
+
     if (shouldLoad || userReachedDeferredContent) {
       return undefined;
     }
@@ -86,9 +102,14 @@ function useDeferredHomeContent(snapshotSettled: boolean) {
     window.addEventListener("keydown", handleKeyDown);
 
     return removeReachListeners;
-  }, [markUserReached, shouldLoad, userReachedDeferredContent]);
+  }, [eagerLoad, markUserReached, shouldLoad, snapshotSettled, userReachedDeferredContent]);
 
   useEffect(() => {
+    if (eagerLoad && snapshotSettled) {
+      setShouldLoad(true);
+      return undefined;
+    }
+
     if (shouldLoad || !snapshotSettled) {
       return undefined;
     }
@@ -141,12 +162,14 @@ function useDeferredHomeContent(snapshotSettled: boolean) {
       isActive = false;
       cancelScheduledWork();
     };
-  }, [shouldLoad, snapshotSettled, userReachedDeferredContent]);
+  }, [eagerLoad, shouldLoad, snapshotSettled, userReachedDeferredContent]);
 
   return { shouldLoad, userReachedDeferredContent };
 }
 
 export default function DashboardHomePage() {
+  const location = useLocation();
+  const shouldFocusPolicyFunding = isPolicyFundingDeepLink(location.pathname);
   const {
     view,
     reportDate,
@@ -163,7 +186,7 @@ export default function DashboardHomePage() {
   const {
     shouldLoad: loadDeferredContent,
     userReachedDeferredContent,
-  } = useDeferredHomeContent(!snapshotQuery.isFetching);
+  } = useDeferredHomeContent(!snapshotQuery.isFetching, shouldFocusPolicyFunding);
   const [hydratedFirstScreen, setHydratedFirstScreen] =
     useState<HydratedFirstScreenState | null>(null);
   const activeReportDate = view.reportDate;
@@ -224,6 +247,7 @@ export default function DashboardHomePage() {
               <DeferredTerminalHomeContent
                 snapshotBoundary={snapshotBoundary}
                 userReachedDeferredContent={userReachedDeferredContent}
+                focusPolicyFunding={shouldFocusPolicyFunding}
                 onFirstScreenHydrated={handleFirstScreenHydrated}
               />
             </Suspense>

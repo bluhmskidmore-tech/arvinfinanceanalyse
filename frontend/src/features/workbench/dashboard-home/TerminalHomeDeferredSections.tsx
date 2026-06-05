@@ -8,6 +8,7 @@ import styles from "./dashboardHome.module.css";
 
 type TerminalHomeDeferredSectionsProps = {
   view: DashboardHomeBodyView;
+  focusPolicyFunding?: boolean;
 };
 
 function QuickDrilldowns({ view }: { view: DashboardHomeBodyView }) {
@@ -30,11 +31,17 @@ function QuickDrilldowns({ view }: { view: DashboardHomeBodyView }) {
   );
 }
 
-export function TerminalHomeDeferredSections({ view }: TerminalHomeDeferredSectionsProps) {
+export function TerminalHomeDeferredSections({
+  view,
+  focusPolicyFunding = false,
+}: TerminalHomeDeferredSectionsProps) {
   return (
     <>
       <BondNewsSection bondNews={view.bondNews} />
-      <ResearchCalendarSection macroBriefing={view.macroBriefing} />
+      <ResearchCalendarSection
+        macroBriefing={view.macroBriefing}
+        focusPolicyFunding={focusPolicyFunding}
+      />
       <QuickDrilldowns view={view} />
     </>
   );

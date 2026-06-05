@@ -1,4 +1,5 @@
 export const DASHBOARD_MACRO_NEWS_TOPIC_LIMIT = 6;
+export const DASHBOARD_MACRO_NEWS_FALLBACK_SCAN_LIMIT = 200;
 export const DASHBOARD_BOND_NEWS_TOPIC_LIMIT = 8;
 
 export const DASHBOARD_MACRO_NEWS_TOPICS = [
@@ -12,9 +13,9 @@ export const DASHBOARD_MACRO_NEWS_TOPICS = [
 
 /** Tushare streams landed in `choice_news_event` when Choice sectornews is unavailable. */
 export const DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS = [
-  { code: "tushare.major_news", label: "重大新闻" },
-  { code: "tushare.news.sina", label: "市场快讯" },
-  { code: "tushare.npr", label: "政策要闻" },
+  { code: "tushare.major_news", label: "重大新闻", queryLimit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT },
+  { code: "tushare.news.sina", label: "市场快讯", queryLimit: DASHBOARD_MACRO_NEWS_FALLBACK_SCAN_LIMIT },
+  { code: "tushare.npr", label: "政策要闻", queryLimit: DASHBOARD_MACRO_NEWS_TOPIC_LIMIT },
 ] as const;
 
 export const DASHBOARD_BOND_NEWS_TOPICS = [

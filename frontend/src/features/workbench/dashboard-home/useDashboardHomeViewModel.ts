@@ -143,7 +143,10 @@ function useFormalContextDataGate(reportDate: string | undefined) {
   });
 }
 
-export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapshotBoundary) {
+export function useDashboardHomeViewModel(
+  snapshotBoundary: DashboardHomeSnapshotBoundary,
+  options: { eagerEventFeeds?: boolean } = {},
+) {
   const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
   const [formalContextReportDate, setFormalContextReportDate] = useState<string | null>(null);
 
@@ -175,20 +178,25 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
       : undefined,
   );
   const hasEventFeedData = useEventFeedDataGate(
-    hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
+    hasDeferredSupplementalReportDate && !options.eagerEventFeeds
+      ? supplementalReportDate
+      : undefined,
   );
+  const eventFeedsReady = options.eagerEventFeeds || hasEventFeedData;
   const hasSecondaryEventFeedData = useSecondaryEventFeedDataGate(
-    hasDeferredSupplementalReportDate && hasEventFeedData
+    hasDeferredSupplementalReportDate && eventFeedsReady
       ? supplementalReportDate
       : undefined,
   );
-  const hasBondNewsFeedData = useBondNewsFeedDataGate(
+  const secondaryEventFeedsReady = hasSecondaryEventFeedData;
+  const shouldLoadBondNewsGate =
     hasDeferredSupplementalReportDate &&
-      hasEventFeedData &&
-      hasSecondaryEventFeedData
-      ? supplementalReportDate
-      : undefined,
+    eventFeedsReady &&
+    secondaryEventFeedsReady;
+  const hasBondNewsFeedData = useBondNewsFeedDataGate(
+    shouldLoadBondNewsGate ? supplementalReportDate : undefined,
   );
+  const bondNewsFeedsReady = hasBondNewsFeedData;
   const hasFormalContextData = useFormalContextDataGate(
     hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
   );
@@ -226,16 +234,16 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     dataClient,
     supplementalReportDate,
     loadBasicData: hasDeferredSupplementalData,
-    loadEventFeeds: hasDeferredSupplementalReportDate && hasEventFeedData,
+    loadEventFeeds: hasDeferredSupplementalReportDate && eventFeedsReady,
     loadSecondaryEventFeeds:
       hasDeferredSupplementalReportDate &&
-      hasEventFeedData &&
-      hasSecondaryEventFeedData,
+      eventFeedsReady &&
+      secondaryEventFeedsReady,
     loadBondNewsFeeds:
       hasDeferredSupplementalReportDate &&
-      hasEventFeedData &&
-      hasSecondaryEventFeedData &&
-      hasBondNewsFeedData,
+      eventFeedsReady &&
+      secondaryEventFeedsReady &&
+      bondNewsFeedsReady,
     loadFormalData: hasDeferredFormalContext,
   });
 

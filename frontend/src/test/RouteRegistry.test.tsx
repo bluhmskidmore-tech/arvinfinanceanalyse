@@ -1,9 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
 import { workbenchSections } from "../router/routes";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
@@ -163,6 +165,23 @@ vi.mock("../features/pnl-attribution/pages/PnlAttributionPage", () => ({
   ),
 }));
 
+vi.mock("../features/average-balance/pages/AverageBalancePage", () => ({
+  default: () => (
+    <section data-testid="average-balance-page">
+      <h1>日均分析</h1>
+    </section>
+  ),
+}));
+
+vi.mock("../features/balance-analysis/pages/BalanceAnalysisPage", () => ({
+  default: () => (
+    <section data-testid="balance-analysis-page">
+      <div data-testid="balance-analysis-overview-cards" />
+      <div data-testid="balance-analysis-table" />
+    </section>
+  ),
+}));
+
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
@@ -190,6 +209,14 @@ vi.mock("../features/stock-analysis/pages/StockAnalysisPage", () => ({
     </section>
   ),
 }));
+
+vi.mock("../app/ThemedRouteBoundary", () => ({
+  default: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+beforeAll(async () => {
+  await preloadWorkbenchRouteModules("agent", "dashboard-home", "decision-items", "news-events");
+}, 20_000);
 
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
@@ -271,6 +298,17 @@ describe("RouteRegistry", () => {
         name: /经营驾驶舱/,
       }),
     ).toBeInTheDocument();
+  });
+
+  it("renders the policy funding direct Chinese path as the dashboard home", async () => {
+    renderWorkbenchApp(["/政策与资金面"], { client: mockClient });
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-home-policy-funding-pane")).toHaveAttribute(
+      "data-focused",
+      "true",
+    );
   });
 
   it("renders the positions route", async () => {

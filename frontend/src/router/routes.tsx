@@ -443,6 +443,10 @@ export const workbenchRoutes: RouteObject[] = [
         element: routeElement(<DashboardHomePage />),
       },
       {
+        path: "政策与资金面",
+        element: routeElement(<DashboardHomePage />),
+      },
+      {
         path: "product-category-pnl/audit",
         element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
       },

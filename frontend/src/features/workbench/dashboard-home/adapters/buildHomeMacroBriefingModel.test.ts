@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ChoiceNewsEvent } from "../../../../api/contracts";
 import {
+  buildPolicyFundingSummary,
   resolveHomeMacroNewsBriefing,
   shouldUseMacroNewsFallback,
 } from "./buildHomeMacroBriefingModel";
@@ -136,6 +137,30 @@ describe("resolveHomeMacroNewsBriefing", () => {
     expect(result.newsStale).toBe(false);
     expect(result.newsAsOfLabel).toBe("数据截至 06-01 08:19");
     expect(result.newsRefreshLabel).toBe("刷新：随页面查询读取已落库数据");
+  });
+
+  it("waits for Tushare fallback before surfacing a landed Choice permission error", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: true,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-permission-error",
+          received_at: "2026-06-01T00:24:35.004899+00:00",
+          topic_code: "S888010007API",
+          error_code: 10001012,
+          error_msg: "insufficient user access",
+          payload_text: null,
+        }),
+      ],
+      fallbackEvents: [],
+    });
+
+    expect(result.newsItems).toHaveLength(0);
+    expect(result.newsMessage).toBe("正在加载政策与资金面…");
+    expect(result.newsSourceLabel).toBe("来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）");
+    expect(result.newsStatusLabel).toBe("来源状态：加载中");
   });
 
   it("uses relaxed Tushare macro fallback when Choice has a permission error and no strict funding news is available", () => {
@@ -297,5 +322,59 @@ describe("resolveHomeMacroNewsBriefing", () => {
 
     expect(result.newsItems[0]?.timeLabel).toBe("时间待核");
     expect(result.newsAsOfLabel).toBe("数据截至 时间待核");
+  });
+});
+
+describe("buildPolicyFundingSummary", () => {
+  it("summarizes fallback news into source chips and scan groups", () => {
+    const result = buildPolicyFundingSummary({
+      newsItems: [
+        {
+          id: "repo",
+          timeLabel: "06-03 20:01",
+          topicLabel: "市场快讯",
+          title: "本周中国央行公开市场将有9089亿元逆回购到期",
+          freshnessLabel: "最近更新 06-03 20:01",
+        },
+        {
+          id: "us10y",
+          timeLabel: "06-03 20:17",
+          topicLabel: "市场快讯",
+          title: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+          freshnessLabel: "最近更新 06-03 20:17",
+        },
+      ],
+      newsMessage: null,
+      newsStale: false,
+      newsFreshnessLabel: "最近更新 06-03 20:17",
+      newsSourceLabel: "来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）",
+      newsAsOfLabel: "数据截至 06-03 20:17",
+      newsStatusLabel: "来源状态：Tushare 兜底",
+      newsRefreshLabel: "刷新：随页面查询读取已落库数据",
+    });
+
+    expect(result.headline).toBe("2 条政策与资金面快讯，重点集中在央行/公开市场、利率/债券。");
+    expect(result.chips.map((chip) => chip.label)).toEqual(["Tushare 兜底", "数据截至 06-03 20:17", "最近更新 06-03 20:17"]);
+    expect(result.groups.map((group) => group.label)).toEqual(["央行/公开市场", "利率/债券"]);
+    expect(result.groups[0]?.items[0]?.id).toBe("repo");
+    expect(result.groups[1]?.items[0]?.id).toBe("us10y");
+  });
+
+  it("keeps stale and empty states explicit without implying a market conclusion", () => {
+    const stale = buildPolicyFundingSummary({
+      newsItems: [],
+      newsMessage: "政策与资金面：暂无债券相关更新",
+      newsStale: true,
+      newsFreshnessLabel: "暂无更新",
+      newsSourceLabel: "来源：Choice 宏观新闻",
+      newsAsOfLabel: "数据截至：暂无",
+      newsStatusLabel: "来源状态：偏旧",
+      newsRefreshLabel: "刷新：随页面查询读取已落库数据",
+    });
+
+    expect(stale.headline).toBe("暂无可展示的政策与资金面快讯。");
+    expect(stale.groups).toHaveLength(0);
+    expect(stale.chips.map((chip) => chip.label)).toContain("新闻源偏旧");
+    expect(stale.chips.map((chip) => chip.label)).toContain("暂无更新");
   });
 });

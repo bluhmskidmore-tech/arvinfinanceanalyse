@@ -24,6 +24,7 @@ const BODY_TIMEOUT_FALLBACK_MS = 900;
 type DeferredTerminalHomeContentProps = {
   snapshotBoundary: DashboardHomeSnapshotBoundary;
   userReachedDeferredContent: boolean;
+  focusPolicyFunding?: boolean;
   onFirstScreenHydrated?: (hydration: DashboardHomeFirstScreenHydration) => void;
 };
 
@@ -52,6 +53,7 @@ function firstScreenHydrationSignature(hydration: DashboardHomeFirstScreenHydrat
 export function DeferredTerminalHomeContent({
   snapshotBoundary,
   userReachedDeferredContent,
+  focusPolicyFunding = false,
   onFirstScreenHydrated,
 }: DeferredTerminalHomeContentProps) {
   const [loadFirstScreenHydration, setLoadFirstScreenHydration] = useState(false);
@@ -74,6 +76,11 @@ export function DeferredTerminalHomeContent({
   }, [firstScreenHydration, hydrationSignature, onFirstScreenHydrated]);
 
   useEffect(() => {
+    if (focusPolicyFunding) {
+      setLoadBody(true);
+      return undefined;
+    }
+
     if (userReachedDeferredContent) {
       setLoadBody(true);
       return undefined;
@@ -142,7 +149,7 @@ export function DeferredTerminalHomeContent({
       removeReachListeners();
       cancelScheduledWork();
     };
-  }, [loadBody, userReachedDeferredContent]);
+  }, [focusPolicyFunding, loadBody, userReachedDeferredContent]);
 
   useEffect(() => {
     if (loadBody) {
@@ -156,7 +163,10 @@ export function DeferredTerminalHomeContent({
 
   return (
     <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
-      <DeferredTerminalHomeBody snapshotBoundary={snapshotBoundary} />
+      <DeferredTerminalHomeBody
+        snapshotBoundary={snapshotBoundary}
+        focusPolicyFunding={focusPolicyFunding}
+      />
     </Suspense>
   );
 }

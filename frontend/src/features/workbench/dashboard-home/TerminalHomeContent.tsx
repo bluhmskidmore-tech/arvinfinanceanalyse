@@ -7,6 +7,7 @@ import styles from "./dashboardHome.module.css";
 type TerminalHomeContentProps = {
   view: DashboardHomeBodyView;
   showFirstScreen?: boolean;
+  focusPolicyFunding?: boolean;
 };
 
 const TerminalHomeWorkGrid = lazy(() =>
@@ -72,7 +73,11 @@ function MarketContextPanel({ view }: { view: DashboardHomeBodyView }) {
   );
 }
 
-export function TerminalHomeContent({ view, showFirstScreen = true }: TerminalHomeContentProps) {
+export function TerminalHomeContent({
+  view,
+  showFirstScreen = true,
+  focusPolicyFunding = false,
+}: TerminalHomeContentProps) {
   void showFirstScreen;
   return (
     <>
@@ -83,7 +88,7 @@ export function TerminalHomeContent({ view, showFirstScreen = true }: TerminalHo
       </Suspense>
 
       <Suspense fallback={<div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />}>
-        <TerminalHomeDeferredSections view={view} />
+        <TerminalHomeDeferredSections view={view} focusPolicyFunding={focusPolicyFunding} />
       </Suspense>
     </>
   );
