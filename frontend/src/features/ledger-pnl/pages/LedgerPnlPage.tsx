@@ -1003,6 +1003,61 @@ function isForbiddenLedgerError(error: unknown) {
   return message.includes("(403)") || message.includes("not allowed") || message.includes("403");
 }
 
+function formatLedgerReadFailureSegments(props: {
+  isDatesError: boolean;
+  isSummaryError: boolean;
+  isDataError: boolean;
+}) {
+  const segments = [
+    props.isDatesError ? "报告日清单" : null,
+    props.isSummaryError ? "汇总" : null,
+    props.isDataError ? "明细" : null,
+  ].filter(Boolean);
+  return segments.length > 0 ? segments.join("、") : "无";
+}
+
+function formatLedgerReadStatus(props: {
+  selectedReportDate: string;
+  isDatesLoading: boolean;
+  isSummaryLoading: boolean;
+  isDataLoading: boolean;
+  isDatesError: boolean;
+  isSummaryError: boolean;
+  isDataError: boolean;
+}) {
+  if (props.isDatesError || props.isSummaryError || props.isDataError) {
+    return `${formatLedgerReadFailureSegments(props)}读取失败`;
+  }
+  if (!props.selectedReportDate) {
+    return "等待报告日";
+  }
+  if (props.isDatesLoading || props.isSummaryLoading || props.isDataLoading) {
+    return "等待读取完成";
+  }
+  return "总账接口已读取";
+}
+
+function formatLedgerReadAction(props: {
+  selectedReportDate: string;
+  isDatesLoading: boolean;
+  isSummaryLoading: boolean;
+  isDataLoading: boolean;
+  isDatesError: boolean;
+  isSummaryError: boolean;
+  isDataError: boolean;
+}) {
+  if (props.isDatesError || props.isSummaryError || props.isDataError) {
+    return `恢复${formatLedgerReadFailureSegments(props)}读取`;
+  }
+  if (!props.selectedReportDate) {
+    return "先选择报告日";
+  }
+  if (props.isDatesLoading || props.isSummaryLoading || props.isDataLoading) {
+    return "等待总账读取完成";
+  }
+  return "总账读取链路已闭合";
+}
+
 function hasLedgerPnlEvidence(props: {
   summary: LedgerPnlSummaryPayload | undefined;
   summaryMeta: ResultMeta | null | undefined;
@@ -1087,6 +1142,12 @@ function buildLedgerFunctionalAuditState(props: {
   isMonthlyAnalysisDatesError: boolean;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
+  isDatesLoading: boolean;
+  isSummaryLoading: boolean;
+  isDataLoading: boolean;
+  isDatesError: boolean;
+  isSummaryError: boolean;
+  isDataError: boolean;
   isLoading: boolean;
   isError: boolean;
   readErrors: unknown[];
@@ -1126,6 +1187,18 @@ function buildLedgerFunctionalAuditState(props: {
       : props.hasMatchingAnalysisMonth
         ? "月度分析工作簿已匹配"
         : `补齐 ${props.requestedReportMonth} QDB 月度分析工作簿`;
+  const ledgerReadStatus = formatLedgerReadStatus(props);
+  const ledgerReadAction = formatLedgerReadAction(props);
+  const sharedState = {
+    requestedDate,
+    resolvedDate,
+    asOfDate,
+    sourceVersion,
+    ledgerReadStatus,
+    ledgerReadAction,
+    monthlyAnalysisStatus,
+    monthlyAnalysisAction,
+  };
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
   const emptyFormalContractMetrics = hasEmptyFormalContractMetrics(props.formalIndicatorSourceContract);
@@ -1150,12 +1223,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "pending",
       title: "总账链路读取中",
       detail: "等待汇总、明细和正式财务指标契约返回后再判断。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1167,12 +1235,7 @@ function buildLedgerFunctionalAuditState(props: {
       detail: forbidden
         ? "当前用户没有 ledger_pnl 读取权限；本次不能形成总账损益判断。"
         : "本次不能形成总账损益判断；请先恢复接口读取。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1181,12 +1244,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "没有可选报告日",
       detail: "日期接口没有返回总账报告日，需要先确认源文件发现链路。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1195,12 +1253,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "缺少报告日",
       detail: "没有报告日就不能确定总账切片，也不能判断月度工作簿匹配关系。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1209,12 +1262,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "报告日未列入可选清单",
       detail: "接口仍按查询日期返回了总账切片，但需要核对日期清单和源文件登记。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1223,12 +1271,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账损益证据缺失",
       detail: "汇总没有损益证据行，不能把总账明细或空汇总解释为真实 PnL 0。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1239,12 +1282,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "pending",
       title: "总账候选解释可用，正式契约读取中",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；正式财务指标契约仍在读取，先不要形成正式财务指标结论。`,
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1255,12 +1293,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，正式契约读取失败",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但正式财务指标契约读取失败，不能形成正式财务指标结论。`,
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1271,12 +1304,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，正式契约明细缺失",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但正式财务指标契约没有指标明细，不能形成正式财务指标结论。`,
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1285,12 +1313,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "ok",
       title: "正式财务指标可用",
       detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1301,12 +1324,7 @@ function buildLedgerFunctionalAuditState(props: {
       detail:
         releaseGate.blocking_reason?.trim() ||
         "正式财务指标契约已登记，但尚未满足正式放行条件。",
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1322,12 +1340,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，月度分析工作簿缺失",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但 ${props.requestedReportMonth} 月度分析工作簿未匹配，不能复核 QDB 月度分析或正式指标落地状态。`,
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1339,12 +1352,7 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，正式指标不可判定",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但 ${reportMonth} 正式财务指标契约缺失，不能形成正式财务指标结论。`,
-      requestedDate,
-      resolvedDate,
-      asOfDate,
-      sourceVersion,
-      monthlyAnalysisStatus,
-      monthlyAnalysisAction,
+      ...sharedState,
       formalStatus,
     };
   }
@@ -1352,12 +1360,7 @@ function buildLedgerFunctionalAuditState(props: {
     tone: "ok",
     title: "总账候选口径可分析",
     detail: "当前有总账损益证据行，可做候选对账和解释；正式 PnL 与正式财务指标仍需单独放行。",
-    requestedDate,
-    resolvedDate,
-    asOfDate,
-    sourceVersion,
-    monthlyAnalysisStatus,
-    monthlyAnalysisAction,
+    ...sharedState,
     formalStatus,
   };
 }
@@ -1378,6 +1381,12 @@ function LedgerFunctionalAuditStrip(props: {
   isMonthlyAnalysisDatesError: boolean;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
+  isDatesLoading: boolean;
+  isSummaryLoading: boolean;
+  isDataLoading: boolean;
+  isDatesError: boolean;
+  isSummaryError: boolean;
+  isDataError: boolean;
   isLoading: boolean;
   isError: boolean;
   readErrors: unknown[];
@@ -1472,6 +1481,10 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.sourceVersion}</strong>
         </div>
         <div>
+          <span>总账读取环节</span>
+          <strong>{state.ledgerReadStatus}</strong>
+        </div>
+        <div>
           <span>月度工作簿</span>
           <strong>{state.monthlyAnalysisStatus}</strong>
         </div>
@@ -1533,6 +1546,10 @@ function LedgerFunctionalAuditStrip(props: {
                 {candidateEvidencePath}
               </button>
             )}
+          </div>
+          <div>
+            <span>总账恢复路径</span>
+            <strong>{state.ledgerReadAction}</strong>
           </div>
           <div>
             <span>月度分析工作簿</span>
@@ -3052,6 +3069,12 @@ export default function LedgerPnlPage() {
         isMonthlyAnalysisDatesError={monthlyAnalysisDatesQuery.isError}
         isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
         isFormalContractError={formalIndicatorSourceContractQuery.isError}
+        isDatesLoading={datesQuery.isLoading}
+        isSummaryLoading={summaryQuery.isLoading}
+        isDataLoading={dataQuery.isLoading}
+        isDatesError={datesQuery.isError}
+        isSummaryError={summaryQuery.isError}
+        isDataError={dataQuery.isError}
         isLoading={datesQuery.isLoading || summaryQuery.isLoading || dataQuery.isLoading}
         isError={datesQuery.isError || summaryQuery.isError || dataQuery.isError}
         readErrors={[datesQuery.error, summaryQuery.error, dataQuery.error]}

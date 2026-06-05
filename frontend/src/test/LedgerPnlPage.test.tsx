@@ -1350,6 +1350,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("补齐 202605 正式财务指标 Excel 冻结样本");
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
+      expect(strip).toHaveTextContent("总账读取环节总账接口已读取");
       expect(strip).toHaveTextContent("候选补证入口 候选链路已闭合，无需补证");
       expect(strip).toHaveTextContent("候选证据定位 残差诊断表 · 无需补证");
       expect(strip).not.toHaveTextContent("补证入口 暂无补证入口");
@@ -1358,6 +1359,7 @@ describe("LedgerPnlPage", () => {
     const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
     expect(decisionPath).toHaveTextContent("候选解释可信度已闭合 · 覆盖率 100.00%");
     expect(decisionPath).toHaveTextContent("候选补证路径候选链路已闭合，无需补证");
+    expect(decisionPath).toHaveTextContent("总账恢复路径总账读取链路已闭合");
     expect(decisionPath).toHaveTextContent("正式补证路径补齐 202605 正式财务指标 Excel 冻结样本");
     expect(decisionPath).toHaveTextContent(
       "正式补证结论202605 正式样本缺失；先补齐样本，再登记 source contract、回读正式契约并核对 QDB 候选值",
@@ -2612,6 +2614,12 @@ describe("LedgerPnlPage", () => {
       "/ledger-pnl?report_date=2026-05-31",
     );
 
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账读取环节汇总、明细读取失败");
+    });
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("总账恢复路径恢复汇总、明细读取");
     expect(await screen.findByText("币种汇总读取失败")).toBeInTheDocument();
     expect(screen.getByTestId("ledger-pnl-account-summary-table")).toHaveTextContent("科目汇总读取失败");
     expect(screen.getByTestId("ledger-pnl-detail-table")).toHaveTextContent("科目明细读取失败");
