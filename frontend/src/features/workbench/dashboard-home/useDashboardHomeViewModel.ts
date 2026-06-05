@@ -15,6 +15,9 @@ type IdleWindow = Window & {
 const BODY_DETAIL_IDLE_MIN_DELAY_MS = 1_000;
 const BODY_DETAIL_IDLE_TIMEOUT_MS = 1_200;
 const BODY_DETAIL_TIMEOUT_FALLBACK_MS = 900;
+const BODY_STRUCTURE_IDLE_MIN_DELAY_MS = 1_000;
+const BODY_STRUCTURE_IDLE_TIMEOUT_MS = 1_200;
+const BODY_STRUCTURE_TIMEOUT_FALLBACK_MS = 900;
 const EVENT_FEED_IDLE_MIN_DELAY_MS = 1_000;
 const EVENT_FEED_IDLE_TIMEOUT_MS = 1_200;
 const EVENT_FEED_TIMEOUT_FALLBACK_MS = 900;
@@ -108,6 +111,14 @@ function useEventFeedDataGate(reportDate: string | undefined) {
   });
 }
 
+function useBodyStructureDataGate(reportDate: string | undefined) {
+  return useDeferredReportDateGate(reportDate, {
+    minDelayMs: BODY_STRUCTURE_IDLE_MIN_DELAY_MS,
+    idleTimeoutMs: BODY_STRUCTURE_IDLE_TIMEOUT_MS,
+    timeoutFallbackMs: BODY_STRUCTURE_TIMEOUT_FALLBACK_MS,
+  });
+}
+
 function useSecondaryEventFeedDataGate(reportDate: string | undefined) {
   return useDeferredReportDateGate(reportDate, {
     minDelayMs: SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS,
@@ -158,39 +169,35 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
   const hasBodyDetailData = useBodyDetailDataGate(
     hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
   );
+  const hasBodyStructureData = useBodyStructureDataGate(
+    hasDeferredSupplementalReportDate && hasBodyDetailData
+      ? supplementalReportDate
+      : undefined,
+  );
   const hasEventFeedData = useEventFeedDataGate(
-    hasDeferredSupplementalReportDate && hasBodyDetailData ? supplementalReportDate : undefined,
+    hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
   );
   const hasSecondaryEventFeedData = useSecondaryEventFeedDataGate(
-    hasDeferredSupplementalReportDate && hasBodyDetailData && hasEventFeedData
+    hasDeferredSupplementalReportDate && hasEventFeedData
       ? supplementalReportDate
       : undefined,
   );
   const hasBondNewsFeedData = useBondNewsFeedDataGate(
     hasDeferredSupplementalReportDate &&
-      hasBodyDetailData &&
       hasEventFeedData &&
       hasSecondaryEventFeedData
       ? supplementalReportDate
       : undefined,
   );
   const hasFormalContextData = useFormalContextDataGate(
-    hasDeferredSupplementalReportDate &&
-      hasBodyDetailData &&
-      hasEventFeedData &&
-      hasSecondaryEventFeedData &&
-      hasBondNewsFeedData
-      ? supplementalReportDate
-      : undefined,
+    hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
   );
-  const hasDeferredFormalContext =
+  const hasDeferredIncomeTrendData =
     hasDeferredSupplementalReportDate &&
-    hasBodyDetailData &&
-    hasEventFeedData &&
-    hasSecondaryEventFeedData &&
-    hasBondNewsFeedData &&
     hasFormalContextData &&
-    Boolean(supplementalReportDate) &&
+    Boolean(supplementalReportDate);
+  const hasDeferredFormalContext =
+    hasDeferredIncomeTrendData &&
     formalContextReportDate === supplementalReportDate;
 
   useEffect(() => {
@@ -219,15 +226,13 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     dataClient,
     supplementalReportDate,
     loadBasicData: hasDeferredSupplementalData,
-    loadEventFeeds: hasDeferredSupplementalReportDate && hasBodyDetailData && hasEventFeedData,
+    loadEventFeeds: hasDeferredSupplementalReportDate && hasEventFeedData,
     loadSecondaryEventFeeds:
       hasDeferredSupplementalReportDate &&
-      hasBodyDetailData &&
       hasEventFeedData &&
       hasSecondaryEventFeedData,
     loadBondNewsFeeds:
       hasDeferredSupplementalReportDate &&
-      hasBodyDetailData &&
       hasEventFeedData &&
       hasSecondaryEventFeedData &&
       hasBondNewsFeedData,
@@ -239,7 +244,7 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getBondDashboardHomeSummary(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
 
   const topHoldingsQuery = useQuery({
@@ -247,7 +252,7 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getBondAnalyticsTopHoldings(supplementalReportDate ?? "", 8),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
 
   const positionChangesQuery = useQuery({
@@ -255,16 +260,22 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getBondAnalyticsPositionChanges(supplementalReportDate ?? "", 5),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
   const heavyBondListsReady =
     hasDeferredSupplementalReportDate &&
     hasBodyDetailData &&
+    hasBodyStructureData &&
     (topHoldingsQuery.isSuccess || topHoldingsQuery.isError) &&
     (positionChangesQuery.isSuccess || positionChangesQuery.isError);
 
   useEffect(() => {
-    if (!hasDeferredSupplementalReportDate || !hasBodyDetailData || !supplementalReportDate) {
+    if (
+      !hasDeferredSupplementalReportDate ||
+      !hasBodyDetailData ||
+      !hasBodyStructureData ||
+      !supplementalReportDate
+    ) {
       setFormalContextReportDate(null);
       return;
     }
@@ -274,6 +285,7 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
   }, [
     hasDeferredSupplementalReportDate,
     hasBodyDetailData,
+    hasBodyStructureData,
     heavyBondListsReady,
     supplementalReportDate,
   ]);
@@ -283,7 +295,7 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getHomeResearchReports(supplementalReportDate ?? "", 5),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData,
+    enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
 
   const incomeTrendQuery = useQuery({
@@ -291,7 +303,7 @@ export function useDashboardHomeViewModel(snapshotBoundary: DashboardHomeSnapsho
     queryFn: () => dataClient.getHomeIncomeTrend(supplementalReportDate ?? "", 7),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredFormalContext,
+    enabled: hasDeferredIncomeTrendData,
   });
 
   const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);

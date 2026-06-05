@@ -9,18 +9,19 @@ import type {
   HomeSnapshotOverviewMetricVM,
   HomeSnapshotPnlAttributionVM,
 } from "./dashboardHomeSnapshotAdapter";
-import {
-  DASHBOARD_COCKPIT_HEADER_STATUS,
-  DASHBOARD_COCKPIT_REPORT_DATE,
-  DASHBOARD_MARKET_PULSE_MOCK,
-} from "../dashboard/dashboardMockData";
 import type {
   DashboardHomeFirstScreenView,
+  HomeDecisionAction,
   HomeDataStateKind,
   HomeDeltaTone,
   HomeRiskTicker,
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
+import {
+  HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS,
+  HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE,
+  HOME_FIRST_SCREEN_MARKET_PULSE_FALLBACK,
+} from "./homeFirstScreenFallback";
 
 type NumericLike = Numeric | string | number | null | undefined;
 
@@ -39,6 +40,16 @@ export type MapToHomeFirstScreenViewInput = {
 };
 
 const GAP = "—";
+
+const DECISION_ACTION_ROUTES = new Set([
+  "/bond-analysis",
+  "/cashflow-projection",
+  "/concentration-monitor",
+  "/cross-asset",
+  "/pnl-attribution",
+  "/risk-overview",
+  "/risk-tensor",
+]);
 
 function isNumericObject(value: NumericLike): value is Numeric {
   return typeof value === "object" && value !== null && "raw" in value;
@@ -227,6 +238,117 @@ function isSameReportDate(expected: string, actual: string | null | undefined): 
   return a.length > 0 && b.length > 0 && a === b;
 }
 
+function isConcreteReportDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(cleanDate(value));
+}
+
+function reportDatePath(path: string | null | undefined, reportDate: string): string | undefined {
+  const trimmed = path?.trim();
+  if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(trimmed, "http://moss.local");
+    if (!DECISION_ACTION_ROUTES.has(url.pathname)) {
+      return undefined;
+    }
+    if (isConcreteReportDate(reportDate) && !url.searchParams.has("report_date")) {
+      url.searchParams.set("report_date", reportDate);
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function sourceLabelForPath(path: string): string {
+  const pathname = path.split(/[?#]/, 1)[0] ?? "";
+  if (pathname === "/risk-tensor") return "risk-tensor";
+  if (pathname === "/risk-overview") return "risk";
+  if (pathname === "/pnl-attribution") return "pnl-attribution";
+  if (pathname === "/cross-asset") return "cross-asset";
+
+  const firstSegment = pathname.split("/").filter(Boolean)[0];
+  return firstSegment || "home";
+}
+
+function actionIdForSuggestion(index: number, to: string, title: string): string {
+  const source = sourceLabelForPath(to);
+  const titleToken = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `suggestion-${index + 1}-${titleToken || source}`;
+}
+
+function buildDecisionActions(args: {
+  verdict: VerdictPayload | null;
+  alertCount: number;
+  reportDate: string;
+  snapshotUnavailable: boolean;
+}): HomeDecisionAction[] {
+  if (args.snapshotUnavailable) {
+    return [
+      {
+        id: "snapshot-unavailable",
+        title: "主快照不可用",
+        priority: "high",
+        sourceLabel: "home-snapshot",
+        reason: "等待后端主快照恢复后再下钻",
+        to: undefined,
+        statusKind: "backend-gap",
+      },
+    ];
+  }
+
+  const actions: HomeDecisionAction[] = [];
+  if (args.alertCount > 0) {
+    actions.push({
+      id: "risk-overview",
+      title: "复核风险工作台",
+      priority: "high",
+      sourceLabel: "risk",
+      reason: `${args.alertCount} 项风险事项需要复核`,
+      to: reportDatePath("/risk-overview", args.reportDate),
+      statusKind: "ready",
+    });
+  }
+
+  args.verdict?.suggestions?.forEach((suggestion, index) => {
+    const title = suggestion.text.trim();
+    const to = reportDatePath(suggestion.link, args.reportDate);
+    if (!title || !to) {
+      return;
+    }
+    actions.push({
+      id: actionIdForSuggestion(index, to, title),
+      title,
+      priority: args.alertCount > 0 ? "medium" : "high",
+      sourceLabel: sourceLabelForPath(to),
+      reason: "来自后端经营判断建议",
+      to,
+      statusKind: "ready",
+    });
+  });
+
+  if (actions.length > 0) {
+    return actions.slice(0, 4);
+  }
+
+  return [
+    {
+      id: "no-action",
+      title: "暂无可下钻动作",
+      priority: "low",
+      sourceLabel: "dashboard",
+      reason: "当前没有后端待办或可下钻建议",
+      to: undefined,
+      statusKind: "empty",
+    },
+  ];
+}
+
 function terminalKpiFromNumeric(args: {
   id: string;
   label: string;
@@ -324,12 +446,12 @@ function buildTerminalKpis(args: {
 
 function mockFirstScreenView(): DashboardHomeFirstScreenView {
   return {
-    reportDate: DASHBOARD_COCKPIT_REPORT_DATE,
+    reportDate: HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE,
     useMockFallback: true,
     headerStatus: {
       dataStatusKind: "ok",
-      dataUpdatedAt: DASHBOARD_COCKPIT_HEADER_STATUS.dataUpdatedAt,
-      marketStatus: DASHBOARD_COCKPIT_HEADER_STATUS.marketStatus,
+      dataUpdatedAt: HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS.dataUpdatedAt,
+      marketStatus: HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS.marketStatus,
       valuationLabel: "估值已完成",
       valuationTone: "ok",
       riskReviewCount: 3,
@@ -345,9 +467,29 @@ function mockFirstScreenView(): DashboardHomeFirstScreenView {
       maxContributionValue: "+286.21 万",
       keyRisk: "Top5 集中度 41.35%，久期小幅上升。",
       suggestions: ["优先复核久期超限账户", "关注 Top5 主体敞口", "跟踪利率曲线陡峭化风险"],
+      actions: [
+        {
+          id: "risk-overview",
+          title: "复核风险工作台",
+          priority: "high",
+          sourceLabel: "risk",
+          reason: "3 项风险事项需要复核",
+          to: reportDatePath("/risk-overview", HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE),
+          statusKind: "ready",
+        },
+        {
+          id: "risk-tensor",
+          title: "查看风险张量",
+          priority: "medium",
+          sourceLabel: "risk-tensor",
+          reason: "定位久期与 DV01 贡献",
+          to: reportDatePath("/risk-tensor", HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE),
+          statusKind: "ready",
+        },
+      ],
       pendingSummary: "4 项，其中高优先级 1 项",
-      reportDate: DASHBOARD_COCKPIT_REPORT_DATE,
-      dataUpdatedAt: DASHBOARD_COCKPIT_HEADER_STATUS.dataUpdatedAt,
+      reportDate: HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE,
+      dataUpdatedAt: HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS.dataUpdatedAt,
       dataSyncPrefix: "数据已更新",
     },
     terminalKpis: [
@@ -421,7 +563,7 @@ function mockFirstScreenView(): DashboardHomeFirstScreenView {
         state: "ready",
       },
     ],
-    keyRiskStrip: DASHBOARD_MARKET_PULSE_MOCK.slice(0, 8).map((item) => ({
+    keyRiskStrip: HOME_FIRST_SCREEN_MARKET_PULSE_FALLBACK.slice(0, 8).map((item) => ({
       id: item.id,
       label: item.label,
       value: item.value,
@@ -463,7 +605,7 @@ export function mapToHomeFirstScreenView(
     portfolio,
     attribution: input.attribution,
   });
-  const keyRiskStrip: HomeRiskTicker[] = DASHBOARD_MARKET_PULSE_MOCK.slice(0, 8).map((item) => ({
+  const keyRiskStrip: HomeRiskTicker[] = HOME_FIRST_SCREEN_MARKET_PULSE_FALLBACK.slice(0, 8).map((item) => ({
     id: item.id,
     label: item.label,
     value: item.value,
@@ -500,6 +642,12 @@ export function mapToHomeFirstScreenView(
       maxContributionValue: GAP,
       keyRisk: verdict?.reasons?.[0]?.label ?? GAP,
       suggestions: suggestions.length > 0 ? suggestions : ["数据待同步"],
+      actions: buildDecisionActions({
+        verdict,
+        alertCount: input.alertCount,
+        reportDate,
+        snapshotUnavailable: input.snapshotUnavailable,
+      }),
       pendingSummary: `${input.alertCount} 项`,
       reportDate,
       dataUpdatedAt,

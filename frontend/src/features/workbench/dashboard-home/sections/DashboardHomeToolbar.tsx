@@ -1,23 +1,23 @@
 import { Link } from "react-router-dom";
 
 import { LightIcon } from "../../../../components/LightIcon";
-import type { DashboardHomeView } from "../dashboardHomeView";
-import styles from "../dashboardHome.module.css";
+import type { HomeHeaderStatus } from "../dashboardHomeFirstScreenTypes";
+import styles from "../dashboardHomeShell.module.css";
 
-function statusPillClass(statusKind: DashboardHomeView["headerStatus"]["dataStatusKind"]) {
+function statusPillClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return statusKind === "ok"
     ? styles.dhStatusPill
     : `${styles.dhStatusPill} ${styles.dhStatusPillWarning}`;
 }
 
-function statusDotClass(statusKind: DashboardHomeView["headerStatus"]["dataStatusKind"]) {
+function statusDotClass(statusKind: HomeHeaderStatus["dataStatusKind"]) {
   return `${styles.dhDot} ${statusKind === "ok" ? styles.dhDotGreen : styles.dhDotOrange}`;
 }
 
 type DashboardHomeToolbarProps = {
   title?: string;
   toolbarTestId?: string;
-  headerStatus: DashboardHomeView["headerStatus"];
+  headerStatus: HomeHeaderStatus;
   reportDateInput: string;
   onReportDateChange: (value: string) => void;
   toolbarSearch: string;

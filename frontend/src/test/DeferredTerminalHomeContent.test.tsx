@@ -37,6 +37,7 @@ function createHydration(
       maxContributionValue: "1.20",
       keyRisk: "no new risk",
       suggestions: ["monitor"],
+      actions: [],
       pendingSummary: "none",
       reportDate: "2026-04-30",
       dataUpdatedAt: "2026-04-30 16:00",

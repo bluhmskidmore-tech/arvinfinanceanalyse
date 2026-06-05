@@ -54,7 +54,10 @@ export function DeferredTerminalHomeContent({
   userReachedDeferredContent,
   onFirstScreenHydrated,
 }: DeferredTerminalHomeContentProps) {
-  const firstScreenHydration = useDashboardHomeSupplementalHydration(snapshotBoundary);
+  const [loadFirstScreenHydration, setLoadFirstScreenHydration] = useState(false);
+  const firstScreenHydration = useDashboardHomeSupplementalHydration(snapshotBoundary, {
+    enabled: loadFirstScreenHydration,
+  });
   const hydrationSignature = useMemo(
     () => firstScreenHydrationSignature(firstScreenHydration),
     [firstScreenHydration],
@@ -140,6 +143,12 @@ export function DeferredTerminalHomeContent({
       cancelScheduledWork();
     };
   }, [loadBody, userReachedDeferredContent]);
+
+  useEffect(() => {
+    if (loadBody) {
+      setLoadFirstScreenHydration(true);
+    }
+  }, [loadBody]);
 
   if (!loadBody) {
     return <div aria-hidden="true" className={styles.dhTerminalDeferredPlaceholder} />;

@@ -14,11 +14,9 @@ import {
   DASHBOARD_MACRO_NEWS_TOPICS,
 } from "../dashboard/dashboardMacroNewsTopics";
 import {
-  getAssetIncomeOverview,
   getCampisiAttributionContext,
   getCreditRiskOverview,
   getMarketTape,
-  getPortfolioHeadlines,
   getReturnDecompositionContext,
   getYieldCurveContext,
 } from "../dashboard/services/dashboardApi";
@@ -55,7 +53,6 @@ export function useDashboardHomeBodyData({
   loadFormalData,
 }: UseDashboardHomeBodyDataOptions) {
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
-  const loadDatedBasicData = loadBasicData && hasSupplementalReportDate;
   const loadDatedFormalData = loadFormalData && hasSupplementalReportDate;
   const dashboardTodayIsoDate = useMemo(() => todayIsoDate(), []);
 
@@ -65,22 +62,6 @@ export function useDashboardHomeBodyData({
     retry: false,
     staleTime: 60_000,
     enabled: loadBasicData,
-  });
-
-  const bondHeadlineQuery = useQuery({
-    queryKey: apiQueryKeys.bondDashboardHeadline(dataClient.mode, supplementalReportDate),
-    queryFn: () => getAssetIncomeOverview(dataClient, supplementalReportDate ?? ""),
-    retry: false,
-    staleTime: 60_000,
-    enabled: loadDatedBasicData,
-  });
-
-  const portfolioHeadlinesQuery = useQuery({
-    queryKey: apiQueryKeys.bondAnalyticsPortfolioHeadlines(dataClient.mode, supplementalReportDate),
-    queryFn: () => getPortfolioHeadlines(dataClient, supplementalReportDate ?? ""),
-    retry: false,
-    staleTime: 60_000,
-    enabled: loadDatedBasicData,
   });
 
   const researchCalendar = useDashboardResearchCalendarQuery({
@@ -251,8 +232,6 @@ export function useDashboardHomeBodyData({
 
   return {
     marketRatesQuery,
-    bondHeadlineQuery,
-    portfolioHeadlinesQuery,
     creditSpreadMigrationQuery,
     returnDecompositionQuery,
     campisiFourEffectsQuery,

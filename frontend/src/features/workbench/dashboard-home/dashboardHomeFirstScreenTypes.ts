@@ -39,6 +39,18 @@ export type HomeRiskTicker = {
   deltaTone: HomeDeltaTone;
 };
 
+export type HomeDecisionActionPriority = "high" | "medium" | "low";
+
+export type HomeDecisionAction = {
+  id: string;
+  title: string;
+  priority: HomeDecisionActionPriority;
+  sourceLabel: string;
+  reason: string;
+  to?: string;
+  statusKind: HomeDataStateKind;
+};
+
 export type HomeDecisionRail = {
   conclusion: string;
   maxDragLabel: string;
@@ -47,6 +59,7 @@ export type HomeDecisionRail = {
   maxContributionValue: string;
   keyRisk: string;
   suggestions: readonly string[];
+  actions: readonly HomeDecisionAction[];
   pendingSummary: string;
   reportDate: string;
   dataUpdatedAt: string;

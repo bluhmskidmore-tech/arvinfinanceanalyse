@@ -10,8 +10,75 @@ import {
 import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
 
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+const FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS = 600;
+const FIRST_SCREEN_HYDRATION_IDLE_TIMEOUT_MS = 1_200;
+const FIRST_SCREEN_HYDRATION_TIMEOUT_FALLBACK_MS = 900;
+
+function useFirstScreenHydrationGate(reportDate: string | undefined, enabled: boolean) {
+  const [readyReportDate, setReadyReportDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReadyReportDate(null);
+    if (!enabled || !reportDate) {
+      return undefined;
+    }
+
+    let isActive = true;
+    const idleWindow = window as IdleWindow;
+    let idleHandle: number | null = null;
+    let timeoutHandle: number | null = null;
+    let delayHandle: number | null = null;
+    const cancelScheduledWork = () => {
+      if (idleHandle != null) {
+        idleWindow.cancelIdleCallback?.(idleHandle);
+        idleHandle = null;
+      }
+      if (timeoutHandle != null) {
+        window.clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      if (delayHandle != null) {
+        window.clearTimeout(delayHandle);
+        delayHandle = null;
+      }
+    };
+    const markReady = () => {
+      if (isActive) {
+        cancelScheduledWork();
+        setReadyReportDate(reportDate);
+      }
+    };
+    const scheduleReady = () => {
+      if (!isActive) {
+        return;
+      }
+      if (idleWindow.requestIdleCallback) {
+        idleHandle = idleWindow.requestIdleCallback(markReady, {
+          timeout: FIRST_SCREEN_HYDRATION_IDLE_TIMEOUT_MS,
+        });
+        return;
+      }
+      timeoutHandle = window.setTimeout(markReady, FIRST_SCREEN_HYDRATION_TIMEOUT_FALLBACK_MS);
+    };
+    delayHandle = window.setTimeout(scheduleReady, FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS);
+
+    return () => {
+      isActive = false;
+      cancelScheduledWork();
+    };
+  }, [enabled, reportDate]);
+
+  return readyReportDate === reportDate;
+}
+
 export function useDashboardHomeSupplementalHydration(
   snapshotBoundary: DashboardHomeSnapshotBoundary,
+  options: { enabled: boolean } = { enabled: true },
 ): DashboardHomeFirstScreenHydration {
   const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
 
@@ -36,6 +103,10 @@ export function useDashboardHomeSupplementalHydration(
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
   const hasDeferredSupplementalReportDate =
     hasDeferredSupplementalData && hasSupplementalReportDate;
+  const hasFirstScreenHydrationData = useFirstScreenHydrationGate(
+    hasDeferredSupplementalReportDate ? supplementalReportDate : undefined,
+    options.enabled,
+  );
 
   useEffect(() => {
     setSupplementalDataReportDate(null);
@@ -51,7 +122,7 @@ export function useDashboardHomeSupplementalHydration(
     queryFn: () => dataClient.getBondDashboardHeadlineKpis(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
   });
 
   const portfolioHeadlinesQuery = useQuery({
@@ -59,7 +130,7 @@ export function useDashboardHomeSupplementalHydration(
     queryFn: () => dataClient.getBondAnalyticsPortfolioHeadlines(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate,
+    enabled: hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
   });
 
   const sanitizedMetrics = useMemo(

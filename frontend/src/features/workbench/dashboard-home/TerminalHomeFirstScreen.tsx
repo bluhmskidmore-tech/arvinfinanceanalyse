@@ -7,7 +7,7 @@ import {
   type HomeDataStateKind,
 } from "./dashboardHomeFirstScreenTypes";
 import { HomeSparkline } from "./HomeSparkline";
-import styles from "./dashboardHome.module.css";
+import styles from "./dashboardHomeShell.module.css";
 
 type TerminalHomeFirstScreenProps = {
   view: DashboardHomeFirstScreenView;
@@ -95,7 +95,7 @@ function RiskStrip({ items }: { items: DashboardHomeFirstScreenView["keyRiskStri
     <section data-testid="dashboard-home-market" className={`${styles.dhCard} ${styles.dhTerminalRiskStrip}`}>
       <div className={styles.dhTerminalPanelHead}>
         <h3>关键风险</h3>
-        <Link to="/risk" className={styles.dhLink}>
+        <Link to="/risk-overview" className={styles.dhLink}>
           更多市场数据 →
         </Link>
       </div>

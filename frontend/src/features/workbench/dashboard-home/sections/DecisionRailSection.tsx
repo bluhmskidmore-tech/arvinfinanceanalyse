@@ -1,6 +1,11 @@
+import { Link } from "react-router-dom";
+
 import { LightIcon, type LightIconName } from "../../../../components/LightIcon";
-import type { DashboardHomeFirstScreenView } from "../dashboardHomeFirstScreenTypes";
-import styles from "../dashboardHome.module.css";
+import type {
+  DashboardHomeFirstScreenView,
+  HomeDecisionAction,
+} from "../dashboardHomeFirstScreenTypes";
+import styles from "../dashboardHomeShell.module.css";
 
 type DecisionRailSectionProps = {
   decisionRail: DashboardHomeFirstScreenView["decisionRail"];
@@ -21,6 +26,51 @@ function formatRailUpdatedAt(
     return `沿用报告日 ${reportDate}`;
   }
   return `${reportDate} ${updatedAt}`.trim();
+}
+
+function DecisionActionItem({ action }: { action: HomeDecisionAction }) {
+  const className = [
+    styles.dhDecisionAction,
+    action.to ? styles.dhDecisionActionLink : styles.dhDecisionActionDisabled,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const content = (
+    <>
+      <span className={styles.dhDecisionActionText}>
+        <b>{action.title}</b>
+        <small>{action.reason}</small>
+      </span>
+      <span className={styles.dhDecisionActionMeta}>{action.sourceLabel}</span>
+      {action.to ? <LightIcon name="arrow-right" /> : <LightIcon name="warning" />}
+    </>
+  );
+
+  if (action.to) {
+    return (
+      <Link
+        className={className}
+        data-priority={action.priority}
+        data-status-kind={action.statusKind}
+        data-testid={`dashboard-home-decision-action-${action.id}`}
+        to={action.to}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div
+      aria-disabled="true"
+      className={className}
+      data-priority={action.priority}
+      data-status-kind={action.statusKind}
+      data-testid={`dashboard-home-decision-action-${action.id}`}
+    >
+      {content}
+    </div>
+  );
 }
 
 export function DecisionRailSection({
@@ -97,11 +147,19 @@ export function DecisionRailSection({
             <LightIcon name="check-square" />
             <span>建议动作</span>
           </div>
-          <ol className={styles.dhSuggestionList}>
-            {decisionRail.suggestions.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ol>
+          {decisionRail.actions.length > 0 ? (
+            <div className={styles.dhDecisionActionList}>
+              {decisionRail.actions.map((action) => (
+                <DecisionActionItem key={action.id} action={action} />
+              ))}
+            </div>
+          ) : (
+            <ol className={styles.dhSuggestionList}>
+              {decisionRail.suggestions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ol>
+          )}
         </div>
 
         <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>

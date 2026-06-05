@@ -1,7 +1,7 @@
 import { useId } from "react";
 
 import { buildSparkPath } from "../dashboard/sparklinePath";
-import styles from "./dashboardHome.module.css";
+import styles from "./dashboardHomeShell.module.css";
 
 type HomeSparklineProps = {
   values: readonly number[];

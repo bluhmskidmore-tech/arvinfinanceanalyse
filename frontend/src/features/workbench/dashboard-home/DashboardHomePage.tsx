@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import styles from "./dashboardHome.module.css";
+import styles from "./dashboardHomeShell.module.css";
 import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
 import type {
   DashboardHomeFirstScreenHydration,
