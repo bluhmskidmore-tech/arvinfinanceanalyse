@@ -17,7 +17,7 @@ vi.mock("../lib/echarts", () => ({
   ),
 }));
 
-function resultMeta(resultKind: string): ResultMeta {
+function resultMeta(resultKind: string, overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: `tr_${resultKind}`,
     basis: "formal",
@@ -32,6 +32,7 @@ function resultMeta(resultKind: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-19T00:00:00Z",
+    ...overrides,
   };
 }
 
@@ -136,6 +137,70 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-page-state")).toHaveTextContent("暂无可用报告日");
     });
     expect(screen.getByRole("combobox", { name: "bond-dashboard-report-date" })).toBeDisabled();
+  });
+
+  it("surfaces degraded first-screen result_meta as a visible data status", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis", {
+        quality_flag: "warning",
+        source_version: "sv_headline_warning",
+        generated_at: "2026-05-01T08:00:00Z",
+      }),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(100_000_000_000),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025),
+          weighted_duration: ratio(4.1),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(1000),
+          bond_count: 3,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardRiskIndicators = async () => ({
+      result_meta: resultMeta("bond_dashboard.risk_indicators", {
+        fallback_mode: "latest_snapshot",
+        source_version: "sv_risk_fallback",
+        generated_at: "2026-05-01T08:05:00Z",
+      }),
+      result: {
+        report_date: "2026-04-30",
+        total_market_value: yuan(100_000_000_000),
+        total_dv01: dv01(1000),
+        weighted_duration: ratio(4.1),
+        credit_ratio: ratio(0.4),
+        weighted_convexity: ratio(0.03),
+        total_spread_dv01: dv01(400),
+        reinvestment_ratio_1y: ratio(0.12),
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const status = await screen.findByTestId("bond-dashboard-data-status");
+    expect(status).toHaveTextContent("质量标记：预警");
+    expect(status).toHaveTextContent("降级模式：最新快照降级");
+    expect(status).toHaveTextContent("生成时间：2026-05-01T08:00:00Z");
+    expect(status).toHaveTextContent("来源版本：sv_headline_warning");
   });
 
   it("uses backend headline numerics for weighted yield and duration in the portfolio table footer", async () => {

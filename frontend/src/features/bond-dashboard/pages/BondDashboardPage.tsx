@@ -5,7 +5,8 @@ import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
-import type { BondDashboardHeadlinePayload, RiskIndicatorsPayload } from "../../../api/contracts";
+import type { BondDashboardHeadlinePayload, ResultMeta, RiskIndicatorsPayload } from "../../../api/contracts";
+import { DataStatusStrip } from "../../../components/page/PagePrimitives";
 import { AssetStructurePie, type AssetGroupBy } from "../components/AssetStructurePie";
 import { CreditRatingBlocks } from "../components/CreditRatingBlocks";
 import { HeadlineKpis } from "../components/HeadlineKpis";
@@ -39,6 +40,35 @@ function buildDashboardConclusion(
     body: `组合规模约 ${formatYi(headline.kpis.total_market_value)}，久期约 ${formatYears(headline.kpis.weighted_duration)}，${creditTone}。`,
     detail: `当前信用占比 ${formatRatePercent(risk.credit_ratio, 1)}%，总市值${totalMarketValue > 0 ? "处于已投放状态" : "尚未形成有效持仓"}。`,
   };
+}
+
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined) {
+  if (value === "ok") {
+    return "正常";
+  }
+  if (value === "warning") {
+    return "预警";
+  }
+  if (value === "error") {
+    return "错误";
+  }
+  if (value === "stale") {
+    return "陈旧";
+  }
+  if (value === "missing") {
+    return "缺失";
+  }
+  return "未提供";
+}
+
+function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined) {
+  if (value === "none") {
+    return "未降级";
+  }
+  if (value === "latest_snapshot") {
+    return "最新快照降级";
+  }
+  return "未提供";
 }
 
 export default function BondDashboardPage() {
@@ -159,6 +189,16 @@ export default function BondDashboardPage() {
     headlineQuery.data?.result && riskQuery.data?.result
       ? buildDashboardConclusion(headlineQuery.data.result, riskQuery.data.result)
       : null;
+  const firstScreenMetas = [headlineQuery.data?.result_meta, riskQuery.data?.result_meta].filter(
+    (meta): meta is ResultMeta => Boolean(meta),
+  );
+  const firstScreenPrimaryMeta = headlineQuery.data?.result_meta ?? riskQuery.data?.result_meta;
+  const firstScreenQuality =
+    firstScreenMetas.find((meta) => meta.quality_flag !== "ok")?.quality_flag ??
+    firstScreenPrimaryMeta?.quality_flag;
+  const firstScreenFallback =
+    firstScreenMetas.find((meta) => meta.fallback_mode !== "none")?.fallback_mode ??
+    firstScreenPrimaryMeta?.fallback_mode;
   const datesEmpty = !datesQuery.isLoading && !datesQuery.isError && dateOptions.length === 0;
 
   return (
@@ -239,6 +279,24 @@ export default function BondDashboardPage() {
               <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>{conclusion.detail}</div>
             </Space>
           </Card>
+        ) : null}
+
+        {!datesEmpty && firstScreenPrimaryMeta ? (
+          <DataStatusStrip testId="bond-dashboard-data-status">
+            <Typography.Text strong>首屏数据状态</Typography.Text>
+            <Typography.Text type={firstScreenQuality === "ok" ? "secondary" : "warning"}>
+              质量标记：{resultMetaQualityLabel(firstScreenQuality)}
+            </Typography.Text>
+            <Typography.Text type={firstScreenFallback === "none" ? "secondary" : "warning"}>
+              降级模式：{resultMetaFallbackLabel(firstScreenFallback)}
+            </Typography.Text>
+            <Typography.Text type="secondary">
+              生成时间：{firstScreenPrimaryMeta.generated_at}
+            </Typography.Text>
+            <Typography.Text type="secondary">
+              来源版本：{firstScreenPrimaryMeta.source_version}
+            </Typography.Text>
+          </DataStatusStrip>
         ) : null}
 
         <HeadlineKpis data={headlineQuery.data?.result} loading={headlineQuery.isLoading} />
