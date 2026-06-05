@@ -28,6 +28,8 @@ export type LiabilityPageEvidenceCard = {
   asOfDate: string;
   traceId: string;
   sourceVersion: string;
+  vendorStatus: string;
+  vendorVersion: string;
   ruleVersion: string;
   tone: LiabilityPageBadgeTone;
 };
@@ -131,6 +133,8 @@ function buildEvidenceCard(source: LiabilityResultMetaInput): LiabilityPageEvide
     asOfDate: meta.as_of_date ?? DASH,
     traceId: meta.trace_id || DASH,
     sourceVersion: meta.source_version || DASH,
+    vendorStatus: meta.vendor_status || DASH,
+    vendorVersion: meta.vendor_version || DASH,
     ruleVersion: meta.rule_version || DASH,
     tone: toneForMeta(meta),
   };
@@ -147,6 +151,8 @@ function buildMissingEvidenceCard(key: string, title: string): LiabilityPageEvid
     asOfDate: DASH,
     traceId: DASH,
     sourceVersion: DASH,
+    vendorStatus: DASH,
+    vendorVersion: DASH,
     ruleVersion: DASH,
     tone: "warning",
   };

@@ -1,6 +1,6 @@
 ﻿import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -47,7 +47,7 @@ function renderLiabilityPage(client: ApiClient) {
   );
 }
 
-function meta(resultKind: string): ResultMeta {
+function meta(resultKind: string, overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: `tr_${resultKind}`,
     basis: "formal",
@@ -62,6 +62,7 @@ function meta(resultKind: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-19T00:00:00Z",
+    ...overrides,
   };
 }
 
@@ -243,5 +244,49 @@ describe("LiabilityAnalyticsPage", () => {
     expect(screen.getByText("异常预警")).toBeInTheDocument();
     expect(screen.queryByText((content) => content.includes("114.54"))).not.toBeInTheDocument();
     expect(screen.queryByText("0.21%")).not.toBeInTheDocument();
+  });
+
+  it("renders source and vendor metadata in the evidence ledger", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderLiabilityPage({
+      ...base,
+      getBalanceAnalysisDates: vi.fn(async () => balanceDates(["2025-12-31"])),
+      getLiabilityRiskBuckets: vi.fn(async () => riskPayload("2025-12-31")),
+      getLiabilityYieldMetrics: vi.fn(async () => yieldPayload("2025-12-31")),
+      getLiabilityCounterparty: vi.fn(async () => counterpartyPayload("2025-12-31")),
+      getCockpitWarnings: vi.fn(async () => ({
+        result_meta: meta("liability.cockpit_warnings", {
+          source_version: "sv_liability_warning_status_test",
+          vendor_version: "vv_liability_warning_status_test",
+          vendor_status: "vendor_stale",
+          quality_flag: "warning",
+          fallback_mode: "latest_snapshot",
+          fallback_date: "2025-12-30",
+        }),
+        result: {
+          report_date: "2025-12-31",
+          watch_items: [],
+          alert_events: [],
+        },
+      })),
+      getContributionSplit: vi.fn(async () => ({
+        result_meta: meta("liability.contribution_split"),
+        result: {
+          report_date: "2025-12-31",
+          contributions: [],
+        },
+      })),
+      getLiabilitiesMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_total_liabilities: null, ytd_avg_liability_cost: null })),
+      getLiabilityAdbMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_assets: 0, ytd_avg_liabilities: 0, ytd_asset_yield: null, ytd_liability_cost: null, ytd_nim: null, unit: "percent" })),
+    });
+
+    const page = await screen.findByTestId("liability-analytics-page");
+    await screen.findByText("liability.cockpit_warnings");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("sv_liability_warning_status_test");
+      expect(page).toHaveTextContent("vendor_stale");
+      expect(page).toHaveTextContent("vv_liability_warning_status_test");
+    });
   });
 });

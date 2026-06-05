@@ -88,6 +88,9 @@ describe("buildLiabilityAnalyticsPageReadModel", () => {
       expect.arrayContaining(["mock", "date-mismatch", "fallback", "stale", "synthetic-sections"]),
     );
     expect(model.evidenceCards[0]?.fallbackLabel).toBe("latest_snapshot");
+    expect(model.evidenceCards[0]?.vendorStatus).toBe("vendor_stale");
+    expect(model.evidenceCards[0]?.vendorVersion).toBe("vv_none");
+    expect(model.evidenceCards[0]?.sourceVersion).toBe("sv_liability");
   });
 
   it("builds monthly readout without daily KPI assumptions", () => {
