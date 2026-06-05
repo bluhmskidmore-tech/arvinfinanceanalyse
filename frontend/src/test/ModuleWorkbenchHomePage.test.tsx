@@ -1122,6 +1122,20 @@ describe("MarketHomePage", () => {
     const marketDataAction = within(actionQueue).getByTestId("module-home-market-action-curve-check");
     const curveCheckEvidence = within(marketDataAction).getByTestId("module-home-market-action-curve-check-evidence");
     expect(curveCheckEvidence).toBeInTheDocument();
+    expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-task-meta")).toHaveTextContent(
+      "Owner 市场数据岗 / SLA T+0 收盘前 / 状态 待核验",
+    );
+    expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-gate")).toHaveTextContent(
+      "触发 曲线缺口 / 核验 国债/国开曲线 / 下一步 市场数据",
+    );
+    expect(
+      within(marketDataAction).getByTestId("module-home-market-action-curve-check-evidence-pack"),
+    ).toHaveTextContent("Evidence Pack 曲线报价缺口 / 等待既有 API 返回。 / market-data");
+    expect(marketDataAction.textContent).toContain(" / Owner 市场数据岗 / SLA T+0 收盘前 / 状态 待核验 / ");
+    expect(marketDataAction.textContent).toContain(" / 触发 曲线缺口 / 核验 国债/国开曲线 / 下一步 市场数据 / ");
+    expect(marketDataAction.textContent).toContain(
+      " / Evidence Pack 曲线报价缺口 / 等待既有 API 返回。 / market-data / ",
+    );
     expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-target")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-yield-curve")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-snapshot")).toBeInTheDocument();
@@ -1239,10 +1253,28 @@ describe("MarketHomePage", () => {
     expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence")).toHaveTextContent(
       "2026-05-29 / -1bp / CA.CN_GOV_10Y",
     );
+    expect(matrixRateCell.textContent).toContain("2026-05-29 / 2026-05-29 / -1bp / CA.CN_GOV_10Y");
+    expect(matrixRateCell.textContent).not.toContain("2026-05-292026-05-29");
     const keyRateAction = within(page).getByTestId("module-home-market-action-key-rate-check");
     expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence")).toHaveTextContent(
       "10Y 国债 / 1.71% / -1bp / 2026-05-29 / CA.CN_GOV_10Y",
     );
+    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta")).toHaveTextContent(
+      "Owner 市场数据岗 / SLA T+1 早盘 / 状态 监控",
+    );
+    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-gate")).toHaveTextContent(
+      "触发 利率变动 / 核验 10Y 国债 / 下一步 利率序列",
+    );
+    expect(
+      within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence-pack"),
+    ).toHaveTextContent("Evidence Pack 10Y 国债 / CA.CN_GOV_10Y / 2026-05-29 / -1bp / market-data");
+    expect(keyRateAction.textContent).toContain(" / 10Y 国债 / 1.71%");
+    expect(keyRateAction.textContent).toContain(" / Owner 市场数据岗 / SLA T+1 早盘 / 状态 监控 / ");
+    expect(keyRateAction.textContent).toContain(" / 触发 利率变动 / 核验 10Y 国债 / 下一步 利率序列 / ");
+    expect(keyRateAction.textContent).toContain(
+      " / Evidence Pack 10Y 国债 / CA.CN_GOV_10Y / 2026-05-29 / -1bp / market-data / ",
+    );
+    expect(keyRateAction.textContent).not.toContain("变动10Y 国债");
   });
 
   it("renders all market module drilldown links", async () => {

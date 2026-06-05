@@ -70,6 +70,14 @@ function rowHeadline(row?: ModuleHomeDetailRow, fallback = "待返回") {
   return row ? `${row.label} ${row.value}` : fallback;
 }
 
+function renderBlockTextSeparator(key: string) {
+  return (
+    <span aria-hidden="true" className={marketStyles.blockTextSeparator} key={key}>
+      {" / "}
+    </span>
+  );
+}
+
 function rowMeta(row?: ModuleHomeDetailRow) {
   if (!row) return [];
   return compactParts([validDate(row.tradeDate) ? row.tradeDate : null, row.detail, row.source]);
@@ -175,6 +183,7 @@ export function MarketDecisionMatrix({
             >
               {item.headline}
             </strong>
+            {renderBlockTextSeparator(`${item.key}-headline-meta`)}
             <em
               aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
               className={marketStyles.decisionMatrixMeta}
@@ -182,6 +191,7 @@ export function MarketDecisionMatrix({
             >
               {item.meta.length > 0 ? renderFieldSegments(item.meta) : <span>待返回</span>}
             </em>
+            {renderBlockTextSeparator(`${item.key}-meta-evidence`)}
             <p
               aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
               data-testid={`module-home-market-matrix-cell-${item.key}-evidence`}

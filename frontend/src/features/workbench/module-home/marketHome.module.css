@@ -146,7 +146,10 @@
 .marketKpiDetail,
 .decisionMatrixMeta,
 .decisionMatrixCell p,
-.actionQueueMain em {
+.actionQueueMain em,
+.actionQueueTaskMeta,
+.actionQueueGate,
+.actionQueueEvidencePack {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 6px;
@@ -157,7 +160,10 @@
 .marketKpiDetail em,
 .decisionMatrixMeta span,
 .decisionMatrixCell p span,
-.actionQueueMain em span {
+.actionQueueMain em span,
+.actionQueueTaskMeta span,
+.actionQueueGate span,
+.actionQueueEvidencePack span {
   min-width: 0;
   padding: 1px 5px;
   border-radius: 4px;
@@ -167,10 +173,22 @@
 
 .decisionMatrixMeta .fieldSeparator,
 .decisionMatrixCell p .fieldSeparator,
-.actionQueueMain em .fieldSeparator {
+.actionQueueMain em .fieldSeparator,
+.actionQueueTaskMeta .fieldSeparator,
+.actionQueueGate .fieldSeparator,
+.actionQueueEvidencePack .fieldSeparator {
   padding: 0;
   background: transparent;
   color: var(--dh-muted-2, #8a99af);
+}
+
+.blockTextSeparator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
 }
 
 .marketHeroSources em {
@@ -502,6 +520,45 @@
   font-style: normal;
   line-height: 1.3;
   white-space: normal;
+}
+
+.actionQueueTaskMeta {
+  overflow: hidden;
+  color: var(--dh-ink-2, #2c3e5a);
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.actionQueueTaskMeta span {
+  background: rgba(247, 249, 252, 0.96);
+}
+
+.actionQueueGate {
+  overflow: hidden;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 9.5px;
+  font-weight: 750;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.actionQueueGate span {
+  background: rgba(241, 245, 249, 0.78);
+}
+
+.actionQueueEvidencePack {
+  overflow: hidden;
+  color: var(--dh-blue, #1850a1);
+  font-size: 9.5px;
+  font-weight: 760;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.actionQueueEvidencePack span {
+  background: rgba(232, 241, 251, 0.82);
 }
 
 .actionQueueItem b {

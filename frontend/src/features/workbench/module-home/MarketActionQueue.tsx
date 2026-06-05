@@ -16,6 +16,17 @@ type MarketActionItem = {
   rank: string;
   title: string;
   evidence: string[];
+  evidencePack: string[];
+  task: {
+    owner: string;
+    sla: string;
+    state: string;
+  };
+  gate: {
+    trigger: string;
+    check: string;
+    next: string;
+  };
   path: string;
   label: string;
   tone: ModuleHomeTone;
@@ -46,10 +57,37 @@ function renderFieldSegments(parts: string[]) {
   );
 }
 
+function renderBlockTextSeparator(key: string) {
+  return (
+    <span aria-hidden="true" className={marketStyles.blockTextSeparator} key={key}>
+      {" / "}
+    </span>
+  );
+}
+
+function taskMetaParts(item: MarketActionItem) {
+  return [`Owner ${item.task.owner}`, `SLA ${item.task.sla}`, `状态 ${item.task.state}`];
+}
+
+function gateMetaParts(item: MarketActionItem) {
+  return [`触发 ${item.gate.trigger}`, `核验 ${item.gate.check}`, `下一步 ${item.gate.next}`];
+}
+
+function evidencePackParts(item: MarketActionItem) {
+  const [lead, ...rest] = item.evidencePack;
+  return compactParts([lead ? `Evidence Pack ${lead}` : "Evidence Pack 待返回", ...rest]);
+}
+
 function firstRowEvidence(panel?: ModuleHomeDetailPanel) {
   const row = panel?.rows[0];
   if (!row) return compactParts([panel?.stateDetail]);
   return compactParts([row.label, row.value, row.detail, row.tradeDate, row.source]);
+}
+
+function firstRowEvidencePack(panel: ModuleHomeDetailPanel | undefined, fallbackLabel: string, sourceScope: string) {
+  const row = panel?.rows[0];
+  if (!row) return compactParts([fallbackLabel, panel?.stateDetail, sourceScope]);
+  return compactParts([row.label, row.source, row.tradeDate, row.detail, sourceScope]);
 }
 
 function panelHasNoRows(panel?: ModuleHomeDetailPanel) {
@@ -68,6 +106,7 @@ function buildActionQueue({
   const crossAssetStatus = view.statuses.find((status) => status.key === "cross-asset");
   const curveNeedsCheck = panelHasNoRows(yieldCurvePanel);
   const hasKeyRates = (keyRatePanel?.rows.length ?? 0) > 0;
+  const keyRateLabel = keyRatePanel?.rows[0]?.label ?? "关键利率";
   const crossAssetEvidence = firstRowEvidence(macroPanel);
 
   if (failedStatus) {
@@ -76,6 +115,17 @@ function buildActionQueue({
       rank: "P0",
       title: `${failedStatus.label}读链路复核`,
       evidence: compactParts([failedStatus.detail]),
+      evidencePack: compactParts([failedStatus.label, failedStatus.detail, "market-data"]),
+      task: {
+        owner: "平台值班岗",
+        sla: "T+0 30m",
+        state: "阻塞",
+      },
+      gate: {
+        trigger: "读链路异常",
+        check: failedStatus.label,
+        next: "查看读链路",
+      },
       path: "/market-data",
       label: "查看读链路",
       tone: "error",
@@ -88,6 +138,17 @@ function buildActionQueue({
       rank: aShareRisk.tone === "error" ? "P0" : "P1",
       title: `复核${aShareRisk.label}`,
       evidence: compactParts([aShareRisk.value, aShareRisk.detail]),
+      evidencePack: compactParts([aShareRisk.label, aShareRisk.value, aShareRisk.detail, "macro-toolkit"]),
+      task: {
+        owner: "宏观策略岗",
+        sla: aShareRisk.tone === "error" ? "T+0 午盘前" : "T+0 收盘前",
+        state: aShareRisk.tone === "error" ? "阻塞" : "待复核",
+      },
+      gate: {
+        trigger: "A股风险",
+        check: "跨资产传导",
+        next: "宏观工具",
+      },
       path: "/macro-toolkit",
       label: "宏观工具",
       tone: aShareRisk.tone,
@@ -100,6 +161,17 @@ function buildActionQueue({
       rank: "P1",
       title: "补齐国债/国开曲线核验",
       evidence: compactParts([yieldCurvePanel?.stateDetail ?? "曲线报价为空。"]),
+      evidencePack: compactParts(["曲线报价缺口", yieldCurvePanel?.stateDetail ?? "曲线报价为空。", "market-data"]),
+      task: {
+        owner: "市场数据岗",
+        sla: "T+0 收盘前",
+        state: "待核验",
+      },
+      gate: {
+        trigger: "曲线缺口",
+        check: "国债/国开曲线",
+        next: "市场数据",
+      },
       path: "/market-data",
       label: "市场数据",
       tone: "watch",
@@ -110,6 +182,17 @@ function buildActionQueue({
       rank: "P2",
       title: "确认关键利率变动",
       evidence: firstRowEvidence(keyRatePanel),
+      evidencePack: firstRowEvidencePack(keyRatePanel, keyRateLabel, "market-data"),
+      task: {
+        owner: "市场数据岗",
+        sla: "T+1 早盘",
+        state: "监控",
+      },
+      gate: {
+        trigger: "利率变动",
+        check: keyRateLabel,
+        next: "利率序列",
+      },
       path: "/market-data",
       label: "利率序列",
       tone: keyRatePanel?.tone ?? "ok",
@@ -121,6 +204,20 @@ function buildActionQueue({
     rank: "P3",
     title: "跟踪跨资产传导",
     evidence: crossAssetEvidence.length > 0 ? crossAssetEvidence : compactParts([crossAssetStatus?.detail, "跨资产传导解释以 /cross-asset 为准。"]),
+    evidencePack:
+      crossAssetEvidence.length > 0
+        ? compactParts([crossAssetEvidence[0], ...crossAssetEvidence.slice(1), "cross-asset"])
+        : compactParts(["跨资产传导", crossAssetStatus?.detail, "cross-asset"]),
+    task: {
+      owner: "跨资产研究岗",
+      sla: "T+1 早会",
+      state: "观察",
+    },
+    gate: {
+      trigger: "跨资产传导",
+      check: "宏观快讯",
+      next: "跨资产",
+    },
     path: "/cross-asset",
     label: "跨资产",
     tone: macroPanel?.tone ?? crossAssetStatus?.tone ?? "muted",
@@ -145,27 +242,59 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
         <em>只保留风险、曲线和跨资产三条处置线。</em>
       </div>
       <div className={marketStyles.actionQueueList}>
-        {items.map((item) => (
-          <Link
-            className={marketStyles.actionQueueItem}
-            data-testid={`module-home-market-action-${item.key}`}
-            data-tone={item.tone}
-            key={item.key}
-            to={item.path}
-          >
-            <span className={`${marketStyles.actionQueueRank} ${toneClass(item.tone)}`}>{item.rank}</span>
-            <div className={marketStyles.actionQueueMain}>
-              <strong>{item.title}</strong>
-              <em
-                aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
-                data-testid={`module-home-market-action-${item.key}-evidence`}
-              >
-                {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
-              </em>
-            </div>
-            <b data-testid={`module-home-market-action-${item.key}-target`}>{item.label}</b>
-          </Link>
-        ))}
+        {items.map((item) => {
+          const taskParts = taskMetaParts(item);
+          const gateParts = gateMetaParts(item);
+          const packParts = evidencePackParts(item);
+          return (
+            <Link
+              className={marketStyles.actionQueueItem}
+              data-testid={`module-home-market-action-${item.key}`}
+              data-tone={item.tone}
+              key={item.key}
+              to={item.path}
+            >
+              <span className={`${marketStyles.actionQueueRank} ${toneClass(item.tone)}`}>{item.rank}</span>
+              {renderBlockTextSeparator(`${item.key}-rank-main`)}
+              <div className={marketStyles.actionQueueMain}>
+                <strong>{item.title}</strong>
+                {renderBlockTextSeparator(`${item.key}-title-evidence`)}
+                <em
+                  aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
+                  data-testid={`module-home-market-action-${item.key}-evidence`}
+                >
+                  {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
+                </em>
+                {renderBlockTextSeparator(`${item.key}-evidence-task`)}
+                <span
+                  aria-label={taskParts.join(" / ")}
+                  className={marketStyles.actionQueueTaskMeta}
+                  data-testid={`module-home-market-action-${item.key}-task-meta`}
+                >
+                  {renderFieldSegments(taskParts)}
+                </span>
+                {renderBlockTextSeparator(`${item.key}-task-gate`)}
+                <span
+                  aria-label={gateParts.join(" / ")}
+                  className={marketStyles.actionQueueGate}
+                  data-testid={`module-home-market-action-${item.key}-gate`}
+                >
+                  {renderFieldSegments(gateParts)}
+                </span>
+                {renderBlockTextSeparator(`${item.key}-gate-pack`)}
+                <span
+                  aria-label={packParts.join(" / ")}
+                  className={marketStyles.actionQueueEvidencePack}
+                  data-testid={`module-home-market-action-${item.key}-evidence-pack`}
+                >
+                  {renderFieldSegments(packParts)}
+                </span>
+              </div>
+              {renderBlockTextSeparator(`${item.key}-main-target`)}
+              <b data-testid={`module-home-market-action-${item.key}-target`}>{item.label}</b>
+            </Link>
+          );
+        })}
       </div>
       <div className={marketStyles.actionQueueSourceGate} data-testid="module-home-status-strip">
         <span>Source Gate</span>
