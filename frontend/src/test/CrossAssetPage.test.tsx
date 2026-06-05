@@ -161,6 +161,48 @@ describe("CrossAssetPage", () => {
     expect(Boolean(fullKpiBand.compareDocumentPosition(livermoreStatus) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
+  it("keeps active result_meta lineage and fallback mode visible in the first-screen status strip", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const latestPayload = await client.getChoiceMacroLatest();
+    const linkagePayload = await client.getMacroBondLinkageAnalysis({ reportDate: "2026-04-10" });
+
+    vi.spyOn(client, "getChoiceMacroLatest").mockResolvedValue({
+      ...latestPayload,
+      result_meta: {
+        ...latestPayload.result_meta,
+        source_version: "sv_choice_macro_cross_asset_test",
+        vendor_version: "vv_choice_macro_cross_asset_test",
+        fallback_mode: "latest_snapshot",
+        fallback_date: "2026-04-09",
+        generated_at: "2026-04-10T09:30:00Z",
+      },
+    });
+    vi.spyOn(client, "getMacroBondLinkageAnalysis").mockResolvedValue({
+      ...linkagePayload,
+      result_meta: {
+        ...linkagePayload.result_meta,
+        source_version: "sv_macro_bond_linkage_cross_asset_test",
+        vendor_version: "vv_macro_bond_linkage_cross_asset_test",
+        fallback_mode: "latest_snapshot",
+        fallback_date: "2026-04-08",
+        generated_at: "2026-04-10T09:35:00Z",
+      },
+    });
+
+    renderPage(client);
+
+    const statusStrip = await screen.findByTestId("cross-asset-data-status-strip");
+    await waitFor(() => {
+      expect(statusStrip).toHaveTextContent("sv_choice_macro_cross_asset_test");
+      expect(statusStrip).toHaveTextContent("vv_choice_macro_cross_asset_test");
+      expect(statusStrip).toHaveTextContent("latest_snapshot");
+      expect(statusStrip).toHaveTextContent("2026-04-09");
+      expect(statusStrip).toHaveTextContent("sv_macro_bond_linkage_cross_asset_test");
+      expect(statusStrip).toHaveTextContent("vv_macro_bond_linkage_cross_asset_test");
+      expect(statusStrip).toHaveTextContent("2026-04-08");
+    });
+  });
+
   it("renders first-screen investment research judgments from backend additive fields", async () => {
     const client = createApiClient({ mode: "mock" });
     const latestPayload = await client.getChoiceMacroLatest();
