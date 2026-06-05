@@ -12,6 +12,7 @@ import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { DataStatusStrip } from "../../components/page/PagePrimitives";
 import { SectionLead } from "../../components/page/SectionLead";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../components/KpiCard";
@@ -204,6 +205,14 @@ export default function FormalPnlV1Page() {
     isError: detailError,
     isEmpty: detailEmpty,
   });
+  const statusBadges = useMemo(() => {
+    const badges = [`当前口径：${basis === "formal" ? "正式口径" : "分析口径"}`];
+    const overviewMeta = overviewQuery.data?.result_meta;
+    if (basis !== "formal" || overviewMeta?.formal_use_allowed === false) {
+      badges.push("非正式主链");
+    }
+    return badges;
+  }, [basis, overviewQuery.data?.result_meta]);
 
   const reportDatePlaceholder = datesQuery.isLoading
     ? "正在载入报告日"
@@ -367,6 +376,14 @@ export default function FormalPnlV1Page() {
           当前为分析口径只读视图。刷新按钮仅适用于正式重算，损益桥接仍保持正式口径。
         </div>
       ) : null}
+
+      <DataStatusStrip testId="pnl-data-status" className="formal-pnl-v1-data-status">
+        {statusBadges.map((badge) => (
+          <span key={badge} className="formal-pnl-v1-data-status__badge">
+            {badge}
+          </span>
+        ))}
+      </DataStatusStrip>
 
       <div data-testid="pnl-overview-section" data-state={overviewState} className="formal-pnl-v1-overview-section">
         <SectionLead

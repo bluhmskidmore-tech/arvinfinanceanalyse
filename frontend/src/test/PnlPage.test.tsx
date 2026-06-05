@@ -330,6 +330,8 @@ describe("PnlPage", () => {
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("analytical");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_pnl_data_formal");
     expect(screen.getByTestId("pnl-basis-note")).toHaveTextContent("正式口径");
+    expect(screen.getByTestId("pnl-data-status")).toHaveTextContent("分析口径");
+    expect(screen.getByTestId("pnl-data-status")).toHaveTextContent("非正式主链");
     expect(screen.getByTestId("pnl-refresh-button")).toBeDisabled();
   });
 
