@@ -1,4 +1,4 @@
-.workbench-shell-grid--institutional-console :where(.ag-theme-alpine, .ag-theme-quartz) {
+.workbench-shell-grid--desktop-aligned :where(.ag-theme-alpine, .ag-theme-quartz) {
   --ag-background-color: var(--moss-institutional-surface-raised, #ffffff);
   --ag-header-background-color: var(--moss-institutional-surface-muted, #f4f7fa);
   --ag-odd-row-background-color: var(--moss-institutional-row-stripe, #f7f9fc);
