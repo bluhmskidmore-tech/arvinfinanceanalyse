@@ -215,14 +215,12 @@ export const designTokens = {
     relaxed: 1.7,
   },
   fontFamily: {
-    /**
-     * UI：Plus Jakarta Sans（拉丁）+ 中文系统栈；经 index.html Google Fonts 加载。
-     */
+    /** UI: local Chinese/system font stack; avoid remote font fetch on first paint. */
     sans:
-      '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
-    /** 数字列、KPI（IBM Plex Mono + tabular nums） */
+      '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+    /** Numeric/KPI text: local monospace stack with tabular number support. */
     tabular:
-      '"IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
+      'ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace',
   },
   radius: {
     sm: 6,

@@ -1877,8 +1877,8 @@ describe("LedgerPnlPage", () => {
       resolved_report_date: "2026-05-31",
       as_of_date: "2026-05-31",
       quality_flag: "warning",
-      vendor_status: "stale",
-      fallback_mode: "cache",
+      vendor_status: "vendor_stale",
+      fallback_mode: "latest_snapshot",
       scenario_flag: true,
       source_version: "sv_ledger_pnl_empty",
       evidence_rows: 0,
@@ -1900,8 +1900,8 @@ describe("LedgerPnlPage", () => {
       resolved_report_date: "2026-05-31",
       as_of_date: "2026-05-31",
       quality_flag: "warning",
-      vendor_status: "partial",
-      fallback_mode: "synthetic",
+      vendor_status: "vendor_stale",
+      fallback_mode: "latest_snapshot",
       source_version: "sv_ledger_pnl_empty",
       evidence_rows: 0,
       next_drill: [
@@ -1983,7 +1983,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("明细证据行0");
       expect(strip).toHaveTextContent("质量汇总预警 / 明细预警");
       expect(strip).toHaveTextContent(
-        "来源状态汇总 fallback=cache；汇总 vendor=stale；汇总 scenario=true；明细 fallback=synthetic；明细 vendor=partial",
+        "来源状态汇总 fallback=latest_snapshot；汇总 vendor=vendor_stale；汇总 scenario=true；明细 fallback=latest_snapshot；明细 vendor=vendor_stale",
       );
       expect(strip).toHaveTextContent("来源版本sv_ledger_pnl_empty");
       expect(strip).toHaveTextContent("正式契约缺失，正式值不可用");
