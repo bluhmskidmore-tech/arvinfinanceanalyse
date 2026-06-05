@@ -2623,6 +2623,7 @@ describe("BalanceAnalysisPage", () => {
       result_meta: {
         ...buildMeta("balance-analysis.overview", "tr_balance_overview_stale"),
         quality_flag: "stale" as const,
+        vendor_status: "vendor_stale" as const,
         fallback_mode: "latest_snapshot" as const,
       },
       result: {
@@ -2716,9 +2717,12 @@ describe("BalanceAnalysisPage", () => {
       const attentionStrip = screen.getByTestId("balance-analysis-data-status");
       expect(attentionStrip).toHaveTextContent("降级日期");
       expect(attentionStrip).toHaveTextContent("陈旧数据");
+      expect(attentionStrip).toHaveTextContent("供应商陈旧");
       const statusRail = screen.getByTestId("balance-analysis-status-rail");
       expect(statusRail).toHaveTextContent("质量");
       expect(statusRail).toHaveTextContent("陈旧");
+      expect(statusRail).toHaveTextContent("供应商");
+      expect(statusRail).toHaveTextContent("供应商陈旧");
       expect(statusRail).toHaveTextContent("降级");
       expect(statusRail).toHaveTextContent("最新快照降级");
       const sentinels = screen.getByTestId("balance-analysis-abnormal-sentinels");
@@ -2730,6 +2734,9 @@ describe("BalanceAnalysisPage", () => {
     });
     expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveAttribute("open");
     expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("质量需复核");
+    expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("供应商需复核");
+    expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("存在供应商陈旧标记");
+    expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("供应商状态为陈旧");
     expect(screen.getByTestId("balance-analysis-evidence-details")).toHaveTextContent("存在降级");
   });
 

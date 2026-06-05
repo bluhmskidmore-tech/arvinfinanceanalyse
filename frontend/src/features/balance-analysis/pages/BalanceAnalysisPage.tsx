@@ -217,6 +217,13 @@ function formatAttentionFallback(value: string | undefined): string {
   return "未提供";
 }
 
+function formatAttentionVendorStatus(value: string | undefined): string {
+  if (value === "ok") return "供应商正常";
+  if (value === "vendor_stale") return "供应商陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return "未提供";
+}
+
 function formatEvidenceTraceDisplay(value: string): string {
   if (!value || value === "未提供") {
     return "未提供";
@@ -1397,7 +1404,12 @@ export default function BalanceAnalysisPage() {
       .filter((badge) => ["danger", "warning"].includes(badge.tone))
       .map((badge): BalanceAttentionReason => ({
         key: `status-badge-${badge.key}`,
-        sentinel: badge.key === "stale" ? "stale" : badge.key === "fallback" ? "fallback" : "error",
+        sentinel:
+          badge.key === "stale" || badge.key === "vendor-stale"
+            ? "stale"
+            : badge.key === "fallback"
+              ? "fallback"
+              : "error",
         detail: `读面标记需关注：${badge.label}`,
       })),
     ...resultMetaSections.flatMap((section): BalanceAttentionReason[] => {
@@ -1427,6 +1439,19 @@ export default function BalanceAnalysisPage() {
           key: `meta-fallback-${section.key}`,
           sentinel: "fallback",
           detail: `${section.title} 使用${formatAttentionFallback(section.meta.fallback_mode)}。`,
+        });
+      }
+      if (section.meta.vendor_status === "vendor_stale") {
+        reasons.push({
+          key: `meta-vendor-stale-${section.key}`,
+          sentinel: "stale",
+          detail: `${section.title} 供应商状态为${formatAttentionVendorStatus(section.meta.vendor_status)}。`,
+        });
+      } else if (section.meta.vendor_status !== "ok") {
+        reasons.push({
+          key: `meta-vendor-${section.key}`,
+          sentinel: "error",
+          detail: `${section.title} 供应商状态为${formatAttentionVendorStatus(section.meta.vendor_status)}。`,
         });
       }
       return reasons;
@@ -1494,6 +1519,9 @@ export default function BalanceAnalysisPage() {
             evidenceMetas.every((meta) => meta.fallback_mode === "none")
               ? "未降级"
               : "存在降级",
+            evidenceMetas.every((meta) => meta.vendor_status === "ok")
+              ? "供应商正常"
+              : "供应商需复核",
             evidenceMetas.every((meta) => Boolean(meta.trace_id))
               ? "链路可追溯"
               : "链路待补齐",
@@ -2154,6 +2182,10 @@ export default function BalanceAnalysisPage() {
                       <div>
                         <dt>质量</dt>
                         <dd>{card.qualityLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>供应商</dt>
+                        <dd>{card.vendorLabel}</dd>
                       </div>
                       <div>
                         <dt>降级</dt>

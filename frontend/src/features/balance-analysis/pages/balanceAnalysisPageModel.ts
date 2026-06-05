@@ -617,6 +617,7 @@ export type BalanceAnalysisPageEvidenceCard = {
   resultKind: string;
   basisLabel: string;
   qualityLabel: string;
+  vendorLabel: string;
   fallbackLabel: string;
   asOfDate: string;
   traceId: string;
@@ -698,6 +699,13 @@ function metaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string
 function metaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): string {
   if (value === "none") return "未降级";
   if (value === "latest_snapshot") return "最新快照降级";
+  return "未提供";
+}
+
+function metaVendorLabel(value: ResultMeta["vendor_status"] | undefined): string {
+  if (value === "ok") return "供应商正常";
+  if (value === "vendor_stale") return "供应商陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
   return "未提供";
 }
 
@@ -808,6 +816,7 @@ function buildBalanceEvidenceCards(
         resultKind: formatBalanceEvidenceKindDisplay(section.meta.result_kind),
         basisLabel: metaBasisLabel(section.meta.basis),
         qualityLabel: metaQualityLabel(section.meta.quality_flag),
+        vendorLabel: metaVendorLabel(section.meta.vendor_status),
         fallbackLabel: metaFallbackLabel(section.meta.fallback_mode),
         asOfDate: section.meta.as_of_date || "未提供",
         traceId: section.meta.trace_id || "未提供",
@@ -833,6 +842,8 @@ export function buildBalanceAnalysisPageReadModel(
   const metas = input.metaSections.map((section) => section.meta).filter(Boolean) as ResultMeta[];
   const hasFallback = metas.some((meta) => meta.fallback_mode === "latest_snapshot");
   const hasStale = metas.some((meta) => meta.quality_flag === "stale");
+  const hasVendorStale = metas.some((meta) => meta.vendor_status === "vendor_stale");
+  const hasVendorUnavailable = metas.some((meta) => meta.vendor_status === "vendor_unavailable");
   const hasQualityError = metas.some((meta) => meta.quality_flag === "error" || meta.quality_flag === "missing");
   const sourceBadge: BalanceAnalysisPageStatusBadge =
     requestedReportDate === "—"
@@ -865,6 +876,12 @@ export function buildBalanceAnalysisPageReadModel(
   }
   if (hasStale) {
     statusBadges.push({ key: "stale", label: "陈旧数据", tone: "warning" });
+  }
+  if (hasVendorStale) {
+    statusBadges.push({ key: "vendor-stale", label: "供应商陈旧", tone: "warning" });
+  }
+  if (hasVendorUnavailable) {
+    statusBadges.push({ key: "vendor-unavailable", label: "供应商不可用", tone: "danger" });
   }
   if (hasQualityError) {
     statusBadges.push({ key: "quality-error", label: "质量错误", tone: "danger" });
@@ -908,6 +925,22 @@ export function buildBalanceAnalysisPageReadModel(
       variant: "fallback-date",
       title: "存在降级日期",
       description: "至少一个正式读面使用最新快照降级，需查看证据账本确认数据日。",
+    });
+  }
+  if (hasVendorStale) {
+    stateSurfaces.push({
+      key: "vendor-stale",
+      variant: "stale",
+      title: "存在供应商陈旧标记",
+      description: "至少一个正式读面的供应商状态为陈旧，需要在结论旁显式提醒。",
+    });
+  }
+  if (hasVendorUnavailable) {
+    stateSurfaces.push({
+      key: "vendor-unavailable",
+      variant: "error",
+      title: "存在供应商不可用标记",
+      description: "至少一个正式读面的供应商状态不可用，不应渲染为正常结论。",
     });
   }
   if (hasQualityError) {

@@ -335,6 +335,40 @@ describe("balanceAnalysisPageModel", () => {
       });
     });
 
+    it("surfaces non-ok vendor status in badges, state surfaces, and evidence cards", () => {
+      const model = buildBalanceAnalysisPageReadModel({
+        clientMode: "real",
+        requestedReportDate: "2026-04-30",
+        selectedPositionScope: "all",
+        selectedCurrencyBasis: "CNY",
+        overview: overview(),
+        decisionItems: decisionItems(),
+        metaSections: [
+          {
+            key: "overview",
+            title: "正式概览",
+            meta: meta({
+              vendor_status: "vendor_stale",
+            }),
+          },
+        ],
+      });
+
+      expect(model.statusBadges).toContainEqual(
+        expect.objectContaining({ key: "vendor-stale", label: "供应商陈旧", tone: "warning" }),
+      );
+      expect(model.stateSurfaces).toContainEqual(
+        expect.objectContaining({
+          key: "vendor-stale",
+          variant: "stale",
+          title: "存在供应商陈旧标记",
+        }),
+      );
+      expect(model.evidenceCards[0]).toMatchObject({
+        vendorLabel: "供应商陈旧",
+      });
+    });
+
     it("builds the page-level view model without leaking API envelopes into display components", () => {
       const model = buildBalanceAnalysisPageModel({
         clientMode: "real",
