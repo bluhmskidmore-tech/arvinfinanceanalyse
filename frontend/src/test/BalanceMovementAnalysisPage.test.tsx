@@ -1,14 +1,19 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="balance-movement-echarts-stub" />,
 }));
+
+beforeAll(async () => {
+  await preloadWorkbenchRouteModules("balance-movement-analysis");
+}, 20_000);
 
 describe("BalanceMovementAnalysisPage", () => {
   it("renders AC OCI TPL balance movement from the governed read model", async () => {
@@ -536,6 +541,127 @@ describe("BalanceMovementAnalysisPage", () => {
     );
   });
 
+  it("renders backend-provided unsupported and no-data drilldown states", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const statusMatrixClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        const basis = envelope.result.basis_movement_decomposition;
+        const maturity = envelope.result.zqtz_maturity_structure;
+        const concentration = envelope.result.zqtz_concentration_analysis;
+
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            basis_movement_decomposition: basis
+              ? {
+                  ...basis,
+                  meta: {
+                    ...basis.meta,
+                    status: "no_data" as const,
+                    covered_total: null,
+                    unknown_total: null,
+                    coverage_pct: null,
+                    caveat: "No governed basis rows returned for this date.",
+                  },
+                  buckets: basis.buckets.map((bucket) => ({
+                    ...bucket,
+                    rows: [],
+                  })),
+                }
+              : basis,
+            zqtz_maturity_structure: maturity
+              ? {
+                  ...maturity,
+                  meta: {
+                    ...maturity.meta,
+                    status: "unsupported_missing_columns" as const,
+                    covered_total: "0",
+                    unknown_total: maturity.meta.eligible_total,
+                    coverage_pct: null,
+                    caveat: "maturity_date source column is absent.",
+                  },
+                }
+              : maturity,
+            zqtz_concentration_analysis: concentration
+              ? {
+                  ...concentration,
+                  meta: {
+                    ...concentration.meta,
+                    status: "unsupported_low_coverage" as const,
+                    covered_total: null,
+                    unknown_total: null,
+                    coverage_pct: null,
+                    caveat:
+                      "Issuer, rating, and industry concentration may differ in coverage; inspect each dimension status.",
+                  },
+                  dimensions: concentration.dimensions.map((dimension, index) => {
+                    if (index === 0) {
+                      return {
+                        ...dimension,
+                        status: "unsupported_missing_columns" as const,
+                        coverage_pct: null,
+                        hhi: null,
+                        top5_share_pct: null,
+                        items: [],
+                        caveat: "Source column issuer_name is absent.",
+                      };
+                    }
+                    if (index === 1) {
+                      return {
+                        ...dimension,
+                        status: "unsupported_low_coverage" as const,
+                        coverage_pct: "25.00",
+                        hhi: null,
+                        top5_share_pct: null,
+                        items: [],
+                        caveat: "rating coverage is below 80%; rankings are not rendered.",
+                      };
+                    }
+                    return {
+                      ...dimension,
+                      status: "no_data" as const,
+                      coverage_pct: null,
+                      hhi: null,
+                      top5_share_pct: null,
+                      items: [],
+                      caveat: "No eligible ZQTZ asset population.",
+                    };
+                  }),
+                }
+              : concentration,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: statusMatrixClient,
+    });
+
+    const basisPanel = await screen.findByTestId(
+      "balance-movement-analysis-basis-decomposition",
+    );
+    expect(basisPanel).toHaveTextContent("无数据");
+    expect(basisPanel).toHaveTextContent("No governed basis rows returned for this date.");
+
+    const maturityPanel = screen.getByTestId("balance-movement-analysis-zqtz-maturity");
+    expect(maturityPanel).toHaveTextContent("字段不足");
+    expect(maturityPanel).toHaveTextContent("maturity_date source column is absent.");
+
+    const concentrationPanel = screen.getByTestId("balance-movement-analysis-zqtz-concentration");
+    expect(concentrationPanel).toHaveTextContent("覆盖率不足");
+    expect(concentrationPanel).toHaveTextContent("字段不足");
+    expect(concentrationPanel).toHaveTextContent("无数据");
+    expect(concentrationPanel).toHaveTextContent("Source column issuer_name is absent.");
+    expect(concentrationPanel).toHaveTextContent(
+      "rating coverage is below 80%; rankings are not rendered.",
+    );
+    expect(concentrationPanel).toHaveTextContent("No eligible ZQTZ asset population.");
+  });
+
   it("opens and closes the residual evidence drawer with diagnostics evidence", async () => {
     const user = userEvent.setup();
 
@@ -809,5 +935,34 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-date-status")).toHaveTextContent(
       "CNX",
     );
+    const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
+    expect(freshness).toHaveClass("balance-movement-freshness-strip--info");
+    expect(freshness).toHaveTextContent("新鲜度待确认");
+  });
+
+  it("surfaces when the read model is behind upstream control data", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const laggingDatesClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementDates(currencyBasis = "CNX") {
+        return buildMockApiEnvelope("balance-analysis.movement.dates", {
+          report_dates: ["2026-04-30"],
+          currency_basis: currencyBasis,
+          latest_read_model_report_date: "2026-04-30",
+          latest_upstream_control_report_date: "2026-05-31",
+          freshness_status: "read_model_lagging",
+        });
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: laggingDatesClient,
+    });
+
+    const freshness = await screen.findByTestId("balance-movement-analysis-freshness");
+    expect(freshness).toHaveClass("balance-movement-freshness-strip--warn");
+    expect(freshness).toHaveTextContent("读模型落后上游");
+    expect(freshness).toHaveTextContent("2026-05-31");
+    expect(freshness).toHaveTextContent("2026-04-30");
   });
 });
