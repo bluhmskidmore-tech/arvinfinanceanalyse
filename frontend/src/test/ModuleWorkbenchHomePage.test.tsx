@@ -1,24 +1,58 @@
-import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { ApiEnvelope, ResultMeta } from "../api/contracts";
+import type {
+  ApiEnvelope,
+  BalanceAnalysisBasisBreakdownPayload,
+  BalanceAnalysisOverviewPayload,
+  BondDashboardHomeSummaryPayload,
+  ChoiceMacroLatestPayload,
+  MacroVendorPayload,
+  PnlAttributionAnalysisSummary,
+  ResultMeta,
+} from "../api/contracts";
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
   MacroToolkitAnalysisPayload,
   MacroToolkitStrategySummariesPayload,
 } from "../api/macroToolkitClient";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 import { PORTFOLIO_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/portfolioModuleDrilldowns";
 import { MARKET_MODULE_DRILLDOWN_COUNT } from "../features/workbench/module-home/marketModuleDrilldowns";
+import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="module-home-echarts-stub" />,
+  default: ({ style }: { style?: { height?: number | string } }) => (
+    <div data-testid="module-home-echarts-stub" data-chart-height={String(style?.height ?? "")} />
+  ),
 }));
+
+vi.mock("../app/ThemedRouteBoundary", () => ({
+  default: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+beforeAll(async () => {
+  await preloadWorkbenchRouteModules("market-overview", "module-home");
+}, 20_000);
+
+afterEach(() => {
+  cleanup();
+});
 
 function renderAt(path: string, client?: ApiClient) {
   return renderWorkbenchApp([path], {
     client: client ?? createApiClient({ mode: "mock" }),
   });
+}
+
+function createRealModeDemoClient(): ApiClient {
+  return {
+    ...createApiClient({ mode: "mock" }),
+    mode: "real",
+  };
 }
 
 function deferred<T>() {
@@ -89,17 +123,343 @@ function strategySummariesEnvelope(): ApiEnvelope<MacroToolkitStrategySummariesP
   };
 }
 
+function realPortfolioMeta(resultKind: string, overrides: Partial<ResultMeta> = {}): ResultMeta {
+  return {
+    trace_id: `${resultKind}_real_trace`,
+    basis: "analytical",
+    result_kind: resultKind,
+    formal_use_allowed: false,
+    source_version: "sv_real_bond_analytics",
+    vendor_version: "vv_none",
+    rule_version: "rv_bond_analytics_formal_materialize_v1",
+    cache_version: "cv_real_bond_analytics",
+    quality_flag: "warning",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    requested_report_date: "2026-05-31",
+    resolved_report_date: "2026-05-31",
+    as_of_date: "2026-05-31",
+    date_basis: "bond_dashboard_report_date",
+    fallback_date: null,
+    generated_at: "2026-06-05T01:29:44.597898Z",
+    tables_used: ["fact_formal_bond_analytics_daily"],
+    evidence_rows: 1710,
+    ...overrides,
+  };
+}
+
+function envelopeWithMeta<T>(
+  resultKind: string,
+  result: T,
+  overrides: Partial<ResultMeta> = {},
+): ApiEnvelope<T> {
+  return {
+    result_meta: realPortfolioMeta(resultKind, overrides),
+    result,
+  };
+}
+
+function n(raw: number, unit: Parameters<typeof formatRawAsNumeric>[0]["unit"], signAware = false) {
+  return formatRawAsNumeric({ raw, unit, sign_aware: signAware });
+}
+
+function realPortfolioHomeSummary(): BondDashboardHomeSummaryPayload {
+  const reportDate = "2026-05-31";
+  return {
+    report_date: reportDate,
+    headline: {
+      report_date: reportDate,
+      prev_report_date: "2026-04-30",
+      kpis: {
+        total_market_value: n(332_281_921_064.45, "yuan"),
+        unrealized_pnl: n(8_202_912_484.65, "yuan", true),
+        weighted_ytm: n(0.02561294, "pct", true),
+        weighted_duration: n(4.4484273, "ratio"),
+        weighted_coupon: n(0.01871629, "pct", true),
+        credit_spread_median: n(0.023682, "pct", true),
+        total_dv01: n(105_628_442.39590558, "dv01"),
+        bond_count: 1710,
+      },
+      prev_kpis: null,
+    },
+    risk: {
+      report_date: reportDate,
+      total_market_value: n(332_281_921_064.45, "yuan"),
+      total_dv01: n(105_628_442.39590558, "dv01"),
+      weighted_duration: n(4.4484273, "ratio"),
+      credit_ratio: n(0.29955411, "ratio"),
+      weighted_convexity: n(28.73609304, "ratio"),
+      total_spread_dv01: n(25_862_175.57270329, "dv01"),
+      reinvestment_ratio_1y: n(0.3448817, "ratio"),
+    },
+    asset_type: {
+      report_date: reportDate,
+      group_by: "bond_type",
+      total_market_value: n(332_281_921_064.45, "yuan"),
+      items: [
+        {
+          category: "政策性金融债",
+          total_market_value: n(67_535_152_800.52, "yuan"),
+          bond_count: 109,
+          percentage: n(0.20324655, "pct"),
+        },
+      ],
+    },
+    asset_rating: {
+      report_date: reportDate,
+      group_by: "rating",
+      total_market_value: n(332_281_921_064.45, "yuan"),
+      items: [
+        {
+          category: "AAA",
+          total_market_value: n(220_000_000_000, "yuan"),
+          bond_count: 900,
+          percentage: n(0.6621, "pct"),
+        },
+      ],
+    },
+    maturity: {
+      report_date: reportDate,
+      total_market_value: n(332_281_921_064.45, "yuan"),
+      items: [
+        {
+          maturity_bucket: "3-5年",
+          total_market_value: n(81_000_000_000, "yuan"),
+          bond_count: 320,
+          percentage: n(0.2438, "pct"),
+        },
+      ],
+    },
+    industry: {
+      report_date: reportDate,
+      items: [
+        {
+          industry_name: "金融",
+          total_market_value: n(150_000_000_000, "yuan"),
+          bond_count: 720,
+          percentage: n(0.4514, "pct"),
+        },
+      ],
+    },
+    yield_distribution: {
+      report_date: reportDate,
+      weighted_ytm: n(0.02561294, "pct", true),
+      items: [
+        {
+          yield_bucket: "2%-3%",
+          total_market_value: n(210_000_000_000, "yuan"),
+          bond_count: 1110,
+        },
+      ],
+    },
+    portfolio_comparison: {
+      report_date: reportDate,
+      items: [
+        {
+          portfolio_name: "固收组合",
+          total_market_value: n(332_281_921_064.45, "yuan"),
+          weighted_ytm: n(0.02561294, "pct", true),
+          weighted_duration: n(4.4484273, "ratio"),
+          total_dv01: n(105_628_442.39590558, "dv01"),
+          bond_count: 1710,
+        },
+      ],
+    },
+    spread: {
+      report_date: reportDate,
+      items: [
+        {
+          bond_type: "政策性金融债",
+          median_yield: n(0.022645, "pct", true),
+          bond_count: 109,
+          total_market_value: n(67_535_152_800.52, "yuan"),
+        },
+      ],
+    },
+    business_type: {
+      report_date: reportDate,
+      items: [
+        {
+          name: "政策性金融债",
+          market_value: "67535152800.52",
+          weighted_avg_ytm_pct: "2.26451445",
+          weighted_avg_duration: "3.83902881",
+          duration_source: "",
+        },
+      ],
+    },
+  };
+}
+
+function realPortfolioClient(overrides: Partial<ApiClient> = {}): ApiClient {
+  const base = createApiClient({ mode: "mock" });
+  const reportDate = "2026-05-31";
+  const balanceOverview: BalanceAnalysisOverviewPayload = {
+    report_date: reportDate,
+    position_scope: "all",
+    currency_basis: "CNY",
+    detail_row_count: 1710,
+    summary_row_count: 2,
+    total_market_value_amount: "332281921064.45",
+    total_amortized_cost_amount: "321000000000.00",
+    total_accrued_interest_amount: "1280000000.00",
+    asset_total_market_value_amount: "332281921064.45",
+    liability_total_market_value_amount: "0.00",
+    asset_total_amortized_cost_amount: "321000000000.00",
+    liability_total_amortized_cost_amount: "0.00",
+    asset_total_accrued_interest_amount: "1280000000.00",
+    liability_total_accrued_interest_amount: "0.00",
+  };
+  const balanceBasis: BalanceAnalysisBasisBreakdownPayload = {
+    report_date: reportDate,
+    position_scope: "all",
+    currency_basis: "CNY",
+    rows: [
+      {
+        source_family: "zqtz",
+        invest_type_std: "债券投资",
+        accounting_basis: "FVTPL",
+        position_scope: "asset",
+        currency_basis: "CNY",
+        detail_row_count: 1710,
+        market_value_amount: "332281921064.45",
+        amortized_cost_amount: "321000000000.00",
+        accrued_interest_amount: "1280000000.00",
+      },
+    ],
+  };
+  const pnlSummary: PnlAttributionAnalysisSummary = {
+    report_date: reportDate,
+    primary_driver: "market",
+    primary_driver_pct: n(0.58, "ratio"),
+    key_findings: ["市值变动主要来自市场重估。"],
+    tpl_market_aligned: true,
+    tpl_market_note: "与 TPL 市场变动方向一致。",
+  };
+  return {
+    ...base,
+    mode: "real",
+    getBalanceAnalysisDates: async () =>
+      envelopeWithMeta("balance-analysis.dates", { report_dates: [reportDate] }, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+        tables_used: ["fact_formal_zqtz_balance_daily"],
+      }),
+    getBalanceAnalysisOverview: async () =>
+      envelopeWithMeta("balance-analysis.overview", balanceOverview, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+        tables_used: ["fact_formal_zqtz_balance_daily"],
+        evidence_rows: 1710,
+      }),
+    getBondDashboardDates: async () =>
+      envelopeWithMeta("bond_dashboard.dates", { report_dates: [reportDate] }, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+      }),
+    getBondDashboardHomeSummary: async () =>
+      ({
+        ...envelopeWithMeta("bond_dashboard.home_summary", realPortfolioHomeSummary(), {
+          basis: "formal",
+          formal_use_allowed: true,
+          quality_flag: "ok",
+          tables_used: ["fact_formal_bond_analytics_daily"],
+          evidence_rows: 1710,
+        }),
+        data_source: "bond_analytics_facts",
+      }),
+    getBondDashboardRiskIndicators: async () =>
+      envelopeWithMeta("bond_dashboard.risk_indicators", realPortfolioHomeSummary().risk, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+        tables_used: ["fact_formal_bond_analytics_daily"],
+        evidence_rows: 1710,
+      }),
+    getBalanceAnalysisSummaryByBasis: async () =>
+      envelopeWithMeta("balance-analysis.summary-by-basis", balanceBasis, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+        tables_used: ["fact_formal_zqtz_balance_daily"],
+        evidence_rows: 1710,
+      }),
+    getPnlAttributionAnalysisSummary: async () =>
+      envelopeWithMeta("pnl-attribution.summary", pnlSummary, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+        tables_used: ["fact_formal_pnl_fi"],
+        evidence_rows: 1710,
+      }),
+    getRiskTensorDates: async () =>
+      envelopeWithMeta("risk.tensor.dates", { report_dates: [reportDate] }, {
+        basis: "formal",
+        formal_use_allowed: true,
+        quality_flag: "ok",
+        tables_used: ["fact_risk_tensor_daily"],
+        evidence_rows: 1,
+      }),
+    ...overrides,
+  };
+}
+
+function emptyChoiceMacroEnvelope(resultKind: string): ApiEnvelope<ChoiceMacroLatestPayload> {
+  return {
+    result_meta: testMeta(resultKind),
+    result: {
+      read_target: "duckdb",
+      series: [],
+    },
+  };
+}
+
+function emptyMacroVendorEnvelope(): ApiEnvelope<MacroVendorPayload> {
+  return {
+    result_meta: testMeta("market_data.catalog"),
+    result: {
+      read_target: "duckdb",
+      series: [],
+    },
+  };
+}
+
+function oneRateSeriesEnvelope(): ApiEnvelope<ChoiceMacroLatestPayload> {
+  return {
+    result_meta: testMeta("market_data.rates"),
+    result: {
+      read_target: "duckdb",
+      series: [
+        {
+          series_id: "CA.CN_GOV_10Y",
+          series_name: "10Y 国债",
+          trade_date: "2026-05-29",
+          value_numeric: 1.71,
+          unit: "%",
+          source_version: "sv_test",
+          vendor_version: "vv_test",
+          latest_change: -0.01,
+          recent_points: [],
+        },
+      ],
+    },
+  };
+}
+
 describe("ModuleWorkbenchHomePage", () => {
   it.each([
-    ["/market-overview", "市场工作台"],
     ["/risk-overview", "风险工作台"],
     ["/performance", "绩效工作台"],
     ["/reports", "报表与数据"],
   ])("renders the dedicated module home for %s", async (path, title) => {
     renderAt(path);
 
-    const page = await screen.findByTestId("module-workbench-home");
-    expect(page).toHaveTextContent(title);
+    const page = await screen.findByTestId("module-workbench-home", {}, { timeout: 10000 });
+    expect(within(page).getByRole("heading", { level: 1, name: title })).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-kpi-strip")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-status-strip")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-briefing")).toBeInTheDocument();
@@ -121,18 +481,6 @@ describe("ModuleWorkbenchHomePage", () => {
     const page = await screen.findByTestId("module-workbench-home");
     expect(page).toHaveTextContent("读取失败");
     expect(page).toHaveTextContent("不使用前端补数");
-  });
-
-  it("renders market key rate snapshot from choice and market-data reads", async () => {
-    renderAt("/market-overview");
-
-    const page = await screen.findByTestId("module-workbench-home");
-    expect(within(page).getByTestId("module-home-rate-snapshot")).toBeInTheDocument();
-    expect(page).toHaveTextContent("关键利率快照");
-    expect(page).toHaveTextContent("正式利率序列");
-    await waitFor(() => {
-      expect(page).toHaveTextContent("DR007");
-    });
   });
 
   it("renders risk tensor and cashflow detail cards from backend reads", async () => {
@@ -336,20 +684,251 @@ describe("PortfolioHomePage", () => {
     expect(within(page).queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
   });
 
-  it("renders portfolio balance and bond read summaries", async () => {
+  it("renders mock portfolio guard summaries instead of decision-grade sample summaries", async () => {
     renderAt("/portfolio");
 
     const page = await screen.findByTestId("module-workbench-home");
     await waitFor(() => {
-      expect(page).toHaveTextContent("规模与错配");
-      expect(page).toHaveTextContent("风险敏感度");
-      expect(page).toHaveTextContent("资产侧");
-      expect(page).toHaveTextContent("负债侧");
+      expect(page).toHaveTextContent("模拟数据防误用");
+      expect(page).toHaveTextContent("当前仅验证页面结构");
+      expect(page).toHaveTextContent("不可用于业务决策");
+      expect(page).toHaveTextContent("不生成调仓或风险动作");
     });
   });
 
-  it("renders portfolio holdings structure and depth panels", async () => {
+  it("guards the mock portfolio first screen from decision-grade sample numbers", async () => {
     renderAt("/portfolio");
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("模拟数据");
+      expect(decision).toHaveTextContent("模拟数据防误用");
+      expect(decision).toHaveTextContent("不可用于业务决策");
+      expect(decision).not.toHaveTextContent("42.00%");
+      expect(decision).not.toHaveTextContent("-12.54");
+      expect(decision).not.toHaveTextContent("428");
+      expect(page).not.toHaveTextContent("42.00%");
+      expect(page).not.toHaveTextContent("-12.54");
+      expect(within(decision).queryByRole("link", { name: /信用结构复核/ })).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders real portfolio data with explicit source evidence instead of the mock guard", async () => {
+    renderAt("/portfolio", realPortfolioClient());
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("已接入");
+      expect(page).toHaveTextContent("2026-05-31");
+      expect(page).toHaveTextContent("3,322.82 亿元");
+      expect(page).toHaveTextContent("1,710 只");
+      expect(page).toHaveTextContent("29.96%");
+      expect(page).toHaveTextContent("10,562.84 万元");
+      expect(page).toHaveTextContent("bond_dashboard.home_summary");
+      expect(page).toHaveTextContent("fact_formal_bond_analytics_daily");
+      expect(page).toHaveTextContent("1710 行");
+      expect(page).toHaveTextContent("无回退");
+    });
+
+    const dataNote = within(page).getByTestId("module-home-data-note");
+    const decision = within(page).getByTestId("module-home-decision");
+    expect(dataNote).toHaveTextContent("formal_use_allowed=true");
+    expect(dataNote).toHaveTextContent("basis=formal");
+    expect(dataNote).toHaveTextContent("fact_formal_bond_analytics_daily");
+    expect(decision).toHaveTextContent("风险指标: basis=formal, formal_use_allowed=true, quality=ok");
+    expect(decision).not.toHaveTextContent("风险指标 formal_use_allowed=false");
+    expect(page).not.toHaveTextContent("模拟数据防误用");
+    expect(page).not.toHaveTextContent("不可用于业务决策");
+  });
+
+  it("renders normal portfolio action queue only when all evidence is same-day formal", async () => {
+    renderAt("/portfolio", realPortfolioClient());
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(decision).toHaveTextContent("同日闭合 2026-05-31");
+      expect(decision).toHaveTextContent("子组合分层核验");
+    });
+    expect(within(decision).queryByRole("link", { name: /来源证据复核/ })).not.toBeInTheDocument();
+    expect(within(decision).queryByRole("link", { name: /风险张量日期复核/ })).not.toBeInTheDocument();
+  });
+
+  it("checks portfolio risk closure with dates only and never fetches the full tensor", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () =>
+      envelopeWithMeta(
+        "risk.tensor.dates",
+        { report_dates: ["2026-04-30"] },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          quality_flag: "ok",
+        },
+      ),
+    );
+    const getRiskTensor = vi.fn<ApiClient["getRiskTensor"]>((reportDate) => base.getRiskTensor(reportDate));
+
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getRiskTensorDates,
+        getRiskTensor,
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(getRiskTensorDates).toHaveBeenCalledTimes(1);
+      expect(decision).toHaveTextContent("风险张量未闭合至 2026-05-31");
+      expect(decision).toHaveTextContent("最新 2026-04-30");
+    });
+    expect(getRiskTensor).not.toHaveBeenCalled();
+    expect(page).toHaveTextContent("3,322.82 亿元");
+  });
+
+  it("downgrades real portfolio conclusions when pnl summary is not formal while preserving values", async () => {
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getPnlAttributionAnalysisSummary: async () =>
+          envelopeWithMeta(
+            "pnl-attribution.summary",
+            {
+              report_date: "2026-05-31",
+              primary_driver: "market",
+              primary_driver_pct: n(0.58, "ratio"),
+              key_findings: ["市值变动主要来自市场重估。"],
+              tpl_market_aligned: true,
+              tpl_market_note: "与 TPL 市场变动方向一致。",
+            },
+            {
+              basis: "analytical",
+              formal_use_allowed: false,
+              quality_flag: "warning",
+              tables_used: ["fact_formal_pnl_fi"],
+              evidence_rows: 1710,
+            },
+          ),
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("3,322.82 亿元");
+      expect(decision).toHaveTextContent("仅供分析");
+      expect(decision).toHaveTextContent("损益归因 basis=analytical");
+    });
+    expect(within(decision).queryByRole("link", { name: /信用结构复核/ })).not.toBeInTheDocument();
+    expect(within(decision).queryByRole("link", { name: /久期 DV01 复核/ })).not.toBeInTheDocument();
+  });
+
+  it("downgrades real portfolio conclusions when bond home summary is not formal while preserving values", async () => {
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getBondDashboardHomeSummary: async () => ({
+          ...envelopeWithMeta("bond_dashboard.home_summary", realPortfolioHomeSummary(), {
+            basis: "analytical",
+            formal_use_allowed: false,
+            quality_flag: "warning",
+          }),
+          data_source: "bond_analytics_facts",
+        }),
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("3,322.82 亿元");
+      expect(decision).toHaveTextContent("仅供分析");
+      expect(decision).toHaveTextContent("债券总览 basis=analytical");
+    });
+    expect(within(decision).queryByRole("link", { name: /信用结构复核/ })).not.toBeInTheDocument();
+    expect(within(decision).queryByRole("link", { name: /久期 DV01 复核/ })).not.toBeInTheDocument();
+  });
+
+  it("downgrades real portfolio conclusions when bond result metadata date differs while preserving values", async () => {
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getBondDashboardHomeSummary: async () => ({
+          ...envelopeWithMeta("bond_dashboard.home_summary", realPortfolioHomeSummary(), {
+            basis: "formal",
+            formal_use_allowed: true,
+            quality_flag: "ok",
+            resolved_report_date: "2026-05-30",
+            as_of_date: "2026-05-30",
+          }),
+          data_source: "bond_analytics_facts",
+        }),
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("3,322.82 亿元");
+      expect(decision).toHaveTextContent("仅供分析");
+      expect(decision).toHaveTextContent("债券总览 meta_date=2026-05-30");
+    });
+    expect(within(decision).queryByRole("link", { name: /信用结构复核/ })).not.toBeInTheDocument();
+    expect(within(decision).queryByRole("link", { name: /久期 DV01 复核/ })).not.toBeInTheDocument();
+  });
+
+  it("does not mark portfolio risk closure as same-day closed when risk date evidence fails", async () => {
+    const getRiskTensorDates = vi.fn(async () => {
+      throw new Error("risk dates unavailable");
+    });
+
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getRiskTensorDates,
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const decision = await within(page).findByTestId("module-home-decision");
+    await waitFor(() => {
+      expect(getRiskTensorDates).toHaveBeenCalledTimes(1);
+      expect(page).toHaveTextContent("3,322.82 亿元");
+      expect(decision).toHaveTextContent("风险闭合证据读取失败");
+    });
+    expect(decision).not.toHaveTextContent("同日闭合 2026-05-31");
+  });
+
+  it("fails closed in real portfolio mode when the bond summary read fails", async () => {
+    const getBondDashboardHomeSummary = vi.fn(async () => {
+      throw new Error("real bond summary unavailable");
+    });
+
+    renderAt(
+      "/portfolio",
+      realPortfolioClient({
+        getBondDashboardHomeSummary,
+      }),
+    );
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("读取失败");
+      expect(page).toHaveTextContent("不使用前端补数");
+      expect(getBondDashboardHomeSummary).toHaveBeenCalledWith("2026-05-31");
+    });
+
+    expect(page).not.toHaveTextContent("模拟数据防误用");
+    expect(page).not.toHaveTextContent("3,287.09");
+    expect(page).not.toHaveTextContent("42.00%");
+    expect(page).not.toHaveTextContent("-12.54");
+  });
+
+  it("renders portfolio holdings structure and depth panels", async () => {
+    renderAt("/portfolio", createRealModeDemoClient());
 
     const page = await screen.findByTestId("module-workbench-home");
     expect(within(page).getByTestId("module-home-holdings-structure")).toBeInTheDocument();
@@ -370,12 +949,13 @@ describe("PortfolioHomePage", () => {
   });
 
   it("renders structure tab chart beside portfolio comparison list", async () => {
-    renderAt("/portfolio");
+    renderAt("/portfolio", createRealModeDemoClient());
 
     const page = await screen.findByTestId("module-workbench-home");
     const terminal = within(page).getByTestId("module-home-portfolio-terminal");
     await waitFor(() => {
       expect(within(terminal).getByTestId("module-home-structure-chart")).toBeInTheDocument();
+      expect(within(terminal).getByTestId("module-home-echarts-stub")).toHaveAttribute("data-chart-height", "280");
     });
   });
 
@@ -405,6 +985,68 @@ describe("PortfolioHomePage", () => {
     expect(page).toHaveTextContent("资产负债分析");
     expect(page).toHaveTextContent("收益归因");
     expect(page).toHaveTextContent("持仓透视");
+  });
+  it("uses the compact bond home summary for depth reads while fetching formal risk evidence", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getBondDashboardHomeSummary = vi.fn<ApiClient["getBondDashboardHomeSummary"]>(
+      (reportDate) => base.getBondDashboardHomeSummary(reportDate),
+    );
+    const getBondDashboardHeadlineKpis = vi.fn<ApiClient["getBondDashboardHeadlineKpis"]>(
+      (reportDate) => base.getBondDashboardHeadlineKpis(reportDate),
+    );
+    const getBondDashboardRiskIndicators = vi.fn<ApiClient["getBondDashboardRiskIndicators"]>(
+      (reportDate) => base.getBondDashboardRiskIndicators(reportDate),
+    );
+    const getBondDashboardAssetStructure = vi.fn<ApiClient["getBondDashboardAssetStructure"]>(
+      (reportDate, groupBy) => base.getBondDashboardAssetStructure(reportDate, groupBy),
+    );
+    const getBondDashboardMaturityStructure = vi.fn<ApiClient["getBondDashboardMaturityStructure"]>(
+      (reportDate) => base.getBondDashboardMaturityStructure(reportDate),
+    );
+    const getBondDashboardIndustryDistribution = vi.fn<ApiClient["getBondDashboardIndustryDistribution"]>(
+      (reportDate) => base.getBondDashboardIndustryDistribution(reportDate),
+    );
+    const getBondDashboardYieldDistribution = vi.fn<ApiClient["getBondDashboardYieldDistribution"]>(
+      (reportDate) => base.getBondDashboardYieldDistribution(reportDate),
+    );
+    const getBondDashboardPortfolioComparison = vi.fn<ApiClient["getBondDashboardPortfolioComparison"]>(
+      (reportDate) => base.getBondDashboardPortfolioComparison(reportDate),
+    );
+    const getBondDashboardSpreadAnalysis = vi.fn<ApiClient["getBondDashboardSpreadAnalysis"]>(
+      (reportDate) => base.getBondDashboardSpreadAnalysis(reportDate),
+    );
+    const getBondBusinessTypeMetrics = vi.fn<ApiClient["getBondBusinessTypeMetrics"]>(
+      (params) => base.getBondBusinessTypeMetrics(params),
+    );
+    const client: ApiClient = {
+      ...base,
+      getBondDashboardHomeSummary,
+      getBondDashboardHeadlineKpis,
+      getBondDashboardRiskIndicators,
+      getBondDashboardAssetStructure,
+      getBondDashboardMaturityStructure,
+      getBondDashboardIndustryDistribution,
+      getBondDashboardYieldDistribution,
+      getBondDashboardPortfolioComparison,
+      getBondDashboardSpreadAnalysis,
+      getBondBusinessTypeMetrics,
+    };
+
+    renderAt("/portfolio", client);
+
+    await waitFor(() => {
+      expect(getBondDashboardHomeSummary).toHaveBeenCalledWith("2026-03-31");
+      expect(getBondDashboardRiskIndicators).toHaveBeenCalledWith("2026-03-31");
+      expect(screen.getByTestId("module-workbench-home")).toHaveTextContent("模拟数据防误用");
+    });
+    expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(getBondDashboardAssetStructure).not.toHaveBeenCalled();
+    expect(getBondDashboardMaturityStructure).not.toHaveBeenCalled();
+    expect(getBondDashboardIndustryDistribution).not.toHaveBeenCalled();
+    expect(getBondDashboardYieldDistribution).not.toHaveBeenCalled();
+    expect(getBondDashboardPortfolioComparison).not.toHaveBeenCalled();
+    expect(getBondDashboardSpreadAnalysis).not.toHaveBeenCalled();
+    expect(getBondBusinessTypeMetrics).not.toHaveBeenCalled();
   });
 });
 
@@ -449,11 +1091,38 @@ describe("MarketHomePage", () => {
   });
 
   it("renders market key rate snapshot and terminal tabs from market-data reads", async () => {
+    const user = userEvent.setup();
     renderAt("/market-overview");
 
     const page = await screen.findByTestId("module-workbench-home");
     expect(within(page).getByTestId("module-home-rate-snapshot")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-market-terminal")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-matrix")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("Market Decision Tape");
+    expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("待曲线核验");
+    expect(within(page).queryByTestId("module-home-market-command")).not.toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-status-strip")).toHaveTextContent("Source Gate");
+    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("Action Queue");
+    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("异常 / 机会闭环");
+    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("补齐国债/国开曲线核验");
+    expect(within(page).getByTestId("module-home-market-hero-evidence")).toBeInTheDocument();
+    const heroMeta = within(page).getByTestId("module-home-market-hero-meta");
+    expect(heroMeta).toBeInTheDocument();
+    expect(heroMeta).toHaveTextContent("Choice/Tushare 市场数据 / 跨资产");
+    expect(heroMeta).not.toHaveTextContent("ChoiceTushare");
+    const matrixRateCell = within(page).getByTestId("module-home-market-matrix-cell-rates");
+    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-headline")).toBeInTheDocument();
+    const matrixRateMeta = within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-meta");
+    const matrixRateEvidence = within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence");
+    expect(matrixRateMeta).toBeInTheDocument();
+    expect(matrixRateMeta.textContent).toContain(" / ");
+    expect(matrixRateMeta).toHaveAccessibleName(/ \/ /);
+    expect(matrixRateEvidence).toBeInTheDocument();
+    const actionQueue = within(page).getByTestId("module-home-market-actions");
+    const marketDataAction = within(actionQueue).getByTestId("module-home-market-action-curve-check");
+    const curveCheckEvidence = within(marketDataAction).getByTestId("module-home-market-action-curve-check-evidence");
+    expect(curveCheckEvidence).toBeInTheDocument();
+    expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-target")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-yield-curve")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-snapshot")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-toolkit")).toBeInTheDocument();
@@ -464,16 +1133,116 @@ describe("MarketHomePage", () => {
     expect(page).toHaveTextContent("国债与国开曲线");
     await waitFor(() => {
       expect(page).toHaveTextContent("DR007");
+      expect(within(page).getByTestId("module-home-market-terminal").querySelector('[data-chart-height="190"]')).toBeTruthy();
+      expect(within(page).getByTestId("module-home-rate-snapshot")).toHaveTextContent("样本");
+      expect(within(page).getByTestId("module-home-market-terminal")).toHaveTextContent("图表");
+      expect(within(page).getByTestId("module-home-yield-curve")).toHaveTextContent("来源");
       expect(within(page).getByTestId("module-home-macro-signals")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-macro-groups")).toBeInTheDocument();
+      expect(page).toHaveTextContent("核心归因");
+      expect(page).toHaveTextContent("工具明细");
+      expect(page).toHaveTextContent("组合运行");
       expect(page).toHaveTextContent("中性观察");
       expect(page).toHaveTextContent("流动性");
+      expect(within(page).queryByTestId("module-home-macro-a-share-risk")).not.toBeInTheDocument();
+      expect(page).toHaveTextContent("橙色风险");
+      expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("复核A股踩踏风险");
+      expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("跟踪跨资产传导");
+    });
+    const macroGroups = within(page).getByTestId("module-home-macro-groups");
+    await user.click(within(macroGroups).getByRole("button", { name: /展开明细/ }));
+    await waitFor(() => {
       expect(within(page).getByTestId("module-home-macro-a-share-risk")).toBeInTheDocument();
+    });
+    await user.click(within(macroGroups).getByRole("tab", { name: "组合运行" }));
+    await waitFor(() => {
+      expect(within(page).queryByTestId("module-home-macro-hason")).not.toBeInTheDocument();
+    });
+    await user.click(within(macroGroups).getByRole("button", { name: /展开明细/ }));
+    await waitFor(() => {
       expect(within(page).getByTestId("module-home-macro-hason")).toBeInTheDocument();
       expect(within(page).getByTestId("module-home-macro-shadow")).toBeInTheDocument();
       expect(within(page).getByTestId("module-home-macro-runtime")).toBeInTheDocument();
-      expect(page).toHaveTextContent("橙色风险");
       expect(page).toHaveTextContent("影子组合报告");
     });
+  });
+
+  it("hides macro group tabs when grouped macro detail panels have no rows", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getMacroToolkitAnalysis: async () => coreMacroAnalysisEnvelope(),
+      getMacroToolkitStrategySummaries: async () => strategySummariesEnvelope(),
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(page).toHaveTextContent("中性观察");
+      expect(within(page).queryByTestId("module-home-macro-groups")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps empty market workbench and depth cards compact", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getChoiceMacroLatest: async () => emptyChoiceMacroEnvelope("macro.choice.latest"),
+      getMarketDataRates: async () => emptyChoiceMacroEnvelope("market_data.rates"),
+      getMarketDataCatalog: async () => emptyMacroVendorEnvelope(),
+      getMacroToolkitAnalysis: async () => coreMacroAnalysisEnvelope(),
+      getMacroToolkitStrategySummaries: async () => strategySummariesEnvelope(),
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(within(page).getByTestId("module-home-rate-snapshot").className).toEqual(
+        expect.stringContaining("marketCompactEmptyPanel"),
+      );
+      expect(within(page).getByTestId("module-home-market-terminal").className).toEqual(
+        expect.stringContaining("marketCompactEmptyTerminal"),
+      );
+      expect(within(page).getByTestId("module-home-yield-curve").className).toEqual(
+        expect.stringContaining("marketCompactEmptyPanel"),
+      );
+      expect(within(page).getByTestId("module-home-macro-snapshot").className).toEqual(
+        expect.stringContaining("marketCompactEmptyPanel"),
+      );
+      expect(within(page).queryByTestId("module-home-panel-summary")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps populated market terminal rows in a bounded scroll surface", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getChoiceMacroLatest: async () => emptyChoiceMacroEnvelope("macro.choice.latest"),
+      getMarketDataRates: async () => oneRateSeriesEnvelope(),
+      getMarketDataCatalog: async () => emptyMacroVendorEnvelope(),
+      getMacroToolkitAnalysis: async () => coreMacroAnalysisEnvelope(),
+      getMacroToolkitStrategySummaries: async () => strategySummariesEnvelope(),
+    };
+
+    renderAt("/market-overview", client);
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(within(page).getByTestId("module-home-market-terminal").querySelector('[class*="terminalTableScroll"]')).toBeTruthy();
+    });
+    const matrixRateCell = within(page).getByTestId("module-home-market-matrix-cell-rates");
+    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-meta")).toHaveTextContent(
+      "1 条 / 1 源 / 2026-05-29",
+    );
+    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence")).toHaveTextContent(
+      "2026-05-29 / -1bp / CA.CN_GOV_10Y",
+    );
+    const keyRateAction = within(page).getByTestId("module-home-market-action-key-rate-check");
+    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence")).toHaveTextContent(
+      "10Y 国债 / 1.71% / -1bp / 2026-05-29 / CA.CN_GOV_10Y",
+    );
   });
 
   it("renders all market module drilldown links", async () => {

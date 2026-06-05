@@ -5,7 +5,9 @@ import { Tabs } from "antd";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import type { ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
 import type { ModuleWorkbenchHomeConfig } from "./moduleHomeConfig";
+import { MarketActionQueue } from "./MarketActionQueue";
 import { MarketDepthPanel } from "./MarketDepthPanel";
+import { MarketDecisionMatrix } from "./MarketDecisionMatrix";
 import { MarketRateLadder } from "./MarketKeyRateCard";
 import MarketMacroToolkitSection from "./MarketMacroToolkitSection";
 import { MarketStructureTabPanel } from "./MarketStructureTabPanel";
@@ -40,6 +42,16 @@ function statePillClass(tone: ModuleHomeTone) {
   return dhStyles.dhStatusPill;
 }
 
+function evidenceSegments(value: string | undefined) {
+  const text = value?.trim();
+  if (!text || text === "-") return [];
+  return text.match(/[^；;。]+[；;。]?/g)?.map((part) => part.trim()).filter(Boolean) ?? [text];
+}
+
+function sourceSegments(value: string | undefined) {
+  return value?.split(/\s+\/\s+/).map((part) => part.trim()).filter(Boolean) ?? [];
+}
+
 type MarketHomeLayoutProps = {
   view: ModuleHomeView;
   config: ModuleWorkbenchHomeConfig;
@@ -72,6 +84,12 @@ export default function MarketHomeLayout({
   const macroHasonPanel = panelByKey(view.detailPanels, "macro-toolkit-hason");
   const macroShadowPanel = panelByKey(view.detailPanels, "macro-toolkit-shadow");
   const macroRuntimePanel = panelByKey(view.detailPanels, "macro-toolkit-runtime");
+  const isMarketTerminalDefaultEmpty = formalPanel
+    ? formalPanel.rows.length === 0 &&
+      (!formalPanel.chart || formalPanel.chart.categories.length === 0)
+    : false;
+  const primaryEvidenceSegments = evidenceSegments(primaryBriefing?.evidence);
+  const sourceScopeSegments = sourceSegments(view.sourceScope);
 
   const tabItems = useMemo(() => {
     const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
@@ -91,8 +109,8 @@ export default function MarketHomeLayout({
 
   return (
     <>
-      <header data-testid="module-home-toolbar" className={dhStyles.dhTopbar}>
-        <div className={dhStyles.dhTopbarLeft}>
+      <header data-testid="module-home-toolbar" className={`${dhStyles.dhTopbar} ${marketStyles.marketTopbar}`}>
+        <div className={`${dhStyles.dhTopbarLeft} ${marketStyles.marketTopbarLeft}`}>
           <div className={dhStyles.dhTitleBrand}>
             <span className={dhStyles.dhTitleBar} aria-hidden="true" />
             <span className={dhStyles.dhTitleMark} aria-hidden="true">
@@ -100,10 +118,12 @@ export default function MarketHomeLayout({
             </span>
             <h1 className={dhStyles.dhTitle}>{view.title}</h1>
           </div>
-          <p className={marketStyles.topbarSummary}>{view.question}</p>
-          <p className={marketStyles.topbarScope}>{view.summary}</p>
+          <div className={marketStyles.topbarCopy}>
+            <p className={marketStyles.topbarSummary}>{view.question}</p>
+            <p className={marketStyles.topbarScope}>{view.summary}</p>
+          </div>
         </div>
-        <div className={dhStyles.dhTopbarRight}>
+        <div className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}>
           <span className={statePillClass(stateTone)}>{view.stateLabel}</span>
           <span className={dhStyles.dhDateLabel}>最新行情日</span>
           <span className={`${dhStyles.dhNum} ${marketStyles.topbarDate}`}>{latestTradeDate || "—"}</span>
@@ -113,15 +133,24 @@ export default function MarketHomeLayout({
       </header>
 
       <main className={`${dhStyles.dhMain} ${marketStyles.marketPageMain}`}>
-        <section data-testid="module-home-briefing" className={`${dhStyles.dhHero} ${marketStyles.marketHero}`}>
+        <section className={marketStyles.decisionSection}>
+          <section data-testid="module-home-briefing" className={`${dhStyles.dhHero} ${marketStyles.marketHero}`}>
           {primaryBriefing ? (
-            <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement}`}>
+            <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement} ${marketStyles.judgementCard}`}>
               <span className={dhStyles.dhTerminalEyebrow}>本日市场判断</span>
               <h2>{primaryBriefing.conclusion}</h2>
-              <p className={dhStyles.dhImpact}>{primaryBriefing.evidence}</p>
-              <div className={dhStyles.dhTerminalJudgementFoot}>
+              <p className={`${dhStyles.dhImpact} ${marketStyles.marketHeroEvidence}`} data-testid="module-home-market-hero-evidence">
+                {(primaryEvidenceSegments.length > 0 ? primaryEvidenceSegments : [primaryBriefing.evidence]).map((part) => (
+                  <span key={part}>{part}</span>
+                ))}
+              </p>
+              <div className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`} data-testid="module-home-market-hero-meta">
                 <span>{view.stateDetail}</span>
-                <span className={dhStyles.dhMuted}> · {view.sourceScope}</span>
+                <span className={marketStyles.marketHeroSources}>
+                  {sourceScopeSegments.length > 0
+                    ? sourceScopeSegments.map((part, index) => <em key={part}>{index > 0 ? ` / ${part}` : part}</em>)
+                    : <em>{view.sourceScope}</em>}
+                </span>
               </div>
             </article>
           ) : null}
@@ -130,13 +159,17 @@ export default function MarketHomeLayout({
             className={`${dhStyles.dhCard} ${marketStyles.marketKpiBox}`}
           >
             {view.kpis.map((item) => (
-              <div className={dhStyles.dhMetricTile} key={item.key}>
+              <div className={`${dhStyles.dhMetricTile} ${marketStyles.marketKpiTile}`} key={item.key}>
                 <div className={dhStyles.dhMetricLabel}>{item.label}</div>
                 <div className={`${dhStyles.dhMetricValue} ${dhStyles.dhNum} ${toneClass(item.tone)}`}>
                   {item.value}
                 </div>
                 <div className={dhStyles.dhChange}>
-                  <span className={dhStyles.dhMuted}>{item.detail}</span>
+                  <span className={`${dhStyles.dhMuted} ${marketStyles.marketKpiDetail}`} data-testid={`module-home-market-kpi-${item.key}-detail`}>
+                    {evidenceSegments(item.detail).map((part) => (
+                      <em key={part}>{part}</em>
+                    ))}
+                  </span>
                 </div>
               </div>
             ))}
@@ -152,69 +185,82 @@ export default function MarketHomeLayout({
                 <span className={marketStyles.insightEvidence}>{item.evidence}</span>
               </article>
             ))}
-            <article className={marketStyles.insightCell}>
-              <span className={marketStyles.insightLabel}>接入概览</span>
-              <p className={marketStyles.insightCopy}>{view.stateDetail}</p>
-              <span className={marketStyles.insightEvidence}>{view.sourceScope}</span>
-            </article>
           </section>
         ) : null}
 
-        <section
-          data-testid="module-home-status-strip"
-          className={`${dhStyles.dhCardSecondary} ${marketStyles.readPathBand}`}
-        >
-          <div className={marketStyles.readPathGrid}>
-            {view.statuses.map((item) => (
-              <div className={marketStyles.readPathCell} key={item.key}>
-                <span className={marketStyles.readPathLabel}>{item.label}</span>
-                <b className={`${dhStyles.dhNum} ${toneClass(item.tone)}`}>{item.value}</b>
-                <em>{item.detail}</em>
-              </div>
-            ))}
-          </div>
+        <MarketDecisionMatrix
+          view={view}
+          latestTradeDate={latestTradeDate}
+          formalTradeDate={formalTradeDate}
+          keyRatePanel={keyRatePanel}
+          yieldCurvePanel={yieldCurvePanel}
+          macroPanel={macroPanel}
+          formalPanel={formalPanel}
+          catalogPanel={catalogPanel}
+          macroOverviewPanel={macroOverviewPanel}
+        />
+
+        <MarketActionQueue
+          view={view}
+          keyRatePanel={keyRatePanel}
+          yieldCurvePanel={yieldCurvePanel}
+          macroPanel={macroPanel}
+        />
+
         </section>
 
-        <section className={marketStyles.workGrid}>
+        <section className={marketStyles.marketWorkbenchSection}>
+          <div className={dhStyles.dhSectionTitle}>
+            <span>市场工作台</span>
+            <Link to="/market-data" className={dhStyles.dhLink}>
+              完整市场数据 →
+            </Link>
+          </div>
+          <div className={marketStyles.workGrid}>
           {keyRatePanel ? <MarketRateLadder panel={keyRatePanel} viewAllPath="/market-data" /> : null}
           <div
             data-testid="module-home-market-terminal"
-            className={`${dhStyles.dhCard} ${marketStyles.terminalCard}`}
+            className={`${dhStyles.dhCard} ${marketStyles.terminalCard} ${
+              isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""
+            }`}
           >
             <div className={dhStyles.dhSectionTitle}>
               <span>行情序列</span>
-              <Link to="/market-data" className={dhStyles.dhLink}>
-                完整市场数据 →
-              </Link>
             </div>
             <Tabs defaultActiveKey="formal-rate-series" items={tabItems} />
           </div>
+          </div>
         </section>
 
-        <section className={marketStyles.depthQuad}>
-          {yieldCurvePanel ? (
-            <MarketDepthPanel
-              panel={yieldCurvePanel}
-              testId={DETAIL_PANEL_TEST_IDS[yieldCurvePanel.key]}
-            />
-          ) : null}
-          {macroPanel ? (
-            <MarketDepthPanel panel={macroPanel} testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]} />
-          ) : null}
-          {formalPanel ? (
-            <MarketDepthPanel
-              panel={formalPanel}
-              testId={DETAIL_PANEL_TEST_IDS[formalPanel.key]}
-              compact
-            />
-          ) : null}
-          {catalogPanel ? (
-            <MarketDepthPanel
-              panel={catalogPanel}
-              testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
-              compact
-            />
-          ) : null}
+        <section className={marketStyles.depthSection}>
+          <div className={dhStyles.dhSectionTitle}>
+            <span>市场深度</span>
+          </div>
+          <div className={marketStyles.depthQuad}>
+            {yieldCurvePanel ? (
+              <MarketDepthPanel
+                panel={yieldCurvePanel}
+                testId={DETAIL_PANEL_TEST_IDS[yieldCurvePanel.key]}
+              />
+            ) : null}
+            {macroPanel ? (
+              <MarketDepthPanel panel={macroPanel} testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]} />
+            ) : null}
+            {formalPanel ? (
+              <MarketDepthPanel
+                panel={formalPanel}
+                testId={DETAIL_PANEL_TEST_IDS[formalPanel.key]}
+                compact
+              />
+            ) : null}
+            {catalogPanel ? (
+              <MarketDepthPanel
+                panel={catalogPanel}
+                testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
+                compact
+              />
+            ) : null}
+          </div>
         </section>
 
         <MarketMacroToolkitSection
@@ -229,6 +275,7 @@ export default function MarketHomeLayout({
           runtimePanel={macroRuntimePanel}
         />
 
+        <section className={marketStyles.navigationSection}>
         <section data-testid="module-home-observation" className={marketStyles.observationSection}>
           <div className={dhStyles.dhSectionTitle}>
             <span>观察入口</span>
@@ -252,7 +299,7 @@ export default function MarketHomeLayout({
           </div>
         </section>
 
-        <section data-testid="module-home-drilldowns">
+        <section data-testid="module-home-drilldowns" className={marketStyles.drillSection}>
           <div className={dhStyles.dhSectionTitle}>
             <span>模块下钻</span>
           </div>
@@ -279,6 +326,7 @@ export default function MarketHomeLayout({
               {view.dataNote.lines.join(" ")}
             </p>
           ) : null}
+        </section>
         </section>
       </main>
     </>
