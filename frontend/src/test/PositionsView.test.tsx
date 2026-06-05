@@ -70,6 +70,8 @@ describe("PositionsView", () => {
     expect(
       await screen.findByRole("combobox", { name: "positions-report-date" }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("持仓区间起始日期")).toBeInTheDocument();
+    expect(screen.getByLabelText("持仓区间结束日期")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "债券持仓" })).toBeInTheDocument();
   });
 

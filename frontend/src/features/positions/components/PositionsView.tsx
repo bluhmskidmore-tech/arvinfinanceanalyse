@@ -552,6 +552,7 @@ export default function PositionsView() {
             <Typography.Text type="secondary">区间起</Typography.Text>
             <div>
               <Input
+                aria-label="持仓区间起始日期"
                 type="date"
                 value={rangeFrom}
                 onChange={(e) => {
@@ -566,6 +567,7 @@ export default function PositionsView() {
             <Typography.Text type="secondary">区间止</Typography.Text>
             <div>
               <Input
+                aria-label="持仓区间结束日期"
                 type="date"
                 value={rangeTo}
                 onChange={(e) => {
