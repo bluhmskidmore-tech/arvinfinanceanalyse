@@ -103,6 +103,37 @@ export function ResearchCalendarSection({
               <span>{macroBriefing.newsStatusLabel}</span>
               <span>{macroBriefing.newsRefreshLabel}</span>
             </div>
+            {summary.diagnostics ? (
+              <div className={styles.dhPolicyFundingDiagnostics} aria-label="政策与资金面数据诊断">
+                <div className={styles.dhPolicyFundingDiagnosticsHeader}>
+                  <span>数据诊断</span>
+                  <small>{summary.diagnostics.summary}</small>
+                </div>
+                <div className={styles.dhPolicyFundingDiagnosticMetrics}>
+                  {summary.diagnostics.metrics.map((metric) => (
+                    <span key={metric.id} data-tone={metric.tone}>
+                      <small>{metric.label}</small>
+                      <b>{metric.value}</b>
+                    </span>
+                  ))}
+                </div>
+                {summary.diagnostics.emptyHint ? (
+                  <p className={styles.dhPolicyFundingDiagnosticHint}>
+                    {summary.diagnostics.emptyHint}
+                  </p>
+                ) : null}
+                {summary.diagnostics.reasons.length > 0 ? (
+                  <div className={styles.dhPolicyFundingDiagnosticReasons}>
+                    {summary.diagnostics.reasons.map((reason) => (
+                      <span key={reason.id} data-tone={reason.tone}>
+                        {reason.label}
+                        <b>{reason.countLabel}</b>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {macroBriefing.newsStale ? <span className={styles.dhMacroNewsStale}>新闻源偏旧</span> : null}
             {summary.groups.length > 0 ? (
               <div className={styles.dhPolicyFundingGroups}>

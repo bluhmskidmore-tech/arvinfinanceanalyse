@@ -6,7 +6,10 @@ import {
 } from "../../dashboard/dashboardMacroNewsTopics";
 import { addDaysToIsoDate } from "../../pages/dashboardPageHelpers";
 import {
-  shouldIncludeMacroNewsEvent,
+  hasLeadingHtmlPayload,
+  isDisplayableMacroNewsText,
+  isMacroRelevantForHomeBriefing,
+  isPolicyFundingRelevantForHomeBriefing,
   summarizeMacroNewsEvent,
 } from "./macroNewsPresentation";
 import type { HomeResearchCalendarModel } from "./buildHomeResearchCalendarModel";
@@ -52,9 +55,31 @@ export type HomePolicyFundingNewsGroup = {
   items: readonly HomeMacroNewsItem[];
 };
 
+export type HomePolicyFundingDiagnosticMetric = {
+  id: string;
+  label: string;
+  value: string;
+  tone: "neutral" | "info" | "warning" | "danger";
+};
+
+export type HomePolicyFundingDiagnosticReason = {
+  id: string;
+  label: string;
+  countLabel: string;
+  tone: "neutral" | "info" | "warning" | "danger";
+};
+
+export type HomePolicyFundingDiagnostics = {
+  summary: string;
+  emptyHint: string | null;
+  metrics: readonly HomePolicyFundingDiagnosticMetric[];
+  reasons: readonly HomePolicyFundingDiagnosticReason[];
+};
+
 export type HomePolicyFundingSummary = {
   headline: string;
   chips: readonly HomePolicyFundingChip[];
+  diagnostics?: HomePolicyFundingDiagnostics;
   groups: readonly HomePolicyFundingNewsGroup[];
 };
 
@@ -89,7 +114,22 @@ type MacroReleaseCalendarRow = {
 type MacroNewsItemsResult = Pick<
   HomeMacroBriefingModel,
   "newsItems" | "newsMessage" | "newsStale" | "newsFreshnessLabel" | "newsSourceLabel" | "newsAsOfLabel" | "newsStatusLabel" | "newsRefreshLabel"
->;
+> & {
+  policyFundingDiagnostics?: HomePolicyFundingDiagnostics;
+};
+
+type MacroNewsFilterOptions = {
+  requireMacroRelevance: boolean;
+  requirePolicyFundingRelevance: boolean;
+};
+
+type MacroNewsDropReasonId =
+  | "source-error"
+  | "undisplayable"
+  | "not-macro"
+  | "not-policy-funding"
+  | "duplicate-title"
+  | "over-limit";
 
 const RELEASE_WINDOW_DAYS = 45;
 const RELEASE_LIMIT = 6;
@@ -185,6 +225,179 @@ function daysUntilLabel(date: string, todayIsoDate: string): string {
   return `${Math.abs(days)}天前`;
 }
 
+function incrementReason(reasons: Map<MacroNewsDropReasonId, number>, id: MacroNewsDropReasonId) {
+  reasons.set(id, (reasons.get(id) ?? 0) + 1);
+}
+
+function dropReasonLabel(id: MacroNewsDropReasonId): string {
+  if (id === "source-error") {
+    return "源错误/权限";
+  }
+  if (id === "undisplayable") {
+    return "正文不可展示";
+  }
+  if (id === "not-macro") {
+    return "非宏观";
+  }
+  if (id === "not-policy-funding") {
+    return "非政策/资金面";
+  }
+  if (id === "duplicate-title") {
+    return "重复标题";
+  }
+  return "超过展示上限";
+}
+
+function dropReasonTone(id: MacroNewsDropReasonId): HomePolicyFundingDiagnosticReason["tone"] {
+  if (id === "source-error") {
+    return "danger";
+  }
+  if (id === "undisplayable" || id === "not-macro" || id === "not-policy-funding") {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function selectedSourceLabel(sourceLabel: string): string {
+  const compact = sourceLabel.replace(/^来源：/, "").trim();
+  if (compact.includes("Tushare") && compact.includes("兜底")) {
+    return compact.includes("非严格") ? "Tushare 宏观兜底" : "Tushare 兜底";
+  }
+  if (compact.includes("Choice")) {
+    return "Choice";
+  }
+  return compact || "当前源";
+}
+
+function describeCount(count: number): string {
+  return `${count} 条`;
+}
+
+function reasonListText(reasons: readonly HomePolicyFundingDiagnosticReason[]): string {
+  return reasons.map((reason) => reason.label).join("、");
+}
+
+function analyzeMacroNewsEvents(input: {
+  events?: readonly ChoiceNewsEvent[] | null;
+  options: MacroNewsFilterOptions;
+}): {
+  rawCount: number;
+  eligibleCount: number;
+  uniqueCount: number;
+  displayedCount: number;
+  displayedEvents: readonly ChoiceNewsEvent[];
+  reasons: readonly HomePolicyFundingDiagnosticReason[];
+} {
+  const reasons = new Map<MacroNewsDropReasonId, number>();
+  const eligibleEvents = (input.events ?? []).filter((event) => {
+    if (event.error_code !== 0) {
+      incrementReason(reasons, "source-error");
+      return false;
+    }
+    if (hasLeadingHtmlPayload(event)) {
+      incrementReason(reasons, "undisplayable");
+      return false;
+    }
+
+    const title = summarizeMacroNewsEvent(event);
+    if (!isDisplayableMacroNewsText(title)) {
+      incrementReason(reasons, "undisplayable");
+      return false;
+    }
+    if (input.options.requireMacroRelevance && !isMacroRelevantForHomeBriefing(title)) {
+      incrementReason(reasons, "not-macro");
+      return false;
+    }
+    if (input.options.requirePolicyFundingRelevance && !isPolicyFundingRelevantForHomeBriefing(title)) {
+      incrementReason(reasons, "not-policy-funding");
+      return false;
+    }
+    return true;
+  });
+
+  const sortedEligibleEvents = eligibleEvents
+    .slice()
+    .sort((left, right) => right.received_at.localeCompare(left.received_at));
+  const seenTitles = new Set<string>();
+  const uniqueEvents = sortedEligibleEvents.filter((event) => {
+    const title = summarizeMacroNewsEvent(event);
+    const key = title.trim().toLowerCase();
+    if (!key || seenTitles.has(key)) {
+      incrementReason(reasons, "duplicate-title");
+      return false;
+    }
+    seenTitles.add(key);
+    return true;
+  });
+  const displayedEvents = uniqueEvents.slice(0, NEWS_LIMIT);
+  const overLimitCount = Math.max(0, uniqueEvents.length - NEWS_LIMIT);
+  if (overLimitCount > 0) {
+    reasons.set("over-limit", overLimitCount);
+  }
+
+  return {
+    rawCount: input.events?.length ?? 0,
+    eligibleCount: sortedEligibleEvents.length,
+    uniqueCount: uniqueEvents.length,
+    displayedCount: displayedEvents.length,
+    displayedEvents,
+    reasons: Array.from(reasons.entries()).map(([id, count]) => ({
+      id,
+      label: dropReasonLabel(id),
+      countLabel: describeCount(count),
+      tone: dropReasonTone(id),
+    })),
+  };
+}
+
+function buildPolicyFundingDiagnostics(input: {
+  sourceLabel: string;
+  rawCount: number;
+  eligibleCount: number;
+  uniqueCount: number;
+  displayedCount: number;
+  reasons: readonly HomePolicyFundingDiagnosticReason[];
+}): HomePolicyFundingDiagnostics {
+  const source = selectedSourceLabel(input.sourceLabel);
+  const metrics: HomePolicyFundingDiagnosticMetric[] = [
+    { id: "raw", label: "原始", value: describeCount(input.rawCount), tone: "neutral" },
+    { id: "eligible", label: "入选", value: describeCount(input.eligibleCount), tone: "info" },
+    { id: "unique", label: "去重后", value: describeCount(input.uniqueCount), tone: "info" },
+    { id: "displayed", label: "展示", value: describeCount(input.displayedCount), tone: "info" },
+  ];
+  const removedCount = Math.max(0, input.rawCount - input.displayedCount);
+  const reasonText = reasonListText(input.reasons);
+
+  return {
+    summary: `当前源 ${source}：原始 ${input.rawCount} 条，入选 ${input.eligibleCount} 条，去重后 ${input.uniqueCount} 条，展示 ${input.displayedCount} 条。`,
+    emptyHint:
+      input.displayedCount <= 1 && removedCount > 0 && reasonText
+        ? `仅 ${input.displayedCount} 条通过筛选；其余 ${removedCount} 条因${reasonText}未展示。`
+        : null,
+    metrics,
+    reasons: input.reasons,
+  };
+}
+
+function emptyPolicyFundingDiagnostics(input: {
+  sourceLabel: string;
+  stateLabel: string;
+  rawCount?: number;
+}): HomePolicyFundingDiagnostics {
+  const rawCount = input.rawCount ?? 0;
+  return {
+    summary: `当前源 ${selectedSourceLabel(input.sourceLabel)}：${input.stateLabel}，原始 ${rawCount} 条，展示 0 条。`,
+    emptyHint: rawCount > 0 ? `当前 ${rawCount} 条原始记录未形成可展示快讯。` : "当前没有可诊断的原始记录。",
+    metrics: [
+      { id: "raw", label: "原始", value: describeCount(rawCount), tone: "neutral" },
+      { id: "eligible", label: "入选", value: "0 条", tone: "warning" },
+      { id: "unique", label: "去重后", value: "0 条", tone: "warning" },
+      { id: "displayed", label: "展示", value: "0 条", tone: "warning" },
+    ],
+    reasons: [],
+  };
+}
+
 function buildReleaseItems(todayIsoDate: string): HomeMacroReleaseItem[] {
   const windowEndDate = addDaysToIsoDate(todayIsoDate, RELEASE_WINDOW_DAYS);
   return macroReleaseCalendar
@@ -219,38 +432,26 @@ function buildNewsItemsFromEvents(input: {
   requireMacroRelevance?: boolean;
   requirePolicyFundingRelevance?: boolean;
 }): MacroNewsItemsResult {
-  const seenTitles = new Set<string>();
-  const sortedEvents = (input.events ?? [])
-    .filter((event) =>
-      shouldIncludeMacroNewsEvent(event, {
-        requireMacroRelevance: Boolean(input.requireMacroRelevance),
-        requirePolicyFundingRelevance: Boolean(input.requirePolicyFundingRelevance),
-      }),
-    )
-    .slice()
-    .sort((left, right) => right.received_at.localeCompare(left.received_at));
-  const newsItems = sortedEvents
-    .flatMap((event) => {
-      const title = summarizeMacroNewsEvent(event);
-      const key = title.trim().toLowerCase();
-      if (!title || seenTitles.has(key)) {
-        return [];
-      }
-      seenTitles.add(key);
-      const timeLabel = dateTimeLabel(event.received_at);
-      return [
-        {
-          id: event.event_key,
-          timeLabel,
-          topicLabel: input.topicLabel(event.topic_code),
-          title,
-          freshnessLabel: `最近更新 ${timeLabel}`,
-        },
-      ];
-    })
-    .slice(0, NEWS_LIMIT);
+  const analysis = analyzeMacroNewsEvents({
+    events: input.events,
+    options: {
+      requireMacroRelevance: Boolean(input.requireMacroRelevance),
+      requirePolicyFundingRelevance: Boolean(input.requirePolicyFundingRelevance),
+    },
+  });
+  const newsItems = analysis.displayedEvents.map((event) => {
+    const title = summarizeMacroNewsEvent(event);
+    const timeLabel = dateTimeLabel(event.received_at);
+    return {
+      id: event.event_key,
+      timeLabel,
+      topicLabel: input.topicLabel(event.topic_code),
+      title,
+      freshnessLabel: `最近更新 ${timeLabel}`,
+    };
+  });
 
-  const latestDate = sortedEvents[0]?.received_at.slice(0, 10) ?? "";
+  const latestDate = analysis.displayedEvents[0]?.received_at.slice(0, 10) ?? "";
   const staleDays = latestDate ? daysBetween(input.todayIsoDate, latestDate) : null;
   const newsStale = staleDays != null && staleDays > NEWS_STALE_DAYS;
   const newsFreshnessLabel = newsItems[0]?.freshnessLabel ?? "暂无更新";
@@ -266,6 +467,14 @@ function buildNewsItemsFromEvents(input: {
     newsStatusLabel:
       newsItems.length > 0 ? (newsStale ? input.statusWhenStale : input.statusWhenFresh) : input.statusWhenEmpty,
     newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    policyFundingDiagnostics: buildPolicyFundingDiagnostics({
+      sourceLabel: input.sourceLabel,
+      rawCount: analysis.rawCount,
+      eligibleCount: analysis.eligibleCount,
+      uniqueCount: analysis.uniqueCount,
+      displayedCount: analysis.displayedCount,
+      reasons: analysis.reasons,
+    }),
   };
 }
 
@@ -297,6 +506,11 @@ function buildChoiceSourceErrorResult(event: ChoiceNewsEvent): MacroNewsItemsRes
     newsAsOfLabel: `数据截至 ${timeLabel}`,
     newsStatusLabel: isPermissionError ? "来源状态：Choice 权限不足" : "来源状态：新闻源错误",
     newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
+      sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+      stateLabel: isPermissionError ? "Choice 权限不足" : "新闻源错误",
+      rawCount: 1,
+    }),
   };
 }
 
@@ -343,6 +557,10 @@ export function resolveHomeMacroNewsBriefing(input: {
       newsAsOfLabel: "数据截至：不可用",
       newsStatusLabel: "来源状态：异常",
       newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+      policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
+        sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+        stateLabel: "查询异常",
+      }),
     };
   }
   if (input.isLoading && !input.choiceEvents?.length && !input.fallbackEvents?.length) {
@@ -355,6 +573,10 @@ export function resolveHomeMacroNewsBriefing(input: {
       newsAsOfLabel: "数据截至：加载中",
       newsStatusLabel: "来源状态：加载中",
       newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+      policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
+        sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+        stateLabel: "加载中",
+      }),
     };
   }
 
@@ -384,6 +606,11 @@ export function resolveHomeMacroNewsBriefing(input: {
       newsAsOfLabel: "数据截至：加载中",
       newsStatusLabel: "来源状态：加载中",
       newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+      policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
+        sourceLabel: MACRO_NEWS_FALLBACK_SOURCE_LABEL,
+        stateLabel: "等待兜底源",
+        rawCount: input.choiceEvents?.length ?? 0,
+      }),
     };
   }
 
@@ -519,6 +746,7 @@ export function buildPolicyFundingSummary(input: MacroNewsItemsResult): HomePoli
     return {
       headline: "暂无可展示的政策与资金面快讯。",
       chips,
+      diagnostics: input.policyFundingDiagnostics,
       groups,
     };
   }
@@ -529,6 +757,7 @@ export function buildPolicyFundingSummary(input: MacroNewsItemsResult): HomePoli
   return {
     headline: `${input.newsItems.length} 条政策与资金面快讯${focusText}`,
     chips,
+    diagnostics: input.policyFundingDiagnostics,
     groups,
   };
 }

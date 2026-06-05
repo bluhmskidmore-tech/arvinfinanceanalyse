@@ -323,6 +323,168 @@ describe("resolveHomeMacroNewsBriefing", () => {
     expect(result.newsItems[0]?.timeLabel).toBe("时间待核");
     expect(result.newsAsOfLabel).toBe("数据截至 时间待核");
   });
+
+  it("explains source inventory, filtering, dedupe, and display limits for fallback news", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-04",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-stale",
+          received_at: "2026-04-21T15:06:30+08:00",
+          topic_code: "S888005004API",
+          payload_text: "旧 Choice 国际资讯",
+        }),
+      ],
+      fallbackEvents: [
+        choiceEvent({
+          event_key: "repo",
+          received_at: "2026-06-03T20:17:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "本周中国央行公开市场将有9089亿元逆回购到期",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "us10y",
+          received_at: "2026-06-03T20:16:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "dr007",
+          received_at: "2026-06-03T20:15:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "DR007 小幅下行，银行间资金面保持平稳",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "mlf",
+          received_at: "2026-06-03T20:14:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "央行开展 MLF 续作，货币政策保持稳健",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "local-bond",
+          received_at: "2026-06-03T20:13:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "地方债发行提速，债券市场关注供给压力",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "shibor",
+          received_at: "2026-06-03T20:12:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "Shibor 多数下行，货币市场流动性宽松",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "cdb",
+          received_at: "2026-06-03T20:11:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "政金债收益率窄幅波动，长端利率维持震荡",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "repo-duplicate",
+          received_at: "2026-06-03T20:10:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "本周中国央行公开市场将有9089亿元逆回购到期",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "pet-story",
+          received_at: "2026-06-03T20:09:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "宠物医院发布暑期服务活动",
+          group_id: "tushare_news",
+        }),
+      ],
+    });
+
+    const summary = buildPolicyFundingSummary(result);
+
+    expect(result.newsItems).toHaveLength(6);
+    expect(summary.diagnostics?.summary).toBe(
+      "当前源 Tushare 兜底：原始 9 条，入选 8 条，去重后 7 条，展示 6 条。",
+    );
+    expect(summary.diagnostics?.metrics).toEqual([
+      { id: "raw", label: "原始", value: "9 条", tone: "neutral" },
+      { id: "eligible", label: "入选", value: "8 条", tone: "info" },
+      { id: "unique", label: "去重后", value: "7 条", tone: "info" },
+      { id: "displayed", label: "展示", value: "6 条", tone: "info" },
+    ]);
+    expect(summary.diagnostics?.reasons.map((reason) => reason.label)).toEqual([
+      "非政策/资金面",
+      "重复标题",
+      "超过展示上限",
+    ]);
+  });
+
+  it("explains why only one policy funding item survives filtering", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-04",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-stale",
+          received_at: "2026-04-21T15:06:30+08:00",
+          topic_code: "S888005004API",
+          payload_text: "旧 Choice 国际资讯",
+        }),
+      ],
+      fallbackEvents: [
+        choiceEvent({
+          event_key: "repo",
+          received_at: "2026-06-03T20:17:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "央行公开市场逆回购到期，资金面维持平稳",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "source-error",
+          received_at: "2026-06-03T20:16:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: null,
+          error_code: 10003013,
+          error_msg: "vendor timeout",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "html-story",
+          received_at: "2026-06-03T20:15:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: '<div class="main-text">央行开展逆回购操作</div>',
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "pet-story",
+          received_at: "2026-06-03T20:14:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "宠物医院发布暑期服务活动",
+          group_id: "tushare_news",
+        }),
+      ],
+    });
+
+    const summary = buildPolicyFundingSummary(result);
+
+    expect(result.newsItems).toHaveLength(1);
+    expect(summary.diagnostics?.summary).toBe(
+      "当前源 Tushare 兜底：原始 4 条，入选 1 条，去重后 1 条，展示 1 条。",
+    );
+    expect(summary.diagnostics?.emptyHint).toBe(
+      "仅 1 条通过筛选；其余 3 条因源错误/权限、正文不可展示、非政策/资金面未展示。",
+    );
+    expect(summary.diagnostics?.reasons.map((reason) => reason.label)).toEqual([
+      "源错误/权限",
+      "正文不可展示",
+      "非政策/资金面",
+    ]);
+  });
 });
 
 describe("buildPolicyFundingSummary", () => {

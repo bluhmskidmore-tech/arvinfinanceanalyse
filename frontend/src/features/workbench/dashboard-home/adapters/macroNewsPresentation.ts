@@ -91,12 +91,15 @@ export const HOME_POLICY_FUNDING_NEWS_KEYWORDS = [
   "Shibor",
   "国债收益率",
   "地方债",
+  "政金债",
   "货币政策",
 ] as const;
 
 const HOME_POLICY_FUNDING_CONTEXT_PATTERNS = [
   /财政(?:政策|部|发力|支出|收入|赤字|预算|债务|扩张|收支|贴息|补贴|资金)/,
   /(?:地方|中央|积极|扩张性|紧缩性)财政/,
+  /(?:国债|美债|英债|日债|地方债|政金债|利率债|债市).{0,18}(?:收益率|利率|基点|bp|BP|长端|短端)/,
+  /(?:收益率|利率|基点|bp|BP|长端|短端).{0,18}(?:国债|美债|英债|日债|地方债|政金债|利率债|债市)/,
   /(?:央行|公开市场|银行间|债市|货币市场|流动性|逆回购|MLF|DR007|Shibor).{0,24}资金面/,
   /资金面.{0,24}(?:央行|公开市场|银行间|债市|货币市场|流动性|逆回购|MLF|DR007|Shibor|平稳|宽松|收紧|紧张)/,
   /(?:市场|银行间|资金|债市|货币|央行|公开市场|跨季|跨月)流动性/,
@@ -125,6 +128,10 @@ export function isDisplayableMacroNewsText(text: string): boolean {
     return false;
   }
   return true;
+}
+
+export function hasLeadingHtmlPayload(event: ChoiceNewsEvent): boolean {
+  return /^\s*<\/?[a-z][^>]*>/i.test(event.payload_text?.trim() ?? "");
 }
 
 export function isMacroRelevantForHomeBriefing(text: string): boolean {
@@ -187,6 +194,9 @@ export function shouldIncludeMacroNewsEvent(
   options: { requireMacroRelevance: boolean; requirePolicyFundingRelevance?: boolean },
 ): boolean {
   if (event.error_code !== 0) {
+    return false;
+  }
+  if (hasLeadingHtmlPayload(event)) {
     return false;
   }
   const title = summarizeMacroNewsEvent(event);

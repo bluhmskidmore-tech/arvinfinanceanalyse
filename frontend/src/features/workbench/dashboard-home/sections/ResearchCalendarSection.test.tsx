@@ -33,6 +33,21 @@ const policyFundingSummary = {
     { id: "source", label: "Tushare 兜底", tone: "warning" as const },
     { id: "as-of", label: "数据截至 06-03 20:17", tone: "neutral" as const },
   ],
+  diagnostics: {
+    summary: "当前源 Tushare 兜底：原始 9 条，入选 8 条，去重后 7 条，展示 6 条。",
+    emptyHint: null,
+    metrics: [
+      { id: "raw", label: "原始", value: "9 条", tone: "neutral" as const },
+      { id: "eligible", label: "入选", value: "8 条", tone: "info" as const },
+      { id: "unique", label: "去重后", value: "7 条", tone: "info" as const },
+      { id: "displayed", label: "展示", value: "6 条", tone: "info" as const },
+    ],
+    reasons: [
+      { id: "not-policy-funding", label: "非政策/资金面", countLabel: "1 条", tone: "warning" as const },
+      { id: "duplicate-title", label: "重复标题", countLabel: "1 条", tone: "neutral" as const },
+      { id: "over-limit", label: "超过展示上限", countLabel: "1 条", tone: "neutral" as const },
+    ],
+  },
   groups: [
     {
       id: "public-market",
@@ -152,5 +167,11 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("利率/债券")).toBeInTheDocument();
     expect(screen.getByText("本周中国央行公开市场将有9089亿元逆回购到期")).toBeInTheDocument();
     expect(screen.getByText("10年期美国国债收益率最新上涨2.8个基点，报4.483%。")).toBeInTheDocument();
+    expect(screen.getByText("数据诊断")).toBeInTheDocument();
+    expect(screen.getByText(policyFundingSummary.diagnostics.summary)).toBeInTheDocument();
+    expect(screen.getByText("原始")).toBeInTheDocument();
+    expect(screen.getByText("展示")).toBeInTheDocument();
+    expect(screen.getByText("非政策/资金面")).toBeInTheDocument();
+    expect(screen.getByText("超过展示上限")).toBeInTheDocument();
   });
 });

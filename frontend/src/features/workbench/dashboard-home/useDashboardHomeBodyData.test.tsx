@@ -64,7 +64,7 @@ function createHomeBodyClient(overrides: Partial<ApiClient>): ApiClient {
 }
 
 describe("useDashboardHomeBodyData", () => {
-  it("loads macro fallback feeds after Choice macro news has no usable policy funding rows", async () => {
+  it("waits for the secondary event feed gate before loading macro fallback feeds", async () => {
     const getChoiceNewsEvents = vi.fn<ApiClient["getChoiceNewsEvents"]>(async () => choiceNewsEnvelope([]));
     const dataClient = createHomeBodyClient({
       getChoiceNewsEvents,
@@ -79,6 +79,37 @@ describe("useDashboardHomeBodyData", () => {
           loadBasicData: false,
           loadEventFeeds: true,
           loadSecondaryEventFeeds: false,
+          loadBondNewsFeeds: false,
+          loadFormalData: false,
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(getChoiceNewsEvents).toHaveBeenCalledWith(
+        expect.objectContaining({ topicCode: DASHBOARD_MACRO_NEWS_TOPICS[0].code }),
+      );
+    });
+    expect(getChoiceNewsEvents).not.toHaveBeenCalledWith(
+      expect.objectContaining({ topicCode: DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS[1].code }),
+    );
+  });
+
+  it("loads macro fallback feeds after Choice macro news has no usable policy funding rows", async () => {
+    const getChoiceNewsEvents = vi.fn<ApiClient["getChoiceNewsEvents"]>(async () => choiceNewsEnvelope([]));
+    const dataClient = createHomeBodyClient({
+      getChoiceNewsEvents,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    });
+
+    renderHook(
+      () =>
+        useDashboardHomeBodyData({
+          dataClient,
+          supplementalReportDate: "2026-05-31",
+          loadBasicData: false,
+          loadEventFeeds: true,
+          loadSecondaryEventFeeds: true,
           loadBondNewsFeeds: false,
           loadFormalData: false,
         }),

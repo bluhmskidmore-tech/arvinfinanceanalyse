@@ -48,6 +48,7 @@ export function useDashboardHomeBodyData({
   supplementalReportDate,
   loadBasicData,
   loadEventFeeds,
+  loadSecondaryEventFeeds,
   loadBondNewsFeeds,
   loadFormalData,
 }: UseDashboardHomeBodyDataOptions) {
@@ -117,7 +118,7 @@ export function useDashboardHomeBodyData({
       Boolean(macroNewsProbeQuery?.isError) ||
       allMacroNewsQueries.every((query) => query.isSuccess || query.isError));
   const shouldLoadMacroNewsFallback =
-    loadEventFeeds &&
+    loadSecondaryEventFeeds &&
     macroNewsSettled &&
     (macroNewsProbeHasPermissionError ||
       Boolean(macroNewsProbeQuery?.isError) ||
