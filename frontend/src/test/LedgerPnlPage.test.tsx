@@ -1351,6 +1351,7 @@ describe("LedgerPnlPage", () => {
       expect(strip).toHaveTextContent("汇总证据行665");
       expect(strip).toHaveTextContent("明细证据行7751");
       expect(strip).toHaveTextContent("总账读取环节总账接口已读取");
+      expect(strip).toHaveTextContent("总账切片汇总/明细切片一致");
       expect(strip).toHaveTextContent("候选补证入口 候选链路已闭合，无需补证");
       expect(strip).toHaveTextContent("候选证据定位 残差诊断表 · 无需补证");
       expect(strip).not.toHaveTextContent("补证入口 暂无补证入口");
@@ -1360,6 +1361,7 @@ describe("LedgerPnlPage", () => {
     expect(decisionPath).toHaveTextContent("候选解释可信度已闭合 · 覆盖率 100.00%");
     expect(decisionPath).toHaveTextContent("候选补证路径候选链路已闭合，无需补证");
     expect(decisionPath).toHaveTextContent("总账恢复路径总账读取链路已闭合");
+    expect(decisionPath).toHaveTextContent("切片处理路径切片一致，可解释残差");
     expect(decisionPath).toHaveTextContent("正式补证路径补齐 202605 正式财务指标 Excel 冻结样本");
     expect(decisionPath).toHaveTextContent(
       "正式补证结论202605 正式样本缺失；先补齐样本，再登记 source contract、回读正式契约并核对 QDB 候选值",
@@ -3619,6 +3621,11 @@ describe("LedgerPnlPage", () => {
       expect(table).toHaveTextContent("汇总 resolved_report_date=2026-05-31，明细 resolved_report_date=缺失");
       expect(table).not.toHaveTextContent("明细层残差 5.00 亿元");
     });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    expect(strip).toHaveTextContent("总账切片汇总 resolved_report_date=2026-05-31，明细 resolved_report_date=缺失");
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("切片处理路径核对汇总/明细元数据后再解释残差");
 
     const panel = await screen.findByTestId("ledger-pnl-explainability-panel");
     expect(panel).toHaveTextContent("解释链待校验");

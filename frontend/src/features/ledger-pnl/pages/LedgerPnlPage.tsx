@@ -1189,6 +1189,9 @@ function buildLedgerFunctionalAuditState(props: {
         : `补齐 ${props.requestedReportMonth} QDB 月度分析工作簿`;
   const ledgerReadStatus = formatLedgerReadStatus(props);
   const ledgerReadAction = formatLedgerReadAction(props);
+  const ledgerSliceMismatch = firstMetaMismatch(props.summaryMeta, props.dataMeta);
+  const ledgerSliceStatus = ledgerSliceMismatch ?? "汇总/明细切片一致";
+  const ledgerSliceAction = ledgerSliceMismatch ? "核对汇总/明细元数据后再解释残差" : "切片一致，可解释残差";
   const sharedState = {
     requestedDate,
     resolvedDate,
@@ -1196,6 +1199,8 @@ function buildLedgerFunctionalAuditState(props: {
     sourceVersion,
     ledgerReadStatus,
     ledgerReadAction,
+    ledgerSliceStatus,
+    ledgerSliceAction,
     monthlyAnalysisStatus,
     monthlyAnalysisAction,
   };
@@ -1485,6 +1490,10 @@ function LedgerFunctionalAuditStrip(props: {
           <strong>{state.ledgerReadStatus}</strong>
         </div>
         <div>
+          <span>总账切片</span>
+          <strong>{state.ledgerSliceStatus}</strong>
+        </div>
+        <div>
           <span>月度工作簿</span>
           <strong>{state.monthlyAnalysisStatus}</strong>
         </div>
@@ -1550,6 +1559,10 @@ function LedgerFunctionalAuditStrip(props: {
           <div>
             <span>总账恢复路径</span>
             <strong>{state.ledgerReadAction}</strong>
+          </div>
+          <div>
+            <span>切片处理路径</span>
+            <strong>{state.ledgerSliceAction}</strong>
           </div>
           <div>
             <span>月度分析工作簿</span>
