@@ -17,6 +17,14 @@ function readText(path) {
   return readFileSync(path, "utf8");
 }
 
+function readAssetText(assetPath) {
+  const absolutePath = join(distDir, assetPath);
+  if (!existsSync(absolutePath)) {
+    return "";
+  }
+  return readText(absolutePath);
+}
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -120,6 +128,37 @@ function isHomeSupplementalAsset(assetPath) {
 
 function isHomeMarketTickerAsset(assetPath) {
   return /^assets\/homeMarketTickerClient-[^/]+\.js$/.test(assetPath);
+}
+
+function isWorkbenchShellMarketTickerAsset(assetPath) {
+  return /^assets\/(?:WorkbenchShellMarketTicker|workbenchShellTicker)-[^/]+\.js$/.test(assetPath);
+}
+
+function isFullDashboardHomeStylesheet(assetPath) {
+  return /^assets\/dashboardHome-[^/]+\.css$/.test(assetPath);
+}
+
+function isHomeShellStylesheet(assetPath) {
+  return /^assets\/(?:dashboardHomeFirstScreenView|dashboardHomeShell)-[^/]+\.css$/.test(assetPath);
+}
+
+function isLightweightHomeShellStylesheetContent(source) {
+  return (
+    source.includes("dhTerminalHero") &&
+    source.includes("dhTerminalRiskGrid") &&
+    source.includes("dhDecisionAction") &&
+    !source.includes("dhWorkGrid") &&
+    !source.includes("dhTerminalChart") &&
+    !source.includes("dhTerminalHoldings")
+  );
+}
+
+function isInstitutionalConsoleStylesheet(assetPath) {
+  return /^assets\/workbenchInstitutionalConsole-[^/]+\.css$/.test(assetPath);
+}
+
+function isNonHomeWorkbenchChromeStylesheet(assetPath) {
+  return /^assets\/workbenchDeferredChrome-[^/]+\.css$/.test(assetPath);
 }
 
 function assertNoBlockedAssets(scope, assets, predicate, label) {
@@ -235,6 +274,18 @@ assertNoBlockedAssets("dist/index.html eager JS", htmlInitialAssets, isAgGridAss
 assertNoBlockedAssets("dist/index.html eager JS", htmlInitialAssets, isAntdVendorAsset, "Ant Design vendor chunk");
 assertNoBlockedAssets("dist/index.html eager CSS", htmlInitialStyleAssets, isAgGridAsset, "AG Grid asset");
 assertNoBlockedAssets(
+  "dist/index.html eager CSS",
+  htmlInitialStyleAssets,
+  isInstitutionalConsoleStylesheet,
+  "institutional console stylesheet",
+);
+assertNoBlockedAssets(
+  "dist/index.html eager CSS",
+  htmlInitialStyleAssets,
+  isNonHomeWorkbenchChromeStylesheet,
+  "non-home workbench chrome stylesheet",
+);
+assertNoBlockedAssets(
   "dist/index.html eager JS",
   htmlInitialAssets,
   isHomeSupplementalAsset,
@@ -245,6 +296,12 @@ assertNoBlockedAssets(
   htmlInitialAssets,
   isHomeMarketTickerAsset,
   "home market ticker chunk",
+);
+assertNoBlockedAssets(
+  "dist/index.html eager JS",
+  htmlInitialAssets,
+  isWorkbenchShellMarketTickerAsset,
+  "workbench shell market ticker chunk",
 );
 assertNoEagerClientImplementation("dist/index.html eager JS", htmlInitialAssets);
 assertNoAgGridImplementation("dist/index.html eager JS", htmlInitialAssets);
@@ -271,6 +328,39 @@ if (entryAsset && dashboardChunks.length === 1) {
     isHomeMarketTickerAsset,
     "home market ticker chunk",
   );
+  assertNoBlockedAssets(
+    "DashboardHomePage preload deps",
+    homeRouteAssets,
+    isWorkbenchShellMarketTickerAsset,
+    "workbench shell market ticker chunk",
+  );
+  assertNoBlockedAssets(
+    "DashboardHomePage preload deps",
+    homeRouteAssets,
+    isFullDashboardHomeStylesheet,
+    "full dashboard home stylesheet",
+  );
+  assertNoBlockedAssets(
+    "DashboardHomePage preload deps",
+    homeRouteAssets,
+    isInstitutionalConsoleStylesheet,
+    "institutional console stylesheet",
+  );
+  assertNoBlockedAssets(
+    "DashboardHomePage preload deps",
+    homeRouteAssets,
+    isNonHomeWorkbenchChromeStylesheet,
+    "non-home workbench chrome stylesheet",
+  );
+  const homeShellStylesheets = homeRouteAssets.filter((assetPath) => assetPath.endsWith(".css"));
+  const hasHomeShellStylesheet = homeShellStylesheets.some(
+    (assetPath) =>
+      isHomeShellStylesheet(assetPath) ||
+      isLightweightHomeShellStylesheetContent(readAssetText(assetPath)),
+  );
+  if (!hasHomeShellStylesheet) {
+    addFailure("DashboardHomePage preload deps should include the lightweight home shell stylesheet.");
+  }
   assertNoEagerClientImplementation("DashboardHomePage preload deps", homeRouteAssets);
   assertNoAgGridImplementation("DashboardHomePage preload deps", homeRouteAssets);
 }

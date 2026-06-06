@@ -1,9 +1,6 @@
-import { useMemo, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { lazy, Suspense, useEffect, type MouseEvent, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { useApiClient } from "../api/clientContext";
-import type { ChoiceMacroLatestPoint } from "../api/contracts";
 import { LightIcon } from "../components/LightIcon";
 import {
   findWorkbenchSectionByPath,
@@ -16,8 +13,37 @@ import {
   visibleWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
-import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import { DataModeRibbon } from "../components/DataModeRibbon";
+
+const WorkbenchShellMarketTicker = lazy(() => import("./WorkbenchShellMarketTicker"));
+const institutionalConsoleShellSectionKeys = new Set([
+  "cross-asset",
+  "ledger-pnl",
+  "product-category-pnl",
+  "pnl-attribution",
+]);
+
+function useInstitutionalConsoleCss(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
+    void import("../styles/workbenchInstitutionalConsole.css");
+    return undefined;
+  }, [enabled]);
+}
+
+function useWorkbenchChromeCss(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
+    void import("../styles/workbenchDeferredChrome.css");
+    return undefined;
+  }, [enabled]);
+}
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <LightIcon name="appstore" />,
@@ -39,127 +65,6 @@ function sectionReadinessTone(
   section: Pick<WorkbenchSection, "readiness" | "governanceStatus">,
 ): ReadinessTone {
   return section.governanceStatus === "temporary-exception" ? "warning" : section.readiness;
-}
-
-type ShellTickerTone = "up" | "down";
-
-type ShellTickerItem = {
-  key: string;
-  label: string;
-  value: string;
-  delta: string;
-  tone: ShellTickerTone;
-};
-
-const fallbackShellTickerItems: ShellTickerItem[] = [
-  { key: "cgb10y", label: "10年国债", value: "1.94%", delta: "+2bp", tone: "up" },
-  { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
-  { key: "omo7d", label: "7天逆回购", value: "1.75%", delta: "+1bp", tone: "up" },
-  { key: "usd-cny", label: "美元/人民币", value: "7.21", delta: "+0.02", tone: "up" },
-] as const;
-
-const shellTickerSeriesSpecs = [
-  {
-    key: "cgb10y",
-    label: "10年国债",
-    matchers: ["中债国债到期收益率:10年", "10年期国债到期收益率"],
-  },
-  {
-    key: "policyBank10y",
-    label: "10年国开",
-    matchers: ["中债政策性金融债到期收益率(国开行)10年"],
-  },
-  {
-    key: "us10y",
-    label: "10年美债",
-    matchers: ["美国10年期国债收益率", "美国:国债收益率:10年"],
-  },
-  {
-    key: "cnUs10ySpread",
-    label: "中美10年利差",
-    matchers: ["中美国债利差(10Y)", "10Y中国国债-10Y美国国债"],
-  },
-  {
-    key: "dr007",
-    label: "DR007",
-    matchers: ["DR007"],
-  },
-  {
-    key: "omo7d",
-    label: "7天逆回购",
-    matchers: ["公开市场7天逆回购利率"],
-  },
-  {
-    key: "usd-cny",
-    label: "美元/人民币",
-    matchers: ["即期汇率:美元兑人民币", "USD/CNY"],
-  },
-] as const;
-
-type ShellTickerKey = (typeof shellTickerSeriesSpecs)[number]["key"];
-
-const shellTickerDisplayKeys: ShellTickerKey[] = [
-  "cgb10y",
-  "policyBank10y",
-  "us10y",
-  "cnUs10ySpread",
-  "dr007",
-  "omo7d",
-  "usd-cny",
-];
-
-const shellTickerSeriesIdsByKey: Record<ShellTickerKey, string[]> = {
-  // Cross-asset / latest payload aliases for China 10Y sovereign.
-  cgb10y: ["CA.CN_GOV_10Y", "E1000180", "EMM00166466"],
-  // Policy-bank 10Y is currently anchored on the CDB lane.
-  policyBank10y: ["EMM00166502"],
-  // US 10Y can come from cross-asset or EDB-oriented identifiers.
-  us10y: ["CA.US_GOV_10Y", "EMG00001310", "E1003238"],
-  // CN-US spread can arrive directly as cross-asset headline or legacy spread id.
-  cnUs10ySpread: ["CA.CN_US_SPREAD", "EM1"],
-  // DR007 appears both as raw choice macro and catalog-aligned headline lanes.
-  dr007: ["CA.DR007", "M002", "EMM00167613"],
-  // Open-market 7D reverse repo currently only exposes one stable series id locally.
-  omo7d: ["M001"],
-  // USD/CNY can arrive from middle-rate or spot-oriented lanes.
-  "usd-cny": ["CA.USDCNY", "EMM00058124"],
-};
-
-function formatShellTickerValue(point: ChoiceMacroLatestPoint) {
-  return formatChoiceMacroValue(point, { spaceBeforeUnit: false });
-}
-
-function formatShellTickerDelta(point: ChoiceMacroLatestPoint) {
-  return formatChoiceMacroDelta(point, { spaceBeforeUnit: false });
-}
-
-function buildShellTickerItems(
-  series: ChoiceMacroLatestPoint[],
-  keys: ShellTickerKey[] = shellTickerDisplayKeys,
-): ShellTickerItem[] {
-  const resolved: ShellTickerItem[] = [];
-
-  for (const spec of shellTickerSeriesSpecs.filter((item) => keys.includes(item.key))) {
-    const stableSeriesIds = shellTickerSeriesIdsByKey[spec.key] ?? [];
-    const point =
-      series.find((candidate) => stableSeriesIds.includes(candidate.series_id)) ??
-      series.find((candidate) =>
-        spec.matchers.some((matcher) => candidate.series_name.includes(matcher)),
-      );
-    if (!point) {
-      continue;
-    }
-
-    resolved.push({
-      key: spec.key,
-      label: spec.label,
-      value: formatShellTickerValue(point),
-      delta: formatShellTickerDelta(point),
-      tone: point.latest_change != null && point.latest_change < 0 ? "down" : "up",
-    });
-  }
-
-  return resolved.length > 0 ? resolved : fallbackShellTickerItems;
 }
 
 const shellSupportEntries = [
@@ -240,7 +145,6 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 }
 
 export function WorkbenchShell() {
-  const client = useApiClient();
   const location = useLocation();
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
@@ -273,13 +177,20 @@ export function WorkbenchShell() {
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isDashboardCockpitShell =
     currentSection.key === "dashboard" || currentSection.key === "portfolio-home";
+  const useInstitutionalConsoleShell = institutionalConsoleShellSectionKeys.has(currentSection.key);
+  useInstitutionalConsoleCss(useInstitutionalConsoleShell);
+  useWorkbenchChromeCss(currentSection.key !== "dashboard");
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
+  const isLedgerPnlShell = currentSection.key === "ledger-pnl";
+  const isProductCategoryPnlShell = currentSection.key === "product-category-pnl";
+  const isPnlAttributionShell = currentSection.key === "pnl-attribution";
   /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   const useCockpitShellFrame =
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
     isBalanceAnalysisCompactChrome ||
+    isProductCategoryPnlShell ||
     isModuleHomePage;
   const showShellTerminalBar =
     !isDashboardCockpitShell &&
@@ -296,7 +207,8 @@ export function WorkbenchShell() {
   const isPortfolioPageOwnedChrome =
     isBalanceAnalysisCompactChrome ||
     isBalanceMovementAnalysisCompactChrome ||
-    isLiabilityAnalyticsCompactChrome;
+    isLiabilityAnalyticsCompactChrome ||
+    isProductCategoryPnlShell;
   const isMinimalMainChrome =
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
@@ -318,29 +230,9 @@ export function WorkbenchShell() {
     !isPortfolioPageOwnedChrome;
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
-  const bondAnalyticsDatesQuery = useQuery({
-    queryKey: ["workbench-shell", "bond-analytics-dates", client.mode],
-    queryFn: () => client.getBondAnalyticsDates(),
-    enabled: showShellTerminalBar && isBondAnalysisMinimalShell && !explicitReportDate,
-    retry: false,
-    staleTime: 60_000,
-  });
-  const shellTickerQuery = useQuery({
-    queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
-    queryFn: () => client.getChoiceMacroLatest(),
-    enabled: showShellMarketTicker,
-    retry: false,
-    staleTime: 60_000,
-  });
   const shellReportDate =
     explicitReportDate ||
-    (isBondAnalysisMinimalShell
-      ? bondAnalyticsDatesQuery.data?.result?.report_dates[0] ?? "可用最新日"
-      : "默认路由");
-  const shellTickerItems = useMemo(
-    () => buildShellTickerItems(shellTickerQuery.data?.result?.series ?? []),
-    [shellTickerQuery.data?.result?.series],
-  );
+    "默认路由";
   const portfolioLeadSections = portfolioFlow
     .map((item) => ({
       ...item,
@@ -362,14 +254,37 @@ export function WorkbenchShell() {
     }))
     .filter((stage) => stage.sections.length > 0);
 
+  function focusMainContent(event: MouseEvent<HTMLAnchorElement>) {
+    const mainContent = document.getElementById("workbench-main-content");
+    if (!mainContent) {
+      return;
+    }
+
+    event.preventDefault();
+    mainContent.focus();
+  }
+
   return (
     <>
     <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
+    <a
+      className="workbench-skip-link"
+      href="#workbench-main-content"
+      onClick={focusMainContent}
+    >
+      Skip to main content
+    </a>
     <div
       className={`workbench-shell-root workbench-shell-grid${
+        useInstitutionalConsoleShell ? " workbench-shell-grid--institutional-console" : ""
+      }${
         useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"
       }${isBondAnalysisMinimalShell ? " workbench-shell-grid--bond-analysis" : ""}${
         isStockAnalysisShell ? " workbench-shell-grid--stock-analysis" : ""
+      }${isLedgerPnlShell ? " workbench-shell-grid--ledger-pnl" : ""
+      }${isProductCategoryPnlShell ? " workbench-shell-grid--product-category-pnl" : ""
+      }${isPnlAttributionShell ? " workbench-shell-grid--pnl-attribution" : ""
+      }${isCrossAssetImmersiveMain ? " workbench-shell-grid--cross-asset" : ""
       }`}
     >
       <aside
@@ -565,33 +480,9 @@ export function WorkbenchShell() {
           </div>
 
           {showShellMarketTicker ? (
-            <section
-              data-testid="workbench-market-ticker"
-              className="workbench-market-ticker-shell"
-            >
-              <span className="workbench-market-ticker-label">
-                市场快讯
-              </span>
-              {shellTickerItems.map((item, index) => (
-                <div
-                  key={item.key}
-                  className="workbench-market-ticker-item"
-                >
-                  <span className="workbench-market-ticker-meta">
-                    {item.label}
-                  </span>
-                  <strong className="workbench-market-ticker-strong">
-                    {item.value}
-                  </strong>
-                  <span className="workbench-market-ticker-delta" data-tone={item.tone}>
-                    {item.delta}
-                  </span>
-                  {index < shellTickerItems.length - 1 ? (
-                    <span className="workbench-market-ticker-rule" />
-                  ) : null}
-                </div>
-              ))}
-            </section>
+            <Suspense fallback={null}>
+              <WorkbenchShellMarketTicker />
+            </Suspense>
           ) : null}
         </header>
         ) : null}
@@ -770,6 +661,10 @@ export function WorkbenchShell() {
         ) : null}
 
         <main
+          id="workbench-main-content"
+          aria-label="Main content"
+          data-testid="workbench-main-content"
+          tabIndex={-1}
           className={`workbench-main-surface${
             isMinimalMainChrome ? " workbench-main-surface--minimal" : ""
           }`}

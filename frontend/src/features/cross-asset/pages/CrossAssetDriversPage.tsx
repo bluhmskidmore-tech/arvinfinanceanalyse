@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -10,9 +10,10 @@ import type {
   MacroBondLinkageEnvironmentScore,
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
+  ResultMeta,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../../components/AsyncSection";
-import { DataStatusStrip, PageDecisionHero } from "../../../components/page/PagePrimitives";
+import { DataStatusStrip } from "../../../components/page/PagePrimitives";
 import { StatusPill } from "../../../components/StatusPill";
 import ReactECharts from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
@@ -40,6 +41,7 @@ import {
   type CrossAssetEquityEvidenceItem,
   type CrossAssetNcdProxyEvidence,
   type CrossAssetResearchViewCard,
+  type CrossAssetStatusFlag,
   type CrossAssetTransmissionAxisRow,
 } from "../lib/crossAssetDriversPageModel";
 import { buildDriverColumns, buildEnvironmentTags } from "../lib/crossAssetDriversModel";
@@ -78,14 +80,18 @@ const crossAssetPanelClass = "cross-asset-drivers-page__panel";
 function CrossAssetDecisionZone({
   testId,
   title,
+  className,
   children,
 }: {
   testId: string;
   title: string;
+  className?: string;
   children: ReactNode;
 }) {
+  const zoneClassName = className ? `cross-asset-decision-zone ${className}` : "cross-asset-decision-zone";
+
   return (
-    <section data-testid={testId} className="cross-asset-decision-zone" aria-labelledby={`${testId}-title`}>
+    <section data-testid={testId} className={zoneClassName} aria-labelledby={`${testId}-title`}>
       <h2 id={`${testId}-title`} className="cross-asset-decision-zone__title">
         {title}
       </h2>
@@ -160,6 +166,12 @@ function resultMetaQualityLabel(value: string | null | undefined): string {
   if (value === "error") return "错误";
   if (value === "stale") return "陈旧";
   return value ?? "待定";
+}
+
+function compactGeneratedAt(value: string | null | undefined): string {
+  if (!value) return "待定";
+  const clock = value.match(/T(\d{2}:\d{2})/);
+  return clock?.[1] ?? value;
 }
 
 type LivermoreReadinessKey = LivermoreStrategyPayload["rule_readiness"][number]["key"];
@@ -865,7 +877,12 @@ function PercentileGauge({ sparkline }: { sparkline: number[] }) {
       <div className="ca-percentile__track">
         <div
           className="ca-percentile__marker"
-          style={{ left: `${info.percentile}%`, background: markerColor }}
+          style={
+            {
+              "--ca-percentile-position": `${info.percentile}%`,
+              background: markerColor,
+            } satisfies PercentileMarkerStyle
+          }
         />
       </div>
       <span className="ca-percentile__label">{info.label}</span>
@@ -877,8 +894,13 @@ type CrossAssetEvidenceGroupConfig = {
   key: "rates_liquidity" | "equity_risk" | "commodity_inflation" | "fx_spread";
   title: string;
   cue: string;
+  digest: string;
   summary: string;
   kpiKeys: string[];
+};
+
+type PercentileMarkerStyle = CSSProperties & {
+  "--ca-percentile-position": string;
 };
 
 const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
@@ -886,6 +908,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
     key: "rates_liquidity",
     title: "利率与流动性",
     cue: "Bond anchor",
+    digest: "久期空间",
     summary: "先看长端约束和资金锚，判断债券方向是否有顺风。",
     kpiKeys: ["cn_gov_10y", "us_gov_10y", "money_market_7d"],
   },
@@ -893,6 +916,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
     key: "equity_risk",
     title: "权益风险偏好",
     cue: "Risk appetite",
+    digest: "风险约束",
     summary: "用指数、估值和权重结构判断风险偏好是否挤压债券。",
     kpiKeys: ["financial_conditions", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
   },
@@ -900,6 +924,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
     key: "commodity_inflation",
     title: "商品通胀",
     cue: "Inflation pulse",
+    digest: "通胀脉冲",
     summary: "把能源、黑色和有色拆开看，避免把商品噪声直接推成通胀结论。",
     kpiKeys: ["brent", "steel", "copper", "aluminum"],
   },
@@ -907,10 +932,107 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
     key: "fx_spread",
     title: "汇率与中美利差",
     cue: "External constraint",
+    digest: "外部压力",
     summary: "汇率和利差共同决定外部压力的上限与节奏。",
     kpiKeys: ["gov_spread", "usdcny"],
   },
 ];
+
+function kpiSourceLabel(kpi: ResolvedCrossAssetKpi | undefined) {
+  if (!kpi) return "缺失";
+  if (kpi.sourceKind === "choice") return kpi.vendorName || "Choice";
+  if (kpi.sourceKind === "public") return "公共补充";
+  if (kpi.sourceKind === "derived") return "合成";
+  return "缺失";
+}
+
+function kpiDirectionLabel(kpi: ResolvedCrossAssetKpi | undefined) {
+  if (!kpi) return "待定";
+  if (kpi.changeTone === "positive") return "上行";
+  if (kpi.changeTone === "negative") return "下行";
+  if (kpi.changeTone === "warning") return "异常";
+  return "持平";
+}
+
+const MARKET_TAPE_ITEMS = [
+  { key: "cn_gov_10y", label: "CN10Y" },
+  { key: "money_market_7d", label: "DR007" },
+  { key: "financial_conditions", label: "CSI300" },
+  { key: "brent", label: "Brent" },
+  { key: "usdcny", label: "USD/CNY" },
+  { key: "gov_spread", label: "中美利差" },
+] as const;
+
+function CrossAssetMarketTape({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
+  const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
+
+  return (
+    <div className="cross-asset-market-tape" data-testid="cross-asset-market-tape" role="list" aria-label="跨资产市场 tape">
+      {MARKET_TAPE_ITEMS.map((item) => {
+        const kpi = kpisByKey.get(item.key);
+        return (
+          <div
+            key={item.key}
+            className={`cross-asset-market-tape__item cross-asset-market-tape__item--${kpi?.changeTone ?? "default"}`}
+            role="listitem"
+          >
+            <span>{item.label}</span>
+            <strong>{kpi?.valueLabel ?? "待定"}</strong>
+            <em>{kpi?.changeLabel ?? "待确认"}</em>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CrossAssetEvidenceTape({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
+  const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
+
+  return (
+    <section className="cross-asset-evidence-tape" data-testid="cross-asset-evidence-tape" aria-label="终端证据带">
+      <div className="cross-asset-evidence-tape__head">
+        <span>Evidence tape</span>
+        <strong>关键因子矩阵</strong>
+      </div>
+      <div className="cross-asset-evidence-tape__table-wrap">
+        <table className="cross-asset-evidence-tape__table">
+          <thead>
+            <tr>
+              <th>因子</th>
+              <th>当前</th>
+              <th>变化</th>
+              <th>方向</th>
+              <th>来源</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CROSS_ASSET_EVIDENCE_GROUPS.map((group) => {
+              const groupKpis = group.kpiKeys
+                .map((key) => kpisByKey.get(key))
+                .filter((kpi): kpi is ResolvedCrossAssetKpi => Boolean(kpi));
+              const leadKpi = groupKpis[0];
+              return (
+                <tr key={group.key}>
+                  <td>
+                    <span className="cross-asset-evidence-tape__factor">{group.title}</span>
+                    <small>{group.cue}</small>
+                  </td>
+                  <td>{leadKpi ? `${leadKpi.label} ${leadKpi.valueLabel}` : "等待指标"}</td>
+                  <td className={`cross-asset-evidence-tape__delta cross-asset-evidence-tape__delta--${leadKpi?.changeTone ?? "default"}`}>
+                    {leadKpi?.changeLabel ?? "待确认"}
+                  </td>
+                  <td>{kpiDirectionLabel(leadKpi)}</td>
+                  <td>{kpiSourceLabel(leadKpi)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 function CrossAssetEvidenceGroups({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
   const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
@@ -1017,6 +1139,295 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
   );
 }
 
+function CrossAssetDecisionRail({
+  envTags,
+  researchViews,
+  warningCount,
+  isLoading,
+}: {
+  envTags: ReturnType<typeof buildEnvironmentTags>;
+  researchViews: CrossAssetResearchViewCard[];
+  warningCount: number;
+  isLoading: boolean;
+}) {
+  const readyCount = researchViews.filter((row) => row.status === "ready").length;
+  const primaryView = researchViews[0];
+  const primaryAction = isLoading
+    ? "等待联动分析返回"
+    : warningCount > 0
+      ? "先核对降级、口径和来源"
+      : "复核利率、风险偏好和外部约束";
+  const confidenceLabel = warningCount > 0 ? `${warningCount} 项证据提示` : "证据状态正常";
+
+  return (
+    <aside
+      className="cross-asset-decision-rail"
+      data-testid="cross-asset-decision-rail"
+      aria-labelledby="cross-asset-decision-rail-title"
+    >
+      <div className="cross-asset-decision-rail__head">
+        <span className="cross-asset-decision-rail__eyebrow">AI 决策舱</span>
+        <h2 id="cross-asset-decision-rail-title">跨资产决策舱</h2>
+      </div>
+      <div className="cross-asset-decision-rail__summary">
+        <span>当前主导</span>
+        <strong>{envTags.primary}</strong>
+        <small>{primaryView ? `${primaryView.label}：${primaryView.stance}` : "等待四维判断"}</small>
+      </div>
+      <dl className="cross-asset-decision-rail__metrics">
+        <div>
+          <dt>四维判断</dt>
+          <dd>{readyCount}/{researchViews.length || 4}</dd>
+        </div>
+        <div>
+          <dt>证据提示</dt>
+          <dd>{confidenceLabel}</dd>
+        </div>
+        <div>
+          <dt>风格约束</dt>
+          <dd>{envTags.style}</dd>
+        </div>
+      </dl>
+      <div className="cross-asset-decision-rail__action">
+        <span>下一步动作</span>
+        <strong>{primaryAction}</strong>
+      </div>
+      <div className="cross-asset-action-ledger" data-testid="cross-asset-action-ledger" aria-label="组合动作账本">
+        <div className="cross-asset-action-ledger__title">ACTION LEDGER</div>
+        <dl>
+          <div>
+            <dt>组合动作</dt>
+            <dd>{primaryAction}</dd>
+          </div>
+          <div>
+            <dt>证据约束</dt>
+            <dd>{confidenceLabel}</dd>
+          </div>
+          <div>
+            <dt>执行口径</dt>
+            <dd>仅分析，不替代指令</dd>
+          </div>
+        </dl>
+      </div>
+    </aside>
+  );
+}
+
+function CrossAssetTrustPanel({
+  reportDate,
+  latestMeta,
+  linkageMeta,
+  statusFlags,
+  children,
+}: {
+  reportDate: string | null;
+  latestMeta?: ResultMeta;
+  linkageMeta?: ResultMeta;
+  statusFlags: CrossAssetStatusFlag[];
+  children: ReactNode;
+}) {
+  const hasLatestMeta = Boolean(latestMeta);
+  const hasLinkageMeta = Boolean(linkageMeta);
+  const hasBothMeta = hasLatestMeta && hasLinkageMeta;
+  const hasFallbackMeta =
+    (latestMeta?.fallback_mode != null && latestMeta.fallback_mode !== "none") ||
+    (linkageMeta?.fallback_mode != null && linkageMeta.fallback_mode !== "none");
+  const hasFallbackFlag = statusFlags.some((flag) => flag.id === "fallback");
+  const hasFallback = hasFallbackMeta || hasFallbackFlag;
+  const nextAction =
+    statusFlags.length > 0 ? "核对状态" : hasBothMeta ? "进入四维判断" : "等待数据返回";
+  const statusLabel =
+    statusFlags.length > 0 ? `${statusFlags.length} 项提示` : hasBothMeta ? "状态正常" : "等待证据";
+  const badgeLabel = hasFallback ? "含降级" : hasBothMeta ? "可读" : "待返回";
+
+  return (
+    <aside className="cross-asset-trust-panel" data-testid="cross-asset-trust-panel" aria-label="首屏可信状态">
+      <div className="cross-asset-trust-panel__summary">
+        <div>
+          <span>可信状态</span>
+          <strong>{statusLabel}</strong>
+        </div>
+        <em>{badgeLabel}</em>
+      </div>
+      <dl className="cross-asset-trust-panel__grid">
+        <div>
+          <dt>报告日</dt>
+          <dd>{reportDate || "待定"}</dd>
+        </div>
+        <div>
+          <dt>宏观质量</dt>
+          <dd>{resultMetaQualityLabel(latestMeta?.quality_flag)}</dd>
+        </div>
+        <div>
+          <dt>联动质量</dt>
+          <dd>{resultMetaQualityLabel(linkageMeta?.quality_flag)}</dd>
+        </div>
+        <div>
+          <dt>下一步</dt>
+          <dd>{nextAction}</dd>
+        </div>
+      </dl>
+      {children}
+    </aside>
+  );
+}
+
+function compactStatusFlagDetail(flag: CrossAssetStatusFlag): string {
+  if (flag.id === "analytical-only") return "分析链路";
+  if (flag.id === "fallback") return "置信下调";
+  if (flag.id === "dual-source") return "Choice+公共";
+  if (flag.id === "stale") return "确认日期";
+  if (flag.id === "source-blocked") return "来源受限";
+  if (flag.id === "choice-source-missing") return "Choice 缺口";
+  if (flag.id === "loading-failure") return "加载失败";
+  if (flag.id === "no-data") return "暂无数据";
+  return flag.detail;
+}
+
+function CrossAssetTerminalCommandStrip({
+  reportDate,
+  conclusion,
+  isLoading,
+  isMockMode,
+}: {
+  reportDate: string | null;
+  conclusion: string | null;
+  isLoading: boolean;
+  isMockMode: boolean;
+}) {
+  const conclusionText = isLoading
+    ? "正在加载联动分析…"
+    : conclusion ?? "当前暂无可用摘要；请确认数据日期与联动分析是否已就绪。";
+
+  return (
+    <header className="cross-asset-terminal-command-strip" data-testid="cross-asset-terminal-command-strip">
+      <div className="cross-asset-terminal-command-strip__main">
+        <span className="cross-asset-terminal-command-strip__command">CA.DRIVERS &lt;GO&gt;</span>
+        <section
+          className="cross-asset-decision-hero cross-asset-terminal-command-strip__decision"
+          data-testid="cross-asset-decision-hero"
+          aria-label="今日传导结论"
+        >
+          <span className="moss-page-v2-decision-hero__eyebrow">跨资产驱动</span>
+          <span className="cross-asset-terminal-command-strip__identity">跨资产传导工作台</span>
+          <h1 className="moss-page-v2-decision-hero__title">今日传导结论</h1>
+          <p className="moss-page-v2-decision-hero__question">外部变量今天怎样传导到债券？首屏只看体制、四维判断与关键指标。</p>
+          <div className="moss-page-v2-decision-hero__report">
+            <span>
+              数据日期 <strong className="cross-asset-drivers-page__report-date">{reportDate || "—"}</strong>
+            </span>
+          </div>
+          <div className="moss-page-v2-decision-hero__conclusion">
+            <span>今日传导结论：{conclusionText}</span>
+          </div>
+        </section>
+      </div>
+      <div className="cross-asset-terminal-command-strip__meta">
+        <span>
+          数据日期 <strong className="cross-asset-drivers-page__report-date">{reportDate || "—"}</strong>
+        </span>
+        <Link to="/market-data" className="cross-asset-market-link">市场数据</Link>
+        {isMockMode ? <span className="cross-asset-mode-badge">本地模拟</span> : null}
+      </div>
+    </header>
+  );
+}
+
+function CrossAssetMarketRadar({
+  kpis,
+  envTags,
+}: {
+  kpis: ResolvedCrossAssetKpi[];
+  envTags: ReturnType<typeof buildEnvironmentTags>;
+}) {
+  const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
+  const radarMetrics = [
+    { key: "cn_gov_10y", label: "10Y国债" },
+    { key: "money_market_7d", label: "银拆(7D)" },
+    { key: "gov_spread", label: "中美利差" },
+    { key: "financial_conditions", label: "权益风险" },
+  ];
+
+  return (
+    <section className="cross-asset-market-radar" data-testid="cross-asset-market-radar" aria-labelledby="cross-asset-market-radar-title">
+      <h2 id="cross-asset-market-radar-title" className="cross-asset-cockpit__title">市场状态雷达</h2>
+      <MarketRegimePanel kpis={kpis} />
+      <div className="cross-asset-market-radar__tags">
+        <StatusPill status="normal" label={`主导 · ${envTags.primary}`} />
+        <StatusPill status="caution" label={`次要 · ${envTags.secondary}`} />
+        <StatusPill status="warning" label={`风格 · ${envTags.style}`} />
+      </div>
+      <dl className="cross-asset-market-radar__metrics" data-testid="cross-asset-market-radar-metrics">
+        <div className="cross-asset-market-radar__metrics-title">雷达报价</div>
+        {radarMetrics.map((metric) => {
+          const kpi = kpisByKey.get(metric.key);
+          return (
+            <div key={metric.key} className="cross-asset-market-radar__metric">
+              <dt>{metric.label}</dt>
+              <dd>{kpi?.valueLabel ?? "待定"}</dd>
+              <small>{kpi?.changeLabel ?? "待确认"}</small>
+            </div>
+          );
+        })}
+      </dl>
+    </section>
+  );
+}
+
+const TRANSMISSION_PATH_STEPS = [
+  { key: "rates", label: "利率", sourceAxis: "global_rates" },
+  { key: "credit", label: "信用/NCD", sourceAxis: "liquidity" },
+  { key: "equity", label: "权益", sourceAxis: "mega_cap_equities" },
+  { key: "commodities", label: "商品", sourceAxis: "commodities_inflation" },
+  { key: "fx", label: "汇率", sourceAxis: "equity_bond_spread" },
+  { key: "bond_action", label: "债券组合动作", sourceAxis: "global_rates" },
+] as const;
+
+function CrossAssetTransmissionMap({ rows }: { rows: CrossAssetTransmissionAxisRow[] }) {
+  const rowsByAxis = useMemo(() => new Map(rows.map((row) => [row.axisKey, row])), [rows]);
+
+  return (
+    <section className="cross-asset-transmission-map" data-testid="cross-asset-transmission-map" aria-label="跨资产传导链">
+      <div className="cross-asset-transmission-map__head">
+        <span>Transmission path</span>
+        <strong>从外部变量到债券动作</strong>
+      </div>
+      <ol className="cross-asset-transmission-map__steps">
+        {TRANSMISSION_PATH_STEPS.map((step, index) => {
+          const axis = rowsByAxis.get(step.sourceAxis);
+          return (
+            <li key={step.key} className={`cross-asset-transmission-map__step cross-asset-transmission-map__step--${axis?.status ?? "pending_signal"}`}>
+              <span className="cross-asset-transmission-map__index">{String(index + 1).padStart(2, "0")}</span>
+              <strong>{step.label}</strong>
+              <small>{axis?.stanceLabel ?? "待信号"}</small>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function CrossAssetTransmissionWorkbench({
+  rows,
+  researchViewCards,
+}: {
+  rows: CrossAssetTransmissionAxisRow[];
+  researchViewCards: CrossAssetResearchViewCard[];
+}) {
+  return (
+    <section
+      className="cross-asset-desktop-transmission-workbench"
+      data-testid="cross-asset-desktop-transmission-workbench"
+      aria-labelledby="cross-asset-desktop-transmission-workbench-title"
+    >
+      <h2 id="cross-asset-desktop-transmission-workbench-title" className="cross-asset-cockpit__title">传导工作台</h2>
+      <CrossAssetTransmissionMap rows={rows} />
+      <ResearchViewsPanel rows={researchViewCards} />
+    </section>
+  );
+}
+
 function NcdProxyEvidencePanel({
   evidence,
   isLoading,
@@ -1026,40 +1437,44 @@ function NcdProxyEvidencePanel({
 }) {
   const isProxyNotMatrix = !evidence.isActualNcdMatrix;
   return (
-    <section
+    <details
       data-testid="cross-asset-ncd-proxy"
       className={
         isProxyNotMatrix
-          ? `${crossAssetPanelClass} cross-asset-drivers-page__panel--ncd-warn`
-          : crossAssetPanelClass
+          ? "cross-asset-ncd-proxy cross-asset-ncd-proxy--warning"
+          : "cross-asset-ncd-proxy"
       }
     >
-      <div className="cross-asset-ncd-proxy__header">
-        <h2 className="cross-asset-ncd-proxy__title">NCD / 资金代理</h2>
-        {isLoading ? (
-          <StatusPill status="caution" label="loading" />
-        ) : (
-          <StatusPill
-            status={isProxyNotMatrix ? "warning" : "normal"}
-            label={isProxyNotMatrix ? "proxy · not NCD matrix" : "actual matrix (verify)"}
-          />
-        )}
-      </div>
-      <p className="cross-asset-ncd-proxy__label">{evidence.proxyLabel}</p>
-      {evidence.asOfDate ? (
-        <p data-testid="cross-asset-ncd-asof" className="cross-asset-ncd-proxy__asof">
-          as of {evidence.asOfDate}
+      <summary>
+        <span className="cross-asset-ncd-proxy__summary-main">
+          <strong className="cross-asset-ncd-proxy__title">NCD / 资金代理</strong>
+          <span className="cross-asset-ncd-proxy__label">{evidence.proxyLabel}</span>
+        </span>
+        <span className="cross-asset-ncd-proxy__summary-meta">
+          {evidence.asOfDate ? (
+            <span data-testid="cross-asset-ncd-asof" className="cross-asset-ncd-proxy__asof">
+              as of {evidence.asOfDate}
+            </span>
+          ) : null}
+          {isLoading ? (
+            <StatusPill status="caution" label="loading" />
+          ) : (
+            <StatusPill
+              status={isProxyNotMatrix ? "warning" : "normal"}
+              label={isProxyNotMatrix ? "proxy · not NCD matrix" : "actual matrix (verify)"}
+            />
+          )}
+        </span>
+      </summary>
+      <div className="cross-asset-ncd-proxy__body">
+        <p
+          data-testid="cross-asset-ncd-proxy-warning"
+          className={`cross-asset-ncd-proxy__warning${
+            isLoading ? " cross-asset-ncd-proxy__warning--loading" : ""
+          }`}
+        >
+          {isLoading ? "正在加载资金代理…" : evidence.proxyWarning}
         </p>
-      ) : null}
-      <p
-        data-testid="cross-asset-ncd-proxy-warning"
-        className={`cross-asset-ncd-proxy__warning${
-          isLoading ? " cross-asset-ncd-proxy__warning--loading" : ""
-        }`}
-      >
-        {isLoading ? "正在加载资金代理…" : evidence.proxyWarning}
-      </p>
-      {evidence.rowCaptions.length > 0 ? (
         <ul
           data-testid="cross-asset-ncd-proxy-rows"
           className="cross-asset-ncd-proxy__rows"
@@ -1070,8 +1485,8 @@ function NcdProxyEvidencePanel({
             </li>
           ))}
         </ul>
-      ) : null}
-    </section>
+      </div>
+    </details>
   );
 }
 
@@ -1101,7 +1516,9 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
             <div className="cross-asset-drivers-page__chip-row">
               <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.stanceLabel} />
               {row.impactedViews.length > 0 ? (
-                <StatusPill status="caution" label={`影响：${formatImpactedViewsForDisplay(row.impactedViews)}`} />
+                <span className="cross-asset-transmission-axes__impact">
+                  影响：{formatImpactedViewsForDisplay(row.impactedViews)}
+                </span>
               ) : null}
             </div>
             <p className="cross-asset-transmission-axes__summary">{row.summary}</p>
@@ -1224,140 +1641,151 @@ function AssetClassAnalysisPanel({
       </div>
       <div className="cross-asset-class-analysis__body">
         <div className="cross-asset-class-analysis__primary">
-          <div className="cross-asset-class-analysis__column-head">
-            <span>{UI.readyJudgment}</span>
-            <span>{readyRows.length}/{rows.length}</span>
-          </div>
-          <div className="cross-asset-class-analysis__cards">
-            {primaryRows.map((row) => (
-              <article
-                key={row.key}
-                data-testid={`cross-asset-asset-analysis-${row.key}`}
-                className="cross-asset-class-analysis__card"
-              >
-                <div className="cross-asset-class-analysis__card-header">
-                  <div>
-                    <div className="cross-asset-class-analysis__card-title">{row.label}</div>
-                    <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
-                  </div>
-                  <span
-                    className={`cross-asset-class-analysis__direction cross-asset-class-analysis__direction--${directionClassName(row.direction)}`}
-                  >
-                    {assetDirectionLabel(row.direction)}
-                  </span>
-                </div>
-                <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
-                <div className="cross-asset-class-analysis__lines">
-                  {row.lines.map((line) => (
-                    <div
-                      key={line.key}
-                      data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}`}
-                      className={`cross-asset-class-analysis__line${
-                        line.status === "ready" ? "" : " cross-asset-class-analysis__line--pending"
-                      }`}
+          <div className="cross-asset-class-analysis__judgment" data-testid="cross-asset-asset-class-judgment">
+            <div className="cross-asset-class-analysis__judgment-kicker">{UI.bondTransmissionJudgment}</div>
+            <h3 className="cross-asset-class-analysis__judgment-title">{bondJudgment.headline}</h3>
+            <p className="cross-asset-class-analysis__judgment-summary">{bondJudgment.summary}</p>
+            <div className="cross-asset-class-analysis__judgment-items">
+              {bondJudgment.items.map((item) => (
+                <div key={item.key} className="cross-asset-class-analysis__judgment-item">
+                  <div className="cross-asset-class-analysis__judgment-item-head">
+                    <span>{item.label}</span>
+                    <strong
+                      className={`cross-asset-class-analysis__judgment-tone cross-asset-class-analysis__direction--${directionClassName(item.direction)}`}
                     >
-                      <div className="cross-asset-class-analysis__line-header">
-                        <span className="cross-asset-class-analysis__line-title">{line.label}</span>
-                        <span className="cross-asset-class-analysis__line-status">{lineStatusLabel(line.stateLabel)}</span>
-                      </div>
-                      <div className="cross-asset-class-analysis__line-source" title={line.sourceLabel}>
-                        <strong>{line.dataLabel}</strong>
-                      </div>
-                      <p className="cross-asset-class-analysis__line-explanation">{line.explanation}</p>
-                    </div>
-                  ))}
+                      {item.tone}
+                    </strong>
+                  </div>
+                  <p>{item.detail}</p>
                 </div>
-                {row.key === "stock" ? (
-                  <div className="cross-asset-class-analysis__evidence" data-testid="cross-asset-equity-evidence">
-                    {equityEvidenceItems.map((item) => (
-                      <div
-                        key={item.key}
-                        className={`cross-asset-class-analysis__evidence-item${
-                          item.status === "ready" ? "" : ` cross-asset-class-analysis__evidence-item--${item.status}`
-                        }`}
-                        data-testid={`cross-asset-equity-evidence-${item.key}`}
-                        title={item.sourceLabel}
-                      >
-                        <span>{item.label}</span>
-                        <strong>{item.valueLabel}</strong>
-                        <small>
-                          {evidenceStatusLabel(item.status)} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} ·{" "}
-                          {item.sourceLabel}
-                        </small>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-            <div className="cross-asset-class-analysis__judgment" data-testid="cross-asset-asset-class-judgment">
-              <div className="cross-asset-class-analysis__judgment-kicker">{UI.bondTransmissionJudgment}</div>
-              <h3 className="cross-asset-class-analysis__judgment-title">{bondJudgment.headline}</h3>
-              <p className="cross-asset-class-analysis__judgment-summary">{bondJudgment.summary}</p>
-              <div className="cross-asset-class-analysis__judgment-items">
-                {bondJudgment.items.map((item) => (
-                  <div key={item.key} className="cross-asset-class-analysis__judgment-item">
-                    <div className="cross-asset-class-analysis__judgment-item-head">
-                      <span>{item.label}</span>
-                      <strong
-                        className={`cross-asset-class-analysis__judgment-tone cross-asset-class-analysis__direction--${directionClassName(item.direction)}`}
-                      >
-                        {item.tone}
-                      </strong>
-                    </div>
-                    <p>{item.detail}</p>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </div>
 
-        <aside className="cross-asset-class-analysis__pending">
-          <div className="cross-asset-class-analysis__column-head">
-            <span>{UI.pendingList}</span>
-            <span>{pendingLineCount} {UI.items}</span>
-          </div>
-          {pendingGroups.map(({ row, lines }) => {
-            const hasPrimaryCard = primaryRows.some((primaryRow) => primaryRow.key === row.key);
-            const testIdSuffix = hasPrimaryCard ? "-pending" : "";
-            return (
-              <article
-                key={row.key}
-                data-testid={`cross-asset-asset-analysis-${row.key}${testIdSuffix}`}
-                className="cross-asset-class-analysis__pending-card"
-              >
-                <div className="cross-asset-class-analysis__card-header">
-                  <div>
-                    <div className="cross-asset-class-analysis__card-title">{row.label}</div>
-                    <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
-                  </div>
-                  <span className="cross-asset-class-analysis__direction cross-asset-class-analysis__direction--pending">
-                    {UI.pending}
-                  </span>
-                </div>
-                <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
-                <div className="cross-asset-class-analysis__pending-lines">
-                  {lines.map((line) => (
-                    <div
-                      key={line.key}
-                      data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}${testIdSuffix}`}
-                      className="cross-asset-class-analysis__pending-line"
-                      title={line.sourceLabel}
-                    >
-                      <span>{line.label}</span>
-                      <span>{assetDirectionLabel(line.direction)}</span>
-                      <small>
-                        {lineStatusLabel(line.stateLabel)} · {line.dataLabel}
-                      </small>
+        <details className="cross-asset-class-analysis__details" data-testid="cross-asset-asset-class-details">
+          <summary>
+            <span>资产明细与待接入清单</span>
+            <strong>{readyRows.length}/{rows.length} 已判断 · {pendingLineCount} 项待接入</strong>
+          </summary>
+          <div className="cross-asset-class-analysis__details-body">
+            <div className="cross-asset-class-analysis__primary-details">
+              <div className="cross-asset-class-analysis__column-head">
+                <span>{UI.readyJudgment}</span>
+                <span>{readyRows.length}/{rows.length}</span>
+              </div>
+              <div className="cross-asset-class-analysis__cards">
+                {primaryRows.map((row) => (
+                  <article
+                    key={row.key}
+                    data-testid={`cross-asset-asset-analysis-${row.key}`}
+                    className="cross-asset-class-analysis__card"
+                  >
+                    <div className="cross-asset-class-analysis__card-header">
+                      <div>
+                        <div className="cross-asset-class-analysis__card-title">{row.label}</div>
+                        <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
+                      </div>
+                      <span
+                        className={`cross-asset-class-analysis__direction cross-asset-class-analysis__direction--${directionClassName(row.direction)}`}
+                      >
+                        {assetDirectionLabel(row.direction)}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </article>
-            );
-          })}
-          <p className="cross-asset-class-analysis__pending-note">{UI.pendingNote}</p>
-        </aside>
+                    <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
+                    <div className="cross-asset-class-analysis__lines">
+                      {row.lines.map((line) => (
+                        <div
+                          key={line.key}
+                          data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}`}
+                          className={`cross-asset-class-analysis__line${
+                            line.status === "ready" ? "" : " cross-asset-class-analysis__line--pending"
+                          }`}
+                        >
+                          <div className="cross-asset-class-analysis__line-header">
+                            <span className="cross-asset-class-analysis__line-title">{line.label}</span>
+                            <span className="cross-asset-class-analysis__line-status">{lineStatusLabel(line.stateLabel)}</span>
+                          </div>
+                          <div className="cross-asset-class-analysis__line-source" title={line.sourceLabel}>
+                            <strong>{line.dataLabel}</strong>
+                          </div>
+                          <p className="cross-asset-class-analysis__line-explanation">{line.explanation}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {row.key === "stock" ? (
+                      <div className="cross-asset-class-analysis__evidence" data-testid="cross-asset-equity-evidence">
+                        {equityEvidenceItems.map((item) => (
+                          <div
+                            key={item.key}
+                            className={`cross-asset-class-analysis__evidence-item${
+                              item.status === "ready" ? "" : ` cross-asset-class-analysis__evidence-item--${item.status}`
+                            }`}
+                            data-testid={`cross-asset-equity-evidence-${item.key}`}
+                            title={item.sourceLabel}
+                          >
+                            <span>{item.label}</span>
+                            <strong>{item.valueLabel}</strong>
+                            <small>
+                              {evidenceStatusLabel(item.status)} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} ·{" "}
+                              {item.sourceLabel}
+                            </small>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <aside className="cross-asset-class-analysis__pending">
+              <div className="cross-asset-class-analysis__column-head">
+                <span>{UI.pendingList}</span>
+                <span>{pendingLineCount} {UI.items}</span>
+              </div>
+              {pendingGroups.map(({ row, lines }) => {
+                const hasPrimaryCard = primaryRows.some((primaryRow) => primaryRow.key === row.key);
+                const testIdSuffix = hasPrimaryCard ? "-pending" : "";
+                return (
+                  <article
+                    key={row.key}
+                    data-testid={`cross-asset-asset-analysis-${row.key}${testIdSuffix}`}
+                    className="cross-asset-class-analysis__pending-card"
+                  >
+                    <div className="cross-asset-class-analysis__card-header">
+                      <div>
+                        <div className="cross-asset-class-analysis__card-title">{row.label}</div>
+                        <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
+                      </div>
+                      <span className="cross-asset-class-analysis__direction cross-asset-class-analysis__direction--pending">
+                        {UI.pending}
+                      </span>
+                    </div>
+                    <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
+                    <div className="cross-asset-class-analysis__pending-lines">
+                      {lines.map((line) => (
+                        <div
+                          key={line.key}
+                          data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}${testIdSuffix}`}
+                          className="cross-asset-class-analysis__pending-line"
+                          title={line.sourceLabel}
+                        >
+                          <span>{line.label}</span>
+                          <span>{assetDirectionLabel(line.direction)}</span>
+                          <small>
+                            {lineStatusLabel(line.stateLabel)} · {line.dataLabel}
+                          </small>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+              <p className="cross-asset-class-analysis__pending-note">{UI.pendingNote}</p>
+            </aside>
+          </div>
+        </details>
       </div>
     </section>
   );
@@ -1480,54 +1908,139 @@ function MarketRegimePanel({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
   );
 }
 
+type CorrelationSummaryCard = {
+  id: string;
+  title: string;
+  pair: string;
+  value: string;
+  detail: string;
+};
+
+function formatCorrelationPair(matrix: CorrelationMatrix, rowIndex: number, colIndex: number) {
+  return `${matrix.labels[rowIndex]} / ${matrix.labels[colIndex]}`;
+}
+
+function buildCorrelationSummaryCards(matrix: CorrelationMatrix): CorrelationSummaryCard[] {
+  const pairs = matrix.cells.flatMap((row, rowIndex) =>
+    row.slice(rowIndex + 1).map((cell, offset) => ({
+      rowIndex,
+      colIndex: rowIndex + offset + 1,
+      value: cell.value,
+    })),
+  ).filter((pair) => pair.value != null);
+
+  const fallback = {
+    pair: "暂无可比组合",
+    value: "—",
+  };
+  const strongestPositive =
+    pairs.slice().sort((left, right) => (right.value ?? -Infinity) - (left.value ?? -Infinity))[0];
+  const strongestNegative =
+    pairs.slice().sort((left, right) => (left.value ?? Infinity) - (right.value ?? Infinity))[0];
+  const strongestAbsolute =
+    pairs.slice().sort((left, right) => Math.abs(right.value ?? 0) - Math.abs(left.value ?? 0))[0];
+
+  function cardValue(pair: (typeof pairs)[number] | undefined) {
+    if (!pair) {
+      return fallback;
+    }
+    return {
+      pair: formatCorrelationPair(matrix, pair.rowIndex, pair.colIndex),
+      value: formatCorrelation(pair.value),
+    };
+  }
+
+  const positive = cardValue(strongestPositive);
+  const negative = cardValue(strongestNegative);
+  const focus = cardValue(strongestAbsolute);
+
+  return [
+    {
+      id: "positive",
+      title: "最强共振",
+      pair: positive.pair,
+      value: positive.value,
+      detail: "正相关最高，适合观察同向传导。",
+    },
+    {
+      id: "negative",
+      title: "最强背离",
+      pair: negative.pair,
+      value: negative.value,
+      detail: "负相关最低，适合观察对冲或错位。",
+    },
+    {
+      id: "focus",
+      title: "关注组合",
+      pair: focus.pair,
+      value: focus.value,
+      detail: "绝对相关最高，优先展开矩阵复核。",
+    },
+  ];
+}
+
 function CorrelationHeatmapPanel({ matrix }: { matrix: CorrelationMatrix }) {
   if (matrix.keys.length < 2) return null;
   const n = matrix.keys.length;
+  const summaryCards = buildCorrelationSummaryCards(matrix);
   return (
     <section className="ca-correlation" data-testid="cross-asset-correlation-heatmap">
       <h2 className="ca-correlation__title">资产相关性矩阵</h2>
       <p className="ca-correlation__subtitle">
         基于 sparkline 窗口滚动 Pearson 相关系数，一眼看清哪些资产在共振或背离。
       </p>
-      <div className="ca-correlation__matrix-wrap" data-testid="cross-asset-correlation-matrix-wrap">
-        <div
-          className="ca-correlation__grid"
-          style={{ gridTemplateColumns: `92px repeat(${n}, minmax(54px, 1fr))` }}
-        >
-        {/* Top-left corner: empty */}
-        <div className="ca-correlation__cell ca-correlation__cell--header" />
-        {/* Column headers */}
-        {matrix.labels.map((label) => (
-          <div key={`col-${label}`} className="ca-correlation__cell ca-correlation__cell--header ca-correlation__cell--header-top">
-            {label}
-          </div>
+      <div className="ca-correlation__summary" data-testid="cross-asset-correlation-summary">
+        {summaryCards.map((card) => (
+          <article className="ca-correlation__summary-card" key={card.id}>
+            <span>{card.title}</span>
+            <strong>{card.pair}</strong>
+            <em>{card.value}</em>
+            <small>{card.detail}</small>
+          </article>
         ))}
-        {/* Rows */}
-        {matrix.cells.map((row, ri) => (
-          <div key={`row-group-${matrix.keys[ri]}`} className="ca-correlation__row-group">
-            <div className="ca-correlation__cell ca-correlation__cell--header">
-              {matrix.labels[ri]}
-            </div>
-            {row.map((cell, ci) => {
-              const isDiag = ri === ci;
-              return (
-                <div
-                  key={`${cell.rowKey}-${cell.colKey}`}
-                  className={`ca-correlation__cell${isDiag ? " ca-correlation__cell--diagonal" : ""}`}
-                  style={{
-                    background: isDiag ? undefined : correlationColor(cell.value),
-                    color: cell.value != null && Math.abs(cell.value) > 0.5 ? "var(--ca-on-dark)" : undefined,
-                  }}
-                  title={`${matrix.labels[ri]} × ${matrix.labels[ci]}: ${formatCorrelation(cell.value)}`}
-                >
-                  {isDiag ? "1" : formatCorrelation(cell.value)}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-        </div>
       </div>
+      <details className="ca-correlation__details" data-testid="cross-asset-correlation-details">
+        <summary>
+          <span>展开完整相关性矩阵</span>
+          <strong>{n} 项资产</strong>
+        </summary>
+        <div className="ca-correlation__matrix-wrap" data-testid="cross-asset-correlation-matrix-wrap">
+          <div
+            className="ca-correlation__grid ca-correlation__grid--compact"
+            style={{ gridTemplateColumns: `48px repeat(${n}, minmax(30px, 1fr))` }}
+          >
+          <div className="ca-correlation__cell ca-correlation__cell--header" />
+          {matrix.labels.map((label) => (
+            <div key={`col-${label}`} className="ca-correlation__cell ca-correlation__cell--header ca-correlation__cell--header-top">
+              {label}
+            </div>
+          ))}
+          {matrix.cells.map((row, ri) => (
+            <div key={`row-group-${matrix.keys[ri]}`} className="ca-correlation__row-group">
+              <div className="ca-correlation__cell ca-correlation__cell--header">
+                {matrix.labels[ri]}
+              </div>
+              {row.map((cell, ci) => {
+                const isDiag = ri === ci;
+                return (
+                  <div
+                    key={`${cell.rowKey}-${cell.colKey}`}
+                    className={`ca-correlation__cell${isDiag ? " ca-correlation__cell--diagonal" : ""}`}
+                    style={{
+                      background: isDiag ? undefined : correlationColor(cell.value),
+                      color: cell.value != null && Math.abs(cell.value) > 0.5 ? "var(--ca-on-dark)" : undefined,
+                    }}
+                    title={`${matrix.labels[ri]} × ${matrix.labels[ci]}: ${formatCorrelation(cell.value)}`}
+                  >
+                    {isDiag ? "1" : formatCorrelation(cell.value)}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          </div>
+        </div>
+      </details>
       <div className="ca-correlation__legend">
         <span>−1</span>
         <div className="ca-correlation__legend-bar" />
@@ -1638,6 +2151,12 @@ function VolatilityClusteringPanel({ alert }: { alert: VolatilityAlert }) {
     elevated: "偏高",
     critical: "警告",
   };
+  const sortedAssets = [...alert.assets].sort((left, right) => Number(right.isElevated) - Number(left.isElevated));
+  const visibleAssetLimit = alert.severity === "normal" ? 6 : 8;
+  const visibleAssets = sortedAssets.slice(0, visibleAssetLimit);
+  const foldedAssets = sortedAssets.slice(visibleAssetLimit);
+  const foldedAssetsTitle = foldedAssets.map((asset) => `${asset.label} ${asset.volRatio.toFixed(2)}x`).join(" / ");
+
   return (
     <section
       className={`ca-vol-alert ca-vol-alert--${alert.severity}`}
@@ -1652,7 +2171,7 @@ function VolatilityClusteringPanel({ alert }: { alert: VolatilityAlert }) {
       <p className="ca-vol-alert__headline">{alert.headline}</p>
       {alert.assets.length > 0 ? (
         <div className="ca-vol-alert__bars">
-          {alert.assets.map((a) => {
+          {visibleAssets.map((a) => {
             const fillPct = Math.min(100, (a.volRatio / 3) * 100);
             const fillColor = a.isElevated ? "var(--ca-warning-fill)" : "var(--ca-neutral-fill)";
             return (
@@ -1673,6 +2192,16 @@ function VolatilityClusteringPanel({ alert }: { alert: VolatilityAlert }) {
               </div>
             );
           })}
+          {foldedAssets.length > 0 ? (
+            <div
+              className="ca-vol-alert__bar-item ca-vol-alert__bar-item--folded"
+              data-testid="cross-asset-vol-folded-assets"
+              title={foldedAssetsTitle}
+            >
+              <div className="ca-vol-alert__bar-label">{`其余 ${foldedAssets.length} 项`}</div>
+              <div className="ca-vol-alert__bar-value">常规波动</div>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -1827,7 +2356,25 @@ function DriverWaterfallPanel({
     ...bars.map((b) => Math.abs(b.value)),
     0.01, // prevent division by zero
   );
-  const chartHeight = 120; // px available for bars
+  const evidenceRows = bars.map((bar) => ({ bar, evidence: waterfallFactorEvidence(bar, env) }));
+  const factorRows = evidenceRows.filter(({ bar }) => bar.kind !== "total");
+  const activeRows = factorRows.filter(({ evidence }) => evidence.status === "ready");
+  const gapRows = factorRows.filter(
+    ({ evidence }) => evidence.status === "missing" || evidence.status === "neutral",
+  );
+  const totalRow = evidenceRows.find(({ evidence }) => evidence.status === "total");
+  const compactGapMode = factorRows.length > 0 && gapRows.length >= Math.min(factorRows.length, 3) && activeRows.length <= 1;
+  const chartHeight = compactGapMode ? 72 : 120; // px available for bars
+  const gapStripClassName = `ca-waterfall__evidence-strip ${
+    gapRows.length <= 2 ? "ca-waterfall__evidence-strip--compact" : "ca-waterfall__evidence-strip--grid"
+  }`;
+  const dominantRow = activeRows.reduce<(typeof activeRows)[number] | null>((winner, row) => {
+    if (!winner) return row;
+    return Math.abs(row.bar.value) > Math.abs(winner.bar.value) ? row : winner;
+  }, null);
+  const netValue = totalRow?.bar.value ?? 0;
+  const netSign = netValue > 0 ? "+" : "";
+  const netTone = netValue > 0.005 ? "positive" : netValue < -0.005 ? "negative" : "neutral";
 
   return (
     <section className="ca-waterfall" data-testid="cross-asset-driver-waterfall">
@@ -1835,15 +2382,40 @@ function DriverWaterfallPanel({
       <p className="ca-waterfall__subtitle">
         环境综合评分由各子因子累加构成，正值利好债市，负值利空。
       </p>
-      <div className="ca-waterfall__chart">
-        <div className="ca-waterfall__zero-line" style={{ bottom: `${chartHeight / 2 + 28}px` }} />
-        {bars.map((bar) => {
-          const evidence = waterfallFactorEvidence(bar, env);
+      <div className="ca-waterfall__decision" data-testid="cross-asset-driver-waterfall-decision">
+        <div className={`ca-waterfall__decision-card ca-waterfall__decision-card--${netTone}`}>
+          <span>综合方向</span>
+          <strong>{`${netSign}${netValue.toFixed(2)}`}</strong>
+          <small>{netTone === "positive" ? "偏利好债市" : netTone === "negative" ? "偏利空债市" : "方向中性"}</small>
+        </div>
+        <div className="ca-waterfall__decision-card">
+          <span>主导因子</span>
+          <strong>{dominantRow?.bar.label ?? "暂无"}</strong>
+          <small>{dominantRow ? `${dominantRow.bar.value > 0 ? "+" : ""}${dominantRow.bar.value.toFixed(2)}` : "等待有效贡献"}</small>
+        </div>
+        <div className="ca-waterfall__decision-card">
+          <span>证据状态</span>
+          <strong>{`${activeRows.length}/${factorRows.length}`}</strong>
+          <small>{gapRows.length > 0 ? `${gapRows.length} 项中性或待补` : "因子已形成贡献"}</small>
+        </div>
+      </div>
+      {compactGapMode ? (
+        <div className="ca-waterfall__gap-summary" data-testid="cross-asset-driver-waterfall-gap-summary">
+          <span>证据缺口</span>
+          <strong>{`${gapRows.length} 项待补`}</strong>
+          <p>{gapRows.map(({ bar }) => bar.label).join("、")} 当前按 0 参与汇总，明细保留在下方证据条。</p>
+        </div>
+      ) : null}
+      <div className={`ca-waterfall__chart${compactGapMode ? " ca-waterfall__chart--compact-gaps" : ""}`}>
+        <div className="ca-waterfall__zero-line" />
+        {evidenceRows.map(({ bar, evidence }) => {
           const barHeight = Math.max(4, (Math.abs(bar.value) / maxAbs) * (chartHeight / 2));
           const isNeg = bar.value < 0;
           const isTotal = bar.kind === "total";
           const sign = bar.value > 0 ? "+" : "";
           const valueLabel = evidence.status === "missing" ? "缺数据" : `${sign}${bar.value.toFixed(2)}`;
+          const suppressGapBarMeta =
+            compactGapMode && !isTotal && (evidence.status === "missing" || evidence.status === "neutral");
 
           return (
             <div
@@ -1860,24 +2432,28 @@ function DriverWaterfallPanel({
                 }}
                 title={`${bar.label}: ${valueLabel}；${evidence.reason}`}
               >
-                <span
-                  className={`ca-waterfall__bar-value ${isNeg ? "ca-waterfall__bar-value--below" : "ca-waterfall__bar-value--above"}`}
-                  style={{ color: bar.color }}
-                >
-                  {valueLabel}
-                </span>
+                {!suppressGapBarMeta ? (
+                  <span
+                    className={`ca-waterfall__bar-value ${isNeg ? "ca-waterfall__bar-value--below" : "ca-waterfall__bar-value--above"}`}
+                  >
+                    {valueLabel}
+                  </span>
+                ) : null}
                 <span className="ca-waterfall__bar-label">{bar.label}</span>
-                <span className={`ca-waterfall__bar-status ca-waterfall__bar-status--${evidence.status}`}>
-                  {evidence.label}
-                </span>
+                {!suppressGapBarMeta ? (
+                  <span className={`ca-waterfall__bar-status ca-waterfall__bar-status--${evidence.status}`}>
+                    {evidence.label}
+                  </span>
+                ) : null}
               </div>
             </div>
           );
         })}
       </div>
       <div className="ca-waterfall__evidence" data-testid="cross-asset-driver-waterfall-evidence">
-        {bars.map((bar) => {
-          const evidence = waterfallFactorEvidence(bar, env);
+        {evidenceRows
+          .filter(({ evidence }) => evidence.status === "ready" || evidence.status === "total")
+          .map(({ bar, evidence }) => {
           return (
             <div
               key={`evidence-${bar.key}`}
@@ -1889,6 +2465,20 @@ function DriverWaterfallPanel({
             </div>
           );
         })}
+        {gapRows.length > 0 ? (
+          <div className={gapStripClassName} data-testid="cross-asset-driver-waterfall-gap-strip">
+            {gapRows.map(({ bar, evidence }) => (
+              <span
+                key={`gap-${bar.key}`}
+                className={`ca-waterfall__evidence-chip ca-waterfall__evidence-chip--${evidence.status}`}
+                title={evidence.reason}
+              >
+                <strong>{bar.label}</strong>
+                {evidence.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -2134,94 +2724,99 @@ export default function CrossAssetDriversPage() {
       data-testid="cross-asset-drivers-page"
     >
       <div data-testid="cross-asset-page" className="cross-asset-drivers-page__shell">
-        <PageDecisionHero
-          testId="cross-asset-decision-hero"
-          className="cross-asset-decision-hero"
-          title="跨资产驱动"
-          eyebrow="市场工作台"
-          businessQuestion="外部变量今天怎样传导到债券？首屏只看体制、四维判断与关键指标。"
-          reportDateSlot={
-            <span>
-              数据日期 <strong className="cross-asset-drivers-page__report-date">{crossAssetDataDate || linkageReportDate || "—"}</strong>
-              {" · "}
-              <Link to="/market-data">市场数据</Link>
-            </span>
-          }
-          conclusion={
-            <span>
-              {macroBondLinkageQuery.isLoading || latestQuery.isLoading
-                ? "正在加载联动分析…"
-                : env.signal_description ?? "当前暂无可用摘要；请确认数据日期与联动分析是否已就绪。"}
-            </span>
-          }
-          actions={
-            client.mode !== "real" ? (
-              <span className="cross-asset-mode-badge">本地模拟</span>
-            ) : null
-          }
-        />
+        <section className="cross-asset-first-screen" data-testid="cross-asset-first-screen">
+          <div className="cross-asset-first-screen__intro">
+            <CrossAssetTerminalCommandStrip
+              reportDate={crossAssetDataDate || linkageReportDate}
+              conclusion={env.signal_description ?? null}
+              isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
+              isMockMode={client.mode !== "real"}
+            />
 
-        <div className="cross-asset-status-region" data-testid="cross-asset-data-status-strip">
-          {statusFlags.length > 0 ? (
-            <DataStatusStrip testId="cross-asset-alert-status-strip" className="cross-asset-data-status-strip">
-              <div className="cross-asset-data-status-strip__flags" data-testid="cross-asset-status-flags">
-                {statusFlags.map((flag) => (
-                  <span key={flag.id} className="cross-asset-data-status-strip__flag" title={flag.detail}>
-                    <StatusPill status={flag.tone} label={flag.label} />
-                    <span>{flag.detail}</span>
-                  </span>
-                ))}
+            <CrossAssetTrustPanel
+              reportDate={crossAssetDataDate || linkageReportDate}
+              latestMeta={latestMeta}
+              linkageMeta={linkageMeta}
+              statusFlags={statusFlags}
+            >
+              <div className="cross-asset-status-region cross-asset-status-region--compact" data-testid="cross-asset-data-status-strip">
+                {statusFlags.length > 0 ? (
+                  <DataStatusStrip testId="cross-asset-alert-status-strip" className="cross-asset-data-status-strip">
+                    <div className="cross-asset-data-status-strip__flags" data-testid="cross-asset-status-flags">
+                      {statusFlags.map((flag) => (
+                        <span key={flag.id} className="cross-asset-data-status-strip__flag" title={flag.detail}>
+                          <StatusPill status={flag.tone} label={flag.label} />
+                          <span>{compactStatusFlagDetail(flag)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </DataStatusStrip>
+                ) : null}
+
+                <p className="cross-asset-page-meta">
+                  <span>宏观 {resultMetaQualityLabel(latestMeta?.quality_flag)}</span>
+                  <span>联动 {resultMetaQualityLabel(linkageMeta?.quality_flag)}</span>
+                  <span title={latestMeta?.generated_at}>宏观更新 {compactGeneratedAt(latestMeta?.generated_at)}</span>
+                  <span title={linkageMeta?.generated_at}>联动更新 {compactGeneratedAt(linkageMeta?.generated_at)}</span>
+                </p>
               </div>
-            </DataStatusStrip>
-          ) : null}
+            </CrossAssetTrustPanel>
+          </div>
 
-          <p className="cross-asset-page-meta">
-            <span>宏观 {resultMetaQualityLabel(latestMeta?.quality_flag)}</span>
-            <span>联动 {resultMetaQualityLabel(linkageMeta?.quality_flag)}</span>
-            <span>宏观更新 {latestMeta?.generated_at ?? "待定"}</span>
-            <span>联动更新 {linkageMeta?.generated_at ?? "待定"}</span>
-          </p>
-        </div>
+          <CrossAssetMarketTape kpis={kpis} />
+
+          <section
+            className="cross-asset-cockpit cross-asset-first-screen-grid cross-asset-trading-desk"
+            data-testid="cross-asset-first-screen-grid"
+          >
+            <CrossAssetMarketRadar kpis={kpis} envTags={envTags} />
+            <CrossAssetTransmissionWorkbench rows={transmissionAxisRows} researchViewCards={researchViewCards} />
+            <CrossAssetDecisionRail
+              envTags={envTags}
+              researchViews={researchViewCards}
+              warningCount={statusFlags.length}
+              isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
+            />
+          </section>
+        </section>
 
         <div className="cross-asset-drivers-page__flow">
-          <section className="cross-asset-cockpit" data-testid="cross-asset-first-screen-grid">
-            <div className="cross-asset-cockpit__judgment">
-              <h2 className="cross-asset-cockpit__title">市场判断</h2>
-              <MarketRegimePanel kpis={kpis} />
-              <div className="cross-asset-drivers-page__chip-row">
-                <StatusPill status="normal" label={`主导 · ${envTags.primary}`} />
-                <StatusPill status="caution" label={`次要 · ${envTags.secondary}`} />
-                <StatusPill status="warning" label={`风格 · ${envTags.style}`} />
-              </div>
-            </div>
-            <ResearchViewsPanel rows={researchViewCards} />
-          </section>
-
           <div className="cross-asset-decision-board" data-testid="cross-asset-decision-display">
             <CrossAssetDecisionZone testId="cross-asset-zone-evidence" title="证据与指标">
-              <CrossAssetEvidenceGroups kpis={kpis} />
-              <table className="cross-asset-drivers-page__heatmap cross-asset-drivers-page__heatmap--flat">
-                <thead>
-                  <tr>
-                    <th>指标</th>
-                    <th>3月相关</th>
-                    <th>6月相关</th>
-                    <th>方向</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {heatmapRows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{row.indicator}</td>
-                      <td className="cross-asset-drivers-page__tabular-cell">{row.current}</td>
-                      <td className="cross-asset-drivers-page__tabular-cell">{row.mid}</td>
-                      <td className={`cross-asset-drivers-page__eval-tone cross-asset-drivers-page__eval-tone--${row.evalTone}`}>
-                        {row.eval}
-                      </td>
+              <CrossAssetEvidenceTape kpis={kpis} />
+              <details
+                className="cross-asset-evidence-details"
+                data-testid="cross-asset-evidence-details"
+                aria-label="指标明细与相关性热力"
+              >
+                <summary>
+                  <span>展开指标明细与相关性热力</span>
+                  <strong>{kpis.length} 项指标</strong>
+                </summary>
+                <CrossAssetEvidenceGroups kpis={kpis} />
+                <table className="cross-asset-drivers-page__heatmap cross-asset-drivers-page__heatmap--flat">
+                  <thead>
+                    <tr>
+                      <th>指标</th>
+                      <th>3月相关</th>
+                      <th>6月相关</th>
+                      <th>方向</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {heatmapRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.indicator}</td>
+                        <td className="cross-asset-drivers-page__tabular-cell">{row.current}</td>
+                        <td className="cross-asset-drivers-page__tabular-cell">{row.mid}</td>
+                        <td className={`cross-asset-drivers-page__eval-tone cross-asset-drivers-page__eval-tone--${row.evalTone}`}>
+                          {row.eval}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </details>
             </CrossAssetDecisionZone>
 
             <CrossAssetDecisionZone testId="cross-asset-zone-transmission" title="传导与行动">
@@ -2242,9 +2837,9 @@ export default function CrossAssetDriversPage() {
                   </div>
                 ))}
               </div>
-              <div className="cross-asset-zone-analytics-grid">
+              <div className="cross-asset-zone-analytics-grid" data-testid="cross-asset-zone-analytics-grid">
                 <DriverWaterfallPanel bars={waterfallBars} env={env} />
-                <div className="cross-asset-risk-snapshot-grid">
+                <div className="cross-asset-risk-snapshot-grid" data-testid="cross-asset-risk-snapshot-grid">
                   <VolatilityClusteringPanel alert={volAlert} />
                   <EquityBondERPPanel erp={erpData} />
                 </div>
@@ -2253,11 +2848,24 @@ export default function CrossAssetDriversPage() {
               <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
             </CrossAssetDecisionZone>
 
-            <CrossAssetDecisionZone testId="cross-asset-zone-observation" title="走势与观察">
+            <CrossAssetDecisionZone
+              testId="cross-asset-zone-observation"
+              title="走势与观察"
+              className="cross-asset-zone-observation"
+            >
             <div data-testid="cross-asset-trend-panel" className="cross-asset-trend-panel">
               <h3 className="cross-asset-decision-zone__block-title">跨资产走势（近 20 日，基准 = 100）</h3>
               <div className="cross-asset-trend-panel__body">
-                <TrendGroupToggle active={trendGroup} onChange={setTrendGroup} />
+                <div className="cross-asset-trend-panel__toolbar">
+                  <TrendGroupToggle active={trendGroup} onChange={setTrendGroup} />
+                  <details className="cross-asset-trend-panel__method">
+                    <summary>口径说明（LOCF 归一化）</summary>
+                    <p className="cross-asset-trend-panel__note">
+                      各资产发布日与休市不同，在统一时间轴上先对缺失日沿用「上一有效观测」(LOCF)，再按窗口内首次观测 = 100
+                      归一化。曲线在两次真实更新之间为水平持有，不代表日内波动。
+                    </p>
+                  </details>
+                </div>
                 {trendSummary ? (
                   <div className={`cross-asset-trend-panel__summary cross-asset-trend-panel__summary--${trendSummary.tone}`} data-testid="cross-asset-trend-summary">
                     <span className="cross-asset-trend-panel__summary-dot" />
@@ -2271,13 +2879,6 @@ export default function CrossAssetDriversPage() {
                     </div>
                   </div>
                 ) : null}
-                <details className="cross-asset-trend-panel__method">
-                  <summary>口径说明（LOCF 归一化）</summary>
-                  <p className="cross-asset-trend-panel__note">
-                    各资产发布日与休市不同，在统一时间轴上先对缺失日沿用「上一有效观测」(LOCF)，再按窗口内首次观测 = 100
-                    归一化。曲线在两次真实更新之间为水平持有，不代表日内波动。
-                  </p>
-                </details>
                 {latestQuery.isLoading ? (
                   <div className="cross-asset-trend-panel__loading">
                     <div className="cross-asset-trend-panel__spinner" />
@@ -2320,147 +2921,161 @@ export default function CrossAssetDriversPage() {
               <CorrelationHeatmapPanel matrix={correlationMatrix} />
             </div>
 
-            <div className="cross-asset-observation-secondary-grid" data-testid="cross-asset-observation-secondary-grid">
-              <CrossAssetEventCalendar items={eventItems} />
-              <WatchList rows={watchRows} />
-            </div>
-
-            <div className="cross-asset-decision-appendix">
-            <h3 className="cross-asset-decision-zone__title">补充复核</h3>
-            <LivermoreStrategyStatusPanel
-              payload={livermoreStrategyPayload}
-              isLoading={livermoreStrategyQuery.isLoading}
-              isError={livermoreStrategyQuery.isError}
-              asOfDate={livermoreAsOfDate}
-              onManualSubmit={(positions, asOfDate) =>
-                livermoreManualPositionMutation.mutateAsync({ asOfDate, positions })
-              }
-              manualSubmitPending={livermoreManualPositionMutation.isPending}
-              manualSubmitError={livermoreManualSubmitError}
-              manualResultRowCount={livermoreManualPositionMutation.data?.row_count ?? null}
-            />
-            <LivermoreSignalConfluencePanel
-              payload={livermoreSignalConfluencePayload}
-              isLoading={livermoreSignalConfluenceQuery.isLoading}
-              isError={livermoreSignalConfluenceQuery.isError}
-              asOfDate={livermoreStrategyResolvedAsOfDate}
-            />
-            <AsyncSection
-              title="宏观 - 债券联动（评分与组合影响）"
-              isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
-              isError={macroBondLinkageQuery.isError || latestQuery.isError}
-              isEmpty={linkageBodyEmpty}
-              onRetry={() => {
-                void latestQuery.refetch();
-                void macroBondLinkageQuery.refetch();
-                void researchCalendarQuery.refetch();
-              }}
+            <details
+              className="cross-asset-observation-secondary"
+              data-testid="cross-asset-observation-secondary"
             >
-              {!linkageReportDate ? (
-                <p className="cross-asset-linkage__missing-date">
-                  缺少可用交易日，当前无法计算宏观-债券联动分析。
-                </p>
-              ) : (
-                <div className="cross-asset-linkage__body">
-                  {macroBondLinkageWarnings.length > 0 ? (
-                    <ul
-                      data-testid="cross-asset-linkage-warning-list"
-                      className="cross-asset-linkage__warnings"
-                    >
-                      {macroBondLinkageWarnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-
-                  <div className="cross-asset-linkage__kpi-grid">
-                    <div data-testid="cross-asset-linkage-composite-score">
-                      <KpiCard
-                        title="综合评分"
-                        value={env.composite_score != null ? String(env.composite_score.toFixed(2)) : "不可用"}
-                        detail={env.signal_description ?? "缺少环境评分数据。"}
-                        valueVariant="text"
-                        tone={toneFromSignedNumber(env.composite_score != null ? env.composite_score : null)}
-                      />
-                    </div>
-                    <div data-testid="cross-asset-linkage-rate-direction">
-                      <KpiCard
-                        title="利率方向"
-                        value={env.rate_direction ?? "不可用"}
-                        detail={env.rate_direction_score != null ? `direction score ${env.rate_direction_score.toFixed(2)}` : "缺少方向评分。"}
-                        valueVariant="text"
-                        tone={toneFromSignedNumber(env.rate_direction_score != null ? env.rate_direction_score : null)}
-                      />
-                    </div>
-                    <div data-testid="cross-asset-linkage-liquidity-score">
-                      <KpiCard
-                        title="流动性评分"
-                        value={env.liquidity_score != null ? env.liquidity_score.toFixed(2) : "不可用"}
-                        detail="正值偏松，负值偏紧。"
-                        valueVariant="text"
-                        tone={toneFromSignedNumber(env.liquidity_score != null ? env.liquidity_score : null)}
-                      />
-                    </div>
-                    <div data-testid="cross-asset-linkage-growth-score">
-                      <KpiCard
-                        title="增长评分"
-                        value={env.growth_score != null ? env.growth_score.toFixed(2) : "不可用"}
-                        detail="宏观增长方向的简化分值。"
-                        valueVariant="text"
-                        tone={toneFromSignedNumber(env.growth_score != null ? env.growth_score : null)}
-                      />
-                    </div>
-                  </div>
-
-                  <section
-                    data-testid="cross-asset-linkage-portfolio-impact"
-                    className={`${crossAssetPanelClass} cross-asset-linkage-portfolio-impact`}
-                  >
-                    <h2 className="cross-asset-linkage-portfolio-impact__title">
-                      组合影响估算
-                    </h2>
-                    <p className="cross-asset-linkage-portfolio-impact__description">
-                      以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
-                    </p>
-                    {hasPortfolioImpact ? (
-                      <div className="cross-asset-linkage-portfolio-impact__grid">
-                        <div>
-                          <div className="cross-asset-linkage-portfolio-impact__label">利率变动</div>
-                          <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
-                        </div>
-                        <div>
-                          <div className="cross-asset-linkage-portfolio-impact__label">利差走阔</div>
-                          <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
-                        </div>
-                        <div>
-                          <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
-                          <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="cross-asset-linkage-portfolio-impact__empty">当前没有可用组合影响估算。</div>
-                    )}
-                  </section>
-                </div>
-              )}
-            </AsyncSection>
-
-            <details className="cross-asset-structured-output">
-              <summary>结构化输出与联动摘要</summary>
-              <div data-testid="cross-asset-page-output">
-                <PageOutput
-                  envTags={envTags}
-                  signalPreview={env.signal_description ?? null}
-                  linkageWarnings={macroBondLinkageWarnings}
-                  topCorrelationSummary={
-                    macroBondLinkage.top_correlations?.[0]
-                      ? `${macroBondLinkage.top_correlations[0].series_name} -> ${macroBondLinkage.top_correlations[0].target_family}${macroBondLinkage.top_correlations[0].target_tenor ? ` ${macroBondLinkage.top_correlations[0].target_tenor}` : ""}`
-                      : null
-                  }
-                />
+              <summary>
+                <span>事件与观察清单</span>
+                <strong>{eventItems.length + watchRows.length} 项待观察材料</strong>
+              </summary>
+              <div className="cross-asset-observation-secondary-grid" data-testid="cross-asset-observation-secondary-grid">
+                <CrossAssetEventCalendar items={eventItems} />
+                <WatchList rows={watchRows} />
               </div>
             </details>
-            </div>
+
+            <details className="cross-asset-decision-appendix" data-testid="cross-asset-decision-appendix">
+              <summary>
+                <span>补充复核</span>
+                <strong>A股策略 · 宏观联动 · 结构化输出</strong>
+              </summary>
+              <div className="cross-asset-decision-appendix__body">
+                <LivermoreStrategyStatusPanel
+                  payload={livermoreStrategyPayload}
+                  isLoading={livermoreStrategyQuery.isLoading}
+                  isError={livermoreStrategyQuery.isError}
+                  asOfDate={livermoreAsOfDate}
+                  onManualSubmit={(positions, asOfDate) =>
+                    livermoreManualPositionMutation.mutateAsync({ asOfDate, positions })
+                  }
+                  manualSubmitPending={livermoreManualPositionMutation.isPending}
+                  manualSubmitError={livermoreManualSubmitError}
+                  manualResultRowCount={livermoreManualPositionMutation.data?.row_count ?? null}
+                />
+                <LivermoreSignalConfluencePanel
+                  payload={livermoreSignalConfluencePayload}
+                  isLoading={livermoreSignalConfluenceQuery.isLoading}
+                  isError={livermoreSignalConfluenceQuery.isError}
+                  asOfDate={livermoreStrategyResolvedAsOfDate}
+                />
+                <AsyncSection
+                  title="宏观 - 债券联动（评分与组合影响）"
+                  isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
+                  isError={macroBondLinkageQuery.isError || latestQuery.isError}
+                  isEmpty={linkageBodyEmpty}
+                  onRetry={() => {
+                    void latestQuery.refetch();
+                    void macroBondLinkageQuery.refetch();
+                    void researchCalendarQuery.refetch();
+                  }}
+                >
+                  {!linkageReportDate ? (
+                    <p className="cross-asset-linkage__missing-date">
+                      缺少可用交易日，当前无法计算宏观-债券联动分析。
+                    </p>
+                  ) : (
+                    <div className="cross-asset-linkage__body">
+                      {macroBondLinkageWarnings.length > 0 ? (
+                        <ul
+                          data-testid="cross-asset-linkage-warning-list"
+                          className="cross-asset-linkage__warnings"
+                        >
+                          {macroBondLinkageWarnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+
+                      <div className="cross-asset-linkage__kpi-grid">
+                        <div data-testid="cross-asset-linkage-composite-score">
+                          <KpiCard
+                            title="综合评分"
+                            value={env.composite_score != null ? String(env.composite_score.toFixed(2)) : "不可用"}
+                            detail={env.signal_description ?? "缺少环境评分数据。"}
+                            valueVariant="text"
+                            tone={toneFromSignedNumber(env.composite_score != null ? env.composite_score : null)}
+                          />
+                        </div>
+                        <div data-testid="cross-asset-linkage-rate-direction">
+                          <KpiCard
+                            title="利率方向"
+                            value={env.rate_direction ?? "不可用"}
+                            detail={env.rate_direction_score != null ? `direction score ${env.rate_direction_score.toFixed(2)}` : "缺少方向评分。"}
+                            valueVariant="text"
+                            tone={toneFromSignedNumber(env.rate_direction_score != null ? env.rate_direction_score : null)}
+                          />
+                        </div>
+                        <div data-testid="cross-asset-linkage-liquidity-score">
+                          <KpiCard
+                            title="流动性评分"
+                            value={env.liquidity_score != null ? env.liquidity_score.toFixed(2) : "不可用"}
+                            detail="正值偏松，负值偏紧。"
+                            valueVariant="text"
+                            tone={toneFromSignedNumber(env.liquidity_score != null ? env.liquidity_score : null)}
+                          />
+                        </div>
+                        <div data-testid="cross-asset-linkage-growth-score">
+                          <KpiCard
+                            title="增长评分"
+                            value={env.growth_score != null ? env.growth_score.toFixed(2) : "不可用"}
+                            detail="宏观增长方向的简化分值。"
+                            valueVariant="text"
+                            tone={toneFromSignedNumber(env.growth_score != null ? env.growth_score : null)}
+                          />
+                        </div>
+                      </div>
+
+                      <section
+                        data-testid="cross-asset-linkage-portfolio-impact"
+                        className={`${crossAssetPanelClass} cross-asset-linkage-portfolio-impact`}
+                      >
+                        <h2 className="cross-asset-linkage-portfolio-impact__title">
+                          组合影响估算
+                        </h2>
+                        <p className="cross-asset-linkage-portfolio-impact__description">
+                          以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
+                        </p>
+                        {hasPortfolioImpact ? (
+                          <div className="cross-asset-linkage-portfolio-impact__grid">
+                            <div>
+                              <div className="cross-asset-linkage-portfolio-impact__label">利率变动</div>
+                              <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
+                            </div>
+                            <div>
+                              <div className="cross-asset-linkage-portfolio-impact__label">利差走阔</div>
+                              <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
+                            </div>
+                            <div>
+                              <div className="cross-asset-linkage-portfolio-impact__label">合计估算</div>
+                              <div className="cross-asset-linkage-portfolio-impact__value">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="cross-asset-linkage-portfolio-impact__empty">当前没有可用组合影响估算。</div>
+                        )}
+                      </section>
+                    </div>
+                  )}
+                </AsyncSection>
+
+                <details className="cross-asset-structured-output">
+                  <summary>结构化输出与联动摘要</summary>
+                  <div data-testid="cross-asset-page-output">
+                    <PageOutput
+                      envTags={envTags}
+                      signalPreview={env.signal_description ?? null}
+                      linkageWarnings={macroBondLinkageWarnings}
+                      topCorrelationSummary={
+                        macroBondLinkage.top_correlations?.[0]
+                          ? `${macroBondLinkage.top_correlations[0].series_name} -> ${macroBondLinkage.top_correlations[0].target_family}${macroBondLinkage.top_correlations[0].target_tenor ? ` ${macroBondLinkage.top_correlations[0].target_tenor}` : ""}`
+                          : null
+                      }
+                    />
+                  </div>
+                </details>
+              </div>
+            </details>
             </CrossAssetDecisionZone>
           </div>
         </div>

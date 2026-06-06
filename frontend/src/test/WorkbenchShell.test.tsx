@@ -1,4 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
@@ -10,6 +12,11 @@ import {
   secondaryWorkbenchNavigation,
 } from "../mocks/navigation";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+const WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH = resolve(
+  process.cwd(),
+  "src/styles/workbenchInstitutionalConsole.css",
+);
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -50,6 +57,9 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
           { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
           { path: "liability-analytics", element: <div>liability-analytics body</div> },
+          { path: "ledger-pnl", element: <div>ledger-pnl body</div> },
+          { path: "product-category-pnl", element: <div>product-category-pnl body</div> },
+          { path: "pnl-attribution", element: <div>pnl-attribution body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "reports", element: <div>reports body</div> },
           { path: "platform-config", element: <div>platform body</div> },
@@ -70,6 +80,227 @@ describe("WorkbenchShell", () => {
     expect(screen.getByTestId("workbench-group-nav")).toBeInTheDocument();
     expect(screen.getByText("shell body")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-market-ticker")).not.toBeInTheDocument();
+  });
+
+  it("lets keyboard users skip shell chrome and focus the main page content", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    const skipLink = screen.getByRole("link", { name: "Skip to main content" });
+    const main = screen.getByRole("main", { name: "Main content" });
+
+    expect(skipLink).toHaveAttribute("href", "#workbench-main-content");
+    expect(skipLink.compareDocumentPosition(main) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(skipLink);
+
+    expect(main).toHaveFocus();
+  });
+
+  it("applies the institutional console visual scope to the shared shell root", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--institutional-console");
+  });
+
+  it("keeps the dashboard cockpit shell out of the institutional console scope", async () => {
+    renderShellAt("/dashboard");
+
+    expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--cockpit");
+    expect(layoutRoot).not.toHaveClass("workbench-shell-grid--institutional-console");
+  });
+
+  it("keeps ordinary non-dashboard pages out of the institutional console scope", async () => {
+    renderShellAt("/stock-analysis");
+
+    expect(await screen.findByText("stock-analysis body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--stock-analysis");
+    expect(layoutRoot).not.toHaveClass("workbench-shell-grid--institutional-console");
+  });
+
+  it("removes the institutional console scope when navigating back to the dashboard cockpit", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    const groupNav = screen.getByTestId("workbench-group-nav");
+    const initialLayoutRoot = groupNav.closest(".workbench-shell-root");
+    expect(initialLayoutRoot).toHaveClass("workbench-shell-grid--institutional-console");
+
+    const dashboardLink = groupNav.querySelector('a[href="/"]');
+    expect(dashboardLink).not.toBeNull();
+    fireEvent.click(dashboardLink as HTMLAnchorElement);
+
+    expect(await screen.findByText("shell body")).toBeInTheDocument();
+    const returnedLayoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+    expect(returnedLayoutRoot).toHaveClass("workbench-shell-grid--cockpit");
+    expect(returnedLayoutRoot).not.toHaveClass("workbench-shell-grid--institutional-console");
+  });
+
+  it("exposes a stable shell scope for the cross-asset flagship layout", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--cross-asset");
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--desktop-aligned");
+  });
+
+  it("exposes a stable shell scope for the ledger pnl first-screen layout", async () => {
+    renderShellAt("/ledger-pnl");
+
+    expect(await screen.findByText("ledger-pnl body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--ledger-pnl");
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--desktop-aligned");
+  });
+
+  it("exposes a stable shell scope for the product-category pnl first-screen layout", async () => {
+    renderShellAt("/product-category-pnl");
+
+    expect(await screen.findByText("product-category-pnl body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--product-category-pnl");
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--cockpit");
+  });
+
+  it("exposes a stable shell scope for the pnl attribution first-screen layout", async () => {
+    renderShellAt("/pnl-attribution");
+
+    expect(await screen.findByText("pnl-attribution body")).toBeInTheDocument();
+    const layoutRoot = screen
+      .getByTestId("workbench-group-nav")
+      .closest(".workbench-shell-root");
+
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--pnl-attribution");
+    expect(layoutRoot).toHaveClass("workbench-shell-grid--desktop-aligned");
+  });
+
+  it("keeps cross-asset shell compression in the final institutional console layer", () => {
+    const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
+    const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
+    const desktopBannerBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-governance-banner"\] \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+    const desktopBannerHintBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-governance-banner"\] \.workbench-notice__hint \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+    const desktopTerminalBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-terminal-bar"\] \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+    const desktopTitleBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \.workbench-page-title-display \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+    const desktopContextTitleBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-page-context"\] > \.workbench-page-title-display \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+    const desktopTickerBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \.workbench-market-ticker-shell \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+    const desktopUtilityBlock =
+      css.match(
+        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \.workbench-terminal-utility-navlink \{[\s\S]*?\n  \}/,
+      )?.[0] ?? "";
+
+    expect(css).toContain(".workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset .workbench-main-column");
+    expect(css).toContain(
+      '.workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-section-subnav"]',
+    );
+    expect(desktopTerminalBlock).toContain("min-height: 40px;");
+    expect(desktopTerminalBlock).toContain("padding: 4px 8px !important;");
+    expect(desktopTerminalBlock).toContain("box-shadow: none !important;");
+    expect(desktopTitleBlock).toContain("font-size: 25px !important;");
+    expect(desktopTitleBlock).toContain("line-height: 0.98 !important;");
+    expect(desktopContextTitleBlock).toContain("font-size: 25px !important;");
+    expect(desktopContextTitleBlock).toContain("line-height: 0.98 !important;");
+    expect(desktopTickerBlock).toContain("padding: 1px 4px 3px !important;");
+    expect(desktopTickerBlock).toContain("gap: 6px !important;");
+    expect(desktopUtilityBlock).toContain("padding: 2px 1px !important;");
+    expect(desktopUtilityBlock).toContain("font-size: 11px;");
+    expect(desktopBannerBlock).toContain("grid-template-columns: auto minmax(0, 1fr) minmax(210px, 0.42fr);");
+    expect(desktopBannerBlock).toContain("align-items: center;");
+    expect(desktopBannerBlock).toContain("min-height: 36px;");
+    expect(desktopBannerBlock).toContain("padding: 5px 10px !important;");
+    expect(desktopBannerBlock).toContain("border-color: rgba(184, 138, 45, 0.28) !important;");
+    expect(desktopBannerBlock).toContain("background:");
+    expect(desktopBannerBlock).toContain("rgba(184, 138, 45, 0.07)");
+    expect(desktopBannerHintBlock).toContain("grid-column: auto;");
+    expect(desktopBannerHintBlock).toContain("overflow: hidden;");
+    expect(desktopBannerHintBlock).toContain("text-overflow: ellipsis;");
+    expect(desktopBannerHintBlock).toContain("white-space: nowrap;");
+    expect(css).toContain(".workbench-section-subnav__header {\n    display: none !important;");
+    expect(mobileCss).not.toContain("workbench-shell-grid--cross-asset");
+    expect(css).not.toContain(':has([data-testid="cross-asset-drivers-page"])');
+    expect(css).not.toMatch(/workbench-shell-grid--cross-asset[\s\S]{0,180}> div/);
+  });
+
+  it("keeps ledger pnl shell compression in the final institutional console layer", () => {
+    const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
+    const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
+
+    expect(css).toContain(".workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-main-column");
+    expect(css).toContain(
+      '.workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"]',
+    );
+    expect(mobileCss).not.toContain("workbench-shell-grid--ledger-pnl");
+    expect(css).not.toContain(':has([data-testid="ledger-pnl-page"])');
+    expect(css).not.toMatch(/workbench-shell-grid--ledger-pnl[\s\S]{0,180}> div/);
+  });
+
+  it("keeps product-category pnl shell compression in the final institutional console layer", () => {
+    const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
+    const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
+
+    expect(css).toContain(".workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl .workbench-main-column");
+    expect(css).toContain(
+      '.workbench-shell-grid--institutional-console.workbench-shell-grid--product-category-pnl [data-testid="workbench-section-subnav"]',
+    );
+    expect(mobileCss).not.toContain("workbench-shell-grid--product-category-pnl");
+    expect(css).not.toContain(':has([data-testid="product-category-page"])');
+    expect(css).not.toMatch(/workbench-shell-grid--product-category-pnl[\s\S]{0,180}> div/);
+  });
+
+  it("keeps pnl attribution shell compression in the final institutional console layer", () => {
+    const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
+    const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
+
+    expect(css).toContain(".workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution .workbench-main-column");
+    expect(css).toContain(
+      '.workbench-shell-grid--institutional-console.workbench-shell-grid--pnl-attribution [data-testid="workbench-section-subnav"]',
+    );
+    expect(mobileCss).not.toContain("workbench-shell-grid--pnl-attribution");
+    expect(css).not.toContain(':has([data-testid="pnl-attribution-page-title"])');
+    expect(css).not.toMatch(/workbench-shell-grid--pnl-attribution[\s\S]{0,180}> div/);
   });
 
   it("renders a smaller set of grouped workspaces than live route entries", async () => {
