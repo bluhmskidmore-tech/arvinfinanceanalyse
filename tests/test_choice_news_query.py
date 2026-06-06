@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -324,6 +325,387 @@ def test_choice_news_pull_snapshot_fetches_recent_sectornews_and_materializes(tm
         conn.close()
 
     assert db_rows == [("C000022", "headline-a"), ("C000022", "headline-b")]
+
+
+def test_choice_news_pull_snapshot_prefers_eitime_when_datetime_is_future(
+    tmp_path, monkeypatch
+):
+    task_module = sys.modules.get("backend.app.tasks.choice_news")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_news",
+            "backend/app/tasks/choice_news.py",
+        )
+
+    governance_dir = tmp_path / "governance"
+    duckdb_path = tmp_path / "moss.duckdb"
+    topics_file = tmp_path / "choice_news_topics.json"
+    topics_file.write_text(
+        """
+        {
+          "catalog_version": "2026-04-10.choice-news.v1",
+          "vendor_name": "choice",
+          "generated_at": "2026-04-10T18:10:00+08:00",
+          "generated_from": "tests.fixture.choice_news_topics",
+          "subscription_mode": "cnq",
+          "content_type": "sectornews",
+          "callback_name": "cnqCallback",
+          "groups": [
+            {
+              "group_id": "news_cmd1",
+              "group_name": "core-news",
+              "is_core": true,
+              "tags": ["choice", "news"],
+              "topics": [
+                {"topic_code": "C000021001", "topic_name": "sector"}
+              ]
+            }
+          ]
+        }
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    class FakeCfnResult:
+        ErrorCode = 0
+        ErrorMsg = "success"
+        SerialID = 0
+        RequestID = 7002
+        Indicators = [
+            "DATETIME",
+            "EITIME",
+            "CODE",
+            "CONTENT",
+            "TITLE",
+        ]
+        Data = {
+            "C000021001": [
+                [
+                    "2026-09-01 00:00:00",
+                    "2025-12-09 15:39:06",
+                    "C000021001",
+                    "sectornews",
+                    "future-datetime-row",
+                ]
+            ]
+        }
+
+    class FakeChoiceClient:
+        def cfn(self, *_args, **_kwargs):
+            return FakeCfnResult()
+
+    monkeypatch.setattr(task_module, "_init_runtime", lambda: None)
+    monkeypatch.setattr(task_module, "ChoiceClient", lambda: FakeChoiceClient())
+
+    payload = task_module.pull_choice_sectornews_snapshot.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        topics_file=str(topics_file),
+        count=1,
+    )
+
+    assert payload["status"] == "completed"
+    conn = __import__("duckdb").connect(str(duckdb_path), read_only=True)
+    try:
+        stored = conn.execute(
+            "select received_at from choice_news_event where payload_text = ?",
+            ["future-datetime-row"],
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stored is not None
+    assert stored[0] == "2025-12-09T15:39:06+08:00"
+
+
+def test_repair_existing_choice_news_future_dates_uses_payload_eitime(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.choice_news")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_news",
+            "backend/app/tasks/choice_news.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = __import__("duckdb").connect(str(duckdb_path), read_only=False)
+    try:
+        task_module.ensure_choice_news_event_schema(conn)
+        conn.executemany(
+            """
+            insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "future-a",
+                    "2026-09-01T00:00:00+08:00",
+                    "news_cmd1",
+                    "sectornews",
+                    0,
+                    0,
+                    0,
+                    "",
+                    "C000021001",
+                    0,
+                    "future title",
+                    '{"DATETIME":"2026-09-01 00:00:00","EITIME":"2025-12-09 15:39:06","TITLE":"future title"}',
+                ),
+                (
+                    "normal-a",
+                    "2026-06-01T10:00:00+08:00",
+                    "news_cmd1",
+                    "sectornews",
+                    0,
+                    0,
+                    0,
+                    "",
+                    "C000021001",
+                    1,
+                    "normal title",
+                    '{"DATETIME":"2026-06-01 10:00:00","EITIME":"2026-06-01 10:01:00","TITLE":"normal title"}',
+                ),
+                (
+                    "unrepairable-a",
+                    "2026-08-01T00:00:00+08:00",
+                    "news_cmd1",
+                    "sectornews",
+                    0,
+                    0,
+                    0,
+                    "",
+                    "C000021001",
+                    2,
+                    "missing eitme",
+                    '{"DATETIME":"2026-08-01 00:00:00","TITLE":"missing eitme"}',
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    result = task_module.repair_existing_choice_news_future_dates(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-06-06",
+        run_id="choice-news-future-date-closure:test",
+    )
+    second = task_module.repair_existing_choice_news_future_dates(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-06-06",
+        run_id="choice-news-future-date-closure:test",
+    )
+
+    assert result["status"] == "completed"
+    assert result["updated_count"] == 1
+    assert result["unresolved_count"] == 1
+    assert result["updated_event_keys"] == ["future-a"]
+    assert result["unresolved_event_keys"] == ["unrepairable-a"]
+    assert second["updated_count"] == 0
+    assert second["unresolved_count"] == 1
+
+    conn = __import__("duckdb").connect(str(duckdb_path), read_only=True)
+    try:
+        rows = dict(
+            conn.execute(
+                "select event_key, received_at from choice_news_event order by event_key"
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+
+    assert rows["future-a"] == "2025-12-09T15:39:06+08:00"
+    assert rows["normal-a"] == "2026-06-01T10:00:00+08:00"
+    assert rows["unrepairable-a"] == "2026-08-01T00:00:00+08:00"
+
+
+def test_repair_existing_choice_news_future_dates_writes_complete_governance_metadata(
+    tmp_path,
+):
+    task_module = sys.modules.get("backend.app.tasks.choice_news")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_news",
+            "backend/app/tasks/choice_news.py",
+        )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = __import__("duckdb").connect(str(duckdb_path), read_only=False)
+    try:
+        task_module.ensure_choice_news_event_schema(conn)
+        conn.execute(
+            """
+            insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "future-a",
+                "2026-09-01T00:00:00+08:00",
+                "news_cmd1",
+                "sectornews",
+                0,
+                0,
+                0,
+                "",
+                "C000021001",
+                0,
+                "future title",
+                '{"DATETIME":"2026-09-01 00:00:00","EITIME":"2025-12-09 15:39:06","TITLE":"future title"}',
+            ],
+        )
+    finally:
+        conn.close()
+
+    task_module.repair_existing_choice_news_future_dates(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-06-06",
+        run_id="choice-news-future-date-closure:test",
+        governance_dir=str(governance_dir),
+    )
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    manifest = repo.read_all(governance_module.CACHE_MANIFEST_STREAM)[-1]
+    build_run = repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)[-1]
+
+    assert manifest["cache_version"] == "cv_choice_news_v1"
+    assert manifest["rule_version"] == "rv_choice_news_future_date_repair_v1"
+    assert manifest["basis"] == "analytical"
+    assert manifest["module_name"] == "choice_news"
+    assert manifest["result_kind_family"] == "news.choice.latest"
+    assert manifest["run_id"] == "choice-news-future-date-closure:test"
+    assert manifest["fact_tables"] == ["choice_news_event"]
+    assert build_run["cache_version"] == "cv_choice_news_v1"
+    assert build_run["rule_version"] == "rv_choice_news_future_date_repair_v1"
+
+
+def test_repair_existing_choice_news_future_dates_does_not_apply_global_migrations(
+    tmp_path,
+    monkeypatch,
+):
+    task_module = sys.modules.get("backend.app.tasks.choice_news")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_news",
+            "backend/app/tasks/choice_news.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = __import__("duckdb").connect(str(duckdb_path), read_only=False)
+    try:
+        task_module.ensure_choice_news_event_schema(conn)
+        conn.execute(
+            """
+            insert into choice_news_event values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "future-a",
+                "2026-09-01T00:00:00+08:00",
+                "news_cmd1",
+                "sectornews",
+                0,
+                0,
+                0,
+                "",
+                "C000021001",
+                0,
+                "future title",
+                '{"DATETIME":"2026-09-01 00:00:00","EITIME":"2025-12-09 15:39:06","TITLE":"future title"}',
+            ],
+        )
+    finally:
+        conn.close()
+
+    def fail_global_migration(_conn):
+        raise AssertionError("repair path must not apply global DuckDB migrations")
+
+    monkeypatch.setattr(
+        task_module,
+        "apply_pending_migrations_on_connection",
+        fail_global_migration,
+    )
+
+    result = task_module.repair_existing_choice_news_future_dates(
+        duckdb_path=str(duckdb_path),
+        as_of_date="2026-06-06",
+        run_id="choice-news-future-date-closure:test",
+    )
+
+    assert result["updated_count"] == 1
+    assert result["unresolved_count"] == 0
+
+
+def test_repair_existing_choice_news_future_dates_fails_closed_when_duckdb_missing(
+    tmp_path,
+):
+    task_module = sys.modules.get("backend.app.tasks.choice_news")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_news",
+            "backend/app/tasks/choice_news.py",
+        )
+
+    duckdb_path = tmp_path / "missing.duckdb"
+
+    with pytest.raises(FileNotFoundError, match="DuckDB file not found"):
+        task_module.repair_existing_choice_news_future_dates(
+            duckdb_path=str(duckdb_path),
+            as_of_date="2026-06-06",
+        )
+
+    assert not duckdb_path.exists()
+
+
+def test_repair_choice_news_future_dates_script_delegates_to_task(
+    tmp_path, monkeypatch, capsys
+):
+    script_module = load_module(
+        "scripts.repair_choice_news_future_dates",
+        "scripts/repair_choice_news_future_dates.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"not-used-by-fake")
+    calls: list[dict[str, object]] = []
+
+    def fake_repair(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return {
+            "status": "completed",
+            "updated_count": 3,
+            "unresolved_count": 0,
+            "updated_event_keys": ["a", "b", "c"],
+            "unresolved_event_keys": [],
+        }
+
+    monkeypatch.setattr(script_module, "repair_existing_choice_news_future_dates", fake_repair)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "repair_choice_news_future_dates.py",
+            "--duckdb-path",
+            str(duckdb_path),
+            "--as-of-date",
+            "2026-06-06",
+            "--run-id",
+            "choice-news-future-date-closure:test",
+            "--governance-dir",
+            str(tmp_path / "governance"),
+        ],
+    )
+
+    assert script_module.main() == 0
+    captured = capsys.readouterr()
+
+    assert calls == [
+        {
+            "duckdb_path": str(duckdb_path),
+            "as_of_date": "2026-06-06",
+            "run_id": "choice-news-future-date-closure:test",
+            "governance_dir": str(tmp_path / "governance"),
+        }
+    ]
+    assert '"updated_count": 3' in captured.out
 
 
 def test_choice_news_latest_api_returns_result_meta_and_rows(tmp_path, monkeypatch):

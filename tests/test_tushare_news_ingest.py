@@ -7,7 +7,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from backend.app.services.tushare_news_ingest_service import ingest_tushare_npr_to_choice_news
+from backend.app.services.tushare_news_ingest_service import (
+    ingest_tushare_npr_to_choice_news,
+)
 from tests.helpers import load_module
 
 
@@ -278,19 +280,22 @@ def test_ingest_requires_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         ingest_tushare_npr_to_choice_news(str(tmp_path / "x.duckdb"), limit=1)
 
 
-def test_tushare_news_background_actor_calls_ingest_service(
+def test_tushare_news_background_actor_calls_task_materializer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     task_module = load_module(
         "backend.app.tasks.choice_news",
         "backend/app/tasks/choice_news.py",
     )
-    import backend.app.services.tushare_news_ingest_service as mod
+    import backend.app.tasks.tushare_news_ingest as mod
 
     calls: list[dict[str, object]] = []
+    tokens_seen: list[str] = []
+    pro_object = object()
 
-    def fake_ingest(duckdb_path: str, **kwargs: object) -> dict[str, object]:
+    def fake_materialize(*, duckdb_path: str, pro: object, **kwargs: object) -> dict[str, object]:
         calls.append({"duckdb_path": duckdb_path, **kwargs})
+        assert pro is pro_object
         return {
             "status": "completed",
             "inserted": 2,
@@ -299,7 +304,23 @@ def test_tushare_news_background_actor_calls_ingest_service(
             "purged_expired": 0,
         }
 
-    monkeypatch.setattr(mod, "ingest_tushare_npr_to_choice_news", fake_ingest)
+    class FakeSettings:
+        tushare_news_src = "configured-src"
+
+    class FakeTushareModule:
+        @staticmethod
+        def pro_api(token: str) -> object:
+            tokens_seen.append(token)
+            return pro_object
+
+    monkeypatch.setattr(task_module, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(
+        task_module,
+        "resolve_tushare_token_with_settings_fallback",
+        lambda settings: f"token-for-{settings.tushare_news_src}",
+    )
+    monkeypatch.setattr(task_module, "import_tushare_pro", lambda: FakeTushareModule)
+    monkeypatch.setattr(mod, "materialize_tushare_news_to_choice_news", fake_materialize)
 
     db = tmp_path / "news.duckdb"
     actor = task_module.ingest_tushare_news_to_choice_news
@@ -307,7 +328,7 @@ def test_tushare_news_background_actor_calls_ingest_service(
         duckdb_path=str(db),
         limit=7,
         news_limit=13,
-        news_src="sina",
+        news_src="   ",
         news_lookback_hours=6,
         cctv_lookback_days=2,
         major_lookback_hours=4,
@@ -316,12 +337,13 @@ def test_tushare_news_background_actor_calls_ingest_service(
 
     assert actor.actor_name == "ingest_tushare_news_to_choice_news"
     assert result["status"] == "completed"
+    assert tokens_seen == ["token-for-configured-src"]
     assert calls == [
         {
             "duckdb_path": str(db),
             "limit": 7,
             "news_limit": 13,
-            "news_src": "sina",
+            "news_src": "configured-src",
             "news_lookback_hours": 6,
             "cctv_lookback_days": 2,
             "major_lookback_hours": 4,

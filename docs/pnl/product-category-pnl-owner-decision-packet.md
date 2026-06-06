@@ -15,6 +15,39 @@ This packet does not approve page closure, write governance records, prove page 
 - Class 1 product decisions: `3`
 - Class 2 API/contract decisions: `2`
 
+## Packet Freshness Guard
+
+- `packet_generator=script-owned`
+- `source_artifact=docs/pnl/product-category-remaining-blockers.md`
+- Boundary: Manual edits to this packet must be followed by rerunning the generator.
+
+## Decision Intake Checklist
+
+- Checklist kind: `owner_decision_intake_checklist`
+- `decision_intake_ready=true`
+- `owner_decision_ready=false`
+- `captures_product_or_api_decisions=false`
+- `decision_item_count=5`
+- `pending_decision_count=5`
+- `source_artifact_exists=true`
+- Required owner types: `product_owner`, `backend_api_contract_owner`
+- Boundary: Decision intake is ready for owner review, but every decision item remains pending; this checklist does not capture product/API decisions or approve certification.
+
+## Next Review Queue
+
+- Source section: `Next cursor-safe tasks`
+- `next_review_queue_item_count=5`
+- `counts_as_owner_decision=false`
+- `captures_product_or_api_decisions=false`
+
+| Review key | Rank | Topic | Required review | Current status |
+| --- | ---: | --- | --- | --- |
+| `next_1_outward_as_of_date` | 1 | outward `as_of_date` | decide whether the page should expose `as_of_date` separately from the selected `report_date`. | `pending_review` |
+| `next_2_refresh_timeout_stale_copy` | 2 | refresh timeout/stale copy | specify the copy shown when refresh exceeds the current UI polling window. | `pending_review` |
+| `next_3_unit_4_extended_validation_copy` | 3 | Unit 4 extended validation copy | freeze any additional backend validation wording beyond the two covered empty-payload cases. | `pending_review` |
+| `next_4_dual_sort_rationale` | 4 | dual-sort rationale | record the product intent for keeping current and event sort controls independent. | `pending_review` |
+| `next_5_revoke_confirmation_policy` | 5 | revoke confirmation policy | freeze whether destructive revoke needs policy beyond the already tested browser confirmation gate. | `pending_review` |
+
 ## Decision Items
 
 | Decision key | Unit | Class | Owner type | Blocker | Required decision | Current decision |
