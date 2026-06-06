@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
@@ -68,6 +68,13 @@ const GROUP_LABELS: Record<string, string> = {
 };
 
 const EMPTY_SCRIPTS: MacroToolkitScriptRecord[] = [];
+const COMMITTEE_EVIDENCE_SCRIPT_PRIORITY = [
+  "signal_aggregator",
+  "risk_monitor",
+  "crisis_score_cn",
+  "merrill_clock_cn",
+  "crowding_cn",
+] as const;
 const MACRO_TOOLKIT_ANALYSIS_KIND = "macro_toolkit.analysis";
 const MACRO_TOOLKIT_UI_RULE_VERSION = "rv_macro_toolkit_ui_v1";
 const MACRO_TOOLKIT_READ_STALE_MS = 60_000;
@@ -79,6 +86,25 @@ const MACRO_COMMODITY_SHADOW_MIN_CRISIS_SAMPLES = 5;
 const MACRO_COMMODITY_SHADOW_MIN_CORRELATION = 0.2;
 const MACRO_COMMODITY_SUGGESTED_REFRESH_LOOKBACK_DAYS = 45;
 const MACRO_TOOLKIT_ACTION_RECEIPT_LIMIT = 4;
+const BUSINESS_EVIDENCE_LABELS: Record<string, string> = {
+  analytical: "证据口径已归档",
+  choice: "宏观数据源",
+  tushare: "行情与因子快照",
+  fact_choice_macro_daily: "宏观数据源",
+  choice_market_snapshot: "行情快照",
+  choice_stock_daily_observation: "行情与因子快照",
+  choice_stock_factor_snapshot: "行情与因子快照",
+  choice_stock_limit_quality: "市场风险证据",
+  fact_commodity_futures_daily: "商品期货证据",
+  bond_futures_history: "席位排名证据",
+  "bond_futures_history.csv": "席位排名证据",
+  fact_cffex_member_rank_daily: "席位排名证据",
+  vw_cffex_member_rank_daily: "席位排名证据",
+  fx_daily_mid: "汇率中间价证据",
+  fact_formal_yield_curve_daily: "曲线利率证据",
+  std_external_macro_daily: "外部宏观证据",
+  system_macro_sources: "宏观数据源",
+};
 const MACRO_COMMODITY_PRODUCT_OPTIONS = [
   { value: "RB", label: "螺纹钢", description: "黑色链条" },
   { value: "I", label: "铁矿石", description: "黑色链条" },
@@ -161,6 +187,8 @@ type MacroToolkitCommitteePackItem = MacroToolkitEvidenceBookRow & {
   packSubject: string;
   status: "archived" | "blocking" | "pending";
   statusLabel: string;
+  receipt: MacroToolkitActionReceipt | null;
+  receiptConfirmed: boolean;
 };
 
 type MacroToolkitCommitteeChecklistItem = MacroToolkitEvidenceBookRow & {
@@ -173,6 +201,16 @@ type MacroToolkitCommitteeChecklistItem = MacroToolkitEvidenceBookRow & {
 type MacroToolkitCommitteeWorkQueueItem = MacroToolkitCommitteeChecklistItem & {
   priorityLabel: "阻断项" | "待确认项";
   executionHref: string;
+};
+
+type MacroToolkitEvidenceBookRowAction = {
+  label: string;
+  status: string;
+  kind: "button" | "link";
+  href?: string;
+  busy?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
 };
 
 type MacroToolkitSignoffLaneItem = {
@@ -228,7 +266,14 @@ function nextActionReceiptId(kind: string) {
 }
 
 function actionReceiptDecisionFields(
-  kind: "script" | "cffex" | "choice-stock" | "commodity-dry-run" | "commodity-refresh" | "source-backfill",
+  kind:
+    | "script"
+    | "cffex"
+    | "choice-stock"
+    | "commodity-dry-run"
+    | "commodity-refresh"
+    | "source-backfill"
+    | "full-analysis",
 ) {
   const fields = {
     script: {
@@ -247,6 +292,12 @@ function actionReceiptDecisionFields(
       decisionImpact: "来源数据补齐",
       reviewOwner: "数据运营负责人",
       evidenceEntry: "来源补齐",
+      evidenceHref: "#macro-toolkit-data-health-detail",
+    },
+    "full-analysis": {
+      decisionImpact: "完整证据复核",
+      reviewOwner: "宏观策略负责人",
+      evidenceEntry: "完整分析回执",
       evidenceHref: "#macro-toolkit-data-health-detail",
     },
     "choice-stock": {
@@ -286,6 +337,60 @@ function canRefreshMacroSourceBackfill(item: MacroToolkitRepairItem) {
     item.action?.kind === "source_backfill_required" &&
     MACRO_SOURCE_BACKFILL_ALIASES.has(normalizeMacroSourceBackfillAlias(item.alias))
   );
+}
+
+function needsManualReviewEscalation(item: MacroToolkitRepairItem) {
+  return Boolean(item.action?.kind === "source_backfill_required" && !canRefreshMacroSourceBackfill(item));
+}
+
+function needsFullAnalysisReview(item: MacroToolkitRepairItem) {
+  return item.action?.kind === "load_full_analysis";
+}
+
+function repairTriageLaneItems(repairItems: MacroToolkitRepairItem[]) {
+  const autoRefreshItems = repairItems.filter(canRefreshMacroSourceBackfill);
+  const manualEscalationItems = repairItems.filter(needsManualReviewEscalation);
+  const fullAnalysisItems = repairItems.filter(needsFullAnalysisReview);
+  return [
+    {
+      key: "auto-refresh",
+      label: "自动补齐",
+      count: autoRefreshItems.length,
+      owner: "数据运营负责人",
+      action: "执行来源补齐",
+      sample: formatRepairTriageSample(autoRefreshItems),
+    },
+    {
+      key: "manual-escalation",
+      label: "人工升级",
+      count: manualEscalationItems.length,
+      owner: "数据运营负责人",
+      action: "升级处理",
+      sample: formatRepairTriageSample(manualEscalationItems),
+    },
+    {
+      key: "full-analysis",
+      label: "能力复核",
+      count: fullAnalysisItems.length,
+      owner: "宏观策略负责人",
+      action: "复核完整分析",
+      sample: formatRepairTriageSample(fullAnalysisItems),
+    },
+  ];
+}
+
+function formatRepairTriageSample(items: MacroToolkitRepairItem[]) {
+  const firstItem = items[0];
+  if (!firstItem) {
+    return "无待处理项";
+  }
+  return `${formatDataHealthRepairLabel(firstItem, firstItem.type === "deferred")}${
+    firstItem.alias ? ` / ${firstItem.alias}` : ""
+  }`;
+}
+
+function repairItemFocusKey(item: MacroToolkitRepairItem) {
+  return normalizeMacroSourceBackfillAlias(item.alias) || item.key || item.label || item.type || "repair";
 }
 
 function sameCommodityProducts(left: string[], right: string[]) {
@@ -395,6 +500,54 @@ function compactText(text: string | null | undefined, maxLength = 34) {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
+function formatBusinessEvidenceLabel(value: string | null | undefined) {
+  const normalized = (value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  return BUSINESS_EVIDENCE_LABELS[normalized] ?? normalized;
+}
+
+function formatBusinessEvidenceList(values: (string | null | undefined)[] | null | undefined, fallback = "证据待确认") {
+  const labels = (values ?? [])
+    .map(formatBusinessEvidenceLabel)
+    .filter(Boolean);
+  const uniqueLabels = Array.from(new Set(labels));
+  return uniqueLabels.length ? uniqueLabels.join(" / ") : fallback;
+}
+
+function formatAnalysisBasisLabel(basis: string | null | undefined) {
+  if (!basis) {
+    return "口径待确认";
+  }
+  if (basis === "analytical") {
+    return "分析口径";
+  }
+  if (basis === "read_only_shadow") {
+    return "只读影子口径";
+  }
+  if (basis === "mock") {
+    return "模拟口径";
+  }
+  return basis;
+}
+
+function formatQualityFlagLabel(flag: string | null | undefined) {
+  if (!flag) {
+    return "质量待确认";
+  }
+  if (flag === "ok") {
+    return "质量可用";
+  }
+  if (flag === "warning") {
+    return "质量待复核";
+  }
+  if (flag === "error") {
+    return "质量阻断";
+  }
+  return statusLabel(flag);
+}
+
 function governanceFocusFromEvidenceHref(href: string): MacroToolkitGovernanceFocusKey {
   if (href === "#macro-toolkit-data-health-detail") return "data-health";
   if (href === "#macro-toolkit-tool-execution-detail") return "execution";
@@ -408,6 +561,31 @@ function committeeWorkQueueExecutionHref(item: MacroToolkitCommitteeChecklistIte
   return item.href;
 }
 
+function committeePackSubmissionImpact(item: MacroToolkitCommitteePackItem) {
+  if (item.receiptConfirmed) return "可提交复核";
+  if (item.receipt) return "回执待签核";
+  if (item.status === "blocking") return "阻断最终提交";
+  if (item.status === "pending") return "待补证据后提交";
+  return "可进入复核";
+}
+
+function committeePackReceiptStatus(item: MacroToolkitCommitteePackItem) {
+  if (item.receiptConfirmed) return "已签核";
+  if (item.receipt) return "回执待复核";
+  if (item.status === "archived") return "证据留痕";
+  return "等待回执";
+}
+
+function committeeEvidenceBookDeliveryStatus(item: MacroToolkitCommitteePackItem) {
+  if (!item.receipt && item.status === "blocking") return "阻断提交";
+  return item.statusLabel;
+}
+
+function committeePackEvidenceEntryLabel(item: MacroToolkitCommitteePackItem) {
+  if (!item.receipt) return "证据入口";
+  return item.receiptConfirmed ? "签核证据" : "回执入口";
+}
+
 function latestCompletedReceiptForOwner(receipts: MacroToolkitActionReceipt[], owner: string) {
   return receipts.find((receipt) => receipt.status === "completed" && receipt.reviewOwner === owner) ?? null;
 }
@@ -416,34 +594,81 @@ function latestCompletedReceiptForQueueItem(
   receipts: MacroToolkitActionReceipt[],
   item: MacroToolkitCommitteeWorkQueueItem,
 ) {
-  return (
-    receipts.find(
-      (receipt) =>
-        receipt.status === "completed" &&
-        (receipt.reviewOwner === item.owner ||
-          receipt.evidenceHref === item.href ||
-          receipt.evidenceHref === item.executionHref),
-    ) ?? null
-  );
+  return receipts.find((receipt) => receiptMatchesCommitteeQueueItem(receipt, item)) ?? null;
+}
+
+function receiptMatchesCommitteeQueueItem(
+  receipt: MacroToolkitActionReceipt,
+  item: MacroToolkitCommitteeWorkQueueItem,
+) {
+  return receiptMatchesCommitteeEvidence(receipt, item.key, item.href, item.owner, item.executionHref);
+}
+
+function receiptMatchesCommitteeEvidence(
+  receipt: MacroToolkitActionReceipt,
+  key: string,
+  href: string,
+  owner: string,
+  executionHref?: string,
+) {
+  if (receipt.status !== "completed") {
+    return false;
+  }
+  if (receipt.evidenceHref === href || receipt.evidenceHref === executionHref) {
+    return true;
+  }
+  if (key === "strategy-supply") {
+    return receipt.evidenceHref === "#macro-toolkit-strategy-detail";
+  }
+  if (key === "tool-execution") {
+    return [
+      "#macro-toolkit-script-artifact-detail",
+      "#macro-toolkit-cffex-detail",
+      "#macro-toolkit-commodity-detail",
+    ].includes(receipt.evidenceHref);
+  }
+  if (key === "data-health") {
+    return receipt.evidenceHref === "#macro-toolkit-data-health-detail";
+  }
+  return false;
 }
 
 function committeeSignoffLaneItems(
   items: MacroToolkitCommitteeWorkQueueItem[],
   receipts: MacroToolkitActionReceipt[] = [],
+  confirmedReceiptIds: Set<string> = new Set(),
 ): MacroToolkitSignoffLaneItem[] {
   return ["宏观策略负责人", "数据运营负责人", "权益策略负责人"].map((owner) => {
     const ownerItems = items.filter((item) => item.owner === owner);
-    const completedReceipt = latestCompletedReceiptForOwner(receipts, owner);
-    if (completedReceipt) {
+    const blocker = ownerItems.find((item) => item.status === "block");
+    const pending = ownerItems.find((item) => item.status === "pending");
+    const reviewedItem = ownerItems.find((item) => latestCompletedReceiptForQueueItem(receipts, item));
+    const reviewedReceipt = reviewedItem ? latestCompletedReceiptForQueueItem(receipts, reviewedItem) : null;
+    if (reviewedItem && reviewedReceipt && confirmedReceiptIds.has(reviewedReceipt.id) && !blocker) {
+      return {
+        owner,
+        status: "reviewed",
+        statusLabel: "已签核确认",
+        subject: reviewedReceipt.evidenceEntry,
+      };
+    }
+    if (reviewedItem && reviewedReceipt && !blocker) {
       return {
         owner,
         status: "reviewed",
         statusLabel: "已留痕复核",
+        subject: reviewedReceipt.evidenceEntry,
+      };
+    }
+    const completedReceipt = latestCompletedReceiptForOwner(receipts, owner);
+    if (completedReceipt && !blocker && !pending) {
+      return {
+        owner,
+        status: "reviewed",
+        statusLabel: confirmedReceiptIds.has(completedReceipt.id) ? "已签核确认" : "已留痕复核",
         subject: completedReceipt.evidenceEntry,
       };
     }
-    const blocker = ownerItems.find((item) => item.status === "block");
-    const pending = ownerItems.find((item) => item.status === "pending");
     if (blocker) {
       return {
         owner,
@@ -467,6 +692,18 @@ function committeeSignoffLaneItems(
       subject: "证据留痕",
     };
   });
+}
+
+function pickDefaultCommitteeScript(scripts: MacroToolkitScriptRecord[]) {
+  const availableScripts = scripts.filter((script) => script.available);
+  const runnableScripts = availableScripts.length ? availableScripts : scripts;
+  for (const preferredName of COMMITTEE_EVIDENCE_SCRIPT_PRIORITY) {
+    const preferredScript = runnableScripts.find((script) => script.name === preferredName);
+    if (preferredScript) {
+      return preferredScript;
+    }
+  }
+  return runnableScripts[0] ?? null;
 }
 
 function formatObservationRecommendation(action: string | null | undefined) {
@@ -989,8 +1226,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const [detailDensity, setDetailDensity] = useState<"compact" | "expanded">("compact");
   const [actionReceipt, setActionReceipt] = useState<MacroToolkitActionReceipt>(EMPTY_ACTION_RECEIPT);
   const [actionReceipts, setActionReceipts] = useState<MacroToolkitActionReceipt[]>([]);
+  const [confirmedReceiptIds, setConfirmedReceiptIds] = useState<Set<string>>(() => new Set());
   const [selectedEvidenceHref, setSelectedEvidenceHref] = useState<string | null>(null);
   const [selectedExecutionHref, setSelectedExecutionHref] = useState<string | null>(null);
+  const [receiptTechnicalDetailsExpanded, setReceiptTechnicalDetailsExpanded] = useState(false);
+  const [focusedRepairKey, setFocusedRepairKey] = useState<string | null>(null);
+  const [committeeActionLocatorKey, setCommitteeActionLocatorKey] = useState<string | null>(null);
+  const [committeePackReceiptCopyStatus, setCommitteePackReceiptCopyStatus] = useState<"idle" | "success" | "error">("idle");
+  const committeeActionLocatorRef = useRef<HTMLDivElement | null>(null);
   const [runResult, setRunResult] = useState<MacroToolkitRunResponse | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
@@ -1067,6 +1310,17 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     });
   }, []);
 
+  const confirmActionReceipt = useCallback((receiptId: string) => {
+    setConfirmedReceiptIds((current) => {
+      if (current.has(receiptId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(receiptId);
+      return next;
+    });
+  }, []);
+
   const payload = showOperations ? scriptsQuery.data?.result : undefined;
   const analysisEnvelope = fullAnalysisEnvelope ?? analysisQuery.data;
   const analysis = analysisEnvelope?.result;
@@ -1122,11 +1376,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     if (selectedName || filteredScripts.length === 0) {
       return;
     }
-    setSelectedName(filteredScripts[0]!.name);
+    setSelectedName((pickDefaultCommitteeScript(filteredScripts) ?? filteredScripts[0]!).name);
   }, [filteredScripts, selectedName]);
 
   const selectedScript = useMemo(
-    () => scripts.find((script) => script.name === selectedName) ?? filteredScripts[0] ?? null,
+    () =>
+      scripts.find((script) => script.name === selectedName) ??
+      pickDefaultCommitteeScript(filteredScripts) ??
+      null,
     [filteredScripts, scripts, selectedName],
   );
   const outputDetail = payload?.output_files.length
@@ -1138,6 +1395,19 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const commodityFuturesRefresh = payload?.commodity_futures_refresh ?? null;
   const commodityPermission = commodityRefreshRun?.permission ?? commodityFuturesRefresh?.permission ?? null;
   const commodityStatus = commodityFuturesRefresh?.status ?? null;
+  const defaultBusinessEvidenceSources = formatBusinessEvidenceList(
+    payload?.default_data_sources ?? analysis?.default_data_sources,
+  );
+  const executionBusinessEvidence = formatBusinessEvidenceList([
+    ...(scriptsQuery.data?.result_meta.tables_used ?? []),
+    ...(payload?.default_data_sources ?? analysis?.default_data_sources ?? []),
+    ...(cffexStatus?.row_count ? ["bond_futures_history.csv"] : []),
+    ...(commodityStatus ? [commodityStatus.table] : []),
+    ...(hasRealStrategyData ? ["choice_stock_daily_observation", "choice_stock_factor_snapshot"] : []),
+  ]);
+  const outputReceiptDetail = payload?.output_files.length
+    ? `${payload.output_files.length} 个产物 · 产物回执已归档`
+    : outputDetail;
   const isCommodityRefreshAllowed = commodityPermission?.allowed === true;
   const shouldShowCommodityPermissionNotice = !isCommodityRefreshAllowed;
   const commodityRefreshDisabled = selectedCommodityProducts.length === 0 || !isCommodityRefreshAllowed;
@@ -1147,6 +1417,32 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const analysisMeta = analysisEnvelope?.result_meta;
   const sourceHitCount = sourceChecks.filter((check) => check.row_count > 0).length;
   const availableScriptCount = scripts.filter((script) => script.available).length;
+  const receiptWorkpaperItems = [
+    {
+      key: "archive",
+      label: "产物归档",
+      value: `${payload?.output_files.length ?? 0} 个产物`,
+      detail: "明细在下方展开",
+    },
+    {
+      key: "source",
+      label: "来源命中",
+      value: `${sourceHitCount}/${sourceChecks.length}`,
+      detail: sourceChecks.length ? "来源证据已留痕" : "来源证据待返回",
+    },
+    {
+      key: "execution",
+      label: "执行能力",
+      value: `${availableScriptCount}/${scripts.length}`,
+      detail: scripts.length ? "可执行能力已归档" : "执行能力待返回",
+    },
+    {
+      key: "receipt",
+      label: "留痕状态",
+      value: `${actionReceipts.length} 条`,
+      detail: actionReceipts.length ? "回执队列可复核" : "等待操作回执",
+    },
+  ];
   const readyCapabilityCount = capabilityItems.filter((item) => isReadyStatus(item.data_status)).length;
   const wiredCapabilityCount = capabilityItems.filter((item) =>
     isReadyStatus(item.route_status) && isReadyStatus(item.frontend_status),
@@ -1170,6 +1466,12 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     strategyQuery.isFetching ||
     isRefreshingCommodity ||
     isLoadingFullAnalysis;
+  const isOperationActionBusy =
+    isMacroRefreshing ||
+    isRunning ||
+    isRefreshingChoiceStock ||
+    isRefreshingCffex ||
+    refreshingSourceAlias != null;
   const queryErrors = [analysisQuery.error, ...(showOperations ? [scriptsQuery.error] : []), strategyQuery.error];
   const queryErrorText = queryErrors
     .filter(Boolean)
@@ -1199,10 +1501,64 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const commodityRefreshActionLabel = formatCommodityRefreshActionLabel(commodityShortfallEstimates);
   const repairItems = analysis?.data_health?.repair_items ?? [];
   const repairItemCount = repairItems.length;
+  const repairTriageItems = repairTriageLaneItems(repairItems);
   const primaryRepairItem = [...repairItems].sort(compareRepairPriority)[0] ?? null;
-  const committeeReadinessStatus = repairItemCount ? "暂缓提交" : isCoreAnalysis ? "待补全证据" : "可进入复核";
-  const committeeReadinessBlocker = repairItemCount
+  const primaryActionableRepairItem =
+    repairItems.find(canRefreshMacroSourceBackfill) ?? primaryRepairItem ?? null;
+  const focusDataHealthRepair = useCallback(() => {
+    const repairKey = primaryActionableRepairItem ? repairItemFocusKey(primaryActionableRepairItem) : null;
+    setSelectedEvidenceHref("#macro-toolkit-data-health-detail");
+    setSelectedGovernanceFocus("data-health");
+    setFocusedRepairKey(repairKey);
+    setCommitteeActionLocatorKey(repairKey);
+  }, [primaryActionableRepairItem]);
+  const handleDataHealthRepairActionClick = useCallback(
+    (event?: ReactMouseEvent<HTMLAnchorElement> | Event) => {
+      event?.preventDefault();
+      focusDataHealthRepair();
+    },
+    [focusDataHealthRepair],
+  );
+  useEffect(() => {
+    if (!committeeActionLocatorKey || selectedEvidenceHref !== "#macro-toolkit-data-health-detail") return;
+    const actionLocator = committeeActionLocatorRef.current;
+    if (typeof actionLocator?.scrollIntoView !== "function") return;
+    const block: ScrollLogicalPosition = window.innerWidth <= 640 ? "center" : "nearest";
+    actionLocator.scrollIntoView({ block, inline: "nearest" });
+  }, [committeeActionLocatorKey, selectedEvidenceHref]);
+  useEffect(() => {
+    if (selectedEvidenceHref === "#macro-toolkit-script-artifact-detail") {
+      setReceiptTechnicalDetailsExpanded(true);
+    }
+  }, [selectedEvidenceHref]);
+  const completedDataHealthReceipt =
+    actionReceipts.find((receipt) =>
+      receiptMatchesCommitteeEvidence(
+        receipt,
+        "data-health",
+        "#macro-toolkit-data-health-detail",
+        "数据运营负责人",
+      ),
+    ) ?? null;
+  const hasDataHealthRepairReceipt = Boolean(completedDataHealthReceipt);
+  const completedDataHealthReceiptConfirmed = completedDataHealthReceipt
+    ? confirmedReceiptIds.has(completedDataHealthReceipt.id)
+    : false;
+  const hasDataHealthRepairReceiptPending = hasDataHealthRepairReceipt && !completedDataHealthReceiptConfirmed;
+  const hasDataHealthHardBlocker = repairItemCount > 0 && !completedDataHealthReceipt;
+  const committeeReadinessStatus = hasDataHealthHardBlocker
+    ? "暂缓提交"
+    : hasDataHealthRepairReceiptPending
+      ? "待复核回执"
+      : isCoreAnalysis
+        ? "待补全证据"
+        : "可进入复核";
+  const committeeReadinessBlocker = hasDataHealthHardBlocker
     ? formatCommitteeReadinessBlocker(primaryRepairItem, repairItemCount)
+    : hasDataHealthRepairReceiptPending
+      ? "数据健康回执待复核"
+      : completedDataHealthReceiptConfirmed
+        ? "数据健康签核已确认"
     : isCoreAnalysis
       ? observationRuntimeSummary
       : degradedResultCount
@@ -1214,21 +1570,191 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     : isCoreAnalysis
       ? "#macro-toolkit-analysis-detail"
       : "#macro-toolkit-tool-execution-detail";
-  const committeeReadinessAction = repairItemCount ? "处理数据缺口" : isCoreAnalysis ? "查看证据覆盖" : "进入操作台";
-  const committeeRedlineTitle = repairItemCount
+  const committeeReadinessAction = completedDataHealthReceiptConfirmed
+    ? "查看签核证据"
+    : hasDataHealthRepairReceiptPending
+    ? "复核数据健康回执"
+    : repairItemCount
+      ? "处理数据缺口"
+      : isCoreAnalysis
+        ? "查看证据覆盖"
+        : "进入操作台";
+  const committeeRedlineTitle = hasDataHealthHardBlocker
     ? "数据缺口阻止提交"
+    : hasDataHealthRepairReceiptPending
+      ? "数据健康回执待复核"
+      : completedDataHealthReceiptConfirmed
+        ? "数据健康签核已确认"
     : isCoreAnalysis
       ? "完整证据未确认"
       : degradedResultCount
         ? "能力结果待复核"
         : "无硬性红线";
-  const committeeRedlineAction = repairItemCount
+  const committeeRedlineAction = hasDataHealthHardBlocker
     ? formatObservationRepairSummary(repairItems)
+    : hasDataHealthRepairReceiptPending
+      ? "复核来源补齐回执，确认数据健康证据后再进入投委会签核。"
+      : completedDataHealthReceiptConfirmed
+        ? "来源补齐回执已签核，数据健康红线已解除；继续复核策略供数与工具执行证据。"
     : isCoreAnalysis
       ? "打开完整分析后确认完整分析补充项，再复核投委会材料。"
       : degradedResultCount
         ? "先复核降级结果，再判断是否进入投委会材料。"
         : "材料可进入复核，继续保留证据留痕。";
+  const dataHealthSignoffPriority = primaryRepairItem
+    ? `${committeePriorityLabel(primaryRepairItem.priority)} · ${formatDataHealthRepairLabel(
+        primaryRepairItem,
+        true,
+      )}${primaryRepairItem.alias ? ` / ${primaryRepairItem.alias}` : ""}`
+    : "无待处理数据项";
+  const dataHealthSignoffCoverage = analysis?.data_health
+    ? `${coverageValue(analysis.data_health.source_coverage)} 来源 · ${analysis.data_health.indicator_coverage.hit_count}/${analysis.data_health.indicator_coverage.total_count} 指标`
+    : "覆盖率待确认";
+  const dataHealthSignoffRequirement = repairItemCount
+    ? "完成数据缺口回执 + 重读完整分析"
+    : "保留数据健康快照";
+  const dataHealthSignoffGuardrail = repairItemCount
+    ? "不得由 CFFEX/商品/工具回执替代"
+    : "无硬阻断，可进入签核";
+  const currentRepairItem = primaryActionableRepairItem ?? primaryRepairItem;
+  const currentRepairReceipt = currentRepairItem || completedDataHealthReceipt ? completedDataHealthReceipt : null;
+  const currentRepairReceiptConfirmed = currentRepairReceipt ? confirmedReceiptIds.has(currentRepairReceipt.id) : false;
+  const currentRepairLabel = currentRepairItem
+    ? `${formatDataHealthRepairLabel(currentRepairItem, currentRepairItem.type === "deferred")}${
+        currentRepairItem.alias ? ` / ${currentRepairItem.alias}` : ""
+      }`
+    : currentRepairReceipt
+      ? currentRepairReceipt.evidenceEntry
+    : "无待处理数据项";
+  const currentRepairNeedsManualEscalation = Boolean(currentRepairItem && needsManualReviewEscalation(currentRepairItem));
+  const currentRepairNeedsFullAnalysisReview = Boolean(currentRepairItem && needsFullAnalysisReview(currentRepairItem));
+  const currentRepairStatus = currentRepairReceipt
+    ? repairTicketReceiptStatus(currentRepairReceipt, currentRepairReceiptConfirmed)
+    : currentRepairItem
+      ? repairTicketReceiptStatus(currentRepairReceipt, currentRepairReceiptConfirmed)
+      : "无需处理";
+  const currentRepairAction = currentRepairReceiptConfirmed
+    ? "查看签核证据"
+    : currentRepairReceipt
+      ? "复核数据健康回执"
+      : currentRepairNeedsManualEscalation
+        ? "升级人工复核"
+        : currentRepairNeedsFullAnalysisReview
+          ? "复核完整分析"
+          : repairItemCount
+            ? "处理数据缺口"
+            : "打开数据健康证据";
+  const currentRepairNeedsSignoff = Boolean(currentRepairReceipt && !currentRepairReceiptConfirmed);
+  const currentRepairPrimaryActionMovedToPipeline = Boolean(
+    currentRepairItem &&
+      !currentRepairReceipt &&
+      !currentRepairNeedsManualEscalation &&
+      !currentRepairNeedsFullAnalysisReview,
+  );
+  const confirmCurrentRepairReceipt = useCallback(() => {
+    if (!currentRepairReceipt || currentRepairReceiptConfirmed) return;
+    focusDataHealthRepair();
+    confirmActionReceipt(currentRepairReceipt.id);
+  }, [confirmActionReceipt, currentRepairReceipt, currentRepairReceiptConfirmed, focusDataHealthRepair]);
+  const committeeActionLocatorItem = committeeActionLocatorKey
+    ? (repairItems.find((item) => repairItemFocusKey(item) === committeeActionLocatorKey) ?? null)
+    : null;
+  const committeeActionLocatorLabel = committeeActionLocatorItem
+    ? `${formatDataHealthRepairLabel(committeeActionLocatorItem, committeeActionLocatorItem.type === "deferred")}${
+        committeeActionLocatorItem.alias ? ` / ${committeeActionLocatorItem.alias}` : ""
+      }`
+    : "";
+  const committeeClosureRailItems = currentRepairItem
+    ? [
+        {
+          step: "1",
+          phase: "处理",
+          status: currentRepairReceipt ? "处理完成" : "当前卡点",
+          detail: currentRepairLabel,
+          action: currentRepairReceipt
+            ? "查看处理单"
+            : currentRepairPrimaryActionMovedToPipeline
+              ? "主入口在首屏流水线"
+              : currentRepairAction,
+          tone: currentRepairReceipt ? "done" : "active",
+          kind: currentRepairReceipt ? "link" : "status",
+        },
+        {
+          step: "2",
+          phase: "回执",
+          status: currentRepairReceipt ? "回执已生成" : "等待执行",
+          detail: currentRepairReceipt?.evidenceEntry ?? repairTicketReceipt(currentRepairItem),
+          action: currentRepairReceipt ? "查看回执证据" : "等待回执",
+          tone: currentRepairReceipt ? "done" : "pending",
+          kind: "status",
+        },
+        {
+          step: "3",
+          phase: "签核",
+          status: currentRepairReceiptConfirmed ? "签核已确认" : currentRepairReceipt ? "待复核签核" : "等待回执",
+          detail: currentRepairReceiptConfirmed
+            ? "签核留痕完成"
+            : currentRepairReceipt
+              ? repairTicketOwner(currentRepairItem)
+              : "回执后签核",
+          action: currentRepairReceiptConfirmed
+            ? "查看签核证据"
+            : currentRepairReceipt
+              ? "复核数据健康回执"
+              : "等待回执",
+          tone: currentRepairReceiptConfirmed ? "done" : currentRepairReceipt ? "active" : "pending",
+          kind: currentRepairReceipt && !currentRepairReceiptConfirmed ? "signoff" : "status",
+          receiptId: currentRepairReceipt?.id,
+          ariaLabel: "复核签核-数据健康",
+        },
+        {
+          step: "4",
+          phase: "放行",
+          status: currentRepairReceiptConfirmed ? "可放行" : currentRepairReceipt ? "等待签核" : committeeReadinessStatus,
+          detail: currentRepairReceiptConfirmed ? "数据健康签核完成" : currentRepairReceipt ? "签核后解除红线" : committeeReadinessBlocker,
+          action: currentRepairReceiptConfirmed ? "查看签核证据" : currentRepairReceipt ? "等待签核确认" : "暂缓提交",
+          tone: currentRepairReceiptConfirmed ? "active" : "pending",
+          kind: currentRepairReceiptConfirmed ? "link" : "status",
+        },
+      ]
+    : [
+        {
+          step: "1",
+          phase: "处理",
+          status: "无待处理项",
+          detail: "数据健康无硬阻断",
+          action: "打开数据健康证据",
+          tone: "done",
+          kind: "status",
+        },
+        {
+          step: "2",
+          phase: "回执",
+          status: "无需补齐",
+          detail: "保留数据快照",
+          action: "查看证据",
+          tone: "done",
+          kind: "status",
+        },
+        {
+          step: "3",
+          phase: "签核",
+          status: "可进入复核",
+          detail: committeeReadinessOwner,
+          action: "进入签核",
+          tone: "active",
+          kind: "status",
+        },
+        {
+          step: "4",
+          phase: "放行",
+          status: "可放行",
+          detail: "无数据健康红线",
+          action: "查看签核证据",
+          tone: "pending",
+          kind: "status",
+        },
+      ];
   const workflowAnalysisState = isCoreAnalysis ? `core · 待完整分析 ${runtimeSections.length}` : "full · 完整分析";
   const workflowToolState = showOperations
     ? `脚本 ${availableScriptCount}/${scripts.length} · 源 ${sourceHitCount}/${sourceChecks.length}`
@@ -1348,16 +1874,36 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       ]
     : [];
   const committeePackItems: MacroToolkitCommitteePackItem[] = evidenceBookRows.map((row) => {
-    const isBlocking = row.key === "data-health" && repairItemCount > 0;
+    const isBlocking = row.key === "data-health" && hasDataHealthHardBlocker;
     const isPending =
       !isBlocking && /待|降级|失败|缺失|不可用|延后|等待/.test(`${row.support} ${row.gap}`);
+    const receipt =
+      actionReceipts.find((item) =>
+        receiptMatchesCommitteeEvidence(
+          item,
+          row.key,
+          row.href,
+          row.owner,
+        ),
+      ) ?? null;
     return {
       ...row,
       packSubject: row.key === "primary-signal" ? "结论底稿" : row.subject,
       status: isBlocking ? "blocking" : isPending ? "pending" : "archived",
-      statusLabel: isBlocking ? "阻止提交" : isPending ? "待确认" : "已归档",
+      statusLabel: receipt
+        ? confirmedReceiptIds.has(receipt.id)
+          ? "已签核"
+          : "回执待复核"
+        : isBlocking
+          ? "阻止提交"
+          : isPending
+            ? "待确认"
+            : "已归档",
+      receipt,
+      receiptConfirmed: receipt ? confirmedReceiptIds.has(receipt.id) : false,
     };
   });
+  const committeePackItemByKey = new Map(committeePackItems.map((item) => [item.key, item]));
   const committeeChecklistItems: MacroToolkitCommitteeChecklistItem[] = committeePackItems.map((item) => {
     const status = item.status === "blocking" ? "block" : item.status === "pending" ? "pending" : "pass";
     const actions = {
@@ -1373,6 +1919,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       action: actions[status],
     };
   });
+  const committeePackReviewReadyCount = committeePackItems.filter(
+    (item) => item.status === "archived" || item.receipt,
+  ).length;
+  const committeePackReceiptReviewCount = committeePackItems.filter((item) => item.receipt && !item.receiptConfirmed).length;
   const deepEvidenceQueueItems: MacroToolkitDeepEvidenceQueueItem[] = [
     {
       key: "strategy",
@@ -1415,15 +1965,209 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       priorityLabel: item.status === "block" ? "阻断项" : "待确认项",
       executionHref: committeeWorkQueueExecutionHref(item),
     }));
+  const isCommitteeChecklistItemOpen = (item: MacroToolkitCommitteeChecklistItem) =>
+    !committeePackItemByKey.get(item.key)?.receiptConfirmed;
+  const committeeLeadChecklistItem =
+    committeeChecklistItems.find(
+      (item) => item.status === "block" && item.href === committeeReadinessHref && isCommitteeChecklistItemOpen(item),
+    ) ??
+    committeeChecklistItems.find((item) => item.status === "block" && isCommitteeChecklistItemOpen(item)) ??
+    committeeChecklistItems.find(
+      (item) => item.status !== "pass" && item.href === committeeReadinessHref && isCommitteeChecklistItemOpen(item),
+    ) ??
+    committeeChecklistItems.find((item) => item.status === "pending" && isCommitteeChecklistItemOpen(item)) ??
+    null;
+  const committeeLeadChecklistHref = committeeLeadChecklistItem?.href ?? committeeReadinessHref;
   const committeeWorkQueueBlockCount = committeeWorkQueueItems.filter((item) => item.status === "block").length;
   const committeeWorkQueuePendingCount = committeeWorkQueueItems.filter((item) => item.status === "pending").length;
   const committeeChecklistPassCount = committeeChecklistItems.filter((item) => item.status === "pass").length;
-  const committeeSignoffLaneSummaryItems = committeeSignoffLaneItems(committeeWorkQueueItems, actionReceipts);
+  const committeeSignoffLaneSummaryItems = committeeSignoffLaneItems(
+    committeeWorkQueueItems,
+    actionReceipts,
+    confirmedReceiptIds,
+  );
   const committeeSignoffReadyCount = committeeSignoffLaneSummaryItems.filter(
     (item) => item.status === "approved" || item.status === "reviewed",
   ).length;
-  const committeeReviewedReceiptCount = committeeSignoffLaneSummaryItems.filter((item) => item.status === "reviewed")
-    .length;
+  const isCommitteeFinalSignoffReady =
+    committeePackItems.length > 0 &&
+    committeePackReviewReadyCount === committeePackItems.length &&
+    committeeSignoffReadyCount === committeeSignoffLaneSummaryItems.length &&
+    committeeWorkQueueBlockCount === 0 &&
+    committeePackReceiptReviewCount === 0;
+  const committeeFinalSignoffStatus = isCommitteeFinalSignoffReady ? "可提交复核" : "暂缓提交";
+  const committeeFinalResidualRiskCount = committeeWorkQueueBlockCount + committeePackReceiptReviewCount;
+  const committeeFinalPackValue = committeePackItems.length
+    ? `${committeePackReviewReadyCount}/${committeePackItems.length}`
+    : "待确认";
+  const committeeFinalSignoffValue = committeePackItems.length
+    ? `${committeeSignoffReadyCount}/${committeeSignoffLaneSummaryItems.length}`
+    : "待确认";
+  const committeeFinalResidualRiskValue = committeePackItems.length ? String(committeeFinalResidualRiskCount) : "待确认";
+  const committeeFinalReceiptReviewValue = committeePackItems.length ? String(committeePackReceiptReviewCount) : "待确认";
+  const committeeLeadPackItem = committeeLeadChecklistItem
+    ? committeePackItemByKey.get(committeeLeadChecklistItem.key) ?? null
+    : null;
+  const committeeLeadReceipt = committeeLeadPackItem?.receipt ?? null;
+  const committeeLeadExecutionHref = committeeLeadChecklistItem
+    ? committeeWorkQueueExecutionHref(committeeLeadChecklistItem)
+    : null;
+  const hasCommitteeOpenSubmissionLane = Boolean(
+    committeeLeadChecklistItem &&
+      !hasDataHealthHardBlocker &&
+      !hasDataHealthRepairReceiptPending &&
+      !isCoreAnalysis &&
+      !committeeLeadPackItem?.receiptConfirmed,
+  );
+  const committeeDecisionStatus = hasCommitteeOpenSubmissionLane
+    ? committeeLeadReceipt
+      ? "待复核回执"
+      : "待确认闭环"
+    : committeeReadinessStatus;
+  const committeeDecisionBlocker =
+    hasCommitteeOpenSubmissionLane && committeeLeadChecklistItem
+      ? committeeLeadReceipt
+        ? `${committeeLeadChecklistItem.condition}回执待复核`
+        : `${committeeLeadChecklistItem.condition}待确认`
+      : committeeReadinessBlocker;
+  const committeeDecisionOwner =
+    hasCommitteeOpenSubmissionLane && committeeLeadChecklistItem ? committeeLeadChecklistItem.owner : committeeReadinessOwner;
+  const committeeFinalSignoffOwner = isCommitteeFinalSignoffReady ? "主席复核" : committeeDecisionOwner;
+  const committeeDecisionHref =
+    hasCommitteeOpenSubmissionLane && committeeLeadChecklistItem
+      ? (committeeLeadReceipt?.evidenceHref ?? committeeLeadExecutionHref ?? committeeLeadChecklistItem.href)
+      : committeeReadinessHref;
+  const committeeDecisionAction =
+    hasCommitteeOpenSubmissionLane && committeeLeadChecklistItem
+      ? committeeLeadReceipt
+        ? `复核${committeeLeadChecklistItem.condition}回执`
+        : committeeLeadChecklistItem.action
+      : committeeReadinessAction;
+  const committeeFinalGateOutcome = isCommitteeFinalSignoffReady ? "准入提交" : "未达提交标准";
+  const committeeFinalGateTone = isCommitteeFinalSignoffReady ? "ready" : "blocked";
+  const committeeFinalGateBlockerText =
+    committeeLeadChecklistItem?.key === "data-health" ? `数据缺口 · ${committeeDecisionBlocker}` : committeeDecisionBlocker;
+  const committeePackReceiptBlockerCopyText =
+    committeeLeadChecklistItem?.key === "data-health" ? `数据缺口 · ${committeeDecisionBlocker}` : committeeDecisionBlocker;
+  const committeePackReceiptTraceText = `${committeeLeadChecklistItem?.condition ?? "证据口径"} · ${
+    committeeLeadChecklistItem?.owner ?? committeeDecisionOwner
+  }`;
+  const committeePackReceiptCopyText = [
+    "投委会材料包封面回执",
+    `提交结论 ${committeeFinalSignoffStatus}`,
+    `首要卡点 ${committeePackReceiptBlockerCopyText}`,
+    `责任人 ${committeeFinalSignoffOwner}`,
+    `下一动作 ${committeeDecisionAction}`,
+    `提交包 ${committeeFinalPackValue}`,
+    `签核 ${committeeFinalSignoffValue}`,
+    `剩余风险 ${committeeFinalResidualRiskValue}`,
+    `待复核回执 ${committeeFinalReceiptReviewValue}`,
+    `证据留痕 ${committeePackReceiptTraceText}`,
+    "来源 Evidence Book 同步材料包、回执与签核状态",
+  ].join("\n");
+  const committeeDecisionActionCurrent =
+    committeeDecisionHref === "#macro-toolkit-operations-actions"
+      ? selectedExecutionHref === committeeDecisionHref
+      : selectedEvidenceHref === committeeDecisionHref;
+  const copyCommitteePackReceipt = useCallback(async () => {
+    const clipboard =
+      (typeof navigator === "undefined" ? undefined : navigator.clipboard) ??
+      (typeof window === "undefined" ? undefined : window.navigator.clipboard);
+    const writeText = clipboard?.writeText;
+    if (typeof writeText !== "function") {
+      setCommitteePackReceiptCopyStatus("error");
+      return;
+    }
+    try {
+      await writeText.call(clipboard, committeePackReceiptCopyText);
+      setCommitteePackReceiptCopyStatus("success");
+    } catch {
+      setCommitteePackReceiptCopyStatus("error");
+    }
+  }, [committeePackReceiptCopyText]);
+  const handleCommitteeDecisionActionClick = useCallback(
+    (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      if (committeeDecisionHref === "#macro-toolkit-data-health-detail") {
+        event.preventDefault();
+        focusDataHealthRepair();
+        return;
+      }
+      if (committeeDecisionHref === "#macro-toolkit-operations-actions") {
+        setSelectedExecutionHref(committeeDecisionHref);
+        setSelectedGovernanceFocus("execution");
+        return;
+      }
+      setSelectedEvidenceHref(committeeDecisionHref);
+      setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(committeeDecisionHref));
+    },
+    [committeeDecisionHref, focusDataHealthRepair],
+  );
+  const houseViewDossierItems = [
+    {
+      label: "观点依据",
+      value: primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : (analysis?.conclusion.stance ?? "证据待确认"),
+      detail: analysis
+        ? `证据覆盖 ${formatPercent(analysis.coverage.hit_rate)} · ${sourceHitCount}/${sourceChecks.length || 0} 源命中`
+        : "证据覆盖待确认",
+    },
+    {
+      label: "触发条件",
+      value: committeeDecisionAction,
+      detail: `${committeeDecisionBlocker} · 责任人 ${committeeDecisionOwner}`,
+    },
+    {
+      label: "风险反证",
+      value: committeeWorkQueueBlockCount ? `${committeeWorkQueueBlockCount} 个硬阻断` : "反证可审",
+      detail: committeePackReceiptReviewCount
+        ? `${committeePackReceiptReviewCount} 项回执待复核`
+        : `${committeeWorkQueuePendingCount} 项待确认`,
+    },
+  ];
+  const committeeDeliverySteps = [
+    {
+      label: "结论",
+      value: committeeDecisionStatus,
+      detail: committeeDecisionBlocker,
+    },
+    {
+      label: "证据",
+      value: `${committeeChecklistPassCount}/${committeeChecklistItems.length}`,
+      detail: `${committeePackReviewReadyCount}/${committeePackItems.length} 项材料可审`,
+    },
+    {
+      label: "执行",
+      value: committeeDecisionAction,
+      detail: committeeDecisionOwner,
+    },
+    {
+      label: "回执",
+      value: `${actionReceipts.length}`,
+      detail: committeePackReceiptReviewCount ? `${committeePackReceiptReviewCount} 项待复核` : "回执已归档",
+    },
+    {
+      label: "签核",
+      value: `${committeeSignoffReadyCount}/${committeeSignoffLaneSummaryItems.length}`,
+      detail: committeeSignoffReadyCount === committeeSignoffLaneSummaryItems.length ? "签核轨道已就绪" : "等待责任人确认",
+    },
+  ];
+  const committeeDeliveryChain = (
+    <section className="macro-toolkit-committee-delivery-chain" aria-label="投委会交付链">
+      <div className="macro-toolkit-committee-delivery-chain__summary">
+        <span>投委会交付链</span>
+        <strong>{committeeDecisionStatus}</strong>
+        <small>下一步：{committeeDecisionAction}</small>
+      </div>
+      <div className="macro-toolkit-committee-delivery-chain__steps">
+        {committeeDeliverySteps.map((step) => (
+          <div className="macro-toolkit-committee-delivery-chain__step" key={step.label}>
+            <span>{step.label}</span>
+            <strong>{step.value}</strong>
+            <small>{step.detail}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
   const observationBoundaryPanel = !showOperations ? (
     <div className="macro-toolkit-observation-boundaries">
       <MacroToolkitContractBoundary
@@ -1510,6 +2254,57 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       setIsLoadingFullAnalysis(false);
     }
   }, [fetchFullAnalysis, queryClient]);
+
+  const reviewFullAnalysisRepair = useCallback(async (item: MacroToolkitRepairItem) => {
+    const receiptId = nextActionReceiptId("full-analysis");
+    const receiptDecision = actionReceiptDecisionFields("full-analysis");
+    const target = formatDataHealthRepairLabel(item, false);
+    setFocusedRepairKey(repairItemFocusKey(item));
+    setCommitteeActionLocatorKey(repairItemFocusKey(item));
+    setSelectedEvidenceHref("#macro-toolkit-data-health-detail");
+    setSelectedGovernanceFocus("data-health");
+    recordActionReceipt({
+      id: receiptId,
+      ...receiptDecision,
+      action: "完整分析复核",
+      status: "running",
+      time: "进行中",
+      target,
+      artifact: "完整分析读取中",
+      nextStep: "等待完整分析返回后复核数据健康",
+    });
+    const response = await loadFullAnalysis({ force: item.scope === "full" });
+    if (response) {
+      const fullRepairCount = response.result.data_health?.repair_items?.length ?? 0;
+      recordActionReceipt({
+        id: receiptId,
+        ...receiptDecision,
+        action: "完整分析复核",
+        status: "completed",
+        time: "刚刚",
+        target,
+        artifact: fullRepairCount ? `完整分析仍有 ${fullRepairCount} 项待处理` : "完整分析已返回",
+        nextStep: "复核完整分析回执并确认数据健康签核",
+      });
+      return response;
+    }
+    recordActionReceipt({
+      id: receiptId,
+      ...receiptDecision,
+      action: "完整分析复核",
+      status: "failed",
+      time: "刚刚",
+      target,
+      artifact: fullAnalysisError ?? "完整分析读取失败",
+      nextStep: "检查完整分析读取权限和接口状态",
+    });
+    return null;
+  }, [fullAnalysisError, loadFullAnalysis, recordActionReceipt]);
+
+  const reviewCurrentFullAnalysisRepair = useCallback(() => {
+    if (!currentRepairItem || !currentRepairNeedsFullAnalysisReview || currentRepairReceipt) return;
+    void reviewFullAnalysisRepair(currentRepairItem);
+  }, [currentRepairItem, currentRepairNeedsFullAnalysisReview, currentRepairReceipt, reviewFullAnalysisRepair]);
 
   const refreshMacroSourceBackfill = useCallback(
     async (item: MacroToolkitRepairItem, gapGroup?: CrisisGapGroup) => {
@@ -1628,6 +2423,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       });
       await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await loadFullAnalysis();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "运行失败";
       setRunError(errorMessage);
@@ -1648,6 +2444,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     analysisQuery,
     clearFullAnalysisCache,
     client,
+    loadFullAnalysis,
     payload?.output_dir,
     recordActionReceipt,
     scriptsQuery,
@@ -1689,6 +2486,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       });
       await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await loadFullAnalysis();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "刷新席位失败";
       setRefreshError(errorMessage);
@@ -1705,7 +2503,16 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     } finally {
       setIsRefreshingCffex(false);
     }
-  }, [analysis?.as_of_date, clearFullAnalysisCache, client, recordActionReceipt, scriptsQuery, analysisQuery, strategyQuery]);
+  }, [
+    analysis?.as_of_date,
+    analysisQuery,
+    clearFullAnalysisCache,
+    client,
+    loadFullAnalysis,
+    recordActionReceipt,
+    scriptsQuery,
+    strategyQuery,
+  ]);
 
   const refreshChoiceStock = useCallback(async () => {
     const receiptId = nextActionReceiptId("choice-stock");
@@ -1766,6 +2573,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       });
       await clearFullAnalysisCache();
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await loadFullAnalysis();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "刷新股票数据失败";
       setStockRefreshError(errorMessage);
@@ -1783,7 +2591,205 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     } finally {
       setIsRefreshingChoiceStock(false);
     }
-  }, [analysis?.as_of_date, analysisQuery, clearFullAnalysisCache, client, recordActionReceipt, scriptsQuery, strategyQuery]);
+  }, [
+    analysis?.as_of_date,
+    analysisQuery,
+    clearFullAnalysisCache,
+    client,
+    loadFullAnalysis,
+    recordActionReceipt,
+    scriptsQuery,
+    strategyQuery,
+  ]);
+
+  const committeeDecisionButtonAction =
+    hasCommitteeOpenSubmissionLane && committeeLeadChecklistItem?.key === "strategy-supply"
+      ? committeeLeadReceipt
+        ? {
+            label: "复核策略供数回执",
+            onClick: () => {
+              confirmActionReceipt(committeeLeadReceipt.id);
+              setSelectedEvidenceHref("#macro-toolkit-strategy-detail");
+              setSelectedGovernanceFocus("execution");
+            },
+            busy: false,
+            status: "确认签核",
+          }
+        : {
+            label: "执行策略供数刷新",
+            onClick: () => {
+              setSelectedExecutionHref("#macro-toolkit-operations-actions");
+              setSelectedGovernanceFocus("execution");
+              void refreshChoiceStock();
+            },
+            busy: isRefreshingChoiceStock,
+            status: "生成回执",
+          }
+      : hasCommitteeOpenSubmissionLane && committeeLeadChecklistItem?.key === "tool-execution"
+        ? committeeLeadReceipt
+          ? {
+              label: "复核工具执行回执",
+              onClick: () => {
+                confirmActionReceipt(committeeLeadReceipt.id);
+                setSelectedEvidenceHref(committeeLeadReceipt.evidenceHref);
+                setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(committeeLeadReceipt.evidenceHref));
+              },
+              busy: false,
+              status: "确认签核",
+            }
+          : {
+              label: "复核工具执行结果",
+              onClick: () => {
+                setSelectedExecutionHref("#macro-toolkit-operations-actions");
+                setSelectedGovernanceFocus("execution");
+                void runSelectedScript();
+              },
+              busy: isRunning || !selectedScript,
+              status: selectedScript ? "生成回执" : "等待脚本",
+          }
+      : null;
+  const evidenceBookRowAction = (item: MacroToolkitCommitteePackItem): MacroToolkitEvidenceBookRowAction => {
+    const href = item.receipt?.evidenceHref ?? item.href;
+    if (item.receiptConfirmed) {
+      return {
+        label: "查看签核证据",
+        status: "签核已确认",
+        kind: "link",
+        href,
+      };
+    }
+    if (item.receipt) {
+      const receipt = item.receipt;
+      return {
+        label:
+          item.key === "data-health"
+            ? "复核数据健康回执"
+            : item.key === "strategy-supply"
+              ? "复核策略供数回执"
+              : item.key === "tool-execution"
+                ? "复核工具执行回执"
+                : "复核回执",
+        status: "确认签核",
+        kind: "button",
+        onClick: () => {
+          confirmActionReceipt(receipt.id);
+          setSelectedEvidenceHref(receipt.evidenceHref);
+          setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(receipt.evidenceHref));
+        },
+      };
+    }
+    if (item.key === "data-health" && item.status === "blocking") {
+      const repairItem = primaryActionableRepairItem ?? primaryRepairItem;
+      return {
+        label: currentRepairNeedsFullAnalysisReview ? "复核完整分析" : "处理数据缺口",
+        status: repairItem ? "生成回执" : "等待缺口",
+        kind: "button",
+        disabled: !repairItem,
+        busy: Boolean(repairItem?.alias && refreshingSourceAlias === normalizeMacroSourceBackfillAlias(repairItem.alias)),
+        onClick: () => {
+          if (!repairItem) return;
+          if (needsFullAnalysisReview(repairItem)) {
+            void reviewFullAnalysisRepair(repairItem);
+            return;
+          }
+          void refreshMacroSourceBackfill(repairItem);
+        },
+      };
+    }
+    if (item.key === "strategy-supply" && item.status === "pending") {
+      return {
+        label: "执行策略供数刷新",
+        status: "生成回执",
+        kind: "button",
+        busy: isRefreshingChoiceStock,
+        onClick: () => {
+          setSelectedExecutionHref("#macro-toolkit-operations-actions");
+          setSelectedGovernanceFocus("execution");
+          void refreshChoiceStock();
+        },
+      };
+    }
+    if (item.key === "tool-execution" && item.status === "pending") {
+      return {
+        label: "复核工具执行结果",
+        status: selectedScript ? "生成回执" : "等待脚本",
+        kind: "button",
+        busy: isRunning,
+        disabled: !selectedScript,
+        onClick: () => {
+          setSelectedExecutionHref("#macro-toolkit-operations-actions");
+          setSelectedGovernanceFocus("execution");
+          void runSelectedScript();
+        },
+      };
+    }
+    return {
+      label: committeePackEvidenceEntryLabel(item),
+      status: committeePackReceiptStatus(item),
+      kind: "link",
+      href,
+    };
+  };
+  const committeePrimaryActionMovedToPipeline = !committeeDecisionButtonAction && committeeDecisionAction === "处理数据缺口";
+  const renderCommitteeDecisionAction = (
+    variant: "memo" | "compact" | "readiness" | "redline" | "tile" | "house" | "pipeline",
+  ) => {
+    const actionInner =
+      variant === "memo" || variant === "compact" ? (
+        <>
+          <span>{variant === "memo" ? "下一动作" : "硬阻断"}</span>
+          {variant === "compact" ? <strong>{committeeDecisionBlocker}</strong> : <small>执行下一动作</small>}
+          {variant === "compact" ? <small>{committeeDecisionButtonAction?.label ?? committeeDecisionAction}</small> : <strong>{committeeDecisionButtonAction?.label ?? committeeDecisionAction}</strong>}
+        </>
+      ) : variant === "house" ? (
+        <>
+          <span>下一动作</span>
+          <strong>{committeeDecisionButtonAction?.label ?? committeeDecisionAction}</strong>
+          <small>{committeeDecisionButtonAction?.status ?? committeeDecisionBlocker}</small>
+        </>
+      ) : variant === "readiness" ? (
+        committeeDecisionButtonAction?.label ?? committeeDecisionAction
+      ) : variant === "pipeline" ? (
+        <>
+          <span>流水线下一步</span>
+          <strong>{committeeDecisionButtonAction?.label ?? committeeDecisionAction}</strong>
+          <small>{committeeDecisionButtonAction?.status ?? `${committeeLeadChecklistItem?.condition ?? "工具执行"}回执`}</small>
+        </>
+      ) : variant === "redline" ? (
+        "证据入口"
+      ) : (
+        committeeDecisionButtonAction?.label ?? committeeDecisionAction
+      );
+
+    if (committeeDecisionButtonAction) {
+      return (
+        <button
+          type="button"
+          className={`macro-toolkit-committee-action macro-toolkit-committee-action--${variant}`}
+          disabled={committeeDecisionButtonAction.busy}
+          aria-current={committeeDecisionActionCurrent ? "true" : undefined}
+          aria-label={variant === "pipeline" ? `流水线下一步 ${committeeDecisionButtonAction.label}` : committeeDecisionButtonAction.label}
+          onClick={committeeDecisionButtonAction.onClick}
+        >
+          {actionInner}
+          {variant === "readiness" || variant === "redline" || variant === "tile" ? (
+            <small>{committeeDecisionButtonAction.status}</small>
+          ) : null}
+        </button>
+      );
+    }
+
+    return (
+      <a
+        className={`macro-toolkit-committee-action macro-toolkit-committee-action--${variant}`}
+        href={committeeDecisionHref}
+        aria-current={committeeDecisionActionCurrent ? "true" : undefined}
+        onClick={handleCommitteeDecisionActionClick}
+      >
+        {actionInner}
+      </a>
+    );
+  };
 
   const refreshCommodityFutures = useCallback(async (options?: CommodityRefreshOptions) => {
     const dryRun = options?.dryRun ?? false;
@@ -2267,6 +3273,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             <Button
               icon={<ReloadOutlined />}
               loading={isRefreshingChoiceStock}
+              disabled={isOperationActionBusy && !isRefreshingChoiceStock}
               onClick={() => void refreshChoiceStock()}
               aria-label="刷新股票策略明细"
             >
@@ -2382,6 +3389,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <IndicatorObservationSummary indicators={analysis.indicators} />
       ) : (
         <Table
+          className="macro-toolkit-table--wide"
           rowKey="alias"
           size="small"
           columns={indicatorColumns}
@@ -2490,44 +3498,395 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <span>Investment Committee Brief</span>
         <strong>{analysis?.as_of_date ?? "日期待确认"}</strong>
       </div>
-      <div className="macro-toolkit-committee-readiness" data-testid="macro-toolkit-committee-readiness">
-        <div className="macro-toolkit-committee-readiness__decision">
-          <span>投委会复核状态</span>
-          <strong>{committeeReadinessStatus}</strong>
+      <div className="macro-toolkit-committee-first-screen-pipeline" aria-label="投委会首屏流水线">
+        <div className="macro-toolkit-committee-first-screen-pipeline__head">
+          <span>投委会首屏流水线</span>
+          <strong>{committeeDecisionStatus}</strong>
+          <small>{committeeRedlineTitle}</small>
         </div>
-        <div>
-          <span>主要卡点</span>
-          <strong>{committeeReadinessBlocker}</strong>
+        <div className="macro-toolkit-committee-first-screen-pipeline__step">
+          <span>结论</span>
+          <strong>{committeeDecisionStatus}</strong>
+          <small>
+            提交包 {committeePackReviewReadyCount}/{committeePackItems.length}
+          </small>
+        </div>
+        <div className="macro-toolkit-committee-first-screen-pipeline__step">
+          <span>首要卡点</span>
+          <strong>{committeeDecisionBlocker}</strong>
+          <small>{committeeDecisionOwner}</small>
+        </div>
+        <div className="macro-toolkit-committee-first-screen-pipeline__step macro-toolkit-committee-first-screen-pipeline__step--action">
+          {renderCommitteeDecisionAction("pipeline")}
+        </div>
+        <div className="macro-toolkit-committee-first-screen-pipeline__step">
+          <span>签核</span>
+          <strong>
+            {committeeSignoffReadyCount}/{committeeSignoffLaneSummaryItems.length}
+          </strong>
+          <small>待复核回执 {committeePackReceiptReviewCount}</small>
+        </div>
+      </div>
+      <div className="macro-toolkit-committee-decision-memo" aria-label="投委会决策稿">
+        <div className="macro-toolkit-committee-decision-memo__verdict">
+          <span>投委会决策稿</span>
+          <strong>
+            <small>结论</small>
+            {committeeDecisionStatus}
+          </strong>
+          <em>{committeeRedlineTitle}</em>
+        </div>
+        <div className="macro-toolkit-committee-decision-memo__grid">
+          <div>
+            <span>阻断</span>
+            <strong>{committeeDecisionBlocker}</strong>
+            <small>{committeeDecisionOwner}</small>
+          </div>
+          {committeePrimaryActionMovedToPipeline ? (
+            <div className="macro-toolkit-committee-decision-memo__rationale">
+              <span>判断口径</span>
+              <strong>{committeeDecisionAction}</strong>
+              <small>主入口在首屏流水线</small>
+            </div>
+          ) : (
+            renderCommitteeDecisionAction("memo")
+          )}
+          <div>
+            <span>放行条件</span>
+            <strong>
+              提交包 {committeePackReviewReadyCount}/{committeePackItems.length} · 签核 {committeeSignoffReadyCount}/
+              {committeeSignoffLaneSummaryItems.length}
+            </strong>
+            <small>
+              硬阻断 {committeeWorkQueueBlockCount} · 待复核回执 {committeePackReceiptReviewCount}
+            </small>
+          </div>
+        </div>
+      </div>
+      <div className="macro-toolkit-committee-next-step-strip" aria-label="投委会下一步执行条">
+        <div className="macro-toolkit-committee-next-step-strip__verdict">
+          <span>投委会下一步执行条</span>
+          <strong>{committeeDecisionStatus}</strong>
+          <small>{committeeRedlineTitle}</small>
+        </div>
+        <div className="macro-toolkit-committee-next-step-strip__action">
+          <span>主入口已上移</span>
+          <strong>流水线下一步：{committeeDecisionButtonAction?.label ?? committeeDecisionAction}</strong>
+          <small>{committeeDecisionButtonAction?.status ?? committeeDecisionBlocker}</small>
         </div>
         <div>
           <span>责任人</span>
-          <strong>{committeeReadinessOwner}</strong>
+          <strong>{committeeDecisionOwner}</strong>
+          <small>{committeeDecisionBlocker}</small>
+        </div>
+        <div>
+          <span>回执要求</span>
+          <strong>{committeeLeadChecklistItem?.condition ?? "工具执行"}回执</strong>
+          <small>完成后进入签核留痕</small>
+        </div>
+      </div>
+      <div className="macro-toolkit-mobile-committee-strip" aria-label="投委会移动首屏摘要">
+        <div>
+          <span>提交判断</span>
+          <strong>{committeeDecisionStatus}</strong>
+        </div>
+        {renderCommitteeDecisionAction("compact")}
+        <div>
+          <span>提交包</span>
+          <strong>
+            {committeePackReviewReadyCount}/{committeePackItems.length}
+          </strong>
+        </div>
+        <div>
+          <span>签核</span>
+          <strong>
+            {committeeSignoffReadyCount}/{committeeSignoffLaneSummaryItems.length}
+          </strong>
+        </div>
+      </div>
+      <div
+        className={`macro-toolkit-committee-final-signoff macro-toolkit-committee-final-signoff--${
+          isCommitteeFinalSignoffReady ? "ready" : "blocked"
+        }`}
+        aria-label="最终投委会签核态"
+      >
+        <div className="macro-toolkit-committee-final-signoff__decision">
+          <span>最终投委会签核态</span>
+          <strong>{committeeFinalSignoffStatus}</strong>
+          <small>{committeeFinalSignoffOwner}</small>
+        </div>
+        <div className="macro-toolkit-committee-final-signoff__metrics">
+          <div>
+            <span>提交包</span>
+            <strong>
+              提交包 {committeeFinalPackValue}
+            </strong>
+          </div>
+          <div>
+            <span>签核</span>
+            <strong>签核 {committeeFinalSignoffValue}</strong>
+          </div>
+          <div>
+            <span>剩余风险</span>
+            <strong>剩余风险 {committeeFinalResidualRiskValue}</strong>
+          </div>
+          <div>
+            <span>回执</span>
+            <strong>待复核回执 {committeeFinalReceiptReviewValue}</strong>
+          </div>
+        </div>
+      </div>
+      <div className="macro-toolkit-committee-readiness" data-testid="macro-toolkit-committee-readiness">
+        <div className="macro-toolkit-committee-readiness__decision">
+          <span>投委会复核状态</span>
+          <strong>{committeeDecisionStatus}</strong>
+        </div>
+        <div>
+          <span>主要卡点</span>
+          <strong>{committeeDecisionBlocker}</strong>
+        </div>
+        <div>
+          <span>责任人</span>
+          <strong>{committeeDecisionOwner}</strong>
         </div>
         <div className="macro-toolkit-committee-readiness__action">
-          <span>行动入口</span>
-          <a
-            href={committeeReadinessHref}
-            aria-current={selectedEvidenceHref === committeeReadinessHref ? "true" : undefined}
-            onClick={() => {
-              setSelectedEvidenceHref(committeeReadinessHref);
-              setSelectedGovernanceFocus(
-                committeeReadinessHref === "#macro-toolkit-data-health-detail"
-                  ? "data-health"
-                  : committeeReadinessHref === "#macro-toolkit-tool-execution-detail"
-                    ? "execution"
-                    : "evidence",
-              );
-            }}
+          {committeePrimaryActionMovedToPipeline ? (
+            <>
+              <span>执行说明</span>
+              <strong>{committeeDecisionAction}</strong>
+              <small>首屏流水线承接</small>
+            </>
+          ) : (
+            <>
+              <span>行动入口</span>
+              {renderCommitteeDecisionAction("readiness")}
+            </>
+          )}
+        </div>
+      </div>
+      <div className="macro-toolkit-current-repair-status" aria-label="投委会当前处理状态">
+        <div className="macro-toolkit-current-repair-status__head">
+          <span>当前处理状态</span>
+          <strong>{currentRepairStatus}</strong>
+        </div>
+        <div className="macro-toolkit-current-repair-status__tape" aria-label="当前处理执行带">
+          <div className="macro-toolkit-current-repair-status__tape-item macro-toolkit-current-repair-status__tape-item--primary">
+            <span>执行带 · 当前处理单</span>
+            <strong>{currentRepairLabel}</strong>
+            <small>{currentRepairStatus}</small>
+          </div>
+          <div className="macro-toolkit-current-repair-status__tape-item">
+            <span>责任人/SLA</span>
+            <strong>{currentRepairItem ? repairTicketOwner(currentRepairItem) : committeeReadinessOwner}</strong>
+            <small>{currentRepairItem ? repairTicketSla(currentRepairItem) : "持续留痕"}</small>
+          </div>
+          <div className="macro-toolkit-current-repair-status__tape-item">
+            <span>预期回执 / 回执状态</span>
+            <strong>{currentRepairItem ? repairTicketReceipt(currentRepairItem) : "数据健康快照"}</strong>
+            <small>{currentRepairReceipt ? currentRepairStatus : "等待执行"}</small>
+          </div>
+          <div className="macro-toolkit-current-repair-status__tape-item">
+            <span>回执证据/签核</span>
+            <strong>{currentRepairReceipt?.evidenceEntry ?? "等待执行"}</strong>
+            <small>{currentRepairReceiptConfirmed ? "签核完成" : currentRepairReceipt ? "待复核签核" : "回执后签核"}</small>
+          </div>
+          {currentRepairNeedsSignoff ? (
+            <button
+              type="button"
+              className="macro-toolkit-current-repair-status__tape-action"
+              aria-label={currentRepairAction}
+              aria-current={selectedEvidenceHref === "#macro-toolkit-data-health-detail" ? "true" : undefined}
+              onClick={confirmCurrentRepairReceipt}
+            >
+              <span>下一动作</span>
+              <strong>{currentRepairAction}</strong>
+              <small>确认签核</small>
+            </button>
+          ) : currentRepairNeedsFullAnalysisReview && currentRepairItem ? (
+            <button
+              type="button"
+              className="macro-toolkit-current-repair-status__tape-action"
+              aria-label={currentRepairAction}
+              aria-current={selectedEvidenceHref === "#macro-toolkit-data-health-detail" ? "true" : undefined}
+              disabled={isLoadingFullAnalysis}
+              onClick={reviewCurrentFullAnalysisRepair}
+            >
+              <span>下一动作</span>
+              <strong>{currentRepairAction}</strong>
+              <small>生成回执</small>
+            </button>
+          ) : currentRepairPrimaryActionMovedToPipeline ? (
+            <div className="macro-toolkit-current-repair-status__tape-action macro-toolkit-current-repair-status__tape-action--audit">
+              <span>审计状态</span>
+              <strong>主入口在首屏流水线</strong>
+              <small>{currentRepairAction}</small>
+            </div>
+          ) : (
+            <a
+              className="macro-toolkit-current-repair-status__tape-action"
+              href="#macro-toolkit-data-health-detail"
+              aria-label={currentRepairAction}
+              aria-current={selectedEvidenceHref === "#macro-toolkit-data-health-detail" ? "true" : undefined}
+              onClick={handleDataHealthRepairActionClick}
+            >
+              <span>下一动作</span>
+              <strong>{currentRepairAction}</strong>
+              <small>打开处理单</small>
+            </a>
+          )}
+        </div>
+        {repairItemCount ? (
+          <div className="macro-toolkit-current-repair-status__triage" aria-label="投委会阻断分层">
+            {repairTriageItems.map((item) => (
+              <div
+                key={item.key}
+                className={`macro-toolkit-current-repair-status__triage-item macro-toolkit-current-repair-status__triage-item--${item.key}`}
+              >
+                <span>{item.label}</span>
+                <strong>{item.count} 项</strong>
+                <em>{item.owner}</em>
+                <small>{item.sample}</small>
+                <b>{item.action}</b>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {currentRepairItem && currentRepairNeedsFullAnalysisReview ? (
+          <div className="macro-toolkit-current-repair-status__full-review" aria-label="完整分析复核包">
+            <span>完整分析复核包</span>
+            <strong>延后证据待确认</strong>
+            <em>完整分析回执</em>
+            <small>提交影响 · {repairTicketSubmissionImpact(currentRepairItem)}</small>
+            <small>
+              {repairTicketOwner(currentRepairItem)} · {repairTicketSla(currentRepairItem)}
+            </small>
+          </div>
+        ) : null}
+        {currentRepairItem && currentRepairNeedsManualEscalation ? (
+          <div className="macro-toolkit-current-repair-status__manual" aria-label="人工复核升级处理包">
+            <span>人工复核升级处理包</span>
+            <strong>不可自动补齐</strong>
+            <em>升级处理</em>
+            <small>提交影响 · {repairTicketSubmissionImpact(currentRepairItem)}</small>
+            <small>
+              {repairTicketOwner(currentRepairItem)} · {repairTicketSla(currentRepairItem)}
+            </small>
+          </div>
+        ) : null}
+        {committeeActionLocatorItem && selectedEvidenceHref === "#macro-toolkit-data-health-detail" ? (
+          <div
+            className="macro-toolkit-current-repair-status__locator"
+            ref={committeeActionLocatorRef}
+            aria-label="投委会动作定位回执"
+            aria-live="polite"
           >
-            {committeeReadinessAction}
-          </a>
+            <span>动作已定位</span>
+            <strong>{committeeActionLocatorLabel}</strong>
+            <em>{repairTicketOwner(committeeActionLocatorItem)}</em>
+            <small>{repairTicketReceipt(committeeActionLocatorItem)}</small>
+            <a href="#macro-toolkit-data-health-detail">打开处理单</a>
+            {canRefreshMacroSourceBackfill(committeeActionLocatorItem) && !completedDataHealthReceipt ? (
+              <button
+                type="button"
+                disabled={
+                  refreshingSourceAlias === normalizeMacroSourceBackfillAlias(committeeActionLocatorItem.alias)
+                }
+                onClick={() => {
+                  void refreshMacroSourceBackfill(committeeActionLocatorItem);
+                }}
+              >
+                执行来源补齐
+              </button>
+            ) : needsFullAnalysisReview(committeeActionLocatorItem) && !completedDataHealthReceipt ? (
+              <button
+                type="button"
+                disabled={isLoadingFullAnalysis}
+                onClick={() => {
+                  void reviewFullAnalysisRepair(committeeActionLocatorItem);
+                }}
+              >
+                复核完整分析
+              </button>
+            ) : needsManualReviewEscalation(committeeActionLocatorItem) ? (
+              <>
+                <small>不可自动补齐</small>
+                <small>提交影响 · {repairTicketSubmissionImpact(committeeActionLocatorItem)}</small>
+                <small>升级处理</small>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <div className="macro-toolkit-committee-closure-rail" aria-label="投委会闭环流水线">
+        <div className="macro-toolkit-committee-closure-rail__head">
+          <span>状态轴 · 辅助留痕</span>
+          <strong>{currentRepairStatus}</strong>
+        </div>
+        <div className="macro-toolkit-committee-closure-rail__axis" aria-label="投委会闭环状态轴">
+          <span className="macro-toolkit-committee-closure-rail__axis-label">状态轴</span>
+          {committeeClosureRailItems.map((item) => {
+            const stepContents = (
+              <>
+                <span>{item.step}</span>
+                <strong>{item.phase}</strong>
+                <em>{item.status}</em>
+                <small>{item.detail}</small>
+                <b>{item.action}</b>
+              </>
+            );
+            const className = `macro-toolkit-committee-closure-rail__step macro-toolkit-committee-closure-rail__step--${item.tone}`;
+            const isCurrent =
+              selectedEvidenceHref === "#macro-toolkit-data-health-detail" && item.tone === "active"
+                ? "true"
+                : undefined;
+            const signoffReceiptId = item.receiptId;
+            const signoffAriaLabel = item.ariaLabel;
+
+            if (item.kind === "signoff" && signoffReceiptId && signoffAriaLabel) {
+              return (
+                <button
+                  key={item.phase}
+                  type="button"
+                  className={className}
+                  aria-current={isCurrent}
+                  aria-label={signoffAriaLabel}
+                  onClick={() => {
+                    focusDataHealthRepair();
+                    confirmActionReceipt(signoffReceiptId);
+                  }}
+                >
+                  {stepContents}
+                </button>
+              );
+            }
+
+            if (item.kind === "status") {
+              return (
+                <div key={item.phase} className={className} aria-current={isCurrent}>
+                  {stepContents}
+                </div>
+              );
+            }
+
+            return (
+              <a
+                key={item.phase}
+                className={className}
+                href="#macro-toolkit-data-health-detail"
+                aria-current={isCurrent}
+                onClick={handleDataHealthRepairActionClick}
+              >
+                {stepContents}
+              </a>
+            );
+          })}
         </div>
       </div>
       <div className="macro-toolkit-committee-readiness-summary" aria-label="投委会提交包就绪摘要">
         <div>
           <span>提交包就绪度</span>
           <strong>
-            {committeeChecklistPassCount}/{committeeChecklistItems.length}
+            {committeePackReviewReadyCount}/{committeePackItems.length}
           </strong>
         </div>
         <div>
@@ -2542,7 +3901,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         </div>
         <div>
           <span>待复核回执</span>
-          <strong>{committeeReviewedReceiptCount}</strong>
+          <strong>{committeePackReceiptReviewCount}</strong>
         </div>
       </div>
       <div className="macro-toolkit-committee-decision-language" aria-label="投委会提交判断口径">
@@ -2574,65 +3933,90 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <div className="macro-toolkit-committee-redline__decision">
           <span>提交红线</span>
           <strong>{committeeRedlineTitle}</strong>
-          <small>{committeeReadinessBlocker}</small>
+          <small>{committeeDecisionBlocker}</small>
         </div>
         <div className="macro-toolkit-committee-redline__owner">
           <span>责任人</span>
-          <strong>{committeeReadinessOwner}</strong>
+          <strong>{committeeDecisionOwner}</strong>
           <small>投委会提交前完成复核留痕</small>
         </div>
         <div className="macro-toolkit-committee-redline__action">
           <span>提交前动作</span>
           <strong>{committeeRedlineAction}</strong>
-          <a
-            href={committeeReadinessHref}
-            aria-current={selectedEvidenceHref === committeeReadinessHref ? "true" : undefined}
-            onClick={() => {
-              setSelectedEvidenceHref(committeeReadinessHref);
-              setSelectedGovernanceFocus(
-                committeeReadinessHref === "#macro-toolkit-data-health-detail"
-                  ? "data-health"
-                  : committeeReadinessHref === "#macro-toolkit-tool-execution-detail"
-                    ? "execution"
-                    : "evidence",
-              );
-            }}
-          >
-            证据入口
-          </a>
+          {renderCommitteeDecisionAction("redline")}
         </div>
       </div>
-      <div className="macro-toolkit-committee-checklist" aria-label="投委会提交条件清单">
+      <div className="macro-toolkit-data-health-signoff-pack" aria-label="数据健康签核证据包">
+        <div className="macro-toolkit-data-health-signoff-pack__head">
+          <span>数据健康签核包</span>
+          <strong>{repairItemCount ? "阻断签核前置" : "可签核"}</strong>
+        </div>
+        <div className="macro-toolkit-data-health-signoff-pack__grid">
+          <div>
+            <span>最高优先级</span>
+            <strong>{dataHealthSignoffPriority}</strong>
+            <small>{repairItemCount ? `共 ${repairItemCount} 项待处理` : "无待处理项"}</small>
+          </div>
+          <div>
+            <span>来源覆盖</span>
+            <strong>{dataHealthSignoffCoverage}</strong>
+            <small>{dataFreshnessDetail}</small>
+          </div>
+          <div>
+            <span>责任/SLA</span>
+            <strong>{committeeReadinessOwner}</strong>
+            <small>{repairItemCount ? "T+0 盘前" : "持续留痕"}</small>
+          </div>
+          <div>
+            <span>签核前置</span>
+            <strong>{dataHealthSignoffRequirement}</strong>
+            <small>{dataHealthSignoffGuardrail}</small>
+          </div>
+        </div>
+        <a
+          href="#macro-toolkit-data-health-detail"
+          aria-current={selectedEvidenceHref === "#macro-toolkit-data-health-detail" ? "true" : undefined}
+          onClick={focusDataHealthRepair}
+        >
+          打开数据健康证据
+        </a>
+      </div>
+      <div className="macro-toolkit-committee-checklist" aria-label="投委会提交条件摘要">
         <div className="macro-toolkit-committee-checklist__head">
-          <span>提交条件清单</span>
+          <span>提交条件摘要</span>
           <strong>
             {committeeChecklistItems.filter((item) => item.status === "pass").length}/{committeeChecklistItems.length}
           </strong>
         </div>
-        <div className="macro-toolkit-committee-checklist__grid">
-          {committeeChecklistItems.map((item) => (
-            <a
-              key={item.key}
-              className={`macro-toolkit-committee-checklist__item macro-toolkit-committee-checklist__item--${item.status}`}
-              href={item.href}
-              aria-current={selectedEvidenceHref === item.href ? "true" : undefined}
-              onClick={() => {
-                setSelectedEvidenceHref(item.href);
-                setSelectedGovernanceFocus(
-                  item.href === "#macro-toolkit-data-health-detail"
-                    ? "data-health"
-                    : item.href === "#macro-toolkit-tool-execution-detail"
-                      ? "execution"
-                      : "evidence",
-                );
-              }}
-            >
-              <span>{item.condition}</span>
-              <strong>{item.statusLabel}</strong>
-              <small>{item.action}</small>
-              <em>{item.owner}</em>
-            </a>
-          ))}
+        <div className="macro-toolkit-committee-checklist__summary-grid">
+          <div>
+            <span>已通过</span>
+            <strong>{committeeChecklistPassCount}</strong>
+          </div>
+          <div>
+            <span>阻断</span>
+            <strong>{committeeWorkQueueBlockCount}</strong>
+          </div>
+          <div>
+            <span>待确认</span>
+            <strong>{committeeWorkQueuePendingCount}</strong>
+          </div>
+          <a
+            href={committeeLeadChecklistHref}
+            aria-current={selectedEvidenceHref === committeeLeadChecklistHref ? "true" : undefined}
+            onClick={() => {
+              if (committeeLeadChecklistHref === "#macro-toolkit-data-health-detail") {
+                focusDataHealthRepair();
+                return;
+              }
+              setSelectedEvidenceHref(committeeLeadChecklistHref);
+              setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(committeeLeadChecklistHref));
+            }}
+          >
+            <span>主卡点</span>
+            <strong>{committeeLeadChecklistItem?.condition ?? "无阻断"}</strong>
+            <small>证据入口</small>
+          </a>
         </div>
       </div>
       <div className="macro-toolkit-committee-pack" aria-label="投委会材料包">
@@ -2645,14 +4029,20 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             <a
               key={item.key}
               className={`macro-toolkit-committee-pack__item macro-toolkit-committee-pack__item--${item.status}`}
-              href={item.href}
-              aria-current={selectedEvidenceHref === item.href ? "true" : undefined}
+              href={item.receipt?.evidenceHref ?? item.href}
+              aria-label={`投委会材料包-${item.subject}`}
+              aria-current={selectedEvidenceHref === (item.receipt?.evidenceHref ?? item.href) ? "true" : undefined}
               onClick={() => {
-                setSelectedEvidenceHref(item.href);
+                const href = item.receipt?.evidenceHref ?? item.href;
+                if (href === "#macro-toolkit-data-health-detail") {
+                  focusDataHealthRepair();
+                  return;
+                }
+                setSelectedEvidenceHref(href);
                 setSelectedGovernanceFocus(
-                  item.href === "#macro-toolkit-data-health-detail"
+                  href === "#macro-toolkit-data-health-detail"
                     ? "data-health"
-                    : item.href === "#macro-toolkit-tool-execution-detail"
+                    : href === "#macro-toolkit-tool-execution-detail" || href === "#macro-toolkit-script-artifact-detail"
                       ? "execution"
                       : "evidence",
                 );
@@ -2660,9 +4050,49 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             >
               <span>{item.packSubject}</span>
               <strong>{item.statusLabel}</strong>
-              <small>{compactText(item.gap, 34)}</small>
+              <small>{compactText(item.receipt?.evidenceEntry ?? item.gap, 34)}</small>
             </a>
           ))}
+        </div>
+        <div className="macro-toolkit-committee-pack__review-index" aria-label="投委会材料包审阅索引">
+          <div className="macro-toolkit-committee-pack__review-head">
+            <span>审阅索引</span>
+            <strong>材料</strong>
+            <strong>状态</strong>
+            <strong>责任人</strong>
+            <strong>提交影响</strong>
+            <strong>证据入口</strong>
+          </div>
+          {committeePackItems.map((item) => {
+            const href = item.receipt?.evidenceHref ?? item.href;
+            const submissionImpact = committeePackSubmissionImpact(item);
+            const evidenceLabel = committeePackEvidenceEntryLabel(item);
+            return (
+              <div
+                key={item.key}
+                className={`macro-toolkit-committee-pack__review-row macro-toolkit-committee-pack__review-row--${item.status}`}
+              >
+                <span>{item.packSubject}</span>
+                <strong>{item.statusLabel}</strong>
+                <small>{item.owner}</small>
+                <small>{submissionImpact}</small>
+                <a
+                  href={href}
+                  aria-current={selectedEvidenceHref === href ? "true" : undefined}
+                  onClick={() => {
+                    if (href === "#macro-toolkit-data-health-detail") {
+                      focusDataHealthRepair();
+                      return;
+                    }
+                    setSelectedEvidenceHref(href);
+                    setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(href));
+                  }}
+                >
+                  {item.subject} {evidenceLabel}
+                </a>
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className="macro-toolkit-investment-brief__grid">
@@ -2697,40 +4127,16 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           <a
             href="#macro-toolkit-data-health-detail"
             aria-current={selectedEvidenceHref === "#macro-toolkit-data-health-detail" ? "true" : undefined}
-            onClick={() => {
-              setSelectedEvidenceHref("#macro-toolkit-data-health-detail");
-              setSelectedGovernanceFocus("data-health");
-            }}
+            onClick={handleDataHealthRepairActionClick}
           >
             处理数据缺口
           </a>
         </div>
         <div className="macro-toolkit-investment-brief__item macro-toolkit-investment-brief__item--action">
           <span>下一步动作</span>
-          <strong>{repairItemCount ? "先复核数据缺口" : isCoreAnalysis ? "补齐完整分析" : "进入工具执行"}</strong>
-          <small>
-            {repairItemCount
-              ? "优先确认缺口是否影响结论。"
-              : isCoreAnalysis
-                ? "打开完整分析后再复核策略和能力结果。"
-                : "使用下方操作台执行刷新或脚本动作。"}
-          </small>
-          <a
-            href={repairItemCount ? "#macro-toolkit-data-health-detail" : "#macro-toolkit-tool-execution-detail"}
-            aria-current={
-              selectedEvidenceHref === (repairItemCount ? "#macro-toolkit-data-health-detail" : "#macro-toolkit-tool-execution-detail")
-                ? "true"
-                : undefined
-            }
-            onClick={() => {
-              setSelectedEvidenceHref(
-                repairItemCount ? "#macro-toolkit-data-health-detail" : "#macro-toolkit-tool-execution-detail",
-              );
-              setSelectedGovernanceFocus(repairItemCount ? "data-health" : "execution");
-            }}
-          >
-            {repairItemCount ? "处理数据缺口" : "进入操作台"}
-          </a>
+          <strong>{committeeDecisionAction}</strong>
+          <small>{committeeDecisionBlocker}</small>
+          {renderCommitteeDecisionAction("tile")}
         </div>
       </div>
     </div>
@@ -2781,7 +4187,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         receiptCount={actionReceipts.length}
         latestReceipt={actionReceipts[0] ?? null}
         receipts={actionReceipts}
-        gateStatus={committeeReadinessStatus}
+        confirmedReceiptIds={confirmedReceiptIds}
+        gateStatus={committeeDecisionStatus}
         selectedEvidenceHref={selectedEvidenceHref}
         selectedExecutionHref={selectedExecutionHref}
         onSelectEvidence={(href, governanceFocus) => {
@@ -2795,6 +4202,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           }
           setSelectedGovernanceFocus(governanceFocus);
         }}
+        onConfirmReceipt={confirmActionReceipt}
       />
       <ActionReceiptPanel receipt={actionReceipt} />
       <ActionReceiptQueue
@@ -2805,9 +4213,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       <div className="macro-toolkit-operations-console__metrics">
         <MetricTile
           icon={<DatabaseOutlined />}
-          label="默认数据源"
-          value={(payload?.default_data_sources ?? analysis?.default_data_sources ?? []).join(" + ") || "无"}
-          detail="分析、刷新和脚本共享系统数据面"
+          label="业务证据"
+          value={defaultBusinessEvidenceSources}
+          detail="分析、刷新和脚本共享同一证据口径"
+          detailMaxLength={38}
         />
         <MetricTile
           icon={<ClockCircleOutlined />}
@@ -2841,7 +4250,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <Button
           type="primary"
           icon={<PlayCircleOutlined />}
-          disabled={!selectedScript}
+          disabled={!selectedScript || (isOperationActionBusy && !isRunning)}
           loading={isRunning}
           onClick={() => void runSelectedScript()}
         >
@@ -2850,6 +4259,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <Button
           icon={<ReloadOutlined />}
           loading={isRefreshingChoiceStock}
+          disabled={isOperationActionBusy && !isRefreshingChoiceStock}
           onClick={() => void refreshChoiceStock()}
           aria-label="刷新股票策略明细"
         >
@@ -2858,6 +4268,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <Button
           icon={<ReloadOutlined />}
           loading={isRefreshingCffex}
+          disabled={isOperationActionBusy && !isRefreshingCffex}
           onClick={() => void refreshCffexMemberRank()}
         >
           刷新席位明细
@@ -2865,7 +4276,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <Button
           icon={<InfoCircleOutlined />}
           loading={isRefreshingCommodity}
-          disabled={commodityRefreshDisabled}
+          disabled={commodityRefreshDisabled || (isOperationActionBusy && !isRefreshingCommodity)}
           onClick={() => void refreshCommodityFutures({ dryRun: true })}
         >
           预估明细刷新
@@ -2873,7 +4284,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <Button
           icon={<ReloadOutlined />}
           loading={isRefreshingCommodity}
-          disabled={commodityRefreshDisabled}
+          disabled={commodityRefreshDisabled || (isOperationActionBusy && !isRefreshingCommodity)}
           aria-label={commodityRefreshActionLabel}
           onClick={() => void refreshCommodityFutures({ dryRun: false })}
         >
@@ -3025,31 +4436,75 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               </p>
             </div>
             {showOperations ? (
-              <div className="macro-toolkit-brief-metrics">
-                <MetricTile
-                  icon={<LineChartOutlined />}
-                  label="主信号"
-                  value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : "缺失"}
-                  detail={
-                    primarySignal?.score == null
-                      ? "尚无可排序信号"
-                      : `${primarySignal.evidence.join(" / ")} · ${primarySignal.score.toFixed(1)}`
-                  }
-                  tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
-                />
-                <MetricTile
-                  icon={<ClockCircleOutlined />}
-                  label="分析日期"
-                  value={analysis?.as_of_date ?? "缺失"}
-                  detail={(analysis?.default_data_sources ?? []).join(" + ") || "choice + tushare"}
-                />
-                <MetricTile
-                  icon={<ThunderboltOutlined />}
-                  label="能力闭环"
-                  value={`${readyCapabilityCount}/${capabilityItems.length || 0}`}
-                  detail={`${wiredCapabilityCount} 项已接到页面/API`}
-                />
-              </div>
+              <>
+                <div className="macro-toolkit-house-view__decision-chain" aria-label="House View 投委会决策链">
+                  <div className="macro-toolkit-house-view__decision-head">
+                    <span>投委会提交判断</span>
+                    <strong>{committeeDecisionStatus}</strong>
+                    <small>{committeeDecisionOwner}</small>
+                  </div>
+                  <div className="macro-toolkit-house-view__decision-body">
+                    <div>
+                      <span>首要卡点</span>
+                      <strong>{committeeDecisionBlocker}</strong>
+                      <small>{committeeRedlineTitle}</small>
+                    </div>
+                    {renderCommitteeDecisionAction("house")}
+                  </div>
+                  <div className="macro-toolkit-house-view__decision-metrics">
+                    <div>
+                      <span>提交包</span>
+                      <strong>
+                        {committeePackReviewReadyCount}/{committeePackItems.length}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>签核</span>
+                      <strong>
+                        {committeeSignoffReadyCount}/{committeeSignoffLaneSummaryItems.length}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>待复核回执</span>
+                      <strong>{committeePackReceiptReviewCount}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="macro-toolkit-house-view__dossier" aria-label="House View 依据档案">
+                  {houseViewDossierItems.map((item) => (
+                    <div className="macro-toolkit-house-view__dossier-item" key={item.label}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <small>{item.detail}</small>
+                    </div>
+                  ))}
+                </div>
+                <div className="macro-toolkit-brief-metrics">
+                  <MetricTile
+                    icon={<LineChartOutlined />}
+                    label="主信号"
+                    value={primarySignal ? `${primarySignal.title} · ${primarySignal.stance}` : "缺失"}
+                    detail={
+                      primarySignal?.score == null
+                        ? "尚无可排序信号"
+                        : `${primarySignal.evidence.join(" / ")} · ${primarySignal.score.toFixed(1)}`
+                    }
+                    tone={primarySignal?.tone === "positive" ? "positive" : primarySignal ? "neutral" : "missing"}
+                  />
+                  <MetricTile
+                    icon={<ClockCircleOutlined />}
+                    label="分析日期"
+                    value={analysis?.as_of_date ?? "缺失"}
+                    detail={(analysis?.default_data_sources ?? []).join(" + ") || "choice + tushare"}
+                  />
+                  <MetricTile
+                    icon={<ThunderboltOutlined />}
+                    label="能力闭环"
+                    value={`${readyCapabilityCount}/${capabilityItems.length || 0}`}
+                    detail={`${wiredCapabilityCount} 项已接到页面/API`}
+                  />
+                </div>
+              </>
             ) : (
               observationFirstScreenLoop
             )}
@@ -3061,38 +4516,90 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
 
       {showOperations ? (
         <section className="macro-toolkit-operations-band" aria-label="宏观工具操作与治理区">
-          {governanceGatePanel}
-          {operationsConsolePanel}
-          <div className="macro-toolkit-detail-density" data-testid="macro-toolkit-detail-density">
-            <div>
-              <span>详情默认精简</span>
-              <strong>{detailDensity === "compact" ? "深度证据仍可展开" : "全部详情已展开"}</strong>
+          <div className="macro-toolkit-committee-workspace" aria-label="投委会提交作业区">
+            <div className="macro-toolkit-committee-workspace__head">
+              <div>
+                <span>投委会提交作业区</span>
+                <strong>{committeeDecisionStatus}</strong>
+                <small>{committeeDecisionBlocker}</small>
+              </div>
+              <div className="macro-toolkit-committee-workspace__scorecard" aria-label="投委会提交作业区状态">
+                <div>
+                  <span>提交包</span>
+                  <strong>
+                    {committeePackReviewReadyCount}/{committeePackItems.length}
+                  </strong>
+                </div>
+                <div>
+                  <span>签核</span>
+                  <strong>
+                    {committeeSignoffReadyCount}/{committeeSignoffLaneSummaryItems.length}
+                  </strong>
+                </div>
+                <div>
+                  <span>硬阻断</span>
+                  <strong>{committeeWorkQueueBlockCount}</strong>
+                </div>
+                <div>
+                  <span>回执</span>
+                  <strong>{committeePackReceiptReviewCount}</strong>
+                </div>
+              </div>
             </div>
-            <div className="macro-toolkit-detail-density__queue" aria-label="深度证据摘要队列">
-              {deepEvidenceQueueItems.map((item) => (
-                <a key={item.key} href={item.href}>
-                  <span>{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <small>{item.detail}</small>
-                  <em>证据入口</em>
-                </a>
-              ))}
-            </div>
-            <div className="macro-toolkit-detail-density__actions" role="group" aria-label="详情展开密度">
-              <Button
-                size="small"
-                type={detailDensity === "compact" ? "primary" : "default"}
-                onClick={() => setDetailDensity("compact")}
-              >
-                精简
-              </Button>
-              <Button
-                size="small"
-                type={detailDensity === "expanded" ? "primary" : "default"}
-                onClick={() => setDetailDensity("expanded")}
-              >
-                全部展开
-              </Button>
+            <aside className="macro-toolkit-committee-workspace__rail" aria-label="投委会治理侧栏">
+              <span className="macro-toolkit-committee-workspace__section-label">治理侧栏</span>
+              {governanceGatePanel}
+              <div className="macro-toolkit-committee-workspace__evidence-links">
+                <div className="macro-toolkit-committee-workspace__evidence-head">
+                  <span>深度证据入口</span>
+                  <strong>{deepEvidenceQueueItems.length} 个追踪面</strong>
+                </div>
+                <div className="macro-toolkit-committee-workspace__evidence-grid" aria-label="深度证据入口">
+                  {deepEvidenceQueueItems.map((item) => (
+                    <a key={item.key} href={item.href}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <small>{item.detail}</small>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </aside>
+            <div className="macro-toolkit-committee-workspace__main" aria-label="投委会提交主作业区">
+              <span className="macro-toolkit-committee-workspace__section-label">主作业区</span>
+              {operationsConsolePanel}
+              <div className="macro-toolkit-detail-density" data-testid="macro-toolkit-detail-density">
+                <div>
+                  <span>详情默认精简</span>
+                  <strong>{detailDensity === "compact" ? "深度证据仍可展开" : "全部详情已展开"}</strong>
+                </div>
+                <div className="macro-toolkit-detail-density__queue" aria-label="深度证据摘要队列">
+                  {deepEvidenceQueueItems.map((item) => (
+                    <a key={item.key} href={item.href}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                      <small>{item.detail}</small>
+                      <em>证据入口</em>
+                    </a>
+                  ))}
+                </div>
+                <div className="macro-toolkit-detail-density__actions" role="group" aria-label="详情展开密度">
+                  <Button
+                    size="small"
+                    type={detailDensity === "compact" ? "primary" : "default"}
+                    onClick={() => setDetailDensity("compact")}
+                  >
+                    精简
+                  </Button>
+                  <Button
+                    size="small"
+                    type={detailDensity === "expanded" ? "primary" : "default"}
+                    onClick={() => setDetailDensity("expanded")}
+                  >
+                    全部展开
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
           <nav className="macro-toolkit-workflow-map" aria-label="宏观工具细节区导航">
@@ -3193,6 +4700,50 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 showOperations ? "macro-toolkit-analysis-stack__body" : "macro-toolkit-observation-evidence__body"
               }
             >
+          <section
+            className={
+              showOperations
+                ? "macro-toolkit-evidence-review-flow"
+                : "macro-toolkit-observation-evidence__contents"
+            }
+            aria-label={showOperations ? "投委会证据包审阅流" : undefined}
+          >
+            {showOperations ? (
+              <aside className="macro-toolkit-evidence-review-flow__rail" aria-label="投委会证据包审阅摘要">
+                <div className="macro-toolkit-evidence-review-flow__rail-head">
+                  <span>投委会证据包审阅流</span>
+                  <strong>审阅摘要</strong>
+                </div>
+                <div className="macro-toolkit-evidence-review-flow__review-card macro-toolkit-evidence-review-flow__review-card--blocker">
+                  <span>当前阻断</span>
+                  <strong>{committeeDecisionBlocker}</strong>
+                  <small>{committeeRedlineTitle}</small>
+                </div>
+                <div className="macro-toolkit-evidence-review-flow__review-grid">
+                  <div>
+                    <span>责任人</span>
+                    <strong>{committeeDecisionOwner}</strong>
+                  </div>
+                  <div>
+                    <span>证据位置</span>
+                    <strong>{committeeLeadChecklistItem?.condition ?? "数据健康"}</strong>
+                  </div>
+                  <div>
+                    <span>签核动作</span>
+                    <strong>{committeeDecisionAction}</strong>
+                  </div>
+                </div>
+                {renderCommitteeDecisionAction("tile")}
+              </aside>
+            ) : null}
+            <div
+              className={
+                showOperations
+                  ? "macro-toolkit-evidence-review-flow__detail"
+                  : "macro-toolkit-observation-evidence__contents"
+              }
+              aria-label={showOperations ? "投委会证据包详情" : undefined}
+            >
           {showOperations ? (
             <section
               className="macro-toolkit-evidence-book"
@@ -3208,32 +4759,208 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   {repairItemCount ? `${repairItemCount} 项缺口` : "复核就绪"}
                 </Tag>
               </div>
+              <div className="macro-toolkit-evidence-book__submission-summary" aria-label="证据复核总账提交包总览">
+                <div>
+                  <span>提交包可审</span>
+                  <strong>
+                    {committeePackReviewReadyCount}/{committeePackItems.length}
+                  </strong>
+                </div>
+                <div>
+                  <span>签核</span>
+                  <strong>
+                    {committeeSignoffReadyCount}/{committeeSignoffLaneSummaryItems.length}
+                  </strong>
+                </div>
+                <div>
+                  <span>待复核回执</span>
+                  <strong>{committeePackReceiptReviewCount}</strong>
+                </div>
+                <div>
+                  <span>硬阻断</span>
+                  <strong>{committeeWorkQueueBlockCount}</strong>
+                </div>
+              </div>
+              <div
+                className={`macro-toolkit-evidence-book__submission-gate macro-toolkit-evidence-book__submission-gate--${committeeFinalGateTone}`}
+                aria-label="投委会最终提交门禁"
+              >
+                <div className="macro-toolkit-evidence-book__submission-gate-main">
+                  <span>Submission Gate</span>
+                  <strong>投委会最终提交门禁</strong>
+                  <small>{committeeFinalGateOutcome}</small>
+                </div>
+                <div className="macro-toolkit-evidence-book__submission-gate-verdict">
+                  <div>
+                    <span>当前结论</span>
+                    <strong>{committeeFinalSignoffStatus}</strong>
+                  </div>
+                  <div>
+                    <span>首要阻断</span>
+                    <strong>{committeeFinalGateBlockerText}</strong>
+                  </div>
+                  <div>
+                    <span>责任人</span>
+                    <strong>{committeeFinalSignoffOwner}</strong>
+                  </div>
+                  <div>
+                    <span>下一动作</span>
+                    <strong>{committeeDecisionAction}</strong>
+                  </div>
+                </div>
+                <div className="macro-toolkit-evidence-book__submission-gate-metrics">
+                  <span>提交包 {committeeFinalPackValue}</span>
+                  <span>签核 {committeeFinalSignoffValue}</span>
+                  <span>剩余风险 {committeeFinalResidualRiskValue}</span>
+                  <span>待复核回执 {committeeFinalReceiptReviewValue}</span>
+                </div>
+              </div>
+              <div className="macro-toolkit-evidence-book__pack-receipt" aria-label="投委会材料包封面回执">
+                <div className="macro-toolkit-evidence-book__pack-receipt-main">
+                  <span>Pack Receipt</span>
+                  <strong>投委会材料包封面回执</strong>
+                  <small>Evidence Book 同步材料包、回执与签核状态</small>
+                  <div className="macro-toolkit-evidence-book__pack-receipt-actions">
+                    <Button
+                      aria-label="复制材料包摘要"
+                      icon={<CopyOutlined aria-hidden="true" />}
+                      size="small"
+                      type="default"
+                      onClick={() => void copyCommitteePackReceipt()}
+                    >
+                      {committeePackReceiptCopyStatus === "success"
+                        ? "已复制"
+                        : committeePackReceiptCopyStatus === "error"
+                          ? "复制失败"
+                          : "复制材料包摘要"}
+                    </Button>
+                    {committeePackReceiptCopyStatus !== "idle" ? (
+                      <span
+                        aria-atomic="true"
+                        aria-live="polite"
+                        className={`macro-toolkit-evidence-book__pack-receipt-copy-status macro-toolkit-evidence-book__pack-receipt-copy-status--${committeePackReceiptCopyStatus}`}
+                        role="status"
+                      >
+                        {committeePackReceiptCopyStatus === "success"
+                          ? "材料包摘要已复制"
+                          : "复制失败，请手动选择材料包摘要"}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="macro-toolkit-evidence-book__pack-receipt-verdict">
+                  <div>
+                    <span>提交结论</span>
+                    <strong>{committeeFinalSignoffStatus}</strong>
+                  </div>
+                  <div>
+                    <span>首要卡点</span>
+                    <strong>{committeeDecisionBlocker}</strong>
+                  </div>
+                  <div>
+                    <span>责任人</span>
+                    <strong>{committeeFinalSignoffOwner}</strong>
+                  </div>
+                  <div>
+                    <span>下一动作</span>
+                    <strong>{committeeDecisionAction}</strong>
+                  </div>
+                </div>
+                <div className="macro-toolkit-evidence-book__pack-receipt-metrics">
+                  <span>提交包 {committeeFinalPackValue}</span>
+                  <span>签核 {committeeFinalSignoffValue}</span>
+                  <span>剩余风险 {committeeFinalResidualRiskValue}</span>
+                  <span>待复核回执 {committeeFinalReceiptReviewValue}</span>
+                </div>
+                <div className="macro-toolkit-evidence-book__pack-receipt-trace">
+                  <span>证据留痕</span>
+                  <strong>{committeePackReceiptTraceText}</strong>
+                </div>
+              </div>
               <div className="macro-toolkit-evidence-book__grid">
-                {evidenceBookRows.map((row) => (
-                  <a
-                    key={row.key}
-                    className="macro-toolkit-evidence-book__row"
-                    href={row.href}
-                    aria-label={`${row.subject} 证据入口`}
-                    aria-current={selectedEvidenceHref === row.href ? "true" : undefined}
-                    onClick={() => setSelectedEvidenceHref(row.href)}
-                  >
-                    <strong>{row.subject}</strong>
-                    <span>
-                      <small>结论支撑</small>
-                      {row.support}
-                    </span>
-                    <span>
-                      <small>数据缺口</small>
-                      {row.gap}
-                    </span>
-                    <span>
-                      <small>复核角色</small>
-                      {row.owner}
-                    </span>
-                    <em>证据入口</em>
-                  </a>
-                ))}
+                {evidenceBookRows.map((row) => {
+                  const packItem = committeePackItemByKey.get(row.key);
+                  const href = packItem?.receipt?.evidenceHref ?? row.href;
+                  const evidenceLabel = packItem ? committeePackEvidenceEntryLabel(packItem) : "证据入口";
+                  const rowAction = packItem ? evidenceBookRowAction(packItem) : null;
+                  const isCurrent = selectedEvidenceHref === href || (!packItem?.receipt && selectedEvidenceHref === row.href);
+                  return (
+                    <div
+                      key={row.key}
+                      className="macro-toolkit-evidence-book__row"
+                      role="group"
+                      aria-label={`${row.subject}证据处理闭环`}
+                      aria-current={isCurrent ? "true" : undefined}
+                    >
+                      <a
+                        className="macro-toolkit-evidence-book__evidence-link"
+                        href={href}
+                        aria-label={`${row.subject} ${evidenceLabel}`}
+                        aria-current={isCurrent ? "true" : undefined}
+                        onClick={() => {
+                          if (href === "#macro-toolkit-data-health-detail") {
+                            focusDataHealthRepair();
+                            return;
+                          }
+                          setSelectedEvidenceHref(href);
+                          setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(href));
+                        }}
+                      >
+                        <strong>{row.subject}</strong>
+                        <span>
+                          <small>结论支撑</small>
+                          {row.support}
+                        </span>
+                        <span>
+                          <small>数据缺口</small>
+                          {row.gap}
+                        </span>
+                        <span className="macro-toolkit-evidence-book__delivery">
+                          <small>交付状态</small>
+                          <b>{packItem ? committeeEvidenceBookDeliveryStatus(packItem) : "待确认"}</b>
+                          <i>
+                            提交影响：{packItem ? committeePackSubmissionImpact(packItem) : "待确认"} · 回执状态：
+                            {packItem ? committeePackReceiptStatus(packItem) : "等待回执"}
+                          </i>
+                        </span>
+                        <span>
+                          <small>复核角色 / 责任人</small>
+                          {row.owner}
+                        </span>
+                      </a>
+                      <span className="macro-toolkit-evidence-book__action">
+                        {rowAction?.kind === "button" ? (
+                          <button
+                            type="button"
+                            disabled={rowAction.disabled || rowAction.busy}
+                            aria-label={rowAction.label}
+                            onClick={rowAction.onClick}
+                          >
+                            <strong>{rowAction.label}</strong>
+                            <small>{rowAction.status}</small>
+                          </button>
+                        ) : (
+                          <a
+                            href={rowAction?.href ?? href}
+                            aria-label={rowAction?.label ?? evidenceLabel}
+                            onClick={() => {
+                              const actionHref = rowAction?.href ?? href;
+                              if (actionHref === "#macro-toolkit-data-health-detail") {
+                                focusDataHealthRepair();
+                                return;
+                              }
+                              setSelectedEvidenceHref(actionHref);
+                              setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(actionHref));
+                            }}
+                          >
+                            <strong>{rowAction?.label ?? evidenceLabel}</strong>
+                            <small>{rowAction?.status ?? "证据留痕"}</small>
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           ) : null}
@@ -3241,10 +4968,10 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             {showOperations ? (
               <>
                 <span title={`读取口径：${analysisMeta?.basis ?? "-"}`}>
-                  <DatabaseOutlined /> {analysisMeta?.basis ?? "-"}
+                  <DatabaseOutlined /> {formatAnalysisBasisLabel(analysisMeta?.basis)}
                 </span>
                 <span title={`质量：${analysisMeta?.quality_flag ?? "-"}`}>
-                  <SafetyCertificateOutlined /> {analysisMeta?.quality_flag ?? "-"}
+                  <SafetyCertificateOutlined /> {formatQualityFlagLabel(analysisMeta?.quality_flag)}
                 </span>
                 <span title={`建议：${analysis.conclusion.recommended_action}`}>
                   <ThunderboltOutlined /> {compactText(analysis.conclusion.recommended_action, 24)}
@@ -3271,7 +4998,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               runtimeSections.map((section) => (
                 <span key={section.key}>
                   <ClockCircleOutlined />
-                  {section.label} · <Tag color={statusColor(section.status)}>{statusLabel(section.status)}</Tag>
+                  {formatObservationDeferredSectionLabel(section.label ?? section.key)} ·{" "}
+                  <Tag color={statusColor(section.status)}>{statusLabel(section.status)}</Tag>
                 </span>
               ))
             ) : (
@@ -3313,9 +5041,19 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 <MacroToolkitDataHealthPanel
                   dataHealth={analysis.data_health}
                   showActions={showOperations}
+                  focusedRepairKey={focusedRepairKey}
+                  dataHealthReceipt={completedDataHealthReceipt}
+                  dataHealthReceiptConfirmed={
+                    completedDataHealthReceipt ? confirmedReceiptIds.has(completedDataHealthReceipt.id) : false
+                  }
                   onRepairAction={(item) => {
+                    setFocusedRepairKey(repairItemFocusKey(item));
                     if (item.action?.kind === "source_backfill_required") {
                       void refreshMacroSourceBackfill(item);
+                      return;
+                    }
+                    if (item.action?.kind === "load_full_analysis") {
+                      void reviewFullAnalysisRepair(item);
                       return;
                     }
                     void loadFullAnalysis({ force: item.scope === "full" });
@@ -3366,6 +5104,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           </div>
             </div>
           </section>
+            </div>
+          </section>
 
           {showOperations ? (
             <>
@@ -3403,6 +5143,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           />
           {capabilityItems.length ? (
             <Table
+              className="macro-toolkit-table--wide"
               rowKey="key"
               size="small"
               columns={capabilityColumns}
@@ -3425,7 +5166,39 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       ) : null}
 
       {showOperations ? (
-        <>
+        <section className="macro-toolkit-execution-receipt-workspace" aria-label="执行证据与产物回执区">
+          <div className="macro-toolkit-execution-receipt-workspace__head">
+            <div>
+              <span>执行证据与产物回执区</span>
+              <strong>执行证据</strong>
+              <small>把可执行脚本、席位和商品刷新先归入证据，再用产物与数据源命中形成回执。</small>
+            </div>
+            <div className="macro-toolkit-execution-receipt-workspace__status" aria-label="执行证据与产物状态">
+              <div>
+                <span>脚本就绪</span>
+                <strong>
+                  {availableScriptCount}/{scripts.length}
+                </strong>
+              </div>
+              <div>
+                <span>输出文件</span>
+                <strong>{payload?.output_files.length ?? 0}</strong>
+              </div>
+              <div>
+                <span>源别名</span>
+                <strong>
+                  {sourceHitCount}/{sourceChecks.length}
+                </strong>
+              </div>
+              <div>
+                <span>回执</span>
+                <strong>{actionReceipts.length}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="macro-toolkit-execution-receipt-workspace__execution" aria-label="执行证据详情">
+            <span className="macro-toolkit-execution-receipt-workspace__section-label">执行证据</span>
           <section
             id="macro-toolkit-tool-execution-detail"
             data-testid="macro-toolkit-tool-execution-detail"
@@ -3439,8 +5212,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             <div className="macro-toolkit-section-headline">
               <PageSectionLead
                 eyebrow="toolkit"
-                title="工具执行总览"
-                description="首屏给快捷操作；这里核对注册表、数据源、源别名和产物数量。"
+                title="执行闭环总览"
+                description="把脚本状态、数据证据和产物回执合并成投委会可复核的执行闭环。"
               />
               <Button
                 icon={<ReloadOutlined />}
@@ -3462,19 +5235,20 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
               <MetricTile
                 label="脚本就绪"
                 value={`${availableScriptCount}/${scripts.length}`}
-                detail="已进入宏观模块注册表"
+                detail="可执行能力已归入执行证据"
                 tone={availableScriptCount === scripts.length ? "positive" : "neutral"}
               />
               <MetricTile
-                label="默认数据源"
-                value={(payload?.default_data_sources ?? []).join(" + ") || "无"}
-                detail="与系统口径保持一致"
+                label="业务证据"
+                value={executionBusinessEvidence}
+                detail="底层源名留在审计明细"
+                detailMaxLength={38}
               />
-              <MetricTile label="输出文件" value={payload?.output_files.length ?? 0} detail={outputDetail} />
+              <MetricTile label="产物回执" value={payload?.output_files.length ?? 0} detail={outputReceiptDetail} />
               <MetricTile
-                label="源别名命中"
+                label="来源映射"
                 value={`${sourceHitCount}/${sourceChecks.length}`}
-                detail="旧代码别名到当前数据面的映射"
+                detail="旧别名已映射到当前业务证据"
               />
             </div>
           </section>
@@ -3483,9 +5257,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
 
           {payload ? (
             <DataStatusStrip className="macro-toolkit-status-strip">
-              <span>读取口径：{scriptsQuery.data?.result_meta.basis}</span>
-              <span>表：{scriptsQuery.data?.result_meta.tables_used?.join(" / ")}</span>
-              <span>质量：{scriptsQuery.data?.result_meta.quality_flag}</span>
+              <span>证据口径：{formatBusinessEvidenceLabel(scriptsQuery.data?.result_meta.basis)}</span>
+              <span>业务证据：{executionBusinessEvidence}</span>
+              <span>质量状态：{formatQualityFlagLabel(scriptsQuery.data?.result_meta.quality_flag)}</span>
             </DataStatusStrip>
           ) : null}
 
@@ -3534,6 +5308,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 <Button
                   icon={<ReloadOutlined />}
                   loading={isRefreshingCffex}
+                  disabled={isOperationActionBusy && !isRefreshingCffex}
                   onClick={() => void refreshCffexMemberRank()}
                 >
                   刷新席位明细
@@ -3573,6 +5348,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                   label="商品权限"
                   value={choiceStockPermissionValue(commodityPermission)}
                   detail={commodityFuturesPermissionDetail(commodityPermission)}
+                  detailTitle={choiceStockPermissionDetail(commodityPermission, "macro_toolkit.commodity_futures")}
                   tone={shouldShowCommodityPermissionNotice ? "missing" : "neutral"}
                 />
                 <MetricTile
@@ -3605,8 +5381,8 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 />
                 <MetricTile
                   icon={<SafetyCertificateOutlined />}
-                  label="目标表"
-                  value="fact_commodity_futures_daily"
+                  label="证据归属"
+                  value="商品期货证据"
                   detail="刷新后重新读取完整分析证据"
                 />
               </div>
@@ -3658,7 +5434,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 <Button
                   icon={<InfoCircleOutlined />}
                   loading={isRefreshingCommodity}
-                  disabled={commodityRefreshDisabled}
+                  disabled={commodityRefreshDisabled || (isOperationActionBusy && !isRefreshingCommodity)}
                   onClick={() => void refreshCommodityFutures({ dryRun: true })}
                 >
                   预估明细刷新
@@ -3666,7 +5442,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                 <Button
                   icon={<ReloadOutlined />}
                   loading={isRefreshingCommodity}
-                  disabled={commodityRefreshDisabled}
+                  disabled={commodityRefreshDisabled || (isOperationActionBusy && !isRefreshingCommodity)}
                   aria-label={commodityRefreshActionLabel}
                   onClick={() => void refreshCommodityFutures({ dryRun: false })}
                 >
@@ -3702,135 +5478,188 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
             </div>
           </section>
 
-          <section
-            id="macro-toolkit-script-artifact-detail"
-            data-testid="macro-toolkit-script-artifact-detail"
-            className={`macro-toolkit-section ${
-              selectedGovernanceFocus === "artifacts" ||
-              selectedEvidenceHref === "#macro-toolkit-script-artifact-detail"
-                ? "macro-toolkit-section--audit-focus"
-                : ""
-            }`}
-          >
-            <PageSectionLead
-              eyebrow="outputs"
-              title="脚本产物"
-              description="运行脚本后自动刷新这里，便于确认 CSV、图片或报告是否生成。"
-            />
-            {payload?.output_files.length ? (
-              <Table
-                rowKey="path"
-                size="small"
-                columns={outputColumns}
-                dataSource={payload.output_files}
-                pagination={false}
-              />
-            ) : (
-              <div className="macro-toolkit-empty-output">尚未发现输出文件。</div>
-            )}
-          </section>
+          </div>
 
-          <section className="macro-toolkit-section">
-            <PageSectionLead
-              eyebrow="source"
-              title="系统数据源命中"
-              description="这些旧代码别名已经映射到当前系统的 Choice/Tushare 数据面。"
-            />
-            <div className="macro-toolkit-source-grid">
-              {sourceChecks.map((check) => (
-                <div className="macro-toolkit-source-item" key={check.alias}>
-                  <span>{check.alias}</span>
-                  <strong>{check.row_count}</strong>
-                  <small>{formatSourceCheck(check)}</small>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {omittedEntries.length ? (
-            <section className="macro-toolkit-section">
-              <PageSectionLead
-                eyebrow="omitted"
-                title="未纳入脚本"
-                description="这些源文件保留为迁移证据，但暂不作为可执行宏观工作流。"
-              />
-              <div className="macro-toolkit-omitted-list">
-                {omittedEntries.map(([filename, reason]) => (
-                  <div className="macro-toolkit-omitted-item" key={filename}>
-                    <span>{filename}</span>
-                    <small>{reason}</small>
+          <aside className="macro-toolkit-execution-receipt-workspace__receipt" aria-label="产物回执详情">
+            <span className="macro-toolkit-execution-receipt-workspace__section-label">产物回执</span>
+            {committeeDeliveryChain}
+            <section className="macro-toolkit-receipt-workpaper" aria-label="产物审计底稿">
+              <div className="macro-toolkit-receipt-workpaper__head">
+                <span>产物审计底稿</span>
+                <strong>回执先审，明细后查</strong>
+                <small>脚本、文件和日志保留在下方明细；投委会先看归档、来源、执行和留痕。</small>
+              </div>
+              <div className="macro-toolkit-receipt-workpaper__grid">
+                {receiptWorkpaperItems.map((item) => (
+                  <div className="macro-toolkit-receipt-workpaper__item" key={item.key}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                    <small>{item.detail}</small>
                   </div>
                 ))}
               </div>
             </section>
-          ) : null}
-
-          <section className="macro-toolkit-section">
-            <PageSectionLead
-              eyebrow="scripts"
-              title="脚本注册表"
-              description="脚本从原 macro_toolkit 聚合到后端宏观模块，前端通过注册表展示。"
-            />
-            <div className="macro-toolkit-toolbar">
-              <Select
-                value={selectedGroup}
-                options={groupOptions}
-                onChange={(value) => {
-                  setSelectedGroup(value);
-                  setSelectedName(null);
-                }}
-              />
-              <Button
-                type="primary"
-                icon={<PlayCircleOutlined />}
-                disabled={!selectedScript}
-                loading={isRunning}
-                onClick={() => void runSelectedScript()}
-              >
-                运行选中脚本
-              </Button>
-            </div>
-            <Table
-              rowKey="name"
-              size="small"
-              columns={scriptColumns}
-              dataSource={filteredScripts}
-              pagination={{ pageSize: 8, showSizeChanger: false }}
-              rowClassName={(script) =>
-                script.name === selectedScript?.name ? "macro-toolkit-row--selected" : ""
-              }
-              onRow={(script) => ({
-                onClick: () => setSelectedName(script.name),
-              })}
-            />
-          </section>
-
-          <section className="macro-toolkit-section">
-            <PageSectionLead
-              eyebrow="run"
-              title="运行结果"
-              description={selectedScript ? selectedScript.name : "暂无选中脚本"}
-            />
-            <div className="macro-toolkit-run-panel">
-              <div className="macro-toolkit-run-title">
-                <ToolOutlined />
-                <span>{selectedScript?.filename ?? "未选择"}</span>
+            <section
+              className={`macro-toolkit-receipt-technical-details ${
+                receiptTechnicalDetailsExpanded
+                  ? "macro-toolkit-receipt-technical-details--expanded"
+                  : "macro-toolkit-receipt-technical-details--collapsed"
+              }`}
+              aria-label="底稿技术明细"
+            >
+              <div className="macro-toolkit-receipt-technical-details__head">
+                <div>
+                  <span>底稿技术明细</span>
+                  <strong>脚本、来源、注册表和日志</strong>
+                  <small>{receiptTechnicalDetailsExpanded ? "已展开" : "默认收起"} · 审计追溯保留在这里</small>
+                </div>
+                <Button
+                  size="small"
+                  icon={receiptTechnicalDetailsExpanded ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  aria-label={receiptTechnicalDetailsExpanded ? "收起明细" : "展开明细"}
+                  aria-expanded={receiptTechnicalDetailsExpanded}
+                  onClick={() => setReceiptTechnicalDetailsExpanded((expanded) => !expanded)}
+                >
+                  {receiptTechnicalDetailsExpanded ? "收起明细" : "展开明细"}
+                </Button>
               </div>
-              {runError ? <Alert type="error" showIcon message={runError} /> : null}
-              {runResult ? (
-                <Alert
-                  type={statusTone(runResult.status)}
-                  showIcon
-                  message={`状态：${runResult.status}`}
-                  description={`退出码：${runResult.exit_code ?? "无"} · 输出文件：${runResult.output_files.length}`}
-                />
-              ) : null}
-              <pre className="macro-toolkit-console">
-                {runResult?.stdout || runResult?.stderr || "尚未运行。"}
-              </pre>
-            </div>
-          </section>
-        </>
+              <div className="macro-toolkit-receipt-technical-details__body">
+                <section
+                  id="macro-toolkit-script-artifact-detail"
+                  data-testid="macro-toolkit-script-artifact-detail"
+                  className={`macro-toolkit-section ${
+                    selectedGovernanceFocus === "artifacts" ||
+                    selectedEvidenceHref === "#macro-toolkit-script-artifact-detail"
+                      ? "macro-toolkit-section--audit-focus"
+                      : ""
+                  }`}
+                >
+                  <PageSectionLead
+                    eyebrow="outputs"
+                    title="脚本产物"
+                    description="运行脚本后自动刷新这里，便于确认 CSV、图片或报告是否生成。"
+                  />
+                  {payload?.output_files.length ? (
+                    <Table
+                      className="macro-toolkit-table--receipt"
+                      rowKey="path"
+                      size="small"
+                      columns={outputColumns}
+                      dataSource={payload.output_files}
+                      pagination={false}
+                      scroll={{ x: 640 }}
+                    />
+                  ) : (
+                    <div className="macro-toolkit-empty-output">尚未发现输出文件。</div>
+                  )}
+                </section>
+
+                <section className="macro-toolkit-section">
+                  <PageSectionLead
+                    eyebrow="source"
+                    title="系统数据源命中"
+                    description="这些旧代码别名已经映射到当前系统的 Choice/Tushare 数据面。"
+                  />
+                  <div className="macro-toolkit-source-grid">
+                    {sourceChecks.map((check) => (
+                      <div className="macro-toolkit-source-item" key={check.alias}>
+                        <span>{check.alias}</span>
+                        <strong>{check.row_count}</strong>
+                        <small>{formatSourceCheck(check)}</small>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {omittedEntries.length ? (
+                  <section className="macro-toolkit-section">
+                    <PageSectionLead
+                      eyebrow="omitted"
+                      title="未纳入脚本"
+                      description="这些源文件保留为迁移证据，但暂不作为可执行宏观工作流。"
+                    />
+                    <div className="macro-toolkit-omitted-list">
+                      {omittedEntries.map(([filename, reason]) => (
+                        <div className="macro-toolkit-omitted-item" key={filename}>
+                          <span>{filename}</span>
+                          <small>{reason}</small>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                <section className="macro-toolkit-section">
+                  <PageSectionLead
+                    eyebrow="scripts"
+                    title="脚本注册表"
+                    description="脚本从原 macro_toolkit 聚合到后端宏观模块，前端通过注册表展示。"
+                  />
+                  <div className="macro-toolkit-toolbar">
+                    <Select
+                      value={selectedGroup}
+                      options={groupOptions}
+                      onChange={(value) => {
+                        setSelectedGroup(value);
+                        setSelectedName(null);
+                      }}
+                    />
+                    <Button
+                      type="primary"
+                      icon={<PlayCircleOutlined />}
+                      disabled={!selectedScript || (isOperationActionBusy && !isRunning)}
+                      loading={isRunning}
+                      onClick={() => void runSelectedScript()}
+                    >
+                      运行选中脚本
+                    </Button>
+                  </div>
+                  <Table
+                    className="macro-toolkit-table--receipt"
+                    rowKey="name"
+                    size="small"
+                    columns={scriptColumns}
+                    dataSource={filteredScripts}
+                    pagination={{ pageSize: 8, showSizeChanger: false }}
+                    scroll={{ x: 640 }}
+                    rowClassName={(script) =>
+                      script.name === selectedScript?.name ? "macro-toolkit-row--selected" : ""
+                    }
+                    onRow={(script) => ({
+                      onClick: () => setSelectedName(script.name),
+                    })}
+                  />
+                </section>
+
+                <section className="macro-toolkit-section">
+                  <PageSectionLead
+                    eyebrow="run"
+                    title="运行结果"
+                    description={selectedScript ? selectedScript.name : "暂无选中脚本"}
+                  />
+                  <div className="macro-toolkit-run-panel">
+                    <div className="macro-toolkit-run-title">
+                      <ToolOutlined />
+                      <span>{selectedScript?.filename ?? "未选择"}</span>
+                    </div>
+                    {runError ? <Alert type="error" showIcon message={runError} /> : null}
+                    {runResult ? (
+                      <Alert
+                        type={statusTone(runResult.status)}
+                        showIcon
+                        message={`状态：${runResult.status}`}
+                        description={`退出码：${runResult.exit_code ?? "无"} · 输出文件：${runResult.output_files.length}`}
+                      />
+                    ) : null}
+                    <pre className="macro-toolkit-console">
+                      {runResult?.stdout || runResult?.stderr || "尚未运行。"}
+                    </pre>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </aside>
+        </section>
       ) : null}
     </div>
   );
@@ -4613,6 +6442,7 @@ function CommodityRefreshResultPanel({ refresh }: { refresh: MacroToolkitCommodi
       </div>
       {summary ? <CommodityRefreshSummaryStrip summary={summary} isDryRun={isDryRun} /> : null}
       <Table
+        className="macro-toolkit-table--wide"
         rowKey="key"
         size="small"
         columns={columns}
@@ -5263,11 +7093,13 @@ function CommitteeWorkQueue({
   receiptCount,
   latestReceipt,
   receipts,
+  confirmedReceiptIds,
   gateStatus,
   selectedEvidenceHref,
   selectedExecutionHref,
   onSelectEvidence,
   onSelectExecution,
+  onConfirmReceipt,
 }: {
   items: MacroToolkitCommitteeWorkQueueItem[];
   checklistItems: MacroToolkitCommitteeChecklistItem[];
@@ -5276,17 +7108,19 @@ function CommitteeWorkQueue({
   receiptCount: number;
   latestReceipt: MacroToolkitActionReceipt | null;
   receipts: MacroToolkitActionReceipt[];
+  confirmedReceiptIds: Set<string>;
   gateStatus: string;
   selectedEvidenceHref: string | null;
   selectedExecutionHref: string | null;
   onSelectEvidence: (href: string, governanceFocus: MacroToolkitGovernanceFocusKey) => void;
   onSelectExecution: (href: string, governanceFocus: MacroToolkitGovernanceFocusKey) => void;
+  onConfirmReceipt: (receiptId: string) => void;
 }) {
   const gateTone = blockerCount > 0 ? "block" : pendingCount > 0 ? "pending" : "pass";
   const leadItem = items.find((item) => item.status === "block") ?? items[0] ?? null;
   const workQueueSla = blockerCount > 0 ? "T+0 盘前" : pendingCount > 0 ? "T+0 收盘前" : "持续留痕";
   const receiptRequirement = latestReceipt ? `${latestReceipt.evidenceEntry} 已留痕` : "完成回执 + 证据留痕";
-  const signoffItems = committeeSignoffLaneItems(items, receipts);
+  const signoffItems = committeeSignoffLaneItems(items, receipts, confirmedReceiptIds);
   const reviewedItemCount = items.filter((item) => latestCompletedReceiptForQueueItem(receipts, item)).length;
   const matrixItems = checklistItems.map((item) => ({
     ...item,
@@ -5409,7 +7243,10 @@ function CommitteeWorkQueue({
       <div className="macro-toolkit-committee-work-queue__signoff" aria-label="投委会签核轨道">
         <div className="macro-toolkit-committee-work-queue__signoff-head">
           <span>签核轨道</span>
-          <strong>{signoffItems.filter((item) => item.status === "approved").length}/{signoffItems.length}</strong>
+          <strong>
+            {signoffItems.filter((item) => item.status === "approved" || item.status === "reviewed").length}/
+            {signoffItems.length}
+          </strong>
         </div>
         <div className="macro-toolkit-committee-work-queue__signoff-grid">
           {signoffItems.map((item) => (
@@ -5430,16 +7267,31 @@ function CommitteeWorkQueue({
             <span>问题/条件</span>
             <span>提交判断</span>
             <span>下一步动作</span>
-            <span>责任/回执</span>
-            <span>证据入口</span>
+            <span>责任人</span>
+            <span>SLA</span>
+            <span>回执状态</span>
+            <span>签核动作</span>
           </div>
           {items.map((item) => {
             const evidenceFocus = governanceFocusFromEvidenceHref(item.href);
             const executionFocus = governanceFocusFromEvidenceHref(item.executionHref);
             const itemReceipt = latestCompletedReceiptForQueueItem(receipts, item);
+            const isReceiptConfirmed = itemReceipt ? confirmedReceiptIds.has(itemReceipt.id) : false;
+            const itemSla = item.status === "block" ? "T+0 盘前" : "T+0 收盘前";
+            const receiptState = itemReceipt
+              ? `${isReceiptConfirmed ? "签核已确认" : "回执闭环"} · ${itemReceipt.evidenceEntry}`
+              : "待执行留痕";
+            const signoffAction = itemReceipt
+              ? isReceiptConfirmed
+                ? "查看签核证据"
+                : "复核签核"
+              : item.status === "block"
+                ? "先执行"
+                : "补证据";
             return (
               <div
                 key={item.key}
+                aria-label={`投委会提交链路-${item.condition}`}
                 className={`macro-toolkit-committee-work-queue__todo macro-toolkit-committee-work-queue__todo--${item.status}${
                   itemReceipt ? " macro-toolkit-committee-work-queue__todo--reviewed" : ""
                 }`}
@@ -5454,26 +7306,42 @@ function CommitteeWorkQueue({
                   <strong>{item.condition}</strong>
                   <small>{item.statusLabel}</small>
                   <em>{item.action}</em>
-                  <small>{itemReceipt ? `回执闭环 · ${itemReceipt.evidenceEntry}` : item.owner}</small>
+                  <small>{item.owner}</small>
+                  <small>{itemSla}</small>
+                  <small>{receiptState}</small>
                 </a>
-                <a
-                  className="macro-toolkit-committee-work-queue__execution"
-                  href={itemReceipt?.evidenceHref ?? item.executionHref}
-                  aria-current={
-                    selectedExecutionHref === item.executionHref ||
-                    selectedEvidenceHref === itemReceipt?.evidenceHref
-                      ? "true"
-                      : undefined
-                  }
-                  onClick={() =>
-                    itemReceipt
-                      ? onSelectEvidence(itemReceipt.evidenceHref, governanceFocusFromEvidenceHref(itemReceipt.evidenceHref))
-                      : onSelectExecution(item.executionHref, executionFocus)
-                  }
-                >
-                  <span>{itemReceipt?.evidenceEntry ?? item.condition}</span>
-                  <strong>{itemReceipt ? "回执待复核" : "执行入口"}</strong>
-                </a>
+                {itemReceipt && !isReceiptConfirmed ? (
+                  <button
+                    type="button"
+                    className="macro-toolkit-committee-work-queue__execution"
+                    aria-label={`复核签核-${item.condition}`}
+                    onClick={() => onConfirmReceipt(itemReceipt.id)}
+                  >
+                    <span>{itemReceipt.evidenceEntry}</span>
+                    <strong>回执待复核</strong>
+                    <small>{signoffAction}</small>
+                  </button>
+                ) : (
+                  <a
+                    className="macro-toolkit-committee-work-queue__execution"
+                    href={itemReceipt?.evidenceHref ?? item.executionHref}
+                    aria-current={
+                      selectedExecutionHref === item.executionHref ||
+                      selectedEvidenceHref === itemReceipt?.evidenceHref
+                        ? "true"
+                        : undefined
+                    }
+                    onClick={() =>
+                      itemReceipt
+                        ? onSelectEvidence(itemReceipt.evidenceHref, governanceFocusFromEvidenceHref(itemReceipt.evidenceHref))
+                        : onSelectExecution(item.executionHref, executionFocus)
+                    }
+                  >
+                    <span>{itemReceipt?.evidenceEntry ?? item.condition}</span>
+                    <strong>{isReceiptConfirmed ? "已签核" : "执行入口"}</strong>
+                    <small>{signoffAction}</small>
+                  </a>
+                )}
               </div>
             );
           })}
@@ -5736,6 +7604,9 @@ function MacroToolkitDataHealthPanel({
   onRepairAction,
   repairActionLoading = false,
   refreshingSourceAlias = null,
+  focusedRepairKey = null,
+  dataHealthReceipt = null,
+  dataHealthReceiptConfirmed = false,
 }: {
   dataHealth: MacroToolkitDataHealth;
   showActions?: boolean;
@@ -5743,17 +7614,21 @@ function MacroToolkitDataHealthPanel({
   onRepairAction?: (item: MacroToolkitRepairItem) => void;
   repairActionLoading?: boolean;
   refreshingSourceAlias?: string | null;
+  focusedRepairKey?: string | null;
+  dataHealthReceipt?: MacroToolkitActionReceipt | null;
+  dataHealthReceiptConfirmed?: boolean;
 }) {
   const missingAliases = dataHealth.source_coverage.missing_aliases;
   const missingIndicators = dataHealth.indicator_coverage.missing;
   const repairItems = dataHealth.repair_items ?? [];
   const visibleRepairItems = repairItems.slice(0, 6);
   const hiddenRepairItemCount = repairItems.length - visibleRepairItems.length;
+  const focusedRepairItem = focusedRepairKey
+    ? (repairItems.find((item) => repairItemFocusKey(item) === focusedRepairKey) ?? null)
+    : null;
   const observationRepairSummary = plainLanguage ? formatObservationRepairSummary(repairItems) : null;
   const deferredText = dataHealth.deferred_sections.length
-    ? plainLanguage
-      ? `延后加载：${dataHealth.deferred_sections.map(formatObservationDeferredSectionLabel).join(" / ")}`
-      : `延后加载：${dataHealth.deferred_sections.join(" / ")}`
+    ? `延后加载：${dataHealth.deferred_sections.map(formatObservationDeferredSectionLabel).join(" / ")}`
     : "完整结果已加载";
   return (
     <section className="macro-toolkit-data-health" aria-label="数据健康总览">
@@ -5833,12 +7708,26 @@ function MacroToolkitDataHealthPanel({
               <strong>{observationRepairSummary}</strong>
             </div>
           ) : null}
+          {focusedRepairItem ? (
+            <MacroToolkitRepairTicket
+              item={focusedRepairItem}
+              receipt={dataHealthReceipt}
+              receiptConfirmed={dataHealthReceiptConfirmed}
+            />
+          ) : null}
           <div className="macro-toolkit-data-health__repair-list">
-            {visibleRepairItems.map((item) => (
-              <div
-                className={`macro-toolkit-data-health__repair macro-toolkit-data-health__repair--${item.priority ?? "medium"}`}
-                key={item.key ?? `${item.type}-${item.label}-${item.suggested_action}`}
-              >
+            {visibleRepairItems.map((item) => {
+              const itemFocusKey = repairItemFocusKey(item);
+              const isFocusedRepair = focusedRepairKey === itemFocusKey;
+              return (
+                <div
+                  className={`macro-toolkit-data-health__repair macro-toolkit-data-health__repair--${item.priority ?? "medium"}${
+                    isFocusedRepair ? " macro-toolkit-data-health__repair--focused" : ""
+                  }`}
+                  key={item.key ?? `${item.type}-${item.label}-${item.suggested_action}`}
+                  aria-label={`${isFocusedRepair ? "当前处理数据项" : "待处理数据项"}-${itemFocusKey}`}
+                  aria-current={isFocusedRepair ? "true" : undefined}
+                >
                 <div className="macro-toolkit-data-health__repair-main">
                   <span>
                     <Tag color={repairPriorityColor(item.priority)}>{repairPriorityLabel(item.priority)}</Tag>
@@ -5890,8 +7779,9 @@ function MacroToolkitDataHealthPanel({
                     )}
                   </div>
                 ) : null}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
           {hiddenRepairItemCount > 0 ? (
             <small className="macro-toolkit-data-health__repair-overflow">
@@ -5901,6 +7791,61 @@ function MacroToolkitDataHealthPanel({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function MacroToolkitRepairTicket({
+  item,
+  receipt = null,
+  receiptConfirmed = false,
+}: {
+  item: MacroToolkitRepairItem;
+  receipt?: MacroToolkitActionReceipt | null;
+  receiptConfirmed?: boolean;
+}) {
+  const itemFocusKey = repairItemFocusKey(item);
+  const ticketAction = (item.action?.label ?? formatDataHealthRepairAction(item, false));
+  const nextStep = ticketAction || "复核数据缺口";
+  const receiptStatus = repairTicketReceiptStatus(receipt, receiptConfirmed);
+  return (
+    <div className="macro-toolkit-data-health__repair-ticket" aria-label={`当前处理单-${itemFocusKey}`}>
+      <div className="macro-toolkit-data-health__repair-ticket-head">
+        <span>当前处理单</span>
+        <strong>{formatDataHealthRepairLabel(item, false)}</strong>
+      </div>
+      <div className="macro-toolkit-data-health__repair-ticket-grid">
+        <div>
+          <span>责任人</span>
+          <strong>{repairTicketOwner(item)}</strong>
+        </div>
+        <div>
+          <span>SLA</span>
+          <strong>{repairTicketSla(item)}</strong>
+        </div>
+        <div>
+          <span>预期回执</span>
+          <strong>{repairTicketReceipt(item)}</strong>
+        </div>
+        <div>
+          <span>提交影响</span>
+          <strong>{repairTicketSubmissionImpact(item)}</strong>
+        </div>
+        <div>
+          <span>回执状态</span>
+          <strong>{receiptStatus}</strong>
+        </div>
+        <div>
+          <span>回执证据</span>
+          <strong>{receipt?.evidenceEntry ?? "等待执行"}</strong>
+        </div>
+      </div>
+      {receipt && receiptConfirmed ? (
+        <a className="macro-toolkit-data-health__repair-ticket-evidence" href={receipt.evidenceHref}>
+          查看签核证据
+        </a>
+      ) : null}
+      <small title={formatDataHealthRepairAction(item, false)}>{compactText(nextStep, 88)}</small>
+    </div>
   );
 }
 
@@ -5969,21 +7914,64 @@ function formatObservationDeferredSectionLabel(value: string | null | undefined)
 }
 
 function formatDataHealthRepairLabel(item: MacroToolkitRepairItem, plainLanguage: boolean) {
-  if (!plainLanguage) {
-    return item.label ?? item.alias ?? item.key ?? "未命名数据项";
-  }
   if (item.type === "deferred") {
     return formatObservationDeferredSectionLabel(item.label ?? item.key);
+  }
+  if (!plainLanguage) {
+    return item.label ?? item.alias ?? item.key ?? "未命名数据项";
   }
   return item.label ?? item.alias ?? item.key ?? "未命名数据项";
 }
 
 function formatDataHealthRepairAction(item: MacroToolkitRepairItem, plainLanguage: boolean) {
   const action = item.suggested_action ?? "";
-  if (!plainLanguage || item.type !== "deferred") {
-    return action;
+  return item.type === "deferred" || plainLanguage
+    ? "打开完整分析后确认这部分证据，不把首屏延后加载当作缺失。"
+    : action;
+}
+
+function repairTicketOwner(item: MacroToolkitRepairItem) {
+  if (item.action?.kind === "load_full_analysis" || item.type === "deferred" || item.type === "degraded") {
+    return "宏观策略负责人";
   }
-  return "打开完整分析后确认这部分证据，不把首屏延后加载当作缺失。";
+  return "数据运营负责人";
+}
+
+function repairTicketSla(item: MacroToolkitRepairItem) {
+  if (item.priority === "high" || canRefreshMacroSourceBackfill(item)) {
+    return "T+0 盘前";
+  }
+  if (item.type === "deferred" || item.action?.kind === "load_full_analysis") {
+    return "完整分析前";
+  }
+  return "T+1 盘前";
+}
+
+function repairTicketReceipt(item: MacroToolkitRepairItem) {
+  if (canRefreshMacroSourceBackfill(item)) {
+    return "来源补齐回执";
+  }
+  if (item.action?.kind === "load_full_analysis") {
+    return "完整分析回执";
+  }
+  return "人工复核记录";
+}
+
+function repairTicketSubmissionImpact(item: MacroToolkitRepairItem) {
+  if (item.priority === "high" || item.type === "missing") {
+    return "暂缓提交";
+  }
+  if (item.type === "deferred") {
+    return "等待完整分析";
+  }
+  return "待复核后提交";
+}
+
+function repairTicketReceiptStatus(receipt: MacroToolkitActionReceipt | null, receiptConfirmed: boolean) {
+  if (!receipt) {
+    return "待执行留痕";
+  }
+  return receiptConfirmed ? "签核已确认" : "回执待复核";
 }
 
 function formatObservationRepairTraceItem(item: MacroToolkitRepairItem) {
@@ -6052,7 +8040,7 @@ function formatCommitteeReadinessBlocker(item: MacroToolkitRepairItem | null, to
   if (!item) {
     return totalCount ? `共 ${totalCount} 项数据缺口` : "无关键卡点";
   }
-  const label = item.label ?? item.alias ?? item.key ?? "未命名数据项";
+  const label = formatDataHealthRepairLabel(item, true);
   const alias = item.alias && item.alias !== label ? ` / ${item.alias}` : "";
   return `${committeePriorityLabel(item.priority)} · ${label}${alias} · 共 ${totalCount} 项`;
 }
@@ -7815,10 +9803,10 @@ function commodityLatestDateValue(status: CommodityHealthStatus | null | undefin
 
 function commodityTableStatusDetail(status: CommodityHealthStatus | null | undefined) {
   if (!status) {
-    return "fact_commodity_futures_daily 状态待确认";
+    return "商品期货证据状态待确认";
   }
   const rowText = status.row_count == null ? "行数缺失" : `${status.row_count} 行`;
-  return `${status.table} · ${commodityTableStatusLabel(status.status)} · ${rowText}`;
+  return `商品期货证据 · ${commodityTableStatusLabel(status.status)} · ${rowText}`;
 }
 
 function commodityCoverageValue(status: CommodityHealthStatus | null | undefined) {
@@ -7851,7 +9839,7 @@ function commoditySourceDetail(status: CommodityHealthStatus | null | undefined)
   }
   const nanhua = status.nanhua_input;
   const source = nanhua?.source_version || nanhua?.vendor_version || status.source_vendors.join(" / ") || "来源缺失";
-  return `${status.table} · ${source}`;
+  return `商品期货证据 · ${formatBusinessEvidenceLabel(source)}`;
 }
 
 function commodityTableStatusLabel(status: string) {
@@ -7894,9 +9882,11 @@ function formatCommodityFuturesRefreshError(error: unknown) {
 
 function commodityFuturesPermissionDetail(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
   if (!permission) {
-    return "resource macro_toolkit.commodity_futures";
+    return "商品期货刷新授权待确认";
   }
-  return choiceStockPermissionDetail(permission, "macro_toolkit.commodity_futures");
+  const actions = permission.actions?.length ? permission.actions.join(" / ") : "dry_run / refresh";
+  const user = permission.user_id || "anonymous";
+  return `${permission.allowed ? "可刷新" : "未授权"} · ${actions} · ${user}`;
 }
 
 function commodityFuturesPermissionNoticeTitle(permission: MacroToolkitChoiceStockRefreshPermission | null | undefined) {
@@ -8787,6 +10777,7 @@ function MetricTile({
   label,
   value,
   detail,
+  detailTitle,
   tone = "neutral",
   testId,
   detailMaxLength = 26,
@@ -8795,6 +10786,7 @@ function MetricTile({
   label: string;
   value: string | number;
   detail: string;
+  detailTitle?: string;
   tone?: "neutral" | "positive" | "missing";
   testId?: string;
   detailMaxLength?: number;
@@ -8806,7 +10798,7 @@ function MetricTile({
         {label}
       </span>
       <strong>{value}</strong>
-      <small title={detail}>{compactText(detail, detailMaxLength)}</small>
+      <small title={detailTitle ?? detail}>{compactText(detail, detailMaxLength)}</small>
     </div>
   );
 }
