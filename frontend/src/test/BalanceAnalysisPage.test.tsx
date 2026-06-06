@@ -488,6 +488,7 @@ function buildCurrentUserResponse(): BalanceAnalysisCurrentUserPayload {
     user_id: "phase1-dev-user",
     role: "admin",
     identity_source: "fallback" as const,
+    can_write_decision_status: true,
   };
 }
 
@@ -2242,11 +2243,13 @@ describe("BalanceAnalysisPage", () => {
         user_id: "phase1-dev-user",
         role: "admin",
         identity_source: "fallback" as const,
+        can_write_decision_status: true,
       })
       .mockResolvedValueOnce({
         user_id: "header-user",
         role: "reviewer",
         identity_source: "header" as const,
+        can_write_decision_status: true,
       });
     const getDecisionItemsSpy = vi
       .fn()

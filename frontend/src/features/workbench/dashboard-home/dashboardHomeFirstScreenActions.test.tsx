@@ -93,7 +93,7 @@ function firstScreenView(
 }
 
 describe("dashboard home first-screen actions", () => {
-  it("preserves backend suggestion links and adds the risk workbench action", () => {
+  it("preserves backend suggestion links and adds the risk review queue action", () => {
     const view = mapToHomeFirstScreenView({
       reportDate: "2026-04-30",
       useMockFallback: false,
@@ -117,9 +117,63 @@ describe("dashboard home first-screen actions", () => {
           statusKind: "ready",
         }),
         expect.objectContaining({
-          id: "risk-overview",
-          to: "/risk-overview?report_date=2026-04-30",
-          sourceLabel: "risk",
+          id: "risk-review-queue",
+          to: "/decision-items?source=dashboard-home&report_date=2026-04-30&action_id=risk-review-queue",
+          sourceLabel: "decision-items",
+        }),
+      ]),
+    );
+  });
+
+  it("routes risk review queue actions into decision items with dashboard context", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict,
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 2,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+    });
+
+    expect(decisionActions(view)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "risk-review-queue",
+          to: "/decision-items?source=dashboard-home&report_date=2026-04-30&action_id=risk-review-queue",
+          sourceLabel: "decision-items",
+          statusKind: "ready",
+        }),
+      ]),
+    );
+  });
+
+  it("does not make risk review queue actions clickable without a concrete report date", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "—",
+      useMockFallback: false,
+      verdict,
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 2,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+    });
+
+    expect(decisionActions(view)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "risk-review-queue",
+          to: undefined,
+          sourceLabel: "decision-items",
+          statusKind: "stale",
         }),
       ]),
     );

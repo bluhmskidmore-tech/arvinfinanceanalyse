@@ -1,10 +1,15 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { createApiClient } from "../api/client";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 describe("DecisionItemsRoute", () => {
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules("decision-items");
+  }, 20_000);
+
   it("renders the decision-items workbench route", async () => {
     renderWorkbenchApp(["/decision-items"], { client: createApiClient({ mode: "mock" }) });
 

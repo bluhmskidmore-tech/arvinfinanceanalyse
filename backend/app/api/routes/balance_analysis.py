@@ -62,6 +62,21 @@ def _ensure_balance_analysis_read_allowed(auth: AuthContext) -> None:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+def _can_write_balance_analysis_decision_status(auth: AuthContext) -> bool | None:
+    try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=get_settings(),
+            resource="balance_analysis.decision_status",
+            action="write",
+        )
+        return True
+    except PermissionError:
+        return False
+    except RuntimeError:
+        return None
+
+
 @router.get("/dates")
 def dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
@@ -253,6 +268,7 @@ def current_user(
         "user_id": auth.user_id,
         "role": auth.role,
         "identity_source": auth.identity_source,
+        "can_write_decision_status": _can_write_balance_analysis_decision_status(auth),
     }
 
 

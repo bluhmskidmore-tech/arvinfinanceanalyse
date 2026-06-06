@@ -845,6 +845,7 @@ export function createDemoBalanceAnalysisClient(
         user_id: "phase1-dev-user",
         role: "admin",
         identity_source: "fallback",
+        can_write_decision_status: true,
       };
     },
     async getBalanceAnalysisDecisionItems({ reportDate, positionScope, currencyBasis }) {

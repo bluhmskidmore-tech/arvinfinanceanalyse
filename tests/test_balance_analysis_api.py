@@ -642,6 +642,7 @@ def test_balance_analysis_decision_items_api_returns_generated_items_with_pendin
 
 def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_write(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_balance_decision_scope(tmp_path, monkeypatch, user_id="decision-owner")
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
@@ -657,6 +658,55 @@ def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_writ
         "user_id": "decision-owner",
         "role": "reviewer",
         "identity_source": "header",
+        "can_write_decision_status": True,
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_current_user_reports_decision_write_scope_denied(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/current-user",
+        headers={
+            "X-User-Id": "decision-viewer",
+            "X-User-Role": "admin",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "decision-viewer",
+        "role": "admin",
+        "identity_source": "header",
+        "can_write_decision_status": False,
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_current_user_reports_unknown_when_scope_store_unavailable(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/current-user",
+        headers={
+            "X-User-Id": "decision-owner",
+            "X-User-Role": "reviewer",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "decision-owner",
+        "role": "reviewer",
+        "identity_source": "header",
+        "can_write_decision_status": None,
     }
 
     get_settings.cache_clear()
@@ -855,6 +905,7 @@ def test_balance_analysis_current_user_api_falls_back_to_env_identity(tmp_path, 
         "user_id": "env-balance-user",
         "role": "ops",
         "identity_source": "env",
+        "can_write_decision_status": False,
     }
 
     get_settings.cache_clear()

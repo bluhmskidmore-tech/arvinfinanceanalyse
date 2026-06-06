@@ -3410,6 +3410,7 @@ export type BalanceAnalysisCurrentUserPayload = {
   user_id: string;
   role: string;
   identity_source: "header" | "env" | "system" | "fallback";
+  can_write_decision_status: boolean | null;
 };
 
 export type BalanceAnalysisDecisionItemStatusRow = {

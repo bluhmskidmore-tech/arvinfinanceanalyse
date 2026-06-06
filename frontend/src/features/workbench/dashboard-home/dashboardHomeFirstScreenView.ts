@@ -46,6 +46,7 @@ const DECISION_ACTION_ROUTES = new Set([
   "/cashflow-projection",
   "/concentration-monitor",
   "/cross-asset",
+  "/decision-items",
   "/pnl-attribution",
   "/risk-overview",
   "/risk-tensor",
@@ -262,8 +263,21 @@ function reportDatePath(path: string | null | undefined, reportDate: string): st
   }
 }
 
+function decisionItemPath(actionId: string, reportDate: string): string | undefined {
+  if (!isConcreteReportDate(reportDate)) {
+    return undefined;
+  }
+  const params = new URLSearchParams({
+    source: "dashboard-home",
+    report_date: reportDate,
+    action_id: actionId,
+  });
+  return reportDatePath(`/decision-items?${params.toString()}`, reportDate);
+}
+
 function sourceLabelForPath(path: string): string {
   const pathname = path.split(/[?#]/, 1)[0] ?? "";
+  if (pathname === "/decision-items") return "decision-items";
   if (pathname === "/risk-tensor") return "risk-tensor";
   if (pathname === "/risk-overview") return "risk";
   if (pathname === "/pnl-attribution") return "pnl-attribution";
@@ -304,14 +318,15 @@ function buildDecisionActions(args: {
 
   const actions: HomeDecisionAction[] = [];
   if (args.alertCount > 0) {
+    const to = decisionItemPath("risk-review-queue", args.reportDate);
     actions.push({
-      id: "risk-overview",
-      title: "复核风险工作台",
+      id: "risk-review-queue",
+      title: "处理风险复核队列",
       priority: "high",
-      sourceLabel: "risk",
+      sourceLabel: "decision-items",
       reason: `${args.alertCount} 项风险事项需要复核`,
-      to: reportDatePath("/risk-overview", args.reportDate),
-      statusKind: "ready",
+      to,
+      statusKind: to ? "ready" : "stale",
     });
   }
 
