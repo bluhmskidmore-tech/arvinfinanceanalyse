@@ -145,6 +145,7 @@ describe("CrossAssetPage", () => {
     expect(tradingDesk).toContainElement(marketRadar);
     expect(tradingDesk).toContainElement(transmissionWorkbench);
     expect(tradingDesk).toContainElement(decisionRail);
+    expect(Array.from(tradingDesk.children)).toEqual([marketRadar, transmissionWorkbench, decisionRail]);
     expect(await screen.findByTestId("cross-asset-market-radar-metrics")).toHaveTextContent("雷达报价");
     expect(screen.getByTestId("cross-asset-market-radar-metrics")).toHaveTextContent("10Y国债");
     expect(screen.getByTestId("cross-asset-market-radar-metrics")).toHaveTextContent("银拆(7D)");
@@ -169,6 +170,10 @@ describe("CrossAssetPage", () => {
     expect(tradingDeskBlock).toContain("grid-template-areas:");
     expect(marketRadarBlock).toContain("grid-area: radar;");
     expect(transmissionWorkbenchBlock).toContain("grid-area: transmission;");
+    expect(css).toContain("@media (max-width: 1320px)");
+    expect(css).toContain("grid-template-columns: minmax(220px, 0.56fr) minmax(0, 1.7fr) minmax(254px, 0.66fr);");
+    expect(css).toContain(".cross-asset-transmission-map__step strong");
+    expect(css).toContain("white-space: normal;");
   });
 
   it("renders terminal evidence tape, transmission path, and action ledger instead of equal card stacks", async () => {

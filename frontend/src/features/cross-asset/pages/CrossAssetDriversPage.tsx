@@ -872,18 +872,14 @@ function PercentileGauge({ sparkline }: { sparkline: number[] }) {
   const info = computeSparklinePercentile(sparkline);
   if (!info) return null;
   const markerColor = percentileZoneColor(info.zone);
+  const markerStyle: PercentileMarkerStyle = {
+    "--ca-percentile-position": `${info.percentile}%`,
+    background: markerColor,
+  };
   return (
     <div className="ca-percentile" title={`近期 ${sparkline.length} 日分位：第 ${info.percentile} 百分位`}>
       <div className="ca-percentile__track">
-        <div
-          className="ca-percentile__marker"
-          style={
-            {
-              "--ca-percentile-position": `${info.percentile}%`,
-              background: markerColor,
-            } satisfies PercentileMarkerStyle
-          }
-        />
+        <div className="ca-percentile__marker" style={markerStyle} />
       </div>
       <span className="ca-percentile__label">{info.label}</span>
     </div>
