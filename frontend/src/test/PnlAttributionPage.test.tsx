@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -200,18 +200,75 @@ describe("PnlAttributionPage", () => {
     expect(await screen.findByTestId("pnl-attribution-page-title")).toBeInTheDocument();
     expect(screen.getByTestId("pnl-attribution-product-category-lens-card")).toHaveTextContent("经营净收入");
     expect(screen.getByTestId("pnl-attribution-product-category-lens-card")).toHaveTextContent("FTP 后");
+    expect(screen.getByTestId("pnl-attribution-product-category-lens-card")).toHaveTextContent("证据状态");
+    expect(screen.getByTestId("pnl-attribution-product-category-lens-card")).toHaveTextContent("正式读模型已就绪");
     expect(screen.getByTestId("pnl-attribution-formal-lens-card")).toHaveTextContent("含非标桥接");
     expect(screen.getByTestId("pnl-attribution-formal-lens-card")).toHaveTextContent("未扣 FTP");
+    expect(screen.getByTestId("pnl-attribution-formal-lens-card")).toHaveTextContent("证据状态");
+    expect(screen.getByTestId("pnl-attribution-formal-lens-card")).toHaveTextContent("正式归因口径已就绪");
     const workbenchLead = screen.getByTestId("pnl-attribution-workbench-lead");
     expect(workbenchLead).toBeInTheDocument();
     expect(workbenchLead).toHaveTextContent("/api/pnl-attribution/*");
     expect(workbenchLead).toHaveTextContent("/ui/pnl/product-category");
     expect(workbenchLead).toHaveTextContent("TPL");
     expect(screen.getByTestId("pnl-attribution-current-view-lead")).toBeInTheDocument();
+    const decisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(decisionStrip).toHaveTextContent("candidate_or_pending");
+    expect(decisionStrip).toHaveTextContent("formal_use_allowed=false");
+    expect(decisionStrip).toHaveTextContent("owner approval pending");
+    expect(decisionStrip).toHaveTextContent("closure_approved=false");
+    expect(decisionStrip).toHaveTextContent("产品分类经营归因");
+    expect(decisionStrip).toHaveTextContent("/ui/pnl/product-category");
+    expect(decisionStrip).toHaveTextContent("共同报告日 2026-03-31");
     expect(await screen.findByTestId("pnl-attribution-product-category-tab")).toBeInTheDocument();
+    expect(await screen.findByTestId("pnl-attribution-product-category-attribution-table")).toBeInTheDocument();
+    expect(await screen.findByTestId("pnl-attribution-product-category-ytd-table")).toBeInTheDocument();
+
+    const pageTitle = screen.getByTestId("pnl-attribution-page-title");
+    const productCategoryLens = screen.getByTestId("pnl-attribution-product-category-lens-card");
+    const formalLens = screen.getByTestId("pnl-attribution-formal-lens-card");
+    const currentViewLead = screen.getByTestId("pnl-attribution-current-view-lead");
+    const productCategoryTab = screen.getByTestId("pnl-attribution-product-category-tab");
+    const attributionReadout = within(productCategoryTab).getByTestId(
+      "pnl-attribution-product-category-attribution-mobile-readout",
+    );
+    const attributionRawGrid = within(productCategoryTab).getByTestId(
+      "pnl-attribution-product-category-attribution-raw-grid",
+    );
+    const ytdReadout = within(productCategoryTab).getByTestId(
+      "pnl-attribution-product-category-ytd-mobile-readout",
+    );
+    const ytdRawGrid = within(productCategoryTab).getByTestId(
+      "pnl-attribution-product-category-ytd-raw-grid",
+    );
+    const position = (node: HTMLElement) =>
+      Array.from(document.body.querySelectorAll("*")).indexOf(node);
+    expect(position(pageTitle)).toBeLessThan(position(decisionStrip));
+    expect(position(decisionStrip)).toBeLessThan(position(productCategoryLens));
+    expect(position(productCategoryLens)).toBeLessThan(position(formalLens));
+    expect(position(formalLens)).toBeLessThan(position(workbenchLead));
+    expect(position(workbenchLead)).toBeLessThan(position(currentViewLead));
+    expect(position(currentViewLead)).toBeLessThan(position(productCategoryTab));
+    expect(position(attributionReadout)).toBeLessThan(position(attributionRawGrid));
+    expect(position(ytdReadout)).toBeLessThan(position(ytdRawGrid));
+
+    expect(attributionReadout).toHaveTextContent("移动归因读数");
+    expect(attributionReadout).toHaveTextContent("经营变动");
+    expect(attributionReadout).toHaveTextContent("最大拆分项");
+    expect(attributionReadout).toHaveTextContent("未解释差异");
+    expect(attributionReadout).toHaveTextContent("闭合误差");
+    expect(attributionReadout).toHaveTextContent("状态");
+    expect(ytdReadout).toHaveTextContent("移动YTD读数");
+    expect(ytdReadout).toHaveTextContent("累计净营收");
+    expect(ytdReadout).toHaveTextContent("累计规模");
+    expect(ytdReadout).toHaveTextContent("加权收益率");
+    expect(ytdReadout).toHaveTextContent("展示行数");
 
     await user.click(screen.getByRole("button", { name: "规模 / 利率效应" }));
 
+    const formalDecisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(formalDecisionStrip).toHaveTextContent("正式 FI / 债券归因");
+    expect(formalDecisionStrip).toHaveTextContent("/api/pnl-attribution/*");
     const currentViewMeta = await screen.findByTestId("pnl-attribution-current-view-meta");
     expect(currentViewMeta).toHaveTextContent("2026-03");
     expect(currentViewMeta).toHaveTextContent("2026-04-09");
@@ -223,8 +280,14 @@ describe("PnlAttributionPage", () => {
 
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
+    const tplDecisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(tplDecisionStrip).toHaveTextContent("TPL hybrid exception");
+    expect(tplDecisionStrip).toHaveTextContent("/api/pnl-attribution/tpl-market");
+    expect(tplDecisionStrip).toHaveTextContent("/ui/pnl/product-category");
 
     await user.click(screen.getByRole("button", { name: /Campisi/i }));
+    const campisiDecisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(campisiDecisionStrip).toHaveTextContent("正式 FI / Campisi 归因");
 
     expect(await screen.findByTestId("campisi-decision-headline")).toHaveTextContent("主要来自");
     expect(screen.getByTestId("campisi-decision-formal-view")).toHaveTextContent("正式 PnL 视图");
@@ -332,6 +395,10 @@ describe("PnlAttributionPage", () => {
     });
     expect(screen.getByTestId("pnl-attribution-date-mismatch")).toHaveTextContent("2026-03-31");
     expect(screen.getByTestId("pnl-attribution-date-mismatch")).toHaveTextContent("2026-02-28");
+    const decisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(decisionStrip).toHaveTextContent("日期分离");
+    expect(decisionStrip).toHaveTextContent("正式 FI 2026-03-31");
+    expect(decisionStrip).toHaveTextContent("产品分类 2026-02-28");
     expect(getVolumeRateAttribution).not.toHaveBeenCalled();
     expect(getPnlAttributionAnalysisSummary).not.toHaveBeenCalled();
     expect(await screen.findByTestId("pnl-attribution-product-category-tab")).toBeInTheDocument();
@@ -344,6 +411,9 @@ describe("PnlAttributionPage", () => {
         compareType: "mom",
       }),
     );
+    const formalDecisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(formalDecisionStrip).toHaveTextContent("正式 FI / 债券归因");
+    expect(formalDecisionStrip).toHaveTextContent("日期分离");
     expect(getPnlAttributionAnalysisSummary).not.toHaveBeenCalled();
   });
 
@@ -381,6 +451,8 @@ describe("PnlAttributionPage", () => {
     );
 
     expect(await screen.findByTestId("pnl-attribution-source-date-warning")).toHaveTextContent("产品分类");
+    const decisionStrip = await screen.findByTestId("pnl-attribution-decision-strip");
+    expect(decisionStrip).toHaveTextContent("缺少来源");
     expect(getProductCategoryAttribution).not.toHaveBeenCalled();
     expect(getVolumeRateAttribution).not.toHaveBeenCalled();
 

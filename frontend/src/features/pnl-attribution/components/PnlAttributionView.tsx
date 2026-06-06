@@ -35,6 +35,7 @@ import { CampisiMaturityBucketPanel } from "./CampisiMaturityBucketPanel";
 import { PnLCompositionChart } from "./PnLCompositionChart";
 import { TPLMarketChart, type ProductCategoryTplMonthlyPoint } from "./TPLMarketChart";
 import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
+import "./PnlAttributionView.css";
 import {
   buildVolumeRateBridgeSummary,
   type DualReportDateResolution,
@@ -188,11 +189,6 @@ function LensBoundaryPanel() {
     display: "grid",
     gap: designTokens.space[2],
   } as const;
-  const lensSourceStyle = {
-    fontSize: designTokens.fontSize[12],
-    color: pageMutedTextColor,
-    ...tabularNumsStyle,
-  } as const;
   return (
     <div
       style={{
@@ -203,6 +199,7 @@ function LensBoundaryPanel() {
     >
       <section
         data-testid="pnl-attribution-product-category-lens-card"
+        aria-label="产品分类经营归因口径边界"
         style={lensCardStyle}
       >
         <SectionLead
@@ -210,12 +207,16 @@ function LensBoundaryPanel() {
           title="经营净收入归因"
           description="经营净收入、FTP 后；来源为产品分类正式读模型，只消费产品分类 monthly / YTD / attribution 接口。"
         />
-        <div style={lensSourceStyle}>
+        <div className="pnl-attribution-lens-status" data-testid="pnl-attribution-product-category-lens-status">
+          证据状态：正式读模型已就绪；报告日由页面日期协调器校验。
+        </div>
+        <div className="pnl-attribution-lens-source">
           Source: /ui/pnl/product-category, /ui/pnl/product-category/attribution
         </div>
       </section>
       <section
         data-testid="pnl-attribution-formal-lens-card"
+        aria-label="正式 FI 与债券分析归因口径边界"
         style={lensCardStyle}
       >
         <SectionLead
@@ -223,7 +224,10 @@ function LensBoundaryPanel() {
           title="会计损益与债券市场归因"
           description="含非标桥接、未扣 FTP、非产品分类经营净收入；仅用于正式 FI、TPL 市场和债券分析归因。"
         />
-        <div style={lensSourceStyle}>Source: /api/pnl-attribution/*</div>
+        <div className="pnl-attribution-lens-status" data-testid="pnl-attribution-formal-lens-status">
+          证据状态：正式归因口径已就绪；TPL 市场例外在工作台中单独标注。
+        </div>
+        <div className="pnl-attribution-lens-source">Source: /api/pnl-attribution/*</div>
       </section>
     </div>
   );
@@ -602,6 +606,162 @@ const compactCellStyle = {
   verticalAlign: "middle" as const,
 };
 
+function ProductCategoryMobileReadoutField(props: {
+  label: string;
+  value: string;
+  note?: string;
+}) {
+  return (
+    <div className="pnl-attribution-mobile-table-readout__field">
+      <span className="pnl-attribution-mobile-table-readout__label">
+        {props.label}
+      </span>
+      <span className="pnl-attribution-mobile-table-readout__value">
+        {props.value}
+      </span>
+      {props.note ? (
+        <span className="pnl-attribution-mobile-table-readout__note">
+          {props.note}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ProductCategoryMobileReadout(props: {
+  testId: string;
+  title: string;
+  fields: Array<{ label: string; value: string; note?: string }>;
+}) {
+  return (
+    <div
+      className="pnl-attribution-mobile-table-readout"
+      data-testid={props.testId}
+    >
+      <div className="pnl-attribution-mobile-table-readout__header">
+        {props.title}
+      </div>
+      <div className="pnl-attribution-mobile-table-readout__grid">
+        {props.fields.map((field) => (
+          <ProductCategoryMobileReadoutField
+            key={field.label}
+            label={field.label}
+            note={field.note}
+            value={field.value}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function productCategoryEffectDisplayValue(
+  value: ProductCategoryAttributionEffects[keyof ProductCategoryAttributionEffects],
+) {
+  return `${formatProductCategoryAttributionEffect(value)} 亿元`;
+}
+
+function pickProductCategoryAttributionHeadlineRow(
+  rows: ProductCategoryAttributionRow[],
+) {
+  return rows.find((row) => row.category_id === "grand_total") ?? rows[0];
+}
+
+function pickLargestProductCategoryEffect(row: ProductCategoryAttributionRow) {
+  return productCategoryEffectColumns
+    .filter(([key]) => key !== "closure_error")
+    .map(([key, label]) => ({
+      key,
+      label,
+      value: row.effects[key],
+      magnitude: Math.abs(Number(row.effects[key])),
+    }))
+    .filter((effect) => Number.isFinite(effect.magnitude))
+    .sort((left, right) => right.magnitude - left.magnitude)[0];
+}
+
+function ProductCategoryAttributionMobileReadout(props: {
+  rows: ProductCategoryAttributionRow[];
+}) {
+  const row = pickProductCategoryAttributionHeadlineRow(props.rows);
+  const largestEffect = pickLargestProductCategoryEffect(row);
+  return (
+    <ProductCategoryMobileReadout
+      testId="pnl-attribution-product-category-attribution-mobile-readout"
+      title="移动归因读数"
+      fields={[
+        {
+          label: "经营变动",
+          value: productCategoryEffectDisplayValue(
+            row.effects.delta_business_net_income,
+          ),
+          note: row.category_name,
+        },
+        {
+          label: "最大拆分项",
+          value: largestEffect
+            ? `${largestEffect.label} ${productCategoryEffectDisplayValue(largestEffect.value)}`
+            : "-",
+        },
+        {
+          label: "未解释差异",
+          value: productCategoryEffectDisplayValue(row.effects.unexplained_effect),
+        },
+        {
+          label: "闭合误差",
+          value: productCategoryEffectDisplayValue(row.effects.closure_error),
+        },
+        {
+          label: "状态",
+          value: row.state,
+        },
+      ]}
+    />
+  );
+}
+
+function pickProductCategoryYtdHeadlineRow(rows: ProductCategoryPnlRow[]) {
+  return (
+    rows.find((row) => row.category_id === "grand_total") ??
+    rows.find((row) => row.is_total && row.category_name.includes("合计")) ??
+    rows[rows.length - 1]
+  );
+}
+
+function ProductCategoryYtdMobileReadout(props: {
+  rows: ProductCategoryPnlRow[];
+}) {
+  const row = pickProductCategoryYtdHeadlineRow(props.rows);
+  return (
+    <ProductCategoryMobileReadout
+      testId="pnl-attribution-product-category-ytd-mobile-readout"
+      title="移动YTD读数"
+      fields={[
+        {
+          label: "累计净营收",
+          value: `${formatProductCategoryRowDisplayValue(
+            row,
+            row.business_net_income,
+          )} 亿元`,
+          note: row.category_name,
+        },
+        {
+          label: "累计规模",
+          value: `${formatProductCategoryRowDisplayValue(row, row.cnx_scale)} 亿元`,
+        },
+        {
+          label: "加权收益率",
+          value: `${formatProductCategoryYieldValue(row.weighted_yield)}%`,
+        },
+        {
+          label: "展示行数",
+          value: String(props.rows.length),
+        },
+      ]}
+    />
+  );
+}
+
 function PnlAttributionSourceDateMessage(props: {
   resolution: DualReportDateResolution | null;
   dateError: string | null;
@@ -709,7 +869,12 @@ function ProductCategoryAttributionTable(props: {
     );
   }
   return (
-    <div style={{ overflowX: "auto" }}>
+    <>
+      <ProductCategoryAttributionMobileReadout rows={props.rows} />
+      <div
+        data-testid="pnl-attribution-product-category-attribution-raw-grid"
+        style={{ overflowX: "auto" }}
+      >
       <table
         data-testid="pnl-attribution-product-category-attribution-table"
         style={compactTableStyle}
@@ -766,7 +931,8 @@ function ProductCategoryAttributionTable(props: {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -779,7 +945,12 @@ function ProductCategoryYtdTable(props: { rows: ProductCategoryPnlRow[] }) {
     );
   }
   return (
-    <div style={{ overflowX: "auto" }}>
+    <>
+      <ProductCategoryYtdMobileReadout rows={props.rows} />
+      <div
+        data-testid="pnl-attribution-product-category-ytd-raw-grid"
+        style={{ overflowX: "auto" }}
+      >
       <table
         data-testid="pnl-attribution-product-category-ytd-table"
         style={compactTableStyle}
@@ -837,7 +1008,8 @@ function ProductCategoryYtdTable(props: { rows: ProductCategoryPnlRow[] }) {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -903,14 +1075,11 @@ function ProductCategoryAttributionWorkbench(props: {
   return (
     <div
       data-testid="pnl-attribution-product-category-tab"
+      className="pnl-attribution-product-category-workbench"
       style={{ display: "grid", gap: designTokens.space[4] }}
     >
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: designTokens.space[3],
-        }}
+        className="pnl-attribution-product-category-summary-grid"
       >
         <ProductCategorySummaryCard
           label="月度净营收"
@@ -1127,6 +1296,147 @@ function CurrentViewMetaStrip(props: {
                 whiteSpace: "nowrap",
                 ...tabularNumsStyle,
               }}
+            >
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function pnlAttributionLensSummary(activeTab: PnlAttributionTab) {
+  if (activeTab === "product-category") {
+    return {
+      label: "产品分类经营归因",
+      detail: "FTP 后经营净收入；只读取 /ui/pnl/product-category。",
+      source: "/ui/pnl/product-category",
+    };
+  }
+  if (activeTab === "tpl-market") {
+    return {
+      label: "TPL hybrid exception",
+      detail: "市场序列来自 /api/pnl-attribution/tpl-market；bond_tpl 月度行来自 /ui/pnl/product-category。",
+      source: "/api/pnl-attribution/tpl-market + /ui/pnl/product-category",
+    };
+  }
+  if (activeTab === "advanced") {
+    return {
+      label: "正式 FI / Campisi 归因",
+      detail: "正式 FI、债券分析、Campisi 决策级解释；不等同产品分类经营净收入。",
+      source: "/api/pnl-attribution/*",
+    };
+  }
+  return {
+    label: "正式 FI / 债券归因",
+    detail: "正式 FI 归因视图；不跨口径闭合产品分类经营净收入。",
+    source: "/api/pnl-attribution/*",
+  };
+}
+
+function formatDateResolutionSummary(
+  resolution: DualReportDateResolution | null,
+  activeTab: PnlAttributionTab,
+) {
+  if (!resolution) {
+    return "报告日来源待确认";
+  }
+  const activeDate =
+    activeTab === "product-category"
+      ? resolution.productCategoryReportDate
+      : resolution.formalReportDate;
+  if (!resolution.hasFormalDate || !resolution.hasProductCategoryDate) {
+    return `缺少来源；当前可用报告日 ${activeDate ?? "—"}`;
+  }
+  if (!resolution.datesAligned) {
+    return `日期分离：正式 FI ${resolution.formalReportDate ?? "—"} / 产品分类 ${resolution.productCategoryReportDate ?? "—"}`;
+  }
+  return `共同报告日 ${activeDate ?? "—"}`;
+}
+
+function PnlAttributionDecisionStrip(props: {
+  activeTab: PnlAttributionTab;
+  compareType: "mom" | "yoy";
+  currentViewDateTitle: string;
+  currentViewMeta: ResultMeta | null;
+  dateResolution: DualReportDateResolution | null;
+  isLoading: boolean;
+  hasError: boolean;
+}) {
+  const lens = pnlAttributionLensSummary(props.activeTab);
+  const quality = props.currentViewMeta
+    ? compactMetaStatus(props.currentViewMeta.quality_flag)
+    : null;
+  const qualityState = props.currentViewMeta?.quality_flag ?? "pending";
+  const fallback =
+    props.currentViewMeta?.fallback_mode === "none"
+      ? "未降级"
+      : compactMetaValue(props.currentViewMeta?.fallback_mode);
+  const dateSummary = formatDateResolutionSummary(
+    props.dateResolution,
+    props.activeTab,
+  );
+  const action =
+    props.hasError
+      ? "先处理加载错误"
+      : props.isLoading
+        ? "等待当前视图加载"
+        : props.activeTab === "product-category"
+          ? "先看经营归因闭合"
+          : props.activeTab === "tpl-market"
+            ? "核对 hybrid 来源"
+            : props.activeTab === "advanced"
+              ? "复核 Campisi 决策级"
+              : "检查正式 FI 归因";
+  const fields = [
+    ["Page status", "candidate_or_pending"],
+    ["Formal use", "formal_use_allowed=false"],
+    ["Owner approval", "owner approval pending"],
+    ["Closure", "closure_approved=false"],
+    ["当前口径", lens.label],
+    ["报告日", dateSummary],
+    ["来源", lens.source],
+    ["视图期间", props.currentViewDateTitle],
+    ["质量", quality?.label ?? "待加载"],
+    ["降级", fallback],
+    ["比较", props.compareType === "mom" ? "环比" : "同比"],
+    ["下一步", action],
+  ];
+
+  return (
+    <section
+      data-testid="pnl-attribution-decision-strip"
+      className="pnl-attribution-decision-strip"
+    >
+      <div className="pnl-attribution-decision-strip__header">
+        <div className="pnl-attribution-decision-strip__copy">
+          <span className="pnl-attribution-decision-strip__eyebrow">
+            归因决策条
+          </span>
+          <strong className="pnl-attribution-decision-strip__title">
+            {lens.label}
+          </strong>
+          <span className="pnl-attribution-decision-strip__detail">
+            {lens.detail}
+          </span>
+        </div>
+        <span
+          className="pnl-attribution-decision-strip__badge"
+          data-quality={qualityState}
+        >
+          {quality?.label ?? "待加载"}
+        </span>
+      </div>
+      <div className="pnl-attribution-decision-strip__grid">
+        {fields.map(([label, value]) => (
+          <div className="pnl-attribution-decision-strip__field" key={label}>
+            <span className="pnl-attribution-decision-strip__label">
+              {label}
+            </span>
+            <span
+              className="pnl-attribution-decision-strip__value"
+              title={value}
             >
               {value}
             </span>
@@ -1703,6 +2013,16 @@ export function PnlAttributionView({ reportDate }: Props) {
           </div>
         )}
       </div>
+
+      <PnlAttributionDecisionStrip
+        activeTab={activeTab}
+        compareType={compareType}
+        currentViewDateTitle={currentViewMetaTitle}
+        currentViewMeta={currentViewMeta}
+        dateResolution={dateResolution}
+        isLoading={loading || dateLoading}
+        hasError={error !== null || dateError !== null}
+      />
 
       <LensBoundaryPanel />
 

@@ -23,6 +23,16 @@ This packet does not approve page closure, write governance records, prove page 
 
 Golden sample boundary: `primary_workbench_dto_only`
 
+## DTO vs Page Approval Boundary
+
+Primary API DTO result_meta may be formal/formal_use_allowed=true.
+This does not approve PAGE-PNL-ATTR-WB-001 page closure, owner approval, or full-page formal use.
+
+Primary API result_meta scope: `primary_api_dto_formal_result_meta_only`
+Primary API result_meta formal use allowed: `true`
+Page formal use allowed: `false`
+Page owner approval required: `true`
+
 Out of scope:
 
 - full page closure
