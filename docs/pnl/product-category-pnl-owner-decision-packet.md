@@ -40,13 +40,13 @@ This packet does not approve page closure, write governance records, prove page 
 - `counts_as_owner_decision=false`
 - `captures_product_or_api_decisions=false`
 
-| Review key | Rank | Topic | Required review | Current status |
-| --- | ---: | --- | --- | --- |
-| `next_1_outward_as_of_date` | 1 | outward `as_of_date` | decide whether the page should expose `as_of_date` separately from the selected `report_date`. | `pending_review` |
-| `next_2_refresh_timeout_stale_copy` | 2 | refresh timeout/stale copy | specify the copy shown when refresh exceeds the current UI polling window. | `pending_review` |
-| `next_3_unit_4_extended_validation_copy` | 3 | Unit 4 extended validation copy | freeze any additional backend validation wording beyond the two covered empty-payload cases. | `pending_review` |
-| `next_4_dual_sort_rationale` | 4 | dual-sort rationale | record the product intent for keeping current and event sort controls independent. | `pending_review` |
-| `next_5_revoke_confirmation_policy` | 5 | revoke confirmation policy | freeze whether destructive revoke needs policy beyond the already tested browser confirmation gate. | `pending_review` |
+| Review key | Rank | Topic | Required review | Review owner type | Evidence path | Blocker reason | Pre-signature action | Current status |
+| --- | ---: | --- | --- | --- | --- | --- | --- | --- |
+| `next_1_outward_as_of_date` | 1 | outward `as_of_date` | decide whether the page should expose `as_of_date` separately from the selected `report_date`. | `product_owner` | `docs/pnl/product-category-page-truth-contract.md` | The page currently preserves selected report_date and resolved report_date semantics, but no owner-approved outward as_of_date field exists. | Owner must either approve no standalone outward as_of_date or specify the exact API/UI field before signature. | `pending_review` |
+| `next_2_refresh_timeout_stale_copy` | 2 | refresh timeout/stale copy | specify the copy shown when refresh exceeds the current UI polling window. | `product_owner` | `frontend/src/test/ProductCategoryPnlPage.test.tsx` | Queued/running/failed states are tested, but timeout-specific stale copy is not product-frozen. | Owner must approve timeout and stale-state copy or defer it explicitly before signature. | `pending_review` |
+| `next_3_unit_4_extended_validation_copy` | 3 | Unit 4 extended validation copy | freeze any additional backend validation wording beyond the two covered empty-payload cases. | `product_owner` | `docs/pnl/product-category-closure-checklist.md` | The two primary empty-payload cases are covered, but extended validation wording remains outside the frozen checklist scope. | Owner must approve the extended validation copy scope or confirm the current two-case scope is sufficient. | `pending_review` |
+| `next_4_dual_sort_rationale` | 4 | dual-sort rationale | record the product intent for keeping current and event sort controls independent. | `product_owner` | `docs/pnl/product-category-remaining-blockers.md` | The dual-sort behavior is visible, but the product rationale for two independent controls is not recorded. | Owner must record the product rationale for dual sort or approve a single-sort model before signature. | `pending_review` |
+| `next_5_revoke_confirmation_policy` | 5 | revoke confirmation policy | freeze whether destructive revoke needs policy beyond the already tested browser confirmation gate. | `product_owner` | `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` | Browser confirmation behavior is tested, but no owner policy states whether that is sufficient for destructive revoke. | Owner must approve browser confirmation as sufficient or specify an additional revoke policy gate. | `pending_review` |
 
 ## Decision Items
 

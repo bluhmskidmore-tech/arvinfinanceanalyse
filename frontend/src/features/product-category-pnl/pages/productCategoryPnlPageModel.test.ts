@@ -3014,6 +3014,47 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
+  it("keeps the liability detail fallback-table branch unreachable for current model-derived rows", () => {
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "credit linked notes",
+            side: "liability",
+            report_date: "2026-03-31",
+            cnx_scale: yi(25),
+            weighted_yield: "3.25",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1700),
+          weighted_yield: "1.75",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026-03"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+    const hasFallbackTableRowsWithoutMatrix =
+      surface.detailRows.length > 0 && surface.detailMatrix.rows.length === 0;
+
+    expect(surface.detailRows.map((item) => item.categoryId)).toEqual(["credit_linked_notes"]);
+    expect(surface.detailMatrix.rows.map((item) => item.categoryId)).toEqual([
+      "liability_total",
+      "credit_linked_notes",
+    ]);
+    expect(hasFallbackTableRowsWithoutMatrix).toBe(false);
+  });
+
   it("formats yuan money values as yi yuan, with liability-side absolute display", () => {
     expect(formatProductCategoryValue("285499749.04110849")).toBe("2.85");
     expect(
@@ -3100,6 +3141,118 @@ describe("productCategoryPnlPageModel", () => {
     ]);
     expect(detailRows.some((rowItem) => rowItem.category_id === "grand_total")).toBe(false);
     expect(grandTotal).toBe(GOLDEN_SAMPLE_A_RESPONSE.result.grand_total);
+  });
+
+  it("binds decision 3C detail metrics MTR-PCP-004 through MTR-PCP-012 to backend row fields", () => {
+    const detailRows = selectProductCategoryDetailRows(
+      GOLDEN_SAMPLE_A_RESPONSE.result.rows,
+      undefined,
+    );
+    const rowsById = new Map(detailRows.map((rowItem) => [rowItem.category_id, rowItem]));
+    const repoAssets = rowsById.get("repo_assets");
+    const repoLiabilities = rowsById.get("repo_liabilities");
+
+    expect(repoAssets).toBeDefined();
+    expect(repoLiabilities).toBeDefined();
+
+    const display3cMetricSet = (rowItem: ProductCategoryPnlRow) => ({
+      "MTR-PCP-004": formatProductCategoryRowDisplayValue(rowItem, rowItem.cnx_scale),
+      "MTR-PCP-005": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_scale),
+      "MTR-PCP-006": formatProductCategoryRowDisplayValue(rowItem, rowItem.foreign_scale),
+      "MTR-PCP-007": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
+      "MTR-PCP-008": formatProductCategoryRowDisplayValue(rowItem, rowItem.foreign_ftp),
+      "MTR-PCP-009": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_net),
+      "MTR-PCP-010": formatProductCategoryRowDisplayValue(rowItem, rowItem.foreign_net),
+      "MTR-PCP-011": formatProductCategoryRowDisplayValue(rowItem, rowItem.business_net_income),
+      "MTR-PCP-012": formatProductCategoryYieldValue(rowItem.weighted_yield),
+    });
+
+    expect(display3cMetricSet(repoAssets as ProductCategoryPnlRow)).toEqual({
+      "MTR-PCP-004": "0.00",
+      "MTR-PCP-005": "0.00",
+      "MTR-PCP-006": "0.00",
+      "MTR-PCP-007": "0.00",
+      "MTR-PCP-008": "0.00",
+      "MTR-PCP-009": "-0.00",
+      "MTR-PCP-010": "0.00",
+      "MTR-PCP-011": "-0.00",
+      "MTR-PCP-012": "0.00",
+    });
+    expect(display3cMetricSet(repoLiabilities as ProductCategoryPnlRow)).toEqual({
+      "MTR-PCP-004": "0.00",
+      "MTR-PCP-005": "0.00",
+      "MTR-PCP-006": "0.00",
+      "MTR-PCP-007": "0.00",
+      "MTR-PCP-008": "0.00",
+      "MTR-PCP-009": "0.00",
+      "MTR-PCP-010": "0.00",
+      "MTR-PCP-011": "0.00",
+      "MTR-PCP-012": "-115.87",
+    });
+  });
+
+  it("freezes decision 3C nonzero asset and liability field display semantics", () => {
+    const assetRow = row({
+      category_id: "repo_assets",
+      side: "asset",
+      cnx_scale: "101000000",
+      cny_scale: "-102000000",
+      foreign_scale: "103000000",
+      cny_ftp: "-104000000",
+      foreign_ftp: "105000000",
+      cny_net: "-106000000",
+      foreign_net: "107000000",
+      business_net_income: "-108000000",
+      weighted_yield: "2.345",
+    });
+    const liabilityRow = row({
+      category_id: "repo_liabilities",
+      side: "liability",
+      cnx_scale: "-201000000",
+      cny_scale: "-202000000",
+      foreign_scale: "203000000",
+      cny_ftp: "-204000000",
+      foreign_ftp: "205000000",
+      cny_net: "-206000000",
+      foreign_net: "207000000",
+      business_net_income: "-208000000",
+      weighted_yield: "1.234",
+    });
+
+    const display3cMetricSet = (rowItem: ProductCategoryPnlRow) => ({
+      "MTR-PCP-004": formatProductCategoryRowDisplayValue(rowItem, rowItem.cnx_scale),
+      "MTR-PCP-005": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_scale),
+      "MTR-PCP-006": formatProductCategoryRowDisplayValue(rowItem, rowItem.foreign_scale),
+      "MTR-PCP-007": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
+      "MTR-PCP-008": formatProductCategoryRowDisplayValue(rowItem, rowItem.foreign_ftp),
+      "MTR-PCP-009": formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_net),
+      "MTR-PCP-010": formatProductCategoryRowDisplayValue(rowItem, rowItem.foreign_net),
+      "MTR-PCP-011": formatProductCategoryRowDisplayValue(rowItem, rowItem.business_net_income),
+      "MTR-PCP-012": formatProductCategoryYieldValue(rowItem.weighted_yield),
+    });
+
+    expect(display3cMetricSet(assetRow)).toEqual({
+      "MTR-PCP-004": "1.01",
+      "MTR-PCP-005": "-1.02",
+      "MTR-PCP-006": "1.03",
+      "MTR-PCP-007": "-1.04",
+      "MTR-PCP-008": "1.05",
+      "MTR-PCP-009": "-1.06",
+      "MTR-PCP-010": "1.07",
+      "MTR-PCP-011": "-1.08",
+      "MTR-PCP-012": "2.35",
+    });
+    expect(display3cMetricSet(liabilityRow)).toEqual({
+      "MTR-PCP-004": "2.01",
+      "MTR-PCP-005": "2.02",
+      "MTR-PCP-006": "2.03",
+      "MTR-PCP-007": "2.04",
+      "MTR-PCP-008": "2.05",
+      "MTR-PCP-009": "2.06",
+      "MTR-PCP-010": "2.07",
+      "MTR-PCP-011": "2.08",
+      "MTR-PCP-012": "1.23",
+    });
   });
 
   it("formats nullish values as dash and passes through invalid decimal-like strings unchanged", () => {

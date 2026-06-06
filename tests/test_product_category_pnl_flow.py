@@ -4,10 +4,10 @@ import copy
 import csv
 import importlib
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-import sys
 
 import duckdb
 import pytest
@@ -16,23 +16,24 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.app.governance.settings import Settings, get_settings
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
+from backend.app.repositories.product_category_pnl_repo import (
+    ProductCategoryPnlRepository,
+)
 from backend.app.repositories.user_scope_repo import UserScopeRepository
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
     _product_category_completeness_check,
     _resolve_product_category_refresh_source_dir,
 )
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    GovernanceRepository,
-)
-from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.tasks.product_category_pnl import PRODUCT_CATEGORY_ADJUSTMENT_STREAM
 from tests.helpers import load_module
-
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
@@ -878,6 +879,49 @@ def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch, s
     completed_payload = completed_status.json()
     assert completed_payload["status"] == "completed"
     assert completed_payload["run_id"] == refresh_payload["run_id"]
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_reuses_run_for_same_idempotency_key(
+    tmp_path, monkeypatch, seed_wildcard_scope
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _grant_product_category_read(tmp_path, monkeypatch)
+    get_settings.cache_clear()
+
+    queued_messages: list[dict[str, object]] = []
+
+    def fake_send(**kwargs):
+        queued_messages.append(kwargs)
+        return None
+
+    service_mod = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(service_mod.materialize_product_category_pnl, "send", fake_send)
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+    headers = {"Idempotency-Key": "product-category-refresh-202601"}
+
+    first_response = client.post("/ui/pnl/product-category/refresh", headers=headers)
+    second_response = client.post("/ui/pnl/product-category/refresh", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "product-category-refresh-202601"
+    assert second_payload["idempotency_replay"] is True
+    assert len(queued_messages) == 1
     get_settings.cache_clear()
 
 

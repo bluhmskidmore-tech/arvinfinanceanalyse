@@ -14,6 +14,16 @@ DEFAULT_CLOSURE_BLOCKER_TRIAGE = ROOT / "docs" / "pnl" / "product-category-remai
 EXPECTED_BOUNDARY_PACKET = "docs/audits/2026-06-05-product-category-pnl-gate-i-boundary-status.json"
 EXPECTED_FIRST_CERTIFICATION_PACKET = "docs/pnl/product-category-pnl-first-certification-packet.md"
 EXPECTED_OWNER_DECISION_PACKET = "docs/pnl/product-category-pnl-owner-decision-packet.md"
+EXPECTED_FIRST_CERTIFICATION_FRESHNESS_MARKERS = [
+    "## Packet Freshness Guard",
+    "`packet_generator=script-owned`",
+    "`source_artifacts=readiness_report, approval_template, closure_blocker_triage`",
+]
+EXPECTED_OWNER_DECISION_FRESHNESS_MARKERS = [
+    "## Packet Freshness Guard",
+    "`packet_generator=script-owned`",
+    "`source_artifact=docs/pnl/product-category-remaining-blockers.md`",
+]
 
 ACTION_ITEM_DEFINITIONS = {
     "business_owner_name": {
@@ -50,6 +60,10 @@ ACTION_ITEM_DEFINITIONS = {
     },
     "reviewed_owner_decision_packet": {
         "template_field": "- Owner decision packet reviewed",
+        "required_value": "yes",
+    },
+    "owner_decision_next_review_queue_acknowledgement": {
+        "template_field": "- Owner decision next-review queue acknowledged",
         "required_value": "yes",
     },
     "golden_sample_artifact_reconciliation": {
@@ -153,11 +167,20 @@ def _artifact_path_label(path: Path) -> str:
         return str(path)
 
 
-def _reviewed_artifact_status(text: str, label: str, expected_path: str) -> str:
+def _reviewed_artifact_status(
+    text: str,
+    label: str,
+    expected_path: str,
+    *,
+    required_freshness_markers: list[str] | None = None,
+) -> str:
     if _plain_value(text, label) != expected_path:
         return "invalid"
-    if not (ROOT / expected_path).exists():
+    path = ROOT / expected_path
+    if not path.exists():
         return "missing_artifact"
+    if required_freshness_markers and not _has_freshness_markers(path, required_freshness_markers):
+        return "stale_generated_artifact"
     return "valid"
 
 
@@ -450,6 +473,7 @@ def _approval_blockers(
             text,
             "Reviewed first-certification packet",
             EXPECTED_FIRST_CERTIFICATION_PACKET,
+            required_freshness_markers=EXPECTED_FIRST_CERTIFICATION_FRESHNESS_MARKERS,
         )
         != "valid"
     ):
@@ -466,6 +490,9 @@ def _approval_blockers(
     review_fields = {
         "- Governance record reviewed": "governance_record_review",
         "- Owner decision packet reviewed": "reviewed_owner_decision_packet",
+        "- Owner decision next-review queue acknowledged": (
+            "owner_decision_next_review_queue_acknowledgement"
+        ),
         "- Golden sample `GS-PROD-CAT-PNL-A` approval artifact reconciled": "golden_sample_artifact_reconciliation",
         "- Closure checklist units reviewed": "closure_checklist_review",
         "- Fallback liability branch model-boundary evidence reviewed": "fallback_liability_branch_boundary_review",
@@ -479,7 +506,7 @@ def _approval_blockers(
             field_blockers.append(blocker)
     if (
         "reviewed_owner_decision_packet" not in field_blockers
-        and not (ROOT / EXPECTED_OWNER_DECISION_PACKET).exists()
+        and _generated_artifact_status(EXPECTED_OWNER_DECISION_PACKET) != "valid"
     ):
         field_blockers.append("reviewed_owner_decision_packet")
     if (
@@ -529,9 +556,14 @@ def _approval_field_status(
             text,
             "Reviewed first-certification packet",
             EXPECTED_FIRST_CERTIFICATION_PACKET,
+            required_freshness_markers=EXPECTED_FIRST_CERTIFICATION_FRESHNESS_MARKERS,
         ),
         "governance_record_review": _review_status(text, "- Governance record reviewed"),
         "reviewed_owner_decision_packet": _owner_decision_packet_review_status(text),
+        "owner_decision_next_review_queue_acknowledgement": _review_status(
+            text,
+            "- Owner decision next-review queue acknowledged",
+        ),
         "golden_sample_artifact_reconciliation": _golden_sample_artifact_reconciliation_status(
             text,
             golden_sample_approval_artifact,
@@ -593,9 +625,62 @@ def _owner_decision_packet_review_status(text: str) -> str:
     review_status = _review_status(text, "- Owner decision packet reviewed")
     if review_status != "valid":
         return review_status
-    if (ROOT / EXPECTED_OWNER_DECISION_PACKET).exists():
-        return "valid"
-    return "missing_artifact"
+    return _generated_artifact_status(EXPECTED_OWNER_DECISION_PACKET)
+
+
+def _generated_artifact_status(path_label: str) -> str:
+    return str(
+        _generated_artifact_freshness(
+            path_label,
+            EXPECTED_OWNER_DECISION_FRESHNESS_MARKERS,
+        )["freshness_status"]
+    )
+
+
+def _generated_artifacts_freshness() -> dict[str, dict[str, object]]:
+    return {
+        "first_certification_packet": _generated_artifact_freshness(
+            EXPECTED_FIRST_CERTIFICATION_PACKET,
+            EXPECTED_FIRST_CERTIFICATION_FRESHNESS_MARKERS,
+        ),
+        "owner_decision_packet": _generated_artifact_freshness(
+            EXPECTED_OWNER_DECISION_PACKET,
+            EXPECTED_OWNER_DECISION_FRESHNESS_MARKERS,
+        ),
+    }
+
+
+def _generated_artifact_freshness(
+    path_label: str,
+    required_markers: list[str],
+) -> dict[str, object]:
+    path = ROOT / path_label
+    exists = path.exists()
+    missing_markers: list[str]
+    if exists:
+        text = path.read_text(encoding="utf-8")
+        missing_markers = [
+            marker for marker in required_markers if marker not in text
+        ]
+    else:
+        missing_markers = list(required_markers)
+    if not exists:
+        freshness_status = "missing_artifact"
+    elif missing_markers:
+        freshness_status = "stale_generated_artifact"
+    else:
+        freshness_status = "valid"
+    return {
+        "artifact_path": path_label,
+        "exists": exists,
+        "freshness_status": freshness_status,
+        "missing_markers": missing_markers,
+    }
+
+
+def _has_freshness_markers(path: Path, markers: list[str]) -> bool:
+    text = path.read_text(encoding="utf-8")
+    return all(marker in text for marker in markers)
 
 
 def _golden_sample_artifact_reconciliation_status(
@@ -675,6 +760,7 @@ def build_status(
         "golden_sample_approval_artifact": golden_sample_approval_artifact,
         "closure_checklist_artifact": closure_checklist_artifact,
         "closure_blocker_triage": closure_blocker_triage,
+        "generated_artifact_freshness": _generated_artifacts_freshness(),
         "remaining_blockers": remaining_blockers,
         "approval_field_status": approval_field_status,
         "approval_action_items": approval_action_items,

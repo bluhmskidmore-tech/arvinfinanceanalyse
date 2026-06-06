@@ -228,6 +228,17 @@ No silent fallback is allowed. If degradation occurs, it must be visible.
 - The link from this page to `/ledger-pnl` for the same calendar selection uses `buildLedgerPnlHrefForReportDate`: empty selection → `/ledger-pnl` with no query; otherwise `report_date` is passed via `encodeURIComponent`.
 - This subsection does not add an outward `as_of_date`; section 10 above records the permanent no-standalone-field decision.
 
+### 10.2 Fallback-Date Boundary
+
+This subsection is a boundary, not an approval to add a new date field.
+
+- The current outward product-category PnL contract has no standalone `fallback_date` field and no standalone `as_of_date` field.
+- Do not infer a fallback date from `report_date`, `resolved_report_date`, or `generated_at`.
+- If backend `result_meta` or lineage evidence reports fallback behavior, the page may surface raw `fallback_mode` / source-status evidence only.
+- Raw fallback evidence is not replacement date truth.
+- Any future outward `fallback_date` or `as_of_date` field requires reopening product/API decision 1B and adding targeted API/schema/page tests in the same change.
+- Current evidence is governance-strip and formal-readiness visibility only; it is not page certification or business-owner approval.
+
 ## 11. Result Meta Visibility
 
 The page must make these fields inspectable:

@@ -167,7 +167,7 @@ Missing required artifacts:
 - `latest_recorded_gate_status=passed`
 - `approval_template_requires_rerun=true`
 - `verification_commands_rerun_captured=false`
-- Boundary: Recorded gate evidence is useful intake evidence, but owner signature requires a fresh pre-signature rerun and still cannot bypass golden, manual-audit, or owner approval.
+- Boundary: Recorded gate evidence is useful intake evidence, but owner signature requires a fresh pre-signature rerun and still cannot bypass golden, manual-audit, owner decisions, or owner approval.
 
 Pre-signature required commands:
 
@@ -192,6 +192,7 @@ Still blocking after rerun:
 - `business_owner_approval_captured=false`
 - `golden_sample_approval_artifact_mismatch=true`
 - `manual_closure_checklist_has_partial_units=10`
+- `owner_decisions_pending=5`
 
 ## Source-To-Screen Trace
 

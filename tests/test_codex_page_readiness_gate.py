@@ -94,8 +94,12 @@ def test_product_category_readiness_static_gates_surface_contract_evidence() -> 
     ]
     assert report["business_owner_approval_status"]["approval_status"] == "pending"
     assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
-    assert report["business_owner_approval_status"]["approval_action_item_count"] == 14
+    assert report["business_owner_approval_status"]["approval_action_item_count"] == 15
     assert "reviewed_owner_decision_packet" in report["business_owner_approval_status"]["remaining_blockers"]
+    assert (
+        "owner_decision_next_review_queue_acknowledgement"
+        in report["business_owner_approval_status"]["remaining_blockers"]
+    )
     assert "golden_sample_artifact_reconciliation" in report["business_owner_approval_status"]["remaining_blockers"]
     assert "closure_checklist_review" in report["business_owner_approval_status"]["remaining_blockers"]
     assert "fallback_liability_branch_boundary_review" in report["business_owner_approval_status"]["remaining_blockers"]
@@ -828,7 +832,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
         1 for page in payload["pages"] if page["run_supported"]
     )
     assert payload["summary"]["business_owner_approval_pending_count"] == 5
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 58
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 59
     assert payload["blocking_pages"] == []
     pending_by_slug = {
         page["page_slug"]: page
@@ -843,8 +847,9 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     }
     product_pending = pending_by_slug["product-category-pnl"]
     assert product_pending["page_id"] == "PAGE-PROD-CAT-001"
-    assert product_pending["approval_action_item_count"] == 14
+    assert product_pending["approval_action_item_count"] == 15
     assert "reviewed_owner_decision_packet" in product_pending["remaining_blockers"]
+    assert "owner_decision_next_review_queue_acknowledgement" in product_pending["remaining_blockers"]
     assert "golden_sample_artifact_reconciliation" in product_pending["remaining_blockers"]
     assert "closure_checklist_review" in product_pending["remaining_blockers"]
     assert "fallback_liability_branch_boundary_review" in product_pending["remaining_blockers"]
@@ -912,13 +917,13 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     }
 
     assert payload["scope"] == "route-scope-classification"
-    assert payload["summary"]["seeded_trace_bundle_count"] == 34
+    assert payload["summary"]["seeded_trace_bundle_count"] == 39
     assert payload["summary"]["route_count"] > 30
     assert payload["summary"]["business_contract_certified_count"] == 0
-    assert payload["summary"]["evidence_pending_count"] >= 3
+    assert payload["summary"]["evidence_pending_count"] == 23
     assert payload["summary"]["gate_i_gap_count"] == 0
-    assert payload["summary"]["not_started_count"] >= 1
-    assert payload["summary"]["visible_unseeded_route_count"] >= 1
+    assert payload["summary"]["not_started_count"] == 0
+    assert payload["summary"]["visible_unseeded_route_count"] == 0
     assert payload["summary"]["unclassified_count"] == 0
     assert payload["claim_boundary"] == (
         "No seeded route is business-contract-certified until direct golden approval, "
@@ -991,6 +996,51 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["bank-ledger-dashboard"]["formal_use_allowed"] is False
     assert rows_by_slug["bank-ledger-dashboard"]["has_golden_samples"] is False
     assert rows_by_slug["bank-ledger-dashboard"]["golden_sample_approved"] is False
+    assert rows_by_slug["cashflow-projection"]["classification"] == "evidence-pending"
+    assert rows_by_slug["cashflow-projection"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
+    assert rows_by_slug["cashflow-projection"]["route"] == "/cashflow-projection"
+    assert rows_by_slug["cashflow-projection"]["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert rows_by_slug["cashflow-projection"]["source"] == "seeded_trace_bundle"
+    assert rows_by_slug["cashflow-projection"]["run_supported"] is True
+    assert rows_by_slug["cashflow-projection"]["formal_use_allowed"] is False
+    assert rows_by_slug["cashflow-projection"]["has_golden_samples"] is False
+    assert rows_by_slug["cashflow-projection"]["golden_sample_approved"] is False
+    assert rows_by_slug["concentration-monitor"]["classification"] == "evidence-pending"
+    assert rows_by_slug["concentration-monitor"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
+    assert rows_by_slug["concentration-monitor"]["route"] == "/concentration-monitor"
+    assert rows_by_slug["concentration-monitor"]["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert rows_by_slug["concentration-monitor"]["source"] == "seeded_trace_bundle"
+    assert rows_by_slug["concentration-monitor"]["run_supported"] is True
+    assert rows_by_slug["concentration-monitor"]["formal_use_allowed"] is False
+    assert rows_by_slug["concentration-monitor"]["has_golden_samples"] is False
+    assert rows_by_slug["concentration-monitor"]["golden_sample_approved"] is False
+    assert rows_by_slug["team-performance"]["classification"] == "evidence-pending"
+    assert rows_by_slug["team-performance"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
+    assert rows_by_slug["team-performance"]["route"] == "/team-performance"
+    assert rows_by_slug["team-performance"]["page_id"] == "GAP-TEAM-PERFORMANCE-PAGE"
+    assert rows_by_slug["team-performance"]["source"] == "seeded_trace_bundle"
+    assert rows_by_slug["team-performance"]["run_supported"] is True
+    assert rows_by_slug["team-performance"]["formal_use_allowed"] is False
+    assert rows_by_slug["team-performance"]["has_golden_samples"] is False
+    assert rows_by_slug["team-performance"]["golden_sample_approved"] is False
+    assert rows_by_slug["platform-config"]["classification"] == "evidence-pending"
+    assert rows_by_slug["platform-config"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
+    assert rows_by_slug["platform-config"]["route"] == "/platform-config"
+    assert rows_by_slug["platform-config"]["page_id"] == "GAP-PLATFORM-CONFIG-PAGE"
+    assert rows_by_slug["platform-config"]["source"] == "seeded_trace_bundle"
+    assert rows_by_slug["platform-config"]["run_supported"] is True
+    assert rows_by_slug["platform-config"]["formal_use_allowed"] is False
+    assert rows_by_slug["platform-config"]["has_golden_samples"] is False
+    assert rows_by_slug["platform-config"]["golden_sample_approved"] is False
+    assert rows_by_slug["news-events"]["classification"] == "evidence-pending"
+    assert rows_by_slug["news-events"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
+    assert rows_by_slug["news-events"]["route"] == "/news-events"
+    assert rows_by_slug["news-events"]["page_id"] == "GAP-NEWS-EVENTS-PAGE"
+    assert rows_by_slug["news-events"]["source"] == "seeded_trace_bundle"
+    assert rows_by_slug["news-events"]["run_supported"] is True
+    assert rows_by_slug["news-events"]["formal_use_allowed"] is False
+    assert rows_by_slug["news-events"]["has_golden_samples"] is False
+    assert rows_by_slug["news-events"]["golden_sample_approved"] is False
 
     assert payload["certification_ready_routes"] == []
     assert "product-category-pnl" in payload["next_evidence_pending_routes"]
@@ -998,6 +1048,11 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert "stock-analysis" in payload["next_evidence_pending_routes"]
     assert "average-balance" in payload["next_evidence_pending_routes"]
     assert "bank-ledger-dashboard" in payload["next_evidence_pending_routes"]
+    assert "cashflow-projection" in payload["next_evidence_pending_routes"]
+    assert "concentration-monitor" in payload["next_evidence_pending_routes"]
+    assert "team-performance" in payload["next_evidence_pending_routes"]
+    assert "platform-config" in payload["next_evidence_pending_routes"]
+    assert "news-events" in payload["next_evidence_pending_routes"]
     assert "bond-analysis" not in payload["next_gate_i_gap_routes"]
     assert payload["next_gate_i_gap_routes"] == []
 
@@ -1007,7 +1062,7 @@ def test_all_page_readiness_embeds_route_scope_classification_summary() -> None:
 
     assert payload["route_scope_classification"]["scope"] == "route-scope-classification"
     assert payload["route_scope_classification"]["summary"]["seeded_trace_bundle_count"] == payload["summary"]["page_count"]
-    assert payload["route_scope_classification"]["summary"]["route_count"] > payload["summary"]["page_count"]
+    assert payload["route_scope_classification"]["summary"]["route_count"] >= payload["summary"]["page_count"]
     assert payload["route_scope_classification"]["summary"]["business_contract_certified_count"] == 0
     assert payload["summary"]["route_scope_business_contract_certified_count"] == 0
     assert payload["summary"]["route_scope_evidence_pending_count"] >= 3
@@ -1031,11 +1086,11 @@ def test_page_readiness_cli_all_mode_emits_batch_report() -> None:
 
     payload = json.loads(completed.stdout)
     assert payload["scope"] == "all-page-readiness"
-    assert payload["summary"]["page_count"] == 33
+    assert payload["summary"]["page_count"] == 39
     assert payload["summary"]["blocked_count"] == 0
-    assert payload["summary"]["run_supported_count"] == 21
+    assert payload["summary"]["run_supported_count"] == 27
     assert payload["summary"]["business_owner_approval_pending_count"] == 5
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 58
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 59
     assert payload["blocking_pages"] == []
     assert {
         page["page_slug"]
@@ -1076,6 +1131,12 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
     assert rows_by_slug["decision-items"]["classification"] == "evidence-pending"
     assert rows_by_slug["kpi-performance"]["classification"] == "evidence-pending"
     assert rows_by_slug["average-balance"]["classification"] == "evidence-pending"
+    assert rows_by_slug["cashflow-projection"]["classification"] == "evidence-pending"
+    assert rows_by_slug["team-performance"]["classification"] == "evidence-pending"
+    assert rows_by_slug["platform-config"]["classification"] == "evidence-pending"
+    assert rows_by_slug["news-events"]["classification"] == "evidence-pending"
+    assert payload["summary"]["visible_unseeded_route_count"] == 0
+    assert payload["summary"]["not_started_count"] == 0
 
 
 def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() -> None:
@@ -1224,8 +1285,8 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     )
 
     assert "Business-owner approval pending pages:" in completed.stdout
-    assert "business_owner_approval_action_item_count=58" in completed.stdout
-    assert "- product-category-pnl (PAGE-PROD-CAT-001): pending; captured=False; action_items=14" in completed.stdout
+    assert "business_owner_approval_action_item_count=59" in completed.stdout
+    assert "- product-category-pnl (PAGE-PROD-CAT-001): pending; captured=False; action_items=15" in completed.stdout
     assert "- ledger-pnl (PAGE-LEDGER-PNL-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- pnl-attribution (PAGE-PNL-ATTR-WB-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- bond-analysis (PAGE-BOND-ANALYSIS-001): pending; captured=False; action_items=11" in completed.stdout

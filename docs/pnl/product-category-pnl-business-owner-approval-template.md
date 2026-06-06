@@ -19,7 +19,11 @@ Closure approved: `closure_approved=false`
 - The same checker verifies `docs/pnl/product-category-closure-checklist.md` directly; setting `Closure checklist units reviewed` to `yes` is not enough while any closure unit remains `PARTIAL` or `NOT_TRUSTED`.
 - The reviewed boundary and first-certification packet paths must match the expected paths and the files must exist; a correct-looking template path is not enough if the packet artifact is missing.
 - Setting `Owner decision packet reviewed` to `yes` requires `docs/pnl/product-category-pnl-owner-decision-packet.md` to exist. The packet is intake evidence only and does not capture the owner/API decision outcomes.
-- `docs/pnl/product-category-pnl-owner-decision-packet.md` is the owner/API decision intake for four product decisions and two API/contract blockers; reviewing it is required before approval, but the packet itself does not capture those decisions.
+- `docs/pnl/product-category-pnl-owner-decision-packet.md` is the owner/API decision intake for 3 product decisions and 2 API/contract blockers; reviewing it is required before approval, but the packet itself does not capture those decisions.
+- The same owner-decision packet now separates 5 formal decision items plus 5 next-review queue topics. Setting `Owner decision next-review queue acknowledged` to `yes` means the reviewer saw that queue topics are intake follow-ups and do not count as captured decisions.
+- `docs/pnl/product-category-pnl-first-certification-packet.md` includes an Owner Readiness Receipt with `owner_signable=false` and `can_promote_certification=false`; reviewing this receipt does not approve the page or remove human-required blockers.
+- The same packet includes a Pre-Signature Verification Rerun Receipt with `packet_generator_reruns_gate=false` and `verification_commands_rerun_captured=false`; owner signature requires rerunning `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\codex-page-readiness.ps1 -PageSlug product-category-pnl -Run -CheckLive`.
+- Setting review fields to `yes` does not bypass golden approval, manual checklist closure, owner decisions, or strict checker failure.
 - The current boundary covers `MTR-PCP-001` through `MTR-PCP-012` only.
 - Additional product-category fields require a new approved matrix, dictionary row, sample assertion, and test bundle.
 
@@ -44,6 +48,7 @@ Reviewed first-certification packet: `docs/pnl/product-category-pnl-first-certif
 
 - Governance record reviewed: `<yes | no>`
 - Owner decision packet reviewed: `<yes | no>`
+- Owner decision next-review queue acknowledged: `<yes | no>`
 - Golden sample `GS-PROD-CAT-PNL-A` approval artifact reconciled: `<yes | no>`
 - Closure checklist units reviewed: `<yes | no>`
 - Fallback liability branch model-boundary evidence reviewed: `<yes | no>`
