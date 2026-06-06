@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CSSProperties } from "react";
@@ -55,6 +55,10 @@ vi.mock("../lib/echarts", () => ({
     );
   },
 }));
+
+beforeAll(async () => {
+  await import("../features/stock-analysis/pages/StockAnalysisPage");
+}, 20_000);
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -1336,6 +1340,70 @@ describe("StockAnalysisPage", () => {
     expect(candidateHistorySpy).not.toHaveBeenCalled();
     expect(cycleProxySpy).not.toHaveBeenCalled();
     expect(portfolioBacktestSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows first-screen empty states when no stock candidates or sectors are available", async () => {
+    const emptyStrategy = buildStrategyPayload({
+      sector_rank: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_livermore_sector_rank_provisional_v1",
+        is_provisional: true,
+        sector_count: 0,
+        excluded_constituent_count: 0,
+        excluded_sector_count: 0,
+        items: [],
+      },
+      stock_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_livermore_stock_candidates_bundle_v1",
+        market_state: "WARM",
+        input_stock_count: 0,
+        candidate_count: 0,
+        excluded_stock_count: 0,
+        insufficient_history_count: 0,
+        items: [],
+      },
+      mean_reversion_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_mean_reversion_candidates_v1",
+        market_state: "WARM",
+        input_stock_count: 0,
+        candidate_count: 0,
+        excluded_stock_count: 0,
+        insufficient_history_count: 0,
+        items: [],
+      },
+      factor_screen_candidates: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_factor_screen_candidates_v1",
+        market_state: "WARM",
+        input_stock_count: 0,
+        candidate_count: 0,
+        coverage_note: "factor snapshot no data",
+        items: [],
+      },
+      theme_breakout: {
+        as_of_date: "2026-04-29",
+        formula_version: "rv_theme_breakout_v1",
+        is_proxy: true,
+        theme_count: 0,
+        items: [],
+      },
+    });
+
+    renderWorkbenchApp(["/stock-analysis"], {
+      client: stockClient({ strategy: emptyStrategy }),
+    });
+
+    expect(await screen.findByTestId("stock-analysis-review-queue-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-review-queue-empty")).toHaveTextContent("0");
+    expect(screen.queryByTestId("stock-candidate-000001.SZ")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("stock-analysis-sector-review-link")).not.toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-factor-preview-empty")).toHaveTextContent("0");
+    expect(screen.getByTestId("stock-analysis-mean-reversion-preview-empty")).toHaveTextContent("0");
+    expect(screen.getByTestId("stock-analysis-theme-leader-empty")).toHaveTextContent("0");
+    expect(screen.getByTestId("stock-analysis-sector-heavyweight-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("stock-analysis-consensus-first-screen-empty")).toHaveTextContent("0");
   });
 
   it("scopes shell compression to the stock-analysis route", () => {
