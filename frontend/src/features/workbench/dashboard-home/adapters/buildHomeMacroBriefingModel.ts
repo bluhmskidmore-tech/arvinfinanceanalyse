@@ -6,6 +6,7 @@ import {
 } from "../../dashboard/dashboardMacroNewsTopics";
 import { addDaysToIsoDate } from "../../pages/dashboardPageHelpers";
 import {
+  hasDisplayableMacroNewsJsonTitle,
   hasLeadingHtmlPayload,
   isDisplayableMacroNewsText,
   isMacroRelevantForHomeBriefing,
@@ -69,8 +70,14 @@ export type HomePolicyFundingDiagnosticReason = {
   tone: "neutral" | "info" | "warning" | "danger";
 };
 
+export type HomePolicyFundingNarrativeTone = "neutral" | "info" | "warning" | "danger";
+
 export type HomePolicyFundingDiagnostics = {
   summary: string;
+  sourceVerdict: string;
+  filterNarrative: string | null;
+  actionHint: string | null;
+  narrativeTone: HomePolicyFundingNarrativeTone;
   emptyHint: string | null;
   metrics: readonly HomePolicyFundingDiagnosticMetric[];
   reasons: readonly HomePolicyFundingDiagnosticReason[];
@@ -116,6 +123,7 @@ type MacroNewsItemsResult = Pick<
   "newsItems" | "newsMessage" | "newsStale" | "newsFreshnessLabel" | "newsSourceLabel" | "newsAsOfLabel" | "newsStatusLabel" | "newsRefreshLabel"
 > & {
   policyFundingDiagnostics?: HomePolicyFundingDiagnostics;
+  sourceState?: MacroNewsSourceState;
 };
 
 type MacroNewsFilterOptions = {
@@ -130,6 +138,18 @@ type MacroNewsDropReasonId =
   | "not-policy-funding"
   | "duplicate-title"
   | "over-limit";
+
+type MacroNewsReasonCount = {
+  id: MacroNewsDropReasonId;
+  count: number;
+};
+
+type MacroNewsSourceState = {
+  sourceKind: "choice" | "tushare_fallback" | "choice_error" | "loading" | "query_error" | "empty";
+  fallbackReason?: "permission" | "stale" | "empty" | "all_error" | "probe_error" | "waiting_secondary";
+  freshness?: "fresh" | "stale" | "unknown";
+  scope?: "policy_funding" | "macro_relaxed";
+};
 
 const RELEASE_WINDOW_DAYS = 45;
 const RELEASE_LIMIT = 6;
@@ -286,6 +306,7 @@ function analyzeMacroNewsEvents(input: {
   uniqueCount: number;
   displayedCount: number;
   displayedEvents: readonly ChoiceNewsEvent[];
+  reasonCounts: readonly MacroNewsReasonCount[];
   reasons: readonly HomePolicyFundingDiagnosticReason[];
 } {
   const reasons = new Map<MacroNewsDropReasonId, number>();
@@ -294,12 +315,11 @@ function analyzeMacroNewsEvents(input: {
       incrementReason(reasons, "source-error");
       return false;
     }
-    if (hasLeadingHtmlPayload(event)) {
+    const title = summarizeMacroNewsEvent(event);
+    if (hasLeadingHtmlPayload(event) && !hasDisplayableMacroNewsJsonTitle(event)) {
       incrementReason(reasons, "undisplayable");
       return false;
     }
-
-    const title = summarizeMacroNewsEvent(event);
     if (!isDisplayableMacroNewsText(title)) {
       incrementReason(reasons, "undisplayable");
       return false;
@@ -335,13 +355,16 @@ function analyzeMacroNewsEvents(input: {
     reasons.set("over-limit", overLimitCount);
   }
 
+  const reasonCounts = Array.from(reasons.entries()).map(([id, count]) => ({ id, count }));
+
   return {
     rawCount: input.events?.length ?? 0,
     eligibleCount: sortedEligibleEvents.length,
     uniqueCount: uniqueEvents.length,
     displayedCount: displayedEvents.length,
     displayedEvents,
-    reasons: Array.from(reasons.entries()).map(([id, count]) => ({
+    reasonCounts,
+    reasons: reasonCounts.map(({ id, count }) => ({
       id,
       label: dropReasonLabel(id),
       countLabel: describeCount(count),
@@ -350,12 +373,185 @@ function analyzeMacroNewsEvents(input: {
   };
 }
 
-function buildPolicyFundingDiagnostics(input: {
-  sourceLabel: string;
+function topReasonText(reasonCounts: readonly MacroNewsReasonCount[]): string {
+  return reasonCounts
+    .slice()
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 3)
+    .map((reason) => dropReasonLabel(reason.id))
+    .join("、");
+}
+
+function sourceStateName(sourceState: MacroNewsSourceState): string {
+  if (sourceState.sourceKind === "tushare_fallback") {
+    return sourceState.scope === "macro_relaxed" ? "Tushare 宏观兜底" : "Tushare 兜底";
+  }
+  if (sourceState.sourceKind === "choice" || sourceState.sourceKind === "choice_error") {
+    return "Choice 宏观新闻";
+  }
+  return "政策与资金面数据源";
+}
+
+function fallbackReasonText(sourceState: MacroNewsSourceState): string {
+  if (sourceState.fallbackReason === "stale") {
+    return "Choice 快讯偏旧";
+  }
+  if (sourceState.fallbackReason === "permission") {
+    return "Choice 权限不足";
+  }
+  if (sourceState.fallbackReason === "all_error") {
+    return "Choice 查询全部异常";
+  }
+  if (sourceState.fallbackReason === "probe_error") {
+    return "Choice 探针异常";
+  }
+  if (sourceState.fallbackReason === "waiting_secondary") {
+    return "等待兜底源";
+  }
+  return "Choice 快讯无可展示项";
+}
+
+function sourceVerdictText(sourceState: MacroNewsSourceState, displayedCount: number): string {
+  if (sourceState.sourceKind === "query_error") {
+    return "政策与资金面查询异常，当前无法确认源状态。";
+  }
+  if (sourceState.sourceKind === "loading") {
+    return sourceState.fallbackReason === "waiting_secondary"
+      ? "正在等待 Tushare 兜底源返回。"
+      : "正在等待政策与资金面数据源返回。";
+  }
+  if (sourceState.sourceKind === "choice_error") {
+    return sourceState.fallbackReason === "permission"
+      ? "Choice 新闻源权限不足，且兜底源未形成可展示项。"
+      : "Choice 新闻源返回错误，且兜底源未形成可展示项。";
+  }
+  if (sourceState.sourceKind === "tushare_fallback") {
+    if (sourceState.scope === "macro_relaxed") {
+      return "当前使用 Tushare 宏观兜底：严格资金面无可展示项，已放宽到宏观相关快讯。";
+    }
+    return `当前使用 ${sourceStateName(sourceState)}：${fallbackReasonText(sourceState)}，已切换到兜底源。`;
+  }
+  if (sourceState.sourceKind === "choice") {
+    if (sourceState.freshness === "stale") {
+      return "当前使用 Choice 宏观新闻，但快讯偏旧。";
+    }
+    return displayedCount > 0
+      ? "当前使用 Choice 宏观新闻：源可用且筛选后有可展示项。"
+      : "当前使用 Choice 宏观新闻，但未形成政策/资金面展示项。";
+  }
+  return "当前没有可用的政策与资金面源记录。";
+}
+
+function filterNarrativeText(input: {
+  rawCount: number;
+  displayedCount: number;
+  reasonCounts: readonly MacroNewsReasonCount[];
+  sourceState: MacroNewsSourceState;
+}): string | null {
+  if (input.sourceState.sourceKind === "loading" || input.sourceState.sourceKind === "query_error") {
+    return null;
+  }
+
+  const removedCount = Math.max(0, input.rawCount - input.displayedCount);
+  const reasonText = topReasonText(input.reasonCounts);
+  if (input.displayedCount === 0 && input.rawCount > 0) {
+    return reasonText
+      ? `0 条通过筛选；原始 ${input.rawCount} 条全部因${reasonText}未展示。`
+      : `0 条通过筛选；原始 ${input.rawCount} 条未形成可展示快讯。`;
+  }
+  if (input.displayedCount === 1) {
+    return removedCount > 0 && reasonText
+      ? `仅 1 条通过筛选；其余 ${removedCount} 条主要因${reasonText}未展示。`
+      : "仅展示 1 条，未发现筛选剔除；样本偏少。";
+  }
+  if (removedCount > 0 && reasonText) {
+    return `已展示 ${input.displayedCount} 条；另有 ${removedCount} 条因${reasonText}未展示。`;
+  }
+  return null;
+}
+
+function actionHintText(input: {
+  rawCount: number;
+  displayedCount: number;
+  reasonCounts: readonly MacroNewsReasonCount[];
+  sourceState: MacroNewsSourceState;
+}): string | null {
+  if (input.sourceState.sourceKind === "query_error") {
+    return "刷新或检查新闻查询服务后再使用本块判断。";
+  }
+  if (input.sourceState.sourceKind === "loading") {
+    return "等待数据源返回后再判断；无需手工改数。";
+  }
+  if (input.sourceState.sourceKind === "choice_error") {
+    return "恢复 Choice 权限或检查兜底源后再使用本块判断。";
+  }
+  if (input.displayedCount === 0 && input.rawCount > 0) {
+    return "请复核过滤关键词与原始明细，确认是否需要补采或放宽资金面规则。";
+  }
+  if (input.displayedCount === 1 && input.rawCount - input.displayedCount > 0) {
+    return input.sourceState.sourceKind === "tushare_fallback"
+      ? "只剩 1 条可展示快讯，请复核兜底源原始明细与过滤规则。"
+      : "只剩 1 条可展示快讯，请复核原始明细与过滤规则。";
+  }
+  if (input.displayedCount === 1) {
+    return input.sourceState.sourceKind === "tushare_fallback"
+      ? "样本偏少，请结合兜底源原始明细复核。"
+      : "样本偏少，请结合原始明细复核。";
+  }
+  return null;
+}
+
+function narrativeTone(input: {
+  rawCount: number;
+  displayedCount: number;
+  sourceState: MacroNewsSourceState;
+}): HomePolicyFundingNarrativeTone {
+  if (input.sourceState.sourceKind === "query_error" || input.sourceState.sourceKind === "choice_error") {
+    return "danger";
+  }
+  if (input.sourceState.sourceKind === "loading") {
+    return "info";
+  }
+  if (
+    (input.rawCount > 0 && input.displayedCount === 0) ||
+    input.displayedCount === 1 ||
+    input.sourceState.fallbackReason === "waiting_secondary" ||
+    input.sourceState.freshness === "stale"
+  ) {
+    return "warning";
+  }
+  return "info";
+}
+
+export function buildPolicyFundingDiagnosticNarrative(input: {
+  sourceState: MacroNewsSourceState;
   rawCount: number;
   eligibleCount: number;
   uniqueCount: number;
   displayedCount: number;
+  reasonCounts: readonly MacroNewsReasonCount[];
+  presentationLabels?: {
+    newsSourceLabel: string;
+    newsStatusLabel: string;
+    newsAsOfLabel: string;
+  };
+}): Pick<HomePolicyFundingDiagnostics, "sourceVerdict" | "filterNarrative" | "actionHint" | "narrativeTone"> {
+  return {
+    sourceVerdict: sourceVerdictText(input.sourceState, input.displayedCount),
+    filterNarrative: filterNarrativeText(input),
+    actionHint: actionHintText(input),
+    narrativeTone: narrativeTone(input),
+  };
+}
+
+function buildPolicyFundingDiagnostics(input: {
+  sourceLabel: string;
+  sourceState: MacroNewsSourceState;
+  rawCount: number;
+  eligibleCount: number;
+  uniqueCount: number;
+  displayedCount: number;
+  reasonCounts: readonly MacroNewsReasonCount[];
   reasons: readonly HomePolicyFundingDiagnosticReason[];
 }): HomePolicyFundingDiagnostics {
   const source = selectedSourceLabel(input.sourceLabel);
@@ -367,9 +563,11 @@ function buildPolicyFundingDiagnostics(input: {
   ];
   const removedCount = Math.max(0, input.rawCount - input.displayedCount);
   const reasonText = reasonListText(input.reasons);
+  const narrative = buildPolicyFundingDiagnosticNarrative(input);
 
   return {
     summary: `当前源 ${source}：原始 ${input.rawCount} 条，入选 ${input.eligibleCount} 条，去重后 ${input.uniqueCount} 条，展示 ${input.displayedCount} 条。`,
+    ...narrative,
     emptyHint:
       input.displayedCount <= 1 && removedCount > 0 && reasonText
         ? `仅 ${input.displayedCount} 条通过筛选；其余 ${removedCount} 条因${reasonText}未展示。`
@@ -381,12 +579,22 @@ function buildPolicyFundingDiagnostics(input: {
 
 function emptyPolicyFundingDiagnostics(input: {
   sourceLabel: string;
+  sourceState: MacroNewsSourceState;
   stateLabel: string;
   rawCount?: number;
 }): HomePolicyFundingDiagnostics {
   const rawCount = input.rawCount ?? 0;
+  const narrative = buildPolicyFundingDiagnosticNarrative({
+    sourceState: input.sourceState,
+    rawCount,
+    eligibleCount: 0,
+    uniqueCount: 0,
+    displayedCount: 0,
+    reasonCounts: [],
+  });
   return {
     summary: `当前源 ${selectedSourceLabel(input.sourceLabel)}：${input.stateLabel}，原始 ${rawCount} 条，展示 0 条。`,
+    ...narrative,
     emptyHint: rawCount > 0 ? `当前 ${rawCount} 条原始记录未形成可展示快讯。` : "当前没有可诊断的原始记录。",
     metrics: [
       { id: "raw", label: "原始", value: describeCount(rawCount), tone: "neutral" },
@@ -425,6 +633,7 @@ function buildNewsItemsFromEvents(input: {
   todayIsoDate: string;
   topicLabel: (topicCode: string) => string;
   sourceLabel: string;
+  sourceState: MacroNewsSourceState;
   emptyMessage: string;
   statusWhenFresh: string;
   statusWhenStale: string;
@@ -467,12 +676,15 @@ function buildNewsItemsFromEvents(input: {
     newsStatusLabel:
       newsItems.length > 0 ? (newsStale ? input.statusWhenStale : input.statusWhenFresh) : input.statusWhenEmpty,
     newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    sourceState: newsStale ? { ...input.sourceState, freshness: "stale" } : input.sourceState,
     policyFundingDiagnostics: buildPolicyFundingDiagnostics({
       sourceLabel: input.sourceLabel,
+      sourceState: newsStale ? { ...input.sourceState, freshness: "stale" } : input.sourceState,
       rawCount: analysis.rawCount,
       eligibleCount: analysis.eligibleCount,
       uniqueCount: analysis.uniqueCount,
       displayedCount: analysis.displayedCount,
+      reasonCounts: analysis.reasonCounts,
       reasons: analysis.reasons,
     }),
   };
@@ -485,6 +697,16 @@ function latestChoiceSourceError(events?: readonly ChoiceNewsEvent[] | null): Ch
     .sort((left, right) => right.received_at.localeCompare(left.received_at))[0] ?? null;
 }
 
+function hasStaleChoiceInventory(events: readonly ChoiceNewsEvent[] | null | undefined, todayIsoDate: string): boolean {
+  const latestDate = (events ?? [])
+    .filter((event) => event.error_code === 0)
+    .map((event) => event.received_at.slice(0, 10))
+    .filter(Boolean)
+    .sort((left, right) => right.localeCompare(left))[0];
+  const staleDays = latestDate ? daysBetween(todayIsoDate, latestDate) : null;
+  return staleDays != null && staleDays > NEWS_STALE_DAYS;
+}
+
 function isChoicePermissionError(event: ChoiceNewsEvent): boolean {
   const message = event.error_msg.trim().toLowerCase();
   return event.error_code === 10001012 || message.includes("insufficient user access");
@@ -494,6 +716,12 @@ function buildChoiceSourceErrorResult(event: ChoiceNewsEvent): MacroNewsItemsRes
   const timeLabel = dateTimeLabel(event.received_at);
   const isPermissionError = isChoicePermissionError(event);
   const errorMessage = event.error_msg.trim();
+  const sourceState: MacroNewsSourceState = {
+    sourceKind: "choice_error",
+    fallbackReason: isPermissionError ? "permission" : "probe_error",
+    freshness: "unknown",
+    scope: "policy_funding",
+  };
 
   return {
     newsItems: [],
@@ -506,8 +734,10 @@ function buildChoiceSourceErrorResult(event: ChoiceNewsEvent): MacroNewsItemsRes
     newsAsOfLabel: `数据截至 ${timeLabel}`,
     newsStatusLabel: isPermissionError ? "来源状态：Choice 权限不足" : "来源状态：新闻源错误",
     newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+    sourceState,
     policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
       sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+      sourceState,
       stateLabel: isPermissionError ? "Choice 权限不足" : "新闻源错误",
       rawCount: 1,
     }),
@@ -530,6 +760,7 @@ export function shouldRequestHomeMacroNewsFallback(input: {
     todayIsoDate: input.todayIsoDate,
     topicLabel: dashboardMacroNewsTopicLabel,
     sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+    sourceState: { sourceKind: "choice", freshness: "fresh", scope: "policy_funding" },
     emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
     statusWhenFresh: "source ok",
     statusWhenStale: "source stale",
@@ -557,8 +788,10 @@ export function resolveHomeMacroNewsBriefing(input: {
       newsAsOfLabel: "数据截至：不可用",
       newsStatusLabel: "来源状态：异常",
       newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+      sourceState: { sourceKind: "query_error", freshness: "unknown", scope: "policy_funding" },
       policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
         sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+        sourceState: { sourceKind: "query_error", freshness: "unknown", scope: "policy_funding" },
         stateLabel: "查询异常",
       }),
     };
@@ -573,8 +806,10 @@ export function resolveHomeMacroNewsBriefing(input: {
       newsAsOfLabel: "数据截至：加载中",
       newsStatusLabel: "来源状态：加载中",
       newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+      sourceState: { sourceKind: "loading", freshness: "unknown", scope: "policy_funding" },
       policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
         sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+        sourceState: { sourceKind: "loading", freshness: "unknown", scope: "policy_funding" },
         stateLabel: "加载中",
       }),
     };
@@ -585,6 +820,7 @@ export function resolveHomeMacroNewsBriefing(input: {
     todayIsoDate: input.todayIsoDate,
     topicLabel: dashboardMacroNewsTopicLabel,
     sourceLabel: MACRO_NEWS_CHOICE_SOURCE_LABEL,
+    sourceState: { sourceKind: "choice", freshness: "fresh", scope: "policy_funding" },
     emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
     statusWhenFresh: "来源状态：正常",
     statusWhenStale: "来源状态：偏旧",
@@ -597,6 +833,12 @@ export function resolveHomeMacroNewsBriefing(input: {
   }
 
   if (input.isLoading && !input.fallbackEvents?.length) {
+    const sourceState: MacroNewsSourceState = {
+      sourceKind: "loading",
+      fallbackReason: "waiting_secondary",
+      freshness: "unknown",
+      scope: "policy_funding",
+    };
     return {
       newsItems: [],
       newsMessage: "正在加载政策与资金面…",
@@ -606,19 +848,32 @@ export function resolveHomeMacroNewsBriefing(input: {
       newsAsOfLabel: "数据截至：加载中",
       newsStatusLabel: "来源状态：加载中",
       newsRefreshLabel: MACRO_NEWS_REFRESH_LABEL,
+      sourceState,
       policyFundingDiagnostics: emptyPolicyFundingDiagnostics({
         sourceLabel: MACRO_NEWS_FALLBACK_SOURCE_LABEL,
+        sourceState,
         stateLabel: "等待兜底源",
-        rawCount: input.choiceEvents?.length ?? 0,
       }),
     };
   }
 
+  const sourceError = latestChoiceSourceError(input.choiceEvents);
+  const fallbackReason: MacroNewsSourceState["fallbackReason"] = sourceError
+    ? (isChoicePermissionError(sourceError) ? "permission" : "probe_error")
+    : choiceNews.newsStale || hasStaleChoiceInventory(input.choiceEvents, input.todayIsoDate)
+      ? "stale"
+      : "empty";
   const fallbackNews = buildNewsItemsFromEvents({
     events: input.fallbackEvents,
     todayIsoDate: input.todayIsoDate,
     topicLabel: dashboardMacroNewsFallbackTopicLabel,
     sourceLabel: MACRO_NEWS_FALLBACK_SOURCE_LABEL,
+    sourceState: {
+      sourceKind: "tushare_fallback",
+      fallbackReason,
+      freshness: "fresh",
+      scope: "policy_funding",
+    },
     emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
     statusWhenFresh: "来源状态：Tushare 兜底",
     statusWhenStale: "来源状态：偏旧",
@@ -630,13 +885,18 @@ export function resolveHomeMacroNewsBriefing(input: {
     return fallbackNews;
   }
 
-  const sourceError = latestChoiceSourceError(input.choiceEvents);
   if (sourceError) {
     const relaxedFallbackNews = buildNewsItemsFromEvents({
       events: input.fallbackEvents,
       todayIsoDate: input.todayIsoDate,
       topicLabel: dashboardMacroNewsFallbackTopicLabel,
       sourceLabel: MACRO_NEWS_RELAXED_FALLBACK_SOURCE_LABEL,
+      sourceState: {
+        sourceKind: "tushare_fallback",
+        fallbackReason,
+        freshness: "fresh",
+        scope: "macro_relaxed",
+      },
       emptyMessage: POLICY_FUNDING_EMPTY_MESSAGE,
       statusWhenFresh: "来源状态：Tushare 宏观兜底（非严格资金面）",
       statusWhenStale: "来源状态：Tushare 宏观兜底偏旧（非严格资金面）",

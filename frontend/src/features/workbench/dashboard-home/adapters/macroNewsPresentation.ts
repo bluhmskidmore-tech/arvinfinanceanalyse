@@ -171,6 +171,10 @@ function extractTitleFromPayloadJson(payloadJson: string | null | undefined): st
   }
 }
 
+export function hasDisplayableMacroNewsJsonTitle(event: ChoiceNewsEvent): boolean {
+  return isDisplayableMacroNewsText(extractTitleFromPayloadJson(event.payload_json));
+}
+
 function trimLeadingNewsSeparator(text: string): string {
   return text.replace(/^[\s—-]+/, "").trim();
 }
@@ -196,10 +200,10 @@ export function shouldIncludeMacroNewsEvent(
   if (event.error_code !== 0) {
     return false;
   }
-  if (hasLeadingHtmlPayload(event)) {
+  const title = summarizeMacroNewsEvent(event);
+  if (hasLeadingHtmlPayload(event) && !hasDisplayableMacroNewsJsonTitle(event)) {
     return false;
   }
-  const title = summarizeMacroNewsEvent(event);
   if (!isDisplayableMacroNewsText(title)) {
     return false;
   }

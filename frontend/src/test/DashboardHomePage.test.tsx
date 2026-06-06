@@ -286,6 +286,14 @@ function createTerminalStateView(overrides: Partial<DashboardHomeBodyView> = {})
       newsAsOfLabel: "数据截至：暂无",
       newsStatusLabel: "来源状态：暂无数据",
       newsRefreshLabel: "刷新：随页面查询自动更新",
+      policyFundingSummary: {
+        headline: "暂无可展示的政策与资金面快讯。",
+        chips: [
+          { id: "as-of", label: "数据截至：暂无", tone: "neutral" },
+          { id: "freshness", label: "暂无更新", tone: "neutral" },
+        ],
+        groups: [],
+      },
       supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
     },
     bondNews: {

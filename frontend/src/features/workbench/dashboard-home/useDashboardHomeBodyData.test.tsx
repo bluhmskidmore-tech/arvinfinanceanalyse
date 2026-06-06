@@ -54,6 +54,20 @@ function choiceNewsEnvelope(events: ChoiceNewsEvent[]): ApiEnvelope<ChoiceNewsEv
   };
 }
 
+function choiceEvent(partial: Partial<ChoiceNewsEvent> & Pick<ChoiceNewsEvent, "event_key" | "received_at" | "topic_code" | "payload_text">): ChoiceNewsEvent {
+  return {
+    group_id: "news_cmd1",
+    content_type: "sectornews",
+    serial_id: 1,
+    request_id: 1,
+    error_code: 0,
+    error_msg: "",
+    item_index: 0,
+    payload_json: null,
+    ...partial,
+  };
+}
+
 function createHomeBodyClient(overrides: Partial<ApiClient>): ApiClient {
   const base = createApiClient({ mode: "mock" });
   return {
@@ -125,6 +139,50 @@ describe("useDashboardHomeBodyData", () => {
       expect(getChoiceNewsEvents).toHaveBeenCalledWith(
         expect.objectContaining({ topicCode: DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS[1].code }),
       );
+    });
+  });
+
+  it("does not load fallback feeds when Choice has a fresh json title over an html payload", async () => {
+    const freshPolicyFundingEvent = choiceEvent({
+      event_key: "choice-html-json-title",
+      received_at: "2026-06-04T09:00:00+08:00",
+      topic_code: DASHBOARD_MACRO_NEWS_TOPICS[0].code,
+      payload_text: '<div class="main-text">央行开展逆回购操作，资金面平稳</div>',
+      payload_json: JSON.stringify({ title: "央行开展逆回购操作，资金面平稳" }),
+    });
+    const getChoiceNewsEvents = vi.fn<ApiClient["getChoiceNewsEvents"]>(async (params) =>
+      choiceNewsEnvelope(params.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code ? [freshPolicyFundingEvent] : []),
+    );
+    const dataClient = createHomeBodyClient({
+      getChoiceNewsEvents,
+      getResearchCalendarEvents: vi.fn(async () => []),
+    });
+
+    renderHook(
+      () =>
+        useDashboardHomeBodyData({
+          dataClient,
+          supplementalReportDate: "2026-05-31",
+          loadBasicData: false,
+          loadEventFeeds: true,
+          loadSecondaryEventFeeds: true,
+          loadBondNewsFeeds: false,
+          loadFormalData: false,
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(getChoiceNewsEvents).toHaveBeenCalledWith(
+        expect.objectContaining({ topicCode: DASHBOARD_MACRO_NEWS_TOPICS[0].code }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.some((topic) =>
+          getChoiceNewsEvents.mock.calls.some(([params]) => params.topicCode === topic.code),
+        ),
+      ).toBe(false);
     });
   });
 });

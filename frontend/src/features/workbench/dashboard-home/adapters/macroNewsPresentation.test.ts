@@ -57,6 +57,36 @@ describe("macroNewsPresentation", () => {
     ).toBe(false);
   });
 
+  it("keeps clean json titles when the raw payload starts with html", () => {
+    expect(
+      shouldIncludeMacroNewsEvent(
+        event({
+          event_key: "json-title-html-payload",
+          received_at: "2026-06-04T09:00:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: '<div class="main-text">央行开展逆回购操作，资金面平稳</div>',
+          payload_json: JSON.stringify({ title: "央行开展逆回购操作，资金面平稳" }),
+        }),
+        { requireMacroRelevance: false, requirePolicyFundingRelevance: true },
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects html-leading payloads when no clean json title is available", () => {
+    expect(
+      shouldIncludeMacroNewsEvent(
+        event({
+          event_key: "html-only-payload",
+          received_at: "2026-06-04T09:00:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: '<div class="main-text">央行开展逆回购操作，资金面平稳</div>',
+          payload_json: JSON.stringify({ content: "央行开展逆回购操作，资金面平稳" }),
+        }),
+        { requireMacroRelevance: false, requirePolicyFundingRelevance: true },
+      ),
+    ).toBe(false);
+  });
+
   it("keeps macro-relevant tushare fallback items", () => {
     expect(isMacroRelevantForHomeBriefing("央行今日开展 500 亿元 7 天期逆回购操作")).toBe(true);
     expect(isMacroRelevantForHomeBriefing("gdp nowcast revised higher after pmi surprise")).toBe(true);

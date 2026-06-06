@@ -35,6 +35,10 @@ const policyFundingSummary = {
   ],
   diagnostics: {
     summary: "当前源 Tushare 兜底：原始 9 条，入选 8 条，去重后 7 条，展示 6 条。",
+    sourceVerdict: "当前使用 Tushare 兜底：Choice 快讯偏旧，已切换到兜底源。",
+    filterNarrative: "已展示 6 条；另有 3 条因非政策/资金面、重复标题、超过展示上限未展示。",
+    actionHint: null,
+    narrativeTone: "info" as const,
     emptyHint: null,
     metrics: [
       { id: "raw", label: "原始", value: "9 条", tone: "neutral" as const },
@@ -169,6 +173,9 @@ describe("ResearchCalendarSection", () => {
     expect(screen.getByText("10年期美国国债收益率最新上涨2.8个基点，报4.483%。")).toBeInTheDocument();
     expect(screen.getByText("数据诊断")).toBeInTheDocument();
     expect(screen.getByText(policyFundingSummary.diagnostics.summary)).toBeInTheDocument();
+    expect(screen.getByText(policyFundingSummary.diagnostics.sourceVerdict)).toBeInTheDocument();
+    expect(screen.getByText(policyFundingSummary.diagnostics.filterNarrative)).toBeInTheDocument();
+    expect(screen.queryByText("请复核")).not.toBeInTheDocument();
     expect(screen.getByText("原始")).toBeInTheDocument();
     expect(screen.getByText("展示")).toBeInTheDocument();
     expect(screen.getByText("非政策/资金面")).toBeInTheDocument();

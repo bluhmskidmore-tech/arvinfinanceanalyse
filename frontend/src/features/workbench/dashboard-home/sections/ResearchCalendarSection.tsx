@@ -24,6 +24,13 @@ export function ResearchCalendarSection({
 }: ResearchCalendarSectionProps) {
   const policyFundingPaneRef = useRef<HTMLDivElement | null>(null);
   const summary = macroBriefing.policyFundingSummary;
+  const diagnosticNarratives = summary.diagnostics
+    ? [
+        { id: "source", text: summary.diagnostics.sourceVerdict },
+        { id: "filter", text: summary.diagnostics.filterNarrative },
+        { id: "action", text: summary.diagnostics.actionHint },
+      ].filter((item): item is { id: string; text: string } => Boolean(item.text)).slice(0, 3)
+    : [];
 
   useEffect(() => {
     if (!focusPolicyFunding) {
@@ -109,6 +116,17 @@ export function ResearchCalendarSection({
                   <span>数据诊断</span>
                   <small>{summary.diagnostics.summary}</small>
                 </div>
+                {diagnosticNarratives.length > 0 ? (
+                  <div
+                    className={styles.dhPolicyFundingDiagnosticNarratives}
+                    data-tone={summary.diagnostics.narrativeTone}
+                    aria-label="政策与资金面诊断说明"
+                  >
+                    {diagnosticNarratives.map((item) => (
+                      <p key={item.id}>{item.text}</p>
+                    ))}
+                  </div>
+                ) : null}
                 <div className={styles.dhPolicyFundingDiagnosticMetrics}>
                   {summary.diagnostics.metrics.map((metric) => (
                     <span key={metric.id} data-tone={metric.tone}>

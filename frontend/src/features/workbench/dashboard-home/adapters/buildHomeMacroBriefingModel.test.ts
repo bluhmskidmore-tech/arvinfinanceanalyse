@@ -4,6 +4,7 @@ import type { ChoiceNewsEvent } from "../../../../api/contracts";
 import {
   buildPolicyFundingSummary,
   resolveHomeMacroNewsBriefing,
+  shouldRequestHomeMacroNewsFallback,
   shouldUseMacroNewsFallback,
 } from "./buildHomeMacroBriefingModel";
 
@@ -220,6 +221,33 @@ describe("resolveHomeMacroNewsBriefing", () => {
     expect(result.newsStatusLabel).toBe("来源状态：异常");
   });
 
+  it("provides narrative guidance for loading and query errors", () => {
+    const loading = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: true,
+      isError: false,
+      choiceEvents: [],
+      fallbackEvents: [],
+    });
+    const queryError = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-01",
+      isLoading: false,
+      isError: true,
+      choiceEvents: [],
+      fallbackEvents: [],
+    });
+
+    expect(loading.policyFundingDiagnostics?.sourceVerdict).toBe("正在等待政策与资金面数据源返回。");
+    expect(loading.policyFundingDiagnostics?.filterNarrative).toBeNull();
+    expect(loading.policyFundingDiagnostics?.actionHint).toBe("等待数据源返回后再判断；无需手工改数。");
+    expect(loading.policyFundingDiagnostics?.narrativeTone).toBe("info");
+    expect(queryError.policyFundingDiagnostics?.sourceVerdict).toBe(
+      "政策与资金面查询异常，当前无法确认源状态。",
+    );
+    expect(queryError.policyFundingDiagnostics?.actionHint).toBe("刷新或检查新闻查询服务后再使用本块判断。");
+    expect(queryError.policyFundingDiagnostics?.narrativeTone).toBe("danger");
+  });
+
   it("drops non-policy tushare fallback items such as pet hospital stories", () => {
     const result = resolveHomeMacroNewsBriefing({
       todayIsoDate: "2026-06-01",
@@ -283,6 +311,58 @@ describe("resolveHomeMacroNewsBriefing", () => {
     expect(result.newsItems[0]?.title).toBe("央行公开市场净投放保持平稳");
     expect(result.newsSourceLabel).toBe("来源：Choice 宏观新闻");
     expect(result.newsStatusLabel).toBe("来源状态：正常");
+  });
+
+  it("keeps fresh Choice news when raw html has a clean json title", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-04",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-html-json-title",
+          received_at: "2026-06-04T09:00:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: '<div class="main-text">央行开展逆回购操作，资金面平稳</div>',
+          payload_json: JSON.stringify({ title: "央行开展逆回购操作，资金面平稳" }),
+        }),
+      ],
+      fallbackEvents: [
+        choiceEvent({
+          event_key: "tushare-should-not-cover",
+          received_at: "2026-06-04T09:01:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "Tushare 不应覆盖",
+          group_id: "tushare_news",
+        }),
+      ],
+    });
+
+    const summary = buildPolicyFundingSummary(result);
+
+    expect(result.newsItems).toHaveLength(1);
+    expect(result.newsItems[0]?.title).toBe("央行开展逆回购操作，资金面平稳");
+    expect(result.newsSourceLabel).toBe("来源：Choice 宏观新闻");
+    expect(result.newsStatusLabel).toBe("来源状态：正常");
+    expect(shouldRequestHomeMacroNewsFallback({
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-html-json-title",
+          received_at: "2026-06-04T09:00:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: '<div class="main-text">央行开展逆回购操作，资金面平稳</div>',
+          payload_json: JSON.stringify({ title: "央行开展逆回购操作，资金面平稳" }),
+        }),
+      ],
+      todayIsoDate: "2026-06-04",
+    })).toBe(false);
+    expect(summary.diagnostics?.metrics).toEqual([
+      { id: "raw", label: "原始", value: "1 条", tone: "neutral" },
+      { id: "eligible", label: "入选", value: "1 条", tone: "info" },
+      { id: "unique", label: "去重后", value: "1 条", tone: "info" },
+      { id: "displayed", label: "展示", value: "1 条", tone: "info" },
+    ]);
+    expect(summary.diagnostics?.reasons.map((reason) => reason.label)).not.toContain("正文不可展示");
   });
 
   it("uses a readable topic label when Choice topic code is blank", () => {
@@ -421,6 +501,14 @@ describe("resolveHomeMacroNewsBriefing", () => {
       "重复标题",
       "超过展示上限",
     ]);
+    expect(summary.diagnostics?.sourceVerdict).toBe(
+      "当前使用 Tushare 兜底：Choice 快讯偏旧，已切换到兜底源。",
+    );
+    expect(summary.diagnostics?.filterNarrative).toBe(
+      "已展示 6 条；另有 3 条因非政策/资金面、重复标题、超过展示上限未展示。",
+    );
+    expect(summary.diagnostics?.actionHint).toBeNull();
+    expect(summary.diagnostics?.narrativeTone).toBe("info");
   });
 
   it("explains why only one policy funding item survives filtering", () => {
@@ -484,6 +572,188 @@ describe("resolveHomeMacroNewsBriefing", () => {
       "正文不可展示",
       "非政策/资金面",
     ]);
+    expect(summary.diagnostics?.sourceVerdict).toBe(
+      "当前使用 Tushare 兜底：Choice 快讯偏旧，已切换到兜底源。",
+    );
+    expect(summary.diagnostics?.filterNarrative).toBe(
+      "仅 1 条通过筛选；其余 3 条主要因源错误/权限、正文不可展示、非政策/资金面未展示。",
+    );
+    expect(summary.diagnostics?.actionHint).toBe("只剩 1 条可展示快讯，请复核兜底源原始明细与过滤规则。");
+    expect(summary.diagnostics?.narrativeTone).toBe("warning");
+  });
+
+  it("explains when raw policy funding rows are all filtered out", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-04",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-unrelated-1",
+          received_at: "2026-06-04T09:01:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: "影视公司发布暑期片单，票房预期升温",
+        }),
+        choiceEvent({
+          event_key: "choice-unrelated-2",
+          received_at: "2026-06-04T09:00:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: "体育用品公司发布新品活动",
+        }),
+      ],
+      fallbackEvents: [],
+    });
+
+    const summary = buildPolicyFundingSummary(result);
+
+    expect(result.newsItems).toHaveLength(0);
+    expect(summary.diagnostics?.sourceVerdict).toBe(
+      "当前使用 Choice 宏观新闻，但未形成政策/资金面展示项。",
+    );
+    expect(summary.diagnostics?.filterNarrative).toBe(
+      "0 条通过筛选；原始 2 条全部因非政策/资金面未展示。",
+    );
+    expect(summary.diagnostics?.actionHint).toBe(
+      "请复核过滤关键词与原始明细，确认是否需要补采或放宽资金面规则。",
+    );
+    expect(summary.diagnostics?.narrativeTone).toBe("warning");
+  });
+
+  it("keeps html-only payloads counted as undisplayable when no clean json title exists", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-04",
+      isLoading: false,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-stale",
+          received_at: "2026-04-21T15:06:30+08:00",
+          topic_code: "S888005004API",
+          payload_text: "旧 Choice 国际资讯",
+        }),
+      ],
+      fallbackEvents: [
+        choiceEvent({
+          event_key: "valid-fallback",
+          received_at: "2026-06-03T20:16:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: "央行公开市场逆回购到期，资金面维持平稳",
+          group_id: "tushare_news",
+        }),
+        choiceEvent({
+          event_key: "html-only-fallback",
+          received_at: "2026-06-03T20:15:00+08:00",
+          topic_code: "tushare.news.sina",
+          payload_text: '<div class="main-text">央行开展逆回购操作，资金面平稳</div>',
+          payload_json: JSON.stringify({ content: "央行开展逆回购操作，资金面平稳" }),
+          group_id: "tushare_news",
+        }),
+      ],
+    });
+
+    const summary = buildPolicyFundingSummary(result);
+
+    expect(result.newsItems).toHaveLength(1);
+    expect(result.newsItems[0]?.title).toBe("央行公开市场逆回购到期，资金面维持平稳");
+    expect(summary.diagnostics?.metrics).toEqual([
+      { id: "raw", label: "原始", value: "2 条", tone: "neutral" },
+      { id: "eligible", label: "入选", value: "1 条", tone: "info" },
+      { id: "unique", label: "去重后", value: "1 条", tone: "info" },
+      { id: "displayed", label: "展示", value: "1 条", tone: "info" },
+    ]);
+    expect(summary.diagnostics?.reasons.map((reason) => reason.label)).toEqual(["正文不可展示"]);
+  });
+
+  it("does not label Choice scan count as Tushare raw count while waiting for fallback", () => {
+    const result = resolveHomeMacroNewsBriefing({
+      todayIsoDate: "2026-06-04",
+      isLoading: true,
+      isError: false,
+      choiceEvents: [
+        choiceEvent({
+          event_key: "choice-empty-1",
+          received_at: "2026-06-04T09:00:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: "宠物医院发布暑期服务活动",
+        }),
+        choiceEvent({
+          event_key: "choice-empty-2",
+          received_at: "2026-06-04T09:01:00+08:00",
+          topic_code: "S888005004API",
+          payload_text: "国际油价直线拉升",
+        }),
+      ],
+      fallbackEvents: [],
+    });
+
+    const summary = buildPolicyFundingSummary(result);
+
+    expect(result.newsItems).toHaveLength(0);
+    expect(result.newsSourceLabel).toBe("来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）");
+    expect(summary.diagnostics?.metrics.find((metric) => metric.id === "raw")?.value).toBe("0 条");
+    expect(summary.diagnostics?.metrics.find((metric) => metric.id === "displayed")?.value).toBe("0 条");
+    expect(summary.diagnostics?.summary).not.toContain("2 条");
+    expect(summary.diagnostics?.emptyHint).not.toContain("2 条");
+  });
+
+  it("derives diagnostic narrative from structured source state rather than presentation labels", async () => {
+    const module = await import("./buildHomeMacroBriefingModel");
+    const helper = (module as {
+      buildPolicyFundingDiagnosticNarrative?: (input: {
+        sourceState: {
+          sourceKind: "tushare_fallback";
+          fallbackReason: "stale";
+          freshness: "fresh";
+          scope: "policy_funding";
+        };
+        rawCount: number;
+        eligibleCount: number;
+        uniqueCount: number;
+        displayedCount: number;
+        reasonCounts: readonly { id: "not-policy-funding"; count: number }[];
+        presentationLabels?: {
+          newsSourceLabel: string;
+          newsStatusLabel: string;
+          newsAsOfLabel: string;
+        };
+      }) => {
+        sourceVerdict: string;
+        filterNarrative: string | null;
+        actionHint: string | null;
+        narrativeTone: string;
+      };
+    }).buildPolicyFundingDiagnosticNarrative;
+
+    if (typeof helper !== "function") {
+      expect(helper).toBeTypeOf("function");
+      return;
+    }
+
+    const baseInput = {
+      sourceState: {
+        sourceKind: "tushare_fallback" as const,
+        fallbackReason: "stale" as const,
+        freshness: "fresh" as const,
+        scope: "policy_funding" as const,
+      },
+      rawCount: 4,
+      eligibleCount: 1,
+      uniqueCount: 1,
+      displayedCount: 1,
+      reasonCounts: [{ id: "not-policy-funding" as const, count: 3 }],
+    };
+    const baseNarrative = helper(baseInput);
+    const relabeledNarrative = helper({
+      ...baseInput,
+      presentationLabels: {
+        newsSourceLabel: "来源：Choice 宏观新闻",
+        newsStatusLabel: "来源状态：正常",
+        newsAsOfLabel: "数据截至 2099-01-01",
+      },
+    });
+
+    expect(relabeledNarrative).toEqual(baseNarrative);
+    expect(baseNarrative.sourceVerdict).toBe("当前使用 Tushare 兜底：Choice 快讯偏旧，已切换到兜底源。");
   });
 });
 
