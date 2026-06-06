@@ -1,0 +1,93 @@
+{
+  "result_meta": {
+    "trace_id": "tr_ledger_pnl_summary",
+    "basis": "ledger",
+    "result_kind": "ledger_pnl.summary",
+    "formal_use_allowed": false,
+    "source_version": "sv_ledger_pnl_summary_gs_a",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_ledger_pnl_v1",
+    "cache_version": "cv_ledger_pnl_v1",
+    "cache_key": "ledger_pnl.summary:2026-04-30:ALL",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "requested_report_date": "2026-04-30",
+    "resolved_report_date": "2026-04-30",
+    "scenario_flag": false,
+    "as_of_date": "2026-04-30",
+    "date_basis": "ledger_report_date",
+    "fallback_date": null,
+    "generated_at": "2026-06-06T03:35:54.910580Z",
+    "filters_applied": {
+      "report_date": "2026-04-30",
+      "currency": "ALL"
+    },
+    "tables_used": [
+      "qdb_general_ledger_workbook"
+    ],
+    "evidence_rows": 2,
+    "next_drill": [],
+    "source_surface": null
+  },
+  "result": {
+    "report_date": "2026-04-30",
+    "source_version": "sv_ledger_pnl_summary_gs_a",
+    "ledger_total_assets": {
+      "yuan": "150",
+      "yi": "0.00"
+    },
+    "ledger_total_liabilities": {
+      "yuan": "80",
+      "yi": "0.00"
+    },
+    "ledger_net_assets": {
+      "yuan": "70",
+      "yi": "0.00"
+    },
+    "ledger_monthly_pnl_core": {
+      "yuan": "10",
+      "yi": "0.00"
+    },
+    "ledger_monthly_pnl_all": {
+      "yuan": "10",
+      "yi": "0.00"
+    },
+    "by_currency": [
+      {
+        "currency": "CNX",
+        "total_pnl": {
+          "yuan": "3",
+          "yi": "0.00"
+        }
+      },
+      {
+        "currency": "CNY",
+        "total_pnl": {
+          "yuan": "7",
+          "yi": "0.00"
+        }
+      }
+    ],
+    "by_account": [
+      {
+        "account_code": "51401000001",
+        "account_name": "51401000001",
+        "total_pnl": {
+          "yuan": "7",
+          "yi": "0.00"
+        },
+        "count": 1
+      },
+      {
+        "account_code": "51601000001",
+        "account_name": "51601000001",
+        "total_pnl": {
+          "yuan": "3",
+          "yi": "0.00"
+        },
+        "count": 1
+      }
+    ]
+  }
+}

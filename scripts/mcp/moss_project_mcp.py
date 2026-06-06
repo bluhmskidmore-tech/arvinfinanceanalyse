@@ -5,7 +5,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,248 @@ PROTOCOL_VERSION = "2024-11-05"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DUCKDB_PATH = REPO_ROOT / "data" / "moss.duckdb"
 DEFAULT_GOVERNANCE_DIR = REPO_ROOT / "data" / "governance"
+DEFAULT_EVIDENCE_READINESS_PAGES = [
+    "PAGE-LEDGER-PNL-001",
+    "PAGE-BOND-001",
+    "PAGE-POS-001",
+    "PAGE-MKT-001",
+    "GAP-STOCK-ANALYSIS-PAGE",
+    "PAGE-OPS-001",
+]
+DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {"GAP-AVERAGE-BALANCE-PAGE"}
+EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
+    "GAP-CROSS-ASSET-PAGE": "mixed_source_or_observational",
+    "GAP-DECISION-ITEMS-PAGE": "candidate_or_pending",
+    "GAP-KPI-PERFORMANCE-PAGE": "candidate_or_pending",
+    "GAP-AVERAGE-BALANCE-PAGE": "candidate_or_pending",
+    "PAGE-BOND-ANALYSIS-001": "candidate_or_pending",
+    "GAP-STOCK-ANALYSIS-PAGE": "gap_or_observational",
+    "PAGE-AGENT-001": "mixed_source_or_observational",
+    "PAGE-BAL-MOVE-001": "candidate_or_pending",
+    "PAGE-BALANCE-001": "formal_or_governed",
+    "PAGE-BOND-001": "candidate_or_pending",
+    "PAGE-BRIDGE-001": "formal_or_governed",
+    "PAGE-CUBE-QUERY-001": "candidate_or_pending",
+    "PAGE-DASH-001": "mixed_source_or_observational",
+    "PAGE-EXEC-OVERVIEW-001": "mixed_source_or_observational",
+    "PAGE-EXEC-PNL-ATTR-001": "mixed_source_or_observational",
+    "PAGE-EXEC-SUMMARY-001": "mixed_source_or_observational",
+    "PAGE-LEDGER-PNL-001": "candidate_or_pending",
+    "PAGE-LIAB-ANALYTICS-001": "mixed_source_or_observational",
+    "PAGE-MACRO-OBS-001": "mixed_source_or_observational",
+    "PAGE-MACRO-TOOLKIT-001": "mixed_source_or_observational",
+    "PAGE-MKT-001": "mixed_source_or_observational",
+    "PAGE-OPS-001": "mixed_source_or_observational",
+    "PAGE-PNL-001": "formal_or_governed",
+    "PAGE-PNL-ATTR-WB-001": "candidate_or_pending",
+    "PAGE-PNL-BY-BUSINESS-001": "candidate_or_pending",
+    "PAGE-POS-001": "candidate_or_pending",
+    "PAGE-PROD-CAT-001": "formal_or_governed",
+    "PAGE-PORTFOLIO-HOME-001": "mixed_source_or_observational",
+    "PAGE-MARKET-HOME-001": "mixed_source_or_observational",
+    "PAGE-RISK-001": "formal_or_governed",
+    "PAGE-RISK-HOME-001": "mixed_source_or_observational",
+    "PAGE-PERFORMANCE-HOME-001": "mixed_source_or_observational",
+    "PAGE-REPORTS-HOME-001": "mixed_source_or_observational",
+}
+CANDIDATE_METRIC_WATCHLIST = [
+    {
+        "metric_id": f"MTR-CFP-{index:03d}",
+        "page": "/cashflow-projection",
+        "status": "candidate page-contract-pending",
+        "formal_use_allowed": False,
+        "residual_gap": "Needs approved page contract, bound sample, direct lineage records, and date/catalog review.",
+    }
+    for index in range(1, 5)
+] + [
+    {
+        "metric_id": f"MTR-CON-{index:03d}",
+        "page": "/concentration-monitor",
+        "status": "candidate page-contract-pending",
+        "formal_use_allowed": False,
+        "residual_gap": "Needs approved page contract, bound sample, lineage records, and date/catalog review.",
+    }
+    for index in range(1, 5)
+]
+PAGE_CATALOG_DATE_TABLES = {
+    "PAGE-PROD-CAT-001": [
+        "product_category_pnl_formal_read_model",
+        "product_category_pnl_canonical_fact",
+    ],
+    "PAGE-BALANCE-001": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ],
+    "PAGE-PNL-001": [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+    ],
+    "PAGE-LEDGER-PNL-001": [
+        "qdb_general_ledger_workbook",
+        "ledger_import_batch",
+        "ledger_raw_row",
+    ],
+    "PAGE-BRIDGE-001": [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+    ],
+    "PAGE-RISK-001": [
+        "fact_formal_risk_tensor_daily",
+    ],
+    "PAGE-DASH-001": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+        "fact_formal_bond_analytics_daily",
+        "fx_daily_mid",
+    ],
+    "PAGE-EXEC-OVERVIEW-001": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+        "fact_formal_bond_analytics_daily",
+    ],
+    "PAGE-BAL-MOVE-001": [
+        "fact_accounting_asset_movement_monthly",
+        "fact_formal_zqtz_balance_daily",
+    ],
+    "PAGE-PNL-BY-BUSINESS-001": [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "fact_formal_zqtz_balance_daily",
+        "fact_pnl_by_business_precompute",
+    ],
+    "PAGE-PNL-ATTR-WB-001": [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_bond_analytics_daily",
+        "yield_curve_daily",
+    ],
+    "PAGE-CUBE-QUERY-001": [
+        "fact_formal_bond_analytics_daily",
+        "fact_formal_pnl_fi",
+        "fact_formal_zqtz_balance_daily",
+        "product_category_pnl_formal_read_model",
+    ],
+    "PAGE-PORTFOLIO-HOME-001": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "fact_formal_bond_analytics_daily",
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "fact_formal_risk_tensor_daily",
+    ],
+    "PAGE-LIAB-ANALYTICS-001": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+    ],
+    "PAGE-BOND-001": [
+        "fact_formal_bond_analytics_daily",
+    ],
+    "PAGE-BOND-ANALYSIS-001": [
+        "fact_formal_bond_analytics_daily",
+    ],
+    "PAGE-POS-001": [
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+    ],
+    "PAGE-MKT-001": [
+        "fact_choice_macro_daily",
+        "fx_daily_mid",
+        "market_data_series_category",
+        "livermore_position_snapshot",
+        "choice_stock_daily_observation",
+        "fact_livermore_gate_supplement_daily",
+    ],
+    "GAP-STOCK-ANALYSIS-PAGE": [
+        "livermore_position_snapshot",
+        "livermore_candidate_history",
+        "choice_stock_daily_observation",
+        "fact_livermore_gate_supplement_daily",
+    ],
+    "GAP-AVERAGE-BALANCE-PAGE": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+    ],
+    "GAP-CROSS-ASSET-PAGE": [
+        "fact_choice_macro_daily",
+        "fx_daily_mid",
+        "market_data_series_category",
+        "livermore_position_snapshot",
+        "choice_stock_daily_observation",
+        "fact_livermore_gate_supplement_daily",
+        "choice_news_event",
+    ],
+    "PAGE-OPS-001": [
+        "product_category_pnl_formal_read_model",
+        "product_category_pnl_canonical_fact",
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "fact_choice_macro_daily",
+        "fx_daily_mid",
+        "choice_news_event",
+    ],
+    "PAGE-MARKET-HOME-001": [
+        "fact_choice_macro_daily",
+        "market_data_series_category",
+        "fx_daily_mid",
+    ],
+    "PAGE-RISK-HOME-001": [
+        "fact_formal_risk_tensor_daily",
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ],
+    "PAGE-PERFORMANCE-HOME-001": [
+        "product_category_pnl_formal_read_model",
+        "product_category_pnl_canonical_fact",
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+    ],
+    "PAGE-REPORTS-HOME-001": [
+        "fact_formal_bond_analytics_daily",
+        "source_foundation",
+    ],
+}
+PAGE_CATALOG_DATE_DEFERRED_REASONS = {
+    "GAP-DECISION-ITEMS-PAGE": (
+        "Read/write governance action queue; direct DuckDB table/date review belongs to PAGE-BALANCE-001 "
+        "while decision-status writes are reviewed through governance records."
+    ),
+    "GAP-KPI-PERFORMANCE-PAGE": (
+        "Read/write KPI scoring workbench; direct page closure depends on governance SQL source, score-rule, "
+        "permission, and audit-trail evidence rather than DuckDB table/date sampling."
+    ),
+    "GAP-AVERAGE-BALANCE-PAGE": (
+        "ADB analytical route; direct page closure depends on PAGE contract approval, ADB denominator semantics, "
+        "bound golden sample, lineage records, and owner review before any formal-use claim."
+    ),
+    "PAGE-EXEC-SUMMARY-001": "Narrative-only summary endpoint; table/date review belongs to upstream overview and snapshot evidence.",
+    "PAGE-EXEC-PNL-ATTR-001": "Executive attribution overlay has no direct table contract; sample upstream attribution and formal-source pages instead.",
+    "PAGE-MACRO-TOOLKIT-001": "Tooling/workflow surface; no direct business metric table contract is approved for page-level sampling.",
+    "PAGE-MACRO-OBS-001": "Read-only macro observation surface; no direct business metric table contract is approved for page-level sampling.",
+    "PAGE-AGENT-001": "Agent answer workbench; governance audit records are query/run evidence, not direct catalog/date table anchors.",
+}
+DATE_COLUMN_PRIORITY = (
+    "report_date",
+    "as_of_date",
+    "trade_date",
+    "natural_date",
+    "business_date",
+    "date",
+)
 
 
 class McpError(Exception):
@@ -230,6 +472,23 @@ class MetricContractsProvider(McpProvider):
                     "required": ["page_slug"],
                 },
             },
+            {
+                "name": "get_page_evidence_readiness",
+                "description": (
+                    "Return a read-only audit matrix for seeded page evidence readiness without promoting candidate "
+                    "or mixed-source surfaces to formal metric approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to summarize.",
+                        }
+                    },
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -243,6 +502,16 @@ class MetricContractsProvider(McpProvider):
         if name == "get_page_trace_bundle":
             page_slug = str(arguments.get("page_slug") or "").strip()
             payload = page_trace_bundle(self._page_trace_bundles, page_slug)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_evidence_readiness":
+            raw_page_slugs = arguments.get("page_slugs")
+            if raw_page_slugs is None:
+                page_slugs = DEFAULT_EVIDENCE_READINESS_PAGES
+            elif isinstance(raw_page_slugs, list):
+                page_slugs = [str(item).strip() for item in raw_page_slugs if str(item).strip()]
+            else:
+                raise McpError(-32602, "page_slugs must be an array of strings.")
+            payload = page_evidence_readiness(self._page_trace_bundles, page_slugs)
             return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
         return super().call_tool(name, arguments)
 
@@ -301,6 +570,70 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-BMV-003",
             "MTR-BMV-004",
         ],
+        "gap-decision-items-page": [
+            "/decision-items",
+            "decision-items",
+            "decision_items",
+            "GAP-DECISION-ITEMS-PAGE",
+            "/ui/balance-analysis/decision-items",
+            "/ui/balance-analysis/decision-items/status",
+            "/ui/balance-analysis/current-user",
+            "/ui/balance-analysis/dates",
+            "balance-analysis.decision-items",
+            "balance_analysis_decision_status",
+            "BalanceAnalysisDecisionItemsPayload",
+            "BalanceAnalysisDecisionItemStatusRow",
+            "BalanceAnalysisDecisionStatusUpdateRequest",
+            "balance_analysis.decision_status",
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+            "PAGE-BALANCE-001",
+            "temporary-exception read/write governance action queue",
+        ],
+        "gap-kpi-performance-page": [
+            "/kpi",
+            "kpi-performance",
+            "kpi_performance",
+            "GAP-KPI-PERFORMANCE-PAGE",
+            "/api/kpi/owners",
+            "/api/kpi/values/summary",
+            "/api/kpi/metrics",
+            "/api/kpi/values",
+            "/api/kpi/values/batch",
+            "/api/kpi/fetch_and_recalc",
+            "/api/kpi/report",
+            "kpi.owners",
+            "kpi.values.summary",
+            "KpiPeriodSummaryPayload",
+            "KpiMetricWithValue",
+            "KpiFetchAndRecalcResponse",
+            "MTR-KPI-001",
+            "PAGE-CONTRACT-PENDING:/kpi",
+            "kpi.metric",
+            "kpi.value",
+            "temporary-exception read/write KPI scoring boundary",
+        ],
+        "gap-average-balance-page": [
+            "/average-balance",
+            "average-balance",
+            "average_balance",
+            "GAP-AVERAGE-BALANCE-PAGE",
+            "/api/analysis/adb",
+            "/api/analysis/adb/comparison",
+            "/api/analysis/adb/monthly",
+            "/api/analysis/adb/coverage",
+            "/ui/balance-analysis/dates",
+            "adb_analysis",
+            "adb_analysis.monthly",
+            "adb_analysis.comparison",
+            "ADBAnalysisResponse",
+            "ADBMonthlyResponse",
+            "MTR-ADB-001",
+            "MTR-ADB-002",
+            "MTR-ADB-003",
+            "PAGE-CONTRACT-PENDING:/average-balance",
+            "temporary-exception ADB analytical balance boundary",
+        ],
         "page-bond-001": [
             "/api/bond-dashboard/headline-kpis",
             "/api/bond-dashboard/dates",
@@ -329,6 +662,42 @@ class LineageEvidenceProvider(McpProvider):
             "MTR-BOND-002",
             "MTR-BOND-003",
             "MTR-BOND-004",
+        ],
+        "page-bond-analysis-001": [
+            "/bond-analysis",
+            "PAGE-BOND-ANALYSIS-001",
+            "/api/bond-analytics/dates",
+            "/api/bond-analytics/action-attribution",
+            "/api/bond-analytics/return-decomposition",
+            "/api/bond-analytics/benchmark-excess",
+            "/api/bond-analytics/krd-curve-risk",
+            "/api/bond-analytics/dv01-risk",
+            "/api/bond-analytics/dv01-reconciliation",
+            "/api/bond-analytics/dv01-movement",
+            "/api/bond-analytics/dv01-action-plan",
+            "/api/bond-analytics/dv01-limit-config-status",
+            "/api/bond-analytics/accounting-class-audit",
+            "/api/bond-analytics/credit-spread-migration",
+            "/api/bond-analytics/portfolio-headlines",
+            "/api/bond-analytics/top-holdings",
+            "/api/bond-analytics/position-changes",
+            "/api/bond-analytics/yield-curve-term-structure",
+            "/api/credit-spread-analysis/detail",
+            "bond_analytics.action_attribution",
+            "bond_analytics.return_decomposition",
+            "bond_analytics.krd_curve_risk",
+            "bond_analytics.dv01_risk",
+            "bond_analytics.credit_spread_migration",
+            "bond_analytics.portfolio_headlines",
+            "fact_formal_bond_analytics_daily",
+            "yield_curve_daily",
+            "GS-BOND-ANALYSIS-ACTION-ATTR-A",
+            "MTR-BOND-ACT-001",
+            "MTR-BOND-ACT-002",
+            "MTR-BOND-ACT-003",
+            "MTR-BOND-ACT-004",
+            "MTR-BOND-ACT-005",
+            "MTR-BOND-ACT-006",
         ],
         "page-bridge-001": [
             "/api/pnl/bridge",
@@ -430,6 +799,26 @@ class LineageEvidenceProvider(McpProvider):
             "GS-EXEC-SUMMARY-A",
             "narrative-only",
             "executive.overview",
+        ],
+        "page-exec-pnl-attr-001": [
+            "/ui/pnl/attribution",
+            "executive.pnl-attribution",
+            "executive-pnl-attribution",
+            "executive_pnl_attribution",
+            "PnlAttributionPayload",
+            "PnlAttributionSection",
+            "GS-EXEC-PNL-ATTR-A",
+            "MTR-EXEC-101",
+            "MTR-EXEC-102",
+            "MTR-EXEC-103",
+            "MTR-EXEC-104",
+            "MTR-EXEC-105",
+            "MTR-EXEC-106",
+            "formal_pnl",
+            "pnl_bridge",
+            "fact_formal_pnl_fi",
+            "fact_nonstd_pnl_bridge",
+            "product_category_pnl_formal_read_model",
         ],
         "page-macro-toolkit-001": [
             "/ui/macro/toolkit/analysis",
@@ -586,6 +975,37 @@ class LineageEvidenceProvider(McpProvider):
             "rv_macro_bond_linkage_v1",
             "MTR-MKT-001",
             "GAP-MKT-DATA",
+        ],
+        "gap-cross-asset-page": [
+            "/cross-asset",
+            "cross-asset",
+            "cross_asset",
+            "GAP-CROSS-ASSET-PAGE",
+            "/ui/macro/choice-series/latest",
+            "/api/macro-bond-linkage/analysis",
+            "/ui/market-data/ncd-funding-proxy",
+            "/ui/market-data/livermore",
+            "/ui/market-data/livermore/signal-confluence",
+            "/ui/news/choice-events/latest",
+            "macro.choice.latest",
+            "macro_bond_linkage.analysis",
+            "macro_bond_linkage.environment_context",
+            "market_data.ncd_proxy",
+            "market_data.livermore",
+            "market_data.livermore.signal_confluence",
+            "news.choice.latest",
+            "fact_choice_macro_daily",
+            "fx_daily_mid",
+            "market_data_series_category",
+            "livermore_position_snapshot",
+            "choice_stock_daily_observation",
+            "fact_livermore_gate_supplement_daily",
+            "choice_news_event",
+            "rv_macro_bond_linkage_v1",
+            "rv_ncd_proxy_v1",
+            "rv_livermore_signal_confluence_v1",
+            "rv_choice_news_v1",
+            "temporary-exception analytical cross-asset boundary",
         ],
         "gap-stock-analysis-page": [
             "stock-analysis",
@@ -791,6 +1211,7 @@ class LineageEvidenceProvider(McpProvider):
             "/api/positions/bonds",
             "/api/pnl-attribution/summary",
             "/api/pnl-attribution/analysis-summary",
+            "/api/risk/tensor/dates",
             "balance-analysis.overview",
             "balance-analysis.dates",
             "bond_dashboard.headline_kpis",
@@ -804,6 +1225,8 @@ class LineageEvidenceProvider(McpProvider):
             "bond_dashboard.business_type_metrics",
             "positions.bonds.list",
             "pnl_attribution.summary",
+            "risk.tensor.dates",
+            "GS-PORTFOLIO-HOME-A",
             "fact_formal_zqtz_balance_daily",
             "fact_formal_tyw_balance_daily",
             "fact_formal_bond_analytics_daily",
@@ -811,6 +1234,7 @@ class LineageEvidenceProvider(McpProvider):
             "tyw_interbank_daily_snapshot",
             "fact_formal_pnl_fi",
             "fact_nonstd_pnl_bridge",
+            "fact_formal_risk_tensor_daily",
             "module home no standalone MTR binding",
         ],
         "page-pnl-001": [
@@ -946,6 +1370,7 @@ class LineageEvidenceProvider(McpProvider):
 
     def __init__(self) -> None:
         self._governance_dir = resolve_path_env("MOSS_GOVERNANCE_PATH", DEFAULT_GOVERNANCE_DIR)
+        self._page_trace_bundles = product_page_trace_bundles()
         self._streams = {
             "agent_audit": self._governance_dir / "agent_audit.jsonl",
             "cache_build_run": self._governance_dir / "cache_build_run.jsonl",
@@ -1039,6 +1464,276 @@ class LineageEvidenceProvider(McpProvider):
                     "required": ["query"],
                 },
             },
+            {
+                "name": "get_page_lineage_evidence",
+                "description": (
+                    "Summarize page-keyed governance lineage evidence while separating direct page/API records from "
+                    "expanded source-table or metric-anchor records."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to summarize.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, summarize every unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+            {
+                "name": "get_page_governance_record_requirements",
+                "description": (
+                    "Describe the required fields and accepted direct page/API anchors for page-level governance "
+                    "records without creating records or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to describe.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, describe every unique seeded page trace bundle.",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "validate_page_governance_records",
+                "description": (
+                    "Validate existing direct page/API governance records against the page requirements without "
+                    "writing records or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to validate.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, validate every unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+            {
+                "name": "get_page_governance_audit_review_checklist",
+                "description": (
+                    "Return a read-only audit-review checklist for page/API governance records after field "
+                    "validation, without proving execution or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to review.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, review every unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+            {
+                "name": "get_page_governance_audit_review_queue",
+                "description": (
+                    "Return a read-only queue of pages whose direct records are field-complete and still need "
+                    "manual audit review, without proving execution or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to queue.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, queue every unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+            {
+                "name": "get_page_governance_audit_evidence_packet",
+                "description": (
+                    "Aggregate read-only MCP-backed evidence for one field-complete page audit review without "
+                    "running UI smoke checks, writing records, or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slug": {
+                            "type": "string",
+                            "description": "Seeded page slug, page ID, or route alias to package.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "duckdb_path": {
+                            "type": "string",
+                            "description": "Optional DuckDB path for catalog/date sampling.",
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                    "required": ["page_slug"],
+                },
+            },
+            {
+                "name": "get_page_governance_audit_evidence_packet_queue",
+                "description": (
+                    "Aggregate read-only MCP-backed evidence packets for field-complete pages that still need "
+                    "manual audit review, without running UI smoke checks, writing records, or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to package.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, package every ready unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "duckdb_path": {
+                            "type": "string",
+                            "description": "Optional DuckDB path for catalog/date sampling.",
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+            {
+                "name": "preflight_page_governance_record",
+                "description": (
+                    "Validate one candidate page/API governance record before writing it, without checking "
+                    "existence, writing records, proving execution, or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slug": {
+                            "type": "string",
+                            "description": "Seeded page slug, page ID, or route alias for the candidate record.",
+                        },
+                        "record": {
+                            "type": "object",
+                            "description": "Candidate governance record to validate against the page checklist.",
+                        },
+                    },
+                    "required": ["page_slug", "record"],
+                },
+            },
+            {
+                "name": "get_page_governance_record_blueprint",
+                "description": (
+                    "Build a read-only candidate page/API governance record template with manual-fill gaps and "
+                    "preflight status, without writing records or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slug": {
+                            "type": "string",
+                            "description": "Seeded page slug, page ID, or route alias for the candidate template.",
+                        },
+                    },
+                    "required": ["page_slug"],
+                },
+            },
+            {
+                "name": "get_page_governance_record_blueprint_queue",
+                "description": (
+                    "Return a prioritized read-only queue of page/API governance record gaps with candidate "
+                    "record templates attached, without writing records or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to queue.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, queue every unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+            {
+                "name": "get_page_governance_gap_queue",
+                "description": (
+                    "Return a prioritized read-only queue of page/API governance record gaps for seeded pages."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to queue.",
+                        },
+                        "all_seeded_pages": {
+                            "type": "boolean",
+                            "description": "When true, queue every unique seeded page trace bundle.",
+                        },
+                        "streams": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": sorted(self._streams)},
+                        },
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -1088,6 +1783,155 @@ class LineageEvidenceProvider(McpProvider):
                 "records": records[:max_results],
             }
             return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_lineage_evidence":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_lineage_evidence(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_record_requirements":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            payload = page_governance_record_requirements(self._page_trace_bundles, page_slugs)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "validate_page_governance_records":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_record_validation(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_audit_review_checklist":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_audit_review_checklist(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_audit_review_queue":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_audit_review_queue(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_audit_evidence_packet":
+            page_slug = str(arguments.get("page_slug") or "").strip()
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            raw_duckdb_path = str(arguments.get("duckdb_path") or "").strip()
+            duckdb_path = Path(raw_duckdb_path) if raw_duckdb_path else resolve_path_env("MOSS_DUCKDB_PATH", DEFAULT_DUCKDB_PATH)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_audit_evidence_packet(
+                self._page_trace_bundles,
+                self._streams,
+                page_slug,
+                stream_names,
+                duckdb_path,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_audit_evidence_packet_queue":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            raw_duckdb_path = str(arguments.get("duckdb_path") or "").strip()
+            duckdb_path = Path(raw_duckdb_path) if raw_duckdb_path else resolve_path_env("MOSS_DUCKDB_PATH", DEFAULT_DUCKDB_PATH)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_audit_evidence_packet_queue(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                duckdb_path,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "preflight_page_governance_record":
+            page_slug = str(arguments.get("page_slug") or "").strip()
+            raw_record = arguments.get("record")
+            if not isinstance(raw_record, dict):
+                raise McpError(-32602, "record must be an object.")
+            payload = page_governance_record_preflight(self._page_trace_bundles, page_slug, raw_record)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_record_blueprint":
+            page_slug = str(arguments.get("page_slug") or "").strip()
+            payload = page_governance_record_blueprint(self._page_trace_bundles, page_slug)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_record_blueprint_queue":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_record_blueprint_queue(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_governance_gap_queue":
+            page_slugs = lineage_page_slugs_from_arguments(arguments)
+            requested_streams = arguments.get("streams")
+            if isinstance(requested_streams, list) and requested_streams:
+                stream_names = [str(stream) for stream in requested_streams]
+            else:
+                stream_names = list(self._streams)
+            max_results = int(arguments.get("max_results") or 20)
+            payload = page_governance_gap_queue(
+                self._page_trace_bundles,
+                self._streams,
+                page_slugs,
+                stream_names,
+                max_results=max_results,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
         return super().call_tool(name, arguments)
 
     def _stream_path(self, stream: str) -> Path:
@@ -1102,7 +1946,18 @@ class DataCatalogProvider(McpProvider):
 
     def __init__(self) -> None:
         self._duckdb_path = resolve_path_env("MOSS_DUCKDB_PATH", DEFAULT_DUCKDB_PATH)
+        self._governance_dir = resolve_path_env("MOSS_GOVERNANCE_PATH", DEFAULT_GOVERNANCE_DIR)
         self._schema_dir = REPO_ROOT / "backend" / "app" / "schema_registry" / "duckdb"
+        self._page_trace_bundles = product_page_trace_bundles()
+        self._streams = {
+            "agent_audit": self._governance_dir / "agent_audit.jsonl",
+            "cache_build_run": self._governance_dir / "cache_build_run.jsonl",
+            "cache_manifest": self._governance_dir / "cache_manifest.jsonl",
+            "snapshot_manifest": self._governance_dir / "snapshot_manifest.jsonl",
+            "source_manifest": self._governance_dir / "source_manifest.jsonl",
+            "source_manifest_latest": self._governance_dir / "source_manifest_latest.jsonl",
+            "vendor_version_registry": self._governance_dir / "vendor_version_registry.jsonl",
+        }
 
     def resources(self) -> list[dict[str, Any]]:
         return [
@@ -1167,6 +2022,64 @@ class DataCatalogProvider(McpProvider):
                     "required": ["table_name"],
                 },
             },
+            {
+                "name": "get_page_catalog_date_evidence",
+                "description": (
+                    "Sample configured DuckDB table and date-column evidence for seeded pages without proving "
+                    "lineage, page execution, metric definition, or formal approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to sample.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200,
+                            "description": "Maximum distinct date values to sample per table.",
+                        },
+                    },
+                },
+            },
+            {
+                "name": "get_page_catalog_date_coverage",
+                "description": (
+                    "Report which seeded pages have explicit catalog/date table configuration, without sampling "
+                    "DuckDB tables or granting approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to check.",
+                        }
+                    },
+                },
+            },
+            {
+                "name": "get_page_catalog_date_lineage_review_queue",
+                "description": (
+                    "Return a read-only prioritized queue for catalog/date plus lineage review across seeded pages, "
+                    "without sampling DuckDB tables, checking lineage records, proving page execution, or granting "
+                    "approval."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slugs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional seeded page slugs, page IDs, or route aliases to queue.",
+                        }
+                    },
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -1179,6 +2092,47 @@ class DataCatalogProvider(McpProvider):
             date_column = str(arguments.get("date_column") or "report_date").strip()
             limit = int(arguments.get("limit") or 50)
             payload = list_available_dates(self._duckdb_path, table_name, date_column, limit=limit)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_catalog_date_evidence":
+            raw_page_slugs = arguments.get("page_slugs")
+            if raw_page_slugs is None:
+                page_slugs = DEFAULT_EVIDENCE_READINESS_PAGES
+            elif isinstance(raw_page_slugs, list):
+                page_slugs = [str(item).strip() for item in raw_page_slugs if str(item).strip()]
+            else:
+                raise McpError(-32602, "page_slugs must be an array of strings.")
+            limit = int(arguments.get("limit") or 5)
+            payload = page_catalog_date_evidence(
+                self._page_trace_bundles,
+                self._duckdb_path,
+                page_slugs,
+                limit=limit,
+            )
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_catalog_date_coverage":
+            raw_page_slugs = arguments.get("page_slugs")
+            if raw_page_slugs is None:
+                page_slugs = []
+            elif isinstance(raw_page_slugs, list):
+                page_slugs = [str(item).strip() for item in raw_page_slugs if str(item).strip()]
+            else:
+                raise McpError(-32602, "page_slugs must be an array of strings.")
+            payload = page_catalog_date_coverage(self._page_trace_bundles, page_slugs)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_page_catalog_date_lineage_review_queue":
+            raw_page_slugs = arguments.get("page_slugs")
+            if raw_page_slugs is None:
+                page_slugs = []
+            elif isinstance(raw_page_slugs, list):
+                page_slugs = [str(item).strip() for item in raw_page_slugs if str(item).strip()]
+            else:
+                raise McpError(-32602, "page_slugs must be an array of strings.")
+            payload = page_catalog_date_lineage_review_queue(
+                self._page_trace_bundles,
+                page_slugs,
+                streams=self._streams,
+                stream_names=list(self._streams),
+            )
             return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
         return super().call_tool(name, arguments)
 
@@ -1702,6 +2656,147 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Use fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily as the formal balance read authority.",
         ],
     }
+    average_balance_bundle = {
+        "page_slug": "average-balance",
+        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "page_name": "Average Balance",
+        "aliases": [
+            "average-balance",
+            "average_balance",
+            "/average-balance",
+            "GAP-AVERAGE-BALANCE-PAGE",
+            "/api/analysis/adb",
+            "/api/analysis/adb/comparison",
+            "/api/analysis/adb/monthly",
+            "/api/analysis/adb/coverage",
+        ],
+        "frontend_route": "/average-balance",
+        "primary_api": "/api/analysis/adb",
+        "supporting_apis": [
+            "/api/analysis/adb/comparison",
+            "/api/analysis/adb/monthly",
+            "/api/analysis/adb/coverage",
+            "/ui/balance-analysis/dates",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/metric_dictionary.md",
+            "docs/page_contracts.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /average-balance as temporary-exception with page id GAP-AVERAGE-BALANCE-PAGE.",
+            "docs/metric_dictionary.md registers MTR-ADB-001 through MTR-ADB-003 as candidate metrics only.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/average-balance and bound_sample_id=none for the ADB candidate metrics.",
+            "GET /api/analysis/adb returns interval ADB analysis for the visible /average-balance route.",
+            "GET /api/analysis/adb/monthly returns selected-year monthly ADB trend evidence.",
+            "GET /api/analysis/adb/comparison and /api/analysis/adb/coverage support comparison and coverage diagnostics.",
+            "PAGE-BALANCE-001 and /balance-analysis remain the formal balance truth; this route is analytical ADB candidate evidence only.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/adb_analysis.py",
+            "backend/app/services/adb_analysis_service.py",
+            "backend/app/core_finance/adb_analytics.py",
+            "backend/app/api/routes/balance_analysis.py",
+            "backend/app/services/balance_analysis_service.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/features/average-balance/components/AverageBalanceView.tsx",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/api/client.ts",
+            "frontend/src/router/routes.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_adb_analysis_api.py",
+            "tests/test_result_meta_on_all_ui_endpoints.py",
+            "frontend/src/test/AverageBalanceView.test.tsx",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-AVERAGE-BALANCE-PAGE; verify through live-route maturity, ADB API tests, result_meta checks, and AverageBalanceView tests.",
+            "Trace /api/analysis/adb, comparison, monthly, and coverage payloads through AverageBalanceView query state, boundary chips, charts, and result_meta display before changing page logic.",
+            "Check observed, LOCF, and calendar-zero denominator semantics, selected date range, monthly/YTD basis, amount unit conversion, percent precision, null-vs-zero behavior, and fallback/no-data states.",
+        ],
+        "guardrails": [
+            "GAP-AVERAGE-BALANCE-PAGE is candidate ADB analysis, not formal balance truth.",
+            "Do not replace formal balance truth from PAGE-BALANCE-001 or /balance-analysis with ADB interval, comparison, monthly, or coverage output.",
+            "Do not promote MTR-ADB-001 through MTR-ADB-003 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
+            "Do not hide candidate, stale, fallback, no-data, denominator, date-range, or result_meta boundaries behind a successful /average-balance shell.",
+            "Do not backfill missing ADB rows, monthly rows, comparison rows, or coverage diagnostics with static demo values in real mode.",
+        ],
+    }
+    decision_items_bundle = {
+        "page_slug": "decision-items",
+        "page_id": "GAP-DECISION-ITEMS-PAGE",
+        "page_name": "Decision Items",
+        "aliases": [
+            "decision-items",
+            "decision_items",
+            "/decision-items",
+            "GAP-DECISION-ITEMS-PAGE",
+            "/ui/balance-analysis/decision-items",
+            "/ui/balance-analysis/decision-items/status",
+        ],
+        "frontend_route": "/decision-items",
+        "primary_api": "/ui/balance-analysis/decision-items",
+        "supporting_apis": [
+            "/ui/balance-analysis/dates",
+            "/ui/balance-analysis/current-user",
+            "/ui/balance-analysis/decision-items/status",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /decision-items as temporary-exception with page id GAP-DECISION-ITEMS-PAGE.",
+            "docs/page_contracts.md documents decision items as a PAGE-BALANCE-001 section, not as standalone formal page closure.",
+            "GET /ui/balance-analysis/decision-items reads generated balance-analysis governance action items.",
+            "POST /ui/balance-analysis/decision-items/status writes decision status records to balance_analysis_decision_status governance stream.",
+            "GET /ui/balance-analysis/current-user exposes can_write_decision_status so the page can hide write actions when permission is absent or unknown.",
+            "backend/app/repositories/balance_analysis_decision_repo.py stores latest status overlays in balance_analysis_decision_status.",
+            "fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily remain the upstream formal balance data anchors through PAGE-BALANCE-001.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/balance_analysis.py",
+            "backend/app/services/balance_analysis_service.py",
+            "backend/app/repositories/balance_analysis_decision_repo.py",
+            "backend/app/repositories/balance_analysis_repo.py",
+            "backend/app/security/route_policy.py",
+            "backend/app/schemas/balance_analysis.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/balanceAnalysisClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/decision-items/pages/DecisionItemsPage.tsx",
+            "frontend/src/features/decision-items/lib/decisionItemsPageModel.ts",
+            "frontend/src/router/routes.tsx",
+            "frontend/src/mocks/navigation.ts",
+        ],
+        "test_touchpoints": [
+            "tests/test_balance_analysis_api.py",
+            "tests/test_balance_analysis_service.py",
+            "tests/test_write_route_auth_contract.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/DecisionItemsPage.test.tsx",
+            "frontend/src/test/DecisionItemsRoute.test.tsx",
+            "frontend/src/test/decisionItemsPageModel.test.ts",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-DECISION-ITEMS-PAGE; verify through live-route maturity, balance-analysis API/service tests, decision-items frontend tests, write-route auth tests, and governance record evidence.",
+            "Trace /decision-items through DecisionItemsPage queries, buildDecisionItemsPageViewModel, result_meta panels, permission banners, and action buttons before changing display logic.",
+            "Check report_date, position_scope, currency_basis, result_meta, latest status overlay, missing/no-data/error states, and permissions before treating the page as ready.",
+            "Verify write actions require balance_analysis.decision_status/write and that status writes do not imply page approval, owner signoff, or formal business metric closure.",
+        ],
+        "guardrails": [
+            "GAP-DECISION-ITEMS-PAGE is a candidate read/write governance queue; do not claim standalone formal page truth or business-owner closure.",
+            "Do not promote decision item counts, status changes, or action labels into MTR-* rows without a dedicated PAGE contract, metric dictionary rows, lineage, samples, and tests.",
+            "Do not treat read/write status updates as approval of PAGE-BALANCE-001 metrics, balance-analysis outputs, or the /decision-items page itself.",
+            "Keep permissions, read-only, permission-unknown, stale/fallback/no-data/error, report_date, position_scope, currency_basis, and result_meta states visible.",
+            "Do not backfill missing decision rows or status overlays with static demo values in real mode.",
+        ],
+    }
     balance_movement_analysis_bundle = {
         "page_slug": "balance-movement-analysis",
         "page_id": "PAGE-BAL-MOVE-001",
@@ -1912,15 +3007,17 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         "test_touchpoints": [
             "tests/test_ledger_pnl_service.py",
             "tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py",
+            "tests/test_golden_samples_capture_ready.py",
             "tests/test_governance_doc_contract.py",
             "tests/test_live_route_page_contract_completeness.py",
             "frontend/src/test/LedgerPnlPage.test.tsx",
             "frontend/src/test/LedgerPnlRoutesSmoke.test.tsx",
+            "tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A/assertions.md",
             "tests/fixtures/formal_financial_indicators/ledger_pnl_202603_financial_indicator_golden.json",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-LEDGER-PNL-SUMMARY-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for PAGE-LEDGER-PNL-001 summary metrics; verify summary cards through page contract, metric dictionary, ledger service tests, and frontend page tests.",
+            "GS-LEDGER-PNL-SUMMARY-A is a dedicated capture-ready page-level summary DTO sample for PAGE-LEDGER-PNL-001; it is captured-awaiting-approval and does not approve formal use.",
             "Trace /api/ledger-pnl/summary, /api/ledger-pnl/data, and /api/ledger-pnl/formal-financial-indicators through pnlCoreClient, LedgerPnlPage, summary cards, detail tables, source-contract panel, and result_meta display before changing display logic.",
             "Check report_date, report_month, currency filter, yuan-to-yi display conversion, signed amount display, source_version, rule_version, cache_version, trace_id, as_of_date, and date_basis.",
             "Keep GS-LEDGER-PNL-FIN-IND-202603-B as a formal financial indicator source-contract fixture only; it freezes source status and Excel sample values but does not approve system values for formal use.",
@@ -2151,10 +3248,12 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "frontend/src/test/TPLMarketChart.test.tsx",
             "frontend/src/test/AdvancedAttributionChart.test.tsx",
             "frontend/src/test/CampisiAttributionPanel.test.tsx",
+            "tests/test_golden_samples_capture_ready.py",
+            "tests/golden_samples/GS-PNL-ATTR-WB-A/assertions.md",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-PNL-ATTR-WB-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for PAGE-PNL-ATTR-WB-001; verify through page contract, metric dictionary, route/service tests, result_meta checks, and frontend workbench tests.",
+            "Verify GS-PNL-ATTR-WB-A remains scoped to the /api/pnl-attribution/volume-rate workbench DTO and does not replace formal PnL overview, executive analytical overlay, advanced attribution, or Campisi surfaces.",
             "Trace active-tab payloads through pnlAttributionClient, PnlAttributionView state, current_view_meta, charts, tables, and advanced/Campisi panels before changing display logic.",
             "Check amount, percent, bp, current/previous period, generated_at, quality_flag, fallback_mode, and null-vs-zero semantics for each workbench tab.",
             "Keep product-category, formal attribution, advanced attribution, and Campisi panels visibly scoped to their own basis and provenance.",
@@ -2584,6 +3683,115 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Keep result_meta, source_surface, data_source, stale/fallback/vendor degradation, empty states, and candidate-boundary messaging visible.",
         ],
     }
+    bond_analysis_bundle = {
+        "page_slug": "bond-analysis",
+        "page_id": "PAGE-BOND-ANALYSIS-001",
+        "page_name": "Bond Analysis",
+        "aliases": [
+            "bond-analysis",
+            "bond_analysis",
+            "/bond-analysis",
+            "PAGE-BOND-ANALYSIS-001",
+            "/api/bond-analytics/action-attribution",
+            "/api/bond-analytics/dv01-risk",
+            "GS-BOND-ANALYSIS-ACTION-ATTR-A",
+        ],
+        "frontend_route": "/bond-analysis",
+        "primary_api": "/api/bond-analytics/action-attribution",
+        "supporting_apis": [
+            "/api/bond-analytics/dates",
+            "/api/bond-analytics/return-decomposition",
+            "/api/bond-analytics/benchmark-excess",
+            "/api/bond-analytics/krd-curve-risk",
+            "/api/bond-analytics/dv01-risk",
+            "/api/bond-analytics/dv01-reconciliation",
+            "/api/bond-analytics/dv01-movement",
+            "/api/bond-analytics/dv01-action-plan",
+            "/api/bond-analytics/dv01-limit-config-status",
+            "/api/bond-analytics/accounting-class-audit",
+            "/api/bond-analytics/credit-spread-migration",
+            "/api/bond-analytics/portfolio-headlines",
+            "/api/bond-analytics/top-holdings",
+            "/api/bond-analytics/position-changes",
+            "/api/bond-analytics/yield-curve-term-structure",
+            "/api/credit-spread-analysis/detail",
+        ],
+        "contract_docs": [
+            "docs/audits/2026-06-06-bond-analysis-gate-i-lane.md",
+            "docs/audits/2026-06-05-bond-analysis-gate-i-boundary-gap.json",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+            "docs/golden_sample_catalog.md",
+            "docs/live_route_maturity.md",
+        ],
+        "truth_chain": [
+            "docs/audits/2026-06-06-bond-analysis-gate-i-lane.md defines the direct Gate I lane and fixed-income certification blockers for /bond-analysis.",
+            "PAGE-BOND-ANALYSIS-001 is a route-specific candidate page contract for /bond-analysis, not PAGE-BOND-001.",
+            "PAGE-BOND-001, MTR-BOND-001 through MTR-BOND-004, and GS-BOND-HEADLINE-A are /bond-dashboard evidence only and must not certify /bond-analysis.",
+            "GS-BOND-ANALYSIS-ACTION-ATTR-A freezes GET /api/bond-analytics/action-attribution page-level DTO evidence only.",
+            "GET /api/bond-analytics/action-attribution drives the first-screen FI risk decision cockpit.",
+            "GET /api/bond-analytics/dates supplies report-date choices for BondAnalyticsViewContent.",
+            "GET /api/bond-analytics/dv01-risk, dv01-reconciliation, dv01-movement, and dv01-action-plan supply DV01 module evidence.",
+            "GET /api/bond-analytics/krd-curve-risk supplies KRD/duration curve-risk evidence.",
+            "GET /api/bond-analytics/return-decomposition and benchmark-excess supply return attribution evidence.",
+            "GET /api/bond-analytics/credit-spread-migration and /api/credit-spread-analysis/detail supply credit-spread evidence.",
+            "GET /api/bond-analytics/portfolio-headlines, top-holdings, and position-changes supply portfolio and holdings evidence.",
+            "backend/app/api/routes/bond_analytics.py exposes the bond-analytics route family.",
+            "backend/app/services/bond_analytics_service.py and backend/app/core_finance/action_attribution.py own the fixed-income analytics calculations.",
+            "frontend/src/api/bondAnalyticsClient.ts maps BondAnalyticsViewContent to /api/bond-analytics/*.",
+            "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.tsx renders the first-screen cockpit and result_meta trust state.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/bond_analytics.py",
+            "backend/app/api/routes/credit_spread_analysis.py",
+            "backend/app/services/bond_analytics_service.py",
+            "backend/app/services/credit_spread_analysis_service.py",
+            "backend/app/core_finance/action_attribution.py",
+            "backend/app/core_finance/bond_analytics/read_models.py",
+            "backend/app/repositories/bond_analytics_repo.py",
+            "backend/app/schema_registry/duckdb/05_bond_analytics.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/bondAnalyticsClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/bond-analytics/components/BondAnalyticsView.tsx",
+            "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.tsx",
+            "frontend/src/features/bond-analytics/components/BondAnalyticsDetailSection.tsx",
+            "frontend/src/features/bond-analytics/components/DV01RiskView.tsx",
+            "frontend/src/features/bond-analytics/components/KRDCurveRiskView.tsx",
+            "frontend/src/features/bond-analytics/components/ReturnDecompositionView.tsx",
+            "frontend/src/router/routes.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_bond_analytics_api.py",
+            "tests/test_bond_analytics_service.py",
+            "tests/test_bond_analytics_core.py",
+            "tests/test_bond_analytics_curve_effects.py",
+            "tests/test_bond_analytics_materialize_flow.py",
+            "tests/test_action_attribution.py",
+            "tests/test_bond_analysis_business_owner_approval_status.py",
+            "tests/test_bond_analysis_owner_evidence_packet.py",
+            "tests/test_credit_spread_analysis.py",
+            "tests/test_golden_samples_capture_ready.py",
+            "frontend/src/test/BondAnalyticsView.test.tsx",
+            "frontend/src/test/BondAnalyticsViewContent.test.tsx",
+            "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+        ],
+        "golden_samples": ["tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A"],
+        "verification_focus": [
+            "GS-BOND-ANALYSIS-ACTION-ATTR-A is capture-ready page-level DTO evidence for action-attribution only; it is not approved formal fixed-income truth.",
+            "Trace /api/bond-analytics/action-attribution through getBondAnalyticsActionAttribution, BondAnalyticsViewContent, the FI risk decision cockpit, and result_meta before changing first-screen logic.",
+            "Trace DV01, KRD/duration, return decomposition, credit-spread, yield/YTM, holdings, accounting-class, bp movement, and market-value scale separately; browser cleanliness alone does not certify fixed-income metric correctness.",
+            "Keep report_date, period_type, accounting_class, asset_class, stale/fallback/no-data, warnings, vendor degradation, and formal_use_allowed states visible.",
+        ],
+        "guardrails": [
+            "PAGE-BOND-ANALYSIS-001 is a route-specific candidate evidence lane; do not certify /bond-analysis without approved golden sample, governance validation, manual audit review, and business-owner approval.",
+            "Do not use PAGE-BOND-001, /bond-dashboard, GS-BOND-HEADLINE-A, or MTR-BOND-001 through MTR-BOND-004 to certify /bond-analysis.",
+            "Do not promote DV01, duration, KRD, yield/YTM, credit-spread, action-attribution PnL, holdings, or accounting-class values to formal metric truth without approved metric dictionary rows, units, null/date rules, lineage, samples, and tests.",
+            "Do not recompute bond-analytics metrics in the frontend; consume backend envelopes and keep result_meta visible.",
+            "Keep stale, fallback, warning, no-data, missing limit config, placeholder, partial, and vendor degradation states visible instead of smoothing them into a successful page shell.",
+        ],
+    }
     positions_bundle = {
         "page_slug": "positions",
         "page_id": "PAGE-POS-001",
@@ -2770,6 +3978,89 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Keep getFxFormalStatus scoped as a formal FX status endpoint; the current MarketDataPage implementation does not independently mount it as full-page formal truth.",
         ],
     }
+    cross_asset_bundle = {
+        "page_slug": "cross-asset",
+        "page_id": "GAP-CROSS-ASSET-PAGE",
+        "page_name": "Cross Asset Drivers",
+        "aliases": [
+            "cross-asset",
+            "cross_asset",
+            "/cross-asset",
+            "GAP-CROSS-ASSET-PAGE",
+            "/api/macro-bond-linkage/analysis",
+            "/ui/market-data/ncd-funding-proxy",
+        ],
+        "frontend_route": "/cross-asset",
+        "primary_api": "frontend aggregation: cross-asset drivers",
+        "supporting_apis": [
+            "/ui/macro/choice-series/latest",
+            "/api/macro-bond-linkage/analysis",
+            "/ui/market-data/ncd-funding-proxy",
+            "/ui/market-data/livermore",
+            "/ui/market-data/livermore/signal-confluence",
+            "/ui/news/choice-events/latest",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /cross-asset as temporary-exception with page id GAP-CROSS-ASSET-PAGE.",
+            "docs/page_contracts.md lists /cross-asset as a Market Workbench Home downstream page, not standalone formal PAGE contract closure.",
+            "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx renders a mixed-source analytical drivers surface.",
+            "GET /ui/macro/choice-series/latest supplies Choice macro latest evidence.",
+            "GET /api/macro-bond-linkage/analysis supplies macro-bond analytical linkage evidence.",
+            "GET /ui/market-data/ncd-funding-proxy supplies Shibor funding proxy evidence, not actual NCD matrix truth.",
+            "GET /ui/market-data/livermore and /signal-confluence supply observational stock strategy readiness.",
+            "GET /ui/news/choice-events/latest supplies analytical event context only.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/macro_vendor.py",
+            "backend/app/api/routes/macro_bond_linkage.py",
+            "backend/app/api/routes/market_data_ncd_proxy.py",
+            "backend/app/api/routes/market_data_livermore.py",
+            "backend/app/api/routes/choice_news.py",
+            "backend/app/services/macro_vendor_service.py",
+            "backend/app/services/macro_bond_linkage_service.py",
+            "backend/app/services/market_data_ncd_proxy_service.py",
+            "backend/app/services/market_data_livermore_service.py",
+            "backend/app/services/livermore_signal_confluence_service.py",
+            "backend/app/services/choice_news_service.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/marketDataClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/cross-asset/pages/CrossAssetDriversPage.tsx",
+            "frontend/src/features/cross-asset/pages/CrossAssetPage.tsx",
+            "frontend/src/features/cross-asset/lib/crossAssetDriversPageModel.ts",
+            "frontend/src/features/cross-asset/lib/crossAssetKpiModel.ts",
+            "frontend/src/router/routes.tsx",
+        ],
+        "test_touchpoints": [
+            "frontend/src/test/CrossAssetDriversRoute.test.tsx",
+            "frontend/src/test/CrossAssetPage.test.tsx",
+            "frontend/src/test/crossAssetDriversPageModel.test.ts",
+            "frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts",
+            "frontend/src/features/cross-asset/lib/crossAssetKpiModel.test.ts",
+            "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+            "tests/test_live_route_page_contract_completeness.py",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-CROSS-ASSET-PAGE; verify through live-route maturity, cross-asset frontend/model tests, Playwright smoke, and source lineage evidence.",
+            "Trace /cross-asset through CrossAssetDriversPage queries, crossAssetDriversPageModel, source-status flags, evidence details, and decision rail before changing display logic.",
+            "Check mixed dates, stale/fallback/no-data/source-blocked states across macro, macro-bond linkage, NCD proxy, Livermore, and news-event evidence.",
+        ],
+        "guardrails": [
+            "GAP-CROSS-ASSET-PAGE is a mixed-source analytical surface; do not claim full-page formal market, bond, stock, or news truth.",
+            "Do not create MTR-* rows, page-level formal use, trading instructions, or allocation decisions from cross-asset linkage evidence.",
+            "Treat NCD output as Shibor funding proxy evidence unless a separate approved actual NCD matrix contract exists.",
+            "Treat Livermore and signal-confluence output as observational readiness, not trading instruction or formal stock-analysis truth.",
+            "Do not hide stale, fallback, source-blocked, no-data, mixed-date, or vendor degradation states behind a successful cross-asset shell.",
+            "Do not backfill missing macro, NCD, Livermore, or event rows with static demo values in real mode.",
+        ],
+    }
     stock_analysis_bundle = {
         "page_slug": "stock-analysis",
         "page_id": "GAP-STOCK-ANALYSIS-PAGE",
@@ -2793,12 +4084,19 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "/ui/market-data/livermore/sector-rank-series",
         ],
         "contract_docs": [
+            "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md",
+            "docs/pnl/stock-analysis-owner-evidence-packet.md",
+            "docs/pnl/stock-analysis-business-owner-approval-template.md",
             "docs/live_route_maturity.md",
             "docs/page_contracts.md",
             "docs/metric_dictionary.md",
             "docs/golden_sample_catalog.md",
         ],
         "truth_chain": [
+            "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md defines the direct observational Gate I lane and no-trading-instruction boundary for /stock-analysis.",
+            "docs/pnl/stock-analysis-owner-evidence-packet.md packages owner-review evidence without approving page closure.",
+            "docs/pnl/stock-analysis-business-owner-approval-template.md captures pending owner fields and preserves formal_use_allowed=false.",
+            "tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A freezes the observation-only Livermore primary DTO for /stock-analysis.",
             "docs/live_route_maturity.md marks /stock-analysis as temporary-exception with page id GAP-STOCK-ANALYSIS-PAGE",
             "docs/page_contracts.md currently lists /stock-analysis as a Market Workbench Home downstream page, not as a standalone PAGE-STOCK contract",
             "search_contract_docs has no PAGE-STOCK-* or MTR-STOCK-* binding for this page in the current contract set",
@@ -2835,14 +4133,17 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "tests/test_market_data_livermore_risk_exit_source.py",
             "tests/test_market_data_livermore_candidate_history.py",
             "tests/test_livermore_stock_detail_service.py",
+            "tests/test_golden_samples_capture_ready.py",
+            "tests/test_stock_analysis_business_owner_approval_status.py",
+            "tests/test_stock_analysis_owner_evidence_packet.py",
             "frontend/src/test/StockAnalysisPage.test.tsx",
             "frontend/src/test/StockAnalysisPageModel.test.ts",
             "frontend/src/features/stock-analysis/lib/buildConsensusSummary.test.ts",
             "frontend/src/test/RouteRegistry.test.tsx",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for GAP-STOCK-ANALYSIS-PAGE; verify through live-route maturity, Livermore API tests, frontend StockAnalysisPage tests, and lineage-query evidence.",
+            "Dedicated golden sample GS-STOCK-ANALYSIS-OBS-A is capture-ready pending approval and freezes observation-only Livermore DTO evidence; it does not approve trading instructions or formal stock-analysis truth.",
             "There is currently no PAGE-STOCK standalone contract or MTR-STOCK binding; do not treat this trace bundle as contract closure or formal metric approval.",
             "Trace /ui/market-data/livermore through marketDataClient, StockAnalysisPage query state, stockAnalysisPageModel, readiness panels, boundary summary, and stock detail drawer before changing display logic.",
             "Check as_of_date/requested_as_of_date, stale/fallback/no-data/error states, unsupported_outputs, rule_readiness, data_gaps, proxy-backtest sample maturity, and risk_exit blocked/ready conditions.",
@@ -3162,6 +4463,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         backend_touchpoints: list[str],
         truth_detail: str,
         guardrail_detail: str,
+        golden_samples: list[str] | None = None,
+        verification_focus: list[str] | None = None,
     ) -> dict[str, Any]:
         return {
             "page_slug": page_slug,
@@ -3203,8 +4506,9 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
                 "tests/test_live_route_page_contract_completeness.py",
                 "tests/test_page_contract_metric_dictionary_completeness.py",
             ],
-            "golden_samples": [],
-            "verification_focus": [
+            "golden_samples": list(golden_samples or []),
+            "verification_focus": verification_focus
+            or [
                 f"No dedicated golden sample is currently registered for {page_id}; verify through the page contract, module home model/page tests, route registry tests, and downstream page/API tests when changing displayed fields.",
                 f"Trace {frontend_route} through moduleHomeConfig, ModuleWorkbenchHomePage queries, buildModuleHomeView, source statuses, and downstream page result_meta before changing module-home display logic.",
                 "Check mixed dates, no-data, partial child-query failure, stale/fallback, source metadata, and downstream page ownership remain visible.",
@@ -3230,15 +4534,23 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "/api/bond-dashboard/headline-kpis",
             "/api/positions/bonds",
             "/api/pnl-attribution/analysis-summary",
+            "/api/risk/tensor/dates",
         ],
         backend_touchpoints=[
             "backend/app/api/routes/balance_analysis.py",
             "backend/app/api/routes/bond_dashboard.py",
             "backend/app/api/routes/positions.py",
             "backend/app/api/routes/pnl_attribution.py",
+            "backend/app/api/routes/risk_tensor.py",
         ],
-        truth_detail="Portfolio module home aggregates balance, bond dashboard, positions, and attribution evidence only to guide drilldown.",
-        guardrail_detail="Do not use portfolio module-home cards as a standalone formal metric page or as replacements for balance, bond, positions, or attribution truth.",
+        truth_detail="Portfolio module home aggregates balance, bond dashboard, positions, attribution, and risk.tensor.dates evidence only to guide drilldown and risk-date closure review.",
+        guardrail_detail="Do not use portfolio module-home cards as a standalone formal metric page or as replacements for balance, bond, positions, attribution, or PAGE-RISK-001 risk tensor truth.",
+        golden_samples=["tests/golden_samples/GS-PORTFOLIO-HOME-A"],
+        verification_focus=[
+            "GS-PORTFOLIO-HOME-A is a supporting-only observational evidence pack for the portfolio module-home aggregation; it does not approve page-level formal use.",
+            "Trace /portfolio through moduleHomeConfig, ModuleWorkbenchHomePage queries, buildModuleHomeView, source statuses, downstream result_meta, and risk.tensor.dates before changing module-home display logic.",
+            "Check mixed dates, no-data, partial child-query failure, stale/fallback, source metadata, risk tensor date mismatch, and downstream page ownership remain visible.",
+        ],
     )
     market_home_bundle = module_home_bundle(
         page_slug="market-home",
@@ -3302,6 +4614,86 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         truth_detail="Performance module home aggregates KPI, team, business PnL, and product PnL entry-point evidence only to guide performance review drilldown.",
         guardrail_detail="Do not rebuild KPI scoring, team allocation, business PnL, or product PnL formulas on the module home.",
     )
+    kpi_performance_bundle = {
+        "page_slug": "kpi-performance",
+        "page_id": "GAP-KPI-PERFORMANCE-PAGE",
+        "page_name": "KPI Performance",
+        "aliases": [
+            "kpi-performance",
+            "kpi_performance",
+            "kpi",
+            "/kpi",
+            "GAP-KPI-PERFORMANCE-PAGE",
+            "/api/kpi/values/summary",
+        ],
+        "frontend_route": "/kpi",
+        "primary_api": "/api/kpi/values/summary",
+        "supporting_apis": [
+            "/api/kpi/owners",
+            "/api/kpi/metrics",
+            "/api/kpi/values",
+            "/api/kpi/values/batch",
+            "/api/kpi/fetch_and_recalc",
+            "/api/kpi/report",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /kpi as temporary-exception with page id GAP-KPI-PERFORMANCE-PAGE.",
+            "docs/metric_dictionary.md registers MTR-KPI-001 as candidate and PAGE-CONTRACT-PENDING:/kpi, not formal approval.",
+            "GET /api/kpi/owners selects active KPI owners from the governance SQL authority gate.",
+            "GET /api/kpi/values/summary returns period total_score and metric summaries for a selected owner/year/period.",
+            "GET /api/kpi/metrics, GET /api/kpi/values, and GET /api/kpi/report support the workbench view and export.",
+            "POST/PUT/DELETE /api/kpi/metrics mutate metric definitions under kpi.metric write/delete permission.",
+            "POST/PUT /api/kpi/values, POST /api/kpi/values/batch, and POST /api/kpi/fetch_and_recalc mutate values or recalculated scores under kpi.value write permission.",
+            "frontend/src/features/kpi-performance/pages/KpiPerformancePage.tsx renders the KPI workbench and action controls.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/kpi.py",
+            "backend/app/services/kpi_service.py",
+            "backend/app/services/kpi_workbench_service.py",
+            "backend/app/repositories/kpi_repo.py",
+            "backend/app/schemas/kpi.py",
+            "backend/app/models/kpi.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/kpiClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/kpi-performance/pages/KpiPerformancePage.tsx",
+            "frontend/src/features/kpi-performance/components/MetricTable.tsx",
+            "frontend/src/features/kpi-performance/components/MetricEditModal.tsx",
+            "frontend/src/features/kpi-performance/components/MetricManageModal.tsx",
+            "frontend/src/features/kpi-performance/components/BatchPasteModal.tsx",
+            "frontend/src/features/kpi-performance/components/TracePanel.tsx",
+            "frontend/src/router/routes.tsx",
+            "frontend/src/mocks/navigation.ts",
+        ],
+        "test_touchpoints": [
+            "tests/test_kpi_api.py",
+            "tests/test_kpi_repo.py",
+            "tests/test_write_route_auth_contract.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/KpiPerformancePage.test.tsx",
+            "frontend/src/test/KpiTracePanel.test.tsx",
+            "frontend/src/test/RouteRegistry.test.tsx",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-KPI-PERFORMANCE-PAGE; verify through live-route maturity, KPI API/repo tests, write-route auth tests, frontend route tests, and governance SQL/audit evidence.",
+            "Trace /kpi through KpiPerformancePage, kpiClient, owner selection, period summary, metric table, trace panel, and action modals before changing display logic.",
+            "Check owner_id, year, period_type, period_value, as_of_date, Decimal string fields, total_weight, total_score, null/empty states, and permissions before treating the page as ready.",
+            "Verify write actions require kpi.metric or kpi.value permissions and that scoring recalculation does not imply metric dictionary approval, page approval, or business-owner signoff.",
+        ],
+        "guardrails": [
+            "GAP-KPI-PERFORMANCE-PAGE is a candidate read/write scoring workbench; do not claim standalone formal KPI truth or business-owner closure.",
+            "Do not promote KPI total_score, score_weight, progress_pct, completion_ratio, or scoring labels into approved MTR-* rows beyond the existing candidate MTR-KPI-001 without a dedicated PAGE contract, lineage, samples, and tests.",
+            "Do not treat write operations, batch paste, fetch_and_recalc, CSV export, or scoring recomputation as approval of the KPI page or metric dictionary.",
+            "Keep write/scoring permissions, source/trace panels, empty/error states, owner/year/period/as_of_date context, and Decimal string semantics visible.",
+            "Do not backfill missing KPI owners, metrics, values, or score traces with static demo values in real mode.",
+        ],
+    }
     reports_home_bundle = module_home_bundle(
         page_slug="reports-home",
         page_id="PAGE-REPORTS-HOME-001",
@@ -3330,6 +4722,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         executive_overview_bundle,
         executive_summary_bundle,
         balance_analysis_bundle,
+        average_balance_bundle,
+        decision_items_bundle,
         balance_movement_analysis_bundle,
         pnl_bundle,
         ledger_pnl_bundle,
@@ -3341,8 +4735,10 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         pnl_bridge_bundle,
         risk_tensor_bundle,
         bond_dashboard_bundle,
+        bond_analysis_bundle,
         positions_bundle,
         market_data_bundle,
+        cross_asset_bundle,
         stock_analysis_bundle,
         macro_toolkit_bundle,
         macro_observation_bundle,
@@ -3352,6 +4748,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         market_home_bundle,
         risk_home_bundle,
         performance_home_bundle,
+        kpi_performance_bundle,
         reports_home_bundle,
     ]
     return {
@@ -3369,6 +4766,6596 @@ def page_trace_bundle(bundles: dict[str, dict[str, Any]], page_slug: str) -> dic
         supported = sorted({bundle["page_slug"] for bundle in bundles.values()})
         raise McpError(-32602, f"Unknown page_slug: {page_slug}. Supported pages: {', '.join(supported)}")
     return bundle
+
+
+def page_evidence_readiness(bundles: dict[str, dict[str, Any]], page_slugs: list[str]) -> dict[str, Any]:
+    selected_slugs = page_slugs or DEFAULT_EVIDENCE_READINESS_PAGES
+    pages = [page_evidence_readiness_row(page_trace_bundle(bundles, page_slug)) for page_slug in selected_slugs]
+    formal_count = sum(1 for page in pages if page["formal_use_allowed"])
+    review_required_count = sum(
+        1 for page in pages if page["checks"]["catalog_date"]["status"] == "direct_review_required"
+    )
+    return {
+        "scope": "page-trace-readiness",
+        "disclaimer": (
+            "This matrix summarizes seeded page trace-bundle anchors only; it does not prove live catalog, date, "
+            "lineage, or formal metric approval. Use moss-lineage-evidence, moss-data-catalog, and "
+            "moss-data-quality for direct proof before changing business metric semantics."
+        ),
+        "pages": pages,
+        "candidate_metric_watchlist": CANDIDATE_METRIC_WATCHLIST,
+        "summary": {
+            "page_count": len(pages),
+            "formal_use_allowed_count": formal_count,
+            "candidate_or_gap_count": len(pages) - formal_count,
+            "direct_catalog_date_review_required_count": review_required_count,
+        },
+    }
+
+
+def page_catalog_date_evidence(
+    bundles: dict[str, dict[str, Any]],
+    duckdb_path: Path,
+    page_slugs: list[str],
+    *,
+    limit: int,
+) -> dict[str, Any]:
+    if limit < 1 or limit > 200:
+        raise McpError(-32602, "limit must be between 1 and 200.")
+    selected_slugs = page_slugs or DEFAULT_EVIDENCE_READINESS_PAGES
+    pages = [
+        page_catalog_date_evidence_row(page_trace_bundle(bundles, page_slug), duckdb_path, limit=limit)
+        for page_slug in selected_slugs
+    ]
+    table_rows = [row for page in pages for row in page["table_evidence"]]
+    present_count = sum(1 for row in table_rows if row["status"] in {"present", "present_no_date_column"})
+    sampled_count = sum(1 for row in table_rows if row["status"] == "present" and row["available_dates"])
+    return {
+        "scope": "page-catalog-date-evidence",
+        "disclaimer": (
+            "This tool samples configured DuckDB table and date-column evidence only; it does not prove page "
+            "execution, governance lineage, metric definition, or formal approval."
+        ),
+        "duckdb_path": str(duckdb_path),
+        "duckdb_exists": duckdb_path.is_file(),
+        "pages": pages,
+        "summary": {
+            "page_count": len(pages),
+            "table_anchor_count": len(table_rows),
+            "present_table_count": present_count,
+            "date_sampled_table_count": sampled_count,
+        },
+    }
+
+
+def page_catalog_date_coverage(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+) -> dict[str, Any]:
+    selected_bundles = selected_catalog_date_page_bundles(bundles, page_slugs)
+    pages = [page_catalog_date_coverage_row(bundle) for bundle in selected_bundles]
+    page_order = {page["page_id"]: index for index, page in enumerate(pages)}
+    missing_queue = [
+        page for page in pages if page["coverage_status"] == "missing_explicit_table_config"
+    ]
+    deferred_queue = [
+        page for page in pages if page["coverage_status"] == "deferred_no_direct_table_config"
+    ]
+    missing_queue.sort(key=lambda page: page_catalog_date_coverage_sort_key(page, page_order))
+    deferred_queue.sort(key=lambda page: page_catalog_date_coverage_sort_key(page, page_order))
+    return {
+        "scope": "page-catalog-date-coverage",
+        "disclaimer": (
+            "This tool reports explicit catalog/date table configuration coverage only; it does not sample "
+            "DuckDB tables, does not prove lineage or page/API execution, and does not approve metric/page formal use."
+        ),
+        "pages": pages,
+        "missing_config_queue": missing_queue,
+        "deferred_config_queue": deferred_queue,
+        "summary": {
+            "page_count": len(pages),
+            "configured_page_count": sum(
+                1 for page in pages if page["coverage_status"] == "configured_direct_tables"
+            ),
+            "deferred_no_direct_table_config_count": len(deferred_queue),
+            "missing_explicit_config_count": len(missing_queue),
+            "formal_missing_explicit_config_count": sum(
+                1 for page in missing_queue if page["approval_status"] == "formal_or_governed"
+            ),
+        },
+    }
+
+
+def page_catalog_date_lineage_review_queue(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+    *,
+    streams: dict[str, Path] | None = None,
+    stream_names: list[str] | None = None,
+) -> dict[str, Any]:
+    selected_bundles = selected_catalog_date_page_bundles(bundles, page_slugs)
+    coverage_rows = [page_catalog_date_coverage_row(bundle) for bundle in selected_bundles]
+    bundle_by_page_id = {str(bundle["page_id"]): bundle for bundle in selected_bundles}
+    page_order = {str(row["page_id"]): index for index, row in enumerate(coverage_rows)}
+    record_readiness_by_page_id = page_catalog_date_lineage_record_readiness_by_page_id(
+        bundles,
+        [str(bundle["page_slug"]) for bundle in selected_bundles],
+        streams=streams,
+        stream_names=stream_names,
+    )
+    queue_rows = [
+        page_catalog_date_lineage_review_queue_item(
+            row,
+            bundle_by_page_id[str(row["page_id"])],
+            record_readiness=record_readiness_by_page_id.get(str(row["page_id"])),
+        )
+        for row in coverage_rows
+    ]
+    review_queue = [
+        row
+        for row in queue_rows
+        if row["review_lane"] != "deferred_no_direct_table_config_review"
+    ]
+    deferred_queue = [
+        row
+        for row in queue_rows
+        if row["review_lane"] == "deferred_no_direct_table_config_review"
+    ]
+    review_queue.sort(key=lambda row: page_catalog_date_lineage_review_queue_sort_key(row, page_order))
+    deferred_queue.sort(key=lambda row: page_catalog_date_lineage_review_queue_sort_key(row, page_order))
+    record_remediation_work_items = page_catalog_date_lineage_record_remediation_work_items(queue_rows)
+    record_remediation_evidence_work_items = page_catalog_date_lineage_record_remediation_evidence_work_items(
+        queue_rows,
+    )
+    record_remediation_review_lane_work_items = (
+        page_catalog_date_lineage_record_remediation_review_lane_work_items(queue_rows)
+    )
+    suggested_tool_call_work_items = page_catalog_date_lineage_suggested_tool_call_work_items(
+        queue_rows,
+    )
+    record_remediation_scope_audit = page_catalog_date_lineage_record_remediation_scope_audit(
+        {
+            "record_remediation_work_items": record_remediation_work_items,
+            "record_remediation_evidence_work_items": record_remediation_evidence_work_items,
+            "record_remediation_review_lane_work_items": record_remediation_review_lane_work_items,
+        },
+    )
+    suggested_tool_call_scope_audit = page_catalog_date_lineage_suggested_tool_call_scope_audit(
+        suggested_tool_call_work_items,
+    )
+    evidence_collection_execution_plan = page_catalog_date_lineage_evidence_collection_execution_plan(
+        suggested_tool_call_work_items,
+        suggested_tool_call_scope_audit,
+    )
+    evidence_collection_execution_plan_scope_audit = (
+        page_catalog_date_lineage_evidence_collection_execution_plan_scope_audit(
+            evidence_collection_execution_plan,
+        )
+    )
+    record_gap_execution_plan = page_catalog_date_lineage_record_gap_execution_plan(
+        record_remediation_work_items,
+        record_remediation_evidence_work_items,
+        record_remediation_review_lane_work_items,
+        record_remediation_scope_audit,
+    )
+    record_gap_execution_plan_scope_audit = (
+        page_catalog_date_lineage_record_gap_execution_plan_scope_audit(record_gap_execution_plan)
+    )
+    manual_audit_review_execution_plan = page_catalog_date_lineage_manual_audit_review_execution_plan(
+        record_remediation_work_items,
+    )
+    manual_audit_review_execution_plan_scope_audit = (
+        page_catalog_date_lineage_manual_audit_review_execution_plan_scope_audit(
+            manual_audit_review_execution_plan,
+        )
+    )
+    business_owner_approval_execution_plan = page_catalog_date_lineage_business_owner_approval_execution_plan(
+        record_remediation_work_items,
+    )
+    business_owner_approval_execution_plan_scope_audit = (
+        page_catalog_date_lineage_business_owner_approval_execution_plan_scope_audit(
+            business_owner_approval_execution_plan,
+        )
+    )
+    ready_for_audit_review_count = sum(
+        1
+        for row in queue_rows
+        if row["record_readiness"]["audit_review_status"] == "ready_for_audit_review"
+    )
+    blocked_by_record_gaps_count = sum(
+        1
+        for row in queue_rows
+        if row["record_readiness"]["audit_review_status"] == "blocked_by_record_gaps"
+    )
+    closure_blocker_work_items = page_catalog_date_lineage_closure_blocker_work_items(
+        queue_rows,
+        suggested_tool_call_work_items,
+        execution_plans={
+            "record_gap_execution_plan": record_gap_execution_plan,
+            "evidence_collection_execution_plan": evidence_collection_execution_plan,
+            "manual_audit_review_execution_plan": manual_audit_review_execution_plan,
+            "business_owner_approval_execution_plan": business_owner_approval_execution_plan,
+        },
+        source_work_item_group_counts={
+            "record_remediation_work_items": len(record_remediation_work_items),
+            "record_remediation_evidence_work_items": len(record_remediation_evidence_work_items),
+            "record_remediation_review_lane_work_items": len(record_remediation_review_lane_work_items),
+            "suggested_tool_call_work_items": len(suggested_tool_call_work_items),
+        },
+        record_remediation_work_item_count=record_remediation_scope_audit["work_item_count"],
+        suggested_tool_call_work_item_count=suggested_tool_call_scope_audit["work_item_count"],
+    )
+    closure_blocker_work_item_breakdown = page_catalog_date_lineage_closure_blocker_work_item_breakdown(
+        closure_blocker_work_items,
+    )
+    closure_blocker_routing_index = page_catalog_date_lineage_closure_blocker_routing_index(
+        closure_blocker_work_items,
+    )
+    closure_blocker_scope_audit = page_catalog_date_lineage_closure_blocker_scope_audit(
+        closure_blocker_work_items,
+    )
+    closure_readiness = page_catalog_date_lineage_closure_readiness(
+        page_count=len(queue_rows),
+        ready_for_audit_review_count=ready_for_audit_review_count,
+        blocked_by_record_gaps_count=blocked_by_record_gaps_count,
+        record_remediation_work_item_count=record_remediation_scope_audit["work_item_count"],
+        suggested_tool_call_work_item_count=suggested_tool_call_scope_audit["work_item_count"],
+        closure_blocker_work_item_count=len(closure_blocker_work_items),
+        closure_blocker_work_item_breakdown=closure_blocker_work_item_breakdown,
+        closure_blocker_routing_index=closure_blocker_routing_index,
+        queue_boundary_work_item_count=0,
+        execution_plans={
+            "record_gap_execution_plan": record_gap_execution_plan,
+            "evidence_collection_execution_plan": evidence_collection_execution_plan,
+            "manual_audit_review_execution_plan": manual_audit_review_execution_plan,
+            "business_owner_approval_execution_plan": business_owner_approval_execution_plan,
+        },
+    )
+    queue_boundary_audit = page_catalog_date_lineage_queue_boundary_audit(
+        {
+            "record_gap_execution_plan_scope_audit": record_gap_execution_plan_scope_audit,
+            "record_remediation_scope_audit": record_remediation_scope_audit,
+            "suggested_tool_call_scope_audit": suggested_tool_call_scope_audit,
+            "evidence_collection_execution_plan_scope_audit": evidence_collection_execution_plan_scope_audit,
+            "manual_audit_review_execution_plan_scope_audit": manual_audit_review_execution_plan_scope_audit,
+            "business_owner_approval_execution_plan_scope_audit": business_owner_approval_execution_plan_scope_audit,
+            "closure_blocker_scope_audit": closure_blocker_scope_audit,
+            "next_closure_action_scope_audit": closure_readiness[
+                "next_closure_action_scope_audit"
+            ],
+            "closure_dispatch_packet_scope_audit": closure_readiness[
+                "closure_dispatch_packet_scope_audit"
+            ],
+        },
+    )
+    closure_readiness["queue_boundary_work_item_count"] = queue_boundary_audit["work_item_count"]
+    return {
+        "scope": "page-catalog-date-lineage-review-queue",
+        "disclaimer": (
+            "This read-only queue routes catalog/date plus lineage evidence collection; it does not sample DuckDB "
+            "tables, does not prove lineage or page/API execution, and does not approve metric/page formal use."
+        ),
+        "review_queue": review_queue,
+        "deferred_review_queue": deferred_queue,
+        "review_lane_breakdown": page_catalog_date_lineage_review_lane_breakdown(queue_rows),
+        "record_remediation_breakdown": page_catalog_date_lineage_record_remediation_breakdown(queue_rows),
+        "record_remediation_work_items": record_remediation_work_items,
+        "record_remediation_evidence_work_items": record_remediation_evidence_work_items,
+        "record_remediation_review_lane_work_items": record_remediation_review_lane_work_items,
+        "record_gap_execution_plan": record_gap_execution_plan,
+        "record_gap_execution_plan_scope_audit": record_gap_execution_plan_scope_audit,
+        "record_remediation_scope_audit": record_remediation_scope_audit,
+        "suggested_tool_call_work_items": suggested_tool_call_work_items,
+        "suggested_tool_call_scope_audit": suggested_tool_call_scope_audit,
+        "evidence_collection_execution_plan": evidence_collection_execution_plan,
+        "evidence_collection_execution_plan_scope_audit": evidence_collection_execution_plan_scope_audit,
+        "manual_audit_review_execution_plan": manual_audit_review_execution_plan,
+        "manual_audit_review_execution_plan_scope_audit": manual_audit_review_execution_plan_scope_audit,
+        "business_owner_approval_execution_plan": business_owner_approval_execution_plan,
+        "business_owner_approval_execution_plan_scope_audit": business_owner_approval_execution_plan_scope_audit,
+        "queue_boundary_audit": queue_boundary_audit,
+        "closure_blocker_work_items": closure_blocker_work_items,
+        "closure_blocker_routing_index": closure_blocker_routing_index,
+        "closure_blocker_scope_audit": closure_blocker_scope_audit,
+        "summary": {
+            "page_count": len(queue_rows),
+            "review_item_count": len(review_queue),
+            "deferred_review_item_count": len(deferred_queue),
+            "p1_review_item_count": sum(1 for row in review_queue if row["review_priority"] == "P1"),
+            "gap_or_observational_review_item_count": sum(
+                1
+                for row in review_queue
+                if row["review_lane"] == "gap_observational_separate_review"
+            ),
+            "ready_for_audit_review_count": ready_for_audit_review_count,
+            "blocked_by_record_gaps_count": blocked_by_record_gaps_count,
+            "closure_readiness": closure_readiness,
+        },
+    }
+
+
+def page_catalog_date_lineage_closure_readiness(
+    *,
+    page_count: int,
+    ready_for_audit_review_count: int,
+    blocked_by_record_gaps_count: int,
+    record_remediation_work_item_count: int,
+    suggested_tool_call_work_item_count: int,
+    closure_blocker_work_item_count: int,
+    closure_blocker_work_item_breakdown: dict[str, dict[str, int]],
+    closure_blocker_routing_index: dict[str, dict[str, Any]],
+    queue_boundary_work_item_count: int,
+    execution_plans: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    residual_requirements = []
+    if blocked_by_record_gaps_count:
+        residual_requirements.append("record_gap_remediation")
+    if suggested_tool_call_work_item_count:
+        residual_requirements.append("catalog_date_lineage_evidence_collection")
+    if ready_for_audit_review_count:
+        residual_requirements.append("manual_audit_review")
+        residual_requirements.append("business_owner_approval")
+
+    closure_execution_sequence = page_catalog_date_lineage_closure_execution_sequence(
+        residual_requirements,
+        closure_blocker_work_item_breakdown,
+        closure_blocker_routing_index,
+        execution_plans or {},
+    )
+    closure_dispatch_packet = page_catalog_date_lineage_closure_dispatch_packet(
+        closure_execution_sequence,
+        status=page_catalog_date_lineage_closure_status(
+            blocked_by_record_gaps_count=blocked_by_record_gaps_count,
+            suggested_tool_call_work_item_count=suggested_tool_call_work_item_count,
+            ready_for_audit_review_count=ready_for_audit_review_count,
+        ),
+    )
+    next_closure_action = page_catalog_date_lineage_next_closure_action(
+        closure_execution_sequence,
+        execution_plans or {},
+    )
+    return {
+        "page_count": page_count,
+        "ready_for_audit_review_count": ready_for_audit_review_count,
+        "blocked_by_record_gaps_count": blocked_by_record_gaps_count,
+        "record_remediation_work_item_count": record_remediation_work_item_count,
+        "suggested_tool_call_work_item_count": suggested_tool_call_work_item_count,
+        "closure_blocker_work_item_count": closure_blocker_work_item_count,
+        "closure_blocker_work_item_breakdown": closure_blocker_work_item_breakdown,
+        "queue_boundary_work_item_count": queue_boundary_work_item_count,
+        "closure_approved_count": 0,
+        "closure_ready_count": 0,
+        "closure_blocked_count": page_count,
+        "queue_grants_closure": False,
+        "status": page_catalog_date_lineage_closure_status(
+            blocked_by_record_gaps_count=blocked_by_record_gaps_count,
+            suggested_tool_call_work_item_count=suggested_tool_call_work_item_count,
+            ready_for_audit_review_count=ready_for_audit_review_count,
+        ),
+        "residual_closure_requirements": residual_requirements,
+        "next_closure_action": next_closure_action,
+        "next_closure_action_scope_audit": page_catalog_date_lineage_next_closure_action_scope_audit(
+            next_closure_action,
+            closure_execution_sequence=closure_execution_sequence,
+        ),
+        "closure_dispatch_packet": closure_dispatch_packet,
+        "closure_dispatch_packet_scope_audit": (
+            page_catalog_date_lineage_closure_dispatch_packet_scope_audit(
+                closure_dispatch_packet,
+                closure_execution_sequence=closure_execution_sequence,
+            )
+        ),
+        "closure_execution_sequence": closure_execution_sequence,
+    }
+
+
+def page_catalog_date_lineage_closure_dispatch_packet(
+    closure_execution_sequence: list[dict[str, Any]],
+    *,
+    status: str,
+) -> dict[str, Any]:
+    dispatch_steps = [
+        page_catalog_date_lineage_closure_dispatch_step(step)
+        for step in closure_execution_sequence
+    ]
+    return {
+        "scope": "catalog_date_lineage_closure_dispatch_packet",
+        "status": status,
+        "dispatch_step_count": len(dispatch_steps),
+        "next_dispatch_step": dispatch_steps[0] if dispatch_steps else None,
+        "dispatch_steps": dispatch_steps,
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_closure_dispatch_step(
+    closure_step: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "sequence": closure_step["sequence"],
+        "blocker_type": closure_step["blocker_type"],
+        "dispatch_action": closure_step["next_step"],
+        "execution_plan": closure_step["execution_plan"],
+        "execution_stage": closure_step["execution_stage"],
+        "page_count": closure_step["page_count"],
+        "work_item_count": closure_step["work_item_count"],
+        "arguments": closure_step["arguments"],
+        "execution_stage_detail": closure_step.get("execution_stage_detail"),
+        "source_work_item_group_counts": closure_step.get("source_work_item_group_counts", {}),
+        "must_complete_before": closure_step["must_complete_before"],
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_closure_dispatch_packet_scope_audit(
+    dispatch_packet: dict[str, Any],
+    *,
+    closure_execution_sequence: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+        "queue_grants_closure",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    execution_target_violations = []
+    packet_consistency_violations = []
+    source_consistency_violations = []
+    dispatch_steps = dispatch_packet.get("dispatch_steps", [])
+    expected_dispatch_step_count = len(dispatch_steps)
+    dispatch_step_count = dispatch_packet.get("dispatch_step_count")
+    if dispatch_step_count != expected_dispatch_step_count:
+        packet_consistency_violations.append(
+            {
+                "packet_key": "dispatch_step_count",
+                "expected_key": "len(dispatch_steps)",
+                "packet_value": dispatch_step_count,
+                "expected_value": expected_dispatch_step_count,
+            }
+        )
+    expected_next_dispatch_step = dispatch_steps[0] if dispatch_steps else None
+    next_dispatch_step = dispatch_packet.get("next_dispatch_step")
+    if next_dispatch_step != expected_next_dispatch_step:
+        packet_consistency_violations.append(
+            {
+                "packet_key": "next_dispatch_step",
+                "expected_key": "dispatch_steps[0]",
+                "packet_value": next_dispatch_step,
+                "expected_value": expected_next_dispatch_step,
+            }
+        )
+    if closure_execution_sequence is not None and len(dispatch_steps) != len(
+        closure_execution_sequence
+    ):
+        source_consistency_violations.append(
+            {
+                "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                "work_item_index": None,
+                "packet_key": "len(dispatch_steps)",
+                "expected_key": "len(closure_execution_sequence)",
+                "packet_value": len(dispatch_steps),
+                "expected_value": len(closure_execution_sequence),
+            }
+        )
+        if len(dispatch_steps) < len(closure_execution_sequence):
+            for missing_index in range(len(dispatch_steps), len(closure_execution_sequence)):
+                source_consistency_violations.append(
+                    {
+                        "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                        "work_item_index": missing_index,
+                        "packet_key": f"dispatch_steps[{missing_index}]",
+                        "expected_key": f"closure_execution_sequence[{missing_index}]",
+                        "packet_value": None,
+                        "expected_value": closure_execution_sequence[missing_index],
+                    }
+                )
+        else:
+            for extra_index in range(len(closure_execution_sequence), len(dispatch_steps)):
+                source_consistency_violations.append(
+                    {
+                        "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                        "work_item_index": extra_index,
+                        "packet_key": f"dispatch_steps[{extra_index}]",
+                        "expected_key": f"closure_execution_sequence[{extra_index}]",
+                        "packet_value": dispatch_steps[extra_index],
+                        "expected_value": None,
+                    }
+                )
+    for index, step in enumerate(dispatch_steps):
+        blocker_type = str(step.get("blocker_type") or "") if isinstance(step, dict) else ""
+        expected_sequence = index + 1
+        sequence = step.get("sequence") if isinstance(step, dict) else None
+        if sequence != expected_sequence:
+            packet_consistency_violations.append(
+                {
+                    "packet_key": f"dispatch_steps[{index}].sequence",
+                    "expected_key": "1-based dispatch step index",
+                    "packet_value": sequence,
+                    "expected_value": expected_sequence,
+                }
+            )
+        expected_source_step = (
+            closure_execution_sequence[index]
+            if closure_execution_sequence is not None
+            and index < len(closure_execution_sequence)
+            else None
+        )
+        if isinstance(expected_source_step, dict) and isinstance(step, dict):
+            source_key_map = {
+                "sequence": "sequence",
+                "blocker_type": "blocker_type",
+                "dispatch_action": "next_step",
+                "execution_plan": "execution_plan",
+                "execution_stage": "execution_stage",
+                "execution_stage_detail": "execution_stage_detail",
+                "page_count": "page_count",
+                "work_item_count": "work_item_count",
+                "arguments": "arguments",
+                "source_work_item_group_counts": "source_work_item_group_counts",
+                "must_complete_before": "must_complete_before",
+            }
+            for packet_key, source_key in source_key_map.items():
+                packet_value = step.get(packet_key)
+                expected_value = expected_source_step.get(source_key)
+                if packet_value != expected_value:
+                    source_consistency_violations.append(
+                        {
+                            "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                            "work_item_index": index,
+                            "packet_key": f"dispatch_steps[{index}].{packet_key}",
+                            "expected_key": (
+                                f"closure_execution_sequence[{index}].{source_key}"
+                            ),
+                            "packet_value": packet_value,
+                            "expected_value": expected_value,
+                        }
+                    )
+        try:
+            expected_plan, expected_stage, expected_action = (
+                page_catalog_date_lineage_closure_execution_target(blocker_type)
+            )
+        except KeyError:
+            expected_plan = None
+            expected_stage = None
+            expected_action = None
+        for target_key, expected_value in (
+            ("execution_plan", expected_plan),
+            ("execution_stage", expected_stage),
+            ("dispatch_action", expected_action),
+        ):
+            target_value = step.get(target_key) if isinstance(step, dict) else None
+            if target_value != expected_value:
+                execution_target_violations.append(
+                    {
+                        "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                        "work_item_index": index,
+                        "blocker_type": blocker_type,
+                        "target_key": target_key,
+                        "target_value": target_value,
+                        "expected_value": expected_value,
+                    }
+                )
+        stage_detail = step.get("execution_stage_detail") if isinstance(step, dict) else None
+        stage_detail_stage_type = (
+            stage_detail.get("stage_type")
+            if isinstance(stage_detail, dict)
+            else None
+        )
+        if stage_detail_stage_type != expected_stage:
+            execution_target_violations.append(
+                {
+                    "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                    "work_item_index": index,
+                    "blocker_type": blocker_type,
+                    "target_key": "execution_stage_detail.stage_type",
+                    "target_value": stage_detail_stage_type,
+                    "expected_value": expected_stage,
+                }
+            )
+        source_work_item_group_counts = (
+            step.get("source_work_item_group_counts", {})
+            if isinstance(step, dict)
+            else {}
+        )
+        expected_stage_work_item_group = (
+            next(iter(source_work_item_group_counts))
+            if isinstance(source_work_item_group_counts, dict)
+            and source_work_item_group_counts
+            else None
+        )
+        stage_detail_work_item_group = (
+            stage_detail.get("work_item_group")
+            if isinstance(stage_detail, dict)
+            else None
+        )
+        if stage_detail_work_item_group != expected_stage_work_item_group:
+            execution_target_violations.append(
+                {
+                    "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                    "work_item_index": index,
+                    "blocker_type": blocker_type,
+                    "target_key": "execution_stage_detail.work_item_group",
+                    "target_value": stage_detail_work_item_group,
+                    "expected_value": expected_stage_work_item_group,
+                }
+            )
+        for key in scope_keys:
+            value = step.get(key) if isinstance(step, dict) else None
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "closure_dispatch_packet.dispatch_steps",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+    for key in scope_keys:
+        value = dispatch_packet.get(key)
+        if value is True:
+            scope_flags[key] = True
+        if value is not False:
+            scope_violations.append(
+                {
+                    "work_item_group": "closure_dispatch_packet",
+                    "work_item_index": None,
+                    "scope_key": key,
+                    "scope_value": value,
+                }
+            )
+
+    return {
+        "work_item_count": len(dispatch_steps),
+        "checked_work_item_group": "closure_dispatch_packet.dispatch_steps",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": scope_flags["queue_grants_closure"],
+        "scope_violations": scope_violations,
+        "execution_target_violations": execution_target_violations,
+        "packet_consistency_violations": packet_consistency_violations,
+        "source_consistency_violations": source_consistency_violations,
+    }
+
+
+def page_catalog_date_lineage_closure_execution_sequence(
+    residual_requirements: list[str],
+    closure_blocker_work_item_breakdown: dict[str, dict[str, int]],
+    closure_blocker_routing_index: dict[str, dict[str, Any]],
+    execution_plans: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    dependency_tail = {
+        "record_gap_remediation": ["manual_audit_review", "business_owner_approval"],
+        "catalog_date_lineage_evidence_collection": ["manual_audit_review", "business_owner_approval"],
+        "manual_audit_review": ["business_owner_approval"],
+        "business_owner_approval": [],
+    }
+    sequence = []
+    for index, blocker_type in enumerate(residual_requirements, start=1):
+        breakdown = closure_blocker_work_item_breakdown.get(blocker_type, {})
+        routing = closure_blocker_routing_index.get(blocker_type, {})
+        execution_plan, execution_stage, next_step = page_catalog_date_lineage_closure_execution_target(
+            blocker_type,
+        )
+        sequence.append(
+            {
+                "sequence": index,
+                "blocker_type": blocker_type,
+                "next_step": next_step,
+                "execution_plan": execution_plan,
+                "execution_stage": execution_stage,
+                "execution_stage_detail": page_catalog_date_lineage_execution_stage_detail(
+                    execution_plans or {},
+                    execution_plan,
+                    execution_stage,
+                ),
+                "page_count": int(breakdown.get("page_count") or 0),
+                "work_item_count": int(breakdown.get("work_item_count") or 0),
+                "source_work_item_group_counts": routing.get("source_work_item_group_counts", {}),
+                "arguments": routing.get("arguments", {}),
+                "must_complete_before": dependency_tail[blocker_type],
+                "queue_grants_closure": False,
+            }
+        )
+    return sequence
+
+
+def page_catalog_date_lineage_next_closure_action(
+    closure_execution_sequence: list[dict[str, Any]],
+    execution_plans: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    if not closure_execution_sequence:
+        return None
+    first_step = closure_execution_sequence[0]
+    blocker_type = str(first_step["blocker_type"])
+    execution_plan, execution_stage, next_step = page_catalog_date_lineage_closure_execution_target(
+        blocker_type,
+    )
+    return {
+        "blocker_type": blocker_type,
+        "next_step": next_step,
+        "execution_plan": execution_plan,
+        "execution_stage": execution_stage,
+        "execution_stage_detail": first_step.get("execution_stage_detail")
+        or page_catalog_date_lineage_execution_stage_detail(
+            execution_plans or {},
+            execution_plan,
+            execution_stage,
+        ),
+        "page_count": first_step["page_count"],
+        "work_item_count": first_step["work_item_count"],
+        "arguments": first_step["arguments"],
+        "must_complete_before": first_step["must_complete_before"],
+        **page_catalog_date_lineage_closure_work_item_scope(),
+    }
+
+
+def page_catalog_date_lineage_next_closure_action_scope_audit(
+    next_closure_action: dict[str, Any] | None,
+    *,
+    closure_execution_sequence: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+        "queue_grants_closure",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    execution_target_violations = []
+    source_consistency_violations = []
+    expected_first_step = (
+        closure_execution_sequence[0]
+        if closure_execution_sequence
+        else None
+    )
+    if next_closure_action is None:
+        if expected_first_step is not None:
+            source_consistency_violations.append(
+                {
+                    "work_item_group": "closure_readiness.next_closure_action",
+                    "work_item_index": None,
+                    "action_key": "next_closure_action",
+                    "expected_key": "closure_execution_sequence[0]",
+                    "action_value": None,
+                    "expected_value": expected_first_step,
+                }
+            )
+        return {
+            "work_item_count": 0,
+            "checked_work_item_group": "closure_readiness.next_closure_action",
+            "writes_governance_records": False,
+            "executes_tool_calls": False,
+            "samples_duckdb_tables": False,
+            "checks_lineage_records": False,
+            "proves_page_execution": False,
+            "runs_ui_or_api_smoke": False,
+            "captures_business_owner_approval": False,
+            "approves_metric_or_page": False,
+            "queue_grants_closure": False,
+            "scope_violations": [],
+            "execution_target_violations": [],
+            "source_consistency_violations": source_consistency_violations,
+        }
+
+    blocker_type = str(next_closure_action.get("blocker_type") or "")
+    try:
+        expected_plan, expected_stage, expected_step = page_catalog_date_lineage_closure_execution_target(
+            blocker_type,
+        )
+    except KeyError:
+        expected_plan = None
+        expected_stage = None
+        expected_step = None
+    for target_key, expected_value in (
+        ("execution_plan", expected_plan),
+        ("execution_stage", expected_stage),
+        ("next_step", expected_step),
+    ):
+        target_value = next_closure_action.get(target_key)
+        if target_value != expected_value:
+            execution_target_violations.append(
+                {
+                    "work_item_group": "closure_readiness.next_closure_action",
+                    "work_item_index": None,
+                    "blocker_type": blocker_type,
+                    "target_key": target_key,
+                    "target_value": target_value,
+                    "expected_value": expected_value,
+                }
+            )
+    stage_detail = next_closure_action.get("execution_stage_detail")
+    stage_detail_stage_type = (
+        stage_detail.get("stage_type")
+        if isinstance(stage_detail, dict)
+        else None
+    )
+    if stage_detail_stage_type != expected_stage:
+        execution_target_violations.append(
+            {
+                "work_item_group": "closure_readiness.next_closure_action",
+                "work_item_index": None,
+                "blocker_type": blocker_type,
+                "target_key": "execution_stage_detail.stage_type",
+                "target_value": stage_detail_stage_type,
+                "expected_value": expected_stage,
+            }
+        )
+    expected_source_work_item_group = (
+        next(iter(expected_first_step.get("source_work_item_group_counts", {})))
+        if isinstance(expected_first_step, dict)
+        and expected_first_step.get("source_work_item_group_counts")
+        else None
+    )
+    stage_detail_work_item_group = (
+        stage_detail.get("work_item_group")
+        if isinstance(stage_detail, dict)
+        else None
+    )
+    if stage_detail_work_item_group != expected_source_work_item_group:
+        execution_target_violations.append(
+            {
+                "work_item_group": "closure_readiness.next_closure_action",
+                "work_item_index": None,
+                "blocker_type": blocker_type,
+                "target_key": "execution_stage_detail.work_item_group",
+                "target_value": stage_detail_work_item_group,
+                "expected_value": expected_source_work_item_group,
+            }
+        )
+    if expected_first_step is None:
+        source_consistency_violations.append(
+            {
+                "work_item_group": "closure_readiness.next_closure_action",
+                "work_item_index": None,
+                "action_key": "next_closure_action",
+                "expected_key": "closure_execution_sequence[0]",
+                "action_value": next_closure_action,
+                "expected_value": None,
+            }
+        )
+    else:
+        source_key_map = {
+            "blocker_type": "blocker_type",
+            "next_step": "next_step",
+            "execution_plan": "execution_plan",
+            "execution_stage": "execution_stage",
+            "execution_stage_detail": "execution_stage_detail",
+            "page_count": "page_count",
+            "work_item_count": "work_item_count",
+            "arguments": "arguments",
+            "must_complete_before": "must_complete_before",
+        }
+        for action_key, source_key in source_key_map.items():
+            action_value = next_closure_action.get(action_key)
+            expected_value = expected_first_step.get(source_key)
+            if action_value != expected_value:
+                source_consistency_violations.append(
+                    {
+                        "work_item_group": "closure_readiness.next_closure_action",
+                        "work_item_index": None,
+                        "action_key": f"next_closure_action.{action_key}",
+                        "expected_key": f"closure_execution_sequence[0].{source_key}",
+                        "action_value": action_value,
+                        "expected_value": expected_value,
+                    }
+                )
+
+    for key in scope_keys:
+        value = next_closure_action.get(key)
+        if value is True:
+            scope_flags[key] = True
+        if value is not False:
+            scope_violations.append(
+                {
+                    "work_item_group": "closure_readiness.next_closure_action",
+                    "work_item_index": None,
+                    "scope_key": key,
+                    "scope_value": value,
+                }
+            )
+    for key in scope_keys:
+        if key == "queue_grants_closure":
+            continue
+        stage_detail_value = (
+            stage_detail.get(key)
+            if isinstance(stage_detail, dict)
+            else None
+        )
+        if stage_detail_value is True:
+            scope_flags[key] = True
+        if stage_detail_value is not False:
+            scope_violations.append(
+                {
+                    "work_item_group": "closure_readiness.next_closure_action.execution_stage_detail",
+                    "work_item_index": None,
+                    "scope_key": key,
+                    "scope_value": stage_detail_value,
+                }
+            )
+
+    return {
+        "work_item_count": 1,
+        "checked_work_item_group": "closure_readiness.next_closure_action",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": scope_flags["queue_grants_closure"],
+        "scope_violations": scope_violations,
+        "execution_target_violations": execution_target_violations,
+        "source_consistency_violations": source_consistency_violations,
+    }
+
+
+def page_catalog_date_lineage_closure_execution_target(
+    blocker_type: str,
+) -> tuple[str, str, str]:
+    return {
+        "record_gap_remediation": (
+            "record_gap_execution_plan",
+            "remediation_type_batches",
+            "use_record_gap_execution_plan",
+        ),
+        "catalog_date_lineage_evidence_collection": (
+            "evidence_collection_execution_plan",
+            "catalog_date_evidence_batches",
+            "use_evidence_collection_execution_plan",
+        ),
+        "manual_audit_review": (
+            "manual_audit_review_execution_plan",
+            "audit_review_queue_batches",
+            "use_manual_audit_review_execution_plan",
+        ),
+        "business_owner_approval": (
+            "business_owner_approval_execution_plan",
+            "owner_approval_request_batches",
+            "use_business_owner_approval_execution_plan",
+        ),
+    }[blocker_type]
+
+
+def page_catalog_date_lineage_execution_stage_detail(
+    execution_plans: dict[str, dict[str, Any]],
+    execution_plan: str,
+    execution_stage: str,
+) -> dict[str, Any] | None:
+    for stage in execution_plans.get(execution_plan, {}).get("execution_stages", []):
+        if str(stage.get("stage_type")) == execution_stage:
+            return dict(stage)
+    return None
+
+
+def page_catalog_date_lineage_closure_status(
+    *,
+    blocked_by_record_gaps_count: int,
+    suggested_tool_call_work_item_count: int,
+    ready_for_audit_review_count: int,
+) -> str:
+    if blocked_by_record_gaps_count and suggested_tool_call_work_item_count:
+        return "record_remediation_and_catalog_date_lineage_review_required"
+    if blocked_by_record_gaps_count:
+        return "record_remediation_required"
+    if suggested_tool_call_work_item_count:
+        return "catalog_date_lineage_review_required"
+    if ready_for_audit_review_count:
+        return "manual_audit_review_required"
+    return "closure_not_granted_by_queue"
+
+
+def page_catalog_date_lineage_closure_blocker_work_items(
+    queue_rows: list[dict[str, Any]],
+    suggested_tool_call_work_items: list[dict[str, Any]],
+    *,
+    execution_plans: dict[str, dict[str, Any]] | None = None,
+    source_work_item_group_counts: dict[str, int],
+    record_remediation_work_item_count: int,
+    suggested_tool_call_work_item_count: int,
+) -> list[dict[str, Any]]:
+    execution_plans = execution_plans or {}
+    blocked_rows = [
+        row
+        for row in queue_rows
+        if row["record_readiness"]["audit_review_status"] == "blocked_by_record_gaps"
+    ]
+    blocked_page_ids = [
+        str(row["page_id"]) for row in blocked_rows
+    ]
+    blocked_page_slugs = [
+        str(row["page_slug"]) for row in blocked_rows
+    ]
+    ready_rows = [
+        row
+        for row in queue_rows
+        if row["record_readiness"]["audit_review_status"] == "ready_for_audit_review"
+    ]
+    ready_page_ids = [
+        str(row["page_id"]) for row in ready_rows
+    ]
+    ready_page_slugs = [
+        str(row["page_slug"]) for row in ready_rows
+    ]
+    suggested_page_ids: list[str] = []
+    suggested_page_slugs: list[str] = []
+    for work_item in suggested_tool_call_work_items:
+        page_ids = work_item.get("page_ids", [])
+        page_slugs = work_item.get("page_slugs", [])
+        for index, page_id in enumerate(page_ids):
+            page_catalog_date_lineage_append_unique(suggested_page_ids, str(page_id))
+            if index < len(page_slugs):
+                page_catalog_date_lineage_append_unique(
+                    suggested_page_slugs,
+                    str(page_slugs[index]),
+                )
+
+    work_items = []
+    if blocked_page_ids:
+        execution_plan, execution_stage, next_step = page_catalog_date_lineage_closure_execution_target(
+            "record_gap_remediation",
+        )
+        work_items.append(
+            {
+                "blocker_type": "record_gap_remediation",
+                "next_step": next_step,
+                "execution_plan": execution_plan,
+                "execution_stage": execution_stage,
+                "execution_stage_detail": page_catalog_date_lineage_execution_stage_detail(
+                    execution_plans,
+                    execution_plan,
+                    execution_stage,
+                ),
+                "source_work_item_groups": [
+                    "record_remediation_work_items",
+                    "record_remediation_evidence_work_items",
+                    "record_remediation_review_lane_work_items",
+                ],
+                "source_work_item_group_counts": {
+                    "record_remediation_work_items": source_work_item_group_counts[
+                        "record_remediation_work_items"
+                    ],
+                    "record_remediation_evidence_work_items": source_work_item_group_counts[
+                        "record_remediation_evidence_work_items"
+                    ],
+                    "record_remediation_review_lane_work_items": source_work_item_group_counts[
+                        "record_remediation_review_lane_work_items"
+                    ],
+                },
+                "page_count": len(blocked_page_ids),
+                "work_item_count": record_remediation_work_item_count,
+                "page_ids": blocked_page_ids,
+                "page_slugs": blocked_page_slugs,
+                "arguments": {"page_slugs": blocked_page_slugs},
+                **page_catalog_date_lineage_closure_work_item_scope(),
+            }
+        )
+    if suggested_page_ids:
+        execution_plan, execution_stage, next_step = page_catalog_date_lineage_closure_execution_target(
+            "catalog_date_lineage_evidence_collection",
+        )
+        work_items.append(
+            {
+                "blocker_type": "catalog_date_lineage_evidence_collection",
+                "next_step": next_step,
+                "execution_plan": execution_plan,
+                "execution_stage": execution_stage,
+                "execution_stage_detail": page_catalog_date_lineage_execution_stage_detail(
+                    execution_plans,
+                    execution_plan,
+                    execution_stage,
+                ),
+                "source_work_item_groups": ["suggested_tool_call_work_items"],
+                "source_work_item_group_counts": {
+                    "suggested_tool_call_work_items": source_work_item_group_counts[
+                        "suggested_tool_call_work_items"
+                    ],
+                },
+                "page_count": len(suggested_page_ids),
+                "work_item_count": suggested_tool_call_work_item_count,
+                "page_ids": suggested_page_ids,
+                "page_slugs": suggested_page_slugs,
+                "arguments": {"page_slugs": suggested_page_slugs},
+                **page_catalog_date_lineage_closure_work_item_scope(),
+            }
+        )
+    if ready_page_ids:
+        execution_plan, execution_stage, next_step = page_catalog_date_lineage_closure_execution_target(
+            "manual_audit_review",
+        )
+        work_items.append(
+            {
+                "blocker_type": "manual_audit_review",
+                "next_step": next_step,
+                "execution_plan": execution_plan,
+                "execution_stage": execution_stage,
+                "execution_stage_detail": page_catalog_date_lineage_execution_stage_detail(
+                    execution_plans,
+                    execution_plan,
+                    execution_stage,
+                ),
+                "source_work_item_groups": ["record_remediation_work_items"],
+                "source_work_item_group_counts": {
+                    "record_remediation_work_items": source_work_item_group_counts[
+                        "record_remediation_work_items"
+                    ],
+                },
+                "page_count": len(ready_page_ids),
+                "work_item_count": len(ready_page_ids),
+                "page_ids": ready_page_ids,
+                "page_slugs": ready_page_slugs,
+                "arguments": {"page_slugs": ready_page_slugs},
+                **page_catalog_date_lineage_closure_work_item_scope(),
+            }
+        )
+        execution_plan, execution_stage, next_step = page_catalog_date_lineage_closure_execution_target(
+            "business_owner_approval",
+        )
+        work_items.append(
+            {
+                "blocker_type": "business_owner_approval",
+                "next_step": next_step,
+                "execution_plan": execution_plan,
+                "execution_stage": execution_stage,
+                "execution_stage_detail": page_catalog_date_lineage_execution_stage_detail(
+                    execution_plans,
+                    execution_plan,
+                    execution_stage,
+                ),
+                "source_work_item_groups": ["record_remediation_work_items"],
+                "source_work_item_group_counts": {
+                    "record_remediation_work_items": source_work_item_group_counts[
+                        "record_remediation_work_items"
+                    ],
+                },
+                "page_count": len(ready_page_ids),
+                "work_item_count": len(ready_page_ids),
+                "page_ids": ready_page_ids,
+                "page_slugs": ready_page_slugs,
+                "arguments": {"page_slugs": ready_page_slugs},
+                **page_catalog_date_lineage_closure_work_item_scope(),
+            }
+        )
+    return work_items
+
+
+def page_catalog_date_lineage_closure_blocker_work_item_breakdown(
+    work_items: list[dict[str, Any]],
+) -> dict[str, dict[str, int]]:
+    return {
+        str(item["blocker_type"]): {
+            "page_count": int(item.get("page_count") or 0),
+            "work_item_count": int(item.get("work_item_count") or 0),
+        }
+        for item in work_items
+    }
+
+
+def page_catalog_date_lineage_closure_blocker_routing_index(
+    work_items: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    return {
+        str(item["blocker_type"]): {
+            "next_step": item["next_step"],
+            "execution_plan": item["execution_plan"],
+            "execution_stage": item["execution_stage"],
+            "execution_stage_detail": item.get("execution_stage_detail"),
+            "page_count": int(item.get("page_count") or 0),
+            "work_item_count": int(item.get("work_item_count") or 0),
+            "source_work_item_group_counts": item.get("source_work_item_group_counts", {}),
+            "arguments": item.get("arguments", {}),
+            "queue_grants_closure": item.get("queue_grants_closure") is True,
+        }
+        for item in work_items
+    }
+
+
+def page_catalog_date_lineage_closure_work_item_scope() -> dict[str, bool]:
+    return {
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_closure_blocker_scope_audit(
+    work_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+        "queue_grants_closure",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    execution_target_violations = []
+    for index, item in enumerate(work_items):
+        blocker_type = str(item.get("blocker_type") or "")
+        try:
+            expected_plan, expected_stage, expected_step = page_catalog_date_lineage_closure_execution_target(
+                blocker_type,
+            )
+        except KeyError:
+            expected_plan = None
+            expected_stage = None
+            expected_step = None
+        for target_key, expected_value in (
+            ("execution_plan", expected_plan),
+            ("execution_stage", expected_stage),
+            ("next_step", expected_step),
+        ):
+            target_value = item.get(target_key)
+            if target_value != expected_value:
+                execution_target_violations.append(
+                    {
+                        "work_item_group": "closure_blocker_work_items",
+                        "work_item_index": index,
+                        "blocker_type": blocker_type,
+                        "target_key": target_key,
+                        "target_value": target_value,
+                        "expected_value": expected_value,
+                    }
+                )
+        stage_detail = item.get("execution_stage_detail")
+        stage_detail_stage_type = (
+            stage_detail.get("stage_type")
+            if isinstance(stage_detail, dict)
+            else None
+        )
+        if stage_detail_stage_type != expected_stage:
+            execution_target_violations.append(
+                {
+                    "work_item_group": "closure_blocker_work_items",
+                    "work_item_index": index,
+                    "blocker_type": blocker_type,
+                    "target_key": "execution_stage_detail.stage_type",
+                    "target_value": stage_detail_stage_type,
+                    "expected_value": expected_stage,
+                }
+            )
+        source_work_item_groups = [
+            str(group)
+            for group in item.get("source_work_item_groups", [])
+        ]
+        expected_stage_work_item_group = (
+            source_work_item_groups[0]
+            if source_work_item_groups
+            else None
+        )
+        stage_detail_work_item_group = (
+            stage_detail.get("work_item_group")
+            if isinstance(stage_detail, dict)
+            else None
+        )
+        if stage_detail_work_item_group != expected_stage_work_item_group:
+            execution_target_violations.append(
+                {
+                    "work_item_group": "closure_blocker_work_items",
+                    "work_item_index": index,
+                    "blocker_type": blocker_type,
+                    "target_key": "execution_stage_detail.work_item_group",
+                    "target_value": stage_detail_work_item_group,
+                    "expected_value": expected_stage_work_item_group,
+                }
+            )
+        for key in scope_keys:
+            value = item.get(key)
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "closure_blocker_work_items",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+        for key in scope_keys:
+            if key == "queue_grants_closure":
+                continue
+            stage_detail_value = (
+                stage_detail.get(key)
+                if isinstance(stage_detail, dict)
+                else None
+            )
+            if stage_detail_value is True:
+                scope_flags[key] = True
+            if stage_detail_value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "closure_blocker_work_items.execution_stage_detail",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": stage_detail_value,
+                    }
+                )
+
+    return {
+        "work_item_count": len(work_items),
+        "checked_work_item_group": "closure_blocker_work_items",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": scope_flags["queue_grants_closure"],
+        "scope_violations": scope_violations,
+        "execution_target_violations": execution_target_violations,
+    }
+
+
+def page_catalog_date_lineage_record_readiness_by_page_id(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+    *,
+    streams: dict[str, Path] | None,
+    stream_names: list[str] | None,
+) -> dict[str, dict[str, Any]]:
+    if streams is None or stream_names is None:
+        return {}
+    checklist = page_governance_audit_review_checklist(
+        bundles,
+        streams,
+        page_slugs,
+        stream_names,
+        max_results=20,
+    )
+    return {
+        str(page["page_id"]): page_catalog_date_lineage_record_readiness(page)
+        for page in checklist["pages"]
+    }
+
+
+def page_catalog_date_lineage_record_remediation_breakdown(
+    queue_rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    breakdown: dict[str, dict[str, Any]] = {}
+    for row in queue_rows:
+        remediation_type = str(row["record_remediation"]["remediation_type"])
+        group = breakdown.setdefault(
+            remediation_type,
+            {
+                "item_count": 0,
+                "page_ids": [],
+            },
+        )
+        group["item_count"] += 1
+        group["page_ids"].append(str(row["page_id"]))
+    return dict(sorted(breakdown.items()))
+
+
+def page_catalog_date_lineage_record_remediation_work_items(
+    queue_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    remediation_order = {
+        "create_direct_record": 0,
+        "repair_primary_page_anchor": 1,
+        "complete_direct_record_fields": 2,
+        "none": 3,
+    }
+    work_items_by_type: dict[str, dict[str, Any]] = {}
+    for row in queue_rows:
+        remediation = row["record_remediation"]
+        remediation_type = str(remediation["remediation_type"])
+        work_item = work_items_by_type.setdefault(
+            remediation_type,
+            {
+                "remediation_type": remediation_type,
+                "next_step": remediation["next_step"],
+                "evidence_to_collect": list(remediation.get("evidence_to_collect", [])),
+                "page_ids": [],
+                "page_slugs": [],
+                "arguments": {"page_slugs": []},
+                "suggested_tool_calls": [],
+                "approval_boundary": remediation["approval_boundary"],
+                "writes_governance_records": False,
+                "executes_tool_calls": False,
+                "samples_duckdb_tables": False,
+                "checks_lineage_records": False,
+                "proves_page_execution": False,
+                "runs_ui_or_api_smoke": False,
+                "captures_business_owner_approval": False,
+                "approves_metric_or_page": False,
+            },
+        )
+        work_item["page_ids"].append(str(row["page_id"]))
+        work_item["page_slugs"].append(str(row["page_slug"]))
+        work_item["arguments"]["page_slugs"].append(str(row["page_slug"]))
+
+    work_items = list(work_items_by_type.values())
+    for work_item in work_items:
+        work_item["work_item_count"] = len(work_item["page_ids"])
+        if work_item["remediation_type"] == "none":
+            work_item["suggested_tool_calls"] = page_catalog_date_lineage_ready_record_review_work_item_tool_calls(
+                work_item["arguments"],
+            )
+        else:
+            work_item["suggested_tool_calls"] = page_catalog_date_lineage_record_remediation_work_item_tool_calls(
+                work_item["arguments"],
+            )
+        work_item["suggested_tool_call_count"] = len(work_item["suggested_tool_calls"])
+        work_item["suggested_tool_names"] = [
+            str(call["tool"]) for call in work_item["suggested_tool_calls"]
+        ]
+    work_items.sort(
+        key=lambda item: (
+            remediation_order.get(str(item["remediation_type"]), len(remediation_order)),
+            str(item["remediation_type"]),
+        )
+    )
+    return work_items
+
+
+def page_catalog_date_lineage_record_gap_execution_plan(
+    record_remediation_work_items: list[dict[str, Any]],
+    record_remediation_evidence_work_items: list[dict[str, Any]],
+    record_remediation_review_lane_work_items: list[dict[str, Any]],
+    record_remediation_scope_audit: dict[str, Any],
+) -> dict[str, Any]:
+    stage_definitions = [
+        {
+            "stage_type": "remediation_type_batches",
+            "work_item_group": "record_remediation_work_items",
+            "work_items": record_remediation_work_items,
+            "next_step": "batch_requirements_and_blueprint_collection_by_remediation_type",
+            "must_complete_before": ["evidence_key_batches", "review_lane_batches"],
+        },
+        {
+            "stage_type": "evidence_key_batches",
+            "work_item_group": "record_remediation_evidence_work_items",
+            "work_items": record_remediation_evidence_work_items,
+            "next_step": "collect_missing_record_evidence_by_evidence_key",
+            "must_complete_before": ["review_lane_batches"],
+        },
+        {
+            "stage_type": "review_lane_batches",
+            "work_item_group": "record_remediation_review_lane_work_items",
+            "work_items": record_remediation_review_lane_work_items,
+            "next_step": "assign_record_gap_batches_by_review_lane_priority",
+            "must_complete_before": [],
+        },
+    ]
+    stage_scope = page_catalog_date_lineage_record_gap_execution_stage_scope()
+    execution_stages = []
+    for index, definition in enumerate(stage_definitions, start=1):
+        work_items = definition["work_items"]
+        page_slugs = page_catalog_date_lineage_record_gap_work_item_page_slugs(work_items)
+        execution_stages.append(
+            {
+                "stage": index,
+                "stage_type": definition["stage_type"],
+                "work_item_group": definition["work_item_group"],
+                "work_item_count": len(work_items),
+                "page_count": len(page_slugs),
+                "record_gap_page_count": page_catalog_date_lineage_record_gap_page_count(work_items),
+                "ready_manual_review_page_count": page_catalog_date_lineage_ready_manual_review_page_count(
+                    work_items,
+                ),
+                "includes_ready_manual_review_pages": False,
+                "suggested_tool_call_count": sum(
+                    int(item.get("suggested_tool_call_count") or len(item.get("suggested_tool_calls", [])))
+                    for item in work_items
+                ),
+                "arguments": {"page_slugs": page_slugs},
+                "next_step": definition["next_step"],
+                "uses_work_item_groups": [definition["work_item_group"]],
+                "must_complete_before": definition["must_complete_before"],
+                **stage_scope,
+            }
+        )
+
+    record_gap_page_slugs = page_catalog_date_lineage_unique_work_item_page_slugs(
+        [
+            item
+            for item in record_remediation_work_items
+            if str(item.get("remediation_type")) != "none"
+        ]
+    )
+    suggested_tool_names = []
+    for item in record_remediation_work_items:
+        for tool_name in item.get("suggested_tool_names", []):
+            page_catalog_date_lineage_append_unique(suggested_tool_names, str(tool_name))
+    return {
+        "scope": "record_gap_remediation_dispatch_plan",
+        "status": (
+            "record_gap_remediation_required"
+            if record_gap_page_slugs
+            else "record_gap_remediation_not_required"
+        ),
+        "blocked_page_count": len(record_gap_page_slugs),
+        "ready_manual_review_page_count": page_catalog_date_lineage_ready_manual_review_page_count(
+            record_remediation_work_items,
+        ),
+        "execution_stage_count": len(execution_stages),
+        "execution_stage_order": [stage["stage_type"] for stage in execution_stages],
+        "work_item_group_counts": {
+            "record_remediation_work_items": len(record_remediation_work_items),
+            "record_remediation_evidence_work_items": len(record_remediation_evidence_work_items),
+            "record_remediation_review_lane_work_items": len(record_remediation_review_lane_work_items),
+        },
+        "suggested_tool_call_count": int(record_remediation_scope_audit.get("suggested_tool_call_count") or 0),
+        "suggested_tool_names": suggested_tool_names,
+        "record_gap_arguments": {"page_slugs": record_gap_page_slugs},
+        "execution_stages": execution_stages,
+        **page_catalog_date_lineage_record_gap_execution_plan_scope(),
+    }
+
+
+def page_catalog_date_lineage_record_gap_execution_stage_scope() -> dict[str, bool]:
+    return {
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+    }
+
+
+def page_catalog_date_lineage_record_gap_execution_plan_scope() -> dict[str, bool]:
+    return {
+        **page_catalog_date_lineage_record_gap_execution_stage_scope(),
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_record_gap_execution_plan_scope_audit(
+    execution_plan: dict[str, Any],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    stages = execution_plan.get("execution_stages", [])
+    for index, item in enumerate(stages):
+        for key in scope_keys:
+            value = item.get(key) if isinstance(item, dict) else None
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "record_gap_execution_plan.execution_stages",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+
+    queue_grants_closure = execution_plan.get("queue_grants_closure") is True
+    if execution_plan.get("queue_grants_closure") is not False:
+        scope_violations.append(
+            {
+                "work_item_group": "record_gap_execution_plan",
+                "work_item_index": None,
+                "scope_key": "queue_grants_closure",
+                "scope_value": execution_plan.get("queue_grants_closure"),
+            }
+        )
+
+    return {
+        "work_item_count": len(stages),
+        "checked_work_item_group": "record_gap_execution_plan.execution_stages",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": queue_grants_closure,
+        "scope_violations": scope_violations,
+    }
+
+
+def page_catalog_date_lineage_unique_work_item_page_slugs(
+    work_items: list[dict[str, Any]],
+) -> list[str]:
+    page_slugs: list[str] = []
+    for item in work_items:
+        for page_slug in item.get("page_slugs", []):
+            page_catalog_date_lineage_append_unique(page_slugs, str(page_slug))
+    return page_slugs
+
+
+def page_catalog_date_lineage_record_gap_work_item_page_slugs(
+    work_items: list[dict[str, Any]],
+) -> list[str]:
+    page_slugs: list[str] = []
+    for item in work_items:
+        if str(item.get("remediation_type")) == "none":
+            continue
+        for page_slug in item.get("page_slugs", []):
+            page_catalog_date_lineage_append_unique(page_slugs, str(page_slug))
+    return page_slugs
+
+
+def page_catalog_date_lineage_record_gap_page_count(work_items: list[dict[str, Any]]) -> int:
+    return len(page_catalog_date_lineage_record_gap_work_item_page_slugs(work_items))
+
+
+def page_catalog_date_lineage_ready_manual_review_page_count(
+    record_remediation_work_items: list[dict[str, Any]],
+) -> int:
+    page_slugs: list[str] = []
+    for item in record_remediation_work_items:
+        if str(item.get("remediation_type")) != "none":
+            continue
+        for page_slug in item.get("page_slugs", []):
+            page_catalog_date_lineage_append_unique(page_slugs, str(page_slug))
+    return len(page_slugs)
+
+
+def page_catalog_date_lineage_record_remediation_work_item_tool_calls(
+    arguments: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "tool": "moss-lineage-evidence.get_page_governance_record_requirements",
+            "arguments": arguments,
+        },
+        {
+            "tool": "moss-lineage-evidence.get_page_governance_record_blueprint_queue",
+            "arguments": arguments,
+        },
+    ]
+
+
+def page_catalog_date_lineage_ready_record_review_work_item_tool_calls(
+    arguments: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "tool": "moss-lineage-evidence.get_page_governance_audit_review_queue",
+            "arguments": arguments,
+        },
+        {
+            "tool": "moss-lineage-evidence.get_page_governance_audit_evidence_packet_queue",
+            "arguments": arguments,
+        },
+    ]
+
+
+def page_catalog_date_lineage_record_remediation_evidence_work_items(
+    queue_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    remediation_order = {
+        "create_direct_record": 0,
+        "repair_primary_page_anchor": 1,
+        "complete_direct_record_fields": 2,
+    }
+    work_items_by_key: dict[str, dict[str, Any]] = {}
+    for row_index, row in enumerate(queue_rows):
+        remediation = row["record_remediation"]
+        remediation_type = str(remediation["remediation_type"])
+        if remediation_type == "none":
+            continue
+        next_step = str(remediation["next_step"])
+        for evidence_key in remediation.get("evidence_to_collect", []):
+            key = str(evidence_key)
+            work_item = work_items_by_key.setdefault(
+                key,
+                {
+                    "evidence_key": key,
+                    "pages": [],
+                    "page_ids": [],
+                    "page_slugs": [],
+                    "arguments": {"page_slugs": []},
+                    "remediation_types": set(),
+                    "next_steps": set(),
+                    "approval_boundary": "record_remediation_evidence_collection_only",
+                    "writes_governance_records": False,
+                    "executes_tool_calls": False,
+                    "samples_duckdb_tables": False,
+                    "checks_lineage_records": False,
+                    "proves_page_execution": False,
+                    "runs_ui_or_api_smoke": False,
+                    "captures_business_owner_approval": False,
+                    "approves_metric_or_page": False,
+                    "_page_refs": [],
+                },
+            )
+            work_item["remediation_types"].add(remediation_type)
+            work_item["next_steps"].add(next_step)
+            work_item["_page_refs"].append(
+                {
+                    "sort_key": (
+                        remediation_order.get(remediation_type, len(remediation_order)),
+                        row_index,
+                    ),
+                    "page_id": str(row["page_id"]),
+                    "page_slug": str(row["page_slug"]),
+                    "remediation_type": remediation_type,
+                    "next_step": next_step,
+                }
+            )
+
+    work_items = []
+    for item in work_items_by_key.values():
+        page_refs = sorted(item.pop("_page_refs"), key=lambda ref: ref["sort_key"])
+        item["pages"] = [
+            {
+                "page_id": ref["page_id"],
+                "page_slug": ref["page_slug"],
+                "remediation_type": ref["remediation_type"],
+                "next_step": ref["next_step"],
+            }
+            for ref in page_refs
+        ]
+        item["page_ids"] = [ref["page_id"] for ref in page_refs]
+        item["page_slugs"] = [ref["page_slug"] for ref in page_refs]
+        item["arguments"] = {"page_slugs": item["page_slugs"]}
+        item["work_item_count"] = len(page_refs)
+        item["remediation_types"] = sorted(item["remediation_types"])
+        item["next_steps"] = sorted(item["next_steps"])
+        work_items.append(item)
+    return sorted(work_items, key=lambda item: str(item["evidence_key"]))
+
+
+def page_catalog_date_lineage_record_remediation_review_lane_work_items(
+    queue_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    lane_order = [
+        "formal_governed_catalog_date_lineage_review",
+        "candidate_formal_source_mixed_review",
+        "candidate_or_mixed_catalog_date_lineage_review",
+        "gap_observational_separate_review",
+        "deferred_no_direct_table_config_review",
+    ]
+    remediation_order = {
+        "create_direct_record": 0,
+        "repair_primary_page_anchor": 1,
+        "complete_direct_record_fields": 2,
+        "none": 3,
+    }
+    priority_order = {"P1": 0, "P2": 1}
+    work_items_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in queue_rows:
+        remediation = row["record_remediation"]
+        review_lane = str(row["review_lane"])
+        remediation_type = str(remediation["remediation_type"])
+        key = (review_lane, remediation_type)
+        work_item = work_items_by_key.setdefault(
+            key,
+            {
+                "review_lane": review_lane,
+                "remediation_type": remediation_type,
+                "review_priority": str(row["review_priority"]),
+                "page_ids": [],
+                "page_slugs": [],
+                "arguments": {"page_slugs": []},
+                "next_steps": [],
+                "evidence_to_collect": [],
+                "approval_boundary": remediation["approval_boundary"],
+                "writes_governance_records": False,
+                "executes_tool_calls": False,
+                "samples_duckdb_tables": False,
+                "checks_lineage_records": False,
+                "proves_page_execution": False,
+                "runs_ui_or_api_smoke": False,
+                "captures_business_owner_approval": False,
+                "approves_metric_or_page": False,
+            },
+        )
+        if priority_order.get(str(row["review_priority"]), 99) < priority_order.get(
+            str(work_item["review_priority"]),
+            99,
+        ):
+            work_item["review_priority"] = str(row["review_priority"])
+        work_item["page_ids"].append(str(row["page_id"]))
+        work_item["page_slugs"].append(str(row["page_slug"]))
+        work_item["arguments"]["page_slugs"].append(str(row["page_slug"]))
+        page_catalog_date_lineage_append_unique(work_item["next_steps"], str(remediation["next_step"]))
+        for evidence_key in remediation.get("evidence_to_collect", []):
+            page_catalog_date_lineage_append_unique(
+                work_item["evidence_to_collect"],
+                str(evidence_key),
+            )
+
+    work_items = list(work_items_by_key.values())
+    for work_item in work_items:
+        work_item["work_item_count"] = len(work_item["page_ids"])
+    work_items.sort(
+        key=lambda item: (
+            lane_order.index(str(item["review_lane"]))
+            if str(item["review_lane"]) in lane_order
+            else len(lane_order),
+            remediation_order.get(str(item["remediation_type"]), len(remediation_order)),
+        )
+    )
+    return work_items
+
+
+def page_catalog_date_lineage_append_unique(values: list[str], value: str) -> None:
+    if value not in values:
+        values.append(value)
+
+
+def page_catalog_date_lineage_record_remediation_scope_audit(
+    work_item_groups: list[dict[str, Any]] | dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    if isinstance(work_item_groups, list):
+        grouped_work_items = {"record_remediation_work_items": work_item_groups}
+        checked_groups = ["record_remediation_work_items"]
+    else:
+        grouped_work_items = work_item_groups
+        checked_groups = [
+            "record_remediation_work_items",
+            "record_remediation_evidence_work_items",
+            "record_remediation_review_lane_work_items",
+        ]
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    allowed_suggested_tools = [
+        "moss-lineage-evidence.get_page_governance_record_requirements",
+        "moss-lineage-evidence.get_page_governance_record_blueprint_queue",
+        "moss-lineage-evidence.get_page_governance_audit_review_queue",
+        "moss-lineage-evidence.get_page_governance_audit_evidence_packet_queue",
+    ]
+    allowed_suggested_tool_set = set(allowed_suggested_tools)
+    suggested_tool_call_count = 0
+    suggested_tool_call_violations = []
+    work_item_count = 0
+    for group in checked_groups:
+        for index, item in enumerate(grouped_work_items.get(group, [])):
+            work_item_count += 1
+            for key in scope_keys:
+                value = item.get(key)
+                if value is True:
+                    scope_flags[key] = True
+                if value is not False:
+                    scope_violations.append(
+                        {
+                            "work_item_group": group,
+                            "work_item_index": index,
+                            "scope_key": key,
+                            "scope_value": value,
+                        }
+                    )
+            for call_index, call in enumerate(item.get("suggested_tool_calls", [])):
+                suggested_tool_call_count += 1
+                tool = call.get("tool") if isinstance(call, dict) else None
+                if tool not in allowed_suggested_tool_set:
+                    suggested_tool_call_violations.append(
+                        {
+                            "work_item_group": group,
+                            "work_item_index": index,
+                            "suggested_tool_call_index": call_index,
+                            "tool": tool,
+                        }
+                    )
+    return {
+        "work_item_count": work_item_count,
+        "checked_work_item_groups": checked_groups,
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "suggested_tool_call_count": suggested_tool_call_count,
+        "allowed_suggested_tools": allowed_suggested_tools,
+        "suggested_tool_call_violations": suggested_tool_call_violations,
+        "scope_violations": scope_violations,
+    }
+
+
+def page_catalog_date_lineage_record_readiness(page: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "record_validation_status": page["record_validation_status"],
+        "audit_review_status": page["audit_review_status"],
+        "ready_record_count": page["ready_record_count"],
+        "direct_record_count": page["direct_record_count"],
+        "incomplete_record_count": page["incomplete_record_count"],
+        "expanded_anchor_record_count": page["expanded_anchor_record_count"],
+        "residual_gaps": page["residual_gaps"],
+    }
+
+
+def page_catalog_date_lineage_unknown_record_readiness() -> dict[str, Any]:
+    return {
+        "record_validation_status": "not_checked",
+        "audit_review_status": "not_checked",
+        "ready_record_count": 0,
+        "direct_record_count": 0,
+        "incomplete_record_count": 0,
+        "expanded_anchor_record_count": 0,
+        "residual_gaps": [
+            "Direct governance-record readiness was not checked for this queue call.",
+        ],
+    }
+
+
+def page_catalog_date_lineage_review_lane_breakdown(
+    queue_rows: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    lane_order = [
+        "formal_governed_catalog_date_lineage_review",
+        "candidate_formal_source_mixed_review",
+        "candidate_or_mixed_catalog_date_lineage_review",
+        "gap_observational_separate_review",
+        "deferred_no_direct_table_config_review",
+    ]
+    breakdown: dict[str, dict[str, Any]] = {}
+    for lane in lane_order:
+        lane_rows = [row for row in queue_rows if row["review_lane"] == lane]
+        breakdown[lane] = {
+            "item_count": len(lane_rows),
+            "page_ids": [row["page_id"] for row in lane_rows],
+        }
+    return breakdown
+
+
+def page_catalog_date_lineage_suggested_tool_call_work_items(
+    queue_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    lane_order = [
+        "formal_governed_catalog_date_lineage_review",
+        "candidate_formal_source_mixed_review",
+        "candidate_or_mixed_catalog_date_lineage_review",
+        "gap_observational_separate_review",
+        "deferred_no_direct_table_config_review",
+    ]
+    lane_rank = {lane: index for index, lane in enumerate(lane_order)}
+    work_items_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in queue_rows:
+        review_lane = str(row["review_lane"])
+        for call in row["suggested_tool_calls"]:
+            tool_name = str(call["tool"])
+            key = (review_lane, tool_name)
+            work_item = work_items_by_key.setdefault(
+                key,
+                {
+                    "review_lane": review_lane,
+                    "tool": tool_name,
+                    "review_priority": row["review_priority"],
+                    "page_ids": [],
+                    "page_slugs": [],
+                    "arguments": {"page_slugs": []},
+                    "executes_tool_call": False,
+                    "samples_duckdb_tables": False,
+                    "checks_lineage_records": False,
+                    "proves_page_execution": False,
+                    "approves_metric_or_page": False,
+                },
+            )
+            work_item["page_ids"].append(row["page_id"])
+            work_item["page_slugs"].append(row["page_slug"])
+            work_item["arguments"]["page_slugs"].append(row["page_slug"])
+
+    work_items = list(work_items_by_key.values())
+    for work_item in work_items:
+        work_item["work_item_count"] = len(work_item["page_ids"])
+    work_items.sort(
+        key=lambda item: (
+            lane_rank.get(str(item["review_lane"]), len(lane_order)),
+            str(item["tool"]),
+        ),
+    )
+    return work_items
+
+
+def page_catalog_date_lineage_suggested_tool_call_scope_audit(
+    work_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scope_keys = [
+        "executes_tool_call",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "approves_metric_or_page",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    allowed_suggested_tools = [
+        "moss-data-catalog.get_page_catalog_date_evidence",
+        "moss-data-catalog.get_page_catalog_date_coverage",
+        "moss-lineage-evidence.get_page_lineage_evidence",
+        "moss-lineage-evidence.validate_page_governance_records",
+        "moss-lineage-evidence.get_page_governance_gap_queue",
+    ]
+    allowed_suggested_tool_set = set(allowed_suggested_tools)
+    suggested_tool_violations = []
+    for index, item in enumerate(work_items):
+        for key in scope_keys:
+            value = item.get(key)
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "suggested_tool_call_work_items",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+        tool = item.get("tool")
+        if tool not in allowed_suggested_tool_set:
+            suggested_tool_violations.append(
+                {
+                    "work_item_group": "suggested_tool_call_work_items",
+                    "work_item_index": index,
+                    "tool": tool,
+                }
+            )
+
+    return {
+        "work_item_count": len(work_items),
+        "checked_work_item_group": "suggested_tool_call_work_items",
+        "allowed_suggested_tools": allowed_suggested_tools,
+        "executes_tool_call": scope_flags["executes_tool_call"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "suggested_tool_violations": suggested_tool_violations,
+        "scope_violations": scope_violations,
+    }
+
+
+def page_catalog_date_lineage_evidence_collection_execution_plan(
+    suggested_tool_call_work_items: list[dict[str, Any]],
+    suggested_tool_call_scope_audit: dict[str, Any],
+) -> dict[str, Any]:
+    stage_definitions = [
+        {
+            "stage_type": "catalog_date_evidence_batches",
+            "tool": "moss-data-catalog.get_page_catalog_date_evidence",
+            "next_step": "collect_catalog_date_evidence_by_review_lane",
+            "must_complete_before": [
+                "lineage_evidence_batches",
+                "governance_validation_batches",
+            ],
+        },
+        {
+            "stage_type": "lineage_evidence_batches",
+            "tool": "moss-lineage-evidence.get_page_lineage_evidence",
+            "next_step": "collect_lineage_evidence_by_review_lane",
+            "must_complete_before": ["governance_validation_batches"],
+        },
+        {
+            "stage_type": "governance_validation_batches",
+            "tool": "moss-lineage-evidence.validate_page_governance_records",
+            "next_step": "validate_governance_records_after_catalog_and_lineage_evidence",
+            "must_complete_before": [],
+        },
+        {
+            "stage_type": "deferred_catalog_date_coverage_batches",
+            "tool": "moss-data-catalog.get_page_catalog_date_coverage",
+            "next_step": "review_deferred_catalog_date_coverage_without_sampling",
+            "must_complete_before": ["deferred_governance_gap_queue_batches"],
+        },
+        {
+            "stage_type": "deferred_governance_gap_queue_batches",
+            "tool": "moss-lineage-evidence.get_page_governance_gap_queue",
+            "next_step": "review_deferred_governance_gap_queue_without_record_write",
+            "must_complete_before": [],
+        },
+    ]
+    stage_scope = page_catalog_date_lineage_evidence_collection_execution_stage_scope()
+    execution_stages = []
+    for index, definition in enumerate(stage_definitions, start=1):
+        work_items = [
+            item
+            for item in suggested_tool_call_work_items
+            if str(item.get("tool")) == definition["tool"]
+        ]
+        page_slugs = page_catalog_date_lineage_unique_work_item_page_slugs(work_items)
+        execution_stages.append(
+            {
+                "stage": index,
+                "stage_type": definition["stage_type"],
+                "work_item_group": "suggested_tool_call_work_items",
+                "tool": definition["tool"],
+                "work_item_count": len(work_items),
+                "page_count": len(page_slugs),
+                "suggested_tool_call_count": len(work_items),
+                "arguments": {"page_slugs": page_slugs},
+                "next_step": definition["next_step"],
+                "uses_work_item_groups": ["suggested_tool_call_work_items"],
+                "must_complete_before": definition["must_complete_before"],
+                **stage_scope,
+            }
+        )
+
+    collection_page_slugs = page_catalog_date_lineage_unique_work_item_page_slugs(
+        suggested_tool_call_work_items,
+    )
+    return {
+        "scope": "catalog_date_lineage_evidence_collection_dispatch_plan",
+        "status": (
+            "catalog_date_lineage_evidence_collection_required"
+            if suggested_tool_call_work_items
+            else "catalog_date_lineage_evidence_collection_not_required"
+        ),
+        "page_count": len(collection_page_slugs),
+        "execution_stage_count": len(execution_stages),
+        "execution_stage_order": [stage["stage_type"] for stage in execution_stages],
+        "work_item_group_counts": {
+            "suggested_tool_call_work_items": len(suggested_tool_call_work_items),
+        },
+        "suggested_tool_call_count": int(suggested_tool_call_scope_audit.get("work_item_count") or 0),
+        "collection_arguments": {"page_slugs": collection_page_slugs},
+        "execution_stages": execution_stages,
+        **page_catalog_date_lineage_evidence_collection_execution_plan_scope(),
+    }
+
+
+def page_catalog_date_lineage_evidence_collection_execution_stage_scope() -> dict[str, bool]:
+    return {
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+    }
+
+
+def page_catalog_date_lineage_evidence_collection_execution_plan_scope() -> dict[str, bool]:
+    return {
+        **page_catalog_date_lineage_evidence_collection_execution_stage_scope(),
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_evidence_collection_execution_plan_scope_audit(
+    execution_plan: dict[str, Any],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    stages = execution_plan.get("execution_stages", [])
+    for index, item in enumerate(stages):
+        for key in scope_keys:
+            value = item.get(key) if isinstance(item, dict) else None
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "evidence_collection_execution_plan.execution_stages",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+
+    queue_grants_closure = execution_plan.get("queue_grants_closure") is True
+    if execution_plan.get("queue_grants_closure") is not False:
+        scope_violations.append(
+            {
+                "work_item_group": "evidence_collection_execution_plan",
+                "work_item_index": None,
+                "scope_key": "queue_grants_closure",
+                "scope_value": execution_plan.get("queue_grants_closure"),
+            }
+        )
+
+    return {
+        "work_item_count": len(stages),
+        "checked_work_item_group": "evidence_collection_execution_plan.execution_stages",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": queue_grants_closure,
+        "scope_violations": scope_violations,
+    }
+
+
+def page_catalog_date_lineage_manual_audit_review_execution_plan(
+    record_remediation_work_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    ready_work_items = [
+        item
+        for item in record_remediation_work_items
+        if str(item.get("remediation_type")) == "none"
+    ]
+    stage_definitions = [
+        {
+            "stage_type": "audit_review_queue_batches",
+            "tool": "moss-lineage-evidence.get_page_governance_audit_review_queue",
+            "next_step": "collect_manual_audit_review_queue_without_approval",
+            "must_complete_before": ["audit_evidence_packet_queue_batches"],
+        },
+        {
+            "stage_type": "audit_evidence_packet_queue_batches",
+            "tool": "moss-lineage-evidence.get_page_governance_audit_evidence_packet_queue",
+            "next_step": "collect_manual_audit_evidence_packets_without_closure",
+            "must_complete_before": [],
+        },
+    ]
+    stage_scope = page_catalog_date_lineage_manual_audit_review_execution_stage_scope()
+    execution_stages = []
+    for index, definition in enumerate(stage_definitions, start=1):
+        matching_work_items = [
+            item
+            for item in ready_work_items
+            if any(call.get("tool") == definition["tool"] for call in item.get("suggested_tool_calls", []))
+        ]
+        page_slugs = page_catalog_date_lineage_unique_work_item_page_slugs(matching_work_items)
+        execution_stages.append(
+            {
+                "stage": index,
+                "stage_type": definition["stage_type"],
+                "work_item_group": "record_remediation_work_items",
+                "tool": definition["tool"],
+                "work_item_count": len(matching_work_items),
+                "page_count": len(page_slugs),
+                "suggested_tool_call_count": len(matching_work_items),
+                "arguments": {"page_slugs": page_slugs},
+                "next_step": definition["next_step"],
+                "uses_work_item_groups": ["record_remediation_work_items"],
+                "must_complete_before": definition["must_complete_before"],
+                **stage_scope,
+            }
+        )
+
+    ready_page_slugs = page_catalog_date_lineage_unique_work_item_page_slugs(ready_work_items)
+    suggested_tool_names: list[str] = []
+    for item in ready_work_items:
+        for tool_name in item.get("suggested_tool_names", []):
+            page_catalog_date_lineage_append_unique(suggested_tool_names, str(tool_name))
+    return {
+        "scope": "manual_audit_review_dispatch_plan",
+        "status": "manual_audit_review_required" if ready_page_slugs else "manual_audit_review_not_required",
+        "ready_page_count": len(ready_page_slugs),
+        "execution_stage_count": len(execution_stages),
+        "execution_stage_order": [stage["stage_type"] for stage in execution_stages],
+        "work_item_group_counts": {
+            "record_remediation_work_items": len(ready_work_items),
+        },
+        "suggested_tool_call_count": sum(
+            int(item.get("suggested_tool_call_count") or len(item.get("suggested_tool_calls", [])))
+            for item in ready_work_items
+        ),
+        "suggested_tool_names": suggested_tool_names,
+        "manual_review_arguments": {"page_slugs": ready_page_slugs},
+        "execution_stages": execution_stages,
+        **page_catalog_date_lineage_manual_audit_review_execution_plan_scope(),
+    }
+
+
+def page_catalog_date_lineage_manual_audit_review_execution_stage_scope() -> dict[str, bool]:
+    return {
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+    }
+
+
+def page_catalog_date_lineage_manual_audit_review_execution_plan_scope() -> dict[str, bool]:
+    return {
+        **page_catalog_date_lineage_manual_audit_review_execution_stage_scope(),
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_manual_audit_review_execution_plan_scope_audit(
+    execution_plan: dict[str, Any],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    stages = execution_plan.get("execution_stages", [])
+    for index, item in enumerate(stages):
+        for key in scope_keys:
+            value = item.get(key) if isinstance(item, dict) else None
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "manual_audit_review_execution_plan.execution_stages",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+
+    queue_grants_closure = execution_plan.get("queue_grants_closure") is True
+    if execution_plan.get("queue_grants_closure") is not False:
+        scope_violations.append(
+            {
+                "work_item_group": "manual_audit_review_execution_plan",
+                "work_item_index": None,
+                "scope_key": "queue_grants_closure",
+                "scope_value": execution_plan.get("queue_grants_closure"),
+            }
+        )
+
+    return {
+        "work_item_count": len(stages),
+        "checked_work_item_group": "manual_audit_review_execution_plan.execution_stages",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": queue_grants_closure,
+        "scope_violations": scope_violations,
+    }
+
+
+def page_catalog_date_lineage_business_owner_approval_execution_plan(
+    record_remediation_work_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    ready_work_items = [
+        item
+        for item in record_remediation_work_items
+        if str(item.get("remediation_type")) == "none"
+    ]
+    stage_definitions = [
+        {
+            "stage_type": "owner_approval_request_batches",
+            "next_step": "prepare_owner_approval_request_after_manual_audit_review",
+            "must_complete_before": ["owner_approval_receipt_review_batches"],
+        },
+        {
+            "stage_type": "owner_approval_receipt_review_batches",
+            "next_step": "review_external_owner_approval_receipt_without_granting_closure",
+            "must_complete_before": [],
+        },
+    ]
+    stage_scope = page_catalog_date_lineage_business_owner_approval_execution_stage_scope()
+    ready_page_slugs = page_catalog_date_lineage_unique_work_item_page_slugs(ready_work_items)
+    execution_stages = []
+    for index, definition in enumerate(stage_definitions, start=1):
+        execution_stages.append(
+            {
+                "stage": index,
+                "stage_type": definition["stage_type"],
+                "work_item_group": "record_remediation_work_items",
+                "work_item_count": len(ready_work_items),
+                "page_count": len(ready_page_slugs),
+                "arguments": {"page_slugs": ready_page_slugs},
+                "next_step": definition["next_step"],
+                "uses_work_item_groups": ["record_remediation_work_items"],
+                "must_complete_before": definition["must_complete_before"],
+                **stage_scope,
+            }
+        )
+
+    return {
+        "scope": "business_owner_approval_dispatch_plan",
+        "status": "business_owner_approval_required" if ready_page_slugs else "business_owner_approval_not_required",
+        "ready_page_count": len(ready_page_slugs),
+        "execution_stage_count": len(execution_stages),
+        "execution_stage_order": [stage["stage_type"] for stage in execution_stages],
+        "work_item_group_counts": {
+            "record_remediation_work_items": len(ready_work_items),
+        },
+        "approval_arguments": {"page_slugs": ready_page_slugs},
+        "execution_stages": execution_stages,
+        **page_catalog_date_lineage_business_owner_approval_execution_plan_scope(),
+    }
+
+
+def page_catalog_date_lineage_business_owner_approval_execution_stage_scope() -> dict[str, bool]:
+    return {
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+    }
+
+
+def page_catalog_date_lineage_business_owner_approval_execution_plan_scope() -> dict[str, bool]:
+    return {
+        **page_catalog_date_lineage_business_owner_approval_execution_stage_scope(),
+        "queue_grants_closure": False,
+    }
+
+
+def page_catalog_date_lineage_business_owner_approval_execution_plan_scope_audit(
+    execution_plan: dict[str, Any],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "executes_tool_calls",
+        "samples_duckdb_tables",
+        "checks_lineage_records",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+        "approves_metric_or_page",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    stages = execution_plan.get("execution_stages", [])
+    for index, item in enumerate(stages):
+        for key in scope_keys:
+            value = item.get(key) if isinstance(item, dict) else None
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "business_owner_approval_execution_plan.execution_stages",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+
+    queue_grants_closure = execution_plan.get("queue_grants_closure") is True
+    if execution_plan.get("queue_grants_closure") is not False:
+        scope_violations.append(
+            {
+                "work_item_group": "business_owner_approval_execution_plan",
+                "work_item_index": None,
+                "scope_key": "queue_grants_closure",
+                "scope_value": execution_plan.get("queue_grants_closure"),
+            }
+        )
+
+    return {
+        "work_item_count": len(stages),
+        "checked_work_item_group": "business_owner_approval_execution_plan.execution_stages",
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": queue_grants_closure,
+        "scope_violations": scope_violations,
+    }
+
+
+def page_catalog_date_lineage_queue_boundary_audit(
+    scope_audits: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    checked_scope_audits = [
+        "record_gap_execution_plan_scope_audit",
+        "record_remediation_scope_audit",
+        "suggested_tool_call_scope_audit",
+        "evidence_collection_execution_plan_scope_audit",
+        "manual_audit_review_execution_plan_scope_audit",
+        "business_owner_approval_execution_plan_scope_audit",
+        "closure_blocker_scope_audit",
+        "next_closure_action_scope_audit",
+        "closure_dispatch_packet_scope_audit",
+    ]
+    scope_flags = {
+        "writes_governance_records": False,
+        "executes_tool_calls": False,
+        "samples_duckdb_tables": False,
+        "checks_lineage_records": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "approves_metric_or_page": False,
+    }
+    work_item_count = 0
+    work_item_counts: dict[str, int] = {}
+    queue_grants_closure = False
+    scope_violations = []
+    suggested_tool_violations = []
+    execution_target_violations = []
+    packet_consistency_violations = []
+    source_consistency_violations = []
+    for audit_name in checked_scope_audits:
+        audit = scope_audits.get(audit_name, {})
+        audit_work_item_count = int(audit.get("work_item_count") or 0)
+        work_item_counts[audit_name] = audit_work_item_count
+        work_item_count += audit_work_item_count
+        if audit_name in {
+            "record_gap_execution_plan_scope_audit",
+            "record_remediation_scope_audit",
+            "evidence_collection_execution_plan_scope_audit",
+            "manual_audit_review_execution_plan_scope_audit",
+            "business_owner_approval_execution_plan_scope_audit",
+        }:
+            for key in scope_flags:
+                if audit.get(key) is True:
+                    scope_flags[key] = True
+            if audit.get("queue_grants_closure") is True:
+                queue_grants_closure = True
+            tool_violations = audit.get("suggested_tool_call_violations", [])
+        elif audit_name == "suggested_tool_call_scope_audit":
+            if audit.get("executes_tool_call") is True:
+                scope_flags["executes_tool_calls"] = True
+            for key in [
+                "samples_duckdb_tables",
+                "checks_lineage_records",
+                "proves_page_execution",
+                "approves_metric_or_page",
+            ]:
+                if audit.get(key) is True:
+                    scope_flags[key] = True
+            tool_violations = audit.get("suggested_tool_violations", [])
+        else:
+            for key in scope_flags:
+                if audit.get(key) is True:
+                    scope_flags[key] = True
+            if audit.get("queue_grants_closure") is True:
+                queue_grants_closure = True
+            tool_violations = []
+        for violation in audit.get("scope_violations", []):
+            violation_with_source = dict(violation)
+            violation_with_source["scope_audit"] = audit_name
+            scope_violations.append(violation_with_source)
+        for violation in tool_violations:
+            violation_with_source = dict(violation)
+            violation_with_source["scope_audit"] = audit_name
+            suggested_tool_violations.append(violation_with_source)
+        for violation in audit.get("execution_target_violations", []):
+            violation_with_source = dict(violation)
+            violation_with_source["scope_audit"] = audit_name
+            execution_target_violations.append(violation_with_source)
+        for violation in audit.get("packet_consistency_violations", []):
+            violation_with_source = dict(violation)
+            violation_with_source["scope_audit"] = audit_name
+            packet_consistency_violations.append(violation_with_source)
+        for violation in audit.get("source_consistency_violations", []):
+            violation_with_source = dict(violation)
+            violation_with_source["scope_audit"] = audit_name
+            source_consistency_violations.append(violation_with_source)
+
+    return {
+        "work_item_count": work_item_count,
+        "checked_scope_audits": checked_scope_audits,
+        "checked_scope_audit_work_item_counts": work_item_counts,
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "samples_duckdb_tables": scope_flags["samples_duckdb_tables"],
+        "checks_lineage_records": scope_flags["checks_lineage_records"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "queue_grants_closure": queue_grants_closure,
+        "scope_violations": scope_violations,
+        "suggested_tool_violations": suggested_tool_violations,
+        "execution_target_violations": execution_target_violations,
+        "packet_consistency_violations": packet_consistency_violations,
+        "source_consistency_violations": source_consistency_violations,
+    }
+
+
+def page_catalog_date_lineage_review_queue_item(
+    coverage_row: dict[str, Any],
+    bundle: dict[str, Any],
+    *,
+    record_readiness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    review_lane = page_catalog_date_lineage_review_lane(coverage_row)
+    effective_record_readiness = record_readiness or page_catalog_date_lineage_unknown_record_readiness()
+    return {
+        "page_slug": coverage_row["page_slug"],
+        "page_id": coverage_row["page_id"],
+        "page_name": coverage_row["page_name"],
+        "frontend_route": coverage_row["frontend_route"],
+        "primary_api": coverage_row["primary_api"],
+        "approval_status": coverage_row["approval_status"],
+        "coverage_status": coverage_row["coverage_status"],
+        "review_priority": page_catalog_date_lineage_review_priority(coverage_row, review_lane),
+        "review_lane": review_lane,
+        "formal_page_closure_allowed": False,
+        "configured_table_names": coverage_row["configured_table_names"],
+        "candidate_table_names": coverage_row["candidate_table_names"],
+        "deferred_no_direct_table_config_reason": coverage_row["deferred_no_direct_table_config_reason"],
+        "catalog_date_anchors": coverage_row["catalog_date_anchors"],
+        "risk_reasons": page_catalog_date_lineage_review_risk_reasons(coverage_row, bundle, review_lane),
+        "suggested_tool_calls": page_catalog_date_lineage_review_tool_calls(coverage_row, review_lane),
+        "next_actions": page_catalog_date_lineage_review_next_actions(coverage_row, review_lane),
+        "record_readiness": effective_record_readiness,
+        "record_remediation": page_catalog_date_lineage_record_remediation(
+            coverage_row,
+            effective_record_readiness,
+        ),
+        "evidence_scope": {
+            "queues_evidence_collection": True,
+            "samples_duckdb_tables": False,
+            "checks_lineage_records": False,
+            "checks_data_quality": False,
+            "checks_ui_api_payload": False,
+            "proves_page_execution": False,
+            "approves_metric_or_page": False,
+        },
+    }
+
+
+def page_catalog_date_lineage_record_remediation(
+    coverage_row: dict[str, Any],
+    record_readiness: dict[str, Any],
+) -> dict[str, Any]:
+    evidence_scope = {
+        "writes_governance_records": False,
+        "approves_metric_or_page": False,
+        "proves_page_execution": False,
+        "executes_tool_calls": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+    }
+    if str(record_readiness.get("audit_review_status") or "") == "ready_for_audit_review":
+        return {
+            "remediation_type": "none",
+            "next_step": "manual_audit_review",
+            "approval_boundary": "review_routing_only",
+            "evidence_scope": evidence_scope,
+        }
+
+    remediation_type = page_catalog_date_lineage_record_remediation_type(record_readiness)
+    return {
+        "remediation_type": remediation_type,
+        **page_governance_record_gap_next_step_fields(remediation_type),
+        "suggested_tool_calls": page_governance_record_gap_remediation_tool_calls(
+            {
+                "page_slug": coverage_row["page_slug"],
+            },
+        ),
+        "approval_boundary": "record_remediation_only",
+        "evidence_scope": evidence_scope,
+    }
+
+
+def page_catalog_date_lineage_record_remediation_type(record_readiness: dict[str, Any]) -> str:
+    status = str(record_readiness.get("record_validation_status") or "")
+    if status == "missing_direct_records":
+        return "create_direct_record"
+    residual_gaps = [str(gap) for gap in record_readiness.get("residual_gaps", [])]
+    if any("primary page/API anchor is missing" in gap for gap in residual_gaps):
+        return "repair_primary_page_anchor"
+    return "complete_direct_record_fields"
+
+
+def page_catalog_date_lineage_review_lane(coverage_row: dict[str, Any]) -> str:
+    approval_status = str(coverage_row["approval_status"])
+    coverage_status = str(coverage_row["coverage_status"])
+    if coverage_status == "deferred_no_direct_table_config":
+        return "deferred_no_direct_table_config_review"
+    if approval_status == "formal_or_governed":
+        return "formal_governed_catalog_date_lineage_review"
+    if approval_status == "gap_or_observational" and not coverage_row.get("configured_table_names"):
+        return "gap_observational_separate_review"
+    if page_catalog_date_lineage_has_formal_source_tables(coverage_row):
+        return "candidate_formal_source_mixed_review"
+    return "candidate_or_mixed_catalog_date_lineage_review"
+
+
+def page_catalog_date_lineage_review_priority(
+    coverage_row: dict[str, Any],
+    review_lane: str,
+) -> str:
+    if review_lane in {
+        "formal_governed_catalog_date_lineage_review",
+        "candidate_formal_source_mixed_review",
+    }:
+        return "P1"
+    if review_lane == "deferred_no_direct_table_config_review":
+        return "P2"
+    if str(coverage_row["coverage_status"]) == "missing_explicit_table_config":
+        return "P1"
+    return "P2"
+
+
+def page_catalog_date_lineage_has_formal_source_tables(coverage_row: dict[str, Any]) -> bool:
+    table_names = [str(table).casefold() for table in coverage_row.get("configured_table_names", [])]
+    return any(
+        table.startswith("fact_formal_")
+        or table in {
+            "product_category_pnl_formal_read_model",
+            "fact_formal_bond_analytics_daily",
+            "fact_formal_risk_tensor_daily",
+        }
+        for table in table_names
+    )
+
+
+def page_catalog_date_lineage_review_risk_reasons(
+    coverage_row: dict[str, Any],
+    bundle: dict[str, Any],
+    review_lane: str,
+) -> list[str]:
+    if review_lane == "formal_governed_catalog_date_lineage_review":
+        return [
+            "formal/governed page requires direct catalog/date, lineage, payload, and owner review before closure.",
+        ]
+    if review_lane == "candidate_formal_source_mixed_review":
+        return [
+            "candidate or mixed-source page uses formal source tables; do not promote candidate output from source-table evidence alone.",
+        ]
+    if review_lane == "gap_observational_separate_review":
+        return [
+            "GAP/observational page must stay separate from formal PAGE, MTR, golden-sample, or trading-instruction closure.",
+        ]
+    if review_lane == "deferred_no_direct_table_config_review":
+        reason = str(coverage_row.get("deferred_no_direct_table_config_reason") or "")
+        return [
+            reason or "no direct table contract is configured for this page.",
+            "direct table sampling is deferred until a page table contract exists.",
+        ]
+    if str(coverage_row["coverage_status"]) == "missing_explicit_table_config":
+        return [
+            "explicit catalog/date table configuration is missing for a seeded page.",
+        ]
+    if bundle.get("golden_samples"):
+        return ["page has supporting sample evidence, but sample evidence is not catalog/date-lineage closure."]
+    return ["catalog/date-lineage review remains required before page-level closure."]
+
+
+def page_catalog_date_lineage_review_tool_calls(
+    coverage_row: dict[str, Any],
+    review_lane: str,
+) -> list[dict[str, Any]]:
+    page_slug = str(coverage_row["page_slug"])
+    if review_lane == "deferred_no_direct_table_config_review":
+        return [
+            {
+                "tool": "moss-data-catalog.get_page_catalog_date_coverage",
+                "arguments": {"page_slugs": [page_slug]},
+            },
+            {
+                "tool": "moss-lineage-evidence.get_page_governance_gap_queue",
+                "arguments": {"page_slugs": [page_slug]},
+            },
+        ]
+    return [
+        {
+            "tool": "moss-data-catalog.get_page_catalog_date_evidence",
+            "arguments": {"page_slugs": [page_slug]},
+        },
+        {
+            "tool": "moss-lineage-evidence.get_page_lineage_evidence",
+            "arguments": {"page_slugs": [page_slug]},
+        },
+        {
+            "tool": "moss-lineage-evidence.validate_page_governance_records",
+            "arguments": {"page_slugs": [page_slug]},
+        },
+    ]
+
+
+def page_catalog_date_lineage_review_next_actions(
+    coverage_row: dict[str, Any],
+    review_lane: str,
+) -> list[str]:
+    page_id = str(coverage_row["page_id"])
+    if review_lane == "formal_governed_catalog_date_lineage_review":
+        return [
+            f"Collect catalog/date samples and direct lineage evidence for {page_id}.",
+            "Compare sampled dates, source versions, and direct governance records before any closure claim.",
+        ]
+    if review_lane == "candidate_formal_source_mixed_review":
+        return [
+            f"Collect catalog/date and lineage evidence for {page_id}, but do not promote candidate output from formal source tables.",
+            "Require direct page/API governance records, UI/API payload review, live smoke evidence, and business-owner approval before closure.",
+        ]
+    if review_lane == "gap_observational_separate_review":
+        return [
+            "Keep GAP/observational evidence separate from formal PAGE/MTR/golden-sample closure.",
+            f"Collect catalog/date and lineage evidence for {page_id} as observational support only.",
+        ]
+    if review_lane == "deferred_no_direct_table_config_review":
+        return [
+            f"Resolve {page_id} through coverage and governance gap queues; do not invent tables_used for this page.",
+            "Review upstream/page-run evidence, result_meta, and visible no-data/stale/fallback states instead of direct table sampling.",
+        ]
+    return [
+        f"Review explicit catalog/date configuration and lineage evidence for {page_id} before closure.",
+    ]
+
+
+def page_catalog_date_lineage_review_queue_sort_key(
+    row: dict[str, Any],
+    page_order: dict[str, int],
+) -> tuple[int, int]:
+    priority_rank = {"P1": 0, "P2": 1, "P3": 2}.get(str(row.get("review_priority") or ""), 9)
+    return (priority_rank, page_order.get(str(row.get("page_id") or ""), len(page_order)))
+
+
+def selected_unique_page_bundles(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+) -> list[dict[str, Any]]:
+    if page_slugs:
+        return [page_trace_bundle(bundles, page_slug) for page_slug in page_slugs]
+    selected: list[dict[str, Any]] = []
+    seen_page_ids: set[str] = set()
+    for bundle in bundles.values():
+        page_id = str(bundle.get("page_id") or "")
+        if page_id in seen_page_ids:
+            continue
+        seen_page_ids.add(page_id)
+        selected.append(bundle)
+    return selected
+
+
+def selected_catalog_date_page_bundles(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+) -> list[dict[str, Any]]:
+    selected = selected_unique_page_bundles(bundles, page_slugs)
+    if page_slugs:
+        return selected
+    return [
+        bundle
+        for bundle in selected
+        if str(bundle.get("page_id") or "") not in DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS
+    ]
+
+
+def selected_governance_page_bundles(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+) -> list[dict[str, Any]]:
+    return selected_unique_page_bundles(bundles, page_slugs)
+
+
+def page_catalog_date_coverage_row(bundle: dict[str, Any]) -> dict[str, Any]:
+    page_id = str(bundle.get("page_id") or "")
+    approval_readiness = page_approval_readiness(bundle, bundle_text(bundle))
+    approval_status = approval_readiness["status"]
+    lineage_status = lineage_readiness(bundle)
+    catalog_anchors = catalog_date_readiness_anchors(bundle, lineage_status["anchors"])
+    configured_tables = filter_readiness_anchors(PAGE_CATALOG_DATE_TABLES.get(page_id, []), limit=80)
+    candidate_tables = page_catalog_candidate_table_names(bundle, catalog_anchors)
+    deferred_reason = PAGE_CATALOG_DATE_DEFERRED_REASONS.get(page_id, "")
+    if configured_tables:
+        coverage_status = "configured_direct_tables"
+    elif deferred_reason:
+        coverage_status = "deferred_no_direct_table_config"
+    else:
+        coverage_status = "missing_explicit_table_config"
+    return {
+        "page_slug": bundle["page_slug"],
+        "page_id": page_id,
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "approval_status": approval_status,
+        "approval_status_source": approval_readiness["source"],
+        "coverage_status": coverage_status,
+        "priority": page_catalog_date_coverage_priority(approval_status, coverage_status),
+        "configured_table_names": configured_tables,
+        "candidate_table_names": candidate_tables,
+        "deferred_no_direct_table_config_reason": deferred_reason,
+        "catalog_date_anchors": catalog_anchors,
+        "next_actions": page_catalog_date_coverage_next_actions(page_id, approval_status, coverage_status),
+        "evidence_scope": {
+            "checks_explicit_config": True,
+            "samples_duckdb_tables": False,
+            "checks_data_quality": False,
+            "checks_lineage_records": False,
+            "proves_page_execution": False,
+            "approves_metric_or_page": False,
+        },
+    }
+
+
+def page_catalog_date_coverage_priority(approval_status: str, coverage_status: str) -> str:
+    if coverage_status == "configured_direct_tables":
+        return "P3"
+    if coverage_status == "deferred_no_direct_table_config":
+        return "P2"
+    if approval_status == "formal_or_governed":
+        return "P1"
+    return "P2"
+
+
+def page_catalog_date_coverage_next_actions(
+    page_id: str,
+    approval_status: str,
+    coverage_status: str,
+) -> list[str]:
+    if coverage_status == "configured_direct_tables":
+        return [
+            f"Run page catalog/date evidence for {page_id} and review sampled table/date results before closure.",
+        ]
+    if coverage_status == "deferred_no_direct_table_config":
+        return [
+            f"Keep {page_id} out of direct catalog/date table sampling until a direct page table contract exists.",
+            "Audit upstream source pages, direct page/API governance records, visible stale/fallback/no-data states, and result_meta instead.",
+        ]
+    action = f"Add explicit catalog/date table config for {page_id} from the candidate table anchors, then sample DuckDB dates."
+    if approval_status == "formal_or_governed":
+        return [
+            action,
+            "Prioritize this formal/governed page before relying on trace-bundle anchors for release evidence.",
+        ]
+    return [
+        action,
+        "Keep candidate, mixed-source, GAP, and observational pages out of formal-use closure until direct evidence exists.",
+    ]
+
+
+def page_catalog_date_coverage_sort_key(
+    page: dict[str, Any],
+    page_order: dict[str, int],
+) -> tuple[int, int, int]:
+    priority_rank = {"P1": 0, "P2": 1, "P3": 2}.get(str(page.get("priority") or ""), 9)
+    configured_rank = 1 if page["coverage_status"] == "configured_direct_tables" else 0
+    return (
+        priority_rank,
+        configured_rank,
+        page_order.get(str(page.get("page_id") or ""), len(page_order)),
+    )
+
+
+def page_catalog_date_evidence_row(bundle: dict[str, Any], duckdb_path: Path, *, limit: int) -> dict[str, Any]:
+    lineage_status = lineage_readiness(bundle)
+    catalog_anchors = catalog_date_readiness_anchors(bundle, lineage_status["anchors"])
+    table_names = page_catalog_table_names(bundle, catalog_anchors)
+    return {
+        "page_slug": bundle["page_slug"],
+        "page_id": bundle["page_id"],
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "catalog_date_anchors": catalog_anchors,
+        "sampled_table_names": table_names,
+        "evidence_scope": {
+            "catalog_describe_checked": True,
+            "date_sample_checked": True,
+            "quality_checked": False,
+            "lineage_checked": False,
+            "formal_metric_approval_checked": False,
+            "page_execution_checked": False,
+        },
+        "table_evidence": [
+            catalog_date_table_evidence(duckdb_path, table_name, limit=limit) for table_name in table_names
+        ],
+    }
+
+
+def page_catalog_table_names(bundle: dict[str, Any], catalog_anchors: list[str]) -> list[str]:
+    page_id = str(bundle.get("page_id") or "")
+    configured_tables = PAGE_CATALOG_DATE_TABLES.get(page_id, [])
+    if configured_tables:
+        return filter_readiness_anchors(configured_tables, limit=80)
+    if page_id in PAGE_CATALOG_DATE_DEFERRED_REASONS:
+        return []
+    return filter_readiness_anchors(candidate_table_names_from_anchors(catalog_anchors), limit=80)
+
+
+def page_catalog_candidate_table_names(bundle: dict[str, Any], catalog_anchors: list[str]) -> list[str]:
+    bundle_anchors = [
+        *catalog_anchors,
+        *list(bundle.get("truth_chain") or []),
+        *list(bundle.get("backend_touchpoints") or []),
+        *list(bundle.get("verification_focus") or []),
+    ]
+    return filter_readiness_anchors(candidate_table_names_from_anchors(bundle_anchors), limit=80)
+
+
+def candidate_table_names_from_anchors(anchors: list[str]) -> list[str]:
+    candidates: list[str] = []
+    for anchor in anchors:
+        for token in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?\b", anchor):
+            if "." in token:
+                continue
+            if token.casefold() == "fact_table":
+                continue
+            if is_catalog_date_anchor(token):
+                candidates.append(token)
+    return candidates
+
+
+def catalog_date_table_evidence(duckdb_path: Path, table_name: str, *, limit: int) -> dict[str, Any]:
+    base = {
+        "table_name": table_name,
+        "status": "duckdb_missing",
+        "column_count": 0,
+        "date_column": None,
+        "available_dates": [],
+        "error": None,
+    }
+    if not duckdb_path.is_file():
+        base["error"] = f"DuckDB file does not exist: {duckdb_path}"
+        return base
+
+    try:
+        description = describe_duckdb_table(duckdb_path, table_name)
+    except McpError as exc:
+        base["status"] = "unknown_table" if exc.code == -32602 else "catalog_unavailable"
+        base["error"] = exc.message
+        return base
+
+    column_names = [str(column["name"]) for column in description["columns"]]
+    date_column = choose_date_column(column_names)
+    base.update({"status": "present", "column_count": len(column_names), "date_column": date_column})
+    if date_column is None:
+        base["status"] = "present_no_date_column"
+        return base
+
+    try:
+        dates = list_available_dates(duckdb_path, table_name, date_column, limit=limit)
+    except McpError as exc:
+        base["status"] = "date_sample_failed"
+        base["error"] = exc.message
+        return base
+
+    base["available_dates"] = dates["values"]
+    return base
+
+
+def choose_date_column(column_names: list[str]) -> str | None:
+    columns_by_casefold = {column.casefold(): column for column in column_names}
+    for preferred in DATE_COLUMN_PRIORITY:
+        column = columns_by_casefold.get(preferred.casefold())
+        if column is not None:
+            return column
+    return None
+
+
+def page_evidence_readiness_row(bundle: dict[str, Any]) -> dict[str, Any]:
+    combined = bundle_text(bundle)
+    approval_readiness = page_approval_readiness(bundle, combined)
+    approval_status = approval_readiness["status"]
+    formal_use_allowed = approval_status == "formal_or_governed"
+    golden_samples = list(bundle.get("golden_samples") or [])
+    golden_status = golden_sample_status(bundle, approval_status)
+    lineage_status = lineage_readiness(bundle)
+    lineage_anchors = lineage_status["anchors"]
+    catalog_anchors = catalog_date_readiness_anchors(bundle, lineage_anchors)
+    return {
+        "page_slug": bundle["page_slug"],
+        "page_id": bundle["page_id"],
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "approval_status": approval_status,
+        "approval_status_source": approval_readiness["source"],
+        "formal_use_allowed": formal_use_allowed,
+        "checks": {
+            "trace_bundle": {
+                "status": "present",
+                "anchors": [bundle["page_id"], bundle["primary_api"], *bundle.get("contract_docs", [])],
+            },
+            "lineage_mapping": {
+                "status": lineage_status["status"],
+                "anchors": lineage_anchors,
+            },
+            "catalog_date": {
+                "status": "direct_review_required",
+                "anchors": catalog_anchors,
+            },
+            "golden_sample": {
+                "status": golden_status,
+                "anchors": golden_samples,
+            },
+        },
+        "residual_gaps": residual_evidence_gaps(bundle, approval_status, golden_status),
+        "guardrails": list(bundle.get("guardrails") or []),
+    }
+
+
+def bundle_text(bundle: dict[str, Any]) -> str:
+    values: list[str] = []
+    for key in (
+        "page_slug",
+        "page_id",
+        "page_name",
+        "frontend_route",
+        "primary_api",
+        "supporting_apis",
+        "contract_docs",
+        "truth_chain",
+        "backend_touchpoints",
+        "frontend_touchpoints",
+        "test_touchpoints",
+        "golden_samples",
+        "verification_focus",
+        "guardrails",
+    ):
+        value = bundle.get(key)
+        if isinstance(value, list):
+            values.extend(str(item) for item in value)
+        elif value is not None:
+            values.append(str(value))
+    return "\n".join(values)
+
+
+def page_approval_readiness(bundle: dict[str, Any], combined: str) -> dict[str, str]:
+    page_id = str(bundle.get("page_id") or "")
+    if page_id in EVIDENCE_READINESS_STATUS_BY_PAGE_ID:
+        return {"status": EVIDENCE_READINESS_STATUS_BY_PAGE_ID[page_id], "source": "explicit_status_map"}
+    return {"status": "unclassified_review_required", "source": "unclassified_fallback"}
+
+
+def lineage_page_slugs_from_arguments(arguments: dict[str, Any]) -> list[str]:
+    if arguments.get("all_seeded_pages") is True:
+        return []
+    raw_page_slugs = arguments.get("page_slugs")
+    if raw_page_slugs is None:
+        return list(DEFAULT_EVIDENCE_READINESS_PAGES)
+    if isinstance(raw_page_slugs, list):
+        return [str(item).strip() for item in raw_page_slugs if str(item).strip()]
+    raise McpError(-32602, "page_slugs must be an array of strings.")
+
+
+def page_lineage_evidence(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    if max_results < 1 or max_results > 100:
+        raise McpError(-32602, "max_results must be between 1 and 100.")
+    selected_bundles = selected_governance_page_bundles(bundles, page_slugs)
+    pages = [
+        page_lineage_evidence_row(
+            bundle,
+            streams,
+            stream_names,
+            max_results=max_results,
+        )
+        for bundle in selected_bundles
+    ]
+    direct_count = sum(len(page["direct_page_or_api_records"]) for page in pages)
+    expanded_count = sum(len(page["expanded_anchor_records"]) for page in pages)
+    missing_direct_count = sum(1 for page in pages if not page["direct_page_or_api_records"])
+    return {
+        "scope": "page-lineage-evidence",
+        "disclaimer": (
+            "This tool separates direct page/API governance records from expanded source-table or metric-anchor "
+            "records; it does not prove page execution completeness, metric definition, or formal approval."
+        ),
+        "pages": pages,
+        "summary": {
+            "page_count": len(pages),
+            "direct_page_or_api_record_count": direct_count,
+            "expanded_anchor_record_count": expanded_count,
+            "missing_direct_page_or_api_record_count": missing_direct_count,
+        },
+    }
+
+
+def page_governance_record_requirements(
+    bundles: dict[str, dict[str, Any]],
+    page_slugs: list[str],
+) -> dict[str, Any]:
+    selected_bundles = selected_governance_page_bundles(bundles, page_slugs)
+    pages = [
+        page_governance_record_requirements_row(bundle)
+        for bundle in selected_bundles
+    ]
+    return {
+        "scope": "page-governance-record-requirements",
+        "disclaimer": (
+            "This tool describes evidence requirements only; it does not create governance records, validate that "
+            "records exist, prove page/API execution, or approve metric/page formal use."
+        ),
+        "pages": pages,
+        "summary": {
+            "page_count": len(pages),
+            "direct_record_required_count": sum(1 for page in pages if page["direct_record_required"]),
+        },
+    }
+
+
+def page_governance_record_validation(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    if max_results < 1 or max_results > 100:
+        raise McpError(-32602, "max_results must be between 1 and 100.")
+    selected_bundles = selected_governance_page_bundles(bundles, page_slugs)
+    pages = [
+        page_governance_record_validation_row(
+            bundle,
+            streams,
+            stream_names,
+            max_results=max_results,
+        )
+        for bundle in selected_bundles
+    ]
+    ready_count = sum(
+        1
+        for page in pages
+        for validation in page["direct_record_validations"]
+        if validation["validation_status"] == "ready_for_audit_review"
+    )
+    incomplete_count = sum(
+        1
+        for page in pages
+        for validation in page["direct_record_validations"]
+        if validation["validation_status"] == "incomplete"
+    )
+    return {
+        "scope": "page-governance-record-validation",
+        "disclaimer": (
+            "This tool validates existing direct page/API governance records against checklist fields only; it "
+            "does not write records, does not prove page execution completeness, and does not approve metric/page "
+            "formal use."
+        ),
+        "pages": pages,
+        "summary": {
+            "page_count": len(pages),
+            "ready_record_count": ready_count,
+            "incomplete_record_count": incomplete_count,
+            "missing_record_page_count": sum(
+                1 for page in pages if page["validation_status"] == "missing_direct_records"
+            ),
+        },
+    }
+
+
+def page_governance_audit_review_checklist(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    validation_payload = page_governance_record_validation(
+        bundles,
+        streams,
+        page_slugs,
+        stream_names,
+        max_results=max_results,
+    )
+    pages = [
+        page_governance_audit_review_checklist_row(page)
+        for page in validation_payload["pages"]
+    ]
+    return {
+        "scope": "page-governance-audit-review-checklist",
+        "disclaimer": (
+            "This checklist routes manual audit review after direct-record field validation; it does not write "
+            "governance records, prove page/API execution, and does not approve metric/page formal use."
+        ),
+        "pages": pages,
+        "summary": {
+            "page_count": len(pages),
+            "ready_for_audit_review_count": sum(
+                1 for page in pages if page["audit_review_status"] == "ready_for_audit_review"
+            ),
+            "blocked_by_record_gaps_count": sum(
+                1 for page in pages if page["audit_review_status"] == "blocked_by_record_gaps"
+            ),
+            "closure_approved_count": sum(1 for page in pages if page["closure_approved"]),
+        },
+    }
+
+
+def page_governance_audit_review_queue(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    checklist = page_governance_audit_review_checklist(
+        bundles,
+        streams,
+        page_slugs,
+        stream_names,
+        max_results=max_results,
+    )
+    items = [
+        page_governance_audit_review_queue_item(page)
+        for page in checklist["pages"]
+        if page["audit_review_status"] == "ready_for_audit_review"
+    ]
+    return {
+        "scope": "page-governance-audit-review-queue",
+        "disclaimer": (
+            "This read-only queue routes field-complete direct records to manual audit review; it does not "
+            "write governance records, prove page/API execution, and does not approve metric/page formal use."
+        ),
+        "items": items,
+        "summary": {
+            **checklist["summary"],
+            "queue_count": len(items),
+            "remaining_manual_check_count": sum(len(item["remaining_manual_checks"]) for item in items),
+        },
+    }
+
+
+def page_governance_audit_evidence_packet(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slug: str,
+    stream_names: list[str],
+    duckdb_path: Path,
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    bundle = page_trace_bundle(bundles, page_slug)
+    canonical_page_slug = str(bundle["page_slug"])
+    queue_payload = page_governance_audit_review_queue(
+        bundles,
+        streams,
+        [canonical_page_slug],
+        stream_names,
+        max_results=max_results,
+    )
+    queue_item = next(
+        (item for item in queue_payload["items"] if item["page_id"] == bundle["page_id"]),
+        None,
+    )
+    if queue_item is None:
+        checklist = page_governance_audit_review_checklist(
+            bundles,
+            streams,
+            [canonical_page_slug],
+            stream_names,
+            max_results=max_results,
+        )
+        page_status = checklist["pages"][0] if checklist["pages"] else {}
+        audit_review_status = str(page_status.get("audit_review_status") or "blocked_by_record_gaps")
+        return {
+            "scope": "page-governance-audit-evidence-packet",
+            "disclaimer": page_governance_audit_evidence_packet_disclaimer(),
+            "page_slug": canonical_page_slug,
+            "page_id": bundle["page_id"],
+            "audit_review_status": audit_review_status,
+            "closure_approved": False,
+            "blocked_reason": "direct_record_not_ready_for_audit_review",
+            "audit_review_queue_item": None,
+            "manual_review_blockers": ["direct_page_api_record_fields"],
+            "evidence_scope": page_governance_audit_evidence_packet_scope(),
+            "summary": {
+                "mcp_evidence_sections": [],
+                "manual_review_blocker_count": 1,
+                "closure_approved": False,
+            },
+        }
+
+    contract_trace = page_trace_bundle(bundles, canonical_page_slug)
+    catalog_date = page_catalog_date_evidence(
+        bundles,
+        duckdb_path,
+        [canonical_page_slug],
+        limit=min(max_results, 100),
+    )
+    lineage = page_lineage_evidence(
+        bundles,
+        streams,
+        [canonical_page_slug],
+        stream_names,
+        max_results=max_results,
+    )
+    manual_evidence_present = page_governance_manual_review_evidence_present(queue_item)
+    manual_blockers = page_governance_manual_review_blockers(queue_item, manual_evidence_present)
+    return {
+        "scope": "page-governance-audit-evidence-packet",
+        "disclaimer": page_governance_audit_evidence_packet_disclaimer(),
+        "page_slug": canonical_page_slug,
+        "page_id": bundle["page_id"],
+        "audit_review_status": queue_item["audit_review_status"],
+        "closure_approved": False,
+        "contract_trace": contract_trace,
+        "contract_trace_summary": page_governance_contract_trace_summary(contract_trace),
+        "catalog_date_evidence": catalog_date,
+        "lineage_evidence": lineage,
+        "audit_review_queue_item": queue_item,
+        "manual_review_blockers": manual_blockers,
+        "manual_review_blocker_targets": page_governance_manual_review_blocker_targets(
+            queue_item,
+            manual_blockers,
+        ),
+        "manual_review_evidence_present": manual_evidence_present,
+        "evidence_scope": page_governance_audit_evidence_packet_scope(),
+        "summary": {
+            "mcp_evidence_sections": [
+                "contract_trace",
+                "catalog_date_evidence",
+                "lineage_evidence",
+                "audit_review_queue_item",
+            ],
+            "manual_review_blocker_count": len(manual_blockers),
+            "manual_review_evidence_present_count": len(manual_evidence_present),
+            "closure_approved": False,
+        },
+    }
+
+
+def page_governance_audit_evidence_packet_queue(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    duckdb_path: Path,
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    review_queue = page_governance_audit_review_queue(
+        bundles,
+        streams,
+        page_slugs,
+        stream_names,
+        max_results=max_results,
+    )
+    checklist = page_governance_audit_review_checklist(
+        bundles,
+        streams,
+        page_slugs,
+        stream_names,
+        max_results=max_results,
+    )
+    items = [
+        page_governance_audit_evidence_packet(
+            bundles,
+            streams,
+            str(item["page_slug"]),
+            stream_names,
+            duckdb_path,
+            max_results=max_results,
+        )
+        for item in review_queue["items"]
+    ]
+    blocked_pages = page_governance_blocked_record_gap_pages(
+        bundles,
+        checklist["pages"],
+    )
+    blocked_next_steps = page_governance_blocked_record_gap_next_steps(blocked_pages)
+    create_table_anchor_work_items = page_governance_create_direct_record_table_anchor_work_items(
+        blocked_pages,
+    )
+    create_evidence_work_items = page_governance_create_direct_record_evidence_work_items(
+        blocked_pages,
+    )
+    repair_evidence_work_items = page_governance_repair_direct_record_evidence_work_items(
+        blocked_pages,
+    )
+    direct_remediation_work_items = page_governance_direct_record_remediation_work_items(
+        blocked_pages,
+    )
+    manual_review_mcp_work_items = page_governance_manual_review_mcp_work_items(items)
+    manual_review_work_items = page_governance_manual_review_work_items(items)
+    manual_review_evidence_present_work_items = page_governance_manual_review_evidence_present_work_items(
+        items,
+    )
+    manual_review_blocker_count = sum(len(item["manual_review_blockers"]) for item in items)
+    manual_review_evidence_present_count = sum(
+        len(item.get("manual_review_evidence_present", [])) for item in items
+    )
+    direct_remediation_scope_audit = page_governance_direct_record_remediation_scope_audit(
+        {
+            "blocked_by_record_gap_next_steps": blocked_next_steps,
+            "create_direct_record_evidence_work_items": create_evidence_work_items,
+            "create_direct_record_table_anchor_work_items": create_table_anchor_work_items,
+            "direct_record_remediation_work_items": direct_remediation_work_items,
+            "repair_direct_record_evidence_work_items": repair_evidence_work_items,
+        },
+    )
+    manual_review_mcp_scope_audit = page_governance_manual_review_mcp_scope_audit(
+        manual_review_mcp_work_items,
+    )
+    manual_review_scope_audit = page_governance_manual_review_scope_audit(
+        {
+            "manual_review_work_items": manual_review_work_items,
+            "manual_review_evidence_present_work_items": manual_review_evidence_present_work_items,
+        },
+    )
+    queue_boundary_audit = page_governance_queue_boundary_audit(
+        {
+            "manual_review_mcp_scope_audit": manual_review_mcp_scope_audit,
+            "manual_review_scope_audit": manual_review_scope_audit,
+            "direct_record_remediation_scope_audit": direct_remediation_scope_audit,
+        },
+        work_item_count=(
+            manual_review_mcp_scope_audit["work_item_count"]
+            + manual_review_scope_audit["work_item_count"]
+            + direct_remediation_scope_audit["work_item_count"]
+        ),
+    )
+    return {
+        "scope": "page-governance-audit-evidence-packet-queue",
+        "disclaimer": (
+            "This queue aggregates read-only MCP evidence packets for manual audit review; it does not write "
+            "governance records, run UI/API smoke checks, prove page/API execution, capture business-owner "
+            "approval, and does not approve metric/page formal use."
+        ),
+        "items": items,
+        "summary": {
+            "page_count": review_queue["summary"]["page_count"],
+            "ready_for_audit_review_count": review_queue["summary"]["ready_for_audit_review_count"],
+            "packet_count": len(items),
+            "blocked_by_record_gaps_count": review_queue["summary"]["blocked_by_record_gaps_count"],
+            "closure_approved_count": review_queue["summary"]["closure_approved_count"],
+            "manual_review_blocker_count": manual_review_blocker_count,
+            "manual_review_evidence_present_count": manual_review_evidence_present_count,
+            "closure_readiness": page_governance_queue_closure_readiness(
+                page_count=review_queue["summary"]["page_count"],
+                ready_for_audit_review_count=review_queue["summary"]["ready_for_audit_review_count"],
+                blocked_by_record_gaps_count=review_queue["summary"]["blocked_by_record_gaps_count"],
+                manual_review_mcp_work_item_count=len(manual_review_mcp_work_items),
+                manual_review_blocker_count=manual_review_blocker_count,
+                manual_review_evidence_present_count=manual_review_evidence_present_count,
+                closure_approved_count=review_queue["summary"]["closure_approved_count"],
+            ),
+            "manual_review_blocker_breakdown": page_governance_count_values(
+                check
+                for item in items
+                for check in item["manual_review_blockers"]
+            ),
+            "manual_review_evidence_present_breakdown": page_governance_count_values(
+                str(evidence.get("check"))
+                for item in items
+                for evidence in item.get("manual_review_evidence_present", [])
+                if evidence.get("check")
+            ),
+            "manual_review_blocker_pages": page_governance_pages_by_check(
+                items,
+                "manual_review_blockers",
+            ),
+            "manual_review_evidence_present_pages": page_governance_pages_by_evidence_check(
+                items,
+                "manual_review_evidence_present",
+            ),
+            "ready_for_audit_review_pages": [
+                {"page_id": item["page_id"], "page_slug": item["page_slug"]}
+                for item in items
+            ],
+            "manual_review_evidence_present_work_items": manual_review_evidence_present_work_items,
+            "manual_review_mcp_work_items": manual_review_mcp_work_items,
+            "manual_review_mcp_scope_audit": manual_review_mcp_scope_audit,
+            "manual_review_work_items": manual_review_work_items,
+            "manual_review_scope_audit": manual_review_scope_audit,
+            "queue_boundary_audit": queue_boundary_audit,
+            "blocked_by_record_gap_remediation_breakdown": page_governance_count_values(
+                page["remediation_type"] for page in blocked_pages
+            ),
+            "blocked_by_record_gap_remediation_pages": page_governance_pages_by_remediation_type(
+                blocked_pages,
+            ),
+            "blocked_by_record_gap_next_step_breakdown": page_governance_count_values(
+                step["next_step"] for step in blocked_next_steps
+            ),
+            "blocked_by_record_gap_next_step_pages": page_governance_pages_by_next_step(
+                blocked_next_steps,
+            ),
+            "blocked_by_record_gap_next_steps": blocked_next_steps,
+            "create_direct_record_table_anchor_work_items": create_table_anchor_work_items,
+            "direct_record_remediation_scope_audit": direct_remediation_scope_audit,
+            "create_direct_record_evidence_work_items": create_evidence_work_items,
+            "repair_direct_record_evidence_work_items": repair_evidence_work_items,
+            "direct_record_remediation_work_items": direct_remediation_work_items,
+            "blocked_by_record_gap_pages": blocked_pages,
+        },
+        "evidence_scope": page_governance_audit_evidence_packet_scope(),
+    }
+
+
+def page_governance_blocked_record_gap_pages(
+    bundles: dict[str, dict[str, Any]],
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "page_id": str(page["page_id"]),
+            "page_slug": str(page["page_slug"]),
+            "page_name": str(page["page_name"]),
+            "primary_api": str(page["primary_api"]),
+            "record_validation_status": str(page["record_validation_status"]),
+            "direct_record_count": int(page["direct_record_count"]),
+            "incomplete_record_count": int(page["incomplete_record_count"]),
+            "remediation_type": page_governance_record_gap_remediation_type(page),
+            "remediation_tool_calls": page_governance_record_gap_remediation_tool_calls(page),
+            "repair_targets": page_governance_repair_targets(
+                page_governance_gap_direct_record_diagnostics(
+                    page,
+                    include_records=True,
+                ),
+                page_governance_record_blueprint(bundles, str(page["page_slug"])),
+            ),
+            **page_governance_record_gap_creation_target(bundles, page),
+            **page_governance_record_gap_anchor_repair_target(bundles, page),
+            "residual_gaps": list(page.get("residual_gaps", [])),
+        }
+        for page in pages
+        if page["audit_review_status"] == "blocked_by_record_gaps"
+    ]
+
+
+def page_governance_record_gap_remediation_type(page: dict[str, Any]) -> str:
+    if page["record_validation_status"] == "missing_direct_records":
+        return "create_direct_record"
+    residual_gaps = [str(gap) for gap in page.get("residual_gaps", [])]
+    if any("primary page/API anchor is missing" in gap for gap in residual_gaps):
+        return "repair_primary_page_anchor"
+    return "complete_direct_record_fields"
+
+
+def page_governance_record_gap_remediation_tool_calls(page: dict[str, Any]) -> list[dict[str, Any]]:
+    page_slug = str(page["page_slug"])
+    return [
+        {
+            "tool": "moss-lineage-evidence.get_page_governance_record_requirements",
+            "arguments": {"page_slugs": [page_slug]},
+        },
+        {
+            "tool": "moss-lineage-evidence.get_page_governance_record_blueprint",
+            "arguments": {"page_slug": page_slug},
+        },
+    ]
+
+
+def page_governance_record_gap_creation_target(
+    bundles: dict[str, dict[str, Any]],
+    page: dict[str, Any],
+) -> dict[str, Any]:
+    if page_governance_record_gap_remediation_type(page) != "create_direct_record":
+        return {}
+    blueprint = page_governance_record_blueprint(bundles, str(page["page_slug"]))
+    validation = blueprint["preflight"]["validation"]
+    failed_groups = [
+        str(group.get("name") or "")
+        for group in validation.get("failed_required_field_groups", [])
+    ]
+    candidate = blueprint["candidate_record"]
+    gap_type = page_governance_gap_type(
+        str(page["record_validation_status"]),
+        expanded_anchor_record_count=int(page.get("expanded_anchor_record_count", 0)),
+    )
+    return {
+        "creation_target": {
+            "manual_fill_priority": page_governance_missing_direct_record_fill_priority(gap_type),
+            "candidate_record": {
+                "page_id": candidate.get("page_id"),
+                "page_slug": candidate.get("page_slug"),
+                "frontend_route": candidate.get("frontend_route"),
+                "primary_api": candidate.get("primary_api"),
+                "tables_used": candidate.get("tables_used"),
+                "formal_use_allowed": candidate.get("formal_use_allowed"),
+            },
+            "preflight_submission_template": page_governance_preflight_submission_template(blueprint),
+            "manual_fill_fields": blueprint["manual_fill_fields"],
+            "manual_fill_field_details": page_governance_manual_fill_field_details(blueprint),
+            "missing_required_fields": validation.get("missing_required_fields", []),
+            "failed_required_field_groups": failed_groups,
+            "direct_anchor_targets": blueprint["direct_anchor_targets"],
+            "configured_table_names": blueprint["configured_table_names"],
+            **page_governance_table_anchor_resolution_target(blueprint),
+        }
+    }
+
+
+def page_governance_preflight_submission_template(blueprint: dict[str, Any]) -> dict[str, Any]:
+    candidate = blueprint["candidate_record"]
+    return {
+        "tool": "moss-lineage-evidence.preflight_page_governance_record",
+        "arguments": {
+            "page_slug": blueprint["page_slug"],
+            "record": {
+                "page_id": candidate.get("page_id"),
+                "page_slug": candidate.get("page_slug"),
+                "frontend_route": candidate.get("frontend_route"),
+                "primary_api": candidate.get("primary_api"),
+                "tables_used": candidate.get("tables_used"),
+                "formal_use_allowed": candidate.get("formal_use_allowed"),
+                "report_date": candidate.get("report_date"),
+                "basis": candidate.get("basis"),
+                "source_surface": candidate.get("source_surface"),
+                "source_version": candidate.get("source_version"),
+                "rule_version": candidate.get("rule_version"),
+                "created_at": candidate.get("created_at"),
+                "cache_key": candidate.get("cache_key"),
+                "run_id": candidate.get("run_id"),
+            },
+        },
+        "manual_placeholders": list(blueprint["manual_fill_fields"]),
+        "approval_boundary": "preflight_only_no_write_no_approval",
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "checks_record_existence": False,
+        },
+    }
+
+
+def page_governance_record_gap_anchor_repair_target(
+    bundles: dict[str, dict[str, Any]],
+    page: dict[str, Any],
+) -> dict[str, Any]:
+    if page_governance_record_gap_remediation_type(page) != "repair_primary_page_anchor":
+        return {}
+    blueprint = page_governance_record_blueprint(bundles, str(page["page_slug"]))
+    diagnostics = page_governance_gap_direct_record_diagnostics(
+        page,
+        include_records=True,
+    )
+    repair_targets = page_governance_repair_targets(
+        diagnostics
+    )
+    supporting_matches = [
+        target.get("direct_anchor_match", {})
+        for target in repair_targets
+        if target.get("direct_anchor_match", {}).get("anchor_type") == "supporting_api"
+    ]
+    return {
+        "anchor_repair_target": {
+            "required_primary_anchor_types": ["page_id", "frontend_route", "primary_api"],
+            "direct_anchor_targets": blueprint["direct_anchor_targets"],
+            "current_supporting_anchor_matches": supporting_matches,
+            "preflight_repair_templates": page_governance_anchor_repair_preflight_templates(
+                blueprint,
+                diagnostics,
+            ),
+        }
+    }
+
+
+def page_governance_anchor_repair_preflight_templates(
+    blueprint: dict[str, Any],
+    diagnostics: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    templates = []
+    for diagnostic in diagnostics:
+        if diagnostic.get("direct_anchor_match", {}).get("anchor_type") != "supporting_api":
+            continue
+        repaired_record = page_governance_anchor_repair_candidate_record(
+            blueprint,
+            diagnostic.get("record", {}),
+        )
+        templates.append(
+            {
+                "record_location": diagnostic.get("record_location", {}),
+                "tool": "moss-lineage-evidence.preflight_page_governance_record",
+                "arguments": {
+                    "page_slug": blueprint["page_slug"],
+                    "record": repaired_record,
+                },
+                "manual_placeholders": page_governance_repaired_record_manual_placeholders(
+                    blueprint,
+                    repaired_record,
+                ),
+                "approval_boundary": "preflight_only_no_write_no_approval",
+                "evidence_scope": {
+                    "writes_governance_records": False,
+                    "approves_metric_or_page": False,
+                    "proves_page_execution": False,
+                    "checks_record_existence": False,
+                },
+            }
+        )
+    return templates
+
+
+def page_governance_anchor_repair_candidate_record(
+    blueprint: dict[str, Any],
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = dict(record) if isinstance(record, dict) else {}
+    return {
+        "page_id": blueprint["page_id"],
+        "page_slug": blueprint["page_slug"],
+        "frontend_route": blueprint["frontend_route"],
+        "primary_api": blueprint["primary_api"],
+        "tables_used": candidate.get("tables_used"),
+        "formal_use_allowed": False,
+        "report_date": candidate.get("report_date"),
+        "basis": candidate.get("basis"),
+        "source_surface": candidate.get("source_surface"),
+        "source_version": candidate.get("source_version"),
+        "rule_version": candidate.get("rule_version"),
+        "created_at": candidate.get("created_at"),
+        "cache_key": candidate.get("cache_key"),
+        "run_id": candidate.get("run_id"),
+    }
+
+
+def page_governance_repaired_record_manual_placeholders(
+    blueprint: dict[str, Any],
+    record: dict[str, Any],
+) -> list[str]:
+    placeholders = [
+        field
+        for field in blueprint["required_fields"]
+        if governance_record_value_missing(record.get(field))
+    ]
+    if any(
+        str(group.get("name") or "") == "execution_identifier"
+        and governance_required_field_group_failed(record, group)
+        for group in blueprint["required_field_groups"]
+    ):
+        placeholders.append("cache_key_or_run_id")
+    return placeholders
+
+
+def page_governance_missing_direct_record_fill_priority(gap_type: str) -> str:
+    if gap_type == "missing_direct_and_expanded_records":
+        return "create_direct_record_and_supporting_lineage"
+    if gap_type == "missing_direct_record_expanded_only":
+        return "create_direct_record_from_existing_supporting_lineage"
+    return "create_direct_record"
+
+
+def page_governance_table_anchor_resolution_target(blueprint: dict[str, Any]) -> dict[str, Any]:
+    page_id = str(blueprint.get("page_id") or "")
+    deferred_reason = PAGE_CATALOG_DATE_DEFERRED_REASONS.get(page_id)
+    if not deferred_reason:
+        return {}
+    return {
+        "table_anchor_resolution_target": {
+            "resolution_type": "deferred_no_direct_table_config",
+            "deferred_reason": deferred_reason,
+            "required_action": "do_not_invent_tables_used",
+            "review_targets": [
+                "upstream source pages",
+                "direct page/API governance record",
+                "visible stale/fallback/no-data state",
+                "result_meta",
+            ],
+            "suggested_tool_calls": [
+                {
+                    "tool": "moss-data-catalog.get_page_catalog_date_coverage",
+                    "arguments": {"page_slugs": [str(blueprint.get("page_slug") or "")]},
+                },
+            ],
+            "evidence_scope": {
+                "writes_governance_records": False,
+                "approves_metric_or_page": False,
+                "proves_page_execution": False,
+                "samples_duckdb_tables": False,
+            },
+        }
+    }
+
+
+def page_governance_pages_by_remediation_type(
+    pages: list[dict[str, Any]],
+) -> dict[str, list[dict[str, str]]]:
+    pages_by_type: dict[str, list[dict[str, str]]] = {}
+    for page in pages:
+        pages_by_type.setdefault(str(page["remediation_type"]), []).append(
+            {
+                "page_id": str(page["page_id"]),
+                "page_slug": str(page["page_slug"]),
+            }
+        )
+    return dict(sorted(pages_by_type.items()))
+
+
+def page_governance_pages_by_next_step(
+    next_steps: list[dict[str, Any]],
+) -> dict[str, list[dict[str, str]]]:
+    pages_by_next_step: dict[str, list[dict[str, str]]] = {}
+    for step in next_steps:
+        pages_by_next_step.setdefault(str(step["next_step"]), []).append(
+            {
+                "page_id": str(step["page_id"]),
+                "page_slug": str(step["page_slug"]),
+            }
+        )
+    return dict(sorted(pages_by_next_step.items()))
+
+
+def page_governance_create_direct_record_table_anchor_work_items(
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    work_items_by_status: dict[str, dict[str, Any]] = {}
+    for page in pages:
+        if str(page.get("remediation_type") or "") != "create_direct_record":
+            continue
+        creation_target = page.get("creation_target") if isinstance(page.get("creation_target"), dict) else {}
+        table_anchor_target = creation_target.get("table_anchor_resolution_target")
+        if isinstance(table_anchor_target, dict):
+            status = str(table_anchor_target.get("resolution_type") or "deferred_no_direct_table_config")
+            page_ref = {
+                "page_id": str(page["page_id"]),
+                "page_slug": str(page["page_slug"]),
+                "deferred_reason": str(table_anchor_target.get("deferred_reason") or ""),
+            }
+            next_action = "resolve_without_inventing_tables_used"
+        else:
+            status = "configured_table_anchor_available"
+            page_ref = {
+                "page_id": str(page["page_id"]),
+                "page_slug": str(page["page_slug"]),
+                "configured_table_names": list(creation_target.get("configured_table_names", [])),
+            }
+            next_action = "collect_page_run_evidence_for_configured_table_anchors"
+        item = work_items_by_status.setdefault(
+            status,
+            {
+                "table_anchor_status": status,
+                "pages": [],
+                "next_action": next_action,
+                "approval_boundary": "record_creation_table_anchor_routing_only",
+                "evidence_scope": {
+                    "writes_governance_records": False,
+                    "approves_metric_or_page": False,
+                    "proves_page_execution": False,
+                    "executes_tool_calls": False,
+                    "runs_ui_or_api_smoke": False,
+                    "captures_business_owner_approval": False,
+                },
+            },
+        )
+        item["pages"].append(page_ref)
+    work_items = []
+    for item in work_items_by_status.values():
+        item["page_count"] = len(item["pages"])
+        work_items.append(item)
+    return sorted(work_items, key=lambda item: str(item["table_anchor_status"]))
+
+
+def page_governance_blocked_record_gap_next_steps(
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "page_id": str(page["page_id"]),
+            "page_slug": str(page["page_slug"]),
+            "remediation_type": str(page["remediation_type"]),
+            **page_governance_record_gap_next_step_fields(str(page["remediation_type"])),
+            "suggested_tool_calls": list(page.get("remediation_tool_calls", [])),
+            "approval_boundary": "record_remediation_only",
+            "evidence_scope": {
+                "writes_governance_records": False,
+                "approves_metric_or_page": False,
+                "proves_page_execution": False,
+                "executes_tool_calls": False,
+                "runs_ui_or_api_smoke": False,
+                "captures_business_owner_approval": False,
+            },
+        }
+        for page in pages
+    ]
+
+
+def page_governance_record_gap_next_step_fields(remediation_type: str) -> dict[str, Any]:
+    if remediation_type == "create_direct_record":
+        return {
+            "next_step": "collect_direct_page_api_record_evidence_then_preflight_candidate",
+            "evidence_to_collect": [
+                "direct_page_or_primary_api_anchor",
+                "required_record_fields",
+                "page_api_execution_identifier",
+                "configured_or_deferred_table_anchors",
+            ],
+        }
+    if remediation_type == "repair_primary_page_anchor":
+        return {
+            "next_step": "repair_primary_page_api_anchor_then_preflight_candidate",
+            "evidence_to_collect": [
+                "primary_page_id_or_frontend_route_or_primary_api_anchor",
+                "supporting_record_reusable_execution_fields",
+                "remaining_missing_required_fields",
+            ],
+        }
+    return {
+        "next_step": "complete_existing_direct_record_fields_then_preflight",
+        "evidence_to_collect": [
+            "missing_required_fields",
+            "failed_required_field_groups",
+            "page_api_execution_identifier",
+        ],
+    }
+
+
+def page_governance_direct_record_remediation_work_items(
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    work_items = []
+    for page in pages:
+        remediation_type = str(page["remediation_type"])
+        item = {
+            "work_type": page_governance_direct_record_work_type(remediation_type),
+            "remediation_type": remediation_type,
+            "page_id": str(page["page_id"]),
+            "page_slug": str(page["page_slug"]),
+            "page_name": str(page["page_name"]),
+            "primary_api": str(page["primary_api"]),
+            "record_validation_status": str(page["record_validation_status"]),
+            "direct_record_count": int(page["direct_record_count"]),
+            "incomplete_record_count": int(page["incomplete_record_count"]),
+            "remediation_tool_calls": list(page.get("remediation_tool_calls", [])),
+            "repair_targets": list(page.get("repair_targets", [])),
+            "residual_gaps": list(page.get("residual_gaps", [])),
+            "approval_boundary": "record_remediation_only",
+            "evidence_scope": {
+                "writes_governance_records": False,
+                "approves_metric_or_page": False,
+                "proves_page_execution": False,
+                "executes_tool_calls": False,
+                "runs_ui_or_api_smoke": False,
+                "captures_business_owner_approval": False,
+            },
+        }
+        if "creation_target" in page:
+            item["creation_target"] = page["creation_target"]
+        if "anchor_repair_target" in page:
+            item["anchor_repair_target"] = page["anchor_repair_target"]
+        work_items.append(item)
+    return work_items
+
+
+def page_governance_create_direct_record_evidence_work_items(
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    work_items_by_key: dict[str, dict[str, Any]] = {}
+    for page in pages:
+        if str(page.get("remediation_type") or "") != "create_direct_record":
+            continue
+        creation_target = page.get("creation_target") if isinstance(page.get("creation_target"), dict) else {}
+        for detail in creation_target.get("manual_fill_field_details", []):
+            if detail.get("status") not in {"missing", "failed"}:
+                continue
+            evidence_key = str(detail.get("name") or "")
+            if not evidence_key:
+                continue
+            item = work_items_by_key.setdefault(
+                evidence_key,
+                {
+                    "evidence_key": evidence_key,
+                    "kind": str(detail.get("kind") or ""),
+                    "status": str(detail.get("status") or ""),
+                    "pages": [],
+                    "evidence_hints": list(detail.get("evidence_hints", [])),
+                    "approval_boundary": "record_creation_evidence_collection_only",
+                    "evidence_scope": {
+                        "writes_governance_records": False,
+                        "approves_metric_or_page": False,
+                        "proves_page_execution": False,
+                        "executes_tool_calls": False,
+                        "runs_ui_or_api_smoke": False,
+                        "captures_business_owner_approval": False,
+                    },
+                },
+            )
+            item["pages"].append(
+                {
+                    "page_id": str(page["page_id"]),
+                    "page_slug": str(page["page_slug"]),
+                }
+            )
+    work_items = []
+    for item in work_items_by_key.values():
+        item["page_count"] = len(item["pages"])
+        work_items.append(item)
+    return sorted(work_items, key=lambda item: str(item["evidence_key"]))
+
+
+def page_governance_repair_direct_record_evidence_work_items(
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    work_items_by_key: dict[str, dict[str, Any]] = {}
+    for page in pages:
+        remediation_type = str(page.get("remediation_type") or "")
+        if remediation_type == "create_direct_record":
+            continue
+        for repair_target in page.get("repair_targets", []):
+            page_ref = {
+                "page_id": str(page["page_id"]),
+                "page_slug": str(page["page_slug"]),
+            }
+            record_ref = {
+                **page_ref,
+                "record_location": repair_target.get("record_location", {}),
+            }
+            evidence_hints = repair_target.get("evidence_hints", {})
+            for field in repair_target.get("missing_required_fields", []):
+                page_governance_add_repair_evidence_work_item(
+                    work_items_by_key,
+                    evidence_key=str(field),
+                    kind="field",
+                    status="missing",
+                    page_ref=page_ref,
+                    record_ref=record_ref,
+                    remediation_type=remediation_type,
+                    evidence_hints=list(
+                        evidence_hints.get("missing_required_fields", {}).get(str(field), [])
+                    ),
+                )
+            for group in repair_target.get("failed_required_field_groups", []):
+                page_governance_add_repair_evidence_work_item(
+                    work_items_by_key,
+                    evidence_key=str(group),
+                    kind="group",
+                    status="failed",
+                    page_ref=page_ref,
+                    record_ref=record_ref,
+                    remediation_type=remediation_type,
+                    evidence_hints=list(
+                        evidence_hints.get("failed_required_field_groups", {}).get(str(group), [])
+                    ),
+                )
+    work_items = []
+    for item in work_items_by_key.values():
+        item["page_count"] = len(item["pages"])
+        item["remediation_types"] = sorted(item["remediation_types"])
+        work_items.append(item)
+    return sorted(work_items, key=lambda item: str(item["evidence_key"]))
+
+
+def page_governance_add_repair_evidence_work_item(
+    work_items_by_key: dict[str, dict[str, Any]],
+    *,
+    evidence_key: str,
+    kind: str,
+    status: str,
+    page_ref: dict[str, str],
+    record_ref: dict[str, Any],
+    remediation_type: str,
+    evidence_hints: list[str],
+) -> None:
+    item = work_items_by_key.setdefault(
+        evidence_key,
+        {
+            "evidence_key": evidence_key,
+            "kind": kind,
+            "status": status,
+            "pages": [],
+            "remediation_types": set(),
+            "record_locations": [],
+            "evidence_hints": evidence_hints,
+            "approval_boundary": "record_repair_evidence_collection_only",
+            "evidence_scope": {
+                "writes_governance_records": False,
+                "approves_metric_or_page": False,
+                "proves_page_execution": False,
+                "executes_tool_calls": False,
+                "runs_ui_or_api_smoke": False,
+                "captures_business_owner_approval": False,
+            },
+        },
+    )
+    item["pages"].append(page_ref)
+    item["remediation_types"].add(remediation_type)
+    item["record_locations"].append(record_ref)
+
+
+def page_governance_direct_record_remediation_scope_audit(
+    work_item_groups: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    checked_groups = [
+        "blocked_by_record_gap_next_steps",
+        "create_direct_record_evidence_work_items",
+        "create_direct_record_table_anchor_work_items",
+        "direct_record_remediation_work_items",
+        "repair_direct_record_evidence_work_items",
+    ]
+    scope_keys = [
+        "writes_governance_records",
+        "approves_metric_or_page",
+        "proves_page_execution",
+        "executes_tool_calls",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    work_item_count = 0
+    for group in checked_groups:
+        for index, item in enumerate(work_item_groups.get(group, [])):
+            work_item_count += 1
+            evidence_scope = item.get("evidence_scope") if isinstance(item, dict) else None
+            scope = evidence_scope if isinstance(evidence_scope, dict) else {}
+            for key in scope_keys:
+                value = scope.get(key)
+                if value is True:
+                    scope_flags[key] = True
+                if value is not False:
+                    scope_violations.append(
+                        {
+                            "work_item_group": group,
+                            "work_item_index": index,
+                            "scope_key": key,
+                            "scope_value": value,
+                        }
+                    )
+    return {
+        "work_item_count": work_item_count,
+        "checked_work_item_groups": checked_groups,
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "scope_violations": scope_violations,
+    }
+
+
+def page_governance_direct_record_work_type(remediation_type: str) -> str:
+    if remediation_type == "complete_direct_record_fields":
+        return "complete_existing_direct_record"
+    if remediation_type == "repair_primary_page_anchor":
+        return "repair_primary_page_anchor"
+    return "create_direct_record"
+
+
+def page_governance_count_values(values: Iterable[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def page_governance_pages_by_check(
+    items: list[dict[str, Any]],
+    checks_field: str,
+) -> dict[str, list[dict[str, str]]]:
+    pages_by_check: dict[str, list[dict[str, str]]] = {}
+    for item in items:
+        page_ref = page_governance_packet_page_ref(item)
+        for check in item.get(checks_field, []):
+            pages_by_check.setdefault(str(check), []).append(page_ref)
+    return dict(sorted(pages_by_check.items()))
+
+
+def page_governance_pages_by_evidence_check(
+    items: list[dict[str, Any]],
+    evidence_field: str,
+) -> dict[str, list[dict[str, str]]]:
+    pages_by_check: dict[str, list[dict[str, str]]] = {}
+    for item in items:
+        page_ref = page_governance_packet_page_ref(item)
+        for evidence in item.get(evidence_field, []):
+            check = evidence.get("check") if isinstance(evidence, dict) else None
+            if check:
+                pages_by_check.setdefault(str(check), []).append(page_ref)
+    return dict(sorted(pages_by_check.items()))
+
+
+def page_governance_manual_review_work_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    work_items = []
+    assignment_checks = {
+        "ui_api_payload_review",
+        "live_smoke_evidence_review",
+        "business_owner_approval",
+    }
+    for item in items:
+        record_primary_api = page_governance_packet_ready_record_primary_api(item)
+        for target in item.get("manual_review_blocker_targets", []):
+            if not isinstance(target, dict):
+                continue
+            check = str(target.get("check") or "")
+            if check not in assignment_checks:
+                continue
+            primary_api = str(record_primary_api or target.get("primary_api") or "")
+            review_targets = dict(target.get("review_targets", {}))
+            if check == "ui_api_payload_review":
+                review_targets["api_payload"] = primary_api
+            if check == "live_smoke_evidence_review":
+                review_targets["primary_api"] = primary_api
+            work_items.append(
+                {
+                    "check": check,
+                    "page_id": str(target.get("page_id") or ""),
+                    "page_slug": str(target.get("page_slug") or ""),
+                    "frontend_route": str(target.get("frontend_route") or ""),
+                    "primary_api": primary_api,
+                    "review_targets": review_targets,
+                    "approval_boundary": str(target.get("approval_boundary") or "manual_review_only"),
+                    "evidence_scope": {
+                        "writes_governance_records": False,
+                        "approves_metric_or_page": False,
+                        "proves_page_execution": False,
+                        "runs_ui_or_api_smoke": False,
+                        "captures_business_owner_approval": False,
+                    },
+                }
+            )
+    return work_items
+
+
+def page_governance_manual_review_evidence_present_work_items(
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    work_items = []
+    for item in items:
+        queue_item = item.get("audit_review_queue_item") if isinstance(item, dict) else {}
+        if not isinstance(queue_item, dict):
+            queue_item = {}
+        record_primary_api = page_governance_packet_ready_record_primary_api(item)
+        primary_api = str(record_primary_api or queue_item.get("primary_api") or "")
+        for evidence in item.get("manual_review_evidence_present", []):
+            if not isinstance(evidence, dict):
+                continue
+            work_items.append(
+                {
+                    "check": str(evidence.get("check") or ""),
+                    "page_id": str(item.get("page_id") or queue_item.get("page_id") or ""),
+                    "page_slug": str(item.get("page_slug") or queue_item.get("page_slug") or ""),
+                    "frontend_route": str(queue_item.get("frontend_route") or ""),
+                    "primary_api": primary_api,
+                    "evidence_field": str(evidence.get("evidence_field") or ""),
+                    "evidence_value": str(evidence.get("evidence_value") or ""),
+                    "review_status": str(evidence.get("status") or "evidence_present_needs_review"),
+                    "approval_boundary": "manual_review_evidence_present_review_only",
+                    "evidence_scope": {
+                        "writes_governance_records": False,
+                        "approves_metric_or_page": False,
+                        "proves_page_execution": False,
+                        "runs_ui_or_api_smoke": False,
+                        "captures_business_owner_approval": False,
+                    },
+                }
+            )
+    return work_items
+
+
+def page_governance_manual_review_scope_audit(
+    work_items: list[dict[str, Any]] | dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "approves_metric_or_page",
+        "proves_page_execution",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+    ]
+    work_item_groups = (
+        {"manual_review_work_items": work_items}
+        if isinstance(work_items, list)
+        else work_items
+    )
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    for group, grouped_work_items in work_item_groups.items():
+        for index, item in enumerate(grouped_work_items):
+            evidence_scope = item.get("evidence_scope") if isinstance(item, dict) else None
+            scope = evidence_scope if isinstance(evidence_scope, dict) else {}
+            for key in scope_keys:
+                value = scope.get(key)
+                if value is True:
+                    scope_flags[key] = True
+                if value is not False:
+                    scope_violations.append(
+                        {
+                            "work_item_group": str(group),
+                            "work_item_index": index,
+                            "scope_key": key,
+                            "scope_value": value,
+                        }
+                    )
+    return {
+        "work_item_count": sum(len(grouped_work_items) for grouped_work_items in work_item_groups.values()),
+        "checked_work_item_groups": list(work_item_groups),
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "scope_violations": scope_violations,
+    }
+
+
+def page_governance_manual_review_mcp_work_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    mcp_evidence_checks = {
+        "page_contract_review",
+        "catalog_date_sampling",
+        "lineage_freshness_review",
+    }
+    work_items_by_check: dict[str, dict[str, Any]] = {}
+    for item in items:
+        queue_item = item.get("audit_review_queue_item") if isinstance(item, dict) else {}
+        if not isinstance(queue_item, dict):
+            continue
+        for step in queue_item.get("manual_review_steps", []):
+            if not isinstance(step, dict) or not step.get("tool_calls"):
+                continue
+            check = str(step.get("check") or "")
+            if check not in mcp_evidence_checks:
+                continue
+            work_item = work_items_by_check.setdefault(
+                check,
+                {
+                    "check": check,
+                    "page_count": 0,
+                    "pages": [],
+                    "evidence_to_collect": list(step.get("evidence_to_collect", [])),
+                    "suggested_tools": list(step.get("suggested_tools", [])),
+                    "approval_boundary": "manual_review_mcp_evidence_collection_only",
+                    "evidence_scope": {
+                        "writes_governance_records": False,
+                        "approves_metric_or_page": False,
+                        "proves_page_execution": False,
+                        "executes_tool_calls": False,
+                    },
+                },
+            )
+            work_item["pages"].append(
+                {
+                    "page_id": str(queue_item.get("page_id") or ""),
+                    "page_slug": str(queue_item.get("page_slug") or ""),
+                    "tool_calls": list(step.get("tool_calls", [])),
+                }
+            )
+            work_item["page_count"] = len(work_item["pages"])
+    return list(work_items_by_check.values())
+
+
+def page_governance_manual_review_mcp_scope_audit(
+    work_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scope_keys = [
+        "writes_governance_records",
+        "approves_metric_or_page",
+        "proves_page_execution",
+        "executes_tool_calls",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    for index, item in enumerate(work_items):
+        evidence_scope = item.get("evidence_scope") if isinstance(item, dict) else None
+        scope = evidence_scope if isinstance(evidence_scope, dict) else {}
+        for key in scope_keys:
+            value = scope.get(key)
+            if value is True:
+                scope_flags[key] = True
+            if value is not False:
+                scope_violations.append(
+                    {
+                        "work_item_group": "manual_review_mcp_work_items",
+                        "work_item_index": index,
+                        "scope_key": key,
+                        "scope_value": value,
+                    }
+                )
+    return {
+        "work_item_count": len(work_items),
+        "checked_work_item_groups": ["manual_review_mcp_work_items"],
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "scope_violations": scope_violations,
+    }
+
+
+def page_governance_queue_closure_readiness(
+    *,
+    page_count: int,
+    ready_for_audit_review_count: int,
+    blocked_by_record_gaps_count: int,
+    manual_review_mcp_work_item_count: int,
+    manual_review_blocker_count: int,
+    manual_review_evidence_present_count: int,
+    closure_approved_count: int,
+) -> dict[str, Any]:
+    residual_requirements = []
+    if blocked_by_record_gaps_count:
+        residual_requirements.append("record_gap_remediation")
+    if manual_review_mcp_work_item_count:
+        residual_requirements.append("mcp_evidence_collection")
+    if manual_review_blocker_count:
+        residual_requirements.append("manual_review_blockers")
+    if manual_review_evidence_present_count:
+        residual_requirements.append("present_evidence_review")
+    if ready_for_audit_review_count and closure_approved_count < ready_for_audit_review_count:
+        residual_requirements.append("business_owner_approval")
+    closure_ready_count = min(closure_approved_count, ready_for_audit_review_count)
+    return {
+        "page_count": page_count,
+        "ready_for_audit_review_count": ready_for_audit_review_count,
+        "blocked_by_record_gaps_count": blocked_by_record_gaps_count,
+        "manual_review_mcp_work_item_count": manual_review_mcp_work_item_count,
+        "manual_review_blocker_count": manual_review_blocker_count,
+        "manual_review_evidence_present_needs_review_count": manual_review_evidence_present_count,
+        "closure_approved_count": closure_approved_count,
+        "closure_ready_count": closure_ready_count,
+        "closure_blocked_count": page_count - closure_ready_count,
+        "queue_grants_closure": False,
+        "status": page_governance_queue_closure_status(
+            blocked_by_record_gaps_count=blocked_by_record_gaps_count,
+            manual_review_mcp_work_item_count=manual_review_mcp_work_item_count,
+            manual_review_blocker_count=manual_review_blocker_count,
+            manual_review_evidence_present_count=manual_review_evidence_present_count,
+            closure_approved_count=closure_approved_count,
+            ready_for_audit_review_count=ready_for_audit_review_count,
+        ),
+        "residual_closure_requirements": residual_requirements,
+    }
+
+
+def page_governance_queue_closure_status(
+    *,
+    blocked_by_record_gaps_count: int,
+    manual_review_mcp_work_item_count: int,
+    manual_review_blocker_count: int,
+    manual_review_evidence_present_count: int,
+    closure_approved_count: int,
+    ready_for_audit_review_count: int,
+) -> str:
+    manual_review_count = (
+        manual_review_mcp_work_item_count
+        + manual_review_blocker_count
+        + manual_review_evidence_present_count
+    )
+    if blocked_by_record_gaps_count and manual_review_count:
+        return "manual_review_and_record_remediation_required"
+    if blocked_by_record_gaps_count:
+        return "record_remediation_required"
+    if manual_review_count:
+        return "manual_review_required"
+    if closure_approved_count < ready_for_audit_review_count:
+        return "business_owner_approval_required"
+    return "closure_not_granted_by_queue"
+
+
+def page_governance_queue_boundary_audit(
+    scope_audits: dict[str, dict[str, Any]],
+    *,
+    work_item_count: int,
+) -> dict[str, Any]:
+    checked_scope_audits = [
+        "manual_review_mcp_scope_audit",
+        "manual_review_scope_audit",
+        "direct_record_remediation_scope_audit",
+    ]
+    scope_keys = [
+        "writes_governance_records",
+        "approves_metric_or_page",
+        "proves_page_execution",
+        "executes_tool_calls",
+        "runs_ui_or_api_smoke",
+        "captures_business_owner_approval",
+    ]
+    scope_flags = {key: False for key in scope_keys}
+    scope_violations = []
+    for audit_name in checked_scope_audits:
+        audit = scope_audits.get(audit_name, {})
+        for key in scope_keys:
+            if audit.get(key) is True:
+                scope_flags[key] = True
+        for violation in audit.get("scope_violations", []):
+            violation_with_source = dict(violation)
+            violation_with_source["scope_audit"] = audit_name
+            scope_violations.append(violation_with_source)
+    return {
+        "work_item_count": work_item_count,
+        "checked_scope_audits": checked_scope_audits,
+        "writes_governance_records": scope_flags["writes_governance_records"],
+        "approves_metric_or_page": scope_flags["approves_metric_or_page"],
+        "proves_page_execution": scope_flags["proves_page_execution"],
+        "executes_tool_calls": scope_flags["executes_tool_calls"],
+        "runs_ui_or_api_smoke": scope_flags["runs_ui_or_api_smoke"],
+        "captures_business_owner_approval": scope_flags["captures_business_owner_approval"],
+        "scope_violations": scope_violations,
+    }
+
+
+def page_governance_packet_ready_record_primary_api(item: dict[str, Any]) -> str | None:
+    queue_item = item.get("audit_review_queue_item")
+    if not isinstance(queue_item, dict):
+        return None
+    for validation in queue_item.get("direct_record_validations", []):
+        if not isinstance(validation, dict) or validation.get("validation_status") != "ready_for_audit_review":
+            continue
+        record = validation.get("record") if isinstance(validation.get("record"), dict) else {}
+        primary_api = record.get("primary_api")
+        if not governance_record_value_missing(primary_api):
+            return str(primary_api)
+    return None
+
+
+def page_governance_packet_page_ref(item: dict[str, Any]) -> dict[str, str]:
+    return {
+        "page_id": str(item["page_id"]),
+        "page_slug": str(item["page_slug"]),
+    }
+
+
+def page_governance_manual_review_evidence_present(queue_item: dict[str, Any]) -> list[dict[str, Any]]:
+    evidence_hints = queue_item.get("review_evidence_hints")
+    if not isinstance(evidence_hints, dict):
+        return []
+
+    present: list[dict[str, Any]] = []
+    ui_api_payload_evidence = evidence_hints.get("ui_api_payload_evidence")
+    if (
+        "ui_api_payload_review" in queue_item.get("remaining_manual_checks", [])
+        and not governance_record_value_missing(ui_api_payload_evidence)
+    ):
+        present.append(
+            {
+                "check": "ui_api_payload_review",
+                "evidence_field": "ui_api_payload_evidence",
+                "evidence_value": ui_api_payload_evidence,
+                "status": "evidence_present_needs_review",
+            }
+        )
+    live_smoke_evidence = evidence_hints.get("live_smoke_evidence")
+    if (
+        "live_smoke_evidence_review" in queue_item.get("remaining_manual_checks", [])
+        and not governance_record_value_missing(live_smoke_evidence)
+    ):
+        present.append(
+            {
+                "check": "live_smoke_evidence_review",
+                "evidence_field": "live_smoke_evidence",
+                "evidence_value": live_smoke_evidence,
+                "status": "evidence_present_needs_review",
+            }
+        )
+    return present
+
+
+def page_governance_manual_review_blockers(
+    queue_item: dict[str, Any],
+    evidence_present: list[dict[str, Any]],
+) -> list[str]:
+    present_checks = {str(item.get("check")) for item in evidence_present}
+    return [
+        check
+        for check in queue_item["remaining_manual_checks"]
+        if check in {"ui_api_payload_review", "live_smoke_evidence_review", "business_owner_approval"}
+        and check not in present_checks
+    ]
+
+
+def page_governance_manual_review_blocker_targets(
+    queue_item: dict[str, Any],
+    manual_blockers: list[str],
+) -> list[dict[str, Any]]:
+    steps = {
+        str(step.get("check") or ""): step
+        for step in queue_item.get("manual_review_steps", [])
+        if isinstance(step, dict)
+    }
+    targets = []
+    for check in manual_blockers:
+        step = steps.get(check, {})
+        target = {
+            "check": check,
+            "page_id": str(queue_item["page_id"]),
+            "page_slug": str(queue_item["page_slug"]),
+            "frontend_route": str(queue_item["frontend_route"]),
+            "primary_api": str(queue_item["primary_api"]),
+            "evidence_to_collect": list(step.get("evidence_to_collect", [])),
+            "suggested_tools": list(step.get("suggested_tools", [])),
+            "review_targets": page_governance_manual_review_target_details(check, queue_item),
+            "approval_boundary": "manual_review_only",
+        }
+        targets.append(target)
+    return targets
+
+
+def page_governance_manual_review_target_details(
+    check: str,
+    queue_item: dict[str, Any],
+) -> dict[str, Any]:
+    if check == "ui_api_payload_review":
+        return {
+            "api_payload": str(queue_item["primary_api"]),
+            "frontend_route": str(queue_item["frontend_route"]),
+            "result_meta_required": True,
+            "contract_page_id": str(queue_item["page_id"]),
+        }
+    if check == "business_owner_approval":
+        return {
+            "approval_record_page_id": str(queue_item["page_id"]),
+            "approval_record_page_slug": str(queue_item["page_slug"]),
+            "closure_approved": False,
+        }
+    if check == "live_smoke_evidence_review":
+        return {
+            "frontend_route": str(queue_item["frontend_route"]),
+            "primary_api": str(queue_item["primary_api"]),
+            "visible_state_review_required": True,
+            "contract_page_id": str(queue_item["page_id"]),
+        }
+    return {}
+
+
+def page_governance_contract_trace_summary(contract_trace: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "contract_doc_count": len(contract_trace.get("contract_docs", [])),
+        "golden_sample_ids": [
+            Path(str(sample)).name
+            for sample in contract_trace.get("golden_samples", [])
+        ],
+        "backend_touchpoint_count": len(contract_trace.get("backend_touchpoints", [])),
+        "frontend_touchpoint_count": len(contract_trace.get("frontend_touchpoints", [])),
+        "test_touchpoint_count": len(contract_trace.get("test_touchpoints", [])),
+    }
+
+
+def page_governance_audit_evidence_packet_disclaimer() -> str:
+    return (
+        "This packet aggregates read-only MCP evidence for manual audit review; it does not write governance "
+        "records, run UI/API smoke checks, prove page/API execution, capture business-owner approval, and does "
+        "not approve metric/page formal use."
+    )
+
+
+def page_governance_audit_evidence_packet_scope() -> dict[str, bool]:
+    return {
+        "writes_governance_records": False,
+        "approves_metric_or_page": False,
+        "proves_page_execution": False,
+        "runs_ui_or_api_smoke": False,
+        "captures_business_owner_approval": False,
+        "aggregates_mcp_evidence": True,
+    }
+
+
+def page_governance_audit_review_queue_item(page: dict[str, Any]) -> dict[str, Any]:
+    remaining_checks = [
+        str(check.get("name") or "")
+        for check in page["checks"]
+        if check.get("status") == "manual_review_required"
+    ]
+    return {
+        **page,
+        "review_priority": "manual_review_required",
+        "remaining_manual_checks": remaining_checks,
+        "manual_review_steps": [
+            page_governance_manual_review_step(check, page)
+            for check in remaining_checks
+        ],
+    }
+
+
+def page_governance_manual_review_step(check: str, page: dict[str, Any]) -> dict[str, Any]:
+    page_slug = str(page.get("page_slug") or "")
+    page_id = str(page.get("page_id") or "")
+    steps = {
+        "page_contract_review": {
+            "evidence_to_collect": [
+                "page contract",
+                "metric dictionary",
+                "calculation rules",
+                "golden samples",
+            ],
+            "suggested_tools": [
+                "moss-metric-contracts.get_page_trace_bundle",
+                "moss-metric-contracts.search_contract_docs",
+            ],
+            "tool_calls": [
+                {
+                    "tool": "moss-metric-contracts.get_page_trace_bundle",
+                    "arguments": {"page_slug": page_slug},
+                },
+                {
+                    "tool": "moss-metric-contracts.search_contract_docs",
+                    "arguments": {"query": page_id},
+                },
+            ],
+        },
+        "catalog_date_sampling": {
+            "evidence_to_collect": [
+                "configured page table descriptions",
+                "available report/as-of dates",
+                "date semantics comparison",
+            ],
+            "suggested_tools": [
+                "moss-data-catalog.get_page_catalog_date_evidence",
+                "moss-data-catalog.get_page_catalog_date_coverage",
+            ],
+            "tool_calls": [
+                {
+                    "tool": "moss-data-catalog.get_page_catalog_date_evidence",
+                    "arguments": {"page_slugs": [page_slug]},
+                },
+                {
+                    "tool": "moss-data-catalog.get_page_catalog_date_coverage",
+                    "arguments": {"page_slugs": [page_slug]},
+                },
+            ],
+        },
+        "lineage_freshness_review": {
+            "evidence_to_collect": [
+                "direct lineage freshness",
+                "source version",
+                "rule version",
+                "cache/run identifier",
+                "fallback or stale status",
+            ],
+            "suggested_tools": [
+                "moss-lineage-evidence.find_lineage_records",
+                "moss-lineage-evidence.get_page_lineage_evidence",
+            ],
+            "tool_calls": [
+                {
+                    "tool": "moss-lineage-evidence.find_lineage_records",
+                    "arguments": {"query": page_id, "max_results": 8},
+                },
+                {
+                    "tool": "moss-lineage-evidence.get_page_lineage_evidence",
+                    "arguments": {"page_slugs": [page_slug], "max_results": 8},
+                },
+            ],
+        },
+        "ui_api_payload_review": {
+            "evidence_to_collect": [
+                "current API payload",
+                "result_meta",
+                "visible UI state",
+                "page contract comparison",
+            ],
+            "suggested_tools": [
+                "page-specific API smoke",
+                "frontend page/model tests",
+            ],
+        },
+        "live_smoke_evidence_review": {
+            "evidence_to_collect": [
+                "live smoke output",
+                "browser evidence",
+                "visible stale/fallback/no-data state",
+            ],
+            "suggested_tools": [
+                "scripts/codex-verify-page.ps1",
+                "scripts/codex-page-smoke.ps1",
+            ],
+        },
+        "business_owner_approval": {
+            "evidence_to_collect": [
+                "business owner review",
+                "approval record",
+                "remaining exception decision",
+            ],
+            "suggested_tools": [
+                "manual sign-off",
+            ],
+        },
+    }
+    step = steps.get(check, {"evidence_to_collect": [], "suggested_tools": [], "tool_calls": []})
+    return {
+        "check": check,
+        "evidence_to_collect": step["evidence_to_collect"],
+        "suggested_tools": step["suggested_tools"],
+        **({"tool_calls": step["tool_calls"]} if step.get("tool_calls") else {}),
+        "approval_boundary": "manual_review_only",
+    }
+
+
+def page_governance_audit_review_checklist_row(page: dict[str, Any]) -> dict[str, Any]:
+    ready_record_count = sum(
+        1
+        for validation in page["direct_record_validations"]
+        if validation["validation_status"] == "ready_for_audit_review"
+    )
+    incomplete_record_count = sum(
+        1
+        for validation in page["direct_record_validations"]
+        if validation["validation_status"] == "incomplete"
+    )
+    record_ready = page["validation_status"] == "direct_records_ready_for_audit_review"
+    audit_review_status = "ready_for_audit_review" if record_ready else "blocked_by_record_gaps"
+    return {
+        "page_slug": page["page_slug"],
+        "page_id": page["page_id"],
+        "page_name": page["page_name"],
+        "frontend_route": page["frontend_route"],
+        "primary_api": page["primary_api"],
+        "approval_status": page["approval_status"],
+        "record_formal_use_policy": page["record_formal_use_policy"],
+        "record_validation_status": page["validation_status"],
+        "audit_review_status": audit_review_status,
+        "closure_approved": False,
+        "ready_record_count": ready_record_count,
+        "incomplete_record_count": incomplete_record_count,
+        "direct_record_count": len(page["direct_record_validations"]),
+        "direct_record_validations": page["direct_record_validations"],
+        "expanded_anchor_record_count": len(page["expanded_anchor_records"]),
+        "review_evidence_hints": page_governance_audit_review_evidence_hints(page),
+        "checks": page_governance_audit_review_checks(page, ready_record_count),
+        "next_actions": page_governance_audit_review_next_actions(record_ready),
+        "residual_gaps": page["residual_gaps"],
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "validates_required_fields": True,
+            "checks_contract_docs": False,
+            "checks_catalog_date_samples": False,
+            "checks_lineage_freshness": False,
+            "checks_ui_api_payload": False,
+            "checks_live_smoke": False,
+        },
+    }
+
+
+def page_governance_audit_review_evidence_hints(page: dict[str, Any]) -> dict[str, Any]:
+    ready_record = next(
+        (
+            validation
+            for validation in page["direct_record_validations"]
+            if validation["validation_status"] == "ready_for_audit_review"
+        ),
+        None,
+    )
+    if ready_record is None:
+        return {"status": "unavailable_until_direct_record_ready"}
+
+    record = ready_record.get("record") if isinstance(ready_record.get("record"), dict) else {}
+    execution_identifier = None
+    if not governance_record_value_missing(record.get("run_id")):
+        execution_identifier = {"field": "run_id", "value": record.get("run_id")}
+    elif not governance_record_value_missing(record.get("cache_key")):
+        execution_identifier = {"field": "cache_key", "value": record.get("cache_key")}
+
+    return {
+        "status": "direct_record_ready_for_manual_review",
+        "record_location": {
+            "stream": ready_record.get("stream"),
+            "line": ready_record.get("line"),
+            "matched_query": ready_record.get("matched_query"),
+        },
+        "report_date": record.get("report_date"),
+        "basis": record.get("basis"),
+        "source_surface": record.get("source_surface"),
+        "source_version": record.get("source_version"),
+        "rule_version": record.get("rule_version"),
+        "result_kind": record.get("result_kind"),
+        "tables_used": record.get("tables_used"),
+        "execution_identifier": execution_identifier,
+        "ui_api_payload_evidence": record.get("ui_api_payload_evidence"),
+        "live_smoke_evidence": record.get("live_smoke_evidence"),
+        "formal_use_allowed": record.get("formal_use_allowed"),
+    }
+
+
+def page_governance_audit_review_checks(
+    page: dict[str, Any],
+    ready_record_count: int,
+) -> list[dict[str, str]]:
+    record_ready = page["validation_status"] == "direct_records_ready_for_audit_review"
+    if record_ready:
+        record_check = {
+            "name": "direct_page_api_record_fields",
+            "status": "ready_for_audit_review",
+            "evidence": f"{ready_record_count} direct record(s) have required fields and field groups.",
+        }
+    else:
+        record_check = {
+            "name": "direct_page_api_record_fields",
+            "status": "blocked",
+            "evidence": "Direct page/API governance records are missing or incomplete.",
+        }
+    return [
+        record_check,
+        {
+            "name": "page_contract_review",
+            "status": "manual_review_required",
+            "evidence": "Review page contract, metric dictionary, calculation rules, and golden samples.",
+        },
+        {
+            "name": "catalog_date_sampling",
+            "status": "manual_review_required",
+            "evidence": "Run catalog/date evidence for configured page tables and compare report-date semantics.",
+        },
+        {
+            "name": "lineage_freshness_review",
+            "status": "manual_review_required",
+            "evidence": "Review direct lineage freshness, source/rule/cache versions, fallback, and stale status.",
+        },
+        {
+            "name": "ui_api_payload_review",
+            "status": "manual_review_required",
+            "evidence": "Compare current API payload and UI state against the page contract and result_meta.",
+        },
+        {
+            "name": "live_smoke_evidence_review",
+            "status": "manual_review_required",
+            "evidence": "Review current live smoke or browser evidence for visible stale/fallback/no-data states.",
+        },
+        {
+            "name": "business_owner_approval",
+            "status": "manual_review_required",
+            "evidence": "Business owner approval is still required before closure.",
+        },
+    ]
+
+
+def page_governance_audit_review_next_actions(record_ready: bool) -> list[str]:
+    if record_ready:
+        return [
+            "Review page contract and metric dictionary evidence before closure.",
+            "Run catalog/date, lineage freshness, UI/API payload, and live smoke checks before approving formal use.",
+        ]
+    return [
+        "Complete direct page/API governance record fields and required field groups first.",
+        "Re-run validation, then proceed to contract, catalog/date, lineage, UI/API, and live-smoke review.",
+    ]
+
+
+def page_governance_gap_queue(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    selected_bundles = selected_governance_page_bundles(bundles, page_slugs)
+    validation_payload = page_governance_record_validation(
+        bundles,
+        streams,
+        [str(bundle["page_slug"]) for bundle in selected_bundles],
+        stream_names,
+        max_results=max_results,
+    )
+    page_order = {
+        str(bundle["page_id"]): index
+        for index, bundle in enumerate(selected_bundles)
+    }
+    pages = list(validation_payload["pages"])
+    items = [
+        page_governance_gap_queue_item(page)
+        for page in pages
+        if page["validation_status"] != "direct_records_ready_for_audit_review"
+    ]
+    items.sort(key=lambda item: page_governance_gap_queue_sort_key(item, page_order))
+    return {
+        "scope": "page-governance-gap-queue",
+        "disclaimer": (
+            "This read-only queue prioritizes page/API governance record gaps; it does not create governance "
+            "records, prove page/API execution, or approve metric/page formal use."
+        ),
+        "items": items,
+        "summary": {
+            "page_count": len(pages),
+            "open_gap_count": len(items),
+            "missing_direct_record_count": sum(
+                1 for page in pages if page["validation_status"] == "missing_direct_records"
+            ),
+            "ready_for_audit_review_count": sum(
+                1 for page in pages if page["validation_status"] == "direct_records_ready_for_audit_review"
+            ),
+            "incomplete_direct_record_page_count": sum(
+                1 for page in pages if page["validation_status"] == "direct_records_present_with_gaps"
+            ),
+            "missing_direct_and_expanded_record_count": sum(
+                1
+                for item in items
+                if item["gap_type"] == "missing_direct_and_expanded_records"
+            ),
+            "missing_direct_record_expanded_only_count": sum(
+                1 for item in items if item["gap_type"] == "missing_direct_record_expanded_only"
+            ),
+        },
+    }
+
+
+def page_governance_record_blueprint_queue(
+    bundles: dict[str, dict[str, Any]],
+    streams: dict[str, Path],
+    page_slugs: list[str],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    gap_payload = page_governance_gap_queue(
+        bundles,
+        streams,
+        page_slugs,
+        stream_names,
+        max_results=max_results,
+    )
+    items = [
+        page_governance_record_blueprint_queue_item(bundles, item)
+        for item in gap_payload["items"]
+    ]
+    return {
+        "scope": "page-governance-record-blueprint-queue",
+        "disclaimer": (
+            "This read-only queue attaches candidate record templates to page/API governance gaps; it does not "
+            "write governance records, check whether records exist, prove page/API execution, and does not "
+            "approve metric/page formal use."
+        ),
+        "items": items,
+        "summary": {
+            "page_count": gap_payload["summary"]["page_count"],
+            "open_gap_count": gap_payload["summary"]["open_gap_count"],
+            "blueprint_count": len(items),
+            "template_preflight_ready_count": sum(
+                1
+                for item in items
+                if item["blueprint"]["preflight"]["validation"]["validation_status"] == "ready_for_audit_review"
+            ),
+            "template_preflight_incomplete_count": sum(
+                1
+                for item in items
+                if item["blueprint"]["preflight"]["validation"]["validation_status"] == "incomplete"
+            ),
+            "ready_blueprint_count": sum(
+                1
+                for item in items
+                if item["blueprint"]["preflight"]["validation"]["validation_status"] == "ready_for_audit_review"
+            ),
+            "incomplete_blueprint_count": sum(
+                1
+                for item in items
+                if item["blueprint"]["preflight"]["validation"]["validation_status"] == "incomplete"
+            ),
+        },
+    }
+
+
+def page_governance_record_blueprint_queue_item(
+    bundles: dict[str, dict[str, Any]],
+    item: dict[str, Any],
+) -> dict[str, Any]:
+    blueprint = page_governance_record_blueprint(bundles, str(item["page_id"]))
+    return {
+        **item,
+        "blueprint": blueprint,
+        "candidate_record_readiness": page_governance_candidate_record_readiness(item, blueprint),
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "checks_record_existence": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "validates_required_fields": True,
+        },
+    }
+
+
+def page_governance_candidate_record_readiness(
+    item: dict[str, Any],
+    blueprint: dict[str, Any],
+) -> dict[str, Any]:
+    validation = blueprint["preflight"]["validation"]
+    failed_groups = [
+        str(group.get("name") or "")
+        for group in validation.get("failed_required_field_groups", [])
+    ]
+    diagnostics = item.get("direct_record_diagnostics", [])
+    diagnostic_missing_fields = sorted(
+        {
+            str(field)
+            for diagnostic in diagnostics
+            for field in diagnostic.get("missing_required_fields", [])
+        }
+    )
+    diagnostic_failed_groups = sorted(
+        {
+            str(group)
+            for diagnostic in diagnostics
+            for group in diagnostic.get("failed_required_field_groups", [])
+        }
+    )
+    gap_type = str(item.get("gap_type") or "")
+    if gap_type == "direct_record_incomplete":
+        manual_fill_priority = "complete_existing_direct_record"
+    elif gap_type == "missing_direct_and_expanded_records":
+        manual_fill_priority = "create_direct_record_and_supporting_lineage"
+    elif gap_type == "missing_direct_record_expanded_only":
+        manual_fill_priority = "create_direct_record_from_existing_supporting_lineage"
+    else:
+        manual_fill_priority = "review_required"
+    return {
+        "manual_fill_priority": manual_fill_priority,
+        "validation_status": validation.get("validation_status"),
+        "manual_fill_fields": blueprint["manual_fill_fields"],
+        "manual_fill_field_details": page_governance_manual_fill_field_details(blueprint),
+        "missing_required_fields": validation.get("missing_required_fields", []),
+        "failed_required_field_groups": failed_groups,
+        "repair_targets": page_governance_repair_targets(diagnostics),
+        "existing_direct_record_missing_fields": diagnostic_missing_fields,
+        "existing_direct_record_failed_field_groups": diagnostic_failed_groups,
+        "accepted_direct_terms": blueprint["accepted_direct_terms"],
+        "direct_anchor_targets": blueprint["direct_anchor_targets"],
+        "configured_table_names": blueprint["configured_table_names"],
+        "explanation": page_governance_candidate_record_readiness_explanation(
+            str(item.get("page_id") or ""),
+            gap_type,
+            validation.get("missing_required_fields", []),
+            failed_groups,
+            diagnostic_missing_fields,
+            diagnostic_failed_groups,
+            repair_target_count=len(diagnostics),
+        ),
+    }
+
+
+def page_governance_manual_fill_field_details(blueprint: dict[str, Any]) -> list[dict[str, Any]]:
+    candidate_record = blueprint["candidate_record"]
+    details = []
+    for field in blueprint["required_fields"]:
+        status = (
+            "missing"
+            if governance_record_value_missing(candidate_record.get(field))
+            else "prefilled"
+        )
+        detail = {
+            "kind": "field",
+            "name": field,
+            "status": status,
+            "value": candidate_record.get(field),
+            "satisfying_values": [],
+        }
+        hints = page_governance_manual_fill_evidence_hints(
+            field,
+            "field",
+            status,
+            page_id=str(blueprint.get("page_id") or ""),
+        )
+        if hints:
+            detail["evidence_hints"] = hints
+        details.append(detail)
+    for group in blueprint["required_field_groups"]:
+        group_name = str(group.get("name") or "")
+        status = (
+            "failed"
+            if governance_required_field_group_failed(candidate_record, group)
+            else "satisfied"
+        )
+        detail = {
+            "kind": "group",
+            "name": group_name,
+            "status": status,
+            "value": page_governance_required_group_current_value(candidate_record, group_name),
+            "satisfying_values": [str(value) for value in list(group.get("one_of") or [])],
+        }
+        hints = page_governance_manual_fill_evidence_hints(
+            group_name,
+            "group",
+            status,
+            page_id=str(blueprint.get("page_id") or ""),
+        )
+        if hints:
+            detail["evidence_hints"] = hints
+        details.append(detail)
+    return details
+
+
+def page_governance_manual_fill_evidence_hints(
+    name: str,
+    kind: str,
+    status: str,
+    *,
+    page_id: str = "",
+) -> list[str]:
+    if kind == "field" and status == "missing":
+        if name == "tables_used" and page_id in PAGE_CATALOG_DATE_DEFERRED_REASONS:
+            return [
+                "This page has no direct table contract; do not invent tables_used. Resolve through the table_anchor_resolution_target and upstream/page-run evidence.",
+            ]
+        field_hints = {
+            "report_date": [
+                "Use catalog/date evidence or the audited page/API payload date binding for the reviewed run; do not infer the date from unrelated upstream tables.",
+            ],
+            "basis": [
+                "Use explicit page contract, source basis, or approval-status evidence for the reviewed run; do not infer formal or analytical basis from the page slug alone.",
+            ],
+            "source_surface": [
+                "Use page/API result metadata, route/service source-surface evidence, or direct lineage metadata for the reviewed run.",
+            ],
+            "source_version": [
+                "Use source manifest, cache, run, or vendor/feed evidence tied to the reviewed run; do not invent a source version.",
+            ],
+            "rule_version": [
+                "Use calculation rule, metric contract, service version, or release evidence tied to the reviewed run; do not invent a rule version.",
+            ],
+            "created_at": [
+                "Use the governance record creation or review timestamp; do not substitute the report date.",
+            ],
+        }
+        return field_hints.get(name, [])
+    if kind == "group" and name == "execution_identifier" and status == "failed":
+        return [
+            "Use a cache_key or run_id from the audited page/API execution evidence; expanded source-table or result-kind anchors are supporting evidence only.",
+        ]
+    if kind == "group" and name == "record_formal_use_allowed" and status == "failed":
+        return [
+            "Set formal_use_allowed=false for candidate/pending pages until business-owner closure is separately approved; do not treat record repair as approval.",
+        ]
+    return []
+
+
+def page_governance_required_group_current_value(record: dict[str, Any], group_name: str) -> Any:
+    if group_name == "record_formal_use_allowed":
+        return record.get("formal_use_allowed")
+    return None
+
+
+def page_governance_repair_targets(
+    diagnostics: list[dict[str, Any]],
+    blueprint: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    repair_targets = []
+    for diagnostic in diagnostics:
+        repair_target = {
+            "record_location": diagnostic.get("record_location", {}),
+            "missing_required_fields": diagnostic.get("missing_required_fields", []),
+            "failed_required_field_groups": diagnostic.get("failed_required_field_groups", []),
+            "direct_anchor_match": diagnostic.get("direct_anchor_match", {}),
+            "record_formal_use_allowed": diagnostic.get("record_formal_use_allowed"),
+        }
+        evidence_hints = page_governance_repair_target_evidence_hints(diagnostic)
+        if evidence_hints:
+            repair_target["evidence_hints"] = evidence_hints
+        if blueprint and diagnostic.get("direct_anchor_match", {}).get("proves_primary_page_anchor") is True:
+            repair_target["preflight_completion_template"] = page_governance_completion_preflight_template(
+                blueprint,
+                diagnostic,
+            )
+        repair_targets.append(repair_target)
+    return repair_targets
+
+
+def page_governance_completion_preflight_template(
+    blueprint: dict[str, Any],
+    diagnostic: dict[str, Any],
+) -> dict[str, Any]:
+    record = page_governance_existing_record_completion_candidate(
+        blueprint,
+        diagnostic.get("record", {}),
+    )
+    return {
+        "tool": "moss-lineage-evidence.preflight_page_governance_record",
+        "arguments": {
+            "page_slug": blueprint["page_slug"],
+            "record": record,
+        },
+        "manual_placeholders": page_governance_repaired_record_manual_placeholders(
+            blueprint,
+            record,
+        ),
+        "approval_boundary": "preflight_only_no_write_no_approval",
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "checks_record_existence": False,
+        },
+    }
+
+
+def page_governance_existing_record_completion_candidate(
+    blueprint: dict[str, Any],
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    candidate = dict(record) if isinstance(record, dict) else {}
+    return {
+        "page_id": candidate.get("page_id"),
+        "page_slug": candidate.get("page_slug"),
+        "frontend_route": candidate.get("frontend_route"),
+        "primary_api": candidate.get("primary_api"),
+        "tables_used": candidate.get("tables_used"),
+        "formal_use_allowed": False,
+        "report_date": candidate.get("report_date"),
+        "basis": candidate.get("basis"),
+        "source_surface": candidate.get("source_surface"),
+        "source_version": candidate.get("source_version"),
+        "rule_version": candidate.get("rule_version"),
+        "created_at": candidate.get("created_at"),
+        "cache_key": candidate.get("cache_key"),
+        "run_id": candidate.get("run_id"),
+    }
+
+
+def page_governance_repair_target_evidence_hints(diagnostic: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    field_hints = {
+        field: hints
+        for field in diagnostic.get("missing_required_fields", [])
+        if (hints := page_governance_manual_fill_evidence_hints(str(field), "field", "missing"))
+    }
+    group_hints = {
+        group: hints
+        for group in diagnostic.get("failed_required_field_groups", [])
+        if (hints := page_governance_manual_fill_evidence_hints(str(group), "group", "failed"))
+    }
+    hints_by_kind = {}
+    if field_hints:
+        hints_by_kind["missing_required_fields"] = field_hints
+    if group_hints:
+        hints_by_kind["failed_required_field_groups"] = group_hints
+    return hints_by_kind
+
+
+def page_governance_candidate_record_readiness_explanation(
+    page_id: str,
+    gap_type: str,
+    missing_required_fields: list[str],
+    failed_required_field_groups: list[str],
+    existing_missing_fields: list[str],
+    existing_failed_groups: list[str],
+    *,
+    repair_target_count: int = 0,
+) -> str:
+    if gap_type == "direct_record_incomplete":
+        missing_text = ", ".join(existing_missing_fields or missing_required_fields) or "required fields"
+        group_text = ", ".join(existing_failed_groups or failed_required_field_groups) or "required field groups"
+        record_text = (
+            f"{repair_target_count} existing direct page/API governance records"
+            if repair_target_count > 1
+            else "the existing direct page/API governance record"
+        )
+        return (
+            f"Complete {record_text} for {page_id}: fill {missing_text} and "
+            f"satisfy {group_text}; this read-only queue does not approve closure."
+        )
+    if gap_type == "missing_direct_and_expanded_records":
+        missing_text = ", ".join(missing_required_fields) or "required fields"
+        return (
+            f"Create a direct page/API governance record for {page_id}, fill {missing_text}, add an execution "
+            "identifier and supporting source-table/result-kind lineage; this read-only queue does not approve "
+            "closure."
+        )
+    if gap_type == "missing_direct_record_expanded_only":
+        missing_text = ", ".join(missing_required_fields) or "required fields"
+        return (
+            f"Create a direct page/API governance record for {page_id} using the existing expanded anchors only "
+            f"as supporting evidence, then fill {missing_text}; this read-only queue does not approve closure."
+        )
+    return (
+        f"Review the candidate governance record for {page_id} against required fields and field groups; this "
+        "read-only queue does not approve closure."
+    )
+
+
+def page_governance_gap_queue_item(page: dict[str, Any]) -> dict[str, Any]:
+    direct_record_count = len(page["direct_record_validations"])
+    expanded_anchor_record_count = len(page["expanded_anchor_records"])
+    gap_type = page_governance_gap_type(
+        page["validation_status"],
+        expanded_anchor_record_count=expanded_anchor_record_count,
+    )
+    return {
+        "page_slug": page["page_slug"],
+        "page_id": page["page_id"],
+        "page_name": page["page_name"],
+        "frontend_route": page["frontend_route"],
+        "primary_api": page["primary_api"],
+        "priority": page_governance_gap_priority(gap_type),
+        "gap_type": gap_type,
+        "approval_status": page["approval_status"],
+        "record_formal_use_policy": page["record_formal_use_policy"],
+        "validation_status": page["validation_status"],
+        "direct_record_count": direct_record_count,
+        "expanded_anchor_record_count": expanded_anchor_record_count,
+        "expanded_anchor_samples": page_governance_expanded_anchor_samples(page["expanded_anchor_records"]),
+        "accepted_direct_terms": page["accepted_direct_terms"],
+        "direct_anchor_targets": page["direct_anchor_targets"],
+        "direct_record_diagnostics": page_governance_gap_direct_record_diagnostics(page),
+        "residual_gaps": page["residual_gaps"],
+        "next_actions": page_governance_gap_next_actions(str(page["page_id"]), gap_type),
+        "evidence_scope": page["evidence_scope"],
+    }
+
+
+def page_governance_expanded_anchor_samples(records: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
+    return [
+        {
+            "record_location": {
+                "stream": record.get("stream"),
+                "line": record.get("line"),
+                "matched_query": record.get("matched_query"),
+            },
+            "anchor_type": page_governance_expanded_anchor_type(record),
+            "supporting_only": True,
+            "proves_page_execution": False,
+            "record_summary": page_governance_expanded_anchor_record_summary(record),
+        }
+        for record in records[:limit]
+    ]
+
+
+def page_governance_expanded_anchor_type(record: dict[str, Any]) -> str:
+    raw_record = record.get("record") if isinstance(record.get("record"), dict) else {}
+    if raw_record.get("table_name"):
+        return "source_table"
+    if raw_record.get("result_kind"):
+        return "result_kind"
+    if raw_record.get("metric_id") or raw_record.get("metric_ids"):
+        return "metric"
+    if raw_record.get("golden_sample_id"):
+        return "golden_sample"
+    if record.get("matched_query"):
+        return "matched_query_anchor"
+    return "expanded_anchor"
+
+
+def page_governance_expanded_anchor_record_summary(record: dict[str, Any]) -> dict[str, Any]:
+    raw_record = record.get("record") if isinstance(record.get("record"), dict) else {}
+    summary_fields = [
+        "table_name",
+        "result_kind",
+        "metric_id",
+        "metric_ids",
+        "golden_sample_id",
+        "source_surface",
+        "source_version",
+        "rule_version",
+        "report_date",
+        "as_of_date",
+        "basis",
+    ]
+    summary = {
+        field: raw_record[field]
+        for field in summary_fields
+        if field in raw_record and not governance_record_value_missing(raw_record.get(field))
+    }
+    if not any(
+        field in summary
+        for field in ("table_name", "result_kind", "metric_id", "metric_ids", "golden_sample_id")
+    ) and not governance_record_value_missing(record.get("matched_query")):
+        summary = {"matched_query": record["matched_query"], **summary}
+    return summary
+
+
+def page_governance_gap_direct_record_diagnostics(
+    page: dict[str, Any],
+    *,
+    include_records: bool = False,
+) -> list[dict[str, Any]]:
+    diagnostics = []
+    for validation in page["direct_record_validations"]:
+        if validation["validation_status"] == "ready_for_audit_review":
+            continue
+        diagnostic = {
+            "record_location": {
+                "stream": validation.get("stream"),
+                "line": validation.get("line"),
+                "matched_query": validation.get("matched_query"),
+            },
+            "validation_status": validation.get("validation_status"),
+            "missing_required_fields": validation.get("missing_required_fields", []),
+            "failed_required_field_groups": [
+                str(group.get("name") or "")
+                for group in validation.get("failed_required_field_groups", [])
+            ],
+            "direct_anchor_match": validation.get("direct_anchor_match", {}),
+            "record_formal_use_allowed": validation.get("record_formal_use_allowed"),
+        }
+        if include_records:
+            diagnostic["record"] = validation.get("record", {})
+        diagnostics.append(diagnostic)
+    return diagnostics
+
+
+def page_governance_gap_type(
+    validation_status: str,
+    *,
+    expanded_anchor_record_count: int,
+) -> str:
+    if validation_status == "missing_direct_records":
+        if expanded_anchor_record_count:
+            return "missing_direct_record_expanded_only"
+        return "missing_direct_and_expanded_records"
+    if validation_status == "direct_records_present_with_gaps":
+        return "direct_record_incomplete"
+    if validation_status == "direct_records_ready_for_audit_review":
+        return "ready_for_audit_review"
+    return "review_required"
+
+
+def page_governance_gap_priority(gap_type: str) -> str:
+    if gap_type == "missing_direct_and_expanded_records":
+        return "P1"
+    if gap_type in {"missing_direct_record_expanded_only", "direct_record_incomplete"}:
+        return "P2"
+    return "P3"
+
+
+def page_governance_gap_next_actions(page_id: str, gap_type: str) -> list[str]:
+    if gap_type == "missing_direct_and_expanded_records":
+        return [
+            f"Add or locate a direct {page_id}/API governance record for the audited page run or endpoint result.",
+            "Add supporting source-table/result-kind lineage records, then validate required fields before audit closure.",
+        ]
+    if gap_type == "missing_direct_record_expanded_only":
+        return [
+            f"Add or locate a direct {page_id}/API governance record for the audited page run or endpoint result.",
+            "Do not treat expanded anchors as page execution proof; keep them as supporting lineage until direct records exist.",
+        ]
+    if gap_type == "direct_record_incomplete":
+        return [
+            f"Complete the existing direct {page_id}/API governance record fields and required field groups.",
+            "Re-run validation, then review contract, catalog/date, lineage, and UI/API payload evidence before closure.",
+        ]
+    return [
+        "Review the page contract, catalog/date, lineage, and UI/API payload evidence before making any closure claim.",
+    ]
+
+
+def page_governance_gap_queue_sort_key(
+    item: dict[str, Any],
+    page_order: dict[str, int],
+) -> tuple[int, int, int]:
+    priority_rank = {"P1": 0, "P2": 1, "P3": 2}.get(str(item.get("priority") or ""), 9)
+    gap_rank = {
+        "missing_direct_and_expanded_records": 0,
+        "missing_direct_record_expanded_only": 1,
+        "direct_record_incomplete": 2,
+        "review_required": 3,
+        "ready_for_audit_review": 4,
+    }.get(str(item.get("gap_type") or ""), 9)
+    return (
+        priority_rank,
+        gap_rank,
+        page_order.get(str(item.get("page_id") or ""), len(page_order)),
+    )
+
+
+def page_governance_record_validation_row(
+    bundle: dict[str, Any],
+    streams: dict[str, Path],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    requirements = page_governance_record_requirements_row(bundle)
+    page_id = str(bundle.get("page_id") or "")
+    direct_terms = page_direct_lineage_terms(bundle)
+    expanded_terms = [
+        term
+        for term in lineage_query_terms(page_id, LineageEvidenceProvider._QUERY_EXPANSIONS)
+        if term.casefold() not in {direct_term.casefold() for direct_term in direct_terms}
+    ]
+    direct_records = find_lineage_records_for_terms(
+        streams,
+        stream_names,
+        direct_terms,
+        max_results=max_results,
+        exact_record_value_match=True,
+    )
+    direct_records, rejected_direct_anchor_records = page_governance_partition_direct_records(
+        direct_records,
+        requirements,
+    )
+    direct_record_keys = lineage_record_keys(direct_records)
+    expanded_records = find_lineage_records_for_terms(
+        streams,
+        stream_names,
+        expanded_terms,
+        max_results=max_results,
+        exclude_records={
+            *direct_record_keys,
+            *lineage_record_keys(rejected_direct_anchor_records),
+        },
+        longest_terms_first=True,
+    )
+    expanded_records = [
+        *rejected_direct_anchor_records,
+        *expanded_records,
+    ][:max_results]
+    validations = [
+        validate_page_governance_record(record, requirements)
+        for record in direct_records
+    ]
+    if not validations:
+        validation_status = "missing_direct_records"
+    elif any(validation["validation_status"] == "incomplete" for validation in validations):
+        validation_status = "direct_records_present_with_gaps"
+    elif not any(
+        validation.get("direct_anchor_match", {}).get("proves_primary_page_anchor") is True
+        for validation in validations
+    ):
+        validation_status = "direct_records_present_with_gaps"
+    else:
+        validation_status = "direct_records_ready_for_audit_review"
+    return {
+        "page_slug": bundle["page_slug"],
+        "page_id": page_id,
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "approval_status": requirements["approval_status"],
+        "record_formal_use_policy": requirements["record_formal_use_policy"],
+        "validation_status": validation_status,
+        "accepted_direct_terms": direct_terms,
+        "direct_anchor_targets": page_direct_anchor_targets(bundle),
+        "direct_record_validations": validations,
+        "expanded_anchor_records": expanded_records,
+        "residual_gaps": page_governance_validation_residual_gaps(
+            validation_status,
+            direct_record_validations=validations,
+        ),
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "validates_required_fields": True,
+        },
+    }
+
+
+def validate_page_governance_record(record: dict[str, Any], requirements: dict[str, Any]) -> dict[str, Any]:
+    raw_record = record.get("record") if isinstance(record.get("record"), dict) else {}
+    missing_required_fields = [
+        field
+        for field in requirements["required_fields"]
+        if governance_record_value_missing(raw_record.get(field))
+    ]
+    failed_required_field_groups = [
+        group
+        for group in requirements["required_field_groups"]
+        if governance_required_field_group_failed(raw_record, group)
+    ]
+    direct_anchor_match = page_governance_direct_anchor_match(record, requirements)
+    validation_status = page_governance_record_validation_status(
+        missing_required_fields,
+        failed_required_field_groups,
+        direct_anchor_match,
+    )
+    return {
+        "stream": record.get("stream"),
+        "line": record.get("line"),
+        "matched_query": record.get("matched_query"),
+        "validation_status": validation_status,
+        "missing_required_fields": missing_required_fields,
+        "failed_required_field_groups": failed_required_field_groups,
+        "direct_anchor_match": direct_anchor_match,
+        "record_formal_use_allowed": raw_record.get("formal_use_allowed"),
+        "record": raw_record,
+        "residual_gaps": page_governance_record_validation_gaps(
+            validation_status,
+            failed_required_field_groups=failed_required_field_groups,
+        ),
+    }
+
+
+def page_governance_record_validation_status(
+    missing_required_fields: list[str],
+    failed_required_field_groups: list[dict[str, Any]],
+    direct_anchor_match: dict[str, Any],
+) -> str:
+    if direct_anchor_match.get("proves_primary_page_anchor") is not True:
+        return "supporting_anchor_only"
+    if missing_required_fields or failed_required_field_groups:
+        return "incomplete"
+    return "ready_for_audit_review"
+
+
+def page_governance_direct_anchor_match(record: dict[str, Any], requirements: dict[str, Any]) -> dict[str, Any]:
+    matched_query = str(record.get("matched_query") or "")
+    targets = requirements.get("direct_anchor_targets") if isinstance(requirements.get("direct_anchor_targets"), dict) else {}
+    if matched_query == str(targets.get("page_id") or ""):
+        anchor_type = "page_id"
+    elif matched_query == str(targets.get("frontend_route") or ""):
+        anchor_type = "frontend_route"
+    elif matched_query == str(targets.get("primary_api") or ""):
+        anchor_type = "primary_api"
+    elif matched_query in {str(api) for api in targets.get("supporting_apis", [])}:
+        anchor_type = "supporting_api"
+    else:
+        anchor_type = "unknown_direct_anchor"
+    return {
+        "anchor_type": anchor_type,
+        "matched_query": matched_query,
+        "proves_primary_page_anchor": anchor_type in {"page_id", "frontend_route", "primary_api"},
+    }
+
+
+def page_governance_partition_direct_records(
+    records: list[dict[str, Any]],
+    requirements: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    direct_records = []
+    rejected_records = []
+    for record in records:
+        if page_governance_record_matches_page_identity(record, requirements):
+            direct_records.append(record)
+        else:
+            rejected_records.append(record)
+    return direct_records, rejected_records
+
+
+def page_governance_record_matches_page_identity(
+    record: dict[str, Any],
+    requirements: dict[str, Any],
+) -> bool:
+    identity_values = page_governance_record_identity_values(record)
+    if not identity_values:
+        return True
+    expected_values = {
+        str(requirements.get("page_id") or "").casefold(),
+        str(requirements.get("page_slug") or "").casefold(),
+        str(requirements.get("frontend_route") or "").casefold(),
+    }
+    expected_values.discard("")
+    return any(value.casefold() in expected_values for value in identity_values)
+
+
+def page_governance_record_identity_values(record: dict[str, Any]) -> list[str]:
+    raw_record = record.get("record") if isinstance(record.get("record"), dict) else {}
+    sources = [raw_record]
+    for nested_key in ("lineage", "result_meta"):
+        nested = raw_record.get(nested_key)
+        if isinstance(nested, dict):
+            sources.append(nested)
+    values = []
+    for source in sources:
+        for field in ("page_id", "page_slug", "frontend_route"):
+            value = source.get(field)
+            if not governance_record_value_missing(value):
+                values.append(str(value))
+    return values
+
+
+def page_governance_record_preflight(
+    bundles: dict[str, dict[str, Any]],
+    page_slug: str,
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    bundle = page_trace_bundle(bundles, page_slug)
+    requirements = page_governance_record_requirements_row(bundle)
+    configured_table_names = filter_readiness_anchors(
+        PAGE_CATALOG_DATE_TABLES.get(str(bundle.get("page_id") or ""), []),
+        limit=80,
+    )
+    validation = validate_page_governance_record(
+        {
+            "stream": "candidate_record",
+            "line": None,
+            "matched_query": str(bundle["page_id"]),
+            "record": record,
+        },
+        requirements,
+    )
+    return {
+        "scope": "page-governance-record-preflight",
+        "disclaimer": (
+            "This preflight validates a candidate record against checklist fields only; it does not write "
+            "governance records, check whether a record exists, prove page/API execution, or approve metric/page "
+            "formal use."
+        ),
+        "page_slug": bundle["page_slug"],
+        "page_id": bundle["page_id"],
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "approval_status": requirements["approval_status"],
+        "record_formal_use_policy": requirements["record_formal_use_policy"],
+        "accepted_direct_terms": requirements["accepted_direct_terms"],
+        "direct_anchor_targets": requirements["direct_anchor_targets"],
+        "configured_table_names": configured_table_names,
+        "required_fields": requirements["required_fields"],
+        "required_field_groups": requirements["required_field_groups"],
+        "validation": validation,
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "checks_record_existence": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "validates_required_fields": True,
+        },
+    }
+
+
+def page_governance_record_blueprint(
+    bundles: dict[str, dict[str, Any]],
+    page_slug: str,
+) -> dict[str, Any]:
+    bundle = page_trace_bundle(bundles, page_slug)
+    requirements = page_governance_record_requirements_row(bundle)
+    configured_table_names = filter_readiness_anchors(
+        PAGE_CATALOG_DATE_TABLES.get(str(bundle.get("page_id") or ""), []),
+        limit=80,
+    )
+    candidate_record = {
+        "page_id": bundle["page_id"],
+        "page_slug": bundle["page_slug"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "report_date": None,
+        "basis": None,
+        "source_surface": None,
+        "tables_used": configured_table_names,
+        "source_version": None,
+        "rule_version": None,
+        "created_at": None,
+        "cache_key": None,
+        "run_id": None,
+        "formal_use_allowed": False,
+    }
+    preflight = page_governance_record_preflight(bundles, page_slug, candidate_record)
+    return {
+        "scope": "page-governance-record-blueprint",
+        "disclaimer": (
+            "This tool builds a candidate record template only; it does not write governance records, check whether "
+            "a record exists, prove page/API execution, and does not approve metric/page formal use."
+        ),
+        "page_slug": bundle["page_slug"],
+        "page_id": bundle["page_id"],
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "approval_status": requirements["approval_status"],
+        "record_formal_use_policy": requirements["record_formal_use_policy"],
+        "accepted_direct_terms": requirements["accepted_direct_terms"],
+        "direct_anchor_targets": requirements["direct_anchor_targets"],
+        "configured_table_names": configured_table_names,
+        "required_fields": requirements["required_fields"],
+        "required_field_groups": requirements["required_field_groups"],
+        "manual_fill_fields": page_governance_blueprint_manual_fill_fields(
+            candidate_record,
+            requirements["required_fields"],
+            requirements["required_field_groups"],
+        ),
+        "candidate_record": candidate_record,
+        "preflight": preflight,
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "checks_record_existence": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+            "validates_required_fields": True,
+        },
+    }
+
+
+def page_governance_blueprint_manual_fill_fields(
+    candidate_record: dict[str, Any],
+    required_fields: list[str],
+    required_field_groups: list[dict[str, Any]],
+) -> list[str]:
+    fields = [
+        field
+        for field in required_fields
+        if governance_record_value_missing(candidate_record.get(field))
+    ]
+    if any(
+        str(group.get("name") or "") == "execution_identifier"
+        and governance_required_field_group_failed(candidate_record, group)
+        for group in required_field_groups
+    ):
+        fields.append("cache_key_or_run_id")
+    return fields
+
+
+def governance_record_value_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, list | tuple | set | dict):
+        return not value
+    return False
+
+
+def governance_required_field_group_failed(record: dict[str, Any], group: dict[str, Any]) -> bool:
+    group_name = str(group.get("name") or "")
+    allowed_values = list(group.get("one_of") or [])
+    if group_name == "execution_identifier":
+        return all(governance_record_value_missing(record.get(field)) for field in allowed_values)
+    if group_name == "record_formal_use_allowed":
+        return not governance_formal_use_allowed_matches(record.get("formal_use_allowed"), allowed_values)
+    if group_name == "direct_page_or_api_anchor":
+        return not governance_record_contains_any_term(record, allowed_values)
+    if group_name == "configured_table_anchor":
+        return not governance_record_contains_any_term(record, allowed_values)
+    return False
+
+
+def governance_formal_use_allowed_matches(value: Any, allowed_values: list[Any]) -> bool:
+    allowed = {str(item).casefold() for item in allowed_values}
+    if value is True:
+        serialized = "formal_use_allowed=true"
+    elif value is False:
+        serialized = "formal_use_allowed=false"
+    else:
+        serialized = f"formal_use_allowed={value}"
+    return serialized.casefold() in allowed
+
+
+def governance_record_contains_any_term(record: dict[str, Any], terms: list[Any]) -> bool:
+    text = json.dumps(record, ensure_ascii=False, sort_keys=True).casefold()
+    return any(str(term).casefold() in text for term in terms if str(term).strip())
+
+
+def page_governance_validation_residual_gaps(
+    validation_status: str,
+    *,
+    direct_record_validations: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    if validation_status == "direct_records_ready_for_audit_review":
+        return [
+            "Direct record fields are present, but this still does not prove page execution completeness or metric/page approval.",
+        ]
+    if validation_status == "direct_records_present_with_gaps":
+        if direct_record_validations and all(
+            validation.get("direct_anchor_match", {}).get("proves_primary_page_anchor") is not True
+            for validation in direct_record_validations
+        ):
+            return [
+                "A primary page/API anchor is missing; supporting API anchors alone cannot route the page to audit review.",
+            ]
+        return [
+            "At least one direct page/API governance record is present but missing required fields or required field-group constraints.",
+        ]
+    return [
+        "A direct page/API governance record is missing; expanded anchors cannot prove page/API execution.",
+    ]
+
+
+def page_governance_record_validation_gaps(
+    validation_status: str,
+    *,
+    failed_required_field_groups: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    if validation_status == "supporting_anchor_only":
+        return [
+            "A direct record matched only a supporting API; a primary page/API anchor is missing.",
+            "Supporting API anchors alone do not prove the primary page/API execution, even when other required fields are present or repairable.",
+        ]
+    if validation_status == "ready_for_audit_review":
+        return [
+            "Required checklist fields are present, but this does not prove page execution completeness and still needs audit review against page contract, lineage, date/catalog, and current UI/API payloads.",
+        ]
+    failed_group_names = {
+        str(group.get("name") or "")
+        for group in failed_required_field_groups or []
+    }
+    if "direct_page_or_api_anchor" in failed_group_names:
+        gaps = [
+            "A direct page/API anchor is missing; expanded source-table or result-kind anchors cannot prove page/API execution.",
+            "Required checklist fields or field groups are missing; this record is not ready for audit review.",
+        ]
+        if "configured_table_anchor" in failed_group_names:
+            gaps.insert(1, "A configured table anchor is missing from the candidate governance record.")
+        return gaps
+    if "configured_table_anchor" in failed_group_names:
+        return [
+            "A configured table anchor is missing from the candidate governance record.",
+            "Required checklist fields or field groups are missing; this record is not ready for audit review.",
+        ]
+    return [
+        "Required checklist fields or field groups are missing; this record is not ready for audit review.",
+    ]
+
+
+def page_governance_record_requirements_row(bundle: dict[str, Any]) -> dict[str, Any]:
+    approval_readiness = page_approval_readiness(bundle, bundle_text(bundle))
+    approval_status = approval_readiness["status"]
+    required_fields = [
+        "page_id",
+        "page_slug",
+        "frontend_route",
+        "primary_api",
+        "report_date",
+        "basis",
+        "source_surface",
+        "tables_used",
+        "source_version",
+        "rule_version",
+        "created_at",
+    ]
+    required_field_groups = [
+        {
+            "name": "direct_page_or_api_anchor",
+            "one_of": page_direct_lineage_terms(bundle),
+            "reason": "A direct record must contain at least one accepted page ID, frontend route, primary API, or supporting API anchor.",
+        },
+        {
+            "name": "execution_identifier",
+            "one_of": ["cache_key", "run_id"],
+            "reason": "A direct record needs either a stable cache key or an execution/run identifier.",
+        }
+    ]
+    configured_table_names = filter_readiness_anchors(
+        PAGE_CATALOG_DATE_TABLES.get(str(bundle.get("page_id") or ""), []),
+        limit=80,
+    )
+    if configured_table_names:
+        required_field_groups.append(
+            {
+                "name": "configured_table_anchor",
+                "one_of": configured_table_names,
+                "reason": "A direct record should include at least one explicitly configured catalog/date table anchor for this page.",
+            }
+        )
+    required_field_groups.append(page_governance_formal_use_field_group(approval_status))
+    return {
+        "page_slug": bundle["page_slug"],
+        "page_id": bundle["page_id"],
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "approval_status": approval_status,
+        "approval_status_source": approval_readiness["source"],
+        "record_formal_use_policy": page_governance_formal_use_policy(approval_status),
+        "direct_record_required": True,
+        "accepted_direct_terms": page_direct_lineage_terms(bundle),
+        "direct_anchor_targets": page_direct_anchor_targets(bundle),
+        "required_fields": required_fields,
+        "required_field_groups": required_field_groups,
+        "recommended_metadata_fields": [
+            "result_kind",
+            "metric_ids",
+            "golden_sample_id",
+        ],
+        "recommended_optional_fields": [
+            "cache_key",
+            "run_id",
+            "generated_at",
+            "requested_report_date",
+            "resolved_report_date",
+            "as_of_date",
+            "date_basis",
+            "quality_flag",
+            "fallback_reason",
+            "stale_status",
+            "evidence_row_count",
+            "applied_filters",
+        ],
+        "status_specific_requirements": page_governance_status_requirements(
+            str(bundle.get("page_id") or ""),
+            approval_status,
+        ),
+        "insufficient_evidence_examples": [
+            "expanded source-table anchors without a matching page ID, frontend route, API route, or page result kind",
+            "metric dictionary or golden-sample references without a page/API run record",
+            "cache/source manifest rows that only mention upstream tables",
+            "synthetic regression fixtures that do not reflect a real page/API execution",
+        ],
+        "evidence_scope": {
+            "writes_governance_records": False,
+            "checks_record_existence": False,
+            "approves_metric_or_page": False,
+            "proves_page_execution": False,
+        },
+    }
+
+
+def page_governance_formal_use_policy(approval_status: str) -> str:
+    if approval_status == "formal_or_governed":
+        return "may_be_true_only_after_direct_record_and_contract_evidence"
+    if approval_status == "candidate_or_pending":
+        return "must_be_false_until_candidate_closure"
+    if approval_status == "gap_or_observational":
+        return "must_be_false_for_gap_or_observational"
+    return "must_be_false_for_mixed_or_unclassified"
+
+
+def page_governance_formal_use_field_group(approval_status: str) -> dict[str, Any]:
+    if approval_status == "formal_or_governed":
+        return {
+            "name": "record_formal_use_allowed",
+            "one_of": ["formal_use_allowed=true", "formal_use_allowed=false"],
+            "reason": (
+                "Formal/governed page status is not enough; the audited record still needs direct execution, "
+                "contract, lineage, date/catalog, and result metadata evidence before true is allowed."
+            ),
+        }
+    return {
+        "name": "record_formal_use_allowed",
+        "one_of": ["formal_use_allowed=false"],
+        "reason": "Candidate, mixed-source, GAP, and unclassified pages must not claim formal-use approval.",
+    }
+
+
+def page_governance_status_requirements(page_id: str, approval_status: str) -> list[str]:
+    if approval_status == "formal_or_governed":
+        return [
+            "formal_or_governed pages still need a direct page/API governance record for the audited execution.",
+            "formal_use_allowed may be true only when the record also matches page contract, metric dictionary, golden sample, source lineage, and date/catalog evidence.",
+        ]
+    if approval_status == "candidate_or_pending":
+        return [
+            "candidate_or_pending page records must remain false for formal_use_allowed until dictionary, page-contract, golden-sample, lineage, and catalog/date closure exist.",
+            "Record candidate basis, warning/quality state, source tables, report-date binding, and why approval is still pending.",
+        ]
+    if approval_status == "mixed_source_or_observational":
+        return [
+            "mixed_source_or_observational page records must keep formal_use_allowed=false for the full page unless a narrower governed fragment is separately identified.",
+            "Record which fields are formal, analytical, supplemental, stale, fallback, or observational instead of collapsing the page into full-page formal truth.",
+        ]
+    if approval_status == "gap_or_observational":
+        return [
+            f"GAP/observational records for {page_id} must keep formal_use_allowed=false.",
+            "Do not create PAGE-STOCK, MTR, golden-sample, trading-instruction, or formal page-closure claims from observational records.",
+        ]
+    return [
+        "unclassified pages require explicit approval-status mapping before governance records can be used for audit closure.",
+        "Keep formal_use_allowed=false until the page status is classified and direct evidence is reviewed.",
+    ]
+
+
+def page_lineage_evidence_row(
+    bundle: dict[str, Any],
+    streams: dict[str, Path],
+    stream_names: list[str],
+    *,
+    max_results: int,
+) -> dict[str, Any]:
+    page_id = str(bundle.get("page_id") or "")
+    direct_terms = page_direct_lineage_terms(bundle)
+    expanded_terms = [
+        term
+        for term in lineage_query_terms(page_id, LineageEvidenceProvider._QUERY_EXPANSIONS)
+        if term.casefold() not in {direct_term.casefold() for direct_term in direct_terms}
+    ]
+    direct_records = find_lineage_records_for_terms(
+        streams,
+        stream_names,
+        direct_terms,
+        max_results=max_results,
+    )
+    requirements = page_governance_record_requirements_row(bundle)
+    direct_records, rejected_direct_anchor_records = page_governance_partition_direct_records(
+        direct_records,
+        requirements,
+    )
+    direct_record_keys = lineage_record_keys(direct_records)
+    expanded_records = find_lineage_records_for_terms(
+        streams,
+        stream_names,
+        expanded_terms,
+        max_results=max_results,
+        exclude_records={
+            *direct_record_keys,
+            *lineage_record_keys(rejected_direct_anchor_records),
+        },
+        longest_terms_first=True,
+    )
+    expanded_records = [
+        *rejected_direct_anchor_records,
+        *expanded_records,
+    ][:max_results]
+    if direct_records:
+        lineage_status = "direct_page_or_api_records_present"
+    elif expanded_records:
+        lineage_status = "expanded_anchor_only"
+    else:
+        lineage_status = "missing"
+    return {
+        "page_slug": bundle["page_slug"],
+        "page_id": page_id,
+        "page_name": bundle["page_name"],
+        "frontend_route": bundle["frontend_route"],
+        "primary_api": bundle["primary_api"],
+        "lineage_status": lineage_status,
+        "direct_query_terms": direct_terms,
+        "expanded_query_terms": expanded_terms,
+        "direct_page_or_api_records": direct_records,
+        "expanded_anchor_records": expanded_records,
+        "residual_gaps": page_lineage_residual_gaps(lineage_status),
+        "recommended_next_actions": page_lineage_recommended_next_actions(page_id, lineage_status),
+    }
+
+
+def page_direct_lineage_terms(bundle: dict[str, Any]) -> list[str]:
+    targets = page_direct_anchor_targets(bundle)
+    direct_terms = [
+        targets["page_id"],
+        targets["frontend_route"],
+        targets["primary_api"],
+        *targets["supporting_apis"],
+    ]
+    return filter_readiness_anchors(direct_terms, limit=80)
+
+
+def page_direct_anchor_targets(bundle: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "page_id": str(bundle.get("page_id") or ""),
+        "frontend_route": str(bundle.get("frontend_route") or ""),
+        "primary_api": str(bundle.get("primary_api") or ""),
+        "supporting_apis": [
+            str(api)
+            for api in list(bundle.get("supporting_apis") or [])
+            if str(api).strip()
+        ],
+    }
+
+
+def find_lineage_records_for_terms(
+    streams: dict[str, Path],
+    stream_names: list[str],
+    terms: list[str],
+    *,
+    max_results: int,
+    exclude_records: set[tuple[str, int]] | None = None,
+    longest_terms_first: bool = False,
+    exact_record_value_match: bool = False,
+) -> list[dict[str, Any]]:
+    records = []
+    seen_records: set[tuple[str, int]] = set()
+    excluded = exclude_records or set()
+    query_terms = sorted(terms, key=len, reverse=True) if longest_terms_first else terms
+    for stream in stream_names:
+        path = streams.get(stream)
+        if path is None:
+            raise McpError(-32602, f"Unknown governance stream: {stream}")
+        for term in query_terms:
+            for record in find_jsonl_records(path, stream=stream, query=term, max_results=max_results):
+                if exact_record_value_match and not lineage_record_has_exact_value(record, term):
+                    continue
+                record_key = (str(record.get("stream") or stream), int(record.get("line") or 0))
+                if record_key in excluded:
+                    continue
+                if record_key in seen_records:
+                    continue
+                seen_records.add(record_key)
+                records.append({"matched_query": term, **record})
+                if len(records) >= max_results:
+                    return records
+    return records
+
+
+def lineage_record_has_exact_value(record: dict[str, Any], term: str) -> bool:
+    raw_record = record.get("record")
+    return lineage_value_matches_term(raw_record, term)
+
+
+def lineage_value_matches_term(value: Any, term: str) -> bool:
+    needle = term.casefold()
+    if isinstance(value, str):
+        return value.casefold() == needle
+    if isinstance(value, list | tuple | set):
+        return any(lineage_value_matches_term(item, term) for item in value)
+    if isinstance(value, dict):
+        return any(lineage_value_matches_term(item, term) for item in value.values())
+    return False
+
+
+def lineage_record_keys(records: list[dict[str, Any]]) -> set[tuple[str, int]]:
+    return {
+        (str(record.get("stream") or ""), int(record.get("line") or 0))
+        for record in records
+    }
+
+
+def page_lineage_residual_gaps(lineage_status: str) -> list[str]:
+    if lineage_status == "direct_page_or_api_records_present":
+        return [
+            "Direct page/API governance records are present, but this still does not prove page execution completeness or metric approval.",
+        ]
+    if lineage_status == "expanded_anchor_only":
+        return [
+            "Expanded source-table or metric-anchor records exist, but a direct page/API governance record is missing.",
+        ]
+    return [
+        "No direct page/API or expanded anchor governance records were found in the selected streams.",
+    ]
+
+
+def page_lineage_recommended_next_actions(page_id: str, lineage_status: str) -> list[str]:
+    if lineage_status == "direct_page_or_api_records_present":
+        return [
+            f"Review the direct {page_id}/API governance records and verify page/API execution completeness, report-date binding, source versions, and result metadata before any closure claim.",
+            "Confirm direct records align with the page contract, metric dictionary, golden samples, and current UI/API payloads.",
+        ]
+    if lineage_status == "expanded_anchor_only":
+        return [
+            f"Add or locate a direct {page_id}/API governance record for the page run or endpoint result being audited.",
+            "Do not treat expanded anchor records as page execution proof until direct page/API records exist.",
+        ]
+    return [
+        f"Add or locate both direct {page_id}/API governance records and supporting source-table/result-kind lineage records before audit closure.",
+    ]
+
+
+def golden_sample_status(bundle: dict[str, Any], approval_status: str) -> str:
+    golden_samples = list(bundle.get("golden_samples") or [])
+    if not golden_samples:
+        return "missing"
+    text = bundle_text(bundle).casefold()
+    if approval_status != "formal_or_governed":
+        if "dto" in text or "page headline" in text or "page-level dto" in text:
+            return "page_dto_only"
+        return "supporting_or_fragment_only"
+    return "approved"
+
+
+def lineage_readiness(bundle: dict[str, Any]) -> dict[str, Any]:
+    page_id = str(bundle.get("page_id") or "")
+    anchors = lineage_query_terms(page_id, LineageEvidenceProvider._QUERY_EXPANSIONS)
+    has_query_mapping = len(anchors) > 1
+    if len(anchors) <= 1:
+        anchors = []
+    contract_anchors = [
+        item
+        for item in list(bundle.get("truth_chain") or [])
+        if is_contract_readiness_anchor(str(item))
+    ]
+    filtered_anchors = filter_readiness_anchors([*anchors, *contract_anchors])
+    if has_query_mapping:
+        status = "query_mapping_present"
+    elif contract_anchors:
+        status = "contract_anchor_only"
+    else:
+        status = "missing"
+    return {"status": status, "anchors": filtered_anchors}
+
+
+def catalog_date_readiness_anchors(bundle: dict[str, Any], lineage_anchors: list[str]) -> list[str]:
+    combined_anchors = [
+        *lineage_anchors,
+        *list(bundle.get("truth_chain") or []),
+        *list(bundle.get("backend_touchpoints") or []),
+        *list(bundle.get("verification_focus") or []),
+    ]
+    return filter_readiness_anchors(
+        [
+            anchor
+            for anchor in combined_anchors
+            if is_catalog_date_anchor(anchor) or is_source_contract_anchor(anchor)
+        ]
+    )
+
+
+def is_catalog_date_anchor(anchor: str) -> bool:
+    text = anchor.casefold()
+    return any(
+        marker in text
+        for marker in (
+            "fact_",
+            "_fact",
+            "rv_",
+            "cv_",
+            "read_model",
+            "snapshot",
+            "workbook",
+            "ledger",
+            "qdb",
+            "fx_daily_mid",
+            "choice_",
+            "market_data_series_category",
+            "livermore",
+            "report_date",
+            "as_of_date",
+            "trade_date",
+        )
+    )
+
+
+def is_source_contract_anchor(anchor: str) -> bool:
+    text = anchor.casefold()
+    return "source_contract" in text or "source-contract" in text
+
+
+def is_contract_readiness_anchor(anchor: str) -> bool:
+    return any(marker in anchor for marker in ("PAGE-", "MTR-", "GAP-", "GS-"))
+
+
+def filter_readiness_anchors(anchors: list[str], *, limit: int = 40) -> list[str]:
+    filtered: list[str] = []
+    seen: set[str] = set()
+    for anchor in anchors:
+        normalized = str(anchor).strip()
+        if not normalized:
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        filtered.append(normalized)
+        if len(filtered) >= limit:
+            break
+    return filtered
+
+
+def residual_evidence_gaps(bundle: dict[str, Any], approval_status: str, golden_status: str) -> list[str]:
+    page_id = str(bundle.get("page_id") or "")
+    gaps = [
+        "full data-catalog/date review required before page-level closure.",
+        "direct page-keyed governance records are still required before treating this as proof of a specific page/API execution.",
+    ]
+    if approval_status == "candidate_or_pending":
+        gaps.append("Candidate metric dictionary-level approval remains pending.")
+    if approval_status == "mixed_source_or_observational":
+        gaps.append("Mixed-source page cannot be collapsed into full-page formal truth.")
+    if approval_status == "gap_or_observational":
+        gaps.append("GAP/observational route lacks standalone formal page contract closure.")
+    if golden_status == "missing":
+        gaps.append("dedicated golden sample is missing for the page-level metric surface.")
+    elif golden_status != "approved":
+        gaps.append("Existing golden sample is supporting or page DTO evidence only, not dictionary-level approval.")
+    if page_id == "PAGE-BOND-001":
+        gaps.append("MTR-BOND-* dictionary-level approval remains pending.")
+    if page_id == "PAGE-BOND-ANALYSIS-001":
+        gaps.append("Bond-analysis direct candidate contract is routed, but owner approval, governance validation, and manual audit closure remain pending.")
+        gaps.append("GS-BOND-HEADLINE-A belongs to /bond-dashboard and must not certify /bond-analysis.")
+        gaps.append("Direct fixed-income metric certification remains missing for DV01, duration, KRD, yield/YTM, bp movement, credit-spread, holdings, accounting-class, and action-attribution PnL.")
+    if page_id == "PAGE-OPS-001":
+        gaps.append("GAP-OPS-MACRO-FX mixed-source strip remains open; do not create MTR-OPS-* from this matrix.")
+    if page_id == "GAP-STOCK-ANALYSIS-PAGE":
+        gaps.append("Stock-analysis observational lane is routed, but owner approval, governance validation, and manual audit closure remain pending.")
+        gaps.append("Trading instructions, PAGE-STOCK contracts, MTR-* creation, and formal approval remain out of scope.")
+        gaps.append("Dedicated sample GS-STOCK-ANALYSIS-OBS-A is page DTO evidence only, not formal stock-analysis truth.")
+    return gaps
 
 
 def list_golden_samples(*, limit: int) -> list[dict[str, Any]]:

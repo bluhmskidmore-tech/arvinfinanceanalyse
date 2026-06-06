@@ -1,0 +1,20 @@
+{
+  "sample_id": "GS-PORTFOLIO-HOME-A",
+  "sample_type": "supporting-only",
+  "status": "observational-governance-sample",
+  "surface": "frontend aggregation: module-home/portfolio",
+  "frontend_route": "/portfolio",
+  "page_id": "PAGE-PORTFOLIO-HOME-001",
+  "report_date": "2026-05-31",
+  "capture_method": "deterministic governance evidence sample, not live API capture",
+  "inputs": {
+    "decision_anchor_date": "2026-05-31",
+    "risk_dates_endpoint": "/api/risk/tensor/dates",
+    "downstream_pages": [
+      "/balance-analysis",
+      "/bond-dashboard",
+      "/positions",
+      "/pnl-attribution"
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import json
 import sys
 from dataclasses import dataclass
@@ -19,6 +20,14 @@ EXECUTIVE_SAMPLE_PATHS = {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attr
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}
 BOND_DASHBOARD_SAMPLE_PATHS = {"/api/bond-dashboard/headline-kpis"}
 BOND_DASHBOARD_READ_HEADERS = {"X-User-Id": "bond-dashboard-read-user", "X-User-Role": "viewer"}
+BOND_ANALYSIS_SAMPLE_PATHS = {"/api/bond-analytics/action-attribution"}
+BOND_ANALYSIS_READ_HEADERS = {"X-User-Id": "bond-analysis-read-user", "X-User-Role": "viewer"}
+STOCK_ANALYSIS_SAMPLE_PATHS = {"/ui/market-data/livermore"}
+STOCK_ANALYSIS_READ_HEADERS = {"X-User-Id": "stock-analysis-read-user", "X-User-Role": "viewer"}
+PNL_ATTRIBUTION_SAMPLE_PATHS = {"/api/pnl-attribution/volume-rate"}
+PNL_ATTRIBUTION_READ_HEADERS = {"X-User-Id": "pnl-attribution-read-user", "X-User-Role": "viewer"}
+LEDGER_PNL_SAMPLE_PATHS = {"/api/ledger-pnl/summary"}
+LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -238,6 +247,118 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
             ),
         ],
     )
+
+
+def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    service_mod._action_attribution_cache.clear()
+
+    monkeypatch.setattr(
+        service_mod,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "duckdb_path": str(tmp_path / "bond-analysis-action-attribution.duckdb"),
+                "governance_path": tmp_path / "governance",
+                "governance_sql_dsn": "",
+                "postgres_dsn": "",
+            },
+        )(),
+    )
+
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-03-31", "2026-02-28"]
+
+        def fetch_bond_analytics_rows(self, *, report_date, **_kwargs):
+            common = {
+                "instrument_code": "BOND-A",
+                "portfolio_name": "FI Desk",
+                "cost_center": "Desk 1",
+                "asset_class_std": "rate",
+                "accounting_class": "OCI",
+                "source_version": "sv_bond_analysis_action_attr_gs_a",
+            }
+            if str(report_date) == "2026-02-28":
+                return [
+                    {
+                        **common,
+                        "market_value": Decimal("100000000"),
+                        "modified_duration": Decimal("3.00"),
+                    }
+                ]
+            return [
+                {
+                    **common,
+                    "market_value": Decimal("120000000"),
+                    "modified_duration": Decimal("3.20"),
+                }
+            ]
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def merged_capital_gain_517_by_position_for_dates(self, dates):
+            assert dates == ["2026-03-31"]
+            return {"BOND-A::FI Desk::Desk 1": Decimal("1250000")}
+
+    monkeypatch.setattr(service_mod, "BondAnalyticsRepository", Repo)
+    monkeypatch.setattr(service_mod, "PnlRepository", PnlRepo)
+
+
+def _setup_stock_analysis_observation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "stock-analysis-observation.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+            ('CA.CSI300', 'CSI 300 close', '2026-04-01', 3200.0, 'daily', 'index',
+             'sv_stock_analysis_obs_gs_a', 'vv_choice_stock_obs_gs_a',
+             'rv_choice_macro_public_history_v1', 'ok', 'stock-analysis-gs-a-1'),
+            ('CA.CSI300', 'CSI 300 close', '2026-04-02', 3235.0, 'daily', 'index',
+             'sv_stock_analysis_obs_gs_a', 'vv_choice_stock_obs_gs_a',
+             'rv_choice_macro_public_history_v1', 'ok', 'stock-analysis-gs-a-2'),
+            ('CA.CSI300', 'CSI 300 close', '2026-04-03', 3270.0, 'daily', 'index',
+             'sv_stock_analysis_obs_gs_a', 'vv_choice_stock_obs_gs_a',
+             'rv_choice_macro_public_history_v1', 'ok', 'stock-analysis-gs-a-3')
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(tmp_path / "missing-choice-stock-catalog.json"))
+    get_settings.cache_clear()
 
 
 def _setup_exec_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -460,9 +581,195 @@ def _setup_exec_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     )
 
 
+def _setup_pnl_attr_workbench(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.pnl_attribution_service",
+        "backend/app/services/pnl_attribution_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "duckdb_path": str(tmp_path / "pnl-attr-workbench.duckdb"),
+                "governance_path": tmp_path / "governance",
+                "governance_sql_dsn": "",
+                "postgres_dsn": "",
+            },
+        )(),
+    )
+
+    class Repo:
+        rows_by_date = {
+            "2026-04-30": [
+                {
+                    "report_date": "2026-04-30",
+                    "business_type_primary": "business_cd",
+                    "business_type": "business_cd",
+                    "currency_basis": "CNY",
+                    "interest_income_514": 100.0,
+                    "fair_value_change_516": 17.0,
+                    "capital_gain_517": 3.0,
+                    "manual_adjustment": 0.0,
+                    "total_pnl": 120.0,
+                    "scale_amount": 1_000.0,
+                    "yield_pct": 12.0,
+                    "pnl_row_count": 2,
+                    "balance_row_count": 2,
+                }
+            ],
+            "2026-03-31": [
+                {
+                    "report_date": "2026-03-31",
+                    "business_type_primary": "business_cd",
+                    "business_type": "business_cd",
+                    "currency_basis": "CNY",
+                    "interest_income_514": 70.0,
+                    "fair_value_change_516": 10.0,
+                    "capital_gain_517": 0.0,
+                    "manual_adjustment": 0.0,
+                    "total_pnl": 80.0,
+                    "scale_amount": 800.0,
+                    "yield_pct": 10.0,
+                    "pnl_row_count": 1,
+                    "balance_row_count": 1,
+                }
+            ],
+        }
+
+        def list_formal_fi_report_dates(self) -> list[str]:
+            return ["2026-04-30", "2026-03-31"]
+
+    def by_business_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, Any]:
+        rows = list(Repo.rows_by_date.get(report_date, []))
+        return {
+            "result_meta": {
+                "trace_id": f"tr_pnl_by_business_{report_date}",
+                "basis": "formal",
+                "result_kind": "pnl.by_business",
+                "formal_use_allowed": True,
+                "source_version": "sv_pnl_by_business_gs_attr_wb",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_pnl_attr_wb_golden_v1",
+                "cache_version": "cv_pnl_attr_wb_golden_v1",
+                "quality_flag": "ok",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+                "scenario_flag": False,
+                "as_of_date": report_date,
+                "generated_at": "2026-04-30T00:00:00Z",
+                "tables_used": [],
+                "filters_applied": {},
+                "evidence_rows": sum(
+                    int(row.get("pnl_row_count") or 0) + int(row.get("balance_row_count") or 0)
+                    for row in rows
+                ),
+                "next_drill": [],
+            },
+            "result": {
+                "report_date": report_date,
+                "source_tables": [
+                    "fact_formal_pnl_fi",
+                    "fact_nonstd_pnl_bridge",
+                    "fact_formal_zqtz_balance_daily",
+                ],
+                "summary": {
+                    "business_count": len(rows),
+                    "total_pnl": str(sum(float(row.get("total_pnl") or 0) for row in rows)),
+                    "total_scale_amount": str(sum(float(row.get("scale_amount") or 0) for row in rows)),
+                    "traced_pnl_row_count": sum(int(row.get("pnl_row_count") or 0) for row in rows),
+                    "untraced_pnl_row_count": 0,
+                },
+                "rows": rows,
+            },
+        }
+
+    monkeypatch.setattr(service_mod, "_pnl_repo", lambda: Repo())
+    monkeypatch.setattr(service_mod.pnl_service, "pnl_by_business_envelope", by_business_envelope)
+
+
+def _ledger_fact(
+    account_code: str,
+    currency: str,
+    *,
+    ending_balance: str = "0",
+    monthly_pnl: str = "0",
+) -> Any:
+    from backend.app.core_finance.product_category_pnl import CanonicalFactRow
+
+    return CanonicalFactRow(
+        report_date=date(2026, 4, 30),
+        account_code=account_code,
+        currency=currency,
+        account_name=account_code,
+        beginning_balance=Decimal("0"),
+        ending_balance=Decimal(ending_balance),
+        monthly_pnl=Decimal(monthly_pnl),
+        daily_avg_balance=Decimal("0"),
+        annual_avg_balance=Decimal("0"),
+        days_in_period=30,
+    )
+
+
+def _setup_ledger_pnl_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.ledger_pnl_service",
+        "backend/app/services/ledger_pnl_service.py",
+    )
+
+    facts = [
+        _ledger_fact("10101000001", "CNX", ending_balance="100"),
+        _ledger_fact("12301000001", "CNX", ending_balance="40"),
+        _ledger_fact("14201000001", "CNX", ending_balance="10"),
+        _ledger_fact("20101000001", "CNX", ending_balance="-50"),
+        _ledger_fact("23401000001", "CNX", ending_balance="-30"),
+        _ledger_fact("51401000001", "CNY", monthly_pnl="7"),
+        _ledger_fact("51601000001", "CNX", monthly_pnl="3"),
+    ]
+
+    monkeypatch.setattr(
+        service_mod,
+        "_load_facts_for_date",
+        lambda _source_dir, _report_date: (facts, "sv_ledger_pnl_summary_gs_a"),
+    )
+
+
 def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     request = _load_json(sample_id, "request.json")
+    if sample_id == "GS-BOND-ANALYSIS-ACTION-ATTR-A":
+        return _run_bond_analysis_action_attribution_payload(request)
+    if sample_id == "GS-STOCK-ANALYSIS-OBS-A":
+        return _run_stock_analysis_observation_payload(request, tmp_path)
     return _run_request_payload(request, tmp_path, monkeypatch)
+
+
+def _run_bond_analysis_action_attribution_payload(request: dict[str, Any]) -> dict[str, Any]:
+    service_mod = sys.modules.get("backend.app.services.bond_analytics_service")
+    if service_mod is None:
+        pytest.fail("Bond-analysis golden-sample service fixture was not initialized.")
+    params = dict(request.get("params") or {})
+    return service_mod.get_action_attribution(
+        date.fromisoformat(str(params["report_date"])),
+        str(params.get("period_type") or "MoM"),
+    )
+
+
+def _run_stock_analysis_observation_payload(request: dict[str, Any], tmp_path: Path) -> dict[str, Any]:
+    from backend.app.repositories.choice_stock_adapter import choice_stock_readiness_missing
+    from backend.app.services.market_data_livermore_service import livermore_strategy_envelope
+
+    params = dict(request.get("params") or {})
+    payload = livermore_strategy_envelope(
+        duckdb_path=str(tmp_path / "stock-analysis-observation.duckdb"),
+        as_of_date=str(params["as_of_date"]),
+        stock_readiness=choice_stock_readiness_missing(""),
+    )
+    payload["result_meta"]["trace_id"] = "tr_stock_analysis_obs_gs_a"
+    payload["result_meta"]["generated_at"] = "2026-06-06T00:00:00Z"
+    return payload
 
 
 def _run_request_payload(
@@ -488,6 +795,38 @@ def _run_request_payload(
             resource="bond_dashboard",
         )
         headers = BOND_DASHBOARD_READ_HEADERS
+    elif request["path"] in BOND_ANALYSIS_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="bond-analysis-read-scope.db",
+            resource="bond_analytics",
+        )
+        headers = BOND_ANALYSIS_READ_HEADERS
+    elif request["path"] in STOCK_ANALYSIS_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="stock-analysis-read-scope.db",
+            resource="market_data.livermore",
+        )
+        headers = STOCK_ANALYSIS_READ_HEADERS
+    elif request["path"] in PNL_ATTRIBUTION_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="pnl-attribution-read-scope.db",
+            resource="pnl_attribution",
+        )
+        headers = PNL_ATTRIBUTION_READ_HEADERS
+    elif request["path"] in LEDGER_PNL_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="ledger-pnl-read-scope.db",
+            resource="ledger_pnl",
+        )
+        headers = LEDGER_PNL_READ_HEADERS
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
         request["method"],
@@ -836,6 +1175,43 @@ def _validate_bond_headline(actual: dict[str, Any], expected: dict[str, Any]) ->
     )
 
 
+def _validate_bond_analysis_action_attribution(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "source_surface"),
+            ("result", "report_date"),
+            ("result", "period_type"),
+            ("result", "period_start"),
+            ("result", "period_end"),
+            ("result", "total_actions"),
+            ("result", "total_pnl_from_actions"),
+            ("result", "period_start_duration"),
+            ("result", "period_end_duration"),
+            ("result", "duration_change_from_actions"),
+            ("result", "period_start_dv01"),
+            ("result", "period_end_dv01"),
+            ("result", "status"),
+            ("result", "available_components"),
+            ("result", "missing_inputs"),
+            ("result", "blocked_components"),
+            ("result", "warnings"),
+        ],
+    )
+
+
 def _validate_exec_overview(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -923,6 +1299,109 @@ def _validate_exec_summary(actual: dict[str, Any], expected: dict[str, Any]) -> 
     )
 
 
+def _validate_pnl_attr_workbench(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "source_surface"),
+            ("result", "current_period"),
+            ("result", "previous_period"),
+            ("result", "compare_type"),
+            ("result", "total_current_pnl"),
+            ("result", "total_previous_pnl"),
+            ("result", "total_volume_effect"),
+            ("result", "total_rate_effect"),
+            ("result", "total_interaction_effect"),
+            ("result", "items"),
+            ("result", "has_previous_data"),
+        ],
+    )
+
+
+def _validate_ledger_pnl_summary(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result", "report_date"),
+            ("result", "source_version"),
+            ("result", "ledger_total_assets"),
+            ("result", "ledger_total_liabilities"),
+            ("result", "ledger_net_assets"),
+            ("result", "ledger_monthly_pnl_core"),
+            ("result", "ledger_monthly_pnl_all"),
+            ("result", "by_currency"),
+            ("result", "by_account"),
+        ],
+    )
+
+
+def _validate_stock_analysis_observation(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result", "as_of_date"),
+            ("result", "requested_as_of_date"),
+            ("result", "strategy_name"),
+            ("result", "basis"),
+            ("result", "market_gate", "state"),
+            ("result", "supported_outputs"),
+            ("result", "unsupported_outputs"),
+            ("result", "data_gaps"),
+            ("result", "rule_readiness"),
+        ],
+    )
+
+
 @dataclass(frozen=True)
 class CaptureReadyCase:
     setup: Any
@@ -940,16 +1419,51 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-BRIDGE-WARN-B": CaptureReadyCase(setup=_setup_bridge_warn, validator=_validate_bridge_warn),
     "GS-RISK-WARN-B": CaptureReadyCase(setup=_setup_risk_warn, validator=_validate_risk_warn),
     "GS-BOND-HEADLINE-A": CaptureReadyCase(setup=_setup_bond_headline, validator=_validate_bond_headline),
+    "GS-BOND-ANALYSIS-ACTION-ATTR-A": CaptureReadyCase(
+        setup=_setup_bond_analysis_action_attribution,
+        validator=_validate_bond_analysis_action_attribution,
+    ),
+    "GS-STOCK-ANALYSIS-OBS-A": CaptureReadyCase(
+        setup=_setup_stock_analysis_observation,
+        validator=_validate_stock_analysis_observation,
+    ),
     "GS-EXEC-OVERVIEW-A": CaptureReadyCase(setup=_setup_exec_overview, validator=_validate_exec_overview),
     "GS-EXEC-PNL-ATTR-A": CaptureReadyCase(setup=_setup_exec_pnl_attr, validator=_validate_exec_pnl_attr),
     "GS-EXEC-SUMMARY-A": CaptureReadyCase(setup=_setup_exec_summary, validator=_validate_exec_summary),
+    "GS-PNL-ATTR-WB-A": CaptureReadyCase(setup=_setup_pnl_attr_workbench, validator=_validate_pnl_attr_workbench),
+    "GS-LEDGER-PNL-SUMMARY-A": CaptureReadyCase(
+        setup=_setup_ledger_pnl_summary,
+        validator=_validate_ledger_pnl_summary,
+    ),
 }
+
+SUPPORTING_ONLY_SAMPLE_IDS = {"GS-PORTFOLIO-HOME-A"}
 
 
 def test_capture_ready_golden_sample_files_exist() -> None:
     for sample_id in CAPTURE_READY_CASES:
         for filename in ("request.json", "response.json", "assertions.md", "approval.md"):
             assert _sample_file(sample_id, filename).exists()
+
+
+def test_supporting_only_golden_sample_files_exist_without_capture_ready_claim() -> None:
+    for sample_id in SUPPORTING_ONLY_SAMPLE_IDS:
+        assert sample_id not in CAPTURE_READY_CASES
+        for filename in ("request.json", "response.json", "assertions.md", "approval.md"):
+            assert _sample_file(sample_id, filename).exists()
+
+        approval = _read_text(sample_id, "approval.md")
+        assertions = _read_text(sample_id, "assertions.md")
+        response = _load_json(sample_id, "response.json")
+
+        assert "supporting-only" in approval
+        assert "captured-awaiting-approval" not in approval
+        assert "formal_use_allowed=false" in assertions
+        assert response["governance_status"]["formal_use_allowed"] is False
+        assert response["frontend_gate_observation"]["proves_page_execution"] is False
+        assert response["risk_evidence"]["risk_closure_ready"] is True
+        assert response["risk_evidence"]["risk_report_date"] == response["decision_anchor_date"]
+        assert response["risk_evidence"]["risk_result_meta_date"] == response["decision_anchor_date"]
 
 
 def test_capture_ready_golden_sample_metadata_is_in_expected_state() -> None:
@@ -963,22 +1477,38 @@ def test_product_category_capture_ready_companion_scenario_files_exist() -> None
         assert _sample_file("GS-PROD-CAT-PNL-A", filename).exists()
 
 
-def test_product_category_sample_documents_headline_metric_boundary() -> None:
+def test_product_category_sample_documents_approved_metric_boundary() -> None:
     assertions = _read_text("GS-PROD-CAT-PNL-A", "assertions.md")
     sample_doc = (ROOT / "docs" / "pnl" / "product-category-golden-sample-a.md").read_text(encoding="utf-8")
     combined = "\n".join((assertions, sample_doc))
 
-    for metric_id in ("MTR-PCP-001", "MTR-PCP-002", "MTR-PCP-003"):
+    for metric_id in tuple(f"MTR-PCP-{index:03d}" for index in range(1, 13)):
         assert metric_id in combined
 
     for required in (
-        "The approved sample-to-metric bindings are limited to the three headline totals:",
-        "Detail rows, `weighted_yield`, scale, and FTP fields are approved directionally by decision 3C, but they remain page/sample truth until the field matrix, numbering, dictionary rows, and tests make them active.",
-        "This sample is now bound to the three headline `metric_id` values; decision 3C approves detail metric expansion directionally, but concrete detail rows wait for the field matrix / numbering / dictionary tests.",
+        "The approved sample-to-metric bindings include the three headline totals:",
+        "Decision 3C activates these row-level detail metric bindings for `result.rows[]`",
+        "This sample is now bound to the three headline `metric_id` values and the decision 3C row-level detail metric set.",
+        "Scenario outputs remain analytical scenario payloads unless a future decision explicitly promotes them.",
     ):
         assert required in combined
 
     assert "not yet at approved `metric_id` level" not in combined
+
+
+def test_product_category_companion_scenario_documents_promotion_gate() -> None:
+    assertions = _read_text("GS-PROD-CAT-PNL-A", "assertions.md")
+    sample_doc = (ROOT / "docs" / "pnl" / "product-category-golden-sample-a.md").read_text(encoding="utf-8")
+    combined = "\n".join((assertions, sample_doc))
+
+    for required in (
+        "Scenario promotion gate",
+        "A separate scenario `request.json` and `response.json` pair captured from the governed endpoint.",
+        "Scenario-specific assertions that freeze row identity, category tree, scenario-owned FTP deltas, and unchanged non-scenario fields.",
+        "No new scenario `metric_id` binding without an approved metric matrix and metric dictionary rows.",
+        "Business-owner or delegated approval recorded in a non-placeholder scenario approval artifact.",
+    ):
+        assert required in combined
 
 
 @pytest.mark.parametrize("sample_id", sorted(CAPTURE_READY_CASES))

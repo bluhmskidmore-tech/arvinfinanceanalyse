@@ -1,0 +1,39 @@
+{
+  "result_meta": {
+    "basis": "analytical",
+    "result_kind": "bond_analytics.action_attribution",
+    "formal_use_allowed": false,
+    "source_version": "sv_bond_analysis_action_attr_gs_a",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_bond_analytics_formal_materialize_v1",
+    "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+    "quality_flag": "warning",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "source_surface": "bond_analytics"
+  },
+  "result": {
+    "report_date": "2026-03-31",
+    "period_type": "MoM",
+    "period_start": "2026-03-01",
+    "period_end": "2026-03-31",
+    "total_actions": 1,
+    "total_pnl_from_actions": "1250000.00000000",
+    "period_start_duration": "3.00000000",
+    "period_end_duration": "3.20000000",
+    "duration_change_from_actions": "0.20000000",
+    "period_start_dv01": "0.00000000",
+    "period_end_dv01": "0.00000000",
+    "status": "ready",
+    "available_components": [
+      "snapshot_diff",
+      "capital_gain_517_allocation"
+    ],
+    "missing_inputs": [],
+    "blocked_components": [],
+    "warnings": [
+      "ACTION_ATTRIBUTION_HEURISTIC_NO_WIND"
+    ]
+  }
+}

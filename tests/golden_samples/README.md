@@ -17,18 +17,26 @@ Reason:
 - avoid freezing guessed or partially inferred payloads as business truth
 - keep sample packs aligned with `docs/golden_sample_catalog.md`
 
-Current capture-ready sample packs (13 total):
+Current capture-ready sample packs (17 total):
 
 - `GS-BAL-OVERVIEW-A`
 - `GS-BAL-WORKBOOK-A`
 - `GS-PNL-OVERVIEW-A`
 - `GS-PNL-DATA-A`
+- `GS-PNL-ATTR-WB-A`
 - `GS-BOND-HEADLINE-A`
+- `GS-BOND-ANALYSIS-ACTION-ATTR-A`
+- `GS-STOCK-ANALYSIS-OBS-A`
 - `GS-BRIDGE-A`
 - `GS-RISK-A`
 - `GS-EXEC-OVERVIEW-A`
 - `GS-EXEC-PNL-ATTR-A`
 - `GS-EXEC-SUMMARY-A`
+- `GS-LEDGER-PNL-SUMMARY-A`
 - `GS-PROD-CAT-PNL-A`
 - `GS-BRIDGE-WARN-B`
 - `GS-RISK-WARN-B`
+
+Supporting-only governance sample packs (1 total):
+
+- `GS-PORTFOLIO-HOME-A` - `/portfolio` module-home evidence boundary. This pack is not capture-ready, does not prove page execution, and does not approve page-level formal use.

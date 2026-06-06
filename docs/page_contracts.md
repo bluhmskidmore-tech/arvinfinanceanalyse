@@ -774,6 +774,7 @@
 
 - 黄金样本：
   - `GS-RISK-A`
+  - `GS-RISK-WARN-B`（warning-profile）
 - 对账对象：
   - bond analytics risk summary
   - executive overview 管理视图中的 DV01
@@ -1486,7 +1487,7 @@
 - `MTR-LPN-001` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_core`
 - `MTR-LPN-002` -> `LedgerPnlSummaryPayload.ledger_monthly_pnl_all`
 - `MTR-LPN-003` -> `LedgerPnlSummaryPayload.ledger_net_assets`
-- The bound page is `PAGE-LEDGER-PNL-001`; `bound_sample_id=none` until a capture-ready ledger summary sample is approved.
+- The bound page is `PAGE-LEDGER-PNL-001`; `bound_sample_id=GS-LEDGER-PNL-SUMMARY-A` as a capture-ready candidate DTO sample. This sample does not approve formal use and `pending_confirmation=true` remains in force for `MTR-LPN-001` through `MTR-LPN-003`.
 
 ### G. Tests
 
@@ -1567,6 +1568,13 @@
 - 后端/流程：`tests/test_product_category_pnl_flow.py`、`tests/test_product_category_mapping_contract.py`
 - 前端：`frontend/src/test/ProductCategoryPnlPage.test.tsx` 等（见 `product-category-closure-checklist.md`）
 - capture-ready：`tests/test_golden_samples_capture_ready.py` 中 `GS-PROD-CAT-PNL-A`
+
+### F.1 Decision 3C active detail metric clarification
+
+- 2026-06-04 update: decision 3C detail metrics are active as `MTR-PCP-004`~`MTR-PCP-012`, bound only to `result.rows[].cnx_scale`, `result.rows[].cny_scale`, `result.rows[].foreign_scale`, `result.rows[].cny_ftp`, `result.rows[].foreign_ftp`, `result.rows[].cny_net`, `result.rows[].foreign_net`, `result.rows[].business_net_income`, and `result.rows[].weighted_yield`.
+- Active detail ids: `MTR-PCP-004`, `MTR-PCP-005`, `MTR-PCP-006`, `MTR-PCP-007`, `MTR-PCP-008`, `MTR-PCP-009`, `MTR-PCP-010`, `MTR-PCP-011`, `MTR-PCP-012`.
+- Row dimensions such as `category_id`, `side`, `view`, and `report_date` remain dimensions, not metrics.
+- Scenario payloads remain analytical companion probes unless a future decision explicitly promotes them.
 
 ## 14.1 PAGE-AGENT-001 Agent Workbench
 

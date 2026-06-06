@@ -1,0 +1,105 @@
+{
+  "sample_id": "GS-PORTFOLIO-HOME-A",
+  "sample_type": "supporting-only",
+  "surface": "frontend aggregation: module-home/portfolio",
+  "frontend_route": "/portfolio",
+  "page_id": "PAGE-PORTFOLIO-HOME-001",
+  "decision_anchor_date": "2026-05-31",
+  "governance_status": {
+    "basis": "mixed_source_or_observational",
+    "formal_use_allowed": false,
+    "approval_status": "mixed_source_or_observational",
+    "proves_page_execution": false,
+    "approves_metric_or_page": false
+  },
+  "frontend_gate_observation": {
+    "core_render_ready": true,
+    "decision_evidence_ready": true,
+    "risk_closure_ready": true,
+    "proves_page_execution": false
+  },
+  "source_evidence": {
+    "sampled_tables": [
+      "fact_formal_zqtz_balance_daily",
+      "fact_formal_tyw_balance_daily",
+      "fact_formal_bond_analytics_daily",
+      "zqtz_bond_daily_snapshot",
+      "tyw_interbank_daily_snapshot",
+      "fact_formal_pnl_fi",
+      "fact_nonstd_pnl_bridge",
+      "fact_formal_risk_tensor_daily"
+    ],
+    "anchor_report_date": "2026-05-31",
+    "anchor_date_tables": [
+      "fact_formal_zqtz_balance_daily",
+      "fact_formal_tyw_balance_daily",
+      "fact_formal_bond_analytics_daily",
+      "zqtz_bond_daily_snapshot",
+      "tyw_interbank_daily_snapshot",
+      "fact_formal_pnl_fi",
+      "fact_nonstd_pnl_bridge",
+      "fact_formal_risk_tensor_daily"
+    ],
+    "risk_tensor_latest_sampled_report_date": "2026-05-31"
+  },
+  "decision_evidence_sources": [
+    {
+      "source": "bondHeadline",
+      "result_kind": "bond_dashboard.headline_kpis",
+      "report_date": "2026-05-31",
+      "result_meta_date": "2026-05-31",
+      "basis": "formal",
+      "formal_use_allowed": true,
+      "quality_flag": "ok",
+      "fallback_mode": "none"
+    },
+    {
+      "source": "bondRisk",
+      "result_kind": "bond_dashboard.risk_indicators",
+      "report_date": "2026-05-31",
+      "result_meta_date": "2026-05-31",
+      "basis": "formal",
+      "formal_use_allowed": true,
+      "quality_flag": "ok",
+      "fallback_mode": "none"
+    },
+    {
+      "source": "balanceOverview",
+      "result_kind": "balance-analysis.overview",
+      "report_date": "2026-05-31",
+      "result_meta_date": "2026-05-31",
+      "basis": "formal",
+      "formal_use_allowed": true,
+      "quality_flag": "ok",
+      "fallback_mode": "none"
+    },
+    {
+      "source": "pnlSummary",
+      "result_kind": "pnl_attribution.summary",
+      "report_date": "2026-05-31",
+      "result_meta_date": "2026-05-31",
+      "basis": "formal",
+      "formal_use_allowed": true,
+      "quality_flag": "ok",
+      "fallback_mode": "none"
+    }
+  ],
+  "risk_evidence": {
+    "risk_dates_api": "/api/risk/tensor/dates",
+    "report_dates": [
+      "2026-05-31",
+      "2026-04-30"
+    ],
+    "decision_anchor_date": "2026-05-31",
+    "risk_report_date": "2026-05-31",
+    "risk_result_meta_date": "2026-05-31",
+    "risk_closure_ready": true,
+    "reason": "risk tensor dates include the decision anchor date and result_meta dates align"
+  },
+  "guardrails": [
+    "Do not treat this sample as page-level formal approval.",
+    "Do not treat same-day risk date closure as capture-ready page execution or owner approval.",
+    "Do not treat the warning-quality risk tensor payload as quality=ok decision evidence.",
+    "Do not use portfolio module-home values as standalone MTR-* approvals."
+  ]
+}

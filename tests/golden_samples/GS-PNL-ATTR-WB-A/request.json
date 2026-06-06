@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "path": "/api/pnl-attribution/volume-rate",
+  "params": {
+    "report_date": "2026-04-30",
+    "compare_type": "mom"
+  },
+  "basis": "formal"
+}
