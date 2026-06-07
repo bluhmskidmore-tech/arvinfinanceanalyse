@@ -13,8 +13,8 @@ from backend.app.agent.schemas.agent_response import (
     AgentEvidence,
     AgentResultMeta,
 )
-from tests.test_agent_api_contract import _agent_auth_fields, _seed_agent_read_scope
 from tests.helpers import load_module
+from tests.test_agent_api_contract import _agent_auth_fields, _seed_agent_read_scope
 
 
 def _settings(tmp_path: Path) -> SimpleNamespace:
@@ -396,7 +396,7 @@ def test_agent_runs_accept_dexter_provider_and_persist_provider_metadata(monkeyp
     assert created["provider"] == "dexter"
     assert created["model"] == "dexter-test"
     assert created["transport"] == "sidecar"
-    assert created["toolsets"] == "sql,files"
+    assert created["toolsets"] == "evidence,query,research"
 
     records = [
         json.loads(line)
@@ -413,7 +413,7 @@ def test_agent_runs_accept_dexter_provider_and_persist_provider_metadata(monkeyp
     assert completed["provider"] == "dexter"
     assert completed["model"] == "dexter-test"
     assert completed["transport"] == "sidecar"
-    assert completed["toolsets"] == "sql,files"
+    assert completed["toolsets"] == "evidence,query,research"
     assert completed["result"]["answer"] == "Dexter managed answer."
     assert completed["result"]["result_meta"]["result_kind"] == "agent.dexter"
     assert calls and calls[0][2] == "dexter-test"

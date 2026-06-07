@@ -5,6 +5,7 @@ import json
 import pytest
 
 from tests.helpers import load_module
+from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
 
 
 def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, monkeypatch):
@@ -493,6 +494,7 @@ def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
     action = envelope.suggested_actions[0]
     assert action.type == "inspect_drill"
     assert action.requires_confirmation is True
+    assert action.confirmation_token
     assert action.payload == {
         "dimension": "instrument_id",
         "page_context": {
@@ -502,6 +504,12 @@ def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
             "context_note": "user selected one exception row",
         },
     }
+    assert agent_action_confirmation_token_matches(
+        token=action.confirmation_token,
+        action_type=action.type,
+        label=action.label,
+        payload=action.payload,
+    )
 
 
 def test_next_drill_inspect_labels_include_first_selected_row_summary(tmp_path):
@@ -1405,6 +1413,13 @@ def test_financial_workflow_context_returns_plan_envelope(tmp_path):
     ]
     assert envelope.suggested_actions[0].type == "execute_intent"
     assert envelope.suggested_actions[0].payload["intent"] == "duration_risk"
+    assert envelope.suggested_actions[0].confirmation_token
+    assert agent_action_confirmation_token_matches(
+        token=envelope.suggested_actions[0].confirmation_token,
+        action_type=envelope.suggested_actions[0].type,
+        label=envelope.suggested_actions[0].label,
+        payload=envelope.suggested_actions[0].payload,
+    )
 
 
 def test_financial_workflow_slash_command_returns_plan_envelope(tmp_path):
@@ -1426,6 +1441,7 @@ def test_financial_workflow_slash_command_returns_plan_envelope(tmp_path):
     assert envelope.result_meta.formal_use_allowed is False
     assert envelope.evidence.evidence_rows == 0
     assert envelope.suggested_actions[0].payload["intent"] == "pnl_summary"
+    assert envelope.suggested_actions[0].confirmation_token
 
 
 def test_unknown_workflow_id_falls_back_to_existing_intent_routing(tmp_path):

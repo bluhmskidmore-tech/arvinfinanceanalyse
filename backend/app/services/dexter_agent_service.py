@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -130,7 +131,7 @@ def build_dexter_envelope(
     if result.get("model"):
         filters_applied["model"] = result["model"]
     if result.get("toolsets"):
-        filters_applied["toolsets"] = result["toolsets"]
+        filters_applied["toolsets"] = _normalize_toolsets(str(result["toolsets"]))
     if result.get("transport"):
         filters_applied["transport"] = result["transport"]
     if has_research_context:
@@ -148,14 +149,17 @@ def build_dexter_envelope(
     )
     if has_research_context:
         tables_used = _dedupe([*tables_used, *list(research_context.get("tables_used") or [])])
-    evidence_rows = int(research_context.get("evidence_rows") or 0) if has_research_context else 1
-    quality_flag = str(research_context.get("quality_flag") or "ok") if has_research_context else "ok"
+    evidence_rows = int(research_context.get("evidence_rows") or 0) if has_research_context else 0
+    quality_flag = _provider_runtime_quality_flag(
+        str(research_context.get("quality_flag") or "warning") if has_research_context else "warning"
+    )
     evidence = AgentEvidence(
         tables_used=tables_used,
         filters_applied=filters_applied,
         sql_executed=[],
         evidence_rows=evidence_rows,
         quality_flag=quality_flag,
+        evidence_strength="provider_runtime",
     )
     source_suffix = "sidecar" if "dexter_sidecar" in tables_used else "cli"
     result_meta = AgentResultMeta(
@@ -176,6 +180,7 @@ def build_dexter_envelope(
         filters_applied=evidence.filters_applied,
         sql_executed=[],
         evidence_rows=evidence.evidence_rows,
+        evidence_strength=evidence.evidence_strength,
     )
     return AgentEnvelope(
         answer=str(result.get("answer") or ""),
@@ -200,6 +205,13 @@ def _build_dexter_command(
     if toolsets:
         args.extend(["--toolsets", toolsets])
     return args
+
+
+def _provider_runtime_quality_flag(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"error", "stale"}:
+        return normalized
+    return "warning"
 
 
 def _post_dexter_bridge_query(
@@ -245,7 +257,7 @@ def _post_dexter_bridge_query(
         "command": "dexter_sidecar",
         "tool_name": str(payload.get("tool_name") or "dexter_sidecar"),
         "model": str(payload.get("model") or model or "default"),
-        "toolsets": str(payload.get("toolsets") or toolsets or "default"),
+        "toolsets": _normalize_toolsets(str(payload.get("toolsets") or toolsets)),
         "transport": "sidecar",
         "tables_used": _normalize_tables_used(payload.get("tables_used"), fallback="dexter_sidecar"),
         **_structured_research_fields(payload),
@@ -388,7 +400,7 @@ def _normalize_string_list(value: Any) -> list[str]:
 
 
 def _normalize_toolsets(toolsets: str) -> str:
-    return ",".join(part.strip() for part in str(toolsets or "").split(",") if part.strip())
+    return normalize_read_only_toolsets(toolsets)
 
 
 def _normalize_tables_used(value: Any, *, fallback: str) -> list[str]:

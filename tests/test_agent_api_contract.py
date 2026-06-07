@@ -18,7 +18,6 @@ from backend.app.main import app as default_app
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
-
 AGENT_READ_HEADERS = {"X-User-Id": "agent-read-user", "X-User-Role": "viewer"}
 
 
@@ -262,8 +261,39 @@ def test_agent_response_schema_exposes_passive_suggested_actions():
     )
     action_model = getattr(module, "AgentSuggestedAction", None)
     assert action_model is not None
-    assert {"type", "label", "payload", "requires_confirmation"} <= set(action_model.model_fields)
+    assert {"type", "label", "payload", "requires_confirmation", "confirmation_token"} <= set(action_model.model_fields)
     assert "suggested_actions" in module.AgentEnvelope.model_fields
+    assert "evidence_strength" in module.AgentEvidence.model_fields
+    assert "evidence_strength" in module.AgentResultMeta.model_fields
+
+
+def test_agent_provider_runtime_schema_downgrades_ok_quality_flag():
+    module = load_module(
+        "backend.app.agent.schemas.agent_response",
+        "backend/app/agent/schemas/agent_response.py",
+    )
+
+    evidence = module.AgentEvidence(
+        tables_used=["dexter_sidecar"],
+        evidence_rows=5,
+        quality_flag="ok",
+        evidence_strength="provider_runtime",
+    )
+    meta = module.AgentResultMeta(
+        trace_id="tr_provider_runtime",
+        basis="analytical",
+        result_kind="agent.dexter",
+        formal_use_allowed=False,
+        source_version="sv_dexter_sidecar",
+        vendor_version="vv_dexter",
+        rule_version="rv_agent_dexter_v1",
+        cache_version="cv_agent_dexter_v1",
+        quality_flag="ok",
+        evidence_strength="provider_runtime",
+    )
+
+    assert evidence.quality_flag == "warning"
+    assert meta.quality_flag == "warning"
 
 
 def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
@@ -680,6 +710,246 @@ def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
     assert not calls
 
 
+def test_agent_query_requires_confirmation_token_for_confirmed_suggested_action(monkeypatch, tmp_path):
+    from backend.app.agent.runtime.action_token import agent_action_confirmation_token
+
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        calls.append((request, duckdb_path, governance_dir))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    confirmed_action = {
+        "type": "execute_intent",
+        "label": "Portfolio overview",
+        "payload": {"intent": "portfolio_overview"},
+    }
+    confirmed_token = agent_action_confirmation_token(
+        action_type=confirmed_action["type"],
+        label=confirmed_action["label"],
+        payload=confirmed_action["payload"],
+    )
+
+    missing_token_response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "组合概览",
+            "context": {
+                "intent": "portfolio_overview",
+                "suggested_action_requires_confirmation": True,
+            },
+        },
+    )
+    missing_action_response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "portfolio overview",
+            "context": {
+                "intent": "portfolio_overview",
+                "suggested_action_requires_confirmation": True,
+                "suggested_action_confirmation_token": confirmed_token,
+            },
+        },
+    )
+    confirmed_response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "组合概览",
+            "context": {
+                "intent": "portfolio_overview",
+                "suggested_action_requires_confirmation": True,
+                "suggested_action_confirmation_token": confirmed_token,
+                "suggested_action": confirmed_action,
+            },
+        },
+    )
+    malformed_token_response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "缁勫悎姒傝",
+            "context": {
+                "intent": "portfolio_overview",
+                "suggested_action_requires_confirmation": True,
+                "suggested_action_confirmation_token": "agent_action:test-token",
+            },
+        },
+    )
+
+    mismatched_action_response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "portfolio overview",
+            "context": {
+                "intent": "portfolio_overview",
+                "suggested_action_requires_confirmation": True,
+                "suggested_action_confirmation_token": confirmed_token,
+                "suggested_action": {
+                    "type": "execute_intent",
+                    "label": "Duration risk",
+                    "payload": {"intent": "duration_risk"},
+                },
+            },
+        },
+    )
+
+    assert missing_token_response.status_code == 403
+    assert "confirmation token" in missing_token_response.json()["detail"]
+    assert missing_action_response.status_code == 403
+    assert "confirmation token" in missing_action_response.json()["detail"]
+    assert malformed_token_response.status_code == 403
+    assert "confirmation token" in malformed_token_response.json()["detail"]
+    assert mismatched_action_response.status_code == 403
+    assert "confirmation token" in mismatched_action_response.json()["detail"]
+    assert confirmed_response.status_code == 200
+    assert calls
+    assert calls[-1][0].context["suggested_action_confirmation_token"] == confirmed_token
+
+
+def test_agent_query_rejects_expired_suggested_action_confirmation_token(monkeypatch, tmp_path):
+    from backend.app.agent.runtime.action_token import agent_action_confirmation_token
+
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        calls.append((request, duckdb_path, governance_dir))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    confirmed_action = {
+        "type": "execute_intent",
+        "label": "Portfolio overview",
+        "payload": {"intent": "portfolio_overview"},
+    }
+    expired_token = agent_action_confirmation_token(
+        action_type=confirmed_action["type"],
+        label=confirmed_action["label"],
+        payload=confirmed_action["payload"],
+        expires_at=1,
+    )
+
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "portfolio overview",
+            "context": {
+                "intent": "portfolio_overview",
+                "suggested_action_requires_confirmation": True,
+                "suggested_action_confirmation_token": expired_token,
+                "suggested_action": confirmed_action,
+            },
+        },
+    )
+
+    assert response.status_code == 403
+    assert "confirmation token" in response.json()["detail"]
+    assert calls == []
+
+
+def test_agent_endpoints_require_token_when_suggested_action_payload_requires_confirmation(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_transport": "bridge",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_toolsets": "evidence",
+                "agent_hermes_timeout_seconds": 11.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    calls = []
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        calls.append((request, governance_dir, settings.agent_hermes_model))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    body = {
+        "question": "run suggested action",
+        "context": {
+            "suggested_action": {
+                "type": "execute_intent",
+                "label": "Refresh page",
+                "payload": {"intent": "refresh_page"},
+                "requires_confirmation": True,
+            }
+        },
+    }
+
+    query_response = client.post("/api/agent/query", json=body)
+    runs_response = client.post("/api/agent/runs", json=body)
+
+    assert query_response.status_code == 403
+    assert "confirmation token" in query_response.json()["detail"]
+    assert runs_response.status_code == 403
+    assert "confirmation token" in runs_response.json()["detail"]
+    assert not calls
+
+
 def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -758,3 +1028,46 @@ def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_
     assert payload["evidence"]["tables_used"] == ["dexter_sidecar"]
     assert calls
     assert calls[0][2] == "dexter-test"
+
+
+def test_external_provider_envelopes_sanitize_toolsets_and_mark_provider_runtime_evidence():
+    from backend.app.agent.schemas.agent_request import AgentQueryRequest
+    from backend.app.services.dexter_agent_service import build_dexter_envelope
+    from backend.app.services.hermes_agent_service import build_hermes_envelope
+
+    request = AgentQueryRequest(question="external provider health check")
+
+    hermes = build_hermes_envelope(
+        request=request,
+        result={
+            "answer": "Hermes answered.",
+            "model": "gpt-test",
+            "toolsets": "file,terminal,query",
+            "transport": "bridge",
+        },
+    )
+    dexter = build_dexter_envelope(
+        request=request,
+        result={
+            "answer": "Dexter answered.",
+            "model": "dexter-test",
+            "toolsets": "sql,files,research",
+            "transport": "sidecar",
+            "tables_used": ["dexter_sidecar"],
+        },
+        research_context=None,
+    )
+
+    assert hermes.evidence.filters_applied["toolsets"] == "query"
+    assert hermes.result_meta.filters_applied["toolsets"] == "query"
+    assert hermes.evidence.evidence_strength == "provider_runtime"
+    assert hermes.result_meta.evidence_strength == "provider_runtime"
+    assert hermes.result_meta.quality_flag == "warning"
+    assert hermes.result_meta.formal_use_allowed is False
+
+    assert dexter.evidence.filters_applied["toolsets"] == "research"
+    assert dexter.result_meta.filters_applied["toolsets"] == "research"
+    assert dexter.evidence.evidence_strength == "provider_runtime"
+    assert dexter.result_meta.evidence_strength == "provider_runtime"
+    assert dexter.result_meta.quality_flag == "warning"
+    assert dexter.result_meta.formal_use_allowed is False

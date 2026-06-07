@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
     AgentCard,
@@ -69,7 +70,7 @@ def warm_hermes_bridge_if_configured(settings: Any) -> bool:
             "bridge_url": str(getattr(settings, "agent_hermes_bridge_url", "") or "")
             or "http://127.0.0.1:7891",
             "model": str(getattr(settings, "agent_hermes_model", "") or ""),
-            "toolsets": str(getattr(settings, "agent_hermes_toolsets", "") or ""),
+            "toolsets": _normalize_toolsets(str(getattr(settings, "agent_hermes_toolsets", "") or "")),
             "max_turns": int(getattr(settings, "agent_hermes_max_turns", 20) or 20),
             "timeout_seconds": float(getattr(settings, "agent_hermes_timeout_seconds", 180.0) or 180.0),
         },
@@ -101,6 +102,7 @@ def run_hermes_agent(
     timeout_seconds: float,
 ) -> dict[str, str]:
     prompt = _build_hermes_prompt(request)
+    normalized_toolsets = _normalize_toolsets(toolsets)
     if str(transport or "").strip().lower() == "bridge":
         normalized_bridge_url = str(bridge_url or "").strip() or "http://127.0.0.1:7891"
         _ensure_hermes_bridge(
@@ -109,7 +111,7 @@ def run_hermes_agent(
             hermes_home=hermes_home,
             bridge_url=normalized_bridge_url,
             model=model,
-            toolsets=toolsets,
+            toolsets=normalized_toolsets,
             max_turns=max_turns,
             timeout_seconds=timeout_seconds,
         )
@@ -117,7 +119,7 @@ def run_hermes_agent(
             bridge_url=normalized_bridge_url,
             prompt=prompt,
             model=model,
-            toolsets=toolsets,
+            toolsets=normalized_toolsets,
             max_turns=max_turns,
             timeout_seconds=timeout_seconds,
         )
@@ -166,7 +168,7 @@ def run_hermes_agent(
         "stderr": stderr,
         "command": command,
         "model": model or "default",
-        "toolsets": _normalize_toolsets(toolsets) or "default",
+        "toolsets": normalized_toolsets,
         "transport": "cli",
     }
 
@@ -270,7 +272,7 @@ def _post_hermes_bridge_query(
         "stderr": "",
         "command": "hermes_bridge",
         "model": str(payload.get("model") or model or "default"),
-        "toolsets": str(payload.get("toolsets") or _normalize_toolsets(toolsets) or "default"),
+        "toolsets": _normalize_toolsets(str(payload.get("toolsets") or toolsets)),
         "transport": "bridge",
     }
 
@@ -298,7 +300,7 @@ def build_hermes_envelope(
     if result.get("model"):
         filters_applied["model"] = result["model"]
     if result.get("toolsets"):
-        filters_applied["toolsets"] = result["toolsets"]
+        filters_applied["toolsets"] = _normalize_toolsets(result["toolsets"])
     if result.get("transport"):
         filters_applied["transport"] = result["transport"]
 
@@ -306,8 +308,9 @@ def build_hermes_envelope(
         tables_used=["hermes_cli"],
         filters_applied=filters_applied,
         sql_executed=[],
-        evidence_rows=1,
-        quality_flag="ok",
+        evidence_rows=0,
+        quality_flag="warning",
+        evidence_strength="provider_runtime",
     )
     result_meta = AgentResultMeta(
         trace_id=trace_id,
@@ -318,7 +321,7 @@ def build_hermes_envelope(
         vendor_version="vv_hermes",
         rule_version=RULE_VERSION,
         cache_version="cv_agent_hermes_v1",
-        quality_flag="ok",
+        quality_flag=evidence.quality_flag,
         vendor_status="ok",
         fallback_mode="none",
         scenario_flag=request.basis == Basis.SCENARIO.value,
@@ -327,6 +330,7 @@ def build_hermes_envelope(
         filters_applied=evidence.filters_applied,
         sql_executed=[],
         evidence_rows=evidence.evidence_rows,
+        evidence_strength=evidence.evidence_strength,
     )
     return AgentEnvelope(
         answer=result["answer"],
@@ -364,9 +368,7 @@ def _build_hermes_command(
     ]
     if model:
         hermes_args.extend(["--model", model])
-    normalized_toolsets = _normalize_toolsets(toolsets)
-    if normalized_toolsets:
-        hermes_args.extend(["--toolsets", normalized_toolsets])
+    hermes_args.extend(["--toolsets", _normalize_toolsets(toolsets)])
 
     if _is_wsl_command(command):
         args = [command]
@@ -408,9 +410,7 @@ def _build_hermes_bridge_command(
     ]
     if model:
         bridge_args.extend(["--model", model])
-    normalized_toolsets = _normalize_toolsets(toolsets)
-    if normalized_toolsets:
-        bridge_args.extend(["--toolsets", normalized_toolsets])
+    bridge_args.extend(["--toolsets", _normalize_toolsets(toolsets)])
 
     python_path = "/home/hermes/hermes-agent/venv/bin/python"
     if _is_wsl_command(command):
@@ -434,7 +434,7 @@ def _is_wsl_command(command: str) -> bool:
 
 
 def _normalize_toolsets(toolsets: str) -> str:
-    return ",".join(part.strip() for part in str(toolsets or "").split(",") if part.strip())
+    return normalize_read_only_toolsets(toolsets)
 
 
 def _build_hermes_subprocess_env(hermes_home: str) -> dict[str, str]:

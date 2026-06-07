@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any, Literal, cast
 from uuid import uuid4
 
+from backend.app.agent.runtime.action_token import agent_action_confirmation_token
 from backend.app.agent.runtime.financial_workflow_catalog import (
     FinancialWorkflow,
     resolve_financial_workflow,
@@ -303,14 +304,15 @@ class AnalysisViewTool:
         ]
         suggested_actions = []
         if next_intent:
+            payload = {
+                "intent": next_intent,
+                "workflow_id": workflow.workflow_id,
+            }
             suggested_actions.append(
-                AgentSuggestedAction(
-                    type="execute_intent",
+                self._suggested_action(
+                    action_type="execute_intent",
                     label=f"Execute first mapped intent: {next_intent}",
-                    payload={
-                        "intent": next_intent,
-                        "workflow_id": workflow.workflow_id,
-                    },
+                    payload=payload,
                     requires_confirmation=True,
                 )
             )
@@ -712,8 +714,8 @@ class AnalysisViewTool:
 
     def _analysis_chat_suggested_actions(self, *, is_chinese: bool) -> list[AgentSuggestedAction]:
         return [
-            AgentSuggestedAction(
-                type="execute_intent",
+            self._suggested_action(
+                action_type="execute_intent",
                 label=label,
                 payload={"intent": intent},
                 requires_confirmation=True,
@@ -881,9 +883,9 @@ class AnalysisViewTool:
     ) -> list[AgentSuggestedAction]:
         if actions:
             return [
-                action
-                if isinstance(action, AgentSuggestedAction)
-                else AgentSuggestedAction.model_validate(action)
+                self._ensure_action_confirmation_token(
+                    action if isinstance(action, AgentSuggestedAction) else AgentSuggestedAction.model_validate(action)
+                )
                 for action in actions
             ]
         return self._suggested_actions_from_drills(
@@ -900,8 +902,8 @@ class AnalysisViewTool:
         page_context_payload = self._page_context_payload(page_context)
         row_summary = self._selected_row_summary(page_context_payload)
         return [
-            AgentSuggestedAction(
-                type="inspect_drill",
+            self._suggested_action(
+                action_type="inspect_drill",
                 label=self._page_aware_drill_label(drill.label, row_summary),
                 payload=self._drill_action_payload(drill.dimension, page_context_payload),
                 requires_confirmation=True,
@@ -927,6 +929,49 @@ class AnalysisViewTool:
         if page_context_payload is not None:
             payload["page_context"] = page_context_payload
         return payload
+
+    def _suggested_action(
+        self,
+        *,
+        action_type: str,
+        label: str,
+        payload: dict[str, Any],
+        requires_confirmation: bool,
+    ) -> AgentSuggestedAction:
+        return self._ensure_action_confirmation_token(
+            AgentSuggestedAction(
+                type=action_type,
+                label=label,
+                payload=payload,
+                requires_confirmation=requires_confirmation,
+            )
+        )
+
+    def _ensure_action_confirmation_token(self, action: AgentSuggestedAction) -> AgentSuggestedAction:
+        if not action.requires_confirmation or action.confirmation_token:
+            return action
+        return action.model_copy(
+            update={
+                "confirmation_token": self._confirmation_token_for_action(
+                    action_type=action.type,
+                    label=action.label,
+                    payload=action.payload,
+                )
+            }
+        )
+
+    def _confirmation_token_for_action(
+        self,
+        *,
+        action_type: str,
+        label: str,
+        payload: dict[str, Any],
+    ) -> str:
+        return agent_action_confirmation_token(
+            action_type=action_type,
+            label=label,
+            payload=payload,
+        )
 
     def _selected_row_summary(self, page_context_payload: dict[str, Any] | None) -> str:
         if not page_context_payload:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
+from backend.app.agent.runtime.action_token import agent_action_confirmation_token_matches
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentDisabledResponse, AgentEnvelope
 from backend.app.agent.schemas.agent_run import (
@@ -57,6 +59,12 @@ _MUTATING_ACTION_TOKENS = {
     "写入",
 }
 _READ_ONLY_AGENT_DETAIL = "Agent endpoints are read-only; mutating actions are not allowed."
+_SUGGESTED_ACTION_CONFIRMATION_DETAIL = (
+    "Suggested action execution requires a confirmation token."
+)
+_SUGGESTED_ACTION_CONFIRMATION_TOKEN_PATTERN = re.compile(
+    r"^agent_action:v1:\d{1,12}:[0-9a-f]{64}$"
+)
 
 
 def _provider_name(settings: object) -> str:
@@ -101,6 +109,32 @@ def _enforce_read_only_agent_request(request: AgentQueryRequest) -> None:
             raise HTTPException(status_code=403, detail=_READ_ONLY_AGENT_DETAIL)
 
 
+def _enforce_suggested_action_confirmation(request: AgentQueryRequest) -> None:
+    action = request.context.get("suggested_action")
+    action_requires_confirmation = (
+        isinstance(action, dict) and action.get("requires_confirmation") is True
+    )
+    if request.context.get("suggested_action_requires_confirmation") is not True and not action_requires_confirmation:
+        return
+    token = str(request.context.get("suggested_action_confirmation_token") or "").strip()
+    if not _SUGGESTED_ACTION_CONFIRMATION_TOKEN_PATTERN.fullmatch(token):
+        raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_CONFIRMATION_DETAIL)
+    if action is None:
+        raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_CONFIRMATION_DETAIL)
+    if not isinstance(action, dict):
+        raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_CONFIRMATION_DETAIL)
+    action_payload = action.get("payload")
+    if not isinstance(action_payload, dict):
+        raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_CONFIRMATION_DETAIL)
+    if not agent_action_confirmation_token_matches(
+        token=token,
+        action_type=str(action.get("type") or ""),
+        label=str(action.get("label") or ""),
+        payload=action_payload,
+    ):
+        raise HTTPException(status_code=403, detail=_SUGGESTED_ACTION_CONFIRMATION_DETAIL)
+
+
 def _apply_auth_context(
     request: AgentQueryRequest,
     auth: AuthContext,
@@ -133,6 +167,7 @@ def query_agent(
 ) -> AgentEnvelope | JSONResponse:
     request = _apply_auth_context(request, auth)
     _enforce_read_only_agent_request(request)
+    _enforce_suggested_action_confirmation(request)
     settings = get_settings()
     if not settings.agent_enabled:
         audit_disabled_agent_query(
@@ -185,6 +220,7 @@ def create_agent_run_endpoint(
 ) -> AgentRunCreateResponse | AgentEnvelope | JSONResponse:
     request = _apply_auth_context(request, auth)
     _enforce_read_only_agent_request(request)
+    _enforce_suggested_action_confirmation(request)
     settings = get_settings()
     if not settings.agent_enabled:
         audit_disabled_agent_query(

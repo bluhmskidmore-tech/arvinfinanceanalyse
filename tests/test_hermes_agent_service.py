@@ -6,13 +6,13 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services import hermes_agent_service as service
 
 
-def test_build_hermes_command_passes_lite_home_and_toolsets_to_wsl():
+def test_build_hermes_command_passes_lite_home_and_read_only_toolsets_to_wsl():
     args = service._build_hermes_command(
         command="wsl.exe",
         wsl_distro="HermesUbuntu",
         hermes_home="/home/hermes/.hermes-moss",
         model="",
-        toolsets=" file, terminal ",
+        toolsets=" file, terminal, evidence ",
         max_turns=3,
         prompt="ping",
     )
@@ -27,7 +27,37 @@ def test_build_hermes_command_passes_lite_home_and_toolsets_to_wsl():
         "/usr/local/bin/hermes",
     ]
     assert "--toolsets" in args
-    assert args[args.index("--toolsets") + 1] == "file,terminal"
+    assert args[args.index("--toolsets") + 1] == "evidence"
+
+
+def test_build_hermes_command_restricts_toolsets_to_read_only_allowlist():
+    args = service._build_hermes_command(
+        command="wsl.exe",
+        wsl_distro="HermesUbuntu",
+        hermes_home="/home/hermes/.hermes-moss",
+        model="",
+        toolsets=" file, terminal, evidence, query, research, sql ",
+        max_turns=3,
+        prompt="ping",
+    )
+
+    assert "--toolsets" in args
+    assert args[args.index("--toolsets") + 1] == "evidence,query,research"
+
+
+def test_build_hermes_command_defaults_to_read_only_toolsets():
+    args = service._build_hermes_command(
+        command="hermes",
+        wsl_distro="",
+        hermes_home="",
+        model="",
+        toolsets="",
+        max_turns=3,
+        prompt="ping",
+    )
+
+    assert "--toolsets" in args
+    assert args[args.index("--toolsets") + 1] == "evidence,query,research"
 
 
 def test_run_hermes_agent_sets_home_in_process_env_for_non_wsl(monkeypatch):
@@ -51,7 +81,7 @@ def test_run_hermes_agent_sets_home_in_process_env_for_non_wsl(monkeypatch):
     )
 
     assert result["answer"] == "pong"
-    assert result["toolsets"] == "file"
+    assert result["toolsets"] == "evidence,query,research"
     assert calls[0]["env"]["HERMES_HOME"] == "/tmp/moss-hermes"
     assert "--toolsets" in calls[0]["args"]
 
@@ -79,7 +109,7 @@ def test_build_hermes_bridge_command_uses_wsl_env_and_repo_script():
     assert "--port" in args
     assert args[args.index("--port") + 1] == "7891"
     assert "--toolsets" in args
-    assert args[args.index("--toolsets") + 1] == "file"
+    assert args[args.index("--toolsets") + 1] == "evidence,query,research"
 
 
 def test_run_hermes_agent_uses_bridge_transport(monkeypatch):
@@ -127,15 +157,18 @@ def test_build_hermes_envelope_exposes_hermes_runtime_evidence():
             "stderr": "",
             "command": "hermes_bridge",
             "model": "default",
-            "toolsets": "file",
+            "toolsets": "evidence,query,research",
             "transport": "bridge",
         },
     )
 
     assert envelope.evidence.filters_applied["provider"] == "hermes"
     assert envelope.evidence.filters_applied["model"] == "default"
-    assert envelope.evidence.filters_applied["toolsets"] == "file"
+    assert envelope.evidence.filters_applied["toolsets"] == "evidence,query,research"
     assert envelope.evidence.filters_applied["transport"] == "bridge"
+    assert envelope.evidence.quality_flag == "warning"
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.evidence_rows == 0
 
 
 def test_warm_hermes_bridge_if_configured_starts_daemon_thread(monkeypatch):
@@ -176,7 +209,7 @@ def test_warm_hermes_bridge_if_configured_starts_daemon_thread(monkeypatch):
     assert started is True
     assert calls[0]["daemon"] is True
     assert calls[0]["name"] == "moss-hermes-bridge-warmup"
-    assert calls[0]["kwargs"]["toolsets"] == "file"
+    assert calls[0]["kwargs"]["toolsets"] == "evidence,query,research"
     assert calls[1] == "started"
 
 

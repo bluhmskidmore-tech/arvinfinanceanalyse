@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.runtime.toolset_policy import normalize_read_only_toolsets
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import AgentEnvelope
 from backend.app.agent.schemas.agent_run import (
@@ -32,13 +33,13 @@ def _provider_runtime_fields(settings: Any, provider: str | None = None) -> tupl
             "dexter",
             str(getattr(settings, "agent_dexter_model", "") or "default"),
             str(getattr(settings, "agent_dexter_transport", "cli") or "cli"),
-            str(getattr(settings, "agent_dexter_toolsets", "") or "default"),
+            normalize_read_only_toolsets(str(getattr(settings, "agent_dexter_toolsets", "") or "")),
         )
     return (
         "hermes",
         str(getattr(settings, "agent_hermes_model", "") or "default"),
         str(getattr(settings, "agent_hermes_transport", "bridge") or "bridge"),
-        str(getattr(settings, "agent_hermes_toolsets", "") or "default"),
+        normalize_read_only_toolsets(str(getattr(settings, "agent_hermes_toolsets", "") or "")),
     )
 
 

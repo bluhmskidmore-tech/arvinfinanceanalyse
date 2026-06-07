@@ -35,7 +35,44 @@ def test_build_dexter_envelope_exposes_sidecar_runtime_evidence():
     assert envelope.evidence.filters_applied["provider"] == "dexter"
     assert envelope.evidence.filters_applied["model"] == "dexter-test"
     assert envelope.evidence.filters_applied["transport"] == "sidecar"
-    assert envelope.evidence.filters_applied["toolsets"] == "sql,files"
+    assert envelope.evidence.filters_applied["toolsets"] == "evidence,query,research"
+    assert envelope.evidence.quality_flag == "warning"
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.evidence.evidence_rows == 0
+    assert envelope.evidence.evidence_strength == "provider_runtime"
+    assert envelope.result_meta.evidence_strength == "provider_runtime"
+
+
+def test_build_dexter_envelope_downgrades_ok_research_context_for_provider_runtime():
+    envelope = service.build_dexter_envelope(
+        request=AgentQueryRequest(question="stock research"),
+        result={
+            "answer": "Provider answer over landed context",
+            "stdout": "ok",
+            "stderr": "",
+            "command": "dexter",
+            "tool_name": "portfolio.scan",
+            "model": "dexter-test",
+            "toolsets": "evidence,research",
+            "transport": "sidecar",
+            "tables_used": ["dexter_sidecar"],
+        },
+        research_context={
+            "domain": "stock",
+            "tables_used": ["choice_stock_daily_observation"],
+            "filters_applied": {"research_domain": "stock", "stock_code": "000001.SZ"},
+            "evidence_rows": 1,
+            "quality_flag": "ok",
+            "limitations": [],
+        },
+    )
+
+    assert envelope.evidence.evidence_strength == "provider_runtime"
+    assert envelope.result_meta.evidence_strength == "provider_runtime"
+    assert envelope.evidence.evidence_rows == 1
+    assert envelope.evidence.quality_flag == "warning"
+    assert envelope.result_meta.quality_flag == "warning"
+    assert envelope.result_meta.formal_use_allowed is False
 
 
 def test_run_dexter_agent_invokes_subprocess_and_parses_json_payload(monkeypatch):
@@ -73,9 +110,38 @@ def test_run_dexter_agent_invokes_subprocess_and_parses_json_payload(monkeypatch
     assert result["tool_name"] == "portfolio.scan"
     assert result["tables_used"] == ["dexter_cli"]
     assert result["model"] == "dexter-test"
-    assert result["toolsets"] == "sql,files"
+    assert result["toolsets"] == "evidence,query,research"
     assert result["transport"] == "cli"
     assert calls[0]["args"][0] == "dexter"
+
+
+def test_run_dexter_agent_restricts_toolsets_to_read_only_allowlist(monkeypatch):
+    calls = []
+
+    class Completed:
+        returncode = 0
+        stdout = json.dumps({"answer": "ok"})
+        stderr = ""
+
+    def fake_run(args, **kwargs):
+        calls.append({"args": args, **kwargs})
+        return Completed()
+
+    monkeypatch.setattr(service.subprocess, "run", fake_run)
+
+    result = service.run_dexter_agent(
+        request=AgentQueryRequest(question="probe"),
+        command="dexter",
+        transport="cli",
+        bridge_url="",
+        model="",
+        toolsets=" sql , files , evidence, research, terminal ",
+        timeout_seconds=5,
+    )
+
+    assert result["toolsets"] == "evidence,research"
+    assert "--toolsets" in calls[0]["args"]
+    assert calls[0]["args"][calls[0]["args"].index("--toolsets") + 1] == "evidence,research"
 
 
 def test_run_dexter_agent_preserves_structured_research_fields(monkeypatch):
@@ -149,7 +215,7 @@ def test_run_dexter_agent_passes_expected_subprocess_argv_and_timeout(monkeypatc
                 "--model",
                 "dexter-model",
                 "--toolsets",
-                "sql,files",
+                "evidence,query,research",
             ],
             "check": False,
             "capture_output": True,
@@ -278,7 +344,7 @@ def test_execute_dexter_agent_query_appends_dexter_audit(tmp_path: Path, monkeyp
     )
 
     assert envelope.answer == "Dexter answer"
-    assert envelope.evidence.evidence_rows == 1
+    assert envelope.evidence.evidence_rows == 0
 
     audit_path = tmp_path / "governance" / "agent_audit.jsonl"
     rows = audit_path.read_text(encoding="utf-8").splitlines()
