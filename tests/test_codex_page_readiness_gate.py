@@ -11,6 +11,11 @@ from scripts.codex_page_readiness import (
     build_page_readiness_report,
     build_route_scope_classification_report,
 )
+from scripts.emit_balance_analysis_governance_record import (
+    TARGET_STREAM as BALANCE_GOVERNANCE_STREAM,
+    build_record as build_balance_governance_record,
+    emit_record as emit_balance_governance_record,
+)
 from scripts.mcp.moss_project_mcp import product_page_trace_bundles
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -176,7 +181,17 @@ def test_dashboard_home_readiness_static_gates_preserve_mixed_source_boundary() 
     assert "codex-page-smoke.ps1 -PageSlug dashboard-home" in report["required_commands"][0]
 
 
-def test_balance_analysis_readiness_exposes_run_commands_without_direct_record_promotion() -> None:
+def test_balance_analysis_readiness_exposes_direct_record_and_run_commands(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    governance_dir = tmp_path / "governance"
+    emit_balance_governance_record(
+        governance_dir / f"{BALANCE_GOVERNANCE_STREAM}.jsonl",
+        build_balance_governance_record("2026-06-07T00:00:00Z"),
+    )
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+
     report = build_page_readiness_report("balance-analysis")
 
     assert report["page_slug"] == "balance-analysis"
@@ -189,9 +204,21 @@ def test_balance_analysis_readiness_exposes_run_commands_without_direct_record_p
     assert "codex-page-smoke.ps1 -PageSlug balance-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug balance-analysis -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
+    assert report["governance_record_validation"]["ready_record_count"] == 1
+    assert report["audit_review"]["status"] == "ready_for_audit_review"
+    assert report["audit_review"]["closure_approved"] is False
+    assert "python scripts/emit_balance_analysis_governance_record.py" in report["governance_record_commands"]
+    assert (
+        "python scripts/emit_balance_analysis_governance_record.py --write"
+        in report["governance_record_commands"]
+    )
+    assert any("Business owner approval is still required" in gap for gap in report["residual_gaps"])
 
 
 def test_pnl_readiness_exposes_run_commands_without_direct_record_promotion() -> None:

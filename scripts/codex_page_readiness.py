@@ -70,6 +70,7 @@ RUN_SUPPORTED_PAGE_SLUGS = (
 )
 DIRECT_EVIDENCE_PAGE_SLUGS = (
     "product-category-pnl",
+    "balance-analysis",
     "risk-tensor",
     "bond-dashboard",
     "balance-movement-analysis",
@@ -228,6 +229,10 @@ def _scalar_date(conn: Any, sql: str) -> str | None:
 
 def _governance_record_commands(page_slug: str) -> list[str]:
     commands_by_page = {
+        "balance-analysis": [
+            "python scripts/emit_balance_analysis_governance_record.py",
+            "python scripts/emit_balance_analysis_governance_record.py --write",
+        ],
         "ledger-pnl": [
             "python scripts/emit_ledger_pnl_governance_record.py",
             "python scripts/emit_ledger_pnl_governance_record.py --write",
