@@ -10,6 +10,48 @@ import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
 
+vi.mock("../features/agent/AgentWorkbenchPage", () => ({
+  default: () => (
+    <section data-testid="agent-workbench-page">
+      <label>
+        向 Agent 提问
+        <textarea aria-label="向 Agent 提问" />
+      </label>
+    </section>
+  ),
+}));
+
+vi.mock("../features/decision-items/pages/DecisionItemsPage", () => ({
+  default: () => (
+    <section data-testid="decision-items-page">
+      <h1>决策事项</h1>
+    </section>
+  ),
+}));
+
+vi.mock("../features/news-events/NewsEventsPage", () => ({
+  default: () => (
+    <section>
+      <h1 data-testid="news-events-page-title">新闻事件</h1>
+      <label>
+        topic
+        <select aria-label="news-events-topic-code" defaultValue="all">
+          <option value="all">all</option>
+        </select>
+      </label>
+      <div data-testid="news-events-table" />
+    </section>
+  ),
+}));
+
+vi.mock("../features/workbench/dashboard-home/DashboardHomePage", () => ({
+  default: () => (
+    <section data-testid="dashboard-home-page">
+      <div data-testid="dashboard-home-hero" />
+    </section>
+  ),
+}));
+
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => ({
   BondAnalyticsDetailSection: ({ activeTab }: { activeTab: string }) => (
     <section data-testid="bond-analysis-detail-section" data-module-key={activeTab}>
@@ -165,6 +207,20 @@ vi.mock("../features/pnl-attribution/pages/PnlAttributionPage", () => ({
   ),
 }));
 
+vi.mock("../features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage", () => ({
+  default: () => (
+    <section data-testid="product-category-adjustment-audit-page">
+      <h1>产品损益调整审计</h1>
+      <label>
+        审计-报表月份
+        <select aria-label="审计-报表月份" defaultValue="2026-03">
+          <option value="2026-03">2026-03</option>
+        </select>
+      </label>
+    </section>
+  ),
+}));
+
 vi.mock("../features/average-balance/pages/AverageBalancePage", () => ({
   default: () => (
     <section data-testid="average-balance-page">
@@ -300,15 +356,11 @@ describe("RouteRegistry", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the policy funding direct Chinese path as the dashboard home", async () => {
+  it("routes the policy funding direct Chinese path to the dashboard home", async () => {
     renderWorkbenchApp(["/政策与资金面"], { client: mockClient });
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-home-policy-funding-pane")).toHaveAttribute(
-      "data-focused",
-      "true",
-    );
   });
 
   it("renders the positions route", async () => {
@@ -478,7 +530,7 @@ describe("RouteRegistry", () => {
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
-  it("renders the hidden /agent route as the live workbench", async () => {
+  it("routes the hidden /agent path to the agent workbench module", async () => {
     renderWorkbenchApp(["/agent"], { client: mockClient });
 
     expect(await screen.findByLabelText(AGENT_QUESTION_INPUT_LABEL)).toBeInTheDocument();

@@ -17,6 +17,8 @@ import { AgentResultMetaPanel } from "./components/AgentResultMetaPanel";
 import { AgentSuggestedActionsPanel } from "./components/AgentSuggestedActionsPanel";
 import { GitNexusResultView as AgentGitNexusResultView } from "./components/GitNexusResultView";
 
+import "./AgentWorkbenchPage.css";
+
 type AgentResultCard = {
   title: string;
   value?: string | null;
@@ -48,6 +50,7 @@ type AgentQueryResult = {
 
 type AgentRunStatus = "queued" | "starting" | "running" | "completed" | "failed";
 type AgentCopyFeedback = { turnId: string; status: "success" | "error" };
+type PendingSuggestedActionConfirmation = { turnId: string; actionKey: string };
 
 type AgentRunPayload = PollingTaskPayload & {
   run_id: string;
@@ -314,7 +317,10 @@ function isAgentSuggestedAction(value: unknown): value is AgentSuggestedAction {
     typeof value.type === "string" &&
     typeof value.label === "string" &&
     isRecord(value.payload) &&
-    typeof value.requires_confirmation === "boolean"
+    typeof value.requires_confirmation === "boolean" &&
+    (value.confirmation_token === undefined ||
+      value.confirmation_token === null ||
+      typeof value.confirmation_token === "string")
   );
 }
 
@@ -324,6 +330,10 @@ function getExecutableSuggestedIntent(action: AgentSuggestedAction): string | nu
   }
   const intent = action.payload.intent;
   return typeof intent === "string" && intent.trim().length > 0 ? intent.trim() : null;
+}
+
+function getSuggestedActionKey(action: AgentSuggestedAction) {
+  return `${action.type}:${action.label}:${JSON.stringify(action.payload)}:${action.confirmation_token ?? ""}`;
 }
 
 function isPlainAnalysisConversationQuestion(question: string) {
@@ -1413,6 +1423,8 @@ export function EmbeddedAgentCopilot({
   );
   const [pageContextChangeNotice, setPageContextChangeNotice] = useState(false);
   const [composerAssistHint, setComposerAssistHint] = useState<string | null>(null);
+  const [pendingSuggestedActionConfirmation, setPendingSuggestedActionConfirmation] =
+    useState<PendingSuggestedActionConfirmation | null>(null);
   const repoPathRef = useRef(repoPath);
   const conversationRef = useRef<HTMLElement | null>(null);
   const conversationBottomRef = useRef<HTMLDivElement | null>(null);
@@ -1533,6 +1545,22 @@ export function EmbeddedAgentCopilot({
         [
           ".agent-follow-up-chips__details",
           ".agent-suggested-actions__more",
+          ".agent-suggested-actions__details",
+          ".agent-side-panel__details",
+          ".agent-result-side-drawer",
+        ].join(", "),
+      )
+      .forEach((details) => {
+        details.open = false;
+      });
+  }, []);
+
+  const closeResultInteractionDetailsExceptSuggestedActionMore = useCallback((sourceElement?: HTMLElement) => {
+    const detailsRoot = sourceElement?.closest(".agent-result-shell") ?? conversationRef.current;
+    detailsRoot
+      ?.querySelectorAll<HTMLDetailsElement>(
+        [
+          ".agent-follow-up-chips__details",
           ".agent-suggested-actions__details",
           ".agent-side-panel__details",
           ".agent-result-side-drawer",
@@ -2158,7 +2186,14 @@ export function EmbeddedAgentCopilot({
     setError(null);
 
     try {
-      await executeLocalSyncConversation(actionLabel, turn.id, context, { intent });
+      await executeLocalSyncConversation(actionLabel, turn.id, context, {
+        intent,
+        suggested_action: action,
+        suggested_action_requires_confirmation: action.requires_confirmation,
+        ...(action.confirmation_token
+          ? { suggested_action_confirmation_token: action.confirmation_token }
+          : {}),
+      });
     } finally {
       setLoading(false);
     }
@@ -2335,6 +2370,7 @@ export function EmbeddedAgentCopilot({
     }
     setRestoringRunId("");
     setRestoreErrorRunId("");
+    setPendingSuggestedActionConfirmation(null);
     setAgentRun(null);
     setResult(null);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
@@ -2369,6 +2405,7 @@ export function EmbeddedAgentCopilot({
     const context = buildConversationContext(conversationTurns);
     const turn = createAgentConversationTurn(question, context, "ordinary");
     setAgentWaitSeconds(0);
+    setPendingSuggestedActionConfirmation(null);
     setConversationTurns((currentTurns) => [...currentTurns, turn]);
     shouldFocusComposerRef.current = true;
     setLoading(true);
@@ -2835,6 +2872,7 @@ export function EmbeddedAgentCopilot({
 
   function handleSuggestedAction(turnId: string, action: AgentSuggestedAction, sourceElement?: HTMLElement) {
     if (action.type === "inspect_drill" || action.type === "refine_query") {
+      setPendingSuggestedActionConfirmation(null);
       closeResultInteractionDetails(sourceElement);
       replaceComposerQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       setComposerAssistHint("已填入建议追问 · Enter 发送");
@@ -2842,9 +2880,23 @@ export function EmbeddedAgentCopilot({
     }
     const intent = getExecutableSuggestedIntent(action);
     if (intent) {
+      if (action.requires_confirmation) {
+        const actionKey = getSuggestedActionKey(action);
+        if (
+          pendingSuggestedActionConfirmation?.turnId !== turnId ||
+          pendingSuggestedActionConfirmation.actionKey !== actionKey
+        ) {
+          closeResultInteractionDetailsExceptSuggestedActionMore(sourceElement);
+          setPendingSuggestedActionConfirmation({ turnId, actionKey });
+          setComposerAssistHint(`请再次确认执行建议动作：${action.label}`);
+          return;
+        }
+      }
+      setPendingSuggestedActionConfirmation(null);
       void executeSuggestedIntentAction(action, intent);
       return;
     }
+    setPendingSuggestedActionConfirmation(null);
     updateConversationTurn(turnId, (turn) => ({
       ...turn,
       activeSuggestedActionPayload: action.payload,
@@ -2993,14 +3045,14 @@ export function EmbeddedAgentCopilot({
   function renderShortcutDrawer() {
     const shortcutCount = RESEARCH_SHORTCUTS.length + FINANCIAL_WORKFLOWS.length;
     return (
-      <details className="agent-quick-entry">
+      <details className="agent-quick-entry" open>
         <summary>
           <span className="agent-quick-entry__title">快捷入口</span>
           <span className="agent-quick-entry__meta">Research / MOSS intents · {shortcutCount} 项</span>
         </summary>
         <div className="agent-quick-entry__content">
-          {renderResearchShortcutPanel()}
           {renderFinancialWorkflowPanel()}
+          {renderResearchShortcutPanel()}
         </div>
       </details>
     );
@@ -3186,6 +3238,12 @@ export function EmbeddedAgentCopilot({
                 actions={turnResult.suggested_actions}
                 formatValue={formatMetaValue}
                 activePayload={turn.activeSuggestedActionPayload}
+                pendingConfirmationKey={
+                  pendingSuggestedActionConfirmation?.turnId === turn.id
+                    ? pendingSuggestedActionConfirmation.actionKey
+                    : null
+                }
+                getActionKey={getSuggestedActionKey}
                 onActionClick={(action, sourceElement) => handleSuggestedAction(turn.id, action, sourceElement)}
               />
 

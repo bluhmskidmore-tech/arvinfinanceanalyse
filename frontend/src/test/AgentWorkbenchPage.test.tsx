@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AgentWorkbenchPage, { AgentPanel } from "../features/agent/AgentWorkbenchPage";
 
+const AGENT_WORKBENCH_CSS_PATH = resolve(process.cwd(), "src/features/agent/AgentWorkbenchPage.css");
 const AGENT_PLACEHOLDER =
   "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
 const PAGE_CONTEXT_PLACEHOLDER =
@@ -307,6 +308,7 @@ function buildLocalAnalysisChatResult() {
         label: "组合概览",
         payload: { intent: "portfolio_overview" },
         requires_confirmation: true,
+        confirmation_token: "agent_action:test-token-portfolio-overview",
       },
     ],
   };
@@ -408,22 +410,16 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByLabelText(REPO_PATH_LABEL)).toBeInTheDocument();
   });
 
-  it("keeps shortcut entry panels collapsed until requested", () => {
+  it("shows financial workflow shortcuts without expanding the drawer first", () => {
     render(<AgentWorkbenchPage />);
 
     const shortcutDrawer = screen.getByText("快捷入口").closest("details");
     const stockResearchButton = screen.getByText("股票研究").closest("button");
     const portfolioReviewButton = screen.getByText("组合复核").closest("button");
     expect(shortcutDrawer).not.toBeNull();
-    expect(shortcutDrawer).not.toHaveAttribute("open");
+    expect(shortcutDrawer).toHaveAttribute("open");
     expect(stockResearchButton).not.toBeNull();
     expect(portfolioReviewButton).not.toBeNull();
-    expect(stockResearchButton).not.toBeVisible();
-    expect(portfolioReviewButton).not.toBeVisible();
-
-    openShortcutDrawer();
-
-    expect(shortcutDrawer).toHaveAttribute("open");
     expect(stockResearchButton).toBeVisible();
     expect(portfolioReviewButton).toBeVisible();
     expect(screen.getByLabelText(AGENT_RESEARCH_SHORTCUTS_LABEL)).toContainElement(stockResearchButton);
@@ -950,6 +946,8 @@ describe("AgentWorkbenchPage", () => {
     expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "组合概览" }));
+    expect(screen.getByRole("button", { name: "确认执行：组合概览" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认执行：组合概览" }));
 
     expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent("执行建议动作：组合概览");
@@ -961,6 +959,15 @@ describe("AgentWorkbenchPage", () => {
       context: {
         user_id: "web-user",
         intent: "portfolio_overview",
+        suggested_action_confirmation_token: "agent_action:test-token-portfolio-overview",
+        suggested_action_requires_confirmation: true,
+        suggested_action: {
+          type: "execute_intent",
+          label: "组合概览",
+          payload: { intent: "portfolio_overview" },
+          requires_confirmation: true,
+          confirmation_token: "agent_action:test-token-portfolio-overview",
+        },
         conversation: {
           recent_turns: [
             {
@@ -977,6 +984,167 @@ describe("AgentWorkbenchPage", () => {
         selected_rows: [{ portfolio_id: "core" }],
       },
     });
+  });
+
+  it("requires an explicit second click before sending a confirmable suggested action token", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()))
+      .mockResolvedValueOnce(buildJsonResponse(buildGovernedPortfolioOverviewResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "组合概览" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "确认执行：组合概览" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确认执行：组合概览" }));
+
+    expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, options] = fetchMock.mock.calls[1] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      context: {
+        suggested_action_confirmation_token: "agent_action:test-token-portfolio-overview",
+        suggested_action_requires_confirmation: true,
+      },
+    });
+  });
+
+  it("keeps a secondary confirmable suggested action visible until the second click executes it", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          ...buildLocalAnalysisChatResult(),
+          suggested_actions: [
+            {
+              type: "execute_intent",
+              label: "组合概览",
+              payload: { intent: "portfolio_overview" },
+              requires_confirmation: true,
+              confirmation_token: "agent_action:test-token-portfolio-overview",
+            },
+            {
+              type: "execute_intent",
+              label: "久期风险",
+              payload: { intent: "duration_risk" },
+              requires_confirmation: true,
+              confirmation_token: "agent_action:test-token-duration-risk",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildJsonResponse({
+          ...buildGovernedPortfolioOverviewResult(),
+          answer: "正式久期风险结果已返回。",
+          result_meta: {
+            trace_id: "tr_agent_duration_risk",
+            basis: "formal",
+            result_kind: "agent.duration_risk",
+            formal_use_allowed: true,
+          },
+        }),
+      );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "帮我判断今天的主要风险");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    const moreSuggestedActions = screen.getByText("更多建议 · 1 项").closest("details");
+    expect(moreSuggestedActions).not.toBeNull();
+    if (!moreSuggestedActions) {
+      throw new Error("Expected secondary suggested actions drawer to exist");
+    }
+    await user.click(screen.getByText("更多建议 · 1 项"));
+    expect(moreSuggestedActions).toHaveAttribute("open");
+    const secondaryActionDetails = within(moreSuggestedActions).getByText("查看参数").closest("details");
+    expect(secondaryActionDetails).not.toBeNull();
+    if (!secondaryActionDetails) {
+      throw new Error("Expected secondary action parameter details to exist");
+    }
+    await user.click(within(moreSuggestedActions).getByText("查看参数"));
+    expect(secondaryActionDetails).toHaveAttribute("open");
+
+    await user.click(screen.getByRole("button", { name: "久期风险" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(moreSuggestedActions).toHaveAttribute("open");
+    expect(secondaryActionDetails).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "确认执行：久期风险" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确认执行：久期风险" }));
+
+    expect(await screen.findByText("正式久期风险结果已返回。")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(moreSuggestedActions).not.toHaveAttribute("open");
+    const [, options] = fetchMock.mock.calls[1] ?? [];
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/agent/query");
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      question: "久期风险",
+      context: {
+        intent: "duration_risk",
+        suggested_action_confirmation_token: "agent_action:test-token-duration-risk",
+        suggested_action_requires_confirmation: true,
+        suggested_action: {
+          type: "execute_intent",
+          label: "久期风险",
+          payload: { intent: "duration_risk" },
+          requires_confirmation: true,
+          confirmation_token: "agent_action:test-token-duration-risk",
+        },
+      },
+    });
+  });
+
+  it("scopes pending suggested-action confirmation to the originating turn", async () => {
+    const user = userEvent.setup();
+    fetchMock
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()))
+      .mockResolvedValueOnce(buildJsonResponse(buildLocalAnalysisChatResult()))
+      .mockResolvedValueOnce(buildJsonResponse(buildGovernedPortfolioOverviewResult()));
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "第一轮风险判断");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(AGENT_QUESTION_INPUT_LABEL), "第二轮风险判断");
+    await user.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(screen.getAllByText("本地分析对话已接住这轮问题，但未运行正式指标查询。")).toHaveLength(2));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const firstTurnAction = screen.getAllByRole("button", { name: "组合概览" })[0];
+    expect(firstTurnAction).toBeDefined();
+    if (!firstTurnAction) {
+      throw new Error("Expected first turn suggested action to exist");
+    }
+    await user.click(firstTurnAction);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole("button", { name: "确认执行：组合概览" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "组合概览" })).toHaveLength(1);
+
+    const secondTurnAction = screen.getByRole("button", { name: "组合概览" });
+    expect(secondTurnAction).toBeDefined();
+    await user.click(secondTurnAction);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole("button", { name: "确认执行：组合概览" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "组合概览" })).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "确认执行：组合概览" }));
+
+    expect(await screen.findByText("正式组合概览结果：资产规模和风险摘要已返回。")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("falls back to local agent query when managed runs return the generic provider gate", async () => {
@@ -4142,7 +4310,7 @@ describe("AgentWorkbenchPage", () => {
   });
 
   it("keeps running composer controls full-width on mobile", () => {
-    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+    const cssText = readFileSync(AGENT_WORKBENCH_CSS_PATH, "utf8");
 
     expect(cssText).toContain(".agent-chat-composer__actions--running");
     expect(cssText).toContain(".agent-chat-composer__actions--running > .agent-chat-composer__queue");
@@ -4151,7 +4319,7 @@ describe("AgentWorkbenchPage", () => {
   });
 
   it("allows contextual composer hints to wrap instead of widening the dock", () => {
-    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+    const cssText = readFileSync(AGENT_WORKBENCH_CSS_PATH, "utf8");
 
     expect(cssText).toMatch(/\.agent-chat-composer__hint\s*\{[^}]*overflow-wrap:\s*anywhere/s);
     expect(cssText).toMatch(/\.agent-chat-composer__hint\s*\{[^}]*white-space:\s*normal/s);
@@ -4184,7 +4352,7 @@ describe("AgentWorkbenchPage", () => {
   });
 
   it("keeps queued follow-up previews formatted for multiline drafts", () => {
-    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+    const cssText = readFileSync(AGENT_WORKBENCH_CSS_PATH, "utf8");
 
     expect(cssText).toMatch(/\.agent-queued-draft__text\s*\{[^}]*white-space:\s*pre-wrap/s);
     expect(cssText).toMatch(/\.agent-queued-draft__queue li span:last-child\s*\{[^}]*white-space:\s*pre-wrap/s);
@@ -6013,7 +6181,7 @@ describe("AgentWorkbenchPage", () => {
   });
 
   it("keeps submitted multiline questions formatted in user bubbles", () => {
-    const cssText = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
+    const cssText = readFileSync(AGENT_WORKBENCH_CSS_PATH, "utf8");
 
     expect(cssText).toMatch(/\.agent-message--user \.agent-message__body\s*\{[^}]*white-space:\s*pre-wrap/s);
   });

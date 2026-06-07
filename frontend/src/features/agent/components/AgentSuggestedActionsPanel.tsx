@@ -3,12 +3,15 @@ type AgentSuggestedAction = {
   label: string;
   payload: Record<string, unknown>;
   requires_confirmation: boolean;
+  confirmation_token?: string | null;
 };
 
 type AgentSuggestedActionsPanelProps = {
   actions: AgentSuggestedAction[];
   formatValue: (value: unknown) => string;
   activePayload: Record<string, unknown> | null;
+  pendingConfirmationKey: string | null;
+  getActionKey: (action: AgentSuggestedAction) => string;
   onActionClick: (action: AgentSuggestedAction, sourceElement: HTMLElement) => void;
 };
 
@@ -16,6 +19,8 @@ export function AgentSuggestedActionsPanel({
   actions,
   formatValue,
   activePayload,
+  pendingConfirmationKey,
+  getActionKey,
   onActionClick,
 }: AgentSuggestedActionsPanelProps) {
   if (actions.length === 0) {
@@ -36,18 +41,27 @@ export function AgentSuggestedActionsPanel({
   }
 
   function renderActionItem(action: AgentSuggestedAction, index: number) {
+    const isPendingConfirmation = action.requires_confirmation && getActionKey(action) === pendingConfirmationKey;
+    const actionLabel = isPendingConfirmation ? `确认执行：${action.label}` : action.label;
+
     return (
       <article className="agent-suggested-actions__item" key={`${action.type}-${action.label}-${index}`}>
         <div className="agent-suggested-actions__main">
           <button
             type="button"
-            className="agent-suggested-actions__button"
+            className={
+              isPendingConfirmation
+                ? "agent-suggested-actions__button agent-suggested-actions__button--confirm"
+                : "agent-suggested-actions__button"
+            }
             onClick={(event) => {
-              closeSecondaryActionsDrawer(event.currentTarget);
+              if (!action.requires_confirmation || isPendingConfirmation) {
+                closeSecondaryActionsDrawer(event.currentTarget);
+              }
               onActionClick(action, event.currentTarget);
             }}
           >
-            {action.label}
+            {actionLabel}
           </button>
           <span
             className={
