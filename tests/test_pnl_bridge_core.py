@@ -64,6 +64,55 @@ def test_bridge_carry_equals_514():
     assert row.balance_diagnostics == ()
 
 
+def test_bridge_dirty_market_value_adds_clean_market_value_and_accrued_once():
+    rows = build_pnl_bridge_rows(
+        pnl_fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "CLEAN-DIRTY-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "accounting_basis": "FVOCI",
+                "interest_income_514": "0",
+                "fair_value_change_516": "0",
+                "capital_gain_517": "0",
+                "manual_adjustment": "0",
+                "total_pnl": "0",
+                "currency_basis": "CNY",
+            }
+        ],
+        balance_rows_current=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "CLEAN-DIRTY-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVOCI",
+                "market_value_amount": "100.00",
+                "accrued_interest_amount": "4.50",
+            }
+        ],
+        balance_rows_prior=[
+            {
+                "report_date": "2025-11-30",
+                "instrument_code": "CLEAN-DIRTY-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "currency_basis": "CNY",
+                "accounting_basis": "FVOCI",
+                "market_value_amount": "90.00",
+                "accrued_interest_amount": "1.25",
+            }
+        ],
+    )
+
+    row = rows[0]
+    assert row.beginning_dirty_mv == Decimal("91.25")
+    assert row.ending_dirty_mv == Decimal("104.50")
+    assert row.ending_dirty_mv != Decimal("109.00")
+
+
 def test_bridge_residual_calculation():
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[

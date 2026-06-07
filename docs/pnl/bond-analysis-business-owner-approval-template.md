@@ -22,6 +22,7 @@ Closure approved: `closure_approved=false`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 
 ## Required Business Decision
 
@@ -33,11 +34,25 @@ Business owner signature: `<required>`
 Reviewed sign-off packet: `docs/pnl/bond-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/bond-analysis-owner-evidence-packet.md`
+Reviewed fixed-income convention decision draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
+
+## Fixed-Income Convention Decisions
+
+Market value basis: `<clean | dirty | other>`
+Dirty market value formula: `<market_value + accrued_interest | other>`
+Accrued interest usage: `<dirty_price_only | dirty_price_and_carry | dirty_price_and_action_attribution | other>`
+Day-count convention: `<ACT/365_approximation | Actual/Actual | 30/360 | other>`
+Yield compounding convention: `<nominal_annual_with_coupon_frequency | effective_annual | other>`
+Duration and convexity scope: `<vanilla_fixed_rate_only | all_bonds_with_warnings | other>`
+DV01 unit: `<CNY_per_1bp | other>`
+DV01 base: `<CNY_face_value | CNY_market_value | CNY_dirty_value | other>`
+MCP evidence status accepted: `<fallback_local_evidence_until_mcp_recheck | require_mcp_before_approval>`
 
 ## Evidence Review
 
 - Governance record reviewed: `<yes | no>`
 - Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed: `<yes | no>`
+- Fixed-income convention decision draft reviewed: `<yes | no>`
 - Fixed-income units/sign/date rules reviewed: `<yes | no>`
 - UI/API payload evidence reviewed: `<yes | no>`
 - Live smoke evidence reviewed: `<yes | no>`

@@ -20,6 +20,7 @@ from backend.app.core_finance.bond_analytics.common import (
 )
 from backend.app.core_finance.interest_mode import (
     classify_interest_rate_style,
+    coupon_frequency_per_year,
     resolve_interest_payment_frequency,
 )
 
@@ -114,6 +115,7 @@ def compute_bond_analytics_rows(
         coupon_rate = _normalize_rate_decimal(snapshot_row.get("coupon_rate"))
         interest_mode = _as_text(snapshot_row.get("interest_mode"))
         interest_payment_frequency, _used_fallback = resolve_interest_payment_frequency(interest_mode)
+        coupon_frequency = coupon_frequency_per_year(interest_mode)
         interest_rate_style = classify_interest_rate_style(interest_mode)
         ytm = _normalize_rate_decimal(snapshot_row.get("ytm_value"))
         maturity_date = _coerce_date(snapshot_row.get("maturity_date"))
@@ -144,6 +146,20 @@ def compute_bond_analytics_rows(
             )
             else market_value_native
         )
+        amortized_cost_native = safe_decimal(snapshot_row.get("amortized_cost_native"))
+        amortized_cost_cny = snapshot_row.get("amortized_cost_cny")
+        amortized_cost = _select_cny_amount(
+            currency_code=currency_code,
+            cny_value=amortized_cost_cny,
+            native_value=amortized_cost_native,
+        )
+        accrued_interest_native = safe_decimal(snapshot_row.get("accrued_interest_native"))
+        accrued_interest_cny = snapshot_row.get("accrued_interest_cny")
+        accrued_interest = _select_cny_amount(
+            currency_code=currency_code,
+            cny_value=accrued_interest_cny,
+            native_value=accrued_interest_native,
+        )
         if years_to_maturity == Decimal("0"):
             macaulay_duration = Decimal("0")
             modified_duration = Decimal("0")
@@ -156,14 +172,17 @@ def compute_bond_analytics_rows(
                 coupon_rate=coupon_rate or Decimal("0"),
                 ytm=ytm or Decimal("0"),
                 bond_code=instrument_code,
+                coupon_frequency=coupon_frequency,
             )
             modified_duration = estimate_modified_duration(
                 macaulay_duration,
                 ytm or Decimal("0"),
+                coupon_frequency=coupon_frequency,
             )
             convexity = estimate_convexity(
                 macaulay_duration,
                 ytm or Decimal("0"),
+                coupon_frequency=coupon_frequency,
             )
             dv01 = face_value * modified_duration / Decimal("10000")
         is_credit = asset_class_std == "credit"
@@ -187,8 +206,8 @@ def compute_bond_analytics_rows(
                 face_value=face_value,
                 market_value_native=market_value_native,
                 market_value=market_value,
-                amortized_cost=safe_decimal(snapshot_row.get("amortized_cost_native")),
-                accrued_interest=safe_decimal(snapshot_row.get("accrued_interest_native")),
+                amortized_cost=amortized_cost,
+                accrued_interest=accrued_interest,
                 coupon_rate=coupon_rate,
                 interest_mode=interest_mode,
                 interest_payment_frequency=interest_payment_frequency,
@@ -263,6 +282,14 @@ def _first_non_blank(*values: Any) -> str:
 
 def _is_cny_currency(value: str) -> bool:
     return value.upper() in {"CNY", "RMB", "CNH"}
+
+
+def _select_cny_amount(*, currency_code: str, cny_value: Any, native_value: Decimal) -> Decimal:
+    if _is_cny_currency(currency_code):
+        return native_value
+    if cny_value is None or str(cny_value).strip() == "":
+        return native_value
+    return safe_decimal(cny_value)
 
 
 def _optional_decimal(value: Any) -> Decimal | None:

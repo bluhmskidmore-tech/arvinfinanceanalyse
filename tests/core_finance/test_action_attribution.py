@@ -32,6 +32,25 @@ def test_bond_analytics_action_line_payload_maps_service_row_to_core_input() -> 
     }
 
 
+def test_bond_analytics_action_line_payload_does_not_treat_accrued_interest_as_action_input() -> None:
+    payload = bond_analytics_action_line_payload(
+        {
+            "instrument_code": "BOND-AI-001",
+            "portfolio_name": "Portfolio A",
+            "cost_center": "Desk 7",
+            "market_value": Decimal("100.50"),
+            "modified_duration": Decimal("3.25"),
+            "asset_class_std": "credit",
+            "accrued_interest": Decimal("9.99"),
+            "accrued_interest_cny": Decimal("69.93"),
+        }
+    )
+
+    assert "accrued_interest" not in payload
+    assert "accrued_interest_cny" not in payload
+    assert payload["market_value"] == Decimal("100.50")
+
+
 def test_bond_analytics_action_line_payload_falls_back_to_accounting_class() -> None:
     payload = bond_analytics_action_line_payload(
         {

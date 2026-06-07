@@ -219,6 +219,7 @@ def estimate_duration(
     coupon_rate: Decimal = Decimal("0"),
     ytm: Decimal = Decimal("0"),
     bond_code: str = "",
+    coupon_frequency: int = 1,
 ) -> Decimal:
     if not maturity_date or not report_date:
         return Decimal("3")
@@ -230,7 +231,12 @@ def estimate_duration(
     years = Decimal(str(remaining_days)) / Decimal("365")
 
     if coupon_rate > 0 and ytm > 0:
-        return compute_macaulay_duration(coupon_rate, ytm, years, coupon_frequency=1)
+        return compute_macaulay_duration(
+            coupon_rate,
+            ytm,
+            years,
+            coupon_frequency=coupon_frequency,
+        )
 
     return years
 

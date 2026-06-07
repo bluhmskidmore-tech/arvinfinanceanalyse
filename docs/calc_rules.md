@@ -287,3 +287,20 @@ Duration denominator rules:
 - For `FVTPL`, `516` is the formal fair-value PnL component.
 - `517` is excluded from formal `total_pnl` by default to avoid double-counting prior `516`.
 - `FVTPL 517` may enter formal `total_pnl` only when `realized_flag=true` and `event_semantics` explicitly proves non-overlap with prior `516`, currently `realized_incremental` or `realized_no_prior_516`.
+
+## Bond Analysis Fixed-Income Convention Guardrails
+
+These guardrails document the current recommended owner-review convention set
+for `PAGE-BOND-ANALYSIS-001`. They do not replace business-owner sign-off.
+
+- `market_value_basis=clean`.
+- `dirty_market_value = market_value + accrued_interest`.
+- `accrued_interest_usage=dirty_price`.
+- `carry and action attribution do not directly consume accrued_interest`.
+- `day_count=ACT/365_approximation`.
+- `yield_compounding=nominal_annual_with_coupon_frequency`.
+- `duration_convexity_scope=vanilla_fixed_rate_only`.
+- `DV01 = CNY face_value * modified_duration / 10000`.
+- `dv01_unit=CNY_per_1bp`.
+- `dv01_base=CNY_face_value`.
+- `market_value/dirty_value DV01 is not the current formal DV01 convention`.

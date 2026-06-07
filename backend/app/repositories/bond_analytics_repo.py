@@ -56,7 +56,9 @@ _SNAPSHOT_COLUMNS = (
     "market_value_native",
     "market_value_cny",
     "amortized_cost_native",
+    "amortized_cost_cny",
     "accrued_interest_native",
+    "accrued_interest_cny",
     "coupon_rate",
     "ytm_value",
     "maturity_date",
@@ -183,6 +185,8 @@ class BondAnalyticsRepository:
             accounting_basis_expr = "null"
             face_value_cny_expr = "s.face_value_native"
             market_value_cny_expr = snapshot_market_value_cny_expr
+            amortized_cost_cny_expr = "s.amortized_cost_native"
+            accrued_interest_cny_expr = "s.accrued_interest_native"
             if _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
                 balance_join = f"""
                 left join (
@@ -203,7 +207,9 @@ class BondAnalyticsRepository:
                     currency_code_key,
                     max(accounting_basis) as accounting_basis,
                     sum(face_value_amount) as face_value_amount,
-                    sum(market_value_amount) as market_value_amount
+                    sum(market_value_amount) as market_value_amount,
+                    sum(amortized_cost_amount) as amortized_cost_amount,
+                    sum(accrued_interest_amount) as accrued_interest_amount
                   from (
                     select
                       cast(report_date as varchar) as report_date,
@@ -222,7 +228,9 @@ class BondAnalyticsRepository:
                       upper(trim(coalesce(currency_code, ''))) as currency_code_key,
                       nullif(trim(accounting_basis), '') as accounting_basis,
                       face_value_amount,
-                      market_value_amount
+                      market_value_amount,
+                      amortized_cost_amount,
+                      accrued_interest_amount
                     from {BALANCE_ZQTZ_FACT_TABLE}
                     where upper(trim(coalesce(currency_basis, ''))) = 'CNY'
                       and lower(trim(coalesce(position_scope, ''))) = 'asset'
@@ -261,6 +269,8 @@ class BondAnalyticsRepository:
                 accounting_basis_expr = "b.accounting_basis"
                 face_value_cny_expr = "coalesce(b.face_value_amount, s.face_value_native)"
                 market_value_cny_expr = f"coalesce(b.market_value_amount, {snapshot_market_value_cny_expr})"
+                amortized_cost_cny_expr = "coalesce(b.amortized_cost_amount, s.amortized_cost_native)"
+                accrued_interest_cny_expr = "coalesce(b.accrued_interest_amount, s.accrued_interest_native)"
             rows = conn.execute(
                 f"""
                 select s.report_date, s.instrument_code, s.instrument_name, s.portfolio_name, s.cost_center,
@@ -268,7 +278,9 @@ class BondAnalyticsRepository:
                        s.issuer_name, s.industry_name, s.rating,
                        s.currency_code, s.face_value_native, {face_value_cny_expr} as face_value_cny, s.market_value_native,
                        {market_value_cny_expr} as market_value_cny, s.amortized_cost_native,
-                       s.accrued_interest_native, s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
+                       {amortized_cost_cny_expr} as amortized_cost_cny, s.accrued_interest_native,
+                       {accrued_interest_cny_expr} as accrued_interest_cny,
+                       s.coupon_rate, s.ytm_value, s.maturity_date, s.next_call_date,
                        s.overdue_days, s.is_issuance_like, s.interest_mode, s.source_version, s.rule_version,
                        s.ingest_batch_id, s.trace_id, s.sub_type, {accounting_basis_expr} as accounting_basis
                 from {SNAPSHOT_TABLE} s

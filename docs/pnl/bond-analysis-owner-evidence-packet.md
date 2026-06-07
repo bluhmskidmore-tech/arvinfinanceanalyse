@@ -23,6 +23,11 @@ This packet does not approve page closure, write governance records, prove page 
 
 Golden sample boundary: `action_attribution_capture_ready_pending_approval`
 Dedicated golden sample: `GS-BOND-ANALYSIS-ACTION-ATTR-A`
+Route-specific evidence scope: `bond_analysis_action_attribution_dto_only`
+Borrowed dashboard evidence allowed: `false`
+Dashboard evidence reuse status: `blocked_for_bond_analysis_certification`
+
+PAGE-BOND-001, /bond-dashboard, GS-BOND-HEADLINE-A, and MTR-BOND-001 through MTR-BOND-004 are non-reusable for /bond-analysis certification.
 
 Out of scope:
 
@@ -49,8 +54,25 @@ Governance validation status: `missing_direct_records`
 - signoff_packet: `docs/pnl/bond-analysis-sign-off-packet.md`
 - governance_audit_packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 - approval_template: `docs/pnl/bond-analysis-business-owner-approval-template.md`
+- fixed_income_convention_decision_draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
 - golden_sample: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A`
 - readiness_command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
+
+## Fixed-Income Convention Review
+
+Delegated read-only review has been completed for the remaining fixed-income convention blockers. The current recommended owner choices are captured in `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`.
+
+Owner confirmation is still required for:
+
+- `market_value_basis=clean`
+- `dirty_market_value_formula=market_value + accrued_interest`
+- `accrued_interest_usage=dirty_price`; current carry and action attribution do not directly consume accrued interest as an independent attribution driver
+- `day_count=ACT/365_approximation`
+- `yield_compounding=nominal_annual_with_coupon_frequency`
+- `duration_convexity_scope=vanilla_fixed_rate_only`
+- `dv01_unit=CNY_per_1bp`
+- `dv01_base=CNY_face_value`
+- `mcp_evidence_status=fallback_local_evidence_until_mcp_recheck`
 
 ## MCP Evidence Gap
 
@@ -73,6 +95,7 @@ Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-da
 - Business owner signature: `Business owner signature` (`missing`)
 - Governance record reviewed: `yes` (`pending`)
 - Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed: `yes` (`pending`)
+- Fixed-income convention decision draft reviewed: `yes` (`pending`)
 - Fixed-income units/sign/date rules reviewed: `yes` (`pending`)
 - UI/API payload evidence reviewed: `yes` (`pending`)
 - Live smoke evidence reviewed: `yes` (`pending`)
@@ -84,4 +107,5 @@ Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-da
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 - `validates_required_fields=true`

@@ -268,6 +268,13 @@
 | `MTR-RSK-103` | 久期排除行数 | quality | `formal` | `RiskTensorPayload.duration_excluded_count` | `/risk-tensor` | 整数 | 有市值但不进入久期分母的行数；DV01 总量仍按行 DV01 汇总 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
 | `MTR-RSK-104` | 久期排除市值 | quality | `formal` | `RiskTensorPayload.duration_excluded_market_value` | `/risk-tensor` | 金额 | 无到期日或非正久期资产不合成期限，单独披露排除市值 | `tests/test_risk_tensor_core.py`; `frontend/src/test/RiskTensorPage.test.tsx` |
 
+MTR-RSK-001 fixed-income convention note:
+
+- Unit: `CNY_per_1bp`.
+- Formula: `CNY face_value * modified_duration / 10000`.
+- Basis: face-value DV01, `not market_value or dirty_value based`.
+- Owner-review scope: current convention is intended for vanilla fixed-rate bond analytics unless a signed owner decision broadens the scope.
+
 ## 10. Executive Consumer V1
 
 ### 10.1 管理总览指标

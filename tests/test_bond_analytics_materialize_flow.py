@@ -181,7 +181,15 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
         conn.close()
 
 
-def _seed_formal_zqtz_balance_for_cb001(duckdb_path: str, *, market_value_amount: Decimal) -> None:
+def _seed_formal_zqtz_balance_for_cb001(
+    duckdb_path: str,
+    *,
+    market_value_amount: Decimal,
+    instrument_code: str = "CB-001",
+    face_value_amount: Decimal | None = None,
+    amortized_cost_amount: Decimal | None = None,
+    accrued_interest_amount: Decimal | None = None,
+) -> None:
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         conn.execute(
@@ -235,13 +243,20 @@ def _seed_formal_zqtz_balance_for_cb001(duckdb_path: str, *, market_value_amount
               cast(report_date as varchar), instrument_code, instrument_name, portfolio_name, cost_center,
               account_category, asset_class, bond_type, coalesce(sub_type, ''), coalesce(business_type_primary, ''),
               issuer_name, industry_name, rating, 'A', 'FVOCI',
-              'asset', 'CNY', currency_code, face_value_native, ?,
-              amortized_cost_native, accrued_interest_native, coupon_rate, ytm_value, cast(maturity_date as varchar),
+              'asset', 'CNY', currency_code, coalesce(?, face_value_native), ?,
+              coalesce(?, amortized_cost_native), coalesce(?, accrued_interest_native),
+              coupon_rate, ytm_value, cast(maturity_date as varchar),
               interest_mode, is_issuance_like, 'sv_formal_balance', 'rv_formal_balance', ingest_batch_id, trace_id
             from zqtz_bond_daily_snapshot
-            where instrument_code = 'CB-001'
+            where instrument_code = ?
             """,
-            [market_value_amount],
+            [
+                face_value_amount,
+                market_value_amount,
+                amortized_cost_amount,
+                accrued_interest_amount,
+                instrument_code,
+            ],
         )
     finally:
         conn.close()
@@ -612,6 +627,90 @@ def test_bond_analytics_materialize_uses_formal_basis_but_keeps_cny_native_marke
         Decimal("0.00000001")
     )
     assert row["dv01"] == expected_dv01
+
+
+def test_bond_analytics_materialize_uses_formal_cny_amounts_for_foreign_bonds(tmp_path):
+    repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                REPORT_DATE,
+                "USD-CB-001",
+                "USD credit bond",
+                "Portfolio USD",
+                "CC-USD",
+                "bank book",
+                "credit bond",
+                "corporate bond",
+                "Issuer USD",
+                "Industry",
+                "A",
+                "USD",
+                Decimal("100"),
+                Decimal("100"),
+                Decimal("98"),
+                Decimal("1"),
+                Decimal("0.03"),
+                Decimal("0.04"),
+                "2031-03-31",
+                None,
+                0,
+                False,
+                "annual",
+                "sv_bond_snap_usd",
+                "rv_bond_snap_usd",
+                "ib_bond_usd",
+                "trace_usd",
+            ],
+        )
+    finally:
+        conn.close()
+
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-CB-001",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
+    row = next(
+        row
+        for row in repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)
+        if row["instrument_code"] == "USD-CB-001"
+    )
+    assert row["currency_code"] == "USD"
+    assert row["face_value"] == Decimal("700.00000000")
+    assert row["market_value_native"] == Decimal("100.00000000")
+    assert row["market_value"] == Decimal("720.00000000")
+    assert row["amortized_cost"] == Decimal("686.00000000")
+    assert row["accrued_interest"] == Decimal("7.00000000")
 
 
 def test_bond_analytics_materialize_does_not_duplicate_snapshot_rows_when_formal_balance_has_duplicate_keys(tmp_path):
