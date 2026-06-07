@@ -87,14 +87,13 @@ Follow-up isolation command:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run -SkipMcpContracts
 ```
 
-Result: blocked in the page backend test slice.
+Remediation update:
 
-Blocking evidence:
-
-- `tests/test_balance_analysis_api.py tests/test_balance_analysis_consumer_surface.py` reported `33 passed` and `1 failed`.
-- Failing test: `test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope`.
-- Observed failure: expected HTTP `200`, received HTTP `403`.
-- This appears tied to the current auth/route-policy state and remains outside this live-smoke evidence-linking lane.
+- The page-specific development fallback read blocker was remediated after this live-smoke artifact was first captured.
+- `tests/test_balance_analysis_api.py tests/test_balance_analysis_consumer_surface.py` now reports `34 passed`.
+- `test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope` now passes.
+- `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run -SkipMcpContracts` now passes through the backend, frontend, browser a11y smoke, typecheck, frontend debt audit, and production build checks.
+- Full `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run` remains blocked only in `tests/test_project_mcp_servers.py`, where 9 legacy MCP assertions still expect `balance-analysis` to remain in record-gap routing instead of the current ready-for-audit-review queue.
 
 ## Non-Claims
 

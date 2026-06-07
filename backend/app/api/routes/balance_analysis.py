@@ -49,17 +49,29 @@ def _require_balance_analysis_report_date_qs(report_date: str) -> str:
 
 
 def _ensure_balance_analysis_read_allowed(auth: AuthContext) -> None:
+    settings = get_settings()
     try:
         ensure_user_allowed(
             auth=auth,
-            settings=get_settings(),
+            settings=settings,
             resource="balance_analysis",
             action="read",
         )
     except PermissionError as exc:
+        if _allows_development_fallback_read(auth=auth, environment=settings.environment):
+            return
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
+    return (
+        str(environment).strip().lower() == "development"
+        and auth.identity_source == "fallback"
+        and auth.user_id == "anonymous"
+        and auth.role == "viewer"
+    )
 
 
 def _can_write_balance_analysis_decision_status(auth: AuthContext) -> bool | None:
