@@ -5,6 +5,8 @@ from pathlib import Path
 import duckdb
 
 from scripts.data_readiness_report import (
+    DEFAULT_TABLE_SPECS,
+    NumericRangeCheck,
     TableSpec,
     build_data_readiness_report,
     render_markdown,
@@ -316,3 +318,210 @@ def test_report_allows_configured_latest_date_lag_with_observation(tmp_path: Pat
     markdown = render_markdown(report)
     assert "target_window_non_business_days" in markdown
     assert "previous business day: 2026-05-29" in markdown
+
+
+def test_report_flags_stock_and_bond_specific_data_quality_blockers(tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table stock_observation (
+                trade_date varchar,
+                stock_code varchar,
+                close_value double,
+                volume double,
+                source_version varchar,
+                rule_version varchar,
+                vendor_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into stock_observation values (?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-29", "000001.SZ", 10.0, 100.0, "sv", "rv", "vv"),
+                ("2026-05-29", "000001.SZ", 10.1, 110.0, "sv", "rv", "vv"),
+                ("2026-05-29", "000002.SZ", -1.0, -5.0, "sv", "rv", "vv"),
+                ("2026-05-29", "", 9.0, 90.0, "sv", "rv", "vv"),
+            ],
+        )
+        conn.execute(
+            """
+            create table bond_analytics (
+                report_date varchar,
+                instrument_code varchar,
+                portfolio_name varchar,
+                accounting_class varchar,
+                market_value double,
+                ytm double,
+                dv01 double,
+                source_version varchar,
+                rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into bond_analytics values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-31", "BOND-1", "Book A", "AC", 1000.0, 0.03, 20.0, "sv", "rv"),
+                ("2026-05-31", "BOND-1", "Book A", "AC", 1000.0, 0.04, 25.0, "sv", "rv"),
+                ("2026-05-31", "", "Book A", "AC", -1.0, 3.5, 0.0, "sv", "rv"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    report = build_data_readiness_report(
+        duckdb_path,
+        specs=[
+            TableSpec(
+                label="stock observation",
+                table="stock_observation",
+                date_column="trade_date",
+                scope="analytical",
+                required_meta_columns=("source_version", "rule_version", "vendor_version"),
+                unique_key_columns=("trade_date", "stock_code"),
+                required_data_columns=("stock_code", "close_value"),
+                numeric_range_checks=(
+                    NumericRangeCheck("close_value", min_value=0, allow_null=False),
+                    NumericRangeCheck("volume", min_value=0, allow_null=False),
+                ),
+            ),
+            TableSpec(
+                label="bond analytics",
+                table="bond_analytics",
+                date_column="report_date",
+                required_meta_columns=("source_version", "rule_version"),
+                unique_key_columns=("report_date", "instrument_code", "portfolio_name", "accounting_class"),
+                required_data_columns=("instrument_code", "portfolio_name", "accounting_class"),
+                numeric_range_checks=(
+                    NumericRangeCheck("market_value", min_value=0, allow_null=False),
+                    NumericRangeCheck("ytm", min_value=-1, max_value=1, allow_null=True),
+                    NumericRangeCheck("dv01", min_value=0, allow_null=True),
+                ),
+            ),
+        ],
+        as_of_date="2026-06-08",
+    )
+
+    assert report["status"] == "block"
+    issue_codes = {issue["code"] for issue in report["issues"]}
+    assert {
+        "duplicate_key_values",
+        "required_data_value_missing",
+        "numeric_value_below_min",
+        "numeric_value_above_max",
+    }.issubset(issue_codes)
+
+    stock = next(item for item in report["tables"] if item["table"] == "stock_observation")
+    assert stock["unique_key_columns"] == ["trade_date", "stock_code"]
+    assert stock["required_data_columns"] == ["stock_code", "close_value"]
+    assert stock["numeric_range_checks"][0]["column"] == "close_value"
+    assert any(issue["details"].get("duplicate_count") == 1 for issue in stock["issues"])
+
+    bond = next(item for item in report["tables"] if item["table"] == "bond_analytics")
+    assert bond["unique_key_columns"] == [
+        "report_date",
+        "instrument_code",
+        "portfolio_name",
+        "accounting_class",
+    ]
+    assert any(issue["code"] == "numeric_value_above_max" for issue in bond["issues"])
+
+    markdown = render_markdown(report)
+    assert "duplicate_key_values" in markdown
+    assert "numeric_value_above_max" in markdown
+
+
+def test_report_flags_configured_quality_check_schema_gaps(tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = _connect(duckdb_path)
+    try:
+        conn.execute(
+            """
+            create table quality_edge (
+                report_date varchar,
+                natural_key varchar,
+                metric_text varchar,
+                source_version varchar,
+                rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into quality_edge values (?, ?, ?, ?, ?)",
+            [
+                ("2026-05-31", "row-1", "", "sv", "rv"),
+                ("2026-05-31", "row-2", "not-a-number", "sv", "rv"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    report = build_data_readiness_report(
+        duckdb_path,
+        specs=[
+            TableSpec(
+                label="quality edge",
+                table="quality_edge",
+                date_column="report_date",
+                unique_key_columns=("report_date", "missing_key"),
+                required_data_columns=("missing_required",),
+                numeric_range_checks=(
+                    NumericRangeCheck("missing_numeric", min_value=0, allow_null=False),
+                    NumericRangeCheck("metric_text", min_value=0, allow_null=False),
+                ),
+            )
+        ],
+        as_of_date="2026-06-08",
+    )
+
+    assert report["status"] == "block"
+    issue_codes = {issue["code"] for issue in report["issues"]}
+    assert {
+        "unique_key_column_missing",
+        "required_data_column_missing",
+        "numeric_column_missing",
+        "numeric_value_missing",
+        "numeric_value_not_parseable",
+    }.issubset(issue_codes)
+
+
+def test_default_specs_include_stock_and_bond_specialized_quality_dimensions() -> None:
+    specs_by_table = {spec.table: spec for spec in DEFAULT_TABLE_SPECS}
+
+    stock = specs_by_table["choice_stock_daily_observation"]
+    assert stock.scope == "analytical"
+    assert stock.unique_key_columns == ("trade_date", "stock_code")
+    assert "stock_code" in stock.required_data_columns
+    assert any(check.column == "close_value" for check in stock.numeric_range_checks)
+
+    gate = specs_by_table["fact_livermore_gate_supplement_daily"]
+    assert gate.unique_key_columns == ("trade_date",)
+    assert any(check.column == "breadth_5d" for check in gate.numeric_range_checks)
+
+    positions = specs_by_table["livermore_position_snapshot"]
+    assert positions.scope == "observational"
+    assert positions.unique_key_columns == ("as_of_date", "stock_code", "position_status")
+    assert "position_status" in positions.required_data_columns
+
+    candidates = specs_by_table["livermore_candidate_history"]
+    assert candidates.scope == "observational"
+    assert candidates.unique_key_columns == ("snapshot_as_of_date", "stock_code", "signal_kind")
+    assert "data_status" in candidates.required_data_columns
+
+    bonds = specs_by_table["fact_formal_bond_analytics_daily"]
+    assert bonds.unique_key_columns == (
+        "report_date",
+        "instrument_code",
+        "portfolio_name",
+        "accounting_class",
+        "trace_id",
+    )
+    assert bonds.required_data_columns == ("instrument_code", "accounting_class", "currency_code")
+    assert any(check.column == "ytm" for check in bonds.numeric_range_checks)
+
+    curves = specs_by_table["fact_formal_yield_curve_daily"]
+    assert curves.unique_key_columns == ("trade_date", "curve_type", "tenor")
+    assert any(check.column == "rate_pct" for check in curves.numeric_range_checks)

@@ -17,6 +17,14 @@ DATE_ISSUE_SAMPLE_LIMIT = 10
 
 
 @dataclass(frozen=True)
+class NumericRangeCheck:
+    column: str
+    min_value: float | int | None = None
+    max_value: float | int | None = None
+    allow_null: bool = True
+
+
+@dataclass(frozen=True)
 class TableSpec:
     label: str
     table: str
@@ -27,6 +35,9 @@ class TableSpec:
     target_max_lag_days: int | None = None
     latest_min_rows: int | None = None
     allow_empty: bool = False
+    unique_key_columns: tuple[str, ...] = ()
+    required_data_columns: tuple[str, ...] = ()
+    numeric_range_checks: tuple[NumericRangeCheck, ...] = ()
 
 
 DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
@@ -47,6 +58,16 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         table="fact_formal_bond_analytics_daily",
         date_column="report_date",
         target_latest_date=DEFAULT_TARGET_LATEST_DATE,
+        unique_key_columns=("report_date", "instrument_code", "portfolio_name", "accounting_class", "trace_id"),
+        required_data_columns=("instrument_code", "accounting_class", "currency_code"),
+        numeric_range_checks=(
+            NumericRangeCheck("coupon_rate", min_value=-1, max_value=1, allow_null=True),
+            NumericRangeCheck("ytm", min_value=-1, max_value=300, allow_null=True),
+            NumericRangeCheck("years_to_maturity", min_value=0, max_value=100, allow_null=False),
+            NumericRangeCheck("macaulay_duration", min_value=0, max_value=100, allow_null=False),
+            NumericRangeCheck("modified_duration", min_value=0, max_value=100, allow_null=False),
+            NumericRangeCheck("convexity", min_value=0, max_value=5000, allow_null=False),
+        ),
     ),
     TableSpec(
         label="formal risk tensor",
@@ -93,6 +114,11 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         required_meta_columns=("source_version", "rule_version", "vendor_version"),
         target_latest_date=DEFAULT_TARGET_LATEST_DATE,
         target_max_lag_days=3,
+        unique_key_columns=("trade_date", "curve_type", "tenor"),
+        required_data_columns=("curve_type", "tenor", "rate_pct"),
+        numeric_range_checks=(
+            NumericRangeCheck("rate_pct", min_value=-50, max_value=100, allow_null=False),
+        ),
     ),
     TableSpec(
         label="formal FX mid",
@@ -126,6 +152,60 @@ DEFAULT_TABLE_SPECS: tuple[TableSpec, ...] = (
         date_column="trade_date",
         scope="analytical",
         required_meta_columns=("source_version", "rule_version", "vendor_version"),
+        unique_key_columns=("trade_date", "stock_code"),
+        required_data_columns=("stock_code",),
+        numeric_range_checks=(
+            NumericRangeCheck("open_value", min_value=0, allow_null=True),
+            NumericRangeCheck("high_value", min_value=0, allow_null=True),
+            NumericRangeCheck("low_value", min_value=0, allow_null=True),
+            NumericRangeCheck("close_value", min_value=0, allow_null=True),
+            NumericRangeCheck("volume", min_value=0, allow_null=True),
+            NumericRangeCheck("amount", min_value=0, allow_null=True),
+            NumericRangeCheck("turn", min_value=0, allow_null=True),
+            NumericRangeCheck("amplitude", min_value=0, allow_null=True),
+        ),
+    ),
+    TableSpec(
+        label="Livermore gate supplement",
+        table="fact_livermore_gate_supplement_daily",
+        date_column="trade_date",
+        scope="analytical",
+        required_meta_columns=("source_version", "rule_version", "vendor_version"),
+        unique_key_columns=("trade_date",),
+        required_data_columns=("breadth_5d", "limit_up_quality_ok"),
+        numeric_range_checks=(
+            NumericRangeCheck("breadth_5d", min_value=0, max_value=1, allow_null=False),
+        ),
+    ),
+    TableSpec(
+        label="Livermore active position snapshot",
+        table="livermore_position_snapshot",
+        date_column="as_of_date",
+        scope="observational",
+        required_meta_columns=("source_version", "rule_version", "vendor_version"),
+        unique_key_columns=("as_of_date", "stock_code", "position_status"),
+        required_data_columns=("stock_code", "position_status", "entry_cost", "position_quantity"),
+        numeric_range_checks=(
+            NumericRangeCheck("entry_cost", min_value=0, allow_null=False),
+            NumericRangeCheck("position_quantity", min_value=0, allow_null=False),
+            NumericRangeCheck("bars_since_entry", min_value=0, allow_null=True),
+        ),
+    ),
+    TableSpec(
+        label="Livermore candidate history",
+        table="livermore_candidate_history",
+        date_column="snapshot_as_of_date",
+        scope="observational",
+        required_meta_columns=("source_version", "rule_version", "vendor_version"),
+        unique_key_columns=("snapshot_as_of_date", "stock_code", "signal_kind"),
+        required_data_columns=("stock_code", "signal_kind", "data_status", "selection_close"),
+        numeric_range_checks=(
+            NumericRangeCheck("selection_close", min_value=0, allow_null=False),
+            NumericRangeCheck("return_1d", min_value=-1, max_value=5, allow_null=True),
+            NumericRangeCheck("return_5d", min_value=-1, max_value=5, allow_null=True),
+            NumericRangeCheck("return_10d", min_value=-1, max_value=5, allow_null=True),
+            NumericRangeCheck("return_20d", min_value=-1, max_value=5, allow_null=True),
+        ),
     ),
     TableSpec(
         label="choice macro daily",
@@ -335,6 +415,10 @@ def _inspect_table(conn: Any, spec: TableSpec, as_of_date: str) -> dict[str, Any
                 )
             )
 
+    issues.extend(_unique_key_issues(conn, spec, columns, row_count))
+    issues.extend(_required_data_issues(conn, spec, columns))
+    issues.extend(_numeric_range_issues(conn, spec, columns))
+
     return _table_report(
         spec,
         row_count=row_count,
@@ -392,6 +476,146 @@ def _date_value_issues(conn: Any, spec: TableSpec, as_of_date: str) -> list[dict
     return issues
 
 
+def _unique_key_issues(conn: Any, spec: TableSpec, columns: set[str], row_count: int) -> list[dict[str, Any]]:
+    if not spec.unique_key_columns:
+        return []
+
+    issues: list[dict[str, Any]] = []
+    missing_columns = [column for column in spec.unique_key_columns if column not in columns]
+    for column in missing_columns:
+        issues.append(
+            _issue(
+                "unique_key_column_missing",
+                "block",
+                "Configured unique key column is missing.",
+                table=spec.table,
+                details={"column": column, "key_columns": list(spec.unique_key_columns)},
+            )
+        )
+    if missing_columns or row_count == 0:
+        return issues
+
+    duplicate_count = _duplicate_key_count(conn, spec.table, spec.unique_key_columns)
+    if duplicate_count:
+        issues.append(
+            _issue(
+                "duplicate_key_values",
+                "block",
+                "Natural key contains duplicate row groups.",
+                table=spec.table,
+                details={
+                    "key_columns": list(spec.unique_key_columns),
+                    "duplicate_count": duplicate_count,
+                    "sample_keys": _duplicate_key_samples(conn, spec.table, spec.unique_key_columns),
+                },
+            )
+        )
+    return issues
+
+
+def _required_data_issues(conn: Any, spec: TableSpec, columns: set[str]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for column in spec.required_data_columns:
+        if column not in columns:
+            issues.append(
+                _issue(
+                    "required_data_column_missing",
+                    "block",
+                    "Required business data column is missing.",
+                    table=spec.table,
+                    details={"column": column},
+                )
+            )
+            continue
+        missing_count = _missing_value_count(conn, spec.table, column)
+        if missing_count:
+            issues.append(
+                _issue(
+                    "required_data_value_missing",
+                    "block",
+                    "Required business data column has blank or null values.",
+                    table=spec.table,
+                    details={"column": column, "missing_count": missing_count},
+                )
+            )
+    return issues
+
+
+def _numeric_range_issues(conn: Any, spec: TableSpec, columns: set[str]) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    for check in spec.numeric_range_checks:
+        if check.column not in columns:
+            issues.append(
+                _issue(
+                    "numeric_column_missing",
+                    "block",
+                    "Configured numeric check column is missing.",
+                    table=spec.table,
+                    details={"column": check.column},
+                )
+            )
+            continue
+
+        if not check.allow_null:
+            missing_count = _missing_value_count(conn, spec.table, check.column)
+            if missing_count:
+                issues.append(
+                    _issue(
+                        "numeric_value_missing",
+                        "block",
+                        "Required numeric column has blank or null values.",
+                        table=spec.table,
+                        details={"column": check.column, "missing_count": missing_count},
+                    )
+                )
+
+        invalid_count = _numeric_invalid_count(conn, spec.table, check.column)
+        if invalid_count:
+            issues.append(
+                _issue(
+                    "numeric_value_not_parseable",
+                    "block",
+                    "Numeric check column contains values that cannot be parsed as numbers.",
+                    table=spec.table,
+                    details={"column": check.column, "invalid_count": invalid_count},
+                )
+            )
+
+        if check.min_value is not None:
+            below_min_count = _numeric_below_min_count(conn, spec.table, check.column, check.min_value)
+            if below_min_count:
+                issues.append(
+                    _issue(
+                        "numeric_value_below_min",
+                        "block",
+                        "Numeric check column contains values below the configured minimum.",
+                        table=spec.table,
+                        details={
+                            "column": check.column,
+                            "min_value": check.min_value,
+                            "below_min_count": below_min_count,
+                        },
+                    )
+                )
+        if check.max_value is not None:
+            above_max_count = _numeric_above_max_count(conn, spec.table, check.column, check.max_value)
+            if above_max_count:
+                issues.append(
+                    _issue(
+                        "numeric_value_above_max",
+                        "block",
+                        "Numeric check column contains values above the configured maximum.",
+                        table=spec.table,
+                        details={
+                            "column": check.column,
+                            "max_value": check.max_value,
+                            "above_max_count": above_max_count,
+                        },
+                    )
+                )
+    return issues
+
+
 def _report(
     duckdb_path: Path,
     as_of_date: str,
@@ -433,6 +657,9 @@ def _table_report(
         "date_coverage": date_coverage,
         "latest_row_count": latest_row_count,
         "required_meta_columns": list(spec.required_meta_columns),
+        "unique_key_columns": list(spec.unique_key_columns),
+        "required_data_columns": list(spec.required_data_columns),
+        "numeric_range_checks": [_numeric_range_check_report(check) for check in spec.numeric_range_checks],
         "allow_empty": spec.allow_empty,
         "issues": issues,
     }
@@ -529,6 +756,47 @@ def _latest_row_count(conn: Any, table: str, column: str, latest_value: Any) -> 
     )
 
 
+def _duplicate_key_count(conn: Any, table: str, columns: tuple[str, ...]) -> int:
+    quoted_columns = ", ".join(_quote_identifier(column) for column in columns)
+    return int(
+        conn.execute(
+            f"""
+            select count(*)
+            from (
+                select {quoted_columns}
+                from {_quote_table(table)}
+                group by {quoted_columns}
+                having count(*) > 1
+            )
+            """
+        ).fetchone()[0]
+        or 0
+    )
+
+
+def _duplicate_key_samples(conn: Any, table: str, columns: tuple[str, ...], limit: int = 5) -> list[dict[str, Any]]:
+    quoted_columns = [_quote_identifier(column) for column in columns]
+    select_columns = ", ".join(f"cast({column} as varchar) as {column}" for column in quoted_columns)
+    group_columns = ", ".join(quoted_columns)
+    rows = conn.execute(
+        f"""
+        select {select_columns}, count(*) as duplicate_row_count
+        from {_quote_table(table)}
+        group by {group_columns}
+        having count(*) > 1
+        order by duplicate_row_count desc
+        limit ?
+        """,
+        [limit],
+    ).fetchall()
+    samples: list[dict[str, Any]] = []
+    for row in rows:
+        sample = {column: row[index] for index, column in enumerate(columns)}
+        sample["row_count"] = int(row[len(columns)] or 0)
+        samples.append(sample)
+    return samples
+
+
 def _distinct_date_values(conn: Any, table: str, column: str) -> list[str]:
     rows = conn.execute(
         f"""
@@ -558,6 +826,67 @@ def _missing_value_count(conn: Any, table: str, column: str) -> int:
         ).fetchone()[0]
         or 0
     )
+
+
+def _numeric_invalid_count(conn: Any, table: str, column: str) -> int:
+    quoted_column = _quote_identifier(column)
+    return int(
+        conn.execute(
+            f"""
+            select count(*)
+            from {_quote_table(table)}
+            where {quoted_column} is not null
+              and trim(cast({quoted_column} as varchar)) != ''
+              and try_cast({quoted_column} as double) is null
+            """
+        ).fetchone()[0]
+        or 0
+    )
+
+
+def _numeric_below_min_count(conn: Any, table: str, column: str, min_value: float | int) -> int:
+    quoted_column = _quote_identifier(column)
+    return int(
+        conn.execute(
+            f"""
+            select count(*)
+            from {_quote_table(table)}
+            where {quoted_column} is not null
+              and trim(cast({quoted_column} as varchar)) != ''
+              and try_cast({quoted_column} as double) is not null
+              and try_cast({quoted_column} as double) < ?
+            """,
+            [min_value],
+        ).fetchone()[0]
+        or 0
+    )
+
+
+def _numeric_above_max_count(conn: Any, table: str, column: str, max_value: float | int) -> int:
+    quoted_column = _quote_identifier(column)
+    return int(
+        conn.execute(
+            f"""
+            select count(*)
+            from {_quote_table(table)}
+            where {quoted_column} is not null
+              and trim(cast({quoted_column} as varchar)) != ''
+              and try_cast({quoted_column} as double) is not null
+              and try_cast({quoted_column} as double) > ?
+            """,
+            [max_value],
+        ).fetchone()[0]
+        or 0
+    )
+
+
+def _numeric_range_check_report(check: NumericRangeCheck) -> dict[str, Any]:
+    return {
+        "column": check.column,
+        "min_value": check.min_value,
+        "max_value": check.max_value,
+        "allow_null": check.allow_null,
+    }
 
 
 def _parse_date(value: Any) -> date | None:
