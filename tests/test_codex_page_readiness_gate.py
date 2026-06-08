@@ -384,7 +384,7 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
         }
     ]
     assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
-    assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
+    assert report["business_owner_approval_status"]["approval_action_item_count"] == 12
     assert report["business_owner_approval_status"]["evidence_scope"] == {
         "approves_metric_or_page": False,
         "writes_governance_records": False,
@@ -896,7 +896,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
         1 for page in payload["pages"] if page["run_supported"]
     )
     assert payload["summary"]["business_owner_approval_pending_count"] == 6
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 70
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 71
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["blocking_pages"] == []
@@ -1054,7 +1054,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     assert pnl_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
     bond_pending = pending_by_slug["bond-analysis"]
     assert bond_pending["page_id"] == "PAGE-BOND-ANALYSIS-001"
-    assert bond_pending["approval_action_item_count"] == 11
+    assert bond_pending["approval_action_item_count"] == 12
     assert "fixed_income_rule_review" in bond_pending["remaining_blockers"]
     assert bond_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
     assert bond_pending["business_owner_approval_captured"] is False
@@ -1491,7 +1491,7 @@ def test_page_readiness_cli_all_mode_emits_batch_report() -> None:
     assert payload["summary"]["blocked_count"] == 0
     assert payload["summary"]["run_supported_count"] == 27
     assert payload["summary"]["business_owner_approval_pending_count"] == 6
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 70
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 71
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["blocking_pages"] == []
@@ -1882,7 +1882,7 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     )
 
     assert "Business-owner approval pending pages:" in completed.stdout
-    assert "business_owner_approval_action_item_count=70" in completed.stdout
+    assert "business_owner_approval_action_item_count=71" in completed.stdout
     assert "business_owner_action_signoff_missing_or_invalid_item_count=5" in completed.stdout
     assert "business_owner_action_signoff_pending_review_item_count=10" in completed.stdout
     assert (
@@ -1898,7 +1898,7 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     assert "- balance-analysis (PAGE-BALANCE-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- ledger-pnl (PAGE-LEDGER-PNL-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- pnl-attribution (PAGE-PNL-ATTR-WB-001): pending; captured=False; action_items=11" in completed.stdout
-    assert "- bond-analysis (PAGE-BOND-ANALYSIS-001): pending; captured=False; action_items=11" in completed.stdout
+    assert "- bond-analysis (PAGE-BOND-ANALYSIS-001): pending; captured=False; action_items=12" in completed.stdout
     assert "- stock-analysis (GAP-STOCK-ANALYSIS-PAGE): pending; captured=False; action_items=11" in completed.stdout
     assert "Approval evidence scope:" in completed.stdout
     assert "  - proves_page_execution=False" in completed.stdout

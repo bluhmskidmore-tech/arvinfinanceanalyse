@@ -90,6 +90,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps
 Remediation update:
 
 - The page-specific development fallback read blocker was remediated after this live-smoke artifact was first captured.
+- Before remediation, `test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope` received HTTP `403`, which showed the development fallback read path was still blocked before page-specific verification could complete.
 - `tests/test_balance_analysis_api.py tests/test_balance_analysis_consumer_surface.py` now reports `34 passed`.
 - `test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope` now passes.
 - `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run -SkipMcpContracts` now passes through the backend, frontend, browser a11y smoke, typecheck, frontend debt audit, and production build checks.
