@@ -332,9 +332,26 @@ export default function MarketDataPage() {
   const ratesBasisLabel = `${formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown"}${
     formalUseBlocked ? " · blocked" : ""
   }`;
+  const formalUseAllowedLabel =
+    formalRatesMeta?.formal_use_allowed === undefined
+      ? "unknown"
+      : formalRatesMeta.formal_use_allowed
+        ? "是"
+        : "否";
+  const sourceGateFields = [
+    { label: "口径", value: ratesBasisLabel },
+    { label: "正式可用", value: formalUseAllowedLabel },
+    { label: "供应商", value: formalRatesMeta?.vendor_status ?? "unknown" },
+    { label: "降级", value: formalRatesMeta?.fallback_mode ?? rateQuotesSource?.fallbackMode ?? "unknown" },
+    { label: "Source", value: formalRatesMeta?.source_version ?? rateQuotesSource?.sourceVersion ?? "source-pending" },
+  ];
+  const railMetrics = overviewMetrics.slice(0, 3);
 
   return (
     <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-05-15d">
+      <section className="market-data-terminal-cockpit" data-testid="market-data-terminal-cockpit">
+        <div className="market-data-terminal-primary-grid" data-testid="market-data-terminal-primary-grid">
+          <div className="market-data-terminal-primary-column">
       <MarketDataHeroSection
         clientMode={clientMode}
         watchDate={watchDate}
@@ -382,7 +399,11 @@ export default function MarketDataPage() {
           title="利率、资金、宏观深度与成交观察"
           description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
         />
-        <div className="market-data-command-grid" data-testid="market-data-macro-workbench">
+        <div
+          id="market-data-core-workbench"
+          className="market-data-command-grid"
+          data-testid="market-data-macro-workbench"
+        >
           <RateQuoteTable model={terminalModel.rateQuotes} />
           <MarketDataMacroDepthTabs
             macroDepthTab={macroDepthTab}
@@ -398,11 +419,7 @@ export default function MarketDataPage() {
           <span>口径 {ratesBasisLabel}</span>
           <span>
             正式可用{" "}
-            {formalRatesMeta?.formal_use_allowed === undefined
-              ? "unknown"
-              : formalRatesMeta.formal_use_allowed
-                ? "是"
-                : "否"}
+            {formalUseAllowedLabel}
           </span>
           <span>供应商 {formalRatesMeta?.vendor_status ?? "unknown"}</span>
           <span>降级 {formalRatesMeta?.fallback_mode ?? rateQuotesSource?.fallbackMode ?? "unknown"}</span>
@@ -410,6 +427,51 @@ export default function MarketDataPage() {
           {formalUseBlocked ? <span>禁止作为正式口径</span> : null}
         </div>
       </MarketSectionBlock>
+          </div>
+
+          <aside
+            className="market-data-terminal-decision-rail"
+            data-testid="market-data-terminal-decision-rail"
+          >
+            <div className="market-data-terminal-rail-head">
+              <span>Market Data Terminal</span>
+              <strong>{statusBadges.readinessVerdict}</strong>
+              <small>{statusBadges.secondaryLabel}</small>
+            </div>
+            <div className="market-data-terminal-source-gate">
+              <span className="market-data-terminal-rail-kicker">Source Gate</span>
+              {sourceGateFields.map((field) => (
+                <div
+                  key={field.label}
+                  className={`market-data-terminal-source-row ${
+                    field.label === "Source" ? "market-data-terminal-source-row--source" : ""
+                  }`}
+                >
+                  <span>{field.label}</span>
+                  <strong title={field.value}>{field.value}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="market-data-terminal-rail-metrics">
+              {railMetrics.map((metric) => (
+                <div
+                  key={metric.testId}
+                  className={`market-data-terminal-rail-metric market-data-terminal-rail-metric--${metric.tone ?? "default"}`}
+                >
+                  <span>{metric.title}</span>
+                  <strong>{metric.value}</strong>
+                  <small>{metric.detail}</small>
+                </div>
+              ))}
+            </div>
+            <nav className="market-data-terminal-anchor-nav" aria-label="市场数据终端导航">
+              <a href="#market-data-core-workbench">曲线工作台</a>
+              <a href="#market-data-liquidity-deck" aria-label="资金市场">资金</a>
+              <a href="#market-data-evidence-gate">证据口径</a>
+            </nav>
+          </aside>
+        </div>
+      </section>
 
       <MarketSectionBlock>
         <MarketSectionLead
@@ -431,7 +493,7 @@ export default function MarketDataPage() {
         />
       </MarketSectionBlock>
 
-      <div className="market-data-observation-grid">
+      <div id="market-data-liquidity-deck" className="market-data-observation-grid">
         <MoneyMarketTable model={terminalModel.moneyMarket} />
         <BondFuturesTable model={terminalModel.bondFutures} />
         <NcdMatrix
@@ -453,7 +515,11 @@ export default function MarketDataPage() {
         source-pending {sourcePendingCount}
       </div>
 
-      <section className="market-data-macro-evidence-rail" data-testid="market-data-macro-evidence-rail">
+      <section
+        id="market-data-evidence-gate"
+        className="market-data-macro-evidence-rail"
+        data-testid="market-data-macro-evidence-rail"
+      >
         <strong>证据与口径（只读）</strong>
         <span>{evidenceLines.formalRates}</span>
         <span>{evidenceLines.macroLatest}</span>

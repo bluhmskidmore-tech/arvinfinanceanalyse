@@ -14,6 +14,7 @@ vi.mock("../app/jobs/polling", () => ({
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { runPollingTask } from "../app/jobs/polling";
 import type { ChoiceMacroLatestPoint, ResultMeta } from "../api/contracts";
+import { LiveResultMetaStrip } from "../features/market-data/components/LiveResultMetaStrip";
 import MarketDataPage from "../features/market-data/pages/MarketDataPage";
 
 function renderPage(client: ApiClient) {
@@ -101,6 +102,32 @@ function buildMacroPoint(
 describe("MarketDataPage", () => {
   afterEach(() => {
     vi.mocked(runPollingTask).mockReset();
+  });
+
+  it("renders the market data page as an institutional terminal cockpit", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    const cockpit = await screen.findByTestId("market-data-terminal-cockpit");
+    const primaryGrid = screen.getByTestId("market-data-terminal-primary-grid");
+    const decisionRail = screen.getByTestId("market-data-terminal-decision-rail");
+
+    expect(cockpit.className).toContain("market-data-terminal-cockpit");
+    expect(primaryGrid).toContainElement(screen.getByTestId("market-data-contract-hero"));
+    expect(primaryGrid).toContainElement(decisionRail);
+    expect(decisionRail).toHaveTextContent("Market Data Terminal");
+    expect(decisionRail).toHaveTextContent("Source Gate");
+    expect(within(decisionRail).getByRole("link", { name: "曲线工作台" })).toHaveAttribute(
+      "href",
+      "#market-data-core-workbench",
+    );
+    expect(within(decisionRail).getByRole("link", { name: "资金市场" })).toHaveAttribute(
+      "href",
+      "#market-data-liquidity-deck",
+    );
+    expect(within(decisionRail).getByRole("link", { name: "证据口径" })).toHaveAttribute(
+      "href",
+      "#market-data-evidence-gate",
+    );
   });
 
   it("renders macro catalog plus trend and lineage evidence from the API client contract", async () => {
@@ -474,8 +501,15 @@ describe("MarketDataPage", () => {
     expect(screen.queryByTestId("market-data-missing-stable-section")).not.toBeInTheDocument();
     expect(screen.queryByTestId("market-data-result-meta")).not.toBeInTheDocument();
     expect(screen.queryByTestId("market-data-macro-readiness")).not.toBeInTheDocument();
-    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent(
-      "vv_choice_macro_20260410",
+    await waitFor(() => {
+      expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent(
+        "sv_market_data_rates_mock",
+      );
+    });
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("口径=正式口径");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("正式可用=是");
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent(
+      "macro latest: basis=analytical formal_use_allowed=false",
     );
     expect(screen.getByTestId("market-data-curve-live-meta")).toHaveTextContent("供应商状态=正常");
     expect(screen.queryByTestId("market-data-macro-section-meta")).not.toBeInTheDocument();
@@ -534,6 +568,9 @@ describe("MarketDataPage", () => {
       result_meta: buildResultMeta({
         trace_id: "tr_formal_rates_terminal_test",
         source_version: "sv_formal_rates_terminal_test",
+        resolved_report_date: "2026-04-30",
+        as_of_date: "2026-04-30",
+        fallback_date: null,
       }),
       result: {
         read_target: "duckdb" as const,
@@ -572,6 +609,11 @@ describe("MarketDataPage", () => {
     expect(sharedMeta).toHaveTextContent("供应商 ok");
     expect(sharedMeta).toHaveTextContent("降级 none");
     expect(sharedMeta).toHaveTextContent("sv_formal_rates_terminal_test");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("口径=正式口径");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("正式可用=是");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("报告日=2026-04-30");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("数据截至=2026-04-30");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent("降级日期=未提供");
 
     const evidenceRail = screen.getByTestId("market-data-macro-evidence-rail");
     expect(evidenceRail).toHaveTextContent("formal rates");
@@ -649,10 +691,33 @@ describe("MarketDataPage", () => {
     expect(sharedMeta).toHaveTextContent("口径 formal · blocked");
     expect(sharedMeta).toHaveTextContent("正式可用 否");
     expect(sharedMeta).toHaveTextContent("禁止作为正式口径");
+    const overviewMeta = screen.getByTestId("market-data-overview-live-meta");
+    expect(overviewMeta).toHaveTextContent("口径=正式口径");
+    expect(overviewMeta).toHaveTextContent("正式可用=否");
     expect(screen.getByTestId("market-data-data-status-strip")).toHaveTextContent("分析/候选");
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent(
       "formal_use_allowed=false",
     );
+  });
+
+  it("labels mock basis and falls back from blank resolved report date", () => {
+    render(
+      <LiveResultMetaStrip
+        lead="测试读面"
+        testId="market-data-live-meta-unit"
+        meta={buildResultMeta({
+          basis: "mock",
+          formal_use_allowed: false,
+          resolved_report_date: "",
+          requested_report_date: "2026-04-30",
+        })}
+      />,
+    );
+
+    const meta = screen.getByTestId("market-data-live-meta-unit");
+    expect(meta).toHaveTextContent("口径=模拟口径");
+    expect(meta).toHaveTextContent("正式可用=否");
+    expect(meta).toHaveTextContent("报告日=2026-04-30");
   });
 
   it("renders explicit empty states for missing rate and money sources instead of demo rows", async () => {
