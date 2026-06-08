@@ -5,6 +5,8 @@ on:
     branches: [master, "codex/**"]
   pull_request:
     branches: [master]
+  schedule:
+    - cron: "0 18 * * *"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -38,6 +40,28 @@ jobs:
         with:
           name: governance-lineage-audit
           path: governance-lineage-audit.json
+
+  backend-full-pytest:
+    name: Backend Full Pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend dependencies
+        run: pip install -e "./backend[dev]"
+
+      - name: Run full backend pytest suite
+        run: python -m pytest -q
 
   frontend:
     name: Frontend Tests
