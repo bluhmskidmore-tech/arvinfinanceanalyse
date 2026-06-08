@@ -355,6 +355,14 @@ describe("startup performance guards", () => {
     expect(deferredTerminalSource).not.toContain("dashboardHomeView");
   });
 
+  it("keeps deferred terminal home body off a second timer after first screen settles", () => {
+    const deferredTerminalSource = readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8");
+
+    expect(deferredTerminalSource).toContain("requestIdleCallback(markReady");
+    expect(deferredTerminalSource).not.toContain("BODY_IDLE_MIN_DELAY_MS");
+    expect(deferredTerminalSource).not.toContain("delayHandle = window.setTimeout(scheduleBodyLoad");
+  });
+
   it("keeps first-screen supplemental hydration off below-fold home queries", () => {
     const hydrationSource = readFileSync(HOME_SUPPLEMENTAL_HYDRATION_PATH, "utf8");
     const deferredContentSource = readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8");
@@ -451,6 +459,9 @@ describe("startup performance guards", () => {
     expect(homeViewModelSource).toContain("useFormalContextDataGate");
     expect(homeViewModelSource).toContain("loadBondNewsFeeds");
     expect(homeViewModelSource).toContain("loadFormalData: hasDeferredFormalContext");
+    expect(homeViewModelSource).not.toContain("heavyBondListsReady");
+    expect(homeViewModelSource).not.toContain("formalContextReportDate");
+    expect(homeViewModelSource).not.toContain("setFormalContextReportDate");
     expect(bodyDataSource).toContain("loadBondNewsFeeds");
     expect(bodyDataSource).toContain("enabled: loadBondNewsFeeds");
     expect(bodyDataSource).toContain("const loadDatedFormalData = loadFormalData && hasSupplementalReportDate");

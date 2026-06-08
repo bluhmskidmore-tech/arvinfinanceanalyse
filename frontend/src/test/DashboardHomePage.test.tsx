@@ -256,6 +256,11 @@ async function revealHomeFormalContextData(idle: StubbedIdleCallbacks) {
   await runPendingIdleIfAny(idle);
 }
 
+async function revealFormalContextOnLoadedHome(idle: StubbedIdleCallbacks) {
+  await waitForFormalContextDataDelay();
+  await runNextIdle(idle);
+}
+
 function requestedNewsTopicCodes(spy: {
   mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> };
 }): string[] {
@@ -1589,7 +1594,7 @@ describe("DashboardHomePage", () => {
     }
   });
 
-  it("starts income trend before heavy formal context waits for heavy bond lists", async () => {
+  it("starts income trend and formal context before heavy bond lists settle", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1612,6 +1617,9 @@ describe("DashboardHomePage", () => {
       });
       return mockSnapshotSource.getHomeIncomeTrend(...args);
     });
+    const getBondAnalyticsCreditSpreadMigration = vi.fn(
+      mockSnapshotSource.getBondAnalyticsCreditSpreadMigration,
+    );
     const getBondAnalyticsReturnDecomposition = vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition);
     const getPnlCampisiFourEffects = vi.fn(mockSnapshotSource.getPnlCampisiFourEffects);
     const getBondAnalyticsYieldCurveTermStructure = vi.fn(
@@ -1628,6 +1636,7 @@ describe("DashboardHomePage", () => {
       getBondAnalyticsTopHoldings,
       getBondAnalyticsPositionChanges,
       getHomeIncomeTrend,
+      getBondAnalyticsCreditSpreadMigration,
       getBondAnalyticsReturnDecomposition,
       getPnlCampisiFourEffects,
       getBondAnalyticsYieldCurveTermStructure,
@@ -1666,11 +1675,12 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
+      expect(getBondAnalyticsCreditSpreadMigration).toHaveBeenCalled();
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
     expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
 
     await waitForBodyStructureDataDelay();
     await runNextIdle(idle);
@@ -1678,37 +1688,15 @@ describe("DashboardHomePage", () => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
       expect(releaseTopHoldings).toBeDefined();
     });
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
-
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
-
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
 
     await act(async () => {
       releaseTopHoldings?.();
-    });
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
-      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
-      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
 
     releaseIncomeTrend?.();
   });
 
-  it("waits to request formal queries until position changes have settled", async () => {
+  it("starts formal queries before slow position changes have settled", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1730,6 +1718,9 @@ describe("DashboardHomePage", () => {
       });
       return mockSnapshotSource.getHomeIncomeTrend(...args);
     });
+    const getBondAnalyticsCreditSpreadMigration = vi.fn(
+      mockSnapshotSource.getBondAnalyticsCreditSpreadMigration,
+    );
     const getBondAnalyticsReturnDecomposition = vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition);
     const getPnlCampisiFourEffects = vi.fn(mockSnapshotSource.getPnlCampisiFourEffects);
     const getBondAnalyticsYieldCurveTermStructure = vi.fn(
@@ -1746,6 +1737,7 @@ describe("DashboardHomePage", () => {
       getBondAnalyticsTopHoldings,
       getBondAnalyticsPositionChanges,
       getHomeIncomeTrend,
+      getBondAnalyticsCreditSpreadMigration,
       getBondAnalyticsReturnDecomposition,
       getPnlCampisiFourEffects,
       getBondAnalyticsYieldCurveTermStructure,
@@ -1773,6 +1765,10 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
+      expect(getBondAnalyticsCreditSpreadMigration).toHaveBeenCalled();
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
     expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
     expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
@@ -1784,19 +1780,6 @@ describe("DashboardHomePage", () => {
       expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
       expect(releasePositionChanges).toBeDefined();
     });
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
-
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
 
     await act(async () => {
       releasePositionChanges?.();
@@ -1812,7 +1795,7 @@ describe("DashboardHomePage", () => {
     releaseIncomeTrend?.();
   });
 
-  it("waits to request formal queries until failed position changes have settled", async () => {
+  it("keeps formal queries independent from failed position changes", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1834,6 +1817,9 @@ describe("DashboardHomePage", () => {
       });
       return mockSnapshotSource.getHomeIncomeTrend(...args);
     });
+    const getBondAnalyticsCreditSpreadMigration = vi.fn(
+      mockSnapshotSource.getBondAnalyticsCreditSpreadMigration,
+    );
     const getBondAnalyticsReturnDecomposition = vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition);
     const getPnlCampisiFourEffects = vi.fn(mockSnapshotSource.getPnlCampisiFourEffects);
     const getBondAnalyticsYieldCurveTermStructure = vi.fn(
@@ -1850,6 +1836,7 @@ describe("DashboardHomePage", () => {
       getBondAnalyticsTopHoldings,
       getBondAnalyticsPositionChanges,
       getHomeIncomeTrend,
+      getBondAnalyticsCreditSpreadMigration,
       getBondAnalyticsReturnDecomposition,
       getPnlCampisiFourEffects,
       getBondAnalyticsYieldCurveTermStructure,
@@ -1877,6 +1864,10 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
+      expect(getBondAnalyticsCreditSpreadMigration).toHaveBeenCalled();
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
     expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
     expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
@@ -1888,16 +1879,6 @@ describe("DashboardHomePage", () => {
       expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
       expect(rejectPositionChanges).toBeDefined();
     });
-
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
-    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
-    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
 
     await act(async () => {
       rejectPositionChanges?.();
@@ -1911,6 +1892,104 @@ describe("DashboardHomePage", () => {
     });
 
     releaseIncomeTrend?.();
+  });
+
+  it("does not issue stale formal requests after switching report date", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+    let releaseNewSnapshot: (() => void) | undefined;
+    let newSnapshotReturned = false;
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...base,
+      ...supplementalCalls,
+      getHomeSnapshot: async (options) => {
+        if (options?.reportDate === "2026-03-31") {
+          await new Promise<void>((resolve) => {
+            releaseNewSnapshot = resolve;
+          });
+        }
+        const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+        if (options?.reportDate === "2026-03-31") {
+          newSnapshotReturned = true;
+        }
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: options?.reportDate ?? envelope.result.report_date,
+          },
+        };
+      },
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await revealHomeFormalContextData(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalled();
+      expect(supplementalCalls.getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(supplementalCalls.getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(supplementalCalls.getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
+    });
+
+    const formalCallsBeforeSwitch = {
+      creditSpread: supplementalCalls.getBondAnalyticsCreditSpreadMigration.mock.calls.length,
+      returnDecomposition: supplementalCalls.getBondAnalyticsReturnDecomposition.mock.calls.length,
+      campisi: supplementalCalls.getPnlCampisiFourEffects.mock.calls.length,
+      yieldCurve: supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.length,
+    };
+    const reportDateInput = await screen.findByLabelText("报告日");
+    await act(async () => {
+      fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
+    });
+    await waitFor(() => {
+      expect(releaseNewSnapshot).toBeDefined();
+    });
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+
+    expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledTimes(
+      formalCallsBeforeSwitch.creditSpread,
+    );
+    expect(supplementalCalls.getBondAnalyticsReturnDecomposition).toHaveBeenCalledTimes(
+      formalCallsBeforeSwitch.returnDecomposition,
+    );
+    expect(supplementalCalls.getPnlCampisiFourEffects).toHaveBeenCalledTimes(
+      formalCallsBeforeSwitch.campisi,
+    );
+    expect(supplementalCalls.getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledTimes(
+      formalCallsBeforeSwitch.yieldCurve,
+    );
+
+    await act(async () => {
+      releaseNewSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(newSnapshotReturned).toBe(true);
+    });
+    await revealFormalContextOnLoadedHome(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-03-31");
+      expect(supplementalCalls.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith(
+        "2026-03-31",
+        "MoM",
+        {
+          accountingClass: "all",
+          assetClass: "all",
+        },
+      );
+      expect(supplementalCalls.getPnlCampisiFourEffects).toHaveBeenCalledWith({
+        endDate: "2026-03-31",
+        lookbackDays: 30,
+      });
+      expect(supplementalCalls.getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith(
+        "2026-03-31",
+        { curveTypes: "treasury,cdb,aaa_credit" },
+      );
+    });
   });
 
   it("does not refetch market tape when only the snapshot report date resolves", async () => {

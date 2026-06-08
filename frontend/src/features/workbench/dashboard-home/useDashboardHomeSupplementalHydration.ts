@@ -98,11 +98,10 @@ export function useDashboardHomeSupplementalHydration(
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
   const mockFirstScreenView = useMockHomeFirstScreenView(useMockFallback);
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
-  const hasInitialEffectiveReportDate = Boolean(initialEffectiveReportDate);
-  const hasDeferredSupplementalData =
-    hasInitialEffectiveReportDate &&
-    supplementalDataReportDate === initialEffectiveReportDate;
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
+  const hasDeferredSupplementalData =
+    hasSupplementalReportDate &&
+    supplementalDataReportDate === supplementalReportDate;
   const hasDeferredSupplementalReportDate =
     hasDeferredSupplementalData && hasSupplementalReportDate;
   const hasFirstScreenHydrationData = useFirstScreenHydrationGate(
@@ -112,12 +111,12 @@ export function useDashboardHomeSupplementalHydration(
 
   useEffect(() => {
     setSupplementalDataReportDate(null);
-    if (!initialEffectiveReportDate) {
+    if (!supplementalReportDate) {
       return;
     }
 
-    setSupplementalDataReportDate(initialEffectiveReportDate);
-  }, [initialEffectiveReportDate]);
+    setSupplementalDataReportDate(supplementalReportDate);
+  }, [supplementalReportDate]);
 
   const bondHeadlineQuery = useQuery({
     queryKey: apiQueryKeys.bondDashboardHeadline(dataClient.mode, supplementalReportDate),

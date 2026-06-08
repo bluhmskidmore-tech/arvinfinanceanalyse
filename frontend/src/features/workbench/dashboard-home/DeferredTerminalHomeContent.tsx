@@ -17,7 +17,6 @@ type IdleWindow = Window & {
 };
 
 const BODY_REVEAL_KEYS = new Set(["ArrowDown", "PageDown", "End", " ", "Space"]);
-const BODY_IDLE_MIN_DELAY_MS = 2_000;
 const BODY_IDLE_TIMEOUT_MS = 1_200;
 const BODY_TIMEOUT_FALLBACK_MS = 900;
 
@@ -93,7 +92,6 @@ export function DeferredTerminalHomeContent({
     const idleWindow = window as IdleWindow;
     let idleHandle: number | null = null;
     let timeoutHandle: number | null = null;
-    let delayHandle: number | null = null;
     const cancelScheduledWork = () => {
       if (idleHandle != null) {
         idleWindow.cancelIdleCallback?.(idleHandle);
@@ -102,10 +100,6 @@ export function DeferredTerminalHomeContent({
       if (timeoutHandle != null) {
         window.clearTimeout(timeoutHandle);
         timeoutHandle = null;
-      }
-      if (delayHandle != null) {
-        window.clearTimeout(delayHandle);
-        delayHandle = null;
       }
     };
     const markReady = () => {
@@ -142,7 +136,7 @@ export function DeferredTerminalHomeContent({
       }
       timeoutHandle = window.setTimeout(markReady, BODY_TIMEOUT_FALLBACK_MS);
     };
-    delayHandle = window.setTimeout(scheduleBodyLoad, BODY_IDLE_MIN_DELAY_MS);
+    scheduleBodyLoad();
 
     return () => {
       isActive = false;

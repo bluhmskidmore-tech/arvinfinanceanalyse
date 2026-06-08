@@ -144,6 +144,69 @@ function DistributionPanelCard({ panel }: { panel: ModuleHomeDistributionPanel }
   return <PortfolioDistributionPanel panel={panel} />;
 }
 
+function PortfolioAiDecisionRail({ view }: { view: ModuleHomeView }) {
+  const decision = view.decision;
+  const actions = decision?.actions ?? [];
+  const leadingBriefing = view.briefings[0];
+
+  return (
+    <aside data-testid="module-home-portfolio-ai-rail" className={styles.aiDecisionRail}>
+      <div className={styles.aiRailHeader}>
+        <span>AI 决策舱</span>
+        <strong data-tone={decision?.tone ?? "muted"}>{decision ? decisionUseLabel(decision) : view.stateLabel}</strong>
+      </div>
+      <p className={styles.aiRailState}>{view.stateDetail}</p>
+
+      <div className={styles.aiRailMetricGrid}>
+        {view.kpis.slice(0, 4).map((item) => (
+          <div className={styles.aiRailMetric} data-tone={item.tone} key={item.key}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {decision ? (
+        <section className={styles.aiRailCard} data-tone={decision.tone}>
+          <span className={styles.aiRailLabel}>{decision.title}</span>
+          <strong>{decision.conclusion}</strong>
+          <p>{compactDecisionDetail(decision.detail) || decision.detail}</p>
+        </section>
+      ) : null}
+
+      {leadingBriefing ? (
+        <section className={styles.aiRailCard} data-tone={leadingBriefing.tone}>
+          <span className={styles.aiRailLabel}>{leadingBriefing.title}</span>
+          <strong>{leadingBriefing.conclusion}</strong>
+          <p>{leadingBriefing.evidence}</p>
+        </section>
+      ) : null}
+
+      <section className={styles.aiRailCard}>
+        <span className={styles.aiRailLabel}>Source Gate</span>
+        <div className={styles.aiRailStatusList}>
+          {view.statuses.slice(0, 5).map((item) => (
+            <span data-tone={item.tone} key={item.key}>
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {actions.length > 0 ? (
+        <nav className={styles.aiRailActionList} aria-label="组合决策动作">
+          {actions.map((action) => (
+            <Link className={styles.aiRailLink} to={action.path} data-tone={action.tone} key={action.title}>
+              <span>{action.title}</span>
+              <strong>{action.label ?? "下钻"}</strong>
+            </Link>
+          ))}
+        </nav>
+      ) : null}
+    </aside>
+  );
+}
+
 function SectionHead({ label, title }: { label: string; title: string }) {
   return (
     <div className={styles.sectionHead}>
@@ -233,7 +296,7 @@ function DecisionPanel({ view }: { view: ModuleHomeView }) {
           {view.decision.conclusion}
         </h2>
         <p className={styles.decisionDetail}>{compactDecisionDetail(view.decision.detail)}</p>
-        <span hidden>{view.decision.detail}</span>
+        <span className={styles.srOnly}>{view.decision.detail}</span>
         <div className={styles.decisionReadinessBar} aria-label={`${view.decision.title}: ${useLabel}`}>
           <span>业务可用</span>
           <strong className={toneClass(view.decision.tone)}>{useLabel}</strong>
@@ -326,8 +389,8 @@ export default function PortfolioHomeLayout({
 
   return (
     <>
-      <header data-testid="module-home-toolbar" className={dhStyles.dhTopbar}>
-        <div className={dhStyles.dhTopbarLeft}>
+      <header data-testid="module-home-toolbar" className={`${dhStyles.dhTopbar} ${styles.portfolioTopbar}`}>
+        <div className={`${dhStyles.dhTopbarLeft} ${styles.portfolioTopbarLeft}`}>
           <div className={dhStyles.dhTitleBrand}>
             <span className={dhStyles.dhTitleBar} aria-hidden="true" />
             <span className={dhStyles.dhTitleMark} aria-hidden="true">
@@ -335,11 +398,14 @@ export default function PortfolioHomeLayout({
             </span>
             <h1 className={dhStyles.dhTitle}>{view.title}</h1>
           </div>
-          <p className={styles.topbarSubtitle}>{view.question}</p>
+          <div className={styles.topbarCopy}>
+            <p className={styles.topbarSubtitle}>{view.question}</p>
+            <p className={styles.topbarSummary}>{view.summary}</p>
+          </div>
         </div>
-        <div className={dhStyles.dhTopbarRight}>
+        <div className={`${dhStyles.dhTopbarRight} ${styles.portfolioTopbarMeta}`}>
           <div className={styles.toolbarMeta}>
-            <span className={statePillClass(stateTone)}>{view.stateLabel}</span>
+            <span className={statePillClass(stateTone)} data-tone={stateTone}>{view.stateLabel}</span>
             <span className={styles.datePill}>
               资产负债日 <strong>{balanceReportDate || "—"}</strong>
             </span>
@@ -347,65 +413,71 @@ export default function PortfolioHomeLayout({
               债券总览日 <strong>{bondReportDate || "—"}</strong>
             </span>
           </div>
-          <p className={styles.detailSource}>{view.stateDetail}</p>
         </div>
       </header>
 
-      <main className={`${dhStyles.dhMain} ${styles.pageStack}`}>
-        <DecisionPanel view={view} />
+      <main className={`${dhStyles.dhMain} ${styles.portfolioPageMain}`}>
+        <section data-testid="module-home-portfolio-cockpit" className={styles.portfolioCockpit}>
+          <section data-testid="module-home-portfolio-first-screen" className={styles.portfolioPrimaryGrid}>
+            <div className={styles.portfolioPrimaryColumn}>
+              <DecisionPanel view={view} />
 
-        <section data-testid="module-home-briefing" className={styles.sectionBlock}>
-          <SectionHead label="组合" title="组合摘要" />
-          <div className={styles.briefGrid}>
-            {view.briefings.map((item, index) => (
-              <article
-                className={`${dhStyles.dhCard} ${briefCardClass(item.tone, index === 0)}`}
-                key={item.title}
-              >
-                <span className={styles.briefTitle}>{item.title}</span>
-                <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
-                  {item.conclusion}
-                </strong>
-                <span className={styles.briefEvidence}>{item.evidence}</span>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
-          <SectionHead label="指标" title="核心指标" />
-          <div className={styles.kpiGrid}>
-            {view.kpis.map((item) => (
-              <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi}`} key={item.key}>
-                <div className={dhStyles.dhTerminalKpiTop}>
-                  <span className={styles.kpiLabel}>{item.label}</span>
+              <section data-testid="module-home-briefing" className={styles.sectionBlock}>
+                <SectionHead label="组合" title="组合摘要" />
+                <div className={styles.briefGrid}>
+                  {view.briefings.map((item, index) => (
+                    <article
+                      className={`${dhStyles.dhCard} ${briefCardClass(item.tone, index === 0)}`}
+                      key={item.title}
+                    >
+                      <span className={styles.briefTitle}>{item.title}</span>
+                      <strong className={`${styles.briefConclusion} ${toneClass(item.tone)}`}>
+                        {item.conclusion}
+                      </strong>
+                      <span className={styles.briefEvidence}>{item.evidence}</span>
+                    </article>
+                  ))}
                 </div>
-                <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>{item.value}</div>
-                <div className={styles.kpiDetail}>{item.detail}</div>
-              </article>
-            ))}
-          </div>
-        </section>
+              </section>
 
-        <section
-          data-testid="module-home-status-strip"
-          className={`${dhStyles.dhCard} ${dhStyles.dhTerminalRiskStrip} ${styles.statusStrip} ${styles.sectionBlock}`}
-        >
-          <div className={styles.sectionHead}>
-            <span>来源链路</span>
-            <strong>读链路状态</strong>
-            <span className={styles.statusScope}>{view.sourceScope}</span>
-          </div>
-          <div className={styles.statusGrid}>
-            {view.statuses.map((item) => (
-              <div className={styles.statusCell} key={item.key}>
-                <span>{item.label}</span>
-                <b className={toneClass(item.tone)}>{item.value}</b>
-                <em>{item.detail}</em>
-              </div>
-            ))}
-          </div>
-        </section>
+              <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
+                <SectionHead label="指标" title="核心指标" />
+                <div className={styles.kpiGrid}>
+                  {view.kpis.map((item) => (
+                    <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi}`} key={item.key}>
+                      <div className={dhStyles.dhTerminalKpiTop}>
+                        <span className={styles.kpiLabel}>{item.label}</span>
+                      </div>
+                      <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>{item.value}</div>
+                      <div className={styles.kpiDetail}>{item.detail}</div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <PortfolioAiDecisionRail view={view} />
+          </section>
+
+          <section
+            data-testid="module-home-status-strip"
+            className={`${dhStyles.dhCard} ${dhStyles.dhTerminalRiskStrip} ${styles.statusStrip} ${styles.sectionBlock}`}
+          >
+            <div className={styles.sectionHead}>
+              <span>来源链路</span>
+              <strong>读链路状态</strong>
+              <span className={styles.statusScope}>{view.sourceScope}</span>
+            </div>
+            <div className={styles.statusGrid}>
+              {view.statuses.map((item) => (
+                <div className={styles.statusCell} key={item.key}>
+                  <span>{item.label}</span>
+                  <b className={toneClass(item.tone)}>{item.value}</b>
+                  <em>{item.detail}</em>
+                </div>
+              ))}
+            </div>
+          </section>
 
         {view.distributionPanels && view.distributionPanels.length > 0 ? (
           <section data-testid="module-home-holdings-structure" className={styles.sectionBlock}>
@@ -485,6 +557,7 @@ export default function PortfolioHomeLayout({
               {compactActionEvidence(view.dataNote.lines.join(" "))}
             </p>
           ) : null}
+        </section>
         </section>
       </main>
     </>

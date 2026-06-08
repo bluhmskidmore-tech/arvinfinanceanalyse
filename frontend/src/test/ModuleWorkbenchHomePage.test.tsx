@@ -674,7 +674,14 @@ describe("PortfolioHomePage", () => {
 
     const page = await screen.findByTestId("module-workbench-home");
     expect(page).toHaveTextContent("组合工作台");
+    const cockpit = within(page).getByTestId("module-home-portfolio-cockpit");
+    const firstScreen = within(cockpit).getByTestId("module-home-portfolio-first-screen");
     expect(within(page).getByTestId("module-home-toolbar")).toBeInTheDocument();
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-decision"));
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-briefing"));
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-kpi-strip"));
+    expect(firstScreen).toContainElement(within(page).getByTestId("module-home-portfolio-ai-rail"));
+    expect(firstScreen).not.toContainElement(within(page).getByTestId("module-home-status-strip"));
     expect(within(page).getByTestId("module-home-kpi-strip")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-briefing")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-status-strip")).toBeInTheDocument();

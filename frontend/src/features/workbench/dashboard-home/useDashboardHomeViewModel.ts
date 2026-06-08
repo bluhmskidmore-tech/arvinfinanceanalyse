@@ -148,7 +148,6 @@ export function useDashboardHomeViewModel(
   options: { eagerEventFeeds?: boolean } = {},
 ) {
   const [supplementalDataReportDate, setSupplementalDataReportDate] = useState<string | null>(null);
-  const [formalContextReportDate, setFormalContextReportDate] = useState<string | null>(null);
 
   const {
     dataClient,
@@ -162,11 +161,10 @@ export function useDashboardHomeViewModel(
 
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
-  const hasInitialEffectiveReportDate = Boolean(initialEffectiveReportDate);
-  const hasDeferredSupplementalData =
-    hasInitialEffectiveReportDate &&
-    supplementalDataReportDate === initialEffectiveReportDate;
   const hasSupplementalReportDate = Boolean(supplementalReportDate);
+  const hasDeferredSupplementalData =
+    hasSupplementalReportDate &&
+    supplementalDataReportDate === supplementalReportDate;
   const hasDeferredSupplementalReportDate =
     hasDeferredSupplementalData && hasSupplementalReportDate;
   const hasBodyDetailData = useBodyDetailDataGate(
@@ -204,19 +202,16 @@ export function useDashboardHomeViewModel(
     hasDeferredSupplementalReportDate &&
     hasFormalContextData &&
     Boolean(supplementalReportDate);
-  const hasDeferredFormalContext =
-    hasDeferredIncomeTrendData &&
-    formalContextReportDate === supplementalReportDate;
+  const hasDeferredFormalContext = hasDeferredIncomeTrendData;
 
   useEffect(() => {
     setSupplementalDataReportDate(null);
-    setFormalContextReportDate(null);
-    if (!initialEffectiveReportDate) {
+    if (!supplementalReportDate) {
       return;
     }
 
-    setSupplementalDataReportDate(initialEffectiveReportDate);
-  }, [initialEffectiveReportDate]);
+    setSupplementalDataReportDate(supplementalReportDate);
+  }, [supplementalReportDate]);
 
   const {
     marketRatesQuery,
@@ -270,33 +265,6 @@ export function useDashboardHomeViewModel(
     staleTime: 60_000,
     enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData,
   });
-  const heavyBondListsReady =
-    hasDeferredSupplementalReportDate &&
-    hasBodyDetailData &&
-    hasBodyStructureData &&
-    (topHoldingsQuery.isSuccess || topHoldingsQuery.isError) &&
-    (positionChangesQuery.isSuccess || positionChangesQuery.isError);
-
-  useEffect(() => {
-    if (
-      !hasDeferredSupplementalReportDate ||
-      !hasBodyDetailData ||
-      !hasBodyStructureData ||
-      !supplementalReportDate
-    ) {
-      setFormalContextReportDate(null);
-      return;
-    }
-    if (heavyBondListsReady) {
-      setFormalContextReportDate(supplementalReportDate);
-    }
-  }, [
-    hasDeferredSupplementalReportDate,
-    hasBodyDetailData,
-    hasBodyStructureData,
-    heavyBondListsReady,
-    supplementalReportDate,
-  ]);
 
   const researchReportsQuery = useQuery({
     queryKey: apiQueryKeys.homeResearchReports(dataClient.mode, supplementalReportDate, 5),
