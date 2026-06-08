@@ -11,6 +11,11 @@ from typing import Any
 
 PROTOCOL_VERSION = "2024-11-05"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.data_readiness_report import build_data_readiness_report  # noqa: E402
+
 DEFAULT_DUCKDB_PATH = REPO_ROOT / "data" / "moss.duckdb"
 DEFAULT_GOVERNANCE_DIR = REPO_ROOT / "data" / "governance"
 DEFAULT_EVIDENCE_READINESS_PAGES = [
@@ -21,12 +26,26 @@ DEFAULT_EVIDENCE_READINESS_PAGES = [
     "GAP-STOCK-ANALYSIS-PAGE",
     "PAGE-OPS-001",
 ]
-DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {"GAP-AVERAGE-BALANCE-PAGE"}
+DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
+    "GAP-AVERAGE-BALANCE-PAGE",
+    "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+    "GAP-CASHFLOW-PROJECTION-PAGE",
+    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "GAP-NEWS-EVENTS-PAGE",
+    "GAP-PLATFORM-CONFIG-PAGE",
+    "GAP-TEAM-PERFORMANCE-PAGE",
+}
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
+    "GAP-BANK-LEDGER-DASHBOARD-PAGE": "candidate_or_pending",
+    "GAP-CASHFLOW-PROJECTION-PAGE": "candidate_or_pending",
+    "GAP-CONCENTRATION-MONITOR-PAGE": "candidate_or_pending",
     "GAP-CROSS-ASSET-PAGE": "mixed_source_or_observational",
     "GAP-DECISION-ITEMS-PAGE": "candidate_or_pending",
     "GAP-KPI-PERFORMANCE-PAGE": "candidate_or_pending",
+    "GAP-NEWS-EVENTS-PAGE": "candidate_or_pending",
     "GAP-AVERAGE-BALANCE-PAGE": "candidate_or_pending",
+    "GAP-TEAM-PERFORMANCE-PAGE": "candidate_or_pending",
+    "GAP-PLATFORM-CONFIG-PAGE": "candidate_or_pending",
     "PAGE-BOND-ANALYSIS-001": "candidate_or_pending",
     "GAP-STOCK-ANALYSIS-PAGE": "gap_or_observational",
     "PAGE-AGENT-001": "mixed_source_or_observational",
@@ -75,6 +94,23 @@ CANDIDATE_METRIC_WATCHLIST = [
         "residual_gap": "Needs approved page contract, bound sample, lineage records, and date/catalog review.",
     }
     for index in range(1, 5)
+] + [
+    {
+        "metric_id": "MTR-TEAM-001",
+        "page": "/team-performance",
+        "status": "candidate page-contract-pending",
+        "formal_use_allowed": False,
+        "residual_gap": "Needs approved page contract, bound sample, lineage records, and owner review.",
+    }
+] + [
+    {
+        "metric_id": f"MTR-PLT-{index:03d}",
+        "page": "/platform-config",
+        "status": "candidate page-contract-pending",
+        "formal_use_allowed": False,
+        "residual_gap": "Needs approved page contract, bound sample, lineage records, data-quality approval, and owner review.",
+    }
+    for index in range(1, 4)
 ]
 PAGE_CATALOG_DATE_TABLES = {
     "PAGE-PROD-CAT-001": [
@@ -93,6 +129,19 @@ PAGE_CATALOG_DATE_TABLES = {
         "qdb_general_ledger_workbook",
         "ledger_import_batch",
         "ledger_raw_row",
+    ],
+    "GAP-BANK-LEDGER-DASHBOARD-PAGE": [
+        "ledger_import_batch",
+        "ledger_raw_row",
+        "position_snapshot",
+        "position_snapshot_agg",
+    ],
+    "GAP-CASHFLOW-PROJECTION-PAGE": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ],
+    "GAP-CONCENTRATION-MONITOR-PAGE": [
+        "fact_formal_bond_analytics_daily",
     ],
     "PAGE-BRIDGE-001": [
         "fact_formal_pnl_fi",
@@ -207,6 +256,9 @@ PAGE_CATALOG_DATE_TABLES = {
         "fx_daily_mid",
         "choice_news_event",
     ],
+    "GAP-NEWS-EVENTS-PAGE": [
+        "choice_news_event",
+    ],
     "PAGE-MARKET-HOME-001": [
         "fact_choice_macro_daily",
         "market_data_series_category",
@@ -240,6 +292,10 @@ PAGE_CATALOG_DATE_DEFERRED_REASONS = {
     "GAP-AVERAGE-BALANCE-PAGE": (
         "ADB analytical route; direct page closure depends on PAGE contract approval, ADB denominator semantics, "
         "bound golden sample, lineage records, and owner review before any formal-use claim."
+    ),
+    "GAP-NEWS-EVENTS-PAGE": (
+        "Analytical news event context; direct table sampling from choice_news_event is not metric approval, "
+        "formal business truth, or source data-quality certification."
     ),
     "PAGE-EXEC-SUMMARY-001": "Narrative-only summary endpoint; table/date review belongs to upstream overview and snapshot evidence.",
     "PAGE-EXEC-PNL-ATTR-001": "Executive attribution overlay has no direct table contract; sample upstream attribution and formal-source pages instead.",
@@ -634,6 +690,79 @@ class LineageEvidenceProvider(McpProvider):
             "PAGE-CONTRACT-PENDING:/average-balance",
             "temporary-exception ADB analytical balance boundary",
         ],
+        "gap-bank-ledger-dashboard-page": [
+            "/bank-ledger-dashboard",
+            "bank-ledger-dashboard",
+            "bank_ledger_dashboard",
+            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+            "/api/ledger/dates",
+            "/api/ledger/dashboard",
+            "/api/ledger/positions",
+            "/api/ledger/export/positions",
+            "ledger.dashboard",
+            "ledger.positions",
+            "LedgerDashboardData",
+            "LedgerPositionItem",
+            "ledger_import_batch",
+            "ledger_raw_row",
+            "position_snapshot",
+            "position_snapshot_agg",
+            "asset_face_amount",
+            "liability_face_amount",
+            "net_face_exposure",
+            "position_key_contract_v1",
+            "temporary-exception bank ledger read-model boundary",
+        ],
+        "gap-cashflow-projection-page": [
+            "/cashflow-projection",
+            "cashflow-projection",
+            "cashflow_projection",
+            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "/api/cashflow-projection",
+            "/ui/balance-analysis/dates",
+            "cashflow_projection.overview",
+            "cashflow_projection_report_date",
+            "CashflowProjectionResponse",
+            "CashflowProjectionPayload",
+            "MTR-CFP-001",
+            "MTR-CFP-002",
+            "MTR-CFP-003",
+            "MTR-CFP-004",
+            "PAGE-CONTRACT-PENDING:/cashflow-projection",
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+            "duration_gap",
+            "asset_duration",
+            "liability_duration",
+            "rate_sensitivity_1bp",
+            "temporary-exception cashflow projection liquidity boundary",
+        ],
+        "gap-concentration-monitor-page": [
+            "/concentration-monitor",
+            "concentration-monitor",
+            "concentration_monitor",
+            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "/api/bond-analytics/dates",
+            "/api/bond-analytics/credit-spread-migration",
+            "bond_analytics.dates",
+            "bond_analytics.credit_spread_migration",
+            "bond_analytics_report_date",
+            "CreditSpreadMigrationResponse",
+            "CreditSpreadMigrationPayload",
+            "MTR-CON-001",
+            "MTR-CON-002",
+            "MTR-CON-003",
+            "MTR-CON-004",
+            "PAGE-CONTRACT-PENDING:/concentration-monitor",
+            "fact_formal_bond_analytics_daily",
+            "concentration_by_issuer",
+            "concentration_by_industry",
+            "concentration_by_rating",
+            "concentration_by_tenor",
+            "top5_concentration",
+            "rating_aa_and_below_weight",
+            "temporary-exception concentration monitor risk boundary",
+        ],
         "page-bond-001": [
             "/api/bond-dashboard/headline-kpis",
             "/api/bond-dashboard/dates",
@@ -854,6 +983,123 @@ class LineageEvidenceProvider(McpProvider):
             "MacroToolkitAnalysisPayload",
             "macro-observation-readonly-boundary",
             "read-only macro observation",
+        ],
+        "gap-platform-config-page": [
+            "platform-config",
+            "platform_config",
+            "/platform-config",
+            "GAP-PLATFORM-CONFIG-PAGE",
+            "/ui/preview/source-foundation",
+            "/ui/preview/source-foundation/history",
+            "/ui/preview/source-foundation/{source_family}/rows",
+            "/ui/preview/source-foundation/{source_family}/traces",
+            "/health/ready",
+            "/health/live",
+            "/health",
+            "preview.source-foundation",
+            "preview.source-foundation.history",
+            "source_preview.source_foundation",
+            "source_preview.source_foundation.history",
+            "health.ready",
+            "health.live",
+            "health.summary",
+            "MTR-PLT-001",
+            "MTR-PLT-002",
+            "MTR-PLT-003",
+            "PAGE-CONTRACT-PENDING:/platform-config",
+            "candidate diagnostics only",
+            "no data-quality approval",
+        ],
+        "platform-config": [
+            "GAP-PLATFORM-CONFIG-PAGE",
+            "platform-config",
+            "platform_config",
+            "/platform-config",
+            "/ui/preview/source-foundation",
+            "/ui/preview/source-foundation/history",
+            "/ui/preview/source-foundation/{source_family}/rows",
+            "/ui/preview/source-foundation/{source_family}/traces",
+            "/health/ready",
+            "/health/live",
+            "/health",
+            "preview.source-foundation",
+            "preview.source-foundation.history",
+            "source_preview.source_foundation",
+            "source_preview.source_foundation.history",
+            "health.ready",
+            "health.live",
+            "health.summary",
+            "MTR-PLT-001",
+            "MTR-PLT-002",
+            "MTR-PLT-003",
+            "PAGE-CONTRACT-PENDING:/platform-config",
+            "candidate diagnostics only",
+            "no data-quality approval",
+        ],
+        "/platform-config": [
+            "GAP-PLATFORM-CONFIG-PAGE",
+            "platform-config",
+            "platform_config",
+            "/platform-config",
+            "/ui/preview/source-foundation",
+            "/ui/preview/source-foundation/history",
+            "/ui/preview/source-foundation/{source_family}/rows",
+            "/ui/preview/source-foundation/{source_family}/traces",
+            "/health/ready",
+            "/health/live",
+            "/health",
+            "preview.source-foundation",
+            "preview.source-foundation.history",
+            "source_preview.source_foundation",
+            "source_preview.source_foundation.history",
+            "health.ready",
+            "health.live",
+            "health.summary",
+            "MTR-PLT-001",
+            "MTR-PLT-002",
+            "MTR-PLT-003",
+            "PAGE-CONTRACT-PENDING:/platform-config",
+            "candidate diagnostics only",
+            "no data-quality approval",
+        ],
+        "gap-news-events-page": [
+            "GAP-NEWS-EVENTS-PAGE",
+            "news-events",
+            "news_events",
+            "/news-events",
+            "/ui/news/choice-events/latest",
+            "news.choice.latest",
+            "choice_news_event",
+            "rv_choice_news_v1",
+            "cv_choice_news_v1",
+            "PAGE-CONTRACT-PENDING:/news-events",
+            "temporary-exception analytical news event context",
+        ],
+        "news-events": [
+            "GAP-NEWS-EVENTS-PAGE",
+            "news-events",
+            "news_events",
+            "/news-events",
+            "/ui/news/choice-events/latest",
+            "news.choice.latest",
+            "choice_news_event",
+            "rv_choice_news_v1",
+            "cv_choice_news_v1",
+            "PAGE-CONTRACT-PENDING:/news-events",
+            "temporary-exception analytical news event context",
+        ],
+        "/news-events": [
+            "GAP-NEWS-EVENTS-PAGE",
+            "news-events",
+            "news_events",
+            "/news-events",
+            "/ui/news/choice-events/latest",
+            "news.choice.latest",
+            "choice_news_event",
+            "rv_choice_news_v1",
+            "cv_choice_news_v1",
+            "PAGE-CONTRACT-PENDING:/news-events",
+            "temporary-exception analytical news event context",
         ],
         "page-market-home-001": [
             "module-home/market",
@@ -1345,6 +1591,24 @@ class LineageEvidenceProvider(McpProvider):
             "fact_formal_bond_analytics_daily",
             "source_foundation",
             "module home diagnostics are not data-quality approval",
+        ],
+        "gap-team-performance-page": [
+            "team-performance",
+            "/team-performance",
+            "/api/pnl/by-business-ytd",
+            "/api/pnl/by-business-monthly",
+            "/api/pnl/by-business",
+            "/ui/pnl/product-category",
+            "/ui/pnl/product-category/dates",
+            "pnl.by_business_ytd",
+            "product_category_pnl.detail",
+            "MTR-TEAM-001",
+            "PAGE-CONTRACT-PENDING:/team-performance",
+            "product_category_pnl_canonical_fact",
+            "product_category_pnl_formal_read_model",
+            "fact_formal_pnl_fi",
+            "team performance candidate evidence",
+            "page-local workbook mapping",
         ],
         "page-risk-001": [
             "fact_formal_risk_tensor_daily",
@@ -2157,6 +2421,12 @@ class DataQualityProvider(McpProvider):
                 "Read-only list of table/view targets eligible for quality profiling.",
                 mime_type="application/json",
             ),
+            text_resource(
+                "moss://data-quality/readiness",
+                "MOSS DuckDB readiness report",
+                "Read-only formal/candidate/analytical readiness checks for core DuckDB tables.",
+                mime_type="application/json",
+            ),
         ]
 
     def read_resource(self, uri: str) -> dict[str, Any]:
@@ -2169,6 +2439,9 @@ class DataQualityProvider(McpProvider):
             return resource_content(uri, json.dumps(payload, ensure_ascii=False, indent=2), "application/json")
         if uri == "moss://data-quality/targets":
             payload = {"targets": duckdb_quality_targets(self._duckdb_path, limit=500)}
+            return resource_content(uri, json.dumps(payload, ensure_ascii=False, indent=2), "application/json")
+        if uri == "moss://data-quality/readiness":
+            payload = build_data_readiness_report(self._duckdb_path)
             return resource_content(uri, json.dumps(payload, ensure_ascii=False, indent=2), "application/json")
         raise McpError(-32602, f"Unknown resource: {uri}")
 
@@ -2196,6 +2469,16 @@ class DataQualityProvider(McpProvider):
                     "required": ["table_name"],
                 },
             },
+            {
+                "name": "get_readiness_report",
+                "description": "Compute the read-only core DuckDB data readiness report.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "as_of_date": {"type": "string"},
+                    },
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -2207,6 +2490,10 @@ class DataQualityProvider(McpProvider):
             table_name = str(arguments.get("table_name") or "").strip()
             column_limit = int(arguments.get("column_limit") or 25)
             payload = duckdb_quality_summary(self._duckdb_path, table_name, column_limit=column_limit)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        if name == "get_readiness_report":
+            as_of_date = str(arguments.get("as_of_date") or "").strip() or None
+            payload = build_data_readiness_report(self._duckdb_path, as_of_date=as_of_date)
             return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
         return super().call_tool(name, arguments)
 
@@ -2722,6 +3009,220 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Do not promote MTR-ADB-001 through MTR-ADB-003 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
             "Do not hide candidate, stale, fallback, no-data, denominator, date-range, or result_meta boundaries behind a successful /average-balance shell.",
             "Do not backfill missing ADB rows, monthly rows, comparison rows, or coverage diagnostics with static demo values in real mode.",
+        ],
+    }
+    bank_ledger_dashboard_bundle = {
+        "page_slug": "bank-ledger-dashboard",
+        "page_id": "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+        "page_name": "Bank Ledger Dashboard",
+        "aliases": [
+            "bank-ledger-dashboard",
+            "bank_ledger_dashboard",
+            "/bank-ledger-dashboard",
+            "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+            "/api/ledger/dashboard",
+            "/api/ledger/positions",
+            "/api/ledger/dates",
+        ],
+        "frontend_route": "/bank-ledger-dashboard",
+        "primary_api": "/api/ledger/dashboard",
+        "supporting_apis": [
+            "/api/ledger/dates",
+            "/api/ledger/positions",
+            "/api/ledger/export/positions",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /bank-ledger-dashboard as temporary-exception with page id GAP-BANK-LEDGER-DASHBOARD-PAGE.",
+            "GET /api/ledger/dashboard returns LedgerDashboardData for asset_face_amount, liability_face_amount, net_face_exposure, and alert_count.",
+            "GET /api/ledger/dates selects available as_of_date values and latest ledger metadata.",
+            "GET /api/ledger/positions and /api/ledger/export/positions provide position-level detail and trace fields.",
+            "backend/app/services/ledger_analytics_service.py keeps metadata source_version, rule_version, batch_id, stale, fallback, and no_data visible.",
+            "backend/app/repositories/ledger_analytics_repo.py reads position_snapshot_agg and position_snapshot after ledger import, with zqtz_bond_daily_snapshot compatibility when available.",
+            "ledger_import_batch, ledger_raw_row, position_snapshot, and position_snapshot_agg are the current catalog/date anchors for this read-model route.",
+            "GAP-BANK-LEDGER-DASHBOARD-PAGE is candidate ledger read-model evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/ledger.py",
+            "backend/app/services/ledger_analytics_service.py",
+            "backend/app/repositories/ledger_analytics_repo.py",
+            "backend/app/repositories/ledger_import_repo.py",
+            "backend/app/schemas/ledger.py",
+            "backend/app/schema_registry/duckdb/19_ledger_import.sql",
+            "backend/app/schema_registry/duckdb/20_ledger_analytics.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/ledgerClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/ledger-dashboard/pages/LedgerDashboardPage.tsx",
+            "frontend/src/features/ledger-dashboard/pages/ledgerDashboardPageModel.ts",
+            "frontend/src/features/ledger-dashboard/pages/LedgerDashboardPage.css",
+            "frontend/src/router/routes.tsx",
+            "frontend/src/mocks/navigation.ts",
+        ],
+        "test_touchpoints": [
+            "tests/test_ledger_import_flow.py",
+            "tests/test_ledger_analytics_api.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/LedgerDashboardPage.test.tsx",
+            "frontend/src/test/LedgerDashboardPageModel.test.ts",
+            "frontend/src/test/RouteRegistry.test.tsx",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-BANK-LEDGER-DASHBOARD-PAGE; verify through live-route maturity, ledger import/API tests, LedgerDashboardPage tests, and route registry tests.",
+            "Trace /api/ledger/dashboard through ledgerClient, buildLedgerKpiCards, LedgerDashboardPage KPI cards, status banners, evidence panels, and positions table before changing display logic.",
+            "Check as_of_date resolution, requested vs resolved dates, CNY yuan-to-yi display conversion, null-vs-zero behavior, batch_id, source_version, rule_version, stale, fallback, no_data, and position trace fields.",
+            "Verify position filters preserve direction, page/page_size, account_category_std, asset_class_std, portfolio, cost_center, and bond_code semantics without frontend recalculation.",
+        ],
+        "guardrails": [
+            "GAP-BANK-LEDGER-DASHBOARD-PAGE is candidate ledger read-model evidence, not formal PnL and not formal balance truth.",
+            "Do not use asset_face_amount, liability_face_amount, or net_face_exposure to replace PAGE-BALANCE-001, PAGE-PNL-001, PAGE-LEDGER-PNL-001, or product-category PnL truth.",
+            "Do not promote ledger dashboard fields to MTR-* rows until a dedicated PAGE contract, metric dictionary rows, golden sample, lineage records, manual audit, and owner approval exist.",
+            "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, batch_id, or position trace boundaries behind a successful page shell.",
+            "Do not backfill missing ledger dates, dashboard totals, positions, or export evidence with static demo values in real mode.",
+        ],
+    }
+    cashflow_projection_bundle = {
+        "page_slug": "cashflow-projection",
+        "page_id": "GAP-CASHFLOW-PROJECTION-PAGE",
+        "page_name": "Cashflow Projection",
+        "aliases": [
+            "cashflow-projection",
+            "cashflow_projection",
+            "/cashflow-projection",
+            "GAP-CASHFLOW-PROJECTION-PAGE",
+            "/api/cashflow-projection",
+            "cashflow_projection.overview",
+        ],
+        "frontend_route": "/cashflow-projection",
+        "primary_api": "/api/cashflow-projection",
+        "supporting_apis": [
+            "/ui/balance-analysis/dates",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /cashflow-projection as temporary-exception with page id GAP-CASHFLOW-PROJECTION-PAGE.",
+            "docs/metric_dictionary.md registers MTR-CFP-001 through MTR-CFP-004 as candidate metrics only.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/cashflow-projection and bound_sample_id=none for the cashflow candidate metrics.",
+            "GET /api/cashflow-projection returns cashflow_projection.overview with cashflow_projection_report_date result_meta.",
+            "backend/app/services/cashflow_projection_service.py computes duration_gap, asset_duration, liability_duration, rate_sensitivity_1bp, monthly_buckets, top_maturing_assets_12m, warnings, and result_meta.",
+            "backend/app/repositories/cashflow_projection_repo.py reads fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily for the requested report_date and CNY currency basis.",
+            "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx surfaces PAGE-CONTRACT-PENDING:/cashflow-projection, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
+            "GAP-CASHFLOW-PROJECTION-PAGE is candidate liquidity projection evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/cashflow_projection.py",
+            "backend/app/services/cashflow_projection_service.py",
+            "backend/app/repositories/cashflow_projection_repo.py",
+            "backend/app/core_finance/cashflow_projection.py",
+            "backend/app/schemas/cashflow_projection.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/cashflowClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/cashflow-projection/pages/CashflowProjectionPage.tsx",
+            "frontend/src/features/cashflow-projection/adapters/cashflowProjectionAdapter.ts",
+            "frontend/src/features/cashflow-projection/pages/cashflowProjectionPageModel.ts",
+            "frontend/src/router/routes.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_cashflow_projection.py",
+            "tests/test_cashflow_projection_numeric_migration.py",
+            "tests/test_result_meta_source_surface_followup.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/CashflowProjectionPage.test.tsx",
+            "frontend/src/features/cashflow-projection/adapters/cashflowProjectionAdapter.test.ts",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-CASHFLOW-PROJECTION-PAGE; verify through live-route maturity, cashflow API/core tests, result_meta checks, adapter/page tests, and route registry tests.",
+            "Trace /api/cashflow-projection through cashflowClient, adaptCashflowProjection, selectCashflowMonthlyProjectionSeries, KPI cards, contract status, chart, maturity table, and DataSection state before changing display logic.",
+            "Check report_date selection, requested/resolved/as_of dates, CNY basis, yuan-to-yi display conversion, ratio/year/pct precision, null-vs-zero behavior, no-data 404, fallback/stale banners, tables_used, evidence_rows, and warnings.",
+        ],
+        "guardrails": [
+            "GAP-CASHFLOW-PROJECTION-PAGE is candidate liquidity projection evidence, not formal liquidity truth and not a certified risk or balance page.",
+            "Do not replace PAGE-RISK-001 formal risk truth, PAGE-BALANCE-001 balance truth, or formal PnL truth with cashflow duration-gap or monthly projection output.",
+            "Do not promote MTR-CFP-001 through MTR-CFP-004 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
+            "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, cache_version, tables_used, evidence_rows, or warning boundaries behind a successful page shell.",
+            "Do not backfill missing cashflow dates, projection buckets, top maturities, or risk readouts with static demo values in real mode.",
+        ],
+    }
+    concentration_monitor_bundle = {
+        "page_slug": "concentration-monitor",
+        "page_id": "GAP-CONCENTRATION-MONITOR-PAGE",
+        "page_name": "Concentration Monitor",
+        "aliases": [
+            "concentration-monitor",
+            "concentration_monitor",
+            "/concentration-monitor",
+            "GAP-CONCENTRATION-MONITOR-PAGE",
+            "/api/bond-analytics/credit-spread-migration",
+            "bond_analytics.credit_spread_migration",
+        ],
+        "frontend_route": "/concentration-monitor",
+        "primary_api": "/api/bond-analytics/credit-spread-migration",
+        "supporting_apis": [
+            "/api/bond-analytics/dates",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/metric_dictionary.md registers MTR-CON-001 through MTR-CON-004 as candidate metrics only.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor and bound_sample_id=none for the concentration candidate metrics.",
+            "GET /api/bond-analytics/credit-spread-migration returns bond_analytics.credit_spread_migration with issuer, industry, rating, and tenor concentration breakdowns.",
+            "CreditSpreadMigrationResponse exposes concentration_by_issuer.hhi, concentration_by_issuer.top5_concentration, concentration_by_industry, concentration_by_rating, concentration_by_tenor, credit_weight, and rating_aa_and_below_weight.",
+            "backend/app/services/bond_analytics_service.py reads fact_formal_bond_analytics_daily and returns analytical/candidate result_meta for credit-spread migration.",
+            "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.tsx surfaces PAGE-CONTRACT-PENDING:/concentration-monitor, analytical basis, quality, result kind, date basis, tables_used, and evidence_rows.",
+            "GAP-CONCENTRATION-MONITOR-PAGE is candidate concentration-monitor evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/bond_analytics.py",
+            "backend/app/services/bond_analytics_service.py",
+            "backend/app/repositories/bond_analytics_repo.py",
+            "backend/app/core_finance/bond_analytics/read_models.py",
+            "backend/app/schemas/bond_analytics.py",
+            "backend/app/schema_registry/duckdb/02_bond_analytics.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/features/concentration-monitor/ConcentrationMonitorPage.tsx",
+            "frontend/src/api/bondAnalyticsClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/api/queryKeys.ts",
+            "frontend/src/router/routes.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_bond_analytics_api.py",
+            "tests/test_bond_analytics_service.py",
+            "tests/test_bond_analytics_materialize_flow.py",
+            "tests/test_result_meta_on_all_ui_endpoints.py",
+            "frontend/src/test/ConcentrationMonitorPage.test.tsx",
+            "frontend/src/test/BondAnalyticsClient.test.ts",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-CONCENTRATION-MONITOR-PAGE; verify through live-route maturity, bond analytics API/service tests, result_meta checks, and ConcentrationMonitorPage tests.",
+            "Trace /api/bond-analytics/credit-spread-migration through bondAnalyticsClient, apiQueryKeys.bondAnalyticsCreditSpreadMigration, limit rows, KPI cards, contract status, and concentration tables before changing display logic.",
+            "Check report_date selection, requested/resolved/as_of dates, bond_analytics_report_date basis, ratio/percent precision, null-vs-zero behavior, no-data, fallback/stale banners, tables_used, evidence_rows, and warnings.",
+            "Verify issuer HHI, top5_concentration, credit_weight, AA-and-below ratio, and dimension top_items are displayed from the API payload without frontend portfolio-level recalculation.",
+        ],
+        "guardrails": [
+            "GAP-CONCENTRATION-MONITOR-PAGE is candidate concentration-monitor evidence, not formal risk truth and not certified concentration-limit approval.",
+            "Do not replace PAGE-RISK-001 formal risk truth, /bond-analysis action-attribution evidence, or formal fixed-income metric truth with concentration-monitor output.",
+            "Do not promote MTR-CON-001 through MTR-CON-004 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
+            "Do not treat front-end limit comparisons, issuer HHI, top5 concentration, credit weight, or rating AA-and-below ratio as approved risk-limit breaches without owner/golden/manual audit closure.",
+            "Do not hide stale, fallback, no-data, requested/resolved date, source_version, rule_version, cache_version, tables_used, evidence_rows, or warning boundaries behind a successful page shell.",
         ],
     }
     decision_items_bundle = {
@@ -4450,6 +4951,134 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "Do not render demo rows for empty query results in real mode.",
         ],
     }
+    platform_config_bundle = {
+        "page_slug": "platform-config",
+        "page_id": "GAP-PLATFORM-CONFIG-PAGE",
+        "page_name": "Platform Config",
+        "aliases": [
+            "platform-config",
+            "platform_config",
+            "/platform-config",
+            "GAP-PLATFORM-CONFIG-PAGE",
+            "/ui/preview/source-foundation",
+            "/health/ready",
+        ],
+        "frontend_route": "/platform-config",
+        "primary_api": "/ui/preview/source-foundation",
+        "supporting_apis": [
+            "/ui/preview/source-foundation/history",
+            "/ui/preview/source-foundation/{source_family}/rows",
+            "/ui/preview/source-foundation/{source_family}/traces",
+            "/health/ready",
+            "/health/live",
+            "/health",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /platform-config as temporary-exception with page id GAP-PLATFORM-CONFIG-PAGE.",
+            "docs/metric_dictionary.md registers MTR-PLT-001, MTR-PLT-002, and MTR-PLT-003 as candidate PAGE-CONTRACT-PENDING:/platform-config diagnostics only.",
+            "GET /ui/preview/source-foundation supplies source preview diagnostics and source summary counts.",
+            "GET /health/ready, GET /health/live, and GET /health supply health diagnostics only.",
+            "frontend/src/features/platform-config/PlatformConfigPage.tsx renders source count, abnormal sources, manual review rows, health, and environment status.",
+            "System status, health, and environment text cards are excluded from formal metrics; only numeric source-summary diagnostics are candidate MTR-PLT rows.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/source_preview.py",
+            "backend/app/api/routes/health.py",
+            "backend/app/services/source_preview_refresh_service.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/features/platform-config/PlatformConfigPage.tsx",
+            "frontend/src/api/marketDataClient.ts",
+            "frontend/src/router/routes.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_source_preview_flow.py",
+            "tests/test_health_endpoints.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/PlatformConfigPage.test.tsx",
+            "frontend/src/test/RouteRegistry.test.tsx",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-PLATFORM-CONFIG-PAGE; verify through live-route maturity, source-preview API tests, health tests, PlatformConfigPage tests, and route smoke contracts.",
+            "Trace /platform-config through PlatformConfigPage queries, health endpoints, source-foundation payload, result_meta, source count, abnormal sources, and manual review rows before changing page logic.",
+            "Check source_version, run_id, stale/fallback, no-data, health failure, environment, and source-preview unavailable states before treating the route as ready.",
+            "Verify MTR-PLT-001 through MTR-PLT-003 remain candidate diagnostics and do not imply source data-quality approval.",
+        ],
+        "guardrails": [
+            "GAP-PLATFORM-CONFIG-PAGE is a candidate diagnostics surface, not a business-contract-certified page.",
+            "Do not promote source counts, abnormal sources, manual review rows, health status, or environment text into approved data-quality approval without a dedicated PAGE contract, lineage, samples, manual audit, and owner signoff.",
+            "Do not treat health readiness, source-preview visibility, or refresh status as proof of business metric correctness.",
+            "Keep diagnostic boundary, source metadata, no-data, stale/fallback, and failure states visible.",
+        ],
+    }
+    news_events_bundle = {
+        "page_slug": "news-events",
+        "page_id": "GAP-NEWS-EVENTS-PAGE",
+        "page_name": "News Events",
+        "aliases": [
+            "news-events",
+            "news_events",
+            "/news-events",
+            "GAP-NEWS-EVENTS-PAGE",
+            "/ui/news/choice-events/latest",
+        ],
+        "frontend_route": "/news-events",
+        "primary_api": "/ui/news/choice-events/latest",
+        "supporting_apis": [],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /news-events as temporary-exception with page id GAP-NEWS-EVENTS-PAGE.",
+            "docs/page_contracts.md positions /news-events as analytical temporary-exception event context, not a formal metric page.",
+            "GET /ui/news/choice-events/latest returns ChoiceNewsEventsPayload with basis=analytical and result_kind=news.choice.latest.",
+            "backend/app/services/choice_news_service.py reads choice_news_event and emits result_meta for analytical news events.",
+            "frontend/src/features/news-events/NewsEventsPage.tsx renders filters, event counts, error rows, pagination, and event details.",
+            "News headlines, event counts, topic filters, stock filters, and error rows are analytical event context only.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/choice_news.py",
+            "backend/app/services/choice_news_service.py",
+            "backend/app/tasks/choice_news.py",
+            "backend/app/services/tushare_news_ingest_service.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/features/news-events/NewsEventsPage.tsx",
+            "frontend/src/api/marketDataClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/router/routes.tsx",
+            "frontend/src/mocks/navigation.ts",
+        ],
+        "test_touchpoints": [
+            "tests/test_choice_news_routes.py",
+            "tests/test_result_meta_on_all_ui_endpoints.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/NewsEventsPage.test.tsx",
+            "frontend/src/test/RouteRegistry.test.tsx",
+            "frontend/src/test/LiveRouteRealPageSmoke.test.tsx",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-NEWS-EVENTS-PAGE; verify through live-route maturity, choice news route tests, result_meta checks, NewsEventsPage tests, and route smoke contracts.",
+            "Trace /news-events through NewsEventsPage query params, /ui/news/choice-events/latest, ChoiceNewsEventsPayload, result_meta, event rows, filters, pagination, and error/empty states before changing page logic.",
+            "Check table availability, permissions, topic and stock filters, limit/offset, no-data, stale/fallback, vendor degradation, and loading failure states before treating the route as ready.",
+            "Verify /news-events remains analytical event context only and does not create formal MTR-NEWS metrics without owner-defined units, freshness rules, samples, and approval scope.",
+        ],
+        "guardrails": [
+            "GAP-NEWS-EVENTS-PAGE is analytical event context, not a business-contract-certified page.",
+            "Do not promote headlines, topic counts, event counts, stock filters, source errors, or news recency into formal metric truth, trading instruction, source data-quality approval, or owner-approved evidence.",
+            "Do not create MTR-NEWS-* formal metrics or formal_use_allowed=true without a dedicated PAGE contract, metric dictionary row, lineage, golden sample, manual audit, and owner signoff.",
+            "Keep analytical boundary, result_meta, source metadata, no-data, stale/fallback, permission failure, vendor degradation, and loading failure states visible.",
+        ],
+    }
 
     def module_home_bundle(
         *,
@@ -4614,6 +5243,77 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         truth_detail="Performance module home aggregates KPI, team, business PnL, and product PnL entry-point evidence only to guide performance review drilldown.",
         guardrail_detail="Do not rebuild KPI scoring, team allocation, business PnL, or product PnL formulas on the module home.",
     )
+    team_performance_bundle = {
+        "page_slug": "team-performance",
+        "page_id": "GAP-TEAM-PERFORMANCE-PAGE",
+        "page_name": "Team Performance",
+        "aliases": [
+            "team-performance",
+            "team_performance",
+            "/team-performance",
+            "GAP-TEAM-PERFORMANCE-PAGE",
+        ],
+        "frontend_route": "/team-performance",
+        "primary_api": "/api/pnl/by-business-ytd",
+        "supporting_apis": [
+            "/api/pnl/by-business-monthly",
+            "/api/pnl/by-business",
+            "/ui/pnl/product-category",
+            "/ui/pnl/product-category/dates",
+        ],
+        "contract_docs": [
+            "docs/live_route_maturity.md",
+            "docs/page_contracts.md",
+            "docs/metric_dictionary.md",
+        ],
+        "truth_chain": [
+            "docs/live_route_maturity.md marks /team-performance as temporary-exception with page id GAP-TEAM-PERFORMANCE-PAGE.",
+            "docs/metric_dictionary.md registers MTR-TEAM-001 as candidate and PAGE-CONTRACT-PENDING:/team-performance, not formal approval.",
+            "MTR-TEAM-001 is limited to mapped team count evidence; workbook-local score, department count, and evidence text cards remain excluded from formal metrics.",
+            "GET /api/pnl/by-business-ytd provides business-line PnL contribution rows used as supporting performance context.",
+            "GET /ui/pnl/product-category provides product-category PnL context only; it does not certify team allocation or workbook scoring.",
+            "frontend/src/features/team-performance/TeamPerformancePage.tsx renders page-local workbook mapping, Q1 split references, warning banners, result_meta, and candidate evidence panels.",
+            "GAP-TEAM-PERFORMANCE-PAGE is candidate team performance evidence; it has no standalone PAGE contract approval or MTR dictionary approval in this pass.",
+            "page-local workbook mapping remains a pending split reference until owner/golden/manual audit closure exists.",
+        ],
+        "backend_touchpoints": [
+            "backend/app/api/routes/pnl.py",
+            "backend/app/api/routes/product_category_pnl.py",
+            "backend/app/services/pnl_service.py",
+            "backend/app/services/product_category_pnl_service.py",
+            "backend/app/repositories/pnl_repo.py",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/features/team-performance/TeamPerformancePage.tsx",
+            "frontend/src/features/team-performance/TeamPerformancePage.css",
+            "frontend/src/api/pnlClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/router/routes.tsx",
+            "frontend/src/mocks/navigation.ts",
+        ],
+        "test_touchpoints": [
+            "tests/test_pnl_api_contract.py",
+            "tests/test_product_category_pnl_flow.py",
+            "tests/test_live_route_page_contract_completeness.py",
+            "frontend/src/test/TeamPerformancePage.test.tsx",
+            "frontend/src/test/RouteRegistry.test.tsx",
+            "frontend/src/test/LiveRouteRealPageSmoke.test.tsx",
+        ],
+        "golden_samples": [],
+        "verification_focus": [
+            "No dedicated golden sample is currently registered for GAP-TEAM-PERFORMANCE-PAGE; verify through live-route maturity, PnL/product-category API tests, TeamPerformancePage tests, route registry tests, and live route smoke contracts.",
+            "Trace /team-performance through TeamPerformancePage queries, by-business YTD payload, product-category context, page-local workbook mapping, summary cards, matrix rows, Q1 caliber panel, and result_meta display before changing page logic.",
+            "Check report_year, report_date, resolved product-category date, mapped team count, workbook-local split rows, null/empty states, no-data, stale/fallback, and warning banners before treating the page as ready.",
+            "Verify MTR-TEAM-001 remains candidate-only and that Q1 split references or workbook-local scores do not become formal KPI, formal PnL, or owner-approved team attribution.",
+        ],
+        "guardrails": [
+            "GAP-TEAM-PERFORMANCE-PAGE is candidate team performance evidence, not formal KPI truth and not business-owner-approved team attribution.",
+            "Do not promote workbook score, team count, mapped PnL, Q1 split references, evidence status text, or review labels into approved MTR-* rows beyond candidate MTR-TEAM-001 without a dedicated PAGE contract, lineage, samples, and tests.",
+            "Do not use product-category PnL, business-line PnL, or page-local workbook mapping to replace PAGE-PROD-CAT-001 formal product-category truth, PAGE-PNL-001 formal PnL truth, or GAP-KPI-PERFORMANCE-PAGE KPI scoring evidence.",
+            "Do not treat candidate team mapping, Q1 split rows, pending split references, or warning banners as approved compensation, performance, or KPI allocation decisions.",
+            "Keep candidate boundary, report date, result_meta, source/trace panels, empty/error/stale/fallback states, and owner-review pending status visible.",
+        ],
+    }
     kpi_performance_bundle = {
         "page_slug": "kpi-performance",
         "page_id": "GAP-KPI-PERFORMANCE-PAGE",
@@ -4723,6 +5423,9 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         executive_summary_bundle,
         balance_analysis_bundle,
         average_balance_bundle,
+        bank_ledger_dashboard_bundle,
+        cashflow_projection_bundle,
+        concentration_monitor_bundle,
         decision_items_bundle,
         balance_movement_analysis_bundle,
         pnl_bundle,
@@ -4744,10 +5447,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         macro_observation_bundle,
         agent_bundle,
         cube_query_bundle,
+        platform_config_bundle,
+        news_events_bundle,
         portfolio_home_bundle,
         market_home_bundle,
         risk_home_bundle,
         performance_home_bundle,
+        team_performance_bundle,
         kpi_performance_bundle,
         reports_home_bundle,
     ]
@@ -5065,7 +5771,7 @@ def page_catalog_date_lineage_review_queue(
             "gap_or_observational_review_item_count": sum(
                 1
                 for row in review_queue
-                if row["review_lane"] == "gap_observational_separate_review"
+                if row["approval_status"] == "gap_or_observational"
             ),
             "ready_for_audit_review_count": ready_for_audit_review_count,
             "blocked_by_record_gaps_count": blocked_by_record_gaps_count,
@@ -7525,7 +8231,7 @@ def page_catalog_date_lineage_review_lane(coverage_row: dict[str, Any]) -> str:
         return "deferred_no_direct_table_config_review"
     if approval_status == "formal_or_governed":
         return "formal_governed_catalog_date_lineage_review"
-    if approval_status == "gap_or_observational" and not coverage_row.get("configured_table_names"):
+    if approval_status == "gap_or_observational":
         return "gap_observational_separate_review"
     if page_catalog_date_lineage_has_formal_source_tables(coverage_row):
         return "candidate_formal_source_mixed_review"

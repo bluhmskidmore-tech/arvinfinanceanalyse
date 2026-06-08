@@ -6,8 +6,12 @@ and payload shapes. This suite asserts only the shared write-refresh invariants.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import date, timedelta
+import json
 from pathlib import Path
+from threading import Event, Lock, Thread
 from typing import Any
 
 import pytest
@@ -61,6 +65,17 @@ def _top_level_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _macro_choice_stock_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return payload["result"]["refresh"]
+
+
+def _livermore_gate_supplement_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return payload
+
+
+def _refresh_run_id(refresh: dict[str, Any]) -> object:
+    materialize_result = refresh.get("materialize_result")
+    if isinstance(materialize_result, dict) and "run_id" in materialize_result:
+        return materialize_result["run_id"]
+    return refresh["run_id"]
 
 
 def _assert_different_target_identity(
@@ -265,6 +280,399 @@ def _setup_macro_choice_stock(tmp_path: Path, monkeypatch: Any) -> tuple[TestCli
     return TestClient(app), calls
 
 
+def _setup_livermore_gate_supplement(tmp_path: Path, monkeypatch: Any) -> tuple[TestClient, list[object]]:
+    duckdb_path = tmp_path / "livermore-gate-supplement" / "moss.duckdb"
+    governance_path = tmp_path / "livermore-gate-supplement" / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    repo = _scope_repo(tmp_path, monkeypatch, "livermore-gate-supplement-auth.db")
+    repo.grant_scope(user_id="*", role=None, resource="market_data.livermore_gate_supplement", action="refresh")
+    get_settings.cache_clear()
+
+    calls: list[object] = []
+    service_mod = load_module(
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        "backend/app/services/livermore_gate_supplement_compute_service.py",
+    )
+
+    def fake_materialize(*, duckdb_path: str, rows: list[dict[str, object]]) -> dict[str, object]:
+        calls.append({"duckdb_path": duckdb_path, "rows": rows})
+        return {
+            "status": "completed",
+            "run_id": f"livermore-gate-supplement-run-{len(calls)}",
+            "row_count": len(rows),
+        }
+
+    monkeypatch.setattr(service_mod, "_load_csi300_daily_returns", _fake_livermore_gate_daily_returns)
+    monkeypatch.setattr(service_mod, "materialize_livermore_gate_supplement_daily", fake_materialize)
+    return _main_client(), calls
+
+
+def _fake_livermore_gate_daily_returns(
+    *,
+    duckdb_path: str,
+    end_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    start = end_date - timedelta(days=lookback_days + 4)
+    return [
+        {
+            "trade_date": (start + timedelta(days=offset)).isoformat(),
+            "close": 3000.0 + offset,
+            "pct_chg": 1.0 if offset % 2 else -0.25,
+        }
+        for offset in range(lookback_days + 5)
+    ]
+
+
+def test_livermore_gate_supplement_idempotency_key_serializes_same_target_refresh(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    duckdb_path = tmp_path / "livermore-gate-supplement-concurrent" / "moss.duckdb"
+    governance_path = tmp_path / "livermore-gate-supplement-concurrent" / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        "backend/app/services/livermore_gate_supplement_compute_service.py",
+    )
+    first_materialize_entered = Event()
+    second_materialize_entered = Event()
+    release_first_materialize = Event()
+    calls_lock = Lock()
+    results_lock = Lock()
+    calls: list[dict[str, object]] = []
+    results: list[dict[str, object]] = []
+    errors: list[BaseException] = []
+
+    def fake_materialize(*, duckdb_path: str, rows: list[dict[str, object]]) -> dict[str, object]:
+        with calls_lock:
+            call_index = len(calls) + 1
+            calls.append({"duckdb_path": duckdb_path, "rows": rows, "call_index": call_index})
+        if call_index == 1:
+            first_materialize_entered.set()
+            if not release_first_materialize.wait(timeout=5):
+                raise TimeoutError("Timed out waiting to release first Livermore materialization")
+        else:
+            second_materialize_entered.set()
+        return {
+            "status": "completed",
+            "run_id": f"livermore-gate-supplement-concurrent-run-{call_index}",
+            "row_count": len(rows),
+        }
+
+    monkeypatch.setattr(service_mod, "_load_csi300_daily_returns", _fake_livermore_gate_daily_returns)
+    monkeypatch.setattr(service_mod, "materialize_livermore_gate_supplement_daily", fake_materialize)
+
+    def invoke_refresh() -> None:
+        try:
+            payload = service_mod.compute_and_materialize_gate_supplement(
+                duckdb_path=str(duckdb_path),
+                as_of_date=date(2026, 4, 30),
+                lookback_days=30,
+                idempotency_key=" livermore-gate-supplement-concurrent ",
+            )
+        except BaseException as exc:
+            with results_lock:
+                errors.append(exc)
+            return
+        with results_lock:
+            results.append(payload)
+
+    first_thread = Thread(target=invoke_refresh)
+    second_thread = Thread(target=invoke_refresh)
+    first_thread.start()
+    assert first_materialize_entered.wait(timeout=2)
+    second_thread.start()
+    second_materialize_entered.wait(timeout=0.5)
+    release_first_materialize.set()
+    first_thread.join(timeout=5)
+    second_thread.join(timeout=5)
+    get_settings.cache_clear()
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert errors == []
+    assert len(results) == 2
+    assert len(calls) == 1
+    run_ids = {payload["materialize_result"]["run_id"] for payload in results}
+    assert len(run_ids) == 1
+    replay_flags = [payload["idempotency_replay"] for payload in results]
+    assert replay_flags.count(False) == 1
+    assert replay_flags.count(True) == 1
+    assert {payload["idempotency_key"] for payload in results} == {"livermore-gate-supplement-concurrent"}
+
+
+def test_livermore_gate_supplement_idempotency_key_replays_after_short_lock_timeouts(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    duckdb_path = tmp_path / "livermore-gate-supplement-timeout" / "moss.duckdb"
+    governance_path = tmp_path / "livermore-gate-supplement-timeout" / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        "backend/app/services/livermore_gate_supplement_compute_service.py",
+    )
+    first_materialize_entered = Event()
+    second_saw_lock_timeout = Event()
+    release_first_materialize = Event()
+    fake_lock_guard = Lock()
+    fake_lock_held = False
+    calls_lock = Lock()
+    results_lock = Lock()
+    calls: list[dict[str, object]] = []
+    results: list[dict[str, object]] = []
+    errors: list[BaseException] = []
+
+    @contextmanager
+    def fake_acquire_lock(*args: object, **kwargs: object):
+        nonlocal fake_lock_held
+        del args, kwargs
+        with fake_lock_guard:
+            if fake_lock_held:
+                second_saw_lock_timeout.set()
+                raise TimeoutError("simulated short Livermore refresh lock timeout")
+            fake_lock_held = True
+        try:
+            yield governance_path / ".fake-lock"
+        finally:
+            with fake_lock_guard:
+                fake_lock_held = False
+
+    def fake_materialize(*, duckdb_path: str, rows: list[dict[str, object]]) -> dict[str, object]:
+        with calls_lock:
+            call_index = len(calls) + 1
+            calls.append({"duckdb_path": duckdb_path, "rows": rows, "call_index": call_index})
+        if call_index == 1:
+            first_materialize_entered.set()
+            if not release_first_materialize.wait(timeout=5):
+                raise TimeoutError("Timed out waiting to release first Livermore materialization")
+        return {
+            "status": "completed",
+            "run_id": f"livermore-gate-supplement-timeout-run-{call_index}",
+            "row_count": len(rows),
+        }
+
+    monkeypatch.setattr(service_mod, "acquire_lock", fake_acquire_lock)
+    monkeypatch.setattr(service_mod, "_load_csi300_daily_returns", _fake_livermore_gate_daily_returns)
+    monkeypatch.setattr(service_mod, "materialize_livermore_gate_supplement_daily", fake_materialize)
+
+    def invoke_refresh() -> None:
+        try:
+            payload = service_mod.compute_and_materialize_gate_supplement(
+                duckdb_path=str(duckdb_path),
+                as_of_date=date(2026, 4, 30),
+                lookback_days=30,
+                idempotency_key=" livermore-gate-supplement-timeout ",
+            )
+        except BaseException as exc:
+            with results_lock:
+                errors.append(exc)
+            return
+        with results_lock:
+            results.append(payload)
+
+    first_thread = Thread(target=invoke_refresh)
+    second_thread = Thread(target=invoke_refresh)
+    first_thread.start()
+    assert first_materialize_entered.wait(timeout=2)
+    second_thread.start()
+    assert second_saw_lock_timeout.wait(timeout=2)
+    release_first_materialize.set()
+    first_thread.join(timeout=5)
+    second_thread.join(timeout=5)
+    get_settings.cache_clear()
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert errors == []
+    assert len(results) == 2
+    assert len(calls) == 1
+    run_ids = {payload["materialize_result"]["run_id"] for payload in results}
+    assert run_ids == {"livermore-gate-supplement-timeout-run-1"}
+    replay_flags = [payload["idempotency_replay"] for payload in results]
+    assert replay_flags.count(False) == 1
+    assert replay_flags.count(True) == 1
+
+
+def test_livermore_gate_supplement_idempotency_key_does_not_replay_across_duckdb_targets(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    first_duckdb_path = tmp_path / "livermore-gate-supplement-target-a" / "moss.duckdb"
+    second_duckdb_path = tmp_path / "livermore-gate-supplement-target-b" / "moss.duckdb"
+    governance_path = tmp_path / "livermore-gate-supplement-targets" / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        "backend/app/services/livermore_gate_supplement_compute_service.py",
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_materialize(*, duckdb_path: str, rows: list[dict[str, object]]) -> dict[str, object]:
+        calls.append({"duckdb_path": duckdb_path, "rows": rows})
+        return {
+            "status": "completed",
+            "run_id": f"livermore-gate-supplement-target-run-{len(calls)}",
+            "row_count": len(rows),
+        }
+
+    monkeypatch.setattr(service_mod, "_load_csi300_daily_returns", _fake_livermore_gate_daily_returns)
+    monkeypatch.setattr(service_mod, "materialize_livermore_gate_supplement_daily", fake_materialize)
+
+    first_payload = service_mod.compute_and_materialize_gate_supplement(
+        duckdb_path=str(first_duckdb_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key=" livermore-gate-supplement-target ",
+    )
+    second_payload = service_mod.compute_and_materialize_gate_supplement(
+        duckdb_path=str(second_duckdb_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key=" livermore-gate-supplement-target ",
+    )
+    get_settings.cache_clear()
+
+    assert first_payload["idempotency_replay"] is False
+    assert second_payload["idempotency_replay"] is False
+    assert first_payload["materialize_result"]["run_id"] == "livermore-gate-supplement-target-run-1"
+    assert second_payload["materialize_result"]["run_id"] == "livermore-gate-supplement-target-run-2"
+    assert [call["duckdb_path"] for call in calls] == [str(first_duckdb_path), str(second_duckdb_path)]
+
+    records = [
+        json.loads(line)
+        for line in (governance_path / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    storage_digests = [record.get("storage_target_digest") for record in records]
+    assert len(set(storage_digests)) == 2
+    assert all(isinstance(digest, str) and digest for digest in storage_digests)
+    assert all("storage_target_digest" not in record.get("response_payload", {}) for record in records)
+
+
+def test_livermore_gate_supplement_without_idempotency_key_keeps_bounded_lock_timeout(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    duckdb_path = tmp_path / "livermore-gate-supplement-no-key" / "moss.duckdb"
+    governance_path = tmp_path / "livermore-gate-supplement-no-key" / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        "backend/app/services/livermore_gate_supplement_compute_service.py",
+    )
+    attempts: list[float | None] = []
+
+    @contextmanager
+    def fake_acquire_lock(*args: object, **kwargs: object):
+        del args
+        timeout_seconds = kwargs.get("timeout_seconds")
+        attempts.append(float(timeout_seconds) if timeout_seconds is not None else None)
+        raise TimeoutError("simulated no-key Livermore refresh lock timeout")
+        yield
+
+    monkeypatch.setattr(service_mod, "acquire_lock", fake_acquire_lock)
+
+    with pytest.raises(TimeoutError, match="simulated no-key"):
+        service_mod.compute_and_materialize_gate_supplement(
+            duckdb_path=str(duckdb_path),
+            as_of_date=date(2026, 4, 30),
+            lookback_days=30,
+            idempotency_key=None,
+        )
+    get_settings.cache_clear()
+
+    assert attempts == [30.0]
+
+
+def test_livermore_gate_supplement_idempotency_wait_uses_bounded_backoff(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    duckdb_path = tmp_path / "livermore-gate-supplement-backoff" / "moss.duckdb"
+    governance_path = tmp_path / "livermore-gate-supplement-backoff" / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.livermore_gate_supplement_compute_service",
+        "backend/app/services/livermore_gate_supplement_compute_service.py",
+    )
+    latest_calls = 0
+    sleep_calls: list[float] = []
+    fake_now = 1000.0
+
+    def fake_latest_refresh(**kwargs: object) -> dict[str, object] | None:
+        nonlocal latest_calls
+        latest_calls += 1
+        if latest_calls < 15:
+            return None
+        return {
+            "run_id": "livermore-gate-supplement-backoff-run",
+            "job_name": service_mod.LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME,
+            "status": "completed",
+            "cache_key": service_mod.LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY,
+            "as_of_date": kwargs["as_of_date"],
+            "lookback_days": kwargs["lookback_days"],
+            "idempotency_key": kwargs["idempotency_key"],
+            "storage_target_digest": kwargs["storage_target_digest"],
+            "response_payload": {
+                "status": "completed",
+                "computed_rows": 30,
+                "materialize_result": {"run_id": "livermore-gate-supplement-backoff-run"},
+                "idempotency_key": kwargs["idempotency_key"],
+                "idempotency_replay": False,
+            },
+        }
+
+    @contextmanager
+    def fake_acquire_lock(*args: object, **kwargs: object):
+        del args, kwargs
+        raise TimeoutError("simulated repeated Livermore refresh lock timeout")
+        yield
+
+    def fake_monotonic() -> float:
+        return fake_now
+
+    def fake_sleep(seconds: float) -> None:
+        nonlocal fake_now
+        sleep_calls.append(seconds)
+        fake_now += seconds
+
+    monkeypatch.setattr(service_mod, "_latest_refresh_for_idempotency_key", fake_latest_refresh)
+    monkeypatch.setattr(service_mod, "acquire_lock", fake_acquire_lock)
+    monkeypatch.setattr(service_mod.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(service_mod.time, "sleep", fake_sleep)
+    monkeypatch.setattr(service_mod, "LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_WAIT_TIMEOUT_SECONDS", 10.0)
+    monkeypatch.setattr(service_mod, "LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_LOCK_ATTEMPT_SECONDS", 0.01)
+    monkeypatch.setattr(service_mod, "LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_SECONDS", 0.05)
+
+    payload = service_mod.compute_and_materialize_gate_supplement(
+        duckdb_path=str(duckdb_path),
+        as_of_date=date(2026, 4, 30),
+        lookback_days=30,
+        idempotency_key=" livermore-gate-supplement-backoff ",
+    )
+    get_settings.cache_clear()
+
+    assert payload["idempotency_replay"] is True
+    assert sleep_calls[:4] == [0.05, 0.1, 0.2, 0.4]
+    assert max(sleep_calls) <= 1.0
+
+
 def _macro_headers() -> dict[str, str]:
     return {"X-User-Id": "stock-refresh-user", "X-User-Role": "viewer"}
 
@@ -358,6 +766,16 @@ ENDPOINTS = (
         refresh_payload=_macro_choice_stock_payload,
         side_effect_count=lambda calls: len(calls) // 2,
     ),
+    RefreshEndpointAdapter(
+        family="key-date-window",
+        name="livermore-gate-supplement",
+        path="/ui/market-data/livermore/refresh-gate-supplement",
+        idempotency_key=" livermore-gate-supplement-refresh-contract ",
+        same_target={"params": {"as_of_date": "2026-04-30", "lookback_days": 30}},
+        different_target={"params": {"as_of_date": "2026-04-30", "lookback_days": 31}},
+        setup=_setup_livermore_gate_supplement,
+        refresh_payload=_livermore_gate_supplement_payload,
+    ),
 )
 
 
@@ -398,7 +816,7 @@ def test_refresh_replays_same_normalized_idempotency_key(
     assert second_response.status_code == 200, second_response.text
     first_refresh = adapter.refresh_payload(first_response.json())
     second_refresh = adapter.refresh_payload(second_response.json())
-    assert second_refresh["run_id"] == first_refresh["run_id"]
+    assert _refresh_run_id(second_refresh) == _refresh_run_id(first_refresh)
     assert second_refresh["idempotency_key"] == adapter.idempotency_key.strip()
     assert second_refresh["idempotency_replay"] is True
     assert adapter.side_effect_count(calls) == 1
@@ -426,7 +844,7 @@ def test_refresh_does_not_replay_same_key_for_different_target(
     assert second_response.status_code == 200, second_response.text
     first_refresh = adapter.refresh_payload(first_response.json())
     second_refresh = adapter.refresh_payload(second_response.json())
-    assert second_refresh["run_id"] != first_refresh["run_id"]
+    assert _refresh_run_id(second_refresh) != _refresh_run_id(first_refresh)
     assert second_refresh["idempotency_replay"] is False
     _assert_different_target_identity(adapter, first_refresh, second_refresh)
     assert adapter.side_effect_count(calls) == 2

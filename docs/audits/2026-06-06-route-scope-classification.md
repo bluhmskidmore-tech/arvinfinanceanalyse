@@ -25,15 +25,15 @@ The certification blocker is not visual polish. The blocker is missing direct go
 | Measure | Count |
 | --- | ---: |
 | Total classified routes | 39 |
-| Seeded trace bundles | 33 |
+| Seeded trace bundles | 39 |
 | Visible navigation routes | 36 |
-| Visible routes without seeded trace bundles | 6 |
+| Visible routes without seeded trace bundles | 0 |
 | `business-contract-certified` | 0 |
-| `evidence-pending` | 17 |
+| `evidence-pending` | 23 |
 | `gate-i-gap` | 0 |
 | `frontend-ready` | 6 |
 | `frontend-only` | 10 |
-| `not-started` | 6 |
+| `not-started` | 0 |
 | `out-of-scope` | 0 |
 | Unclassified | 0 |
 
@@ -59,6 +59,9 @@ The certification blocker is not visual polish. The blocker is missing direct go
 | `executive-summary` | `/dashboard` | `frontend-only` | `home_or_summary_surface_not_page_certification` | no | no | seeded trace bundle |
 | `balance-analysis` | `/balance-analysis` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
 | `average-balance` | `/average-balance` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
+| `bank-ledger-dashboard` | `/bank-ledger-dashboard` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
+| `cashflow-projection` | `/cashflow-projection` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
+| `concentration-monitor` | `/concentration-monitor` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
 | `decision-items` | `/decision-items` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
 | `balance-movement-analysis` | `/balance-movement-analysis` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
 | `pnl` | `/pnl` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
@@ -85,13 +88,10 @@ The certification blocker is not visual polish. The blocker is missing direct go
 | `performance-home` | `/performance` | `frontend-only` | `home_or_summary_surface_not_page_certification` | no | yes | seeded trace bundle |
 | `reports-home` | `/reports` | `frontend-only` | `home_or_summary_surface_not_page_certification` | no | yes | seeded trace bundle |
 | `cross-asset` | `/cross-asset` | `frontend-ready` | `analysis_surface_not_formal_business_truth` | yes | yes | seeded trace bundle |
-| `team-performance` | `/team-performance` | `not-started` | `no_seeded_trace_bundle` | no | yes | visible navigation only |
-| `platform-config` | `/platform-config` | `not-started` | `no_seeded_trace_bundle` | no | yes | visible navigation only |
-| `bank-ledger-dashboard` | `/bank-ledger-dashboard` | `not-started` | `no_seeded_trace_bundle` | no | yes | visible navigation only |
-| `concentration-monitor` | `/concentration-monitor` | `not-started` | `no_seeded_trace_bundle` | no | yes | visible navigation only |
-| `cashflow-projection` | `/cashflow-projection` | `not-started` | `no_seeded_trace_bundle` | no | yes | visible navigation only |
+| `team-performance` | `/team-performance` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
+| `platform-config` | `/platform-config` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
 | `kpi-performance` | `/kpi` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
-| `news-events` | `/news-events` | `not-started` | `no_seeded_trace_bundle` | no | yes | visible navigation only |
+| `news-events` | `/news-events` | `evidence-pending` | `golden_or_manual_audit_or_owner_approval_pending` | yes | yes | seeded trace bundle |
 
 ## Priority Queues
 
@@ -102,11 +102,15 @@ These routes already have candidate or formal evidence, but cannot be certified 
 - `product-category-pnl`
 - `balance-analysis`
 - `average-balance`
+- `bank-ledger-dashboard`
+- `cashflow-projection`
+- `concentration-monitor`
 - `decision-items`
 - `balance-movement-analysis`
 - `pnl`
 - `ledger-pnl`
 - `pnl-by-business`
+- `team-performance`
 - `pnl-attribution`
 - `pnl-bridge`
 - `risk-tensor`
@@ -115,7 +119,9 @@ These routes already have candidate or formal evidence, but cannot be certified 
 - `positions`
 - `stock-analysis`
 - `cube-query`
+- `platform-config`
 - `kpi-performance`
+- `news-events`
 
 ### Gate I Gap
 
@@ -125,14 +131,9 @@ No visible seeded route currently lacks a direct Gate I lane.
 
 ### Visible Routes Without Seeded Trace Bundles
 
-These routes are visible in navigation but have no seeded trace bundle in the current readiness ledger:
+No visible navigation route is currently missing a seeded trace bundle.
 
-- `team-performance`
-- `platform-config`
-- `bank-ledger-dashboard`
-- `concentration-monitor`
-- `cashflow-projection`
-- `news-events`
+- None
 
 ## Next Actions
 
@@ -155,9 +156,14 @@ These routes are visible in navigation but have no seeded trace bundle in the cu
    - Treat `GS-STOCK-ANALYSIS-OBS-A` as capture-ready observational DTO evidence only.
    - Do not turn stock-analysis observations into trading-instruction or formal metric claims.
 
-5. Seed trace bundles for visible unseeded routes.
+5. Keep newly seeded candidate, diagnostic, and analytical routes in `evidence-pending`.
    - `/average-balance` is now seeded as a candidate ADB analytical lane.
-   - Continue with routes that affect business decisions: `/bank-ledger-dashboard`, `/cashflow-projection`, and `/concentration-monitor`.
+   - `/bank-ledger-dashboard` is now seeded as a candidate ledger read-model lane for `/api/ledger/dashboard`; it has no golden sample, no standalone PAGE/MTR approval, and is not formal PnL or formal balance truth.
+   - `/cashflow-projection` is now seeded as a candidate liquidity projection lane for `/api/cashflow-projection`; it has no golden sample, no standalone PAGE/MTR approval, and is not formal liquidity, risk, balance, or PnL truth.
+   - `/concentration-monitor` is now seeded as a candidate concentration-monitor lane for `/api/bond-analytics/credit-spread-migration`; it has no golden sample, no standalone PAGE/MTR approval, and is not formal risk truth or certified concentration-limit approval.
+   - `/team-performance` is now seeded as a candidate team-performance mapping lane for `/api/pnl/by-business-ytd` with product-category context; it has no golden sample, no standalone PAGE/MTR approval, and is not formal KPI truth, formal PnL truth, or owner-approved performance allocation.
+   - `/platform-config` is now seeded as a candidate diagnostics lane for `/ui/preview/source-foundation` and health endpoints; it has no golden sample, no standalone approval, and is not data-quality approval.
+   - `/news-events` is now seeded as an analytical event-context lane for `/ui/news/choice-events/latest`; it has no formal `MTR-NEWS-*` metric, no golden sample, no standalone approval, and is not business truth, trading instruction, or source data-quality approval.
 
 ## Verification
 
@@ -176,3 +182,43 @@ python -m pytest tests/test_codex_page_readiness_gate.py -q
 - This document does not write governance records.
 - This document does not change `formal_use_allowed`.
 - This document does not change metric definitions, units, precision, dates, or formulas.
+
+## Backend API Router Grouping Boundary
+
+Current backend route registration is grouped in `backend/app/api/__init__.py` through `ROUTE_REGISTRY` and `ROUTE_GROUP_METADATA`.
+The controlled route groups are `formal_mainline`, `preview`, `macro_market`, `agent_experimental`, and `support`.
+
+- `formal_mainline`: governed business workflow routes; registration alone is not route certification.
+- `preview`: source preview and source-inspection routes; not formal business certification.
+- `macro_market`: macro, market, vendor-data, and decision-support routes; not books-and-records truth or trading instructions.
+- `agent_experimental`: agent workbench and external-provider surfaces; requires tool isolation, evidence strength separation, and confirmation-token controls.
+- `support`: health, dashboard, query, executive-support, and operational surfaces; not standalone metric certification.
+
+Route grouping is a classification and risk-boundary control only. Moving a route between groups, adding a new route module, or claiming a route is formal requires route-specific page contracts, metric dictionary alignment, source lineage evidence, and owner approval.
+
+## Repository Writer Task Scope Boundary
+
+High-risk repository writers now require an explicit task write scope at runtime. The current guarded writers are:
+
+- `backend.app.repositories.cffex_member_rank_repo.replace_member_rank_rows`
+- `backend.app.repositories.news_warehouse_repo.upsert_news_event`
+- `backend.app.repositories.news_warehouse_repo.purge_expired_news_events`
+- `backend.app.repositories.news_warehouse_repo.backfill_from_choice_news_event`
+
+Only `backend.app.tasks.*` code may open `repository_task_write_scope(...)`; API and service modules must keep delegating these writes to task modules. The guard is intentionally runtime-enforced, not only documented, so accidental service-layer or route-layer direct writer calls fail closed.
+
+Verification anchors:
+
+- `tests/test_repository_task_write_guard.py`
+- `tests/test_service_storage_boundaries.py::test_api_and_service_layers_do_not_open_repository_task_write_scope`
+- `tests/test_tushare_news_ingest.py`
+
+## Frontend WSL Optional Dependency Boundary
+
+The native frontend startup script repairs the WSL/Linux Vite/Rolldown optional native binding before starting dev mode. `scripts/dev-frontend.ps1` now checks `process.platform`, verifies `@rolldown/binding-linux-x64-gnu` through `require.resolve(...)`, and runs `npm install --include=optional` only when the Linux binding is missing.
+
+This keeps the Windows native path unchanged while preventing WSL/Linux dev startup from failing because npm optional dependencies were installed under a different platform.
+
+Verification anchor:
+
+- `tests/test_native_dev_script_contents.py::test_dev_frontend_repairs_missing_wsl_rolldown_binding`

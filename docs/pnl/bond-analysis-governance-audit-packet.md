@@ -9,6 +9,14 @@ Closure approved: `closure_approved=false`
 
 This packet does not write governance records and does not approve page closure.
 
+## Evidence Scope
+
+- `approves_metric_or_page=false`
+- `writes_governance_records=false`
+- `proves_page_execution=false`
+- `captures_business_owner_approval=false`
+- `certification_effect=none`
+
 ## Audit Requirements
 
 - Direct page/API governance record for `PAGE-BOND-ANALYSIS-001` or `/api/bond-analytics/action-attribution`.

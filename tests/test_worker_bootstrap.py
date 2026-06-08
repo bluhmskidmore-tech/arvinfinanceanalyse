@@ -8,7 +8,6 @@ from dramatiq.brokers.stub import StubBroker
 
 from tests.helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

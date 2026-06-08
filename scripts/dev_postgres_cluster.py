@@ -167,6 +167,7 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
         )
 
     if not _is_port_open(config.host, config.port):
+        _remove_stale_postmaster_pid(config)
         _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
 
@@ -606,7 +607,7 @@ def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | N
 
 
 def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
-    subprocess.Popen(
+    subprocess.run(
         [
             str(config.bin_dir / "pg_ctl.exe"),
             "-D",
@@ -618,9 +619,30 @@ def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
             "-W",
             "start",
         ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
+
+
+def _remove_stale_postmaster_pid(config: DevPostgresClusterConfig) -> None:
+    pid_file = config.data_dir / "postmaster.pid"
+    if not pid_file.exists() or _is_port_open(config.host, config.port):
+        return
+    status = subprocess.run(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "status",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    if status.returncode != 0:
+        pid_file.unlink(missing_ok=True)
 
 
 def _wait_for_postgres_ready(

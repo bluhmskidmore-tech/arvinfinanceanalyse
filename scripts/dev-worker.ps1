@@ -18,4 +18,8 @@ $workerThreads = if ([string]::IsNullOrWhiteSpace($env:MOSS_DEV_WORKER_THREADS))
   $env:MOSS_DEV_WORKER_THREADS
 }
 
-& $python -m dramatiq --processes $workerProcesses --threads $workerThreads backend.app.tasks.worker_bootstrap
+if ($env:MOSS_DEV_WORKER_USE_CLI -eq "1") {
+  & $python -m dramatiq --processes $workerProcesses --threads $workerThreads backend.app.tasks.worker_bootstrap
+} else {
+  & $python -m backend.app.tasks.dev_worker_runner --threads $workerThreads
+}

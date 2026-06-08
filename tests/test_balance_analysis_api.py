@@ -1,13 +1,13 @@
 from __future__ import annotations
-import logging
-import json
+
 import csv
+import json
+import logging
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 
 import duckdb
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -364,6 +364,33 @@ def test_balance_analysis_read_surfaces_require_explicit_read_scope(tmp_path, mo
             headers={"X-User-Id": "balance-read-user", "X-User-Role": "viewer"},
         )
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+
+def test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope(tmp_path, monkeypatch):
+    route_mod = load_module(
+        "backend.app.api.routes.balance_analysis",
+        "backend/app/api/routes/balance_analysis.py",
+    )
+    monkeypatch.setattr(
+        route_mod,
+        "balance_analysis_dates_envelope",
+        lambda **_kwargs: {"result_meta": {"result_kind": "balance-analysis.dates"}, "result": {}},
+    )
+    sqlite_path = tmp_path / "balance-analysis-dev-fallback.db"
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.get("/ui/balance-analysis/dates")
+
+    assert response.status_code == 200
+    assert response.json()["result_meta"]["result_kind"] == "balance-analysis.dates"
 
 
 def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
@@ -1540,6 +1567,59 @@ def test_balance_analysis_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_balance_analysis_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    _seed_balance_refresh_scope(tmp_path, monkeypatch)
+    get_settings.cache_clear()
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    queued_messages: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service_mod.materialize_balance_analysis_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    headers = {"Idempotency-Key": "balance-analysis-refresh-2025-12-31"}
+
+    first_response = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers=headers,
+    )
+    second_response = client.post(
+        "/ui/balance-analysis/refresh",
+        params={"report_date": "2025-12-31"},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "balance-analysis-refresh-2025-12-31"
+    assert second_payload["idempotency_replay"] is True
+    assert len(queued_messages) == 1
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("job_name") == "balance_analysis_materialize"
+        and record.get("run_id") == first_payload["run_id"]
+    ]
+    assert len(records) == 1
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
     sqlite_path = tmp_path / "auth-refresh-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
@@ -1554,7 +1634,7 @@ def test_balance_analysis_refresh_requires_explicit_refresh_grant(tmp_path, monk
     )
     calls: list[str] = []
 
-    def fake_refresh(_settings, *, report_date: str):
+    def fake_refresh(_settings, *, report_date: str, **_kwargs):
         calls.append(report_date)
         return {"status": "queued", "run_id": "balance-refresh-test", "report_date": report_date}
 

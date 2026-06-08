@@ -7,11 +7,11 @@ from uuid import uuid4
 import duckdb
 import pytest
 
+import backend.app.services.accounting_asset_movement_service as movement_service
 from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
-import backend.app.services.accounting_asset_movement_service as movement_service
 from backend.app.services.accounting_asset_movement_service import (
     accounting_asset_movement_dates_envelope,
     accounting_asset_movement_envelope,
@@ -117,8 +117,8 @@ def test_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
         }
 
     monkeypatch.setattr(
-        movement_service.run_formal_balance_pipeline,
-        "fn",
+        movement_service,
+        "run_formal_balance_pipeline_sync",
         fake_formal_pipeline,
     )
     monkeypatch.setattr(
@@ -275,13 +275,13 @@ def test_refresh_materializes_missing_product_category_before_movement(monkeypat
         }
 
     monkeypatch.setattr(
-        movement_service.materialize_product_category_pnl,
-        "fn",
+        movement_service,
+        "materialize_product_category_pnl_sync",
         fake_product_category_refresh,
     )
     monkeypatch.setattr(
-        movement_service.run_formal_balance_pipeline,
-        "fn",
+        movement_service,
+        "run_formal_balance_pipeline_sync",
         fake_formal_pipeline,
     )
     monkeypatch.setattr(
@@ -389,8 +389,8 @@ def test_refresh_service_delegates_window_materialization_to_task_and_hides_inte
         }
 
     monkeypatch.setattr(
-        movement_service.refresh_accounting_asset_movement_window,
-        "fn",
+        movement_service,
+        "refresh_accounting_asset_movement_window_sync",
         fake_task_refresh,
     )
 
@@ -447,8 +447,8 @@ def test_refresh_service_stops_before_task_when_product_category_refresh_fails(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("product category failed")),
     )
     monkeypatch.setattr(
-        movement_service.refresh_accounting_asset_movement_window,
-        "fn",
+        movement_service,
+        "refresh_accounting_asset_movement_window_sync",
         lambda **kwargs: task_calls.append(kwargs),
     )
 
@@ -489,8 +489,8 @@ def test_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("formal balance failed")),
     )
     monkeypatch.setattr(
-        movement_service.refresh_accounting_asset_movement_window,
-        "fn",
+        movement_service,
+        "refresh_accounting_asset_movement_window_sync",
         lambda **kwargs: task_calls.append(kwargs),
     )
 
@@ -1491,8 +1491,12 @@ def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
     )
 
     assert envelope["result"]["report_dates"] == ["2026-01-31"]
+    assert envelope["result"]["latest_read_model_report_date"] == "2026-01-31"
+    assert envelope["result"]["latest_upstream_control_report_date"] == "2026-02-28"
+    assert envelope["result"]["freshness_status"] == "read_model_lagging"
     assert envelope["result_meta"]["tables_used"] == [
-        "fact_accounting_asset_movement_monthly"
+        "fact_accounting_asset_movement_monthly",
+        "product_category_pnl_canonical_fact",
     ]
 
 

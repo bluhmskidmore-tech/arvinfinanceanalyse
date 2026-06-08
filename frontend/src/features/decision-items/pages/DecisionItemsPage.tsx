@@ -324,7 +324,8 @@ export default function DecisionItemsPage() {
   const decisionWriteCapability = currentUserQuery.data?.can_write_decision_status ?? null;
   const canWriteDecisionItems = decisionWriteCapability === true;
   const cannotWriteDecisionItems = Boolean(currentUserQuery.data) && decisionWriteCapability === false;
-  const decisionWritePermissionUnknown = Boolean(currentUserQuery.data) && decisionWriteCapability === null;
+  const decisionWritePermissionUnknown =
+    currentUserQuery.isError || (Boolean(currentUserQuery.data) && decisionWriteCapability === null);
   const writePermissionNotice = decisionWritePermissionUnknown
     ? {
         className: "decision-items-page__permission-unknown",

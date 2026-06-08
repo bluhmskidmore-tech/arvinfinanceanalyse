@@ -14,14 +14,8 @@ import type {
   HomeDecisionAction,
   HomeDataStateKind,
   HomeDeltaTone,
-  HomeRiskTicker,
   HomeTerminalKpi,
 } from "./dashboardHomeFirstScreenTypes";
-import {
-  HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS,
-  HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE,
-  HOME_FIRST_SCREEN_MARKET_PULSE_FALLBACK,
-} from "./homeFirstScreenFallback";
 
 type NumericLike = Numeric | string | number | null | undefined;
 
@@ -37,6 +31,7 @@ export type MapToHomeFirstScreenViewInput = {
   alertCount: number;
   snapshotUnavailable: boolean;
   snapshotStale: boolean;
+  snapshotLoading: boolean;
 };
 
 const GAP = "—";
@@ -211,6 +206,13 @@ function numericDeltaDisplay(
   };
 }
 
+function metricToneToDelta(tone: HomeSnapshotOverviewMetricVM["tone"]): HomeDeltaTone {
+  if (tone === "positive") return "up";
+  if (tone === "negative") return "down";
+  if (tone === "warning") return "warn";
+  return "flat";
+}
+
 function findMetric(
   metrics: readonly HomeSnapshotOverviewMetricVM[],
   ids: readonly string[],
@@ -277,11 +279,12 @@ function decisionItemPath(actionId: string, reportDate: string): string | undefi
 
 function sourceLabelForPath(path: string): string {
   const pathname = path.split(/[?#]/, 1)[0] ?? "";
-  if (pathname === "/decision-items") return "decision-items";
-  if (pathname === "/risk-tensor") return "risk-tensor";
-  if (pathname === "/risk-overview") return "risk";
-  if (pathname === "/pnl-attribution") return "pnl-attribution";
-  if (pathname === "/cross-asset") return "cross-asset";
+  if (pathname === "/bond-analysis") return "债券分析";
+  if (pathname === "/decision-items") return "待办";
+  if (pathname === "/risk-tensor") return "风险张量";
+  if (pathname === "/risk-overview") return "风险";
+  if (pathname === "/pnl-attribution") return "归因";
+  if (pathname === "/cross-asset") return "跨资产";
 
   const firstSegment = pathname.split("/").filter(Boolean)[0];
   return firstSegment || "home";
@@ -308,8 +311,8 @@ function buildDecisionActions(args: {
         id: "snapshot-unavailable",
         title: "主快照不可用",
         priority: "high",
-        sourceLabel: "home-snapshot",
-        reason: "等待后端主快照恢复后再下钻",
+        sourceLabel: "主快照",
+        reason: "等待主快照恢复后再复核",
         to: undefined,
         statusKind: "backend-gap",
       },
@@ -323,7 +326,7 @@ function buildDecisionActions(args: {
       id: "risk-review-queue",
       title: "处理风险复核队列",
       priority: "high",
-      sourceLabel: "decision-items",
+      sourceLabel: "待办",
       reason: `${args.alertCount} 项风险事项需要复核`,
       to,
       statusKind: to ? "ready" : "stale",
@@ -341,7 +344,7 @@ function buildDecisionActions(args: {
       title,
       priority: args.alertCount > 0 ? "medium" : "high",
       sourceLabel: sourceLabelForPath(to),
-      reason: "来自后端经营判断建议",
+      reason: "主快照回传入口",
       to,
       statusKind: "ready",
     });
@@ -354,10 +357,10 @@ function buildDecisionActions(args: {
   return [
     {
       id: "no-action",
-      title: "暂无可下钻动作",
+      title: "暂无复核入口",
       priority: "low",
-      sourceLabel: "dashboard",
-      reason: "当前没有后端待办或可下钻建议",
+      sourceLabel: "首页",
+      reason: "当前无待办或复核入口",
       to: undefined,
       statusKind: "empty",
     },
@@ -387,8 +390,26 @@ function terminalKpiFromNumeric(args: {
   };
 }
 
+function terminalKpiFromSnapshotMetric(metric: HomeSnapshotOverviewMetricVM): HomeTerminalKpi {
+  const split = splitNumericDisplay(metric.value);
+  const delta = numericDisplay(metric.delta);
+  return {
+    id: metric.id,
+    label: metric.label,
+    value: split.value,
+    unit: split.unit,
+    delta: delta === GAP ? GAP : `较前日 ${delta}`,
+    deltaTone: metricToneToDelta(metric.tone),
+    sparkline: buildSparklineFromHistory(metric.history, flatSparkline(numericRaw(metric.value) ?? 1)),
+    state: "ready",
+  };
+}
+
 function buildTerminalKpis(args: {
   aumMetric: HomeSnapshotOverviewMetricVM | undefined;
+  yieldMetric: HomeSnapshotOverviewMetricVM | undefined;
+  nimMetric: HomeSnapshotOverviewMetricVM | undefined;
+  dv01Metric: HomeSnapshotOverviewMetricVM | undefined;
   headline: BondDashboardHeadlinePayload | null;
   portfolio: BondPortfolioHeadlinesPayload | null;
   attribution: HomeSnapshotPnlAttributionVM | null;
@@ -400,213 +421,231 @@ function buildTerminalKpis(args: {
     args.portfolio?.weighted_duration;
   const ytm = args.headline?.kpis.weighted_ytm ?? args.portfolio?.weighted_ytm;
   const creditRatio = args.portfolio?.credit_weight;
+  const aumHistory = args.aumMetric?.history ?? null;
 
-  return [
-    terminalKpiFromNumeric({
+  const kpis: HomeTerminalKpi[] = [
+    args.aumMetric
+      ? terminalKpiFromSnapshotMetric(args.aumMetric)
+      : terminalKpiFromNumeric({
       id: "aum",
       label: "组合市值",
       value: totalMarketValue,
       previous: args.headline?.prev_kpis?.total_market_value,
-      sparkline: buildSparklineFromHistory(args.aumMetric?.history ?? null, flatSparkline(1)),
+      sparkline: buildSparklineFromHistory(aumHistory, flatSparkline(1)),
       unitHint: "yuan",
-    }),
-    terminalKpiFromNumeric({
-      id: "bond-market-value",
-      label: "债券市值",
-      value: args.headline?.kpis.total_market_value,
-      previous: args.headline?.prev_kpis?.total_market_value,
-      sparkline: flatSparkline(1.2),
-      unitHint: "yuan",
-    }),
-    terminalKpiFromNumeric({
-      id: "unrealized-pnl",
-      label: "持仓收益（当日）",
-      value: args.headline?.kpis.unrealized_pnl,
-      previous: args.headline?.prev_kpis?.unrealized_pnl,
-      sparkline: flatSparkline(0.8),
-      unitHint: "yuan",
-    }),
-    terminalKpiFromNumeric({
-      id: "day-pnl",
-      label: "月度盈亏（本月）",
-      value: args.attribution?.total,
-      sparkline: flatSparkline(0.9),
-      unitHint: "yuan",
-    }),
-    terminalKpiFromNumeric({
-      id: "duration",
-      label: "加权久期",
-      value: duration,
-      previous: args.headline?.prev_kpis?.weighted_duration,
-      sparkline: flatSparkline(1.05),
-      unitHint: "ratio",
-    }),
-    terminalKpiFromNumeric({
-      id: "ytm",
-      label: "组合YTM",
-      value: ytm,
-      previous: args.headline?.prev_kpis?.weighted_ytm,
-      sparkline: flatSparkline(1.1),
-      unitHint: "pct",
-    }),
-    terminalKpiFromNumeric({
-      id: "credit-ratio",
-      label: "信用占比",
-      value: ratioAsPercentNumeric(creditRatio),
-      sparkline: flatSparkline(0.95),
-      unitHint: "pct",
     }),
   ];
-}
 
-function mockFirstScreenView(): DashboardHomeFirstScreenView {
-  return {
-    reportDate: HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE,
-    useMockFallback: true,
-    headerStatus: {
-      dataStatusKind: "ok",
-      dataUpdatedAt: HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS.dataUpdatedAt,
-      marketStatus: HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS.marketStatus,
-      valuationLabel: "估值已完成",
-      valuationTone: "ok",
-      riskReviewCount: 3,
-      showRiskReview: true,
-      dataSyncPrefix: "数据已更新",
-    },
-    decisionRail: {
-      conclusion:
-        "组合亏损主要由利率上行导致，信用利差收窄形成部分对冲，组合久期略有上升，需关注集中度风险。",
-      maxDragLabel: "利率变动",
-      maxDragValue: "-512.34 万",
-      maxContributionLabel: "信用利差",
-      maxContributionValue: "+286.21 万",
-      keyRisk: "Top5 集中度 41.35%，久期小幅上升。",
-      suggestions: ["优先复核久期超限账户", "关注 Top5 主体敞口", "跟踪利率曲线陡峭化风险"],
-      actions: [
-        {
-          id: "risk-overview",
-          title: "复核风险工作台",
-          priority: "high",
-          sourceLabel: "risk",
-          reason: "3 项风险事项需要复核",
-          to: reportDatePath("/risk-overview", HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE),
-          statusKind: "ready",
-        },
-        {
-          id: "risk-tensor",
-          title: "查看风险张量",
-          priority: "medium",
-          sourceLabel: "risk-tensor",
-          reason: "定位久期与 DV01 贡献",
-          to: reportDatePath("/risk-tensor", HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE),
-          statusKind: "ready",
-        },
-      ],
-      pendingSummary: "4 项，其中高优先级 1 项",
-      reportDate: HOME_FIRST_SCREEN_FALLBACK_REPORT_DATE,
-      dataUpdatedAt: HOME_FIRST_SCREEN_FALLBACK_HEADER_STATUS.dataUpdatedAt,
-      dataSyncPrefix: "数据已更新",
-    },
-    terminalKpis: [
-      {
-        id: "aum",
-        label: "组合市值",
-        value: "3,708.10",
-        unit: "亿",
-        delta: "样例模式",
-        deltaTone: "flat",
-        sparkline: [3650, 3668, 3680, 3695, 3700, 3705, 3706, 3708],
-        state: "ready",
-      },
-      {
-        id: "bond-market-value",
-        label: "债券市值",
-        value: "3,708.10",
-        unit: "亿",
-        delta: "样例模式",
-        deltaTone: "flat",
-        sparkline: [3600, 3620, 3655, 3660, 3678, 3688, 3708],
-        state: "ready",
-      },
-      {
-        id: "unrealized-pnl",
-        label: "持仓收益（当日）",
-        value: "+18.42",
-        unit: "亿",
-        delta: "样例模式",
-        deltaTone: "up",
-        sparkline: [8, 11, 10, 13, 15, 18],
-        state: "ready",
-      },
-      {
+  if (args.yieldMetric) {
+    kpis.push(terminalKpiFromSnapshotMetric(args.yieldMetric));
+  }
+  if (args.nimMetric) {
+    kpis.push(terminalKpiFromSnapshotMetric(args.nimMetric));
+  }
+  if (args.dv01Metric) {
+    kpis.push(terminalKpiFromSnapshotMetric(args.dv01Metric));
+  }
+
+  if (args.attribution?.total) {
+    kpis.push(
+      terminalKpiFromNumeric({
         id: "day-pnl",
         label: "月度盈亏（本月）",
-        value: "+0.85",
-        unit: "亿",
-        delta: "样例模式",
-        deltaTone: "up",
-        sparkline: [0.2, 0.3, 0.4, 0.5, 0.85],
-        state: "ready",
-      },
-      {
+        value: args.attribution.total,
+        sparkline: flatSparkline(0.9),
+        unitHint: "yuan",
+      }),
+    );
+  }
+
+  if (args.headline?.kpis.total_market_value) {
+    kpis.push(
+      terminalKpiFromNumeric({
+        id: "bond-market-value",
+        label: "债券市值",
+        value: args.headline.kpis.total_market_value,
+        previous: args.headline.prev_kpis?.total_market_value,
+        sparkline: flatSparkline(1.2),
+        unitHint: "yuan",
+      }),
+    );
+  }
+
+  if (args.headline?.kpis.unrealized_pnl) {
+    kpis.push(
+      terminalKpiFromNumeric({
+        id: "unrealized-pnl",
+        label: "持仓收益（当日）",
+        value: args.headline.kpis.unrealized_pnl,
+        previous: args.headline.prev_kpis?.unrealized_pnl,
+        sparkline: flatSparkline(0.8),
+        unitHint: "yuan",
+      }),
+    );
+  }
+
+  if (duration) {
+    kpis.push(
+      terminalKpiFromNumeric({
         id: "duration",
         label: "加权久期",
-        value: "4.23",
-        delta: "样例模式",
-        deltaTone: "flat",
-        sparkline: [4.1, 4.12, 4.18, 4.23],
-        state: "ready",
-      },
-      {
+        value: duration,
+        previous: args.headline?.prev_kpis?.weighted_duration,
+        sparkline: flatSparkline(1.05),
+        unitHint: "ratio",
+      }),
+    );
+  }
+
+  if (ytm) {
+    kpis.push(
+      terminalKpiFromNumeric({
         id: "ytm",
         label: "组合YTM",
-        value: "2.3684",
-        unit: "%",
-        delta: "样例模式",
-        deltaTone: "flat",
-        sparkline: [2.3, 2.33, 2.35, 2.36],
-        state: "ready",
-      },
-      {
+        value: ytm,
+        previous: args.headline?.prev_kpis?.weighted_ytm,
+        sparkline: flatSparkline(1.1),
+        unitHint: "pct",
+      }),
+    );
+  }
+
+  if (creditRatio) {
+    kpis.push(
+      terminalKpiFromNumeric({
         id: "credit-ratio",
         label: "信用占比",
-        value: "92.36",
-        unit: "%",
-        delta: "样例模式",
-        deltaTone: "flat",
-        sparkline: [91, 92, 91.8, 92.36],
-        state: "ready",
-      },
-    ],
-    keyRiskStrip: HOME_FIRST_SCREEN_MARKET_PULSE_FALLBACK.slice(0, 8).map((item) => ({
-      id: item.id,
-      label: item.label,
-      value: item.value,
-      delta: item.delta,
-      deltaTone: item.deltaTone === "up" ? "up" : item.deltaTone === "down" ? "down" : "flat",
-    })),
+        value: ratioAsPercentNumeric(creditRatio),
+        sparkline: flatSparkline(0.95),
+        unitHint: "pct",
+      }),
+    );
+  }
+
+  return kpis;
+}
+
+function riskTickerFromNumeric(args: {
+  id: string;
+  label: string;
+  value: NumericLike;
+  unitHint?: string;
+}): DashboardHomeFirstScreenView["keyRiskStrip"][number] {
+  return {
+    id: args.id,
+    label: args.label,
+    value: numericDisplay(args.value, GAP, args.unitHint),
+    delta: "当前值",
+    deltaTone: "flat",
   };
+}
+
+function buildKeyRiskStrip(args: {
+  headline: BondDashboardHeadlinePayload | null;
+  portfolio: BondPortfolioHeadlinesPayload | null;
+}): DashboardHomeFirstScreenView["keyRiskStrip"] {
+  const totalDv01 = args.headline?.kpis.total_dv01 ?? args.portfolio?.total_dv01;
+  const duration = args.headline?.kpis.weighted_duration ?? args.portfolio?.weighted_duration;
+  const creditRatio = args.portfolio?.credit_weight;
+  const issuerTop5Weight = args.portfolio?.issuer_top5_weight;
+
+  return [
+    riskTickerFromNumeric({
+      id: "risk-dv01",
+      label: "利率敏感度",
+      value: totalDv01,
+      unitHint: "dv01",
+    }),
+    riskTickerFromNumeric({
+      id: "risk-duration",
+      label: "久期",
+      value: duration,
+      unitHint: "ratio",
+    }),
+    riskTickerFromNumeric({
+      id: "risk-credit",
+      label: "信用占比",
+      value: ratioAsPercentNumeric(creditRatio),
+      unitHint: "pct",
+    }),
+    riskTickerFromNumeric({
+      id: "risk-top5",
+      label: "Top5集中度",
+      value: ratioAsPercentNumeric(issuerTop5Weight),
+      unitHint: "pct",
+    }),
+  ].filter((item) => item.value !== GAP);
+}
+
+function hasDisplayText(value: string | null | undefined): boolean {
+  const trimmed = value?.trim();
+  return Boolean(trimmed && trimmed !== GAP && trimmed !== "--");
+}
+
+function isGenericVerdictConclusion(conclusion: string): boolean {
+  return /首屏整体|方向性判断|偏多|偏空/.test(conclusion);
+}
+
+function kpiSummarySegment(kpi: HomeTerminalKpi): string {
+  return `${kpi.label} ${kpi.value}${kpi.unit ?? ""}`;
+}
+
+function buildKpiSummary(terminalKpis: readonly HomeTerminalKpi[]): string | null {
+  const availableKpis = terminalKpis.filter((kpi) => hasDisplayText(kpi.value));
+  if (availableKpis.length === 0) {
+    return null;
+  }
+  return availableKpis.slice(0, 2).map(kpiSummarySegment).join("，");
+}
+
+function buildDecisionSummary(verdict: VerdictPayload | null, terminalKpis: readonly HomeTerminalKpi[]): string {
+  const conclusion = verdict?.conclusion?.trim();
+  const kpiSummary = buildKpiSummary(terminalKpis);
+  if (!conclusion) {
+    return kpiSummary
+      ? `${kpiSummary}。`
+      : "主快照未返回可摘录的经营读数";
+  }
+  if (isGenericVerdictConclusion(conclusion)) {
+    return kpiSummary
+      ? `${kpiSummary}；趋势判断待复核。`
+      : "首屏读数已形成，趋势判断待复核。";
+  }
+  return conclusion;
+}
+
+function formatVerdictReason(reason: VerdictPayload["reasons"][number] | undefined): string {
+  if (!reason) {
+    return GAP;
+  }
+  const value = reason.value?.trim();
+  const detail = reason.detail?.trim();
+  const segments = [reason.label.trim(), hasDisplayText(value) ? value : null, hasDisplayText(detail) ? detail : null]
+    .filter((item): item is string => Boolean(item));
+  return segments.length > 0 ? segments.join(" · ") : GAP;
 }
 
 export function mapToHomeFirstScreenView(
   input: MapToHomeFirstScreenViewInput,
 ): DashboardHomeFirstScreenView {
-  if (input.useMockFallback) {
-    return mockFirstScreenView();
-  }
-
   const reportDate = cleanDate(input.reportDate) || GAP;
-  const dataStatusKind = input.snapshotUnavailable ? "error" : input.snapshotStale ? "stale" : "ok";
+  const dataStatusKind =
+    input.snapshotUnavailable || input.snapshotLoading ? "error" : input.snapshotStale ? "stale" : "ok";
   const dataSyncPrefix = input.snapshotUnavailable
     ? "主快照不可用"
+    : input.snapshotLoading
+      ? "主快照读取中"
     : input.snapshotStale
       ? "展示上一版本"
       : "数据已更新";
   const dataUpdatedAt =
-    input.snapshotUnavailable || input.snapshotStale
+    input.snapshotUnavailable || input.snapshotLoading || input.snapshotStale
       ? reportDate
       : input.snapshotMeta?.generated_at?.slice(11, 16) ?? GAP;
   const aumMetric = findMetric(input.metrics, ["aum"]);
+  const yieldMetric = findMetric(input.metrics, ["yield"]);
+  const nimMetric = findMetric(input.metrics, ["nim"]);
+  const dv01Metric = findMetric(input.metrics, ["dv01"]);
   const headlineOk = isSameReportDate(reportDate, input.bondHeadline?.report_date);
   const portfolioOk = isSameReportDate(reportDate, input.portfolio?.report_date);
   const headline = headlineOk ? input.bondHeadline : null;
@@ -616,17 +655,14 @@ export function mapToHomeFirstScreenView(
     verdict?.suggestions?.map((item) => item.text).filter(Boolean).slice(0, 3) ?? [];
   const terminalKpis = buildTerminalKpis({
     aumMetric,
+    yieldMetric,
+    nimMetric,
+    dv01Metric,
     headline,
     portfolio,
     attribution: input.attribution,
   });
-  const keyRiskStrip: HomeRiskTicker[] = HOME_FIRST_SCREEN_MARKET_PULSE_FALLBACK.slice(0, 8).map((item) => ({
-    id: item.id,
-    label: item.label,
-    value: item.value,
-    delta: item.delta,
-    deltaTone: item.deltaTone === "up" ? "up" : item.deltaTone === "down" ? "down" : "flat",
-  }));
+  const keyRiskStrip = buildKeyRiskStrip({ headline, portfolio });
 
   return {
     reportDate,
@@ -636,26 +672,30 @@ export function mapToHomeFirstScreenView(
       dataUpdatedAt,
       marketStatus: input.snapshotUnavailable
         ? "数据未同步"
+        : input.snapshotLoading
+          ? "等待数据"
         : input.snapshotStale
           ? "新报告日失败"
           : "市场已收盘",
       valuationLabel: input.snapshotUnavailable
         ? "等待主快照"
+        : input.snapshotLoading
+          ? "读取中"
         : input.snapshotStale
           ? "沿用旧快照"
           : "估值已完成",
-      valuationTone: input.snapshotUnavailable || input.snapshotStale ? "warn" : "ok",
+      valuationTone: input.snapshotUnavailable || input.snapshotLoading || input.snapshotStale ? "warn" : "ok",
       riskReviewCount: input.alertCount,
       showRiskReview: input.alertCount > 0,
       dataSyncPrefix,
     },
     decisionRail: {
-      conclusion: verdict?.conclusion?.trim() || "数据待同步",
+      conclusion: buildDecisionSummary(verdict, terminalKpis),
       maxDragLabel: GAP,
       maxDragValue: GAP,
       maxContributionLabel: GAP,
       maxContributionValue: GAP,
-      keyRisk: verdict?.reasons?.[0]?.label ?? GAP,
+      keyRisk: formatVerdictReason(verdict?.reasons?.[0]),
       suggestions: suggestions.length > 0 ? suggestions : ["数据待同步"],
       actions: buildDecisionActions({
         verdict,

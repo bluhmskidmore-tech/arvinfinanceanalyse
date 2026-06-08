@@ -170,7 +170,7 @@ function buildYtdMainSheet(
     const ftp = ftpNetForYtdRow(row.total_pnl, adb, ytdCalendarDays);
     data.push([
       row.business_type,
-      adb !== undefined && adb > 0 ? adb / YUAN_PER_YI : null,
+      adb !== undefined ? adb / YUAN_PER_YI : null,
       wanFromYuan(row.interest_income),
       wanFromYuan(row.fair_value_change),
       wanFromYuan(row.capital_gain),
@@ -191,6 +191,7 @@ function buildYtdMainSheet(
     let totalPnl = 0;
     let assets = 0;
     let adbSum = 0;
+    let hasAnyAdb = false;
     for (const row of parentRows) {
       interest += num(row.interest_income) ?? 0;
       fairValue += num(row.fair_value_change) ?? 0;
@@ -199,14 +200,15 @@ function buildYtdMainSheet(
       totalPnl += num(row.total_pnl) ?? 0;
       assets += row.assets_count;
       const adb = resolveAdbAvgYuan(row.business_type, adbMap);
-      if (adb !== undefined && adb > 0) {
+      if (adb !== undefined) {
+        hasAnyAdb = true;
         adbSum += adb;
       }
     }
-    const ftp = ftpNetForYtdRow(totalPnl, adbSum > 0 ? adbSum : undefined, ytdCalendarDays);
+    const ftp = ftpNetForYtdRow(totalPnl, hasAnyAdb ? adbSum : undefined, ytdCalendarDays);
     data.push([
       "父级汇总",
-      adbSum > 0 ? adbSum / YUAN_PER_YI : null,
+      hasAnyAdb ? adbSum / YUAN_PER_YI : null,
       interest / YUAN_PER_WAN,
       fairValue / YUAN_PER_WAN,
       capital / YUAN_PER_WAN,
@@ -248,7 +250,7 @@ function buildYtdDetailSheet(
     const ftp = ftpNetForYtdRow(row.total_pnl, adb, ytdCalendarDays);
     data.push([
       row.business_type,
-      adb !== undefined && adb > 0 ? adb / YUAN_PER_YI : null,
+      adb !== undefined ? adb / YUAN_PER_YI : null,
       wanFromYuan(row.interest_income),
       wanFromYuan(row.fair_value_change),
       wanFromYuan(row.capital_gain),

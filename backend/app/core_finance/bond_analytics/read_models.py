@@ -15,6 +15,17 @@ from backend.app.core_finance.bond_analytics.common import (
     safe_decimal,
 )
 from backend.app.core_finance.bond_analytics.engine import ENGINE_RULE_VERSION
+from backend.app.core_finance.curve_engine.curve_types import (
+    CurvePoint,
+    FittedCurve,
+    InterpolationMethod,
+)
+from backend.app.core_finance.curve_engine.interpolation import (
+    build_cubic_spline as _build_cubic_spline,
+)
+from backend.app.core_finance.curve_engine.interpolation import (
+    interpolate as _interpolate_fitted_curve,
+)
 
 ZERO = Decimal("0")
 BENCHMARK_DURATION_ASSUMPTIONS: dict[str, Decimal] = {
@@ -51,6 +62,75 @@ BENCHMARK_BUCKET_WEIGHTS: dict[str, dict[str, Decimal]] = {
 }
 
 
+_CurveCacheKey = tuple[tuple[str, Decimal], ...]
+
+
+def _curve_cache_key(curve: dict[str, Decimal]) -> _CurveCacheKey:
+    return tuple(sorted((str(tenor), safe_decimal(rate)) for tenor, rate in curve.items()))
+
+
+class _CurveRateLookup:
+    """Per-calculation cache for filled curves and fitted interpolation inputs."""
+
+    def __init__(self) -> None:
+        self._full_curve_cache: dict[_CurveCacheKey, dict[str, Decimal]] = {}
+        self._fitted_curve_cache: dict[_CurveCacheKey, FittedCurve] = {}
+        self._curve_object_keys: dict[int, _CurveCacheKey] = {}
+
+    def _key(self, curve: dict[str, Decimal]) -> _CurveCacheKey:
+        object_id = id(curve)
+        cached = self._curve_object_keys.get(object_id)
+        if cached is not None:
+            return cached
+        cached = _curve_cache_key(curve)
+        self._curve_object_keys[object_id] = cached
+        return cached
+
+    def full_curve_with_key(self, curve: dict[str, Decimal] | None) -> tuple[dict[str, Decimal], _CurveCacheKey | None]:
+        if not curve:
+            return {}, None
+        key = self._key(curve)
+        cached = self._full_curve_cache.get(key)
+        if cached is None:
+            cached = build_full_curve(curve)
+            self._full_curve_cache[key] = cached
+            self._curve_object_keys[id(cached)] = key
+        return cached, key
+
+    def full_curve(self, curve: dict[str, Decimal] | None) -> dict[str, Decimal]:
+        full_curve, _key = self.full_curve_with_key(curve)
+        return full_curve
+
+    def rate(self, curve: dict[str, Decimal] | None, years_to_maturity: Decimal) -> Decimal:
+        full_curve, key = self.full_curve_with_key(curve)
+        if not full_curve:
+            return ZERO
+        assert key is not None
+        fitted = self._fitted_curve_cache.get(key)
+        if fitted is None:
+            points = tuple(
+                CurvePoint(years=years, rate=rate)
+                for years, rate in build_curve_points(full_curve)
+            )
+            if len(points) >= 3:
+                fitted = _build_cubic_spline(list(points))
+            else:
+                fitted = FittedCurve(
+                    method=InterpolationMethod.LINEAR,
+                    points=points,
+                )
+            self._fitted_curve_cache[key] = fitted
+        return _interpolate_fitted_curve(fitted, float(years_to_maturity))
+
+    def tenor_rate(self, curve: dict[str, Decimal] | None, tenor_bucket: str) -> Decimal | None:
+        if not tenor_bucket:
+            return None
+        value = self.full_curve(curve).get(tenor_bucket)
+        if value is None:
+            return None
+        return safe_decimal(value)
+
+
 def summarize_return_decomposition(
     rows: list[dict[str, Any]],
     *,
@@ -64,8 +144,10 @@ def summarize_return_decomposition(
     aaa_credit_curve_prior: dict[str, Decimal] | None = None,
     fx_rates_current: dict[str, Decimal] | None = None,
     fx_rates_prior: dict[str, Decimal] | None = None,
+    _curve_lookup: _CurveRateLookup | None = None,
 ) -> dict[str, Any]:
     days = Decimal((period_end - period_start).days + 1)
+    curve_lookup = _curve_lookup or _CurveRateLookup()
     detail_rows = []
     carry_total = ZERO
     roll_down_total = ZERO
@@ -92,6 +174,7 @@ def summarize_return_decomposition(
             period_days=int(days),
             modified_duration=modified_duration,
             market_value=market_value,
+            curve_lookup=curve_lookup,
         )
         rate_effect = _curve_rate_effect(
             current_curve=current_curve,
@@ -99,12 +182,14 @@ def summarize_return_decomposition(
             years_to_maturity=years_to_maturity,
             modified_duration=modified_duration,
             market_value=market_value,
+            curve_lookup=curve_lookup,
         )
         convexity_effect = _convexity_effect(
             row=row,
             current_curve=current_curve,
             prior_curve=prior_curve,
             market_value=market_value,
+            curve_lookup=curve_lookup,
         )
         spread_effect = _spread_effect(
             row=row,
@@ -115,6 +200,7 @@ def summarize_return_decomposition(
             years_to_maturity=years_to_maturity,
             modified_duration=modified_duration,
             market_value=market_value,
+            curve_lookup=curve_lookup,
         )
         fx_effect = _fx_effect(
             row=row,
@@ -173,6 +259,7 @@ def compute_benchmark_excess(
     aaa_credit_curve_current: dict[str, Decimal] | None = None,
     aaa_credit_curve_prior: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
+    curve_lookup = _CurveRateLookup()
     risk = summarize_portfolio_risk(rows)
     total_market_value = safe_decimal(risk["total_market_value"])
     portfolio_duration = safe_decimal(risk["portfolio_modified_duration"])
@@ -210,6 +297,7 @@ def compute_benchmark_excess(
     delta_by_bucket = _curve_delta_by_bucket(
         benchmark_curve_current=benchmark_curve_current,
         benchmark_curve_prior=benchmark_curve_prior,
+        curve_lookup=curve_lookup,
     )
     portfolio_krd = _portfolio_krd_by_bucket(rows, total_market_value=total_market_value)
     benchmark_krd = _benchmark_krd_by_bucket(benchmark_id, benchmark_duration=benchmark_duration)
@@ -225,6 +313,7 @@ def compute_benchmark_excess(
         cdb_curve_prior=cdb_curve_prior,
         aaa_credit_curve_current=aaa_credit_curve_current,
         aaa_credit_curve_prior=aaa_credit_curve_prior,
+        _curve_lookup=curve_lookup,
     )
     portfolio_return = _return_pct(
         total_effect=_summary_total_for_excess_return(return_summary),
@@ -253,20 +342,13 @@ def compute_benchmark_excess(
         treasury_curve_current=treasury_curve_current,
         treasury_curve_prior=treasury_curve_prior,
         total_market_value=total_market_value,
+        curve_lookup=curve_lookup,
     ) * Decimal("100")
     allocation_effect = _compute_allocation_effect(
-        rows,
-        benchmark_id=benchmark_id,
+        by_asset_class=list(return_summary.get("by_asset_class") or []),
+        benchmark_weights=_benchmark_asset_class_weights(benchmark_id),
         benchmark_return=benchmark_return,
         total_market_value=total_market_value,
-        period_start=period_start,
-        period_end=period_end,
-        treasury_curve_current=treasury_curve_current,
-        treasury_curve_prior=treasury_curve_prior,
-        cdb_curve_current=cdb_curve_current,
-        cdb_curve_prior=cdb_curve_prior,
-        aaa_credit_curve_current=aaa_credit_curve_current,
-        aaa_credit_curve_prior=aaa_credit_curve_prior,
     )
     selection_effect = excess_return - duration_effect - curve_effect - spread_effect - allocation_effect
     explained_excess = duration_effect + curve_effect + spread_effect + selection_effect + allocation_effect
@@ -579,12 +661,14 @@ def _curve_roll_down(
     period_days: int,
     modified_duration: Decimal,
     market_value: Decimal,
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
     if not current_curve or years_to_maturity <= ZERO or modified_duration == ZERO or market_value == ZERO:
         return ZERO
-    current_rate = _curve_rate(current_curve, years_to_maturity)
+    lookup = curve_lookup or _CurveRateLookup()
+    current_rate = _curve_rate(current_curve, years_to_maturity, curve_lookup=lookup)
     rolled_years = max(float(years_to_maturity) - (period_days / 365), 0.0)
-    rolled_rate = _curve_rate(current_curve, Decimal(str(rolled_years)))
+    rolled_rate = _curve_rate(current_curve, Decimal(str(rolled_years)), curve_lookup=lookup)
     return ((current_rate - rolled_rate) / Decimal("100")) * modified_duration * market_value
 
 
@@ -595,6 +679,7 @@ def _curve_rate_effect(
     years_to_maturity: Decimal,
     modified_duration: Decimal,
     market_value: Decimal,
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
     if (
         not current_curve
@@ -604,8 +689,9 @@ def _curve_rate_effect(
         or market_value == ZERO
     ):
         return ZERO
-    current_rate = _curve_rate(current_curve, years_to_maturity)
-    prior_rate = _curve_rate(prior_curve, years_to_maturity)
+    lookup = curve_lookup or _CurveRateLookup()
+    current_rate = _curve_rate(current_curve, years_to_maturity, curve_lookup=lookup)
+    prior_rate = _curve_rate(prior_curve, years_to_maturity, curve_lookup=lookup)
     return -(((current_rate - prior_rate) / Decimal("100")) * modified_duration * market_value)
 
 
@@ -615,27 +701,32 @@ def _convexity_effect(
     current_curve: dict[str, Decimal] | None,
     prior_curve: dict[str, Decimal] | None,
     market_value: Decimal,
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
     convexity_val = safe_decimal(row.get("convexity"))
     if not current_curve or not prior_curve or convexity_val == ZERO or market_value == ZERO:
         return ZERO
     tenor = str(row.get("tenor_bucket") or "")
-    current_y = _interpolate_from_curve(current_curve, tenor)
-    prior_y = _interpolate_from_curve(prior_curve, tenor)
+    lookup = curve_lookup or _CurveRateLookup()
+    current_y = _interpolate_from_curve(current_curve, tenor, curve_lookup=lookup)
+    prior_y = _interpolate_from_curve(prior_curve, tenor, curve_lookup=lookup)
     if current_y is None or prior_y is None:
         return ZERO
     delta_y = (current_y - prior_y) / Decimal("100")
     return Decimal("0.5") * convexity_val * delta_y * delta_y * market_value
 
 
-def _interpolate_from_curve(curve: dict[str, Decimal], tenor_bucket: str) -> Decimal | None:
+def _interpolate_from_curve(
+    curve: dict[str, Decimal],
+    tenor_bucket: str,
+    *,
+    curve_lookup: _CurveRateLookup | None = None,
+) -> Decimal | None:
     """Return the tenor-bucket rate from a curve after filling standard buckets."""
     if not curve or not tenor_bucket:
         return None
-    val = build_full_curve(curve).get(tenor_bucket)
-    if val is None:
-        return None
-    return safe_decimal(val)
+    lookup = curve_lookup or _CurveRateLookup()
+    return lookup.tenor_rate(curve, tenor_bucket)
 
 
 def _spread_effect(
@@ -648,6 +739,7 @@ def _spread_effect(
     years_to_maturity: Decimal,
     modified_duration: Decimal,
     market_value: Decimal,
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
     if str(row.get("asset_class_std")) != "credit":
         return ZERO
@@ -661,12 +753,13 @@ def _spread_effect(
         or market_value == ZERO
     ):
         return ZERO
-    current_spread = _curve_rate(aaa_credit_curve_current, years_to_maturity) - _curve_rate(
-        treasury_curve_current, years_to_maturity
-    )
-    prior_spread = _curve_rate(aaa_credit_curve_prior, years_to_maturity) - _curve_rate(
-        treasury_curve_prior, years_to_maturity
-    )
+    lookup = curve_lookup or _CurveRateLookup()
+    current_spread = _curve_rate(
+        aaa_credit_curve_current, years_to_maturity, curve_lookup=lookup
+    ) - _curve_rate(treasury_curve_current, years_to_maturity, curve_lookup=lookup)
+    prior_spread = _curve_rate(
+        aaa_credit_curve_prior, years_to_maturity, curve_lookup=lookup
+    ) - _curve_rate(treasury_curve_prior, years_to_maturity, curve_lookup=lookup)
     return -(((current_spread - prior_spread) / Decimal("100")) * modified_duration * market_value)
 
 
@@ -689,9 +782,16 @@ def _fx_effect(
     return market_value_native * (current_rate - prior_rate)
 
 
-def _curve_rate(curve: dict[str, Decimal], years_to_maturity: Decimal) -> Decimal:
-    points = build_curve_points(build_full_curve(curve))
-    return interpolate_rate(points, float(years_to_maturity))
+def _curve_rate(
+    curve: dict[str, Decimal],
+    years_to_maturity: Decimal,
+    *,
+    curve_lookup: _CurveRateLookup | None = None,
+) -> Decimal:
+    if curve_lookup is None:
+        points = build_curve_points(build_full_curve(curve))
+        return interpolate_rate(points, float(years_to_maturity))
+    return curve_lookup.rate(curve, years_to_maturity)
 
 
 def _to_years(value: Any) -> Decimal:
@@ -705,6 +805,7 @@ def _weighted_average_spread(
     *,
     aaa_credit_curve_current: dict[str, Decimal] | None,
     treasury_curve_current: dict[str, Decimal] | None,
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
     if not rows or not aaa_credit_curve_current or not treasury_curve_current:
         return ZERO
@@ -715,9 +816,10 @@ def _weighted_average_spread(
         market_value = safe_decimal(row.get("market_value"))
         if years_to_maturity <= ZERO or market_value == ZERO:
             continue
-        spread = _curve_rate(aaa_credit_curve_current, years_to_maturity) - _curve_rate(
-            treasury_curve_current, years_to_maturity
-        )
+        lookup = curve_lookup or _CurveRateLookup()
+        spread = _curve_rate(
+            aaa_credit_curve_current, years_to_maturity, curve_lookup=lookup
+        ) - _curve_rate(treasury_curve_current, years_to_maturity, curve_lookup=lookup)
         weighted_spread += spread * market_value
         effective_market_value += market_value
     if effective_market_value == ZERO:
@@ -734,6 +836,7 @@ def _weighted_spread_change(
     treasury_curve_current: dict[str, Decimal] | None,
     treasury_curve_prior: dict[str, Decimal] | None,
     total_market_value: Decimal,
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> Decimal:
     if not rows or total_market_value <= ZERO:
         return ZERO
@@ -749,52 +852,31 @@ def _weighted_spread_change(
             years_to_maturity=_to_years(row.get("years_to_maturity")),
             modified_duration=safe_decimal(row.get("modified_duration")),
             market_value=market_value,
+            curve_lookup=curve_lookup,
         )
     return (total_spread_effect / total_market_value) * Decimal("100")
 
 
 def _compute_allocation_effect(
-    rows: list[dict[str, Any]],
     *,
-    benchmark_id: str,
+    by_asset_class: list[dict[str, Any]],
+    benchmark_weights: dict[str, Decimal],
     benchmark_return: Decimal,
     total_market_value: Decimal,
-    period_start: date,
-    period_end: date,
-    treasury_curve_current: dict[str, Decimal] | None = None,
-    treasury_curve_prior: dict[str, Decimal] | None = None,
-    cdb_curve_current: dict[str, Decimal] | None = None,
-    cdb_curve_prior: dict[str, Decimal] | None = None,
-    aaa_credit_curve_current: dict[str, Decimal] | None = None,
-    aaa_credit_curve_prior: dict[str, Decimal] | None = None,
 ) -> Decimal:
-    if not rows or total_market_value == ZERO:
+    if total_market_value == ZERO:
         return ZERO
-    grouped_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        grouped_rows[str(row.get("asset_class_std") or "other")].append(row)
-    benchmark_weights = _benchmark_asset_class_weights(benchmark_id)
+    grouped_returns = {str(row.get("key") or "other"): row for row in by_asset_class}
     allocation_effect = ZERO
-    for asset_class in sorted(set(grouped_rows) | set(benchmark_weights)):
-        sector_rows = grouped_rows.get(asset_class, [])
-        sector_market_value = _sum(sector_rows, "market_value")
+    for asset_class in sorted(set(grouped_returns) | set(benchmark_weights)):
+        sector_summary = grouped_returns.get(asset_class)
+        sector_market_value = safe_decimal((sector_summary or {}).get("market_value"))
         portfolio_weight = ZERO if total_market_value == ZERO else sector_market_value / total_market_value
         benchmark_weight = benchmark_weights.get(asset_class, ZERO)
         if sector_market_value == ZERO and benchmark_weight == ZERO:
             continue
         sector_return = ZERO
-        if sector_market_value != ZERO:
-            sector_summary = summarize_return_decomposition(
-                sector_rows,
-                period_start=period_start,
-                period_end=period_end,
-                treasury_curve_current=treasury_curve_current,
-                treasury_curve_prior=treasury_curve_prior,
-                cdb_curve_current=cdb_curve_current,
-                cdb_curve_prior=cdb_curve_prior,
-                aaa_credit_curve_current=aaa_credit_curve_current,
-                aaa_credit_curve_prior=aaa_credit_curve_prior,
-            )
+        if sector_market_value != ZERO and sector_summary is not None:
             sector_return = _allocation_sector_return(
                 sector_summary=sector_summary,
                 sector_market_value=sector_market_value,
@@ -818,10 +900,10 @@ def _allocation_sector_return(*, sector_summary: dict[str, Any], sector_market_v
     if sector_market_value == ZERO:
         return ZERO
     total_effect = (
-        safe_decimal(sector_summary.get("carry_total"))
-        + safe_decimal(sector_summary.get("roll_down_total"))
-        + safe_decimal(sector_summary.get("rate_effect_total"))
-        + safe_decimal(sector_summary.get("convexity_effect_total"))
+        safe_decimal(sector_summary.get("carry_total", sector_summary.get("carry")))
+        + safe_decimal(sector_summary.get("roll_down_total", sector_summary.get("roll_down")))
+        + safe_decimal(sector_summary.get("rate_effect_total", sector_summary.get("rate_effect")))
+        + safe_decimal(sector_summary.get("convexity_effect_total", sector_summary.get("convexity_effect")))
     )
     return (total_effect / sector_market_value) * Decimal("100")
 
@@ -935,9 +1017,11 @@ def _curve_delta_by_bucket(
     *,
     benchmark_curve_current: dict[str, Decimal],
     benchmark_curve_prior: dict[str, Decimal],
+    curve_lookup: _CurveRateLookup | None = None,
 ) -> dict[str, Decimal]:
-    current_curve = build_full_curve(benchmark_curve_current)
-    prior_curve = build_full_curve(benchmark_curve_prior)
+    lookup = curve_lookup or _CurveRateLookup()
+    current_curve = lookup.full_curve(benchmark_curve_current)
+    prior_curve = lookup.full_curve(benchmark_curve_prior)
     return {
         bucket: safe_decimal(current_curve.get(bucket)) - safe_decimal(prior_curve.get(bucket))
         for bucket in sorted(set(current_curve) | set(prior_curve))

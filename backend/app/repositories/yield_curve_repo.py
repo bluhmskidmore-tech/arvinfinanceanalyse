@@ -14,6 +14,7 @@ from decimal import Decimal
 
 import duckdb
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schemas.yield_curve import YieldCurveSnapshot
 
 FORMAL_FACT_TABLE = "fact_formal_yield_curve_daily"
@@ -105,6 +106,59 @@ class YieldCurveRepository:
             return str(row[0])
         finally:
             conn.close()
+
+    def fetch_tenor_on_or_before_many(
+        self,
+        *,
+        curve_type: str,
+        tenor: str,
+        trade_dates: list[str],
+    ) -> dict[str, tuple[Decimal | None, str | None]]:
+        requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
+        if not requested:
+            return {}
+        empty = {trade_date: (None, None) for trade_date in requested}
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return empty
+        try:
+            if not _relation_exists(conn, READ_VIEW):
+                return empty
+            requested_sql = " union all ".join("select ? as requested_trade_date" for _ in requested)
+            rows = conn.execute(
+                f"""
+                with requested as (
+                  {requested_sql}
+                ), ranked as (
+                  select
+                    r.requested_trade_date,
+                    y.rate_pct,
+                    cast(y.trade_date as varchar) as resolved_trade_date,
+                    row_number() over (
+                      partition by r.requested_trade_date
+                      order by cast(y.trade_date as varchar) desc
+                    ) as row_num
+                  from requested r
+                  left join {READ_VIEW} y
+                    on y.curve_type = ?
+                   and y.tenor = ?
+                   and cast(y.trade_date as varchar) <= r.requested_trade_date
+                )
+                select requested_trade_date, rate_pct, resolved_trade_date
+                from ranked
+                where row_num = 1
+                """,
+                [*requested, curve_type, tenor],
+            ).fetchall()
+        finally:
+            conn.close()
+        out = dict(empty)
+        for requested_trade_date, rate_pct, resolved_trade_date in rows:
+            out[str(requested_trade_date)] = (
+                Decimal(str(rate_pct)) if rate_pct is not None else None,
+                str(resolved_trade_date) if resolved_trade_date not in (None, "") else None,
+            )
+        return out
 
     def list_trade_dates(self, curve_type: str) -> list[str]:
         conn = _connect(self.path, read_only=True)
@@ -275,7 +329,128 @@ class YieldCurveRepository:
         finally:
             conn.close()
 
+    def resolve_curve_snapshot(
+        self,
+        requested_trade_date: str,
+        curve_type: str,
+    ) -> tuple[dict[str, object] | None, str | None]:
+        """
+        Resolve exact-or-latest snapshot in one read connection.
+
+        Preserves the public ``resolve_curve_snapshot`` semantics: exact match
+        returns no warning, fallback emits the stable latest-curve warning, and
+        formal lineage mismatches still raise instead of silently falling back.
+        """
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+        try:
+            if not _relation_exists(conn, READ_VIEW):
+                return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+            if not _relation_exists(conn, FORMAL_FACT_TABLE):
+                if _curve_rows_exist(conn, requested_trade_date, curve_type):
+                    raise RuntimeError(
+                        f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
+                    )
+                return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+
+            resolved_trade_date = _latest_trade_date_on_or_before(
+                conn,
+                curve_type=curve_type,
+                requested_trade_date=requested_trade_date,
+            )
+            if resolved_trade_date is None:
+                return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+
+            snapshot = _fetch_curve_snapshot_on_connection(
+                conn,
+                trade_date=resolved_trade_date,
+                curve_type=curve_type,
+            )
+            if snapshot is None:
+                if _curve_rows_exist(conn, resolved_trade_date, curve_type):
+                    raise RuntimeError(
+                        f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={resolved_trade_date}."
+                    )
+                return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
+
+            if resolved_trade_date == requested_trade_date:
+                return snapshot, None
+            return (
+                snapshot,
+                format_yield_curve_latest_fallback_warning(
+                    curve_type=curve_type,
+                    resolved_trade_date=resolved_trade_date,
+                    requested_trade_date=requested_trade_date,
+                ),
+            )
+        finally:
+            conn.close()
+
+    def resolve_curve_snapshots_many(
+        self,
+        requests: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], tuple[dict[str, object] | None, str | None]]:
+        normalized = [
+            (str(trade_date).strip(), str(curve_type).strip())
+            for trade_date, curve_type in dict.fromkeys(requests)
+            if str(trade_date or "").strip() and str(curve_type or "").strip()
+        ]
+        if not normalized:
+            return {}
+        empty = {
+            key: (None, f"No {key[1]} curve available for requested trade_date={key[0]}.")
+            for key in normalized
+        }
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return empty
+        try:
+            if not _relation_exists(conn, READ_VIEW):
+                return empty
+            if not _relation_exists(conn, FORMAL_FACT_TABLE):
+                for requested_trade_date, curve_type in normalized:
+                    if _curve_rows_exist(conn, requested_trade_date, curve_type):
+                        raise RuntimeError(
+                            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
+                        )
+                return empty
+
+            resolved_dates = _latest_trade_dates_on_or_before_many(conn, normalized)
+            snapshots = _fetch_curve_snapshots_on_connection_many(
+                conn,
+                [(resolved, curve_type) for resolved, curve_type in resolved_dates.values() if resolved],
+            )
+            out = dict(empty)
+            for key in normalized:
+                requested_trade_date, curve_type = key
+                resolved_trade_date, _ = resolved_dates.get(key, (None, curve_type))
+                if resolved_trade_date is None:
+                    continue
+                snapshot = snapshots.get((resolved_trade_date, curve_type))
+                if snapshot is None:
+                    if _curve_rows_exist(conn, resolved_trade_date, curve_type):
+                        raise RuntimeError(
+                            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={resolved_trade_date}."
+                        )
+                    continue
+                if resolved_trade_date == requested_trade_date:
+                    out[key] = (snapshot, None)
+                else:
+                    out[key] = (
+                        snapshot,
+                        format_yield_curve_latest_fallback_warning(
+                            curve_type=curve_type,
+                            resolved_trade_date=resolved_trade_date,
+                            requested_trade_date=requested_trade_date,
+                        ),
+                    )
+            return out
+        finally:
+            conn.close()
+
     def replace_curve_snapshots(self, *, trade_date: str, snapshots: list[YieldCurveSnapshot], rule_version: str) -> None:
+        require_repository_task_write_scope("replace_curve_snapshots")
         conn = duckdb.connect(self.path, read_only=False)
         try:
             conn.execute("begin transaction")
@@ -348,31 +523,220 @@ def resolve_curve_snapshot(
     via ``fetch_latest_trade_date_on_or_before`` with a stable warning. Raises if the view has points but
     formal lineage is inconsistent (same contract as credit spread analysis).
     """
-    exact_snapshot = repo.fetch_curve_snapshot(requested_trade_date, curve_type)
-    if exact_snapshot is not None:
-        return exact_snapshot, None
-    if repo.fetch_curve(requested_trade_date, curve_type):
-        raise RuntimeError(
-            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
+    return repo.resolve_curve_snapshot(requested_trade_date, curve_type)
+
+
+def _fetch_curve_snapshot_on_connection(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    trade_date: str,
+    curve_type: str,
+) -> dict[str, object] | None:
+    rows = conn.execute(
+        f"""
+        select tenor, rate_pct, vendor_name, vendor_version, source_version, rule_version
+        from {FORMAL_FACT_TABLE}
+        where trade_date = ?
+          and curve_type = ?
+        order by tenor
+        """,
+        [trade_date, curve_type],
+    ).fetchall()
+    if not rows:
+        return None
+    first = rows[0]
+    vendor_name = str(first[2] or "")
+    vendor_version = str(first[3] or "")
+    source_version = str(first[4] or "")
+    rule_version = str(first[5] or "")
+    for row in rows[1:]:
+        if (
+            str(row[2] or "") != vendor_name
+            or str(row[3] or "") != vendor_version
+            or str(row[4] or "") != source_version
+            or str(row[5] or "") != rule_version
+        ):
+            return None
+    return {
+        "trade_date": trade_date,
+        "curve_type": curve_type,
+        "curve": {
+            str(tenor): Decimal(str(rate_pct))
+            for tenor, rate_pct, _vn, _vv, _sv, _rv in rows
+        },
+        "vendor_name": vendor_name,
+        "vendor_version": vendor_version,
+        "source_version": source_version,
+        "rule_version": rule_version,
+    }
+
+
+def _fetch_curve_snapshots_on_connection_many(
+    conn: duckdb.DuckDBPyConnection,
+    keys: list[tuple[str, str]],
+) -> dict[tuple[str, str], dict[str, object] | None]:
+    normalized = [
+        (str(trade_date).strip(), str(curve_type).strip())
+        for trade_date, curve_type in dict.fromkeys(keys)
+        if str(trade_date or "").strip() and str(curve_type or "").strip()
+    ]
+    if not normalized:
+        return {}
+    requested_sql = " union all ".join("select ? as trade_date, ? as curve_type" for _ in normalized)
+    params: list[object] = []
+    for trade_date, curve_type in normalized:
+        params.extend([trade_date, curve_type])
+    rows = conn.execute(
+        f"""
+        with requested as (
+          {requested_sql}
         )
-    latest_trade_date = repo.fetch_latest_trade_date_on_or_before(curve_type, requested_trade_date)
-    if latest_trade_date is None:
-        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
-    latest_snapshot = repo.fetch_curve_snapshot(latest_trade_date, curve_type)
-    if latest_snapshot is None:
-        if repo.fetch_curve(latest_trade_date, curve_type):
-            raise RuntimeError(
-                f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={latest_trade_date}."
-            )
-        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
-    return (
-        latest_snapshot,
-        format_yield_curve_latest_fallback_warning(
-            curve_type=curve_type,
-            resolved_trade_date=latest_trade_date,
-            requested_trade_date=requested_trade_date,
-        ),
-    )
+        select
+          cast(y.trade_date as varchar) as trade_date,
+          y.curve_type,
+          y.tenor,
+          y.rate_pct,
+          y.vendor_name,
+          y.vendor_version,
+          y.source_version,
+          y.rule_version
+        from {FORMAL_FACT_TABLE} y
+        join requested r
+          on cast(y.trade_date as varchar) = r.trade_date
+         and y.curve_type = r.curve_type
+        order by cast(y.trade_date as varchar), y.curve_type, y.tenor
+        """,
+        params,
+    ).fetchall()
+    grouped: dict[tuple[str, str], list[tuple[object, ...]]] = {key: [] for key in normalized}
+    for trade_date, curve_type, tenor, rate_pct, vendor_name, vendor_version, source_version, rule_version in rows:
+        grouped.setdefault((str(trade_date), str(curve_type)), []).append(
+            (tenor, rate_pct, vendor_name, vendor_version, source_version, rule_version)
+        )
+    return {
+        key: _curve_snapshot_from_rows(
+            trade_date=key[0],
+            curve_type=key[1],
+            rows=value,
+        )
+        for key, value in grouped.items()
+    }
+
+
+def _curve_snapshot_from_rows(
+    *,
+    trade_date: str,
+    curve_type: str,
+    rows: list[tuple[object, ...]],
+) -> dict[str, object] | None:
+    if not rows:
+        return None
+    first = rows[0]
+    vendor_name = str(first[2] or "")
+    vendor_version = str(first[3] or "")
+    source_version = str(first[4] or "")
+    rule_version = str(first[5] or "")
+    for row in rows[1:]:
+        if (
+            str(row[2] or "") != vendor_name
+            or str(row[3] or "") != vendor_version
+            or str(row[4] or "") != source_version
+            or str(row[5] or "") != rule_version
+        ):
+            return None
+    return {
+        "trade_date": trade_date,
+        "curve_type": curve_type,
+        "curve": {
+            str(tenor): Decimal(str(rate_pct))
+            for tenor, rate_pct, _vn, _vv, _sv, _rv in rows
+        },
+        "vendor_name": vendor_name,
+        "vendor_version": vendor_version,
+        "source_version": source_version,
+        "rule_version": rule_version,
+    }
+
+
+def _curve_rows_exist(
+    conn: duckdb.DuckDBPyConnection,
+    trade_date: str,
+    curve_type: str,
+) -> bool:
+    if not _relation_exists(conn, READ_VIEW):
+        return False
+    row = conn.execute(
+        f"""
+        select 1
+        from {READ_VIEW}
+        where trade_date = ?
+          and curve_type = ?
+        limit 1
+        """,
+        [trade_date, curve_type],
+    ).fetchone()
+    return row is not None
+
+
+def _latest_trade_date_on_or_before(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    curve_type: str,
+    requested_trade_date: str,
+) -> str | None:
+    row = conn.execute(
+        f"""
+        select max(cast(trade_date as varchar))
+        from {READ_VIEW}
+        where curve_type = ?
+          and cast(trade_date as varchar) <= ?
+        """,
+        [curve_type, requested_trade_date],
+    ).fetchone()
+    if row is None or row[0] in (None, ""):
+        return None
+    return str(row[0])
+
+
+def _latest_trade_dates_on_or_before_many(
+    conn: duckdb.DuckDBPyConnection,
+    requests: list[tuple[str, str]],
+) -> dict[tuple[str, str], tuple[str | None, str]]:
+    normalized = [
+        (str(trade_date).strip(), str(curve_type).strip())
+        for trade_date, curve_type in dict.fromkeys(requests)
+        if str(trade_date or "").strip() and str(curve_type or "").strip()
+    ]
+    if not normalized:
+        return {}
+    requested_sql = " union all ".join("select ? as requested_trade_date, ? as curve_type" for _ in normalized)
+    params: list[object] = []
+    for trade_date, curve_type in normalized:
+        params.extend([trade_date, curve_type])
+    rows = conn.execute(
+        f"""
+        with requested as (
+          {requested_sql}
+        )
+        select
+          r.requested_trade_date,
+          r.curve_type,
+          max(cast(y.trade_date as varchar)) as resolved_trade_date
+        from requested r
+        left join {READ_VIEW} y
+          on y.curve_type = r.curve_type
+         and cast(y.trade_date as varchar) <= r.requested_trade_date
+        group by r.requested_trade_date, r.curve_type
+        """,
+        params,
+    ).fetchall()
+    return {
+        (str(requested_trade_date), str(curve_type)): (
+            str(resolved_trade_date) if resolved_trade_date not in (None, "") else None,
+            str(curve_type),
+        )
+        for requested_trade_date, curve_type, resolved_trade_date in rows
+    }
 
 
 def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:

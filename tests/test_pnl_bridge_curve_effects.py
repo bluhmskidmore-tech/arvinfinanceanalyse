@@ -6,7 +6,10 @@ import duckdb
 import pytest
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.yield_curve_repo import FORMAL_FACT_TABLE, ensure_yield_curve_tables
+from backend.app.repositories.yield_curve_repo import (
+    FORMAL_FACT_TABLE,
+    ensure_yield_curve_tables,
+)
 from tests.helpers import load_module
 from tests.test_pnl_api_contract import (
     _append_balance_build_run,

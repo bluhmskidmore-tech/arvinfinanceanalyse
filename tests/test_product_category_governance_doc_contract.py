@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from tests.helpers import ROOT
 
-
 DOCS_DIR = ROOT / "docs"
+OWNER_REVIEW_QUEUE_HEADING = "## Owner Review Queue"
 
 
 def _read_pnl_doc(name: str) -> str:
     return (DOCS_DIR / "pnl" / name).read_text(encoding="utf-8")
+
+
+def _owner_review_queue(blocker_triage: str) -> str:
+    return blocker_triage.split(OWNER_REVIEW_QUEUE_HEADING, maxsplit=1)[1]
 
 
 def test_product_category_remaining_blockers_do_not_relist_completed_p0_evidence():
@@ -17,7 +21,8 @@ def test_product_category_remaining_blockers_do_not_relist_completed_p0_evidence
         "## Blockers that need user/product decision",
         maxsplit=1,
     )[0]
-    next_tasks = blocker_triage.split("## Next cursor-safe tasks", maxsplit=1)[1]
+    assert "## Next cursor-safe tasks" not in blocker_triage
+    next_tasks = _owner_review_queue(blocker_triage)
 
     for required in (
         "readiness baseline",
@@ -29,6 +34,7 @@ def test_product_category_remaining_blockers_do_not_relist_completed_p0_evidence
         "Unit 6 fixture-scoped UI-to-CSV parity",
         "Unit 9 GS-backed row/field matrix",
         "Unit 4 backend validation error-shape evidence",
+        "fallback-date boundary",
         "governance regression tests",
     ):
         assert required in completed
@@ -45,13 +51,14 @@ def test_product_category_remaining_blockers_do_not_relist_completed_p0_evidence
         "Unit 9 broader fixture expansion",
         "Unit 4 backend validation error-shape evidence",
         "Unit 10 traceability table expansion",
+        "fallback-date semantics",
     ):
         assert stale_task not in next_tasks
 
+    assert "outward `as_of_date`" in completed
+    assert "outward `as_of_date`" not in next_tasks
+
     for decision_required_task in (
-        "fallback-date semantics",
-        "outward `as_of_date`",
-        "detail `metric_id` expansion",
         "refresh timeout/stale copy",
         "Unit 4 extended validation copy",
         "dual-sort rationale",
@@ -80,10 +87,107 @@ def test_product_category_unit4_backend_validation_error_shapes_are_documented()
     ):
         assert required in unit4
 
-    assert "Unit 4 backend validation error-shape evidence" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
+    assert "Unit 4 backend validation error-shape evidence" not in _owner_review_queue(blocker_triage)
+
+
+def test_product_category_unit8_direct_readiness_evidence_is_documented_without_approval():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    unit8 = checklist.split("## Unit 8: Governance / Traceability", maxsplit=1)[1].split(
+        "## Unit 9: Frontend Cross-Field Consistency",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "`scripts/codex_page_readiness.py --page-slug product-category-pnl`",
+        "`catalog_date_evidence_sampled`: `2/2 table date samples`",
+        "`direct_governance_record_ready`: `1 ready direct record(s)`",
+        "`governance_record_validation.status=direct_records_ready_for_audit_review`",
+        "`audit_review.status=ready_for_audit_review`",
+        "`closure_approved=false`",
+        "`scripts/codex-page-readiness.ps1 -PageSlug product-category-pnl -Run -CheckLive`",
+        "Business owner approval remains the only Unit 8 direct-readiness residual gap.",
+    ):
+        assert required in unit8
+
+    completed = blocker_triage.split("## Completed cursor-safe P0 evidence", maxsplit=1)[1].split(
+        "## Blockers that need user/product decision",
+        maxsplit=1,
+    )[0]
+    next_tasks = _owner_review_queue(blocker_triage)
+
+    assert "Unit 8 direct readiness evidence" in completed
+    assert "Unit 8 direct readiness evidence" not in next_tasks
+
+
+def test_product_category_unit2_decision_3c_field_matrix_is_dictionary_active():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+    blocker_triage = _read_pnl_doc("product-category-remaining-blockers.md")
+
+    unit2 = checklist.split("## Unit 2: Detail", maxsplit=1)[1].split(
+        "## Unit 3: Refresh + Status",
+        maxsplit=1,
+    )[0]
+    matrix = page_contract.split("#### 9.1.1 Decision 3C Detail Metric Expansion Matrix", maxsplit=1)[1].split(
+        "### 9.2 Manual adjustment create",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "`result.rows[].cnx_scale`",
+        "`result.rows[].cny_scale`",
+        "`result.rows[].foreign_scale`",
+        "`result.rows[].cny_ftp`",
+        "`result.rows[].foreign_ftp`",
+        "`result.rows[].cny_net`",
+        "`result.rows[].foreign_net`",
+        "`result.rows[].business_net_income`",
+        "`result.rows[].weighted_yield`",
+        "`MTR-PCP-004`",
+        "`MTR-PCP-005`",
+        "`MTR-PCP-006`",
+        "`MTR-PCP-007`",
+        "`MTR-PCP-008`",
+        "`MTR-PCP-009`",
+        "`MTR-PCP-010`",
+        "`MTR-PCP-011`",
+        "`MTR-PCP-012`",
+        "Decision 3C detail metric expansion is active",
+        "row-level metrics only",
+    ):
+        assert required in matrix
+
+    assert "Decision 3C detail metric expansion matrix is now implemented" in unit2
+    assert "concrete numbering / dictionary rows / golden assertions / model tests are now present" in unit2
+    assert "Unit 2 decision 3C field matrix" in blocker_triage.split(
+        "## Completed cursor-safe P0 evidence",
         maxsplit=1,
     )[1]
+    assert "Unit 2 decision 3C dictionary rows/tests" in blocker_triage.split(
+        "## Completed cursor-safe P0 evidence",
+        maxsplit=1,
+    )[1]
+    assert "Unit 2 decision 3C dictionary rows/tests" not in _owner_review_queue(blocker_triage)
+    assert "detail `metric_id` expansion" not in _owner_review_queue(blocker_triage)
+
+
+def test_product_category_recommended_next_unit2_work_blocks_non_3c_fields_without_redeciding_active_metrics():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    recommendation = checklist.split("Recommended next smallest unit:", maxsplit=1)[1]
+
+    assert "Unit 2: Detail" in recommendation
+    assert (
+        "next evidence target: decide whether detail rows, yield, scale, or FTP fields should become formal metrics"
+        not in recommendation
+    )
+    assert "`MTR-PCP-004` through `MTR-PCP-012`" in recommendation
+    assert "active 3C metrics" in recommendation
+    assert "already governed" in recommendation
+    assert "non-3C/additional detail fields" in recommendation
+    assert "new governed metric matrix / dictionary / sample / test bundle" in recommendation
+    assert "do not invent additional `metric_id` bindings beyond `MTR-PCP-001` through `MTR-PCP-012`" in recommendation
 
 
 def test_product_category_unit10_traceability_table_remains_non_exhaustive():
@@ -118,14 +222,8 @@ def test_product_category_unit10_traceability_table_remains_non_exhaustive():
     ):
         assert required in traceability
 
-    assert "Unit 10 page-to-helper traceability" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
-    assert "Unit 10 traceability table expansion" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
+    assert "Unit 10 page-to-helper traceability" not in _owner_review_queue(blocker_triage)
+    assert "Unit 10 traceability table expansion" not in _owner_review_queue(blocker_triage)
 
 
 def test_product_category_unit9_fixture_row_matrix_stays_narrow():
@@ -151,10 +249,7 @@ def test_product_category_unit9_fixture_row_matrix_stays_narrow():
     ):
         assert required in unit9
 
-    assert "Unit 9 fixture-driven row matrix" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
+    assert "Unit 9 fixture-driven row matrix" not in _owner_review_queue(blocker_triage)
 
 
 def test_product_category_unit6_csv_scope_note_does_not_overclaim():
@@ -178,7 +273,4 @@ def test_product_category_unit6_csv_scope_note_does_not_overclaim():
     ):
         assert required in unit6
 
-    assert "Unit 6 CSV precision scope note" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
+    assert "Unit 6 CSV precision scope note" not in _owner_review_queue(blocker_triage)

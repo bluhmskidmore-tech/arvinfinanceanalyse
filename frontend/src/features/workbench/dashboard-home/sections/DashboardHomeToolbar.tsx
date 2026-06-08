@@ -29,7 +29,7 @@ type DashboardHomeToolbarProps = {
 };
 
 export function DashboardHomeToolbar({
-  title = "经营驾驶舱",
+  title = "组合经营日报",
   toolbarTestId = "dashboard-home-toolbar",
   headerStatus,
   reportDateInput,
@@ -45,10 +45,6 @@ export function DashboardHomeToolbar({
     <header data-testid={toolbarTestId} className={styles.dhTopbar}>
       <div className={styles.dhTopbarLeft}>
         <div className={styles.dhTitleBrand}>
-          <span className={styles.dhTitleBar} aria-hidden="true" />
-          <span className={styles.dhTitleMark} aria-hidden="true">
-            M
-          </span>
           <h1 className={styles.dhTitle}>{title}</h1>
         </div>
         <span className={styles.dhDateLabel}>报告日</span>
@@ -67,7 +63,7 @@ export function DashboardHomeToolbar({
           <LightIcon className={styles.dhSearchIcon} name="search" />
           <input
             aria-label="搜索指标 / 报表 / 功能"
-            placeholder="搜索指标 / 报表 / 功能"
+            placeholder="检索指标、报表或入口"
             value={toolbarSearch}
             onChange={(event) => onSearchChange(event.target.value)}
           />

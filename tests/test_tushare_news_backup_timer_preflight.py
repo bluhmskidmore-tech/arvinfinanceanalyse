@@ -5,7 +5,6 @@ from pathlib import Path
 
 from tests.helpers import load_module
 
-
 CHECKLIST = "docs/templates/tushare_news_backup_refresh_go_live_checklist.md"
 TIMER_PACKET = "docs/templates/tushare_news_backup_timer_enablement_packet.md"
 EVIDENCE = "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md"
@@ -701,7 +700,8 @@ def test_timer_preflight_cli_can_render_all_stage_markdown_status(tmp_path: Path
     assert "Alert/log retention owner" in output
     assert "Timer evidence in go-live bundle" in output
     assert "Operator Fill Order" in output
-    assert "Fill owner fields first" in output
+    assert "Pre-enable gates are complete" in output
+    assert "Create the external timer outside this packet" in output
     assert "After the first scheduled run, attach timer evidence" in output
     assert "Activation Sequence" in output
     assert "Immediate stage: `pre-enable`" in output

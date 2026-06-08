@@ -19,6 +19,7 @@ import type {
   LedgerPnlSummaryPayload,
   LedgerPnlSummaryByAccount,
   LedgerPnlSummaryByCurrency,
+  QdbGlMonthlyAnalysisWorkbookPayload,
   QdbGlMonthlyAnalysisSheet,
   ResultMeta,
 } from "../../../api/contracts";
@@ -695,9 +696,9 @@ function formatLedgerSourceAction(
     : "来源状态正常，可继续分析";
 }
 
-function missingLedgerSourceEvidenceFields(label: string, meta: ResultMeta | null | undefined, payloadReturned: boolean) {
+function missingSourceEvidenceFields(label: string, meta: ResultMeta | null | undefined) {
   if (!meta) {
-    return payloadReturned ? [`${label} result_meta 缺失`] : [];
+    return [];
   }
   const fields = [
     metaString(meta.source_version) ? null : `${label} source_version 缺失`,
@@ -706,6 +707,17 @@ function missingLedgerSourceEvidenceFields(label: string, meta: ResultMeta | nul
     (meta.tables_used?.length ?? 0) > 0 ? null : `${label} tables_used 缺失`,
   ];
   return fields.filter((field): field is string => Boolean(field));
+}
+
+function missingLedgerSourceEvidenceFields(
+  label: string,
+  meta: ResultMeta | null | undefined,
+  payloadReturned: boolean,
+) {
+  if (!meta) {
+    return payloadReturned ? [`${label} result_meta 缺失`] : [];
+  }
+  return missingSourceEvidenceFields(label, meta);
 }
 
 function ledgerSourceEvidenceState(
@@ -737,6 +749,118 @@ function ledgerSourceEvidenceState(
     status: "来源证据完整",
     action: "来源证据完整，可继续分析",
     blockingDetail: null,
+  };
+}
+
+type MonthlyWorkbookAuditState = {
+  status: string;
+  action: string;
+  blockingDetail: string | null;
+  isTrusted: boolean;
+};
+
+function monthlyWorkbookAuditState(props: {
+  requestedReportMonth: string;
+  hasMatchingAnalysisMonth: boolean;
+  isMonthlyAnalysisDatesLoading: boolean;
+  isMonthlyAnalysisDatesError: boolean;
+  isMonthlyAnalysisWorkbookLoading: boolean;
+  isMonthlyAnalysisWorkbookError: boolean;
+  monthlyAnalysisWorkbook: QdbGlMonthlyAnalysisWorkbookPayload | undefined;
+  monthlyAnalysisWorkbookMeta: ResultMeta | null | undefined;
+}): MonthlyWorkbookAuditState {
+  if (!props.requestedReportMonth) {
+    return {
+      status: "等待报告月份",
+      action: "先选择报告日生成 report_month",
+      blockingDetail: null,
+      isTrusted: false,
+    };
+  }
+  if (props.isMonthlyAnalysisDatesLoading) {
+    return {
+      status: "月度月份读取中",
+      action: "等待月度分析月份读取完成",
+      blockingDetail: null,
+      isTrusted: false,
+    };
+  }
+  if (props.isMonthlyAnalysisDatesError) {
+    return {
+      status: "月度月份读取失败",
+      action: "恢复月度分析月份读取",
+      blockingDetail: null,
+      isTrusted: false,
+    };
+  }
+  if (!props.hasMatchingAnalysisMonth) {
+    return {
+      status: `${props.requestedReportMonth} 无匹配`,
+      action: `补齐 ${props.requestedReportMonth} QDB 月度分析工作簿`,
+      blockingDetail: null,
+      isTrusted: false,
+    };
+  }
+  if (props.isMonthlyAnalysisWorkbookLoading) {
+    return {
+      status: "月度工作簿读取中",
+      action: "等待月度工作簿读取完成",
+      blockingDetail: null,
+      isTrusted: false,
+    };
+  }
+  if (props.isMonthlyAnalysisWorkbookError) {
+    return {
+      status: "月度工作簿读取失败",
+      action: `重新读取 ${props.requestedReportMonth} 月度分析工作簿`,
+      blockingDetail: null,
+      isTrusted: false,
+    };
+  }
+  if (!props.monthlyAnalysisWorkbook) {
+    return {
+      status: "月度工作簿未返回",
+      action: `重新读取 ${props.requestedReportMonth} 月度分析工作簿`,
+      blockingDetail: "月度工作簿 payload 缺失",
+      isTrusted: false,
+    };
+  }
+
+  const workbookReportMonth = metaString(props.monthlyAnalysisWorkbook.report_month);
+  if (workbookReportMonth !== props.requestedReportMonth) {
+    const returnedMonth = workbookReportMonth ?? "缺失";
+    return {
+      status: `${props.requestedReportMonth}/${returnedMonth} 不一致`,
+      action: `重新读取 ${props.requestedReportMonth} 月度分析工作簿`,
+      blockingDetail: `月度工作簿请求 ${props.requestedReportMonth}，返回 ${returnedMonth}`,
+      isTrusted: false,
+    };
+  }
+
+  if (!props.monthlyAnalysisWorkbookMeta) {
+    return {
+      status: "月度工作簿 result_meta 缺失",
+      action: "补齐月度工作簿来源版本、规则版本、缓存版本和表清单",
+      blockingDetail: "月度工作簿 result_meta 缺失",
+      isTrusted: false,
+    };
+  }
+  const missingFields = missingSourceEvidenceFields("月度工作簿", props.monthlyAnalysisWorkbookMeta);
+  if (missingFields.length > 0) {
+    const detail = missingFields.join("；");
+    return {
+      status: "月度工作簿来源证据不完整",
+      action: "补齐月度工作簿来源版本、规则版本、缓存版本和表清单",
+      blockingDetail: detail,
+      isTrusted: false,
+    };
+  }
+
+  return {
+    status: `${props.requestedReportMonth} 已匹配`,
+    action: "月度分析工作簿已匹配",
+    blockingDetail: null,
+    isTrusted: true,
   };
 }
 
@@ -1301,10 +1425,14 @@ function buildLedgerFunctionalAuditState(props: {
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
   requestedReportMonth: string;
+  monthlyAnalysisWorkbook: QdbGlMonthlyAnalysisWorkbookPayload | undefined;
+  monthlyAnalysisWorkbookMeta: ResultMeta | null | undefined;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   hasMatchingAnalysisMonth: boolean;
   isMonthlyAnalysisDatesLoading: boolean;
   isMonthlyAnalysisDatesError: boolean;
+  isMonthlyAnalysisWorkbookLoading: boolean;
+  isMonthlyAnalysisWorkbookError: boolean;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
   isDatesLoading: boolean;
@@ -1334,24 +1462,16 @@ function buildLedgerFunctionalAuditState(props: {
     metaString(props.dataMeta?.source_version) ??
     props.summary?.source_version ??
     "缺失";
-  const monthlyAnalysisStatus = !props.requestedReportMonth
-    ? "等待报告月份"
-    : props.isMonthlyAnalysisDatesLoading
-      ? "月度月份读取中"
-      : props.isMonthlyAnalysisDatesError
-        ? "月度月份读取失败"
-      : props.hasMatchingAnalysisMonth
-        ? `${props.requestedReportMonth} 已匹配`
-        : `${props.requestedReportMonth} 无匹配`;
-  const monthlyAnalysisAction = !props.requestedReportMonth
-    ? "先选择报告日生成 report_month"
-    : props.isMonthlyAnalysisDatesLoading
-      ? "等待月度分析月份读取完成"
-      : props.isMonthlyAnalysisDatesError
-        ? "恢复月度分析月份读取"
-      : props.hasMatchingAnalysisMonth
-        ? "月度分析工作簿已匹配"
-        : `补齐 ${props.requestedReportMonth} QDB 月度分析工作簿`;
+  const monthlyWorkbookState = monthlyWorkbookAuditState({
+    requestedReportMonth: props.requestedReportMonth,
+    hasMatchingAnalysisMonth: props.hasMatchingAnalysisMonth,
+    isMonthlyAnalysisDatesLoading: props.isMonthlyAnalysisDatesLoading,
+    isMonthlyAnalysisDatesError: props.isMonthlyAnalysisDatesError,
+    isMonthlyAnalysisWorkbookLoading: props.isMonthlyAnalysisWorkbookLoading,
+    isMonthlyAnalysisWorkbookError: props.isMonthlyAnalysisWorkbookError,
+    monthlyAnalysisWorkbook: props.monthlyAnalysisWorkbook,
+    monthlyAnalysisWorkbookMeta: props.monthlyAnalysisWorkbookMeta,
+  });
   const ledgerReadStatus = formatLedgerReadStatus(props);
   const ledgerReadAction = formatLedgerReadAction(props);
   const ledgerSliceMismatch = firstMetaMismatch(props.summaryMeta, props.dataMeta);
@@ -1387,8 +1507,8 @@ function buildLedgerFunctionalAuditState(props: {
     ledgerSourceEvidenceAction: ledgerSourceEvidence.action,
     ledgerReportDateStatus: ledgerReportDateState.status,
     ledgerReportDateAction: ledgerReportDateState.action,
-    monthlyAnalysisStatus,
-    monthlyAnalysisAction,
+    monthlyAnalysisStatus: monthlyWorkbookState.status,
+    monthlyAnalysisAction: monthlyWorkbookState.action,
   };
   const formalUseAllowed = props.formalIndicatorSourceContract?.formal_use_allowed === true;
   const releaseGate = registeredPendingReleaseGate(props.formalIndicatorSourceContract);
@@ -1484,6 +1604,28 @@ function buildLedgerFunctionalAuditState(props: {
       formalStatus,
     };
   }
+  if (formalUseAllowed) {
+    return {
+      tone: "ok",
+      title: "正式财务指标可用",
+      detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
+      ...sharedState,
+      formalStatus,
+    };
+  }
+  if (
+    monthlyWorkbookState.blockingDetail &&
+    props.requestedReportMonth &&
+    props.hasMatchingAnalysisMonth
+  ) {
+    return {
+      tone: "warning",
+      title: "总账候选解释可用，月度分析工作簿不可信",
+      detail: `${monthlyWorkbookState.blockingDetail}；本次不能复核 QDB 月度分析或正式指标落地状态。`,
+      ...sharedState,
+      formalStatus,
+    };
+  }
   if (props.isFormalContractLoading) {
     const summaryRows = formatEvidenceRows(props.summaryMeta);
     const detailRows = formatEvidenceRows(props.dataMeta);
@@ -1513,15 +1655,6 @@ function buildLedgerFunctionalAuditState(props: {
       tone: "warning",
       title: "总账候选解释可用，正式契约明细缺失",
       detail: `总账汇总 ${summaryRows} 行、明细 ${detailRows} 行可支撑候选解释；但正式财务指标契约没有指标明细，不能形成正式财务指标结论。`,
-      ...sharedState,
-      formalStatus,
-    };
-  }
-  if (formalUseAllowed) {
-    return {
-      tone: "ok",
-      title: "正式财务指标可用",
-      detail: "正式财务指标契约已放行；页面按后端契约 value 展示正式值，候选值仅保留为旁证。",
       ...sharedState,
       formalStatus,
     };
@@ -1584,10 +1717,14 @@ function LedgerFunctionalAuditStrip(props: {
   summaryMeta: ResultMeta | null | undefined;
   dataMeta: ResultMeta | null | undefined;
   requestedReportMonth: string;
+  monthlyAnalysisWorkbook: QdbGlMonthlyAnalysisWorkbookPayload | undefined;
+  monthlyAnalysisWorkbookMeta: ResultMeta | null | undefined;
   formalIndicatorSourceContract: LedgerPnlFormalFinancialIndicatorContractPayload | undefined;
   hasMatchingAnalysisMonth: boolean;
   isMonthlyAnalysisDatesLoading: boolean;
   isMonthlyAnalysisDatesError: boolean;
+  isMonthlyAnalysisWorkbookLoading: boolean;
+  isMonthlyAnalysisWorkbookError: boolean;
   isFormalContractLoading: boolean;
   isFormalContractError: boolean;
   isDatesLoading: boolean;
@@ -3083,46 +3220,63 @@ export default function LedgerPnlPage() {
       summaryQuery.data?.result_meta,
     ],
   );
-  const overviewSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "overview");
+  const monthlyWorkbookState = monthlyWorkbookAuditState({
+    requestedReportMonth: requestedAnalysisMonth,
+    hasMatchingAnalysisMonth,
+    isMonthlyAnalysisDatesLoading: monthlyAnalysisDatesQuery.isLoading,
+    isMonthlyAnalysisDatesError: monthlyAnalysisDatesQuery.isError,
+    isMonthlyAnalysisWorkbookLoading: monthlyAnalysisWorkbookQuery.isLoading,
+    isMonthlyAnalysisWorkbookError: monthlyAnalysisWorkbookQuery.isError,
+    monthlyAnalysisWorkbook,
+    monthlyAnalysisWorkbookMeta: monthlyAnalysisWorkbookQuery.data?.result_meta,
+  });
+  const trustedMonthlyAnalysisWorkbook = monthlyWorkbookState.isTrusted ? monthlyAnalysisWorkbook : undefined;
+  const overviewSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "overview");
   const financialIndicatorStatusSheet = findAnalysisSheet(
-    monthlyAnalysisWorkbook?.sheets,
+    trustedMonthlyAnalysisWorkbook?.sheets,
     "financial_indicator_status",
   );
   const financialIndicatorStatusRows = useMemo(
     () => buildFinancialIndicatorStatusRows(financialIndicatorStatusSheet),
     [financialIndicatorStatusSheet],
   );
-  const summary3dSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "summary_3d");
-  const assetStructureSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "asset_structure");
-  const liabilityStructureSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "liability_structure");
-  const loanIndustrySheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "loan_industry");
+  const summary3dSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "summary_3d");
+  const assetStructureSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "asset_structure");
+  const liabilityStructureSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "liability_structure");
+  const loanIndustrySheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "loan_industry");
   const depositDemandIndustrySheet = findAnalysisSheet(
-    monthlyAnalysisWorkbook?.sheets,
+    trustedMonthlyAnalysisWorkbook?.sheets,
     "deposit_demand_industry",
   );
-  const depositTermIndustrySheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "deposit_term_industry");
-  const top11dSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "top_11d");
-  const alertsSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "alerts");
-  const foreignCurrencySheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "foreign_currency");
-  const segmentBaseScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_base_scale");
-  const segmentScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "segment_scale_compare");
-  const companyScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale");
-  const companyScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "company_scale_compare");
-  const retailScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "retail_scale");
-  const retailScaleCompareSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "retail_scale_compare");
-  const financialMarketScaleSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "financial_market_scale");
+  const depositTermIndustrySheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "deposit_term_industry");
+  const top11dSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "top_11d");
+  const alertsSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "alerts");
+  const foreignCurrencySheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "foreign_currency");
+  const segmentBaseScaleSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "segment_base_scale");
+  const segmentScaleCompareSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "segment_scale_compare");
+  const companyScaleSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "company_scale");
+  const companyScaleCompareSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "company_scale_compare");
+  const retailScaleSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "retail_scale");
+  const retailScaleCompareSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "retail_scale_compare");
+  const financialMarketScaleSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "financial_market_scale");
   const financialMarketScaleCompareSheet = findAnalysisSheet(
-    monthlyAnalysisWorkbook?.sheets,
+    trustedMonthlyAnalysisWorkbook?.sheets,
     "financial_market_scale_compare",
   );
-  const incomeRateAnalysisSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "income_rate_analysis");
-  const incomeRateAttributionSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "income_rate_attribution");
-  const depositInterestSplitSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "deposit_interest_split");
+  const incomeRateAnalysisSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "income_rate_analysis");
+  const incomeRateAttributionSheet = findAnalysisSheet(
+    trustedMonthlyAnalysisWorkbook?.sheets,
+    "income_rate_attribution",
+  );
+  const depositInterestSplitSheet = findAnalysisSheet(
+    trustedMonthlyAnalysisWorkbook?.sheets,
+    "deposit_interest_split",
+  );
   const parentCompanyRevenueSheet = findAnalysisSheet(
-    monthlyAnalysisWorkbook?.sheets,
+    trustedMonthlyAnalysisWorkbook?.sheets,
     "parent_company_revenue_components",
   );
-  const industryGapSheet = findAnalysisSheet(monthlyAnalysisWorkbook?.sheets, "industry_gap");
+  const industryGapSheet = findAnalysisSheet(trustedMonthlyAnalysisWorkbook?.sheets, "industry_gap");
   const overviewLabelColumn = overviewSheet?.columns[0];
   const overviewValueColumn = overviewSheet?.columns[1];
   const overviewRows =
@@ -3246,7 +3400,8 @@ export default function LedgerPnlPage() {
           <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             id={LEDGER_PNL_REPORT_DATE_SELECT_ID}
-            aria-label="ledger-pnl-report-date"
+            data-testid="ledger-pnl-report-date-control"
+            aria-label="总账损益报告日"
             value={selectedReportDate}
             onChange={(event) => setSelectedReportDate(event.target.value)}
             style={{
@@ -3275,7 +3430,8 @@ export default function LedgerPnlPage() {
         <label>
           <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>币种</span>
           <select
-            aria-label="ledger-pnl-currency"
+            data-testid="ledger-pnl-currency-control"
+            aria-label="总账损益币种"
             value={currency}
             onChange={(event) => setCurrency(event.target.value)}
             style={{
@@ -3304,10 +3460,14 @@ export default function LedgerPnlPage() {
         summaryMeta={summaryQuery.data?.result_meta}
         dataMeta={dataQuery.data?.result_meta}
         requestedReportMonth={requestedAnalysisMonth}
+        monthlyAnalysisWorkbook={monthlyAnalysisWorkbook}
+        monthlyAnalysisWorkbookMeta={monthlyAnalysisWorkbookQuery.data?.result_meta}
         formalIndicatorSourceContract={formalIndicatorSourceContract}
         hasMatchingAnalysisMonth={hasMatchingAnalysisMonth}
         isMonthlyAnalysisDatesLoading={monthlyAnalysisDatesQuery.isLoading}
         isMonthlyAnalysisDatesError={monthlyAnalysisDatesQuery.isError}
+        isMonthlyAnalysisWorkbookLoading={monthlyAnalysisWorkbookQuery.isLoading}
+        isMonthlyAnalysisWorkbookError={monthlyAnalysisWorkbookQuery.isError}
         isFormalContractLoading={formalIndicatorSourceContractQuery.isLoading}
         isFormalContractError={formalIndicatorSourceContractQuery.isError}
         isDatesLoading={datesQuery.isLoading}
@@ -3365,6 +3525,12 @@ export default function LedgerPnlPage() {
         {monthlyAnalysisWorkbookQuery.isError ? (
           <div data-testid="ledger-pnl-monthly-analysis-error" className="ledger-pnl-analysis__empty">
             月度分析工作簿读取失败
+          </div>
+        ) : null}
+
+        {monthlyWorkbookState.blockingDetail && hasMatchingAnalysisMonth ? (
+          <div data-testid="ledger-pnl-monthly-analysis-trust-warning" className="ledger-pnl-analysis__empty">
+            {monthlyWorkbookState.blockingDetail}；月度分析表已隐藏，避免把不可信 QDB 工作簿当作本月分析结果。
           </div>
         ) : null}
 

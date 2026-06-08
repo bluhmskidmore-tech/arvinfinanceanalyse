@@ -72,6 +72,7 @@ def test_ledger_pnl_owner_evidence_packet_preserves_candidate_boundary(
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
         "validates_required_fields": True,
     }
     assert packet["evidence_anchors"]["dedicated_summary_golden_sample_sync"] == (
@@ -117,6 +118,7 @@ def test_ledger_pnl_owner_evidence_packet_cli_writes_markdown(
     assert payload["approval_action_item_count"] == 11
     assert payload["governance_record_write_status"] == "not_requested"
     assert payload["evidence_scope"]["writes_governance_records"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
 
     text = output_path.read_text(encoding="utf-8")
     assert "# Ledger PnL Owner Evidence Packet" in text
@@ -136,5 +138,6 @@ def test_ledger_pnl_owner_evidence_packet_cli_writes_markdown(
     assert "MTR-LPN-001" in text
     assert "MTR-LPN-003" in text
     assert "This packet does not approve page closure" in text
+    assert "- `certification_effect=none`" in text
     assert "Dedicated ledger summary golden sample reviewed: `yes` (`pending`)" in text
     assert "- - Dedicated ledger summary golden sample reviewed" not in text

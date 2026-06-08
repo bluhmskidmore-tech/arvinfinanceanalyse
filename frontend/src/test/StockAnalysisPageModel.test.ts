@@ -18,6 +18,8 @@ import {
   buildDeepAnalysisGateSummary,
   buildStockAnalysisPagePurpose,
   buildReviewQueueEmptyState,
+  buildReviewQueueSectorFilterView,
+  buildStockSectorOverviewState,
   localizeImplementationStage,
   buildDailyJudgmentStrip,
   buildInlineMetaSegments,
@@ -39,13 +41,17 @@ import {
   buildEventsMonitoringPanelSummary,
   buildObservationPoolsPanelSummary,
   buildThemeBreakoutPanelSummary,
+  buildDeepZoneAuditRows,
   buildMarketPriorityPanelSummary,
   buildStrategyBacktestPanelSummary,
   buildStrategyOptimizationPanelSummary,
   localizeMarketDataStatus,
   localizeThemeSourceKind,
   localizeStockBackendText,
+  mergeStockClosedLoopMeta,
+  pickStockFreshnessMeta,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
+import type { StockCandidateReviewQueueItem } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import { buildConsensusSummary } from "../features/stock-analysis/lib/buildConsensusSummary";
 
 const strategyPayload: LivermoreStrategyPayload = {
@@ -754,6 +760,49 @@ describe("stockAnalysisPageModel", () => {
     expect(purpose.dataStatusLine).toContain("回退待确认");
     expect(summary.dataFreshnessLabel).not.toContain("external_vendor_snapshot");
     expect(purpose.dataStatusLine).not.toContain("external_vendor_snapshot");
+  });
+
+  it("merges closed-loop result meta with confluence precedence only when closed-loop evidence exists", () => {
+    const strategyMeta = {
+      quality_flag: "warning",
+      vendor_status: "vendor_unavailable",
+      fallback_mode: "latest_snapshot",
+      source_version: "strategy-source",
+      rule_version: "strategy-rule",
+    } satisfies Pick<ResultMeta, "quality_flag" | "vendor_status" | "fallback_mode" | "source_version" | "rule_version">;
+    const confluenceMeta = {
+      quality_flag: "ok",
+      vendor_status: "ok",
+      source_version: "confluence-source",
+    } satisfies Partial<Pick<ResultMeta, "quality_flag" | "vendor_status" | "source_version">>;
+
+    expect(mergeStockClosedLoopMeta(true, strategyMeta, confluenceMeta)).toEqual({
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "latest_snapshot",
+      source_version: "confluence-source",
+      rule_version: "strategy-rule",
+    });
+
+    expect(mergeStockClosedLoopMeta(false, strategyMeta, confluenceMeta)).toEqual(strategyMeta);
+  });
+
+  it("picks only freshness fields needed by first-screen page models", () => {
+    expect(
+      pickStockFreshnessMeta({
+        quality_flag: "warning",
+        vendor_status: "vendor_unavailable",
+        fallback_mode: "latest_snapshot",
+        source_version: "source-not-needed",
+        rule_version: "rule-not-needed",
+      }),
+    ).toEqual({
+      quality_flag: "warning",
+      vendor_status: "vendor_unavailable",
+      fallback_mode: "latest_snapshot",
+    });
+
+    expect(pickStockFreshnessMeta(null)).toEqual({});
   });
 
   it("builds page purpose and review-queue empty guidance in Chinese", () => {
@@ -1951,6 +2000,43 @@ describe("stockAnalysisPageModel", () => {
     expect(typeof top?.scoreNormalized).toBe("number");
   });
 
+  it("builds sector overview state for first-screen leader, tail, coverage, and bar groups", () => {
+    const rows = Array.from({ length: 7 }, (_, index) => ({
+      rank: index + 1,
+      sectorCode: `BK${index + 1}`,
+      sectorName: `Sector ${index + 1}`,
+      score: `${90 - index}`,
+      pctChange: `${index}%`,
+      turnover: `${index + 1}%`,
+      amplitude: `${index + 2}%`,
+      constituentCount: index + 10,
+      scoreValue: 90 - index,
+      pctChangeValue: index,
+      turnoverValue: index + 1,
+      amplitudeValue: index + 2,
+      scoreNormalized: 1 - index / 10,
+      pctChangeBar: 1 - index / 12,
+      isTop: index < 3,
+      isBottom: index >= 4,
+      metricBarNormalized: 1 - index / 14,
+    }));
+
+    const overview = buildStockSectorOverviewState(rows);
+
+    expect(overview.leaderRow?.sectorCode).toBe("BK1");
+    expect(overview.tailRow?.sectorCode).toBe("BK7");
+    expect(overview.coverageCount).toBe(91);
+    expect(overview.topBars.map((row) => row.sectorCode)).toEqual(["BK1", "BK2", "BK3", "BK4", "BK5"]);
+    expect(overview.bottomBars.map((row) => row.sectorCode)).toEqual(["BK3", "BK4", "BK5", "BK6", "BK7"]);
+    expect(buildStockSectorOverviewState([])).toEqual({
+      leaderRow: null,
+      tailRow: null,
+      coverageCount: 0,
+      topBars: [],
+      bottomBars: [],
+    });
+  });
+
   it("builds a boundary summary from existing payload evidence only", () => {
     const summary = buildDataBoundarySummary(
       {
@@ -2034,6 +2120,83 @@ describe("stockAnalysisPageModel", () => {
     expect(unfiltered.isFiltered).toBe(false);
     expect(unfiltered.sectorLabel).toBe("全部行业");
     expect(unfiltered.summaryLabel).toBe("行业 全部 / 显示 1 / 1 个候选");
+  });
+
+  it("builds sector filter view state from review queue candidates", () => {
+    const queue: StockCandidateReviewQueueItem[] = [
+      {
+        rank: 1,
+        stockCode: "000001.SZ",
+        stockName: "Alpha",
+        sectorCode: "BK002",
+        sectorName: "Banking",
+        headline: "观察候选 #1 · Alpha",
+        pattern: "突破",
+        patternNote: "UI 辅助归类标签，不构成正式结论",
+        distanceToBreakoutPct: "2.4%",
+        reviewFocus: "Alpha · Banking · 距观察位 2.4%",
+        primaryEvidence: [{ key: "a", label: "A", value: "1" }],
+        supportingEvidence: [],
+        boundaryEvidence: [],
+        invalidationFocus: "失效条件待补",
+        invalidationRules: [],
+        rawFields: [],
+      },
+      {
+        rank: 2,
+        stockCode: "000002.SZ",
+        stockName: "Beta",
+        sectorCode: "BK001",
+        sectorName: "Tech",
+        headline: "观察候选 #2 · Beta",
+        pattern: "突破",
+        patternNote: "UI 辅助归类标签，不构成正式结论",
+        distanceToBreakoutPct: "3.1%",
+        reviewFocus: "Beta · Tech · 距观察位 3.1%",
+        primaryEvidence: [],
+        supportingEvidence: [],
+        boundaryEvidence: [],
+        invalidationFocus: "失效条件待补",
+        invalidationRules: [],
+        rawFields: [],
+      },
+    ];
+
+    const filtered = buildReviewQueueSectorFilterView({
+      reviewQueue: queue,
+      sectorFilterSectorCode: "BK002",
+      selectedSectorLabel: "Banking",
+    });
+    const empty = buildReviewQueueSectorFilterView({
+      reviewQueue: queue,
+      sectorFilterSectorCode: "BK003",
+      selectedSectorLabel: null,
+    });
+    const unfiltered = buildReviewQueueSectorFilterView({
+      reviewQueue: queue,
+      sectorFilterSectorCode: null,
+      selectedSectorLabel: null,
+    });
+
+    expect(filtered.sectorOptions).toEqual([
+      ["BK001", "Tech"],
+      ["BK002", "Banking"],
+    ]);
+    expect(filtered.filteredCandidates.map((item) => item.stockCode)).toEqual(["000001.SZ"]);
+    expect(filtered.selectedSectorLeadCandidate?.stockName).toBe("Alpha");
+    expect(filtered.sectorLinkTone).toBe("active");
+    expect(filtered.sectorLinkSummary).toBe("Banking \u00b7 1 \u4e2a\u5019\u9009");
+    expect(filtered.sectorLinkFocus).toBe("\u9996\u4f4d Alpha \u00b7 \u8ddd\u89c2\u5bdf 2.4%");
+
+    expect(empty.filteredCandidates).toEqual([]);
+    expect(empty.sectorLinkTone).toBe("empty");
+    expect(empty.sectorLinkSummary).toBe("BK003 \u00b7 \u65e0\u5019\u9009");
+    expect(empty.sectorLinkFocus).toBe("\u8be5\u884c\u4e1a\u6682\u65e0\u7ebf\u7d22");
+
+    expect(unfiltered.filteredCandidates).toHaveLength(2);
+    expect(unfiltered.sectorLinkTone).toBe("all");
+    expect(unfiltered.sectorLinkSummary).toBe("\u5168\u90e8\u884c\u4e1a \u00b7 2 \u4e2a\u5019\u9009");
+    expect(unfiltered.sectorLinkFocus).toBe("\u9996\u4f4d Alpha \u00b7 \u8ddd\u89c2\u5bdf 2.4%");
   });
 
   it("builds first-screen KPI strip from existing strategy evidence only", () => {
@@ -2236,6 +2399,43 @@ describe("stockAnalysisPageModel", () => {
       }),
     );
     expect(summary.headline).toContain("暂无 T+5 共振");
+  });
+
+  it("builds deep-zone audit rows from panel summaries and visible counts", () => {
+    expect(
+      buildDeepZoneAuditRows({
+        cycleRotationSummary: { badgeLabel: "Cycle", tone: "positive" },
+        themeBreakoutSummary: { badgeLabel: "Theme", tone: "warning" },
+        strategyBacktestSummary: { tone: "neutral" },
+        strategyBacktestDateRangeLabel: "04-20 ~ 04-29",
+        consensusItemCount: 3,
+        reviewQueueCount: 5,
+        consensusReviewSummary: { tone: "positive" },
+        marketPrioritySummary: { tone: "warning" },
+        eventsMonitoringSummary: {},
+        eventMonitorCount: 2,
+      }),
+    ).toEqual([
+      { key: "supply", label: "供数", value: "Cycle", tone: "positive" },
+      { key: "replay", label: "回放", value: "04-20 ~ 04-29", tone: "neutral" },
+      { key: "review", label: "候选", value: "3 / 5", tone: "positive" },
+      { key: "events", label: "事件", value: "2", tone: "neutral" },
+    ]);
+
+    expect(
+      buildDeepZoneAuditRows({
+        cycleRotationSummary: null,
+        themeBreakoutSummary: { badgeLabel: "Theme", tone: "warning" },
+        strategyBacktestSummary: { badgeLabel: "Replay", tone: "positive" },
+        strategyBacktestDateRangeLabel: "fallback",
+        consensusItemCount: 0,
+        reviewQueueCount: 0,
+        consensusReviewSummary: {},
+        marketPrioritySummary: { tone: "warning" },
+        eventsMonitoringSummary: { badgeLabel: "Alerts", tone: "negative" },
+        eventMonitorCount: 4,
+      })[0],
+    ).toEqual({ key: "supply", label: "供数", value: "Theme", tone: "warning" });
   });
 
   it("builds theme breakout and observation pool panel summaries from payload", () => {

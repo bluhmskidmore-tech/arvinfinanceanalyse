@@ -7,6 +7,7 @@ import time
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from typing import Any, Literal
 
 from backend.app.core_finance.action_attribution import (
@@ -14,6 +15,7 @@ from backend.app.core_finance.action_attribution import (
     build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
     compute_action_attribution_bonds,
+    select_action_attribution_pnl_report_dates,
 )
 from backend.app.core_finance.bond_analytics import dv01 as dv01_core
 from backend.app.core_finance.bond_analytics.common import (
@@ -43,7 +45,11 @@ from backend.app.governance.formal_compute_lineage import (
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    CACHE_MANIFEST_STREAM,
+    GovernanceRepository,
+)
 from backend.app.repositories.pnl_repo import PnlRepository
 
 try:
@@ -161,6 +167,15 @@ EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
 BOND_ANALYTICS_DATE_BASIS = "bond_analytics_report_date"
 BOND_ANALYTICS_FACT_TABLE = "fact_formal_bond_analytics_daily"
 EMPTY_WARNING = "DuckDB bond analytics fact table not yet populated — returning empty result"
+BOND_ANALYTICS_AMOUNT_CURRENCY_BASIS = "CNY"
+BOND_ANALYTICS_AMOUNT_CURRENCY_BASIS_NOTE = (
+    "Amount fields in this response, where present, are disclosed on a CNY/RMB basis."
+)
+BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING = (
+    "Foreign-currency bond positions are disclosed on a CNY/RMB basis where formal CNY closure is available. "
+    "The current API model does not expose row-level fallback markers; if upstream formal CNY closure is missing "
+    "for some positions, derived amount fields may fall back to native currency values."
+)
 DV01_UNMAPPED_ACCOUNTING_CLASS_WARNING_PREFIX = (
     "DV01 全部口径包含未映射会计分类"
 )
@@ -257,6 +272,7 @@ class _TTLCache:
 
 
 _return_decomposition_cache = _TTLCache(ttl_seconds=300)
+_benchmark_excess_cache = _TTLCache(ttl_seconds=300)
 _action_attribution_cache = _TTLCache(ttl_seconds=300)
 
 
@@ -267,9 +283,20 @@ def _invalidate_bond_analytics_caches_for_report_date(report_date: object) -> No
     _return_decomposition_cache.invalidate_matching(
         lambda key: len(key) >= 1 and key[0] == report_date_text
     )
+    _benchmark_excess_cache.invalidate_matching(
+        lambda key: len(key) >= 1 and key[0] == report_date_text
+    )
     _action_attribution_cache.invalidate_matching(
         lambda key: len(key) >= 1 and key[0] == report_date_text
     )
+
+
+def _duckdb_cache_version_token() -> tuple[str, int | None]:
+    duckdb_path = str(get_settings().duckdb_path)
+    try:
+        return duckdb_path, Path(duckdb_path).stat().st_mtime_ns
+    except OSError:
+        return duckdb_path, None
 
 
 def _benchmark_excess_brinson_sum_matches_explained(summary: dict[str, object]) -> bool:
@@ -340,21 +367,13 @@ def _pnl_report_dates_for_action_attribution(
     period_start: date,
     period_end: date,
 ) -> tuple[list[str], list[str]]:
-    codes: list[str] = []
-    if period_type == "MoM":
-        return [period_end.isoformat()], codes
-    selected: list[str] = []
-    for raw in pnl_repo.list_union_report_dates():
-        try:
-            ds = date.fromisoformat(str(raw))
-        except ValueError:
-            continue
-        if period_start <= ds <= period_end:
-            selected.append(str(raw))
-    selected = sorted(set(selected))
-    if len(selected) > 1:
-        codes.append("ACTION_ATTRIBUTION_PNL517_MULTI_MONTH_SUM")
-    return selected, codes
+    available_report_dates = [] if period_type == "MoM" else pnl_repo.list_union_report_dates()
+    return select_action_attribution_pnl_report_dates(
+        available_report_dates=available_report_dates,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+    )
 
 
 def _build_action_attribution_pnl_by_key(
@@ -490,8 +509,88 @@ def _lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
     )
 
 
-def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
-    lineage = _lineage(report_date.isoformat(), rows)
+def _first_lineage_value(*values: str) -> str:
+    for value in values:
+        if value:
+            return value
+    return ""
+
+
+def _latest_governance_row(
+    rows: list[dict[str, object]],
+    *,
+    cache_key: str,
+    job_name: str | None = None,
+    report_date: str | None = None,
+    completed_only: bool = False,
+) -> dict[str, object]:
+    for row in reversed(rows):
+        if str(row.get("cache_key") or "").strip() != cache_key:
+            continue
+        if job_name is not None and str(row.get("job_name") or "").strip() != job_name:
+            continue
+        if report_date is not None and str(row.get("report_date") or "").strip() != report_date:
+            continue
+        if completed_only and str(row.get("status") or "").strip() != "completed":
+            continue
+        return row
+    return {}
+
+
+def _lineage_from_governance_rows(
+    *,
+    report_date: str,
+    rows: list[dict[str, object]],
+    build_rows: list[dict[str, object]],
+    manifest_rows: list[dict[str, object]],
+) -> dict[str, str]:
+    latest_build = _latest_governance_row(
+        build_rows,
+        cache_key=CACHE_KEY,
+        job_name=JOB_NAME,
+        report_date=report_date,
+        completed_only=True,
+    )
+    row_sources = sorted(
+        {
+            str(row.get("source_version") or "").strip()
+            for row in rows
+            if str(row.get("source_version") or "").strip()
+        }
+    )
+    if not rows and not latest_build:
+        return {
+            "source_version": EMPTY_SOURCE_VERSION,
+            "rule_version": RULE_VERSION,
+            "cache_version": CACHE_VERSION,
+            "vendor_version": "vv_none",
+        }
+    latest_manifest = _latest_governance_row(manifest_rows, cache_key=CACHE_KEY)
+    return {
+        "source_version": _first_lineage_value(
+            str(latest_build.get("source_version") or "").strip(),
+            "__".join(row_sources),
+            EMPTY_SOURCE_VERSION,
+        ),
+        "rule_version": _first_lineage_value(
+            str(latest_build.get("rule_version") or "").strip(),
+            str(latest_manifest.get("rule_version") or "").strip(),
+            RULE_VERSION,
+        ),
+        "cache_version": _first_lineage_value(
+            str(latest_build.get("cache_version") or "").strip(),
+            str(latest_manifest.get("cache_version") or "").strip(),
+            CACHE_VERSION,
+        ),
+        "vendor_version": _first_lineage_value(
+            str(latest_build.get("vendor_version") or "").strip(),
+            str(latest_manifest.get("vendor_version") or "").strip(),
+            "vv_none",
+        ),
+    }
+
+
+def _meta_from_lineage(result_kind: str, lineage: dict[str, str]):
     return build_formal_result_meta_from_lineage(
         trace_id=_trace_id(),
         result_kind=result_kind,
@@ -501,6 +600,55 @@ def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
     )
 
 
+def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
+    lineage = _lineage(report_date.isoformat(), rows)
+    return _meta_from_lineage(result_kind, lineage)
+
+
+def _is_cny_currency(currency_code: object) -> bool:
+    return str(currency_code or "").strip().upper() in {"", "CNY", "CNX", "RMB"}
+
+
+def _foreign_currency_codes(rows: list[dict[str, object]]) -> list[str]:
+    return sorted(
+        {
+            str(row.get("currency_code") or "").strip().upper()
+            for row in rows
+            if not _is_cny_currency(row.get("currency_code"))
+        }
+    )
+
+
+def _with_bond_amount_disclosure(
+    envelope: dict[str, object],
+    *,
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    result_meta = envelope.get("result_meta")
+    if isinstance(result_meta, dict):
+        result_meta["amount_currency_basis"] = BOND_ANALYTICS_AMOUNT_CURRENCY_BASIS
+        result_meta["amount_currency_basis_note"] = BOND_ANALYTICS_AMOUNT_CURRENCY_BASIS_NOTE
+
+    result_payload = envelope.get("result")
+    if not isinstance(result_payload, dict):
+        return envelope
+
+    warnings = result_payload.get("warnings")
+    if not isinstance(warnings, list):
+        return envelope
+
+    foreign_codes = _foreign_currency_codes(rows)
+    if not foreign_codes:
+        return envelope
+
+    warning = (
+        f"{BOND_ANALYTICS_FOREIGN_CURRENCY_FALLBACK_WARNING} "
+        f"Detected foreign currencies: {', '.join(foreign_codes)}."
+    )
+    result_payload["warnings"] = _ordered_unique_warnings([*warnings, warning])
+    return envelope
+
+
 def _build_fact_envelope(
     *,
     result_kind: str,
@@ -508,13 +656,16 @@ def _build_fact_envelope(
     rows: list[dict[str, object]],
     result_payload: dict[str, object],
 ) -> dict[str, object]:
-    return build_formal_result_envelope_from_lineage(
-        trace_id=_trace_id(),
-        result_kind=result_kind,
-        lineage=_lineage(report_date.isoformat(), rows),
-        default_cache_version=CACHE_VERSION,
-        source_surface="bond_analytics",
-        result_payload=_bond_analytics_api_payload(result_payload),
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind=result_kind,
+            lineage=_lineage(report_date.isoformat(), rows),
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=_bond_analytics_api_payload(result_payload),
+        ),
+        rows=rows,
     )
 
 
@@ -525,13 +676,40 @@ def _build_numeric_fact_envelope(
     rows: list[dict[str, object]],
     result_payload: dict[str, object],
 ) -> dict[str, object]:
-    return build_formal_result_envelope_from_lineage(
-        trace_id=_trace_id(),
-        result_kind=result_kind,
-        lineage=_lineage(report_date.isoformat(), rows),
-        default_cache_version=CACHE_VERSION,
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind=result_kind,
+            lineage=_lineage(report_date.isoformat(), rows),
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=result_payload,
+        ),
+        rows=rows,
+    )
+
+
+def _action_attribution_candidate_meta(*, formal_meta, report_date: date, quality_flag: str | None = None):
+    report_date_text = report_date.isoformat()
+    return build_analytical_result_meta(
+        trace_id=formal_meta.trace_id,
+        result_kind=formal_meta.result_kind,
+        cache_version=formal_meta.cache_version,
+        source_version=formal_meta.source_version,
+        rule_version=formal_meta.rule_version,
+        quality_flag=quality_flag or formal_meta.quality_flag or "warning",
+        vendor_version=formal_meta.vendor_version,
+        vendor_status=formal_meta.vendor_status,
+        fallback_mode=formal_meta.fallback_mode,
+        requested_report_date=report_date_text,
+        resolved_report_date=report_date_text,
+        as_of_date=report_date_text,
+        date_basis=BOND_ANALYTICS_DATE_BASIS,
+        filters_applied={"report_date": report_date_text},
+        tables_used=[BOND_ANALYTICS_FACT_TABLE],
+        evidence_rows=formal_meta.evidence_rows,
         source_surface="bond_analytics",
-        result_payload=result_payload,
+        generated_at=formal_meta.generated_at,
     )
 
 
@@ -593,13 +771,28 @@ def _merge_lineage_values(*values: str) -> str:
     return "__".join(merged)
 
 
-def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str, object]:
+def refresh_bond_analytics(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
             _refresh_trigger_lock(report_date=report_date),
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    report_date=report_date,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(settings, report_date=report_date)
             if existing is not None:
                 raise BondAnalyticsRefreshConflictError(
@@ -630,6 +823,7 @@ def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str,
                     ).model_dump(),
                     "report_date": report_date,
                     "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
             )
             try:
@@ -657,6 +851,8 @@ def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str,
                 "trigger_mode": "async",
                 "cache_key": CACHE_KEY,
                 "report_date": report_date,
+                "idempotency_key": normalized_idempotency_key,
+                "idempotency_replay": False,
             }
     except TimeoutError as exc:
         raise BondAnalyticsRefreshConflictError(
@@ -732,8 +928,11 @@ def _empty_return_response(meta, report_date: date, period_type: str, period_sta
             ReturnDecompositionResponse,
         )
     )
-    return build_formal_result_envelope(
-        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        ),
+        rows=[],
     )
 
 
@@ -1081,8 +1280,11 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         trading_extra_warnings=trading_extra_warnings,
         warnings_detail=trading_wd,
     )
-    result = build_formal_result_envelope(
-        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    result = _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        ),
+        rows=rows,
     )
     _return_decomposition_cache.set(_cache_key, result)
     return result
@@ -1094,31 +1296,12 @@ def _resolve_curve_for_service(
     requested_trade_date: str,
     curve_type: str,
 ) -> tuple[dict[str, object] | None, str | None]:
-    exact_snapshot = repo.fetch_curve_snapshot(requested_trade_date, curve_type)
-    if exact_snapshot is not None:
-        return exact_snapshot, None
-    if repo.fetch_curve(requested_trade_date, curve_type):
-        raise RuntimeError(
-            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
-        )
-    latest_trade_date = repo.fetch_latest_trade_date_on_or_before(curve_type, requested_trade_date)
-    if latest_trade_date is None:
-        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}; affected components remain 0."
-    latest_snapshot = repo.fetch_curve_snapshot(latest_trade_date, curve_type)
-    if latest_snapshot is None:
-        if repo.fetch_curve(latest_trade_date, curve_type):
-            raise RuntimeError(
-                f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={latest_trade_date}."
-            )
-        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}; affected components remain 0."
-    return (
-        latest_snapshot,
-        format_yield_curve_latest_fallback_warning(
-            curve_type=curve_type,
-            resolved_trade_date=latest_trade_date,
-            requested_trade_date=requested_trade_date,
-        ),
-    )
+    snapshot, warning = repo.resolve_curve_snapshot(requested_trade_date, curve_type)
+    if snapshot is not None or warning is None:
+        return snapshot, warning
+    if str(warning).startswith("No ") and "affected components remain 0" not in warning:
+        return snapshot, f"{warning}; affected components remain 0."
+    return snapshot, warning
 
 
 def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
@@ -1402,6 +1585,116 @@ def _fetch_benchmark_curves(
     }
 
 
+def _resolve_curve_pair_from_batch(
+    *,
+    curve_type: str,
+    required_curve_types: set[str],
+    resolved_curves: dict[tuple[str, str], tuple[dict[str, object] | None, str | None]],
+    report_date: str,
+    prior_date: str,
+) -> tuple[dict[str, object] | None, str | None]:
+    if curve_type not in required_curve_types:
+        return None, None
+    current_snapshot, current_warning = resolved_curves.get(
+        (report_date, curve_type),
+        (None, f"No {curve_type} curve available for requested trade_date={report_date}; affected components remain 0."),
+    )
+    prior_snapshot, prior_warning = resolved_curves.get(
+        (prior_date, curve_type),
+        (None, f"No {curve_type} curve available for requested trade_date={prior_date}; affected components remain 0."),
+    )
+    if current_snapshot is not None:
+        current_snapshot = {
+            **current_snapshot,
+            "_prior_snapshot": prior_snapshot,
+            "_prior_warning": prior_warning,
+        }
+    return current_snapshot, current_warning
+
+
+def _fetch_benchmark_curves_from_batch(
+    rows: list[dict[str, object]],
+    *,
+    resolved_curves: dict[tuple[str, str], tuple[dict[str, object] | None, str | None]],
+    report_date: str,
+    prior_date: str,
+    benchmark_id: str,
+) -> dict[str, object]:
+    curve_type = BENCHMARK_CURVE_TYPES.get(benchmark_id, "cdb")
+    required = _required_curve_types_for_return_rows(rows) | {curve_type}
+
+    treasury_current, treasury_current_warning = _resolve_curve_pair_from_batch(
+        curve_type="treasury", required_curve_types=required, resolved_curves=resolved_curves,
+        report_date=report_date, prior_date=prior_date,
+    )
+    cdb_current, cdb_current_warning = _resolve_curve_pair_from_batch(
+        curve_type="cdb", required_curve_types=required, resolved_curves=resolved_curves,
+        report_date=report_date, prior_date=prior_date,
+    )
+    aaa_current, aaa_current_warning = _resolve_curve_pair_from_batch(
+        curve_type="aaa_credit", required_curve_types=required, resolved_curves=resolved_curves,
+        report_date=report_date, prior_date=prior_date,
+    )
+
+    treasury_prior = treasury_current.get("_prior_snapshot") if treasury_current else None
+    cdb_prior = cdb_current.get("_prior_snapshot") if cdb_current else None
+    aaa_prior = aaa_current.get("_prior_snapshot") if aaa_current else None
+    treasury_prior_warning = treasury_current.get("_prior_warning") if treasury_current else None
+    cdb_prior_warning = cdb_current.get("_prior_warning") if cdb_current else None
+    aaa_prior_warning = aaa_current.get("_prior_warning") if aaa_current else None
+    curves = {
+        "treasury_current": treasury_current,
+        "treasury_prior": treasury_prior,
+        "treasury_current_warning": treasury_current_warning,
+        "treasury_prior_warning": treasury_prior_warning,
+        "cdb_current": cdb_current,
+        "cdb_prior": cdb_prior,
+        "cdb_current_warning": cdb_current_warning,
+        "cdb_prior_warning": cdb_prior_warning,
+        "aaa_current": aaa_current,
+        "aaa_prior": aaa_prior,
+        "aaa_current_warning": aaa_current_warning,
+        "aaa_prior_warning": aaa_prior_warning,
+    }
+    current_curve, prior_curve, current_warning, prior_warning = _select_benchmark_curve(curves, curve_type)
+    relevant_curve_warnings = _ordered_unique_warnings(
+        [
+            *_curve_warnings_for_return_rows(
+                rows,
+                treasury_current_warning=treasury_current_warning,
+                treasury_prior_warning=treasury_prior_warning,
+                cdb_current_warning=cdb_current_warning,
+                cdb_prior_warning=cdb_prior_warning,
+                aaa_current_warning=aaa_current_warning,
+                aaa_prior_warning=aaa_prior_warning,
+            ),
+            current_warning if current_warning not in {
+                treasury_current_warning, cdb_current_warning, aaa_current_warning
+            } else None,
+            prior_warning if prior_warning not in {
+                treasury_prior_warning, cdb_prior_warning, aaa_prior_warning
+            } else None,
+        ]
+    )
+    curve_snapshots = [
+        s for s in (treasury_current, treasury_prior, cdb_current, cdb_prior, aaa_current, aaa_prior)
+        if s is not None
+    ]
+    return {
+        **curves,
+        "current_curve": current_curve,
+        "prior_curve": prior_curve,
+        "current_warning": current_warning,
+        "prior_warning": prior_warning,
+        "curve_snapshots": curve_snapshots,
+        "curve_latest_fallback": any(
+            w and YIELD_CURVE_LATEST_FALLBACK_PREFIX in w for w in relevant_curve_warnings
+        ),
+        "curve_unavailable": any(w and w.startswith("No ") for w in relevant_curve_warnings),
+        "relevant_curve_warnings": relevant_curve_warnings,
+    }
+
+
 def _build_benchmark_excess_payload(
     *,
     report_date: date,
@@ -1490,6 +1783,40 @@ def _build_benchmark_excess_warnings(
     )
 
 
+def _empty_benchmark_excess_envelope(
+    *,
+    report_date: date,
+    period_type: str,
+    period_start: date,
+    period_end: date,
+    benchmark_id: str,
+    rows: list[dict[str, object]],
+    meta,
+) -> dict[str, object]:
+    summary = compute_benchmark_excess(
+        rows, period_start=period_start, period_end=period_end, benchmark_id=benchmark_id,
+        benchmark_curve_current=None, benchmark_curve_prior=None,
+        treasury_curve_current=None, treasury_curve_prior=None,
+        cdb_curve_current=None, cdb_curve_prior=None,
+        aaa_credit_curve_current=None, aaa_credit_curve_prior=None,
+    )
+    bench_warns = [EMPTY_WARNING]
+    if not _benchmark_excess_brinson_sum_matches_explained(summary):
+        bench_warns.append(BENCHMARK_EXCESS_EXPLAINED_MISMATCH)
+    payload = _build_benchmark_excess_payload(
+        report_date=report_date, period_type=period_type,
+        period_start=period_start, period_end=period_end,
+        benchmark_id=benchmark_id, summary=summary, meta=meta,
+        warnings=_ordered_unique_warnings(bench_warns),
+    )
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        ),
+        rows=rows,
+    )
+
+
 def _compute_benchmark_excess_summary(
     *,
     rows: list[dict[str, object]],
@@ -1523,38 +1850,17 @@ def _compute_benchmark_excess_summary(
     )
 
 
-def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict:
-    period_start, period_end = resolve_period(report_date, period_type)
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
-    meta = _meta("bond_analytics.benchmark_excess", report_date, rows)
-
-    if not rows:
-        summary = compute_benchmark_excess(
-            rows, period_start=period_start, period_end=period_end, benchmark_id=benchmark_id,
-            benchmark_curve_current=None, benchmark_curve_prior=None,
-            treasury_curve_current=None, treasury_curve_prior=None,
-            cdb_curve_current=None, cdb_curve_prior=None,
-            aaa_credit_curve_current=None, aaa_credit_curve_prior=None,
-        )
-        bench_warns = [EMPTY_WARNING]
-        if not _benchmark_excess_brinson_sum_matches_explained(summary):
-            bench_warns.append(BENCHMARK_EXCESS_EXPLAINED_MISMATCH)
-        payload = _build_benchmark_excess_payload(
-            report_date=report_date, period_type=period_type,
-            period_start=period_start, period_end=period_end,
-            benchmark_id=benchmark_id, summary=summary, meta=meta,
-            warnings=_ordered_unique_warnings(bench_warns),
-        )
-        return build_formal_result_envelope(
-            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
-        )
-
-    curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
-    curves = _fetch_benchmark_curves(
-        rows, curve_repo=curve_repo,
-        report_date=report_date.isoformat(), prior_date=period_start.isoformat(),
-        benchmark_id=benchmark_id,
-    )
+def _build_benchmark_excess_envelope_from_inputs(
+    *,
+    report_date: date,
+    period_type: str,
+    period_start: date,
+    period_end: date,
+    benchmark_id: str,
+    rows: list[dict[str, object]],
+    meta,
+    curves: dict[str, object],
+) -> dict[str, object]:
     meta = _apply_vendor_meta_update(
         meta,
         curve_snapshots=curves["curve_snapshots"],
@@ -1581,9 +1887,180 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
         benchmark_id=benchmark_id, summary=summary, meta=meta,
         warnings=warnings,
     )
-    return build_formal_result_envelope(
-        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        ),
+        rows=rows,
     )
+
+
+def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict:
+    _cache_key = (
+        report_date.isoformat(),
+        period_type,
+        benchmark_id,
+        *_duckdb_cache_version_token(),
+    )
+    hit, cached = _benchmark_excess_cache.get(_cache_key)
+    if hit:
+        return cached
+
+    period_start, period_end = resolve_period(report_date, period_type)
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    meta = _meta("bond_analytics.benchmark_excess", report_date, rows)
+
+    if not rows:
+        result = _empty_benchmark_excess_envelope(
+            report_date=report_date,
+            period_type=period_type,
+            period_start=period_start,
+            period_end=period_end,
+            benchmark_id=benchmark_id,
+            rows=rows,
+            meta=meta,
+        )
+        _benchmark_excess_cache.set(_cache_key, result)
+        return result
+
+    curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+    curves = _fetch_benchmark_curves(
+        rows, curve_repo=curve_repo,
+        report_date=report_date.isoformat(), prior_date=period_start.isoformat(),
+        benchmark_id=benchmark_id,
+    )
+    result = _build_benchmark_excess_envelope_from_inputs(
+        report_date=report_date,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+        benchmark_id=benchmark_id,
+        rows=rows,
+        meta=meta,
+        curves=curves,
+    )
+    _benchmark_excess_cache.set(_cache_key, result)
+    return result
+
+
+def get_benchmark_excess_many(
+    report_dates: list[date],
+    period_type: str = "MoM",
+    benchmark_id: str = "CDB_INDEX",
+) -> dict[str, dict]:
+    requested_dates = [
+        value for value in dict.fromkeys(report_dates)
+        if isinstance(value, date)
+    ]
+    if not requested_dates:
+        return {}
+    cache_token = _duckdb_cache_version_token()
+    out: dict[str, dict] = {}
+    missing_dates: list[date] = []
+    for report_date in requested_dates:
+        cache_key = (
+            report_date.isoformat(),
+            period_type,
+            benchmark_id,
+            *cache_token,
+        )
+        hit, cached = _benchmark_excess_cache.get(cache_key)
+        if hit:
+            out[report_date.isoformat()] = cached
+        else:
+            missing_dates.append(report_date)
+    if not missing_dates:
+        return out
+
+    repo = _repo()
+    rows_by_date = repo.fetch_bond_analytics_rows_for_dates(
+        report_dates=[value.isoformat() for value in missing_dates]
+    )
+    settings = get_settings()
+    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
+    build_rows = governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
+    manifest_rows = governance_repo.read_all(CACHE_MANIFEST_STREAM)
+
+    period_by_date = {
+        report_date: resolve_period(report_date, period_type)
+        for report_date in missing_dates
+    }
+    curve_requests: list[tuple[str, str]] = []
+    for report_date in missing_dates:
+        rows = rows_by_date.get(report_date.isoformat(), [])
+        if not rows:
+            continue
+        period_start, _period_end = period_by_date[report_date]
+        required = _required_curve_types_for_return_rows(rows) | {
+            BENCHMARK_CURVE_TYPES.get(benchmark_id, "cdb")
+        }
+        for curve_type in sorted(required):
+            curve_requests.append((report_date.isoformat(), curve_type))
+            curve_requests.append((period_start.isoformat(), curve_type))
+    curve_repo = YieldCurveRepository(str(settings.duckdb_path))
+    resolved_curves = curve_repo.resolve_curve_snapshots_many(curve_requests)
+    resolved_curves = {
+        key: (
+            snapshot,
+            (
+                f"{warning}; affected components remain 0."
+                if isinstance(warning, str)
+                and warning.startswith("No ")
+                and "affected components remain 0" not in warning
+                else warning
+            ),
+        )
+        for key, (snapshot, warning) in resolved_curves.items()
+    }
+
+    for report_date in missing_dates:
+        report_date_text = report_date.isoformat()
+        period_start, period_end = period_by_date[report_date]
+        rows = rows_by_date.get(report_date_text, [])
+        lineage = _lineage_from_governance_rows(
+            report_date=report_date_text,
+            rows=rows,
+            build_rows=build_rows,
+            manifest_rows=manifest_rows,
+        )
+        meta = _meta_from_lineage("bond_analytics.benchmark_excess", lineage)
+        if not rows:
+            result = _empty_benchmark_excess_envelope(
+                report_date=report_date,
+                period_type=period_type,
+                period_start=period_start,
+                period_end=period_end,
+                benchmark_id=benchmark_id,
+                rows=rows,
+                meta=meta,
+            )
+        else:
+            curves = _fetch_benchmark_curves_from_batch(
+                rows,
+                resolved_curves=resolved_curves,
+                report_date=report_date_text,
+                prior_date=period_start.isoformat(),
+                benchmark_id=benchmark_id,
+            )
+            result = _build_benchmark_excess_envelope_from_inputs(
+                report_date=report_date,
+                period_type=period_type,
+                period_start=period_start,
+                period_end=period_end,
+                benchmark_id=benchmark_id,
+                rows=rows,
+                meta=meta,
+                curves=curves,
+            )
+        cache_key = (
+            report_date_text,
+            period_type,
+            benchmark_id,
+            *cache_token,
+        )
+        _benchmark_excess_cache.set(cache_key, result)
+        out[report_date_text] = result
+    return {report_date.isoformat(): out[report_date.isoformat()] for report_date in requested_dates if report_date.isoformat() in out}
 
 
 def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dict:
@@ -1658,8 +2135,11 @@ def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dic
             KRDCurveRiskResponse,
         )
     )
-    return build_formal_result_envelope(
-        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        ),
+        rows=rows,
     )
 
 
@@ -1804,8 +2284,11 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
         meta=meta,
         warnings=migration_warnings,
     )
-    return build_formal_result_envelope(
-        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        ),
+        rows=all_rows,
     )
 
 
@@ -2006,13 +2489,16 @@ def get_dv01_risk(
             DV01RiskResponse,
         )
     )
-    return build_formal_result_envelope_from_lineage(
-        trace_id=_trace_id(),
-        result_kind="bond_analytics.dv01_risk",
-        lineage=_lineage(report_date.isoformat(), rows),
-        default_cache_version=CACHE_VERSION,
-        source_surface="bond_analytics",
-        result_payload=payload.model_dump(mode="json"),
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_analytics.dv01_risk",
+            lineage=_lineage(report_date.isoformat(), rows),
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=payload.model_dump(mode="json"),
+        ),
+        rows=rows,
     )
 
 
@@ -2046,13 +2532,16 @@ def get_dv01_reconciliation(report_date: date, accounting_class: str = "OCI") ->
             DV01ReconciliationResponse,
         )
     )
-    return build_formal_result_envelope_from_lineage(
-        trace_id=_trace_id(),
-        result_kind="bond_analytics.dv01_reconciliation",
-        lineage=_lineage(report_date.isoformat(), rows),
-        default_cache_version=CACHE_VERSION,
-        source_surface="bond_analytics",
-        result_payload=payload.model_dump(mode="json"),
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_analytics.dv01_reconciliation",
+            lineage=_lineage(report_date.isoformat(), rows),
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=payload.model_dump(mode="json"),
+        ),
+        rows=rows,
     )
 
 
@@ -2116,13 +2605,16 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
                 DV01MovementResponse,
             )
         )
-        return build_formal_result_envelope_from_lineage(
-            trace_id=_trace_id(),
-            result_kind="bond_analytics.dv01_movement",
-            lineage=_lineage(current_date, [*current_rows, *previous_rows]),
-            default_cache_version=CACHE_VERSION,
-            source_surface="bond_analytics",
-            result_payload=payload.model_dump(mode="json"),
+        return _with_bond_amount_disclosure(
+            build_formal_result_envelope_from_lineage(
+                trace_id=_trace_id(),
+                result_kind="bond_analytics.dv01_movement",
+                lineage=_lineage(current_date, [*current_rows, *previous_rows]),
+                default_cache_version=CACHE_VERSION,
+                source_surface="bond_analytics",
+                result_payload=payload.model_dump(mode="json"),
+            ),
+            rows=[*current_rows, *previous_rows],
         )
 
     movement_payloads = dv01_core.build_dv01_movement_bond_payloads(
@@ -2184,13 +2676,16 @@ def get_dv01_movement(report_date: date, accounting_class: str = "OCI", top_n: i
             DV01MovementResponse,
         )
     )
-    return build_formal_result_envelope_from_lineage(
-        trace_id=_trace_id(),
-        result_kind="bond_analytics.dv01_movement",
-        lineage=_lineage(current_date, [*current_rows, *previous_rows]),
-        default_cache_version=CACHE_VERSION,
-        source_surface="bond_analytics",
-        result_payload=payload.model_dump(mode="json"),
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_analytics.dv01_movement",
+            lineage=_lineage(current_date, [*current_rows, *previous_rows]),
+            default_cache_version=CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload=payload.model_dump(mode="json"),
+        ),
+        rows=[*current_rows, *previous_rows],
     )
 
 
@@ -2347,27 +2842,30 @@ def get_dv01_action_plan(
     lineage = _lineage(report_date.isoformat(), rows)
     result_payload = payload.model_dump(mode="json")
     result_kind = "bond_analytics.dv01_action_plan"
-    return build_result_envelope(
-        basis="analytical",
-        trace_id=_trace_id(),
-        result_kind=result_kind,
-        cache_version=str(lineage.get("cache_version") or CACHE_VERSION),
-        source_version=str(lineage.get("source_version") or "sv_unknown"),
-        rule_version=str(lineage.get("rule_version") or "rv_unknown"),
-        vendor_version=str(lineage.get("vendor_version") or "vv_none"),
-        source_surface="bond_analytics",
-        requested_report_date=report_date.isoformat(),
-        resolved_report_date=report_date.isoformat(),
-        as_of_date=report_date.isoformat(),
-        date_basis=BOND_ANALYTICS_DATE_BASIS,
-        filters_applied={
-            "report_date": report_date.isoformat(),
-            "accounting_class": normalized_class,
-            "policy_basis": policy_basis,
-        },
-        tables_used=[BOND_ANALYTICS_FACT_TABLE],
-        evidence_rows=len(rows),
-        result_payload=result_payload,
+    return _with_bond_amount_disclosure(
+        build_result_envelope(
+            basis="analytical",
+            trace_id=_trace_id(),
+            result_kind=result_kind,
+            cache_version=str(lineage.get("cache_version") or CACHE_VERSION),
+            source_version=str(lineage.get("source_version") or "sv_unknown"),
+            rule_version=str(lineage.get("rule_version") or "rv_unknown"),
+            vendor_version=str(lineage.get("vendor_version") or "vv_none"),
+            source_surface="bond_analytics",
+            requested_report_date=report_date.isoformat(),
+            resolved_report_date=report_date.isoformat(),
+            as_of_date=report_date.isoformat(),
+            date_basis=BOND_ANALYTICS_DATE_BASIS,
+            filters_applied={
+                "report_date": report_date.isoformat(),
+                "accounting_class": normalized_class,
+                "policy_basis": policy_basis,
+            },
+            tables_used=[BOND_ANALYTICS_FACT_TABLE],
+            evidence_rows=len(rows),
+            result_payload=result_payload,
+        ),
+        rows=rows,
     )
 
 
@@ -3010,9 +3508,18 @@ def _build_action_attribution_placeholder_response(
             ActionAttributionResponse,
         )
     )
-    return build_formal_result_envelope(
-        result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
-        result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
+    formal_meta = analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"})
+    candidate_meta = _action_attribution_candidate_meta(
+        formal_meta=formal_meta,
+        report_date=report_date,
+        quality_flag="warning",
+    )
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=candidate_meta,
+            result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
+        ),
+        rows=[],
     )
 
 
@@ -3056,9 +3563,17 @@ def _build_action_attribution_success_response(
         )
     )
     meta_adj = meta.model_copy(update={"quality_flag": "warning" if payload["warnings"] else "ok"})
-    return build_formal_result_envelope(
-        result_meta=meta_adj,
-        result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
+    candidate_meta = _action_attribution_candidate_meta(
+        formal_meta=meta_adj,
+        report_date=report_date,
+        quality_flag=meta_adj.quality_flag,
+    )
+    return _with_bond_amount_disclosure(
+        build_formal_result_envelope(
+            result_meta=candidate_meta,
+            result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
+        ),
+        rows=rows_end,
     )
 
 
@@ -3130,6 +3645,55 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         if str(record.get("cache_key")) == CACHE_KEY
         and str(record.get("job_name")) == JOB_NAME
     ]
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records(settings)):
+        if str(record.get("report_date")) != report_date:
+            continue
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_inflight_record(record):
+            _mark_stale_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                report_date=report_date,
+                error_message="Marked stale bond analytics idempotent refresh run as failed.",
+            )
+            refreshed_records = _load_refresh_run_records(settings)
+            return next(
+                (
+                    refreshed
+                    for refreshed in reversed(refreshed_records)
+                    if str(refreshed.get("run_id")) == str(record.get("run_id"))
+                ),
+                record,
+            )
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": CACHE_KEY,
+        "idempotency_replay": True,
+    }
 
 
 def _latest_inflight_refresh(settings: Settings, *, report_date: str) -> dict[str, object] | None:

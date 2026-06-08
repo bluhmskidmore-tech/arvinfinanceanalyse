@@ -8,6 +8,7 @@ Set-Location $root
 $powershellExe = (Get-Command powershell -ErrorAction Stop).Source
 $logRoot = Join-Path $root "tmp-governance\runtime-clean\logs"
 New-Item -ItemType Directory -Force $logRoot | Out-Null
+$script:ProcessInspectionAvailable = $true
 
 function Wait-HttpEndpoint {
   param(
@@ -44,14 +45,20 @@ function Wait-TcpPort {
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
+    $client = [System.Net.Sockets.TcpClient]::new()
     try {
-      $connection = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop |
-        Where-Object { $_.LocalAddress -in @($ListenHost, '0.0.0.0', '::', '::1') } |
-        Select-Object -First 1
-      if ($connection) {
-        return $connection
+      $connectTask = $client.ConnectAsync($ListenHost, $Port)
+      if ($connectTask.Wait(500) -and $client.Connected) {
+        $owner = Get-DevListeningPortOwner -Port $Port
+        return [pscustomobject]@{
+          LocalAddress = $ListenHost
+          LocalPort = $Port
+          OwningProcess = if ($owner) { $owner.OwningProcess } else { $null }
+        }
       }
     } catch {
+    } finally {
+      $client.Dispose()
     }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
@@ -65,12 +72,18 @@ function Get-NativeScriptProcess {
     [string]$ScriptName
   )
 
-  return Get-CimInstance Win32_Process |
-    Where-Object {
-      $_.Name -eq "powershell.exe" -and
-      $_.CommandLine -like ("*" + $ScriptName + "*")
-    } |
-    Select-Object -First 1
+  try {
+    return Get-CimInstance Win32_Process |
+      Where-Object {
+        $_.Name -eq "powershell.exe" -and
+        $_.CommandLine -like ("*" + $ScriptName + "*")
+      } |
+      Select-Object -First 1
+  } catch {
+    $script:ProcessInspectionAvailable = $false
+    Write-Warning "process lookup failed for ${ScriptName}: $($_.Exception.Message)"
+    return $null
+  }
 }
 
 function Get-DevListeningPortOwner {
@@ -106,7 +119,7 @@ function Quote-CmdArgument {
   return '"' + ($Value -replace '"', '""') + '"'
 }
 
-function Assert-PortAvailableForScriptStart {
+function Find-DevScriptLaunch {
   param(
     [Parameter(Mandatory = $true)]
     [int]$Port,
@@ -118,12 +131,24 @@ function Assert-PortAvailableForScriptStart {
 
   $listener = Get-DevListeningPortOwner -Port $Port
   if (-not $listener) {
-    return
+    return $null
   }
 
   $scriptProcess = Get-NativeScriptProcess -ScriptName $ScriptName
+  if (-not $script:ProcessInspectionAvailable) {
+    Write-Warning "$Description port $Port already has a listener (PID=$($listener.OwningProcess)); process verification unavailable."
+    return [pscustomobject]@{
+      Started = $false
+      ProcessId = $listener.OwningProcess
+      PortVerifiedOnly = $true
+    }
+  }
   if ($scriptProcess) {
-    return
+    return [pscustomobject]@{
+      Started = $false
+      ProcessId = [int]$scriptProcess.ProcessId
+      PortVerifiedOnly = $false
+    }
   }
 
   $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
@@ -132,6 +157,20 @@ function Assert-PortAvailableForScriptStart {
     "$Description port $Port already has a listener (PID=$($listener.OwningProcess), process=$processName), " +
     "but $ScriptName is not running. Run scripts\dev-down.ps1 or stop the stale process before dev-up."
   )
+}
+
+function Assert-PortAvailableForScriptStart {
+  param(
+    [Parameter(Mandatory = $true)]
+    [int]$Port,
+    [Parameter(Mandatory = $true)]
+    [string]$ScriptName,
+    [Parameter(Mandatory = $true)]
+    [string]$Description
+  )
+
+  $existingLaunch = Find-DevScriptLaunch -Port $Port -ScriptName $ScriptName -Description $Description
+  return $existingLaunch
 }
 
 function Wait-FileReady {
@@ -172,7 +211,15 @@ function Assert-NativeProcessRunning {
     [scriptblock]$Predicate
   )
 
-  $match = Get-CimInstance Win32_Process | Where-Object $Predicate | Select-Object -First 1
+  try {
+    $match = Get-CimInstance Win32_Process | Where-Object $Predicate | Select-Object -First 1
+  } catch {
+    $script:ProcessInspectionAvailable = $false
+    Write-Warning "$Description process verification unavailable: $($_.Exception.Message)"
+    return [pscustomobject]@{
+      ProcessId = "unknown"
+    }
+  }
   if (-not $match) {
     throw "Expected $Description process to be running, but no matching process was found."
   }
@@ -387,6 +434,16 @@ function Start-DevScriptDetached {
   }
 
   Start-Sleep -Milliseconds 250
+  if (-not $script:ProcessInspectionAvailable) {
+    Write-Warning "launched $ScriptName; process verification unavailable"
+    return [pscustomobject]@{
+      Started = $true
+      ProcessId = "unknown"
+      StdoutPath = $stdoutPath
+      StderrPath = $stderrPath
+    }
+  }
+
   $process = Get-NativeScriptProcess -ScriptName $ScriptName
   if (-not $process) {
     $stderr = Get-RecentLogLines -Path $stderrPath
@@ -411,10 +468,19 @@ if ($LASTEXITCODE -ne 0) {
   throw "dev-postgres-up.ps1 failed; aborting dev-up startup."
 }
 
-$postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -Description "local Postgres dev cluster"
+$postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -TimeoutSeconds 120 -Description "local Postgres dev cluster"
 
-Assert-PortAvailableForScriptStart -Port 7888 -ScriptName "dev-api.ps1" -Description "API"
-$apiLaunch = Start-DevScriptDetached -ScriptName "dev-api.ps1"
+$existingApiLaunch = Assert-PortAvailableForScriptStart -Port 7888 -ScriptName "dev-api.ps1" -Description "API"
+if ($existingApiLaunch) {
+  $apiLaunch = [pscustomobject]@{
+    Started = $false
+    ProcessId = $existingApiLaunch.ProcessId
+    StdoutPath = Join-Path $logRoot "dev-api.out.log"
+    StderrPath = Join-Path $logRoot "dev-api.err.log"
+  }
+} else {
+  $apiLaunch = Start-DevScriptDetached -ScriptName "dev-api.ps1"
+}
 $workerLaunch = Start-DevScriptDetached -ScriptName "dev-worker.ps1"
 $apiLogPaths = @($apiLaunch.StderrPath, $apiLaunch.StdoutPath, (Join-Path $logRoot "dev-api.err.log"), (Join-Path $logRoot "dev-api.out.log"))
 $workerLogPaths = @($workerLaunch.StderrPath, $workerLaunch.StdoutPath, (Join-Path $logRoot "dev-worker.err.log"), (Join-Path $logRoot "dev-worker.out.log"))
@@ -430,6 +496,16 @@ if ($LASTEXITCODE -ne 0) {
 
 $apiHealth = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/health" -Description "API health" -LogPaths $apiLogPaths
 $apiReady = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness" -LogPaths $apiLogPaths
+$homeSnapshotWarm = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/ui/home/snapshot" -TimeoutSeconds 120 -Description "home snapshot warm cache" -LogPaths $apiLogPaths
+$apiReadyAfterHomeWarm = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness after home snapshot warm cache" -LogPaths $apiLogPaths
+$apiReadyAfterHomeWarmPayload = $apiReadyAfterHomeWarm.Content | ConvertFrom-Json
+$homeSnapshotPrewarm = $apiReadyAfterHomeWarmPayload.checks.home_snapshot_prewarm
+if ($null -eq $homeSnapshotPrewarm) {
+  throw "API readiness after home snapshot warm cache did not expose checks.home_snapshot_prewarm. Restart the API so the home prewarm guard is active."
+}
+if ($homeSnapshotPrewarm.status -ne "ready") {
+  throw "Home snapshot prewarm is not ready: status=$($homeSnapshotPrewarm.status) error=$($homeSnapshotPrewarm.error)"
+}
 $bondDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates" -LogPaths $apiLogPaths
 $riskDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates" -LogPaths $apiLogPaths
 $riskDatesPayload = $riskDates.Content | ConvertFrom-Json
@@ -448,10 +524,10 @@ $riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
 $frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 $frontendLogPaths = @($frontendLaunch.StderrPath, $frontendLaunch.StdoutPath, (Join-Path $logRoot "dev-frontend.err.log"), (Join-Path $logRoot "dev-frontend.out.log"))
 $frontendRoot = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888" -Description "frontend root" -LogPaths $frontendLogPaths
-$frontendApiClient = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888/src/api/client.ts" -Description "frontend Vite API client module" -LogPaths $frontendLogPaths
+$frontendClientContext = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888/src/api/clientContext.ts" -Description "frontend Vite API client context module" -LogPaths $frontendLogPaths
 $keepaliveLaunch = Start-DevScriptDetached -ScriptName "dev-keepalive.ps1"
 try {
-  $workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -Description "worker heartbeat"
+  $workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -TimeoutSeconds 120 -Description "worker heartbeat"
 } catch {
   throw (Add-LogContext -Message ($_.Exception.Message) -LogPaths $workerLogPaths)
 }
@@ -484,9 +560,11 @@ Write-Host "Frontend PID: $($frontendProcess.ProcessId)" -ForegroundColor DarkGr
 Write-Host "Postgres PID: $($postgresPort.OwningProcess)" -ForegroundColor DarkGray
 Write-Host "API health:   $($apiHealth.StatusCode)" -ForegroundColor DarkGray
 Write-Host "API ready:    $($apiReady.StatusCode)" -ForegroundColor DarkGray
+Write-Host "Home cache:   $($homeSnapshotWarm.StatusCode) snapshot warmed" -ForegroundColor DarkGray
+Write-Host "Home prewarm: $($homeSnapshotPrewarm.status) ($($homeSnapshotPrewarm.last_duration_ms) ms) error=$($homeSnapshotPrewarm.error)" -ForegroundColor DarkGray
 Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Risk tensor:  $($riskTensorSmoke.Count) detail + $($riskDatesSmoke.Count) dates concurrent checks, report_date=$riskReportDate" -ForegroundColor DarkGray
-Write-Host "Frontend:     $($frontendRoot.StatusCode) root + $($frontendApiClient.StatusCode) API client module" -ForegroundColor DarkGray
+Write-Host "Frontend:     $($frontendRoot.StatusCode) root + $($frontendClientContext.StatusCode) client context module" -ForegroundColor DarkGray
 Write-Host "Worker smoke: $($workerHeartbeat.token)" -ForegroundColor DarkGray
 Write-Host "Lineage audit: clean" -ForegroundColor DarkGray
 Write-Host "API logs:      $($apiLaunch.StdoutPath) / $($apiLaunch.StderrPath)" -ForegroundColor DarkGray

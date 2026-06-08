@@ -26,6 +26,16 @@
   box-shadow: 0 8px 18px rgba(15, 37, 68, 0.05);
 }
 
+.currencyBasisBanner {
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--moss-color-info-100);
+  background: linear-gradient(180deg, rgba(233, 244, 255, 0.78) 0%, rgba(248, 252, 255, 0.98) 100%);
+  color: var(--moss-color-info-900);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .holdingsKpiGrid {
   display: grid;
   grid-template-columns: 1.08fr repeat(5, minmax(118px, 1fr)) 1.15fr;
@@ -88,6 +98,81 @@
   border-top: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-600);
   font-size: 12px;
+}
+
+.mobileTableReadout {
+  display: none;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  background: var(--moss-color-neutral-50);
+}
+
+.mobileReadoutHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mobileReadoutHeader span {
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobileReadoutHeader strong {
+  color: var(--moss-color-primary-800);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.mobileReadoutGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mobileReadoutField {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.mobileReadoutField span {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileReadoutField strong {
+  overflow: hidden;
+  color: var(--moss-color-primary-900);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileReadoutField small {
+  overflow: hidden;
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionCardTitle {
@@ -813,14 +898,28 @@
 @media (max-width: 720px) {
   .referenceTopbar {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
   }
 
   .referenceSignalStrip {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
   }
 
   .referenceStatusPills {
     justify-content: flex-start;
+  }
+
+  .referenceTitle {
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  .referenceSubtitle {
+    overflow-wrap: anywhere;
   }
 
   .holdingsKpiGrid,
@@ -838,5 +937,17 @@
 
   .referenceKpiValue {
     white-space: normal;
+  }
+
+  .mobileTableReadout {
+    display: grid;
+  }
+
+  .mobileReadoutHeader {
+    align-items: flex-start;
+  }
+
+  .mobileReadoutGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

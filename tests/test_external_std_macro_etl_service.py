@@ -4,10 +4,14 @@ import json
 
 import duckdb
 
-from backend.app.repositories.external_data_migrations_extra import ensure_std_external_macro_schema
+from backend.app.repositories.external_data_migrations_extra import (
+    ensure_std_external_macro_schema,
+)
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
-from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
+from backend.app.services.external_std_macro_etl_service import (
+    ExternalStdMacroEtlService,
+)
 
 
 def _entry(sid: str) -> ExternalDataCatalogEntry:

@@ -20,7 +20,6 @@ from tests.test_ledger_import_flow import (
     _pack_sample,
 )
 
-
 LEDGER_READ_HEADERS = {"X-User-Id": "ledger-read-user", "X-User-Role": "viewer"}
 
 

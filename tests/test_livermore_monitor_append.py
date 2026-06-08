@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import duckdb
-import pytest
 
 from backend.app.tasks.livermore_monitor_append import append_daily_monitor
 

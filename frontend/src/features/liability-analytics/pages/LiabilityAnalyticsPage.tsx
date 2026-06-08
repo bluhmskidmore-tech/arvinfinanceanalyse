@@ -63,8 +63,23 @@ const sectionCardStyle = {
   boxShadow: designTokens.shadow.card,
 } as const;
 
-function sumNumericRaw(values: Array<number | null | undefined>): number {
-  return values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+function sumKnownNumericRaw(values: Array<number | null | undefined>): number | null {
+  let hasValue = false;
+  const sum = values.reduce<number>((acc, value) => {
+    if (value === null || value === undefined) {
+      return acc;
+    }
+    hasValue = true;
+    return acc + value;
+  }, 0);
+  return hasValue ? sum : null;
+}
+
+function formatYiOrDash(value: number | null | undefined, digits = 0): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  return value.toFixed(digits);
 }
 
 function bucketFallsWithinOneYear(bucket: string) {
@@ -435,13 +450,13 @@ export default function LiabilityAnalyticsPage() {
     }
     return parsed / 100_000_000;
   }, [balanceOverviewQuery.data?.result.total_market_value_amount]);
-  const liabilityTotalYi = useMemo((): number => {
+  const liabilityTotalYi = useMemo((): number | null => {
     const fromCp = numericToYiNumeric(cpQuery.data?.total_value ?? null)?.raw;
-    const fromBuckets = sumNumericRaw(dailyStructure.map((item) => item.amountYi?.raw));
-    return (fromCp ?? fromBuckets) ?? 0;
+    const fromBuckets = sumKnownNumericRaw(dailyStructure.map((item) => item.amountYi?.raw));
+    return fromCp ?? fromBuckets;
   }, [cpQuery.data?.total_value, dailyStructure]);
-  const firstYearPressureYi = useMemo((): number => {
-    return sumNumericRaw(
+  const firstYearPressureYi = useMemo((): number | null => {
+    return sumKnownNumericRaw(
       dailyTerm.filter((item) => bucketFallsWithinOneYear(item.bucket)).map((item) => item.amountYi?.raw),
     );
   }, [dailyTerm]);
@@ -452,9 +467,27 @@ export default function LiabilityAnalyticsPage() {
   /** 风险全景：维度来自真实桶/对手方衍生；展示列为前端聚合文案 */
   const riskOverviewRows = useMemo(
     () => [
-      { label: "期限错配", level: firstYearPressureYi > 0 ? "中高" : "低", trend: "↑", status: "关注", detail: `${firstYearPressureYi.toFixed(0)} 亿` },
-      { label: "流动性压力", level: liabilityTotalYi > 0 ? "中高" : "低", trend: "↑", status: "关注", detail: `${liabilityTotalYi.toFixed(0)} 亿` },
-      { label: "负债滚续压力", level: firstYearPressureYi > 100 ? "高" : "中", trend: "↑", status: "预警", detail: `${firstYearPressureYi.toFixed(0)} 亿` },
+      {
+        label: "期限错配",
+        level: firstYearPressureYi === null ? "—" : firstYearPressureYi > 0 ? "中高" : "低",
+        trend: "↑",
+        status: "关注",
+        detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
+      },
+      {
+        label: "流动性压力",
+        level: liabilityTotalYi === null ? "—" : liabilityTotalYi > 0 ? "中高" : "低",
+        trend: "↑",
+        status: "关注",
+        detail: `${formatYiOrDash(liabilityTotalYi)} 亿`,
+      },
+      {
+        label: "负债滚续压力",
+        level: firstYearPressureYi === null ? "—" : firstYearPressureYi > 100 ? "高" : "中",
+        trend: "↑",
+        status: "预警",
+        detail: `${formatYiOrDash(firstYearPressureYi)} 亿`,
+      },
       { label: "对手方集中度", level: topCounterpartyShare, trend: "→", status: "关注", detail: topCounterpartyShare },
       { label: "已发资产", level: assetTotalYi === null ? "—" : `${assetTotalYi.toFixed(0)} 亿`, trend: "↓", status: "正常", detail: balanceOverviewQuery.data?.result.report_date ?? "—" },
     ],
@@ -775,7 +808,7 @@ export default function LiabilityAnalyticsPage() {
                         <KpiCard label="资产收益" value={yieldKpi?.asset_yield?.display ?? "—"} detail="静态口径" valueVariant="text" />
                         <KpiCard label="负债成本" value={yieldKpi?.liability_cost?.display ?? "—"} detail="静态口径" valueVariant="text" />
                         <KpiCard label="净息差" value={yieldKpi?.nim?.display ?? "—"} detail="NIM" valueVariant="text" />
-                        <KpiCard label="1Y压力" value={`${firstYearPressureYi.toFixed(2)}亿`} detail="到期负债" valueVariant="text" />
+                        <KpiCard label="1Y压力" value={`${formatYiOrDash(firstYearPressureYi, 2)}亿`} detail="到期负债" valueVariant="text" />
                       </div>
                       <div
                         style={{

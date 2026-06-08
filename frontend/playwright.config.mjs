@@ -3,6 +3,8 @@ import { defineConfig } from "@playwright/test";
 const playwrightPort = process.env.MOSS_PLAYWRIGHT_PORT ?? "5888";
 const playwrightBaseURL =
   process.env.MOSS_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${playwrightPort}`;
+const playwrightOutputDir =
+  process.env.MOSS_PLAYWRIGHT_OUTPUT_DIR ?? "../.codex-tmp/playwright-results";
 
 export default defineConfig({
   testDir: "./tests/playwright",
@@ -11,7 +13,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
-  outputDir: "../.codex-tmp/playwright-results",
+  outputDir: playwrightOutputDir,
   webServer:
     process.env.MOSS_PLAYWRIGHT_USE_WEB_SERVER === "1"
       ? {
@@ -21,7 +23,7 @@ export default defineConfig({
           timeout: 120_000,
           env: {
             ...process.env,
-            VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "mock",
+            VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "real",
           },
         }
       : undefined,

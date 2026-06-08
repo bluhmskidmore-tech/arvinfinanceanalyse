@@ -14,7 +14,6 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-
 from backend.app.core_finance.attribution_core import (
     DayCountConvention,
     QualityFlag,
@@ -32,7 +31,6 @@ from backend.app.core_finance.attribution_core import (
     safe_divide,
     validate_pnl_scope,
 )
-
 
 # ---------------------------------------------------------------------------
 # calculate_reconciliation — core attribution residual logic

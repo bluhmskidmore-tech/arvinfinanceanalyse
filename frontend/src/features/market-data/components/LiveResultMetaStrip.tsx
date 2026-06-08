@@ -15,6 +15,13 @@ export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripP
   if (!meta) {
     return null;
   }
+  const basisLabel: Record<ResultMeta["basis"], string> = {
+    formal: "正式口径",
+    analytical: "分析口径",
+    scenario: "情景口径",
+    ledger: "台账口径",
+    mock: "模拟口径",
+  };
   const qualityLabel: Record<ResultMeta["quality_flag"], string> = {
     ok: "正常",
     warning: "预警",
@@ -33,10 +40,20 @@ export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripP
       : meta.fallback_mode === "latest_snapshot"
         ? "最新快照降级"
         : meta.fallback_mode;
+  const displayValue = (value: string | null | undefined, emptyLabel = "未提供") =>
+    value == null || value === "" ? emptyLabel : value;
+  const reportDate = meta.resolved_report_date || meta.requested_report_date;
+  const formalUseAllowedLabel = meta.formal_use_allowed ? "是" : "否";
   const items = [
+    { label: `口径=${basisLabel[meta.basis] ?? meta.basis}` },
+    { label: `正式可用=${formalUseAllowedLabel}` },
     { label: `质量=${qualityLabel[meta.quality_flag] ?? meta.quality_flag}` },
     { label: `供应商状态=${vendorLabel[meta.vendor_status] ?? meta.vendor_status}` },
     { label: `降级模式=${fallbackLabel}` },
+    { label: `报告日=${displayValue(reportDate)}` },
+    { label: `数据截至=${displayValue(meta.as_of_date)}` },
+    { label: `降级日期=${displayValue(meta.fallback_date)}` },
+    { label: `生成时间=${meta.generated_at}` },
     { label: `供应商版本=${meta.vendor_version}`, long: true },
     { label: `来源版本=${meta.source_version}`, long: true },
     { label: `追踪编号=${meta.trace_id}`, long: true },

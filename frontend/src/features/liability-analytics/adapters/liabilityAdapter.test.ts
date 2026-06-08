@@ -82,7 +82,7 @@ describe("adaptLiabilityCounterparty", () => {
     expect(out.vm).toBeNull();
   });
 
-  it("handles null counterparty value and zero total without NaN pct", () => {
+  it("keeps null counterparty share unknown when total is zero", () => {
     const out = adaptLiabilityCounterparty({
       payload: payload({
         total_value: num({ raw: 0, unit: "yuan", sign_aware: false }),
@@ -91,9 +91,20 @@ describe("adaptLiabilityCounterparty", () => {
       isLoading: false,
       isError: false,
     });
-    expect(out.vm?.rows[0]?.share?.raw).toBe(0);
-    expect(out.vm?.rows[0]?.share?.unit).toBe("pct");
+    expect(out.vm?.rows[0]?.share).toBeNull();
     expect(out.vm?.rows[0]?.value).toBeNull();
     expect(out.vm?.rows[0]?.weightedCost).toBeNull();
+  });
+
+  it("does not mark an unsupported-unit total as an empty dataset", () => {
+    const unsupportedTotal = { ...governedNumeric(200, "yuan"), unit: "wan" as Numeric["unit"] };
+
+    const out = adaptLiabilityCounterparty({
+      payload: payload({ total_value: unsupportedTotal, top_10: [] }),
+      isLoading: false,
+      isError: false,
+    });
+
+    expect(out.state.kind).toBe("ok");
   });
 });

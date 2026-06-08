@@ -66,6 +66,7 @@ def risk_tensor_dates_envelope(
             continue
         report_dates.append(candidate_report_date)
 
+    latest_report_date = report_dates[0] if report_dates else None
     manifest_lineage: dict[str, object] | None = None
     source_version_value = "sv_risk_tensor_empty"
     rule_version_value = RULE_VERSION
@@ -96,6 +97,10 @@ def risk_tensor_dates_envelope(
         rule_version=rule_version_value,
         vendor_version=vendor_version_value,
         source_surface="risk_tensor",
+        requested_report_date=latest_report_date,
+        resolved_report_date=latest_report_date,
+        as_of_date=latest_report_date,
+        date_basis="formal_snapshot" if latest_report_date else None,
         result_payload={
             "report_dates": report_dates,
             "blocked_report_dates": blocked_report_dates,

@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import type { VerdictPayload } from "../../../api/contracts";
+import type { Numeric, VerdictPayload } from "../../../api/contracts";
 import { DecisionRailSection } from "./sections/DecisionRailSection";
 import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen";
 import { mapToHomeFirstScreenView } from "./dashboardHomeFirstScreenView";
@@ -23,6 +23,16 @@ const verdict: VerdictPayload = {
   reasons: [{ label: "duration", value: "4.20", detail: "duration moved higher", tone: "warning" }],
   suggestions: [{ text: "review duration", link: "/risk-tensor" }],
 };
+
+function numeric(raw: number, display: string, unit: Numeric["unit"] = "ratio"): Numeric {
+  return {
+    raw,
+    display,
+    unit,
+    precision: 2,
+    sign_aware: false,
+  };
+}
 
 function decisionActions(view: DashboardHomeFirstScreenView): readonly DecisionActionForTest[] {
   return ((view.decisionRail as { actions?: readonly DecisionActionForTest[] }).actions ?? []);
@@ -106,6 +116,7 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 2,
       snapshotUnavailable: false,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     expect(decisionActions(view)).toEqual(
@@ -113,13 +124,13 @@ describe("dashboard home first-screen actions", () => {
         expect.objectContaining({
           title: "review duration",
           to: "/risk-tensor?report_date=2026-04-30",
-          sourceLabel: "risk-tensor",
+          sourceLabel: "风险张量",
           statusKind: "ready",
         }),
         expect.objectContaining({
           id: "risk-review-queue",
           to: "/decision-items?source=dashboard-home&report_date=2026-04-30&action_id=risk-review-queue",
-          sourceLabel: "decision-items",
+          sourceLabel: "待办",
         }),
       ]),
     );
@@ -138,6 +149,7 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 2,
       snapshotUnavailable: false,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     expect(decisionActions(view)).toEqual(
@@ -145,7 +157,7 @@ describe("dashboard home first-screen actions", () => {
         expect.objectContaining({
           id: "risk-review-queue",
           to: "/decision-items?source=dashboard-home&report_date=2026-04-30&action_id=risk-review-queue",
-          sourceLabel: "decision-items",
+          sourceLabel: "待办",
           statusKind: "ready",
         }),
       ]),
@@ -165,6 +177,7 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 2,
       snapshotUnavailable: false,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     expect(decisionActions(view)).toEqual(
@@ -172,7 +185,7 @@ describe("dashboard home first-screen actions", () => {
         expect.objectContaining({
           id: "risk-review-queue",
           to: undefined,
-          sourceLabel: "decision-items",
+          sourceLabel: "待办",
           statusKind: "stale",
         }),
       ]),
@@ -200,15 +213,61 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 0,
       snapshotUnavailable: false,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     expect(decisionActions(view)).toEqual([
       expect.objectContaining({
         title: "review linked duration date",
         to: "/risk-tensor?report_date=2026-04-30&tab=dv01#bucket",
-        sourceLabel: "risk-tensor",
+        sourceLabel: "风险张量",
       }),
     ]);
+  });
+
+  it("does not surface generic directionality copy as a business conclusion", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict: {
+        ...verdict,
+        conclusion: "首屏整体偏多，可基于规模与收益做方向性判断",
+      },
+      metrics: [
+        {
+          id: "aum",
+          label: "债券资产规模",
+          caliberLabel: null,
+          value: numeric(366_640_000_000, "3,666.40 亿", "yuan"),
+          delta: numeric(-0.0112, "-1.12%", "pct"),
+          tone: "negative",
+          detail: "",
+          history: [1, 2],
+        },
+        {
+          id: "yield",
+          label: "年度损益（不扣FTP）",
+          caliberLabel: null,
+          value: numeric(3_639_000_000, "+36.39 亿", "yuan"),
+          delta: numeric(0.2251, "+22.51%", "pct"),
+          tone: "positive",
+          detail: "",
+          history: [1, 2],
+        },
+      ],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    expect(view.decisionRail.conclusion).toBe(
+      "债券资产规模 3,666.40亿，年度损益（不扣FTP） +36.39亿；趋势判断待复核。",
+    );
   });
 
   it("does not fabricate clickable action links when the home snapshot is unavailable", () => {
@@ -224,6 +283,7 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 0,
       snapshotUnavailable: true,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     const actions = decisionActions(view);
@@ -250,6 +310,7 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 0,
       snapshotUnavailable: false,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     const actions = decisionActions(view);
@@ -260,6 +321,79 @@ describe("dashboard home first-screen actions", () => {
         to: undefined,
         statusKind: "empty",
       }),
+    );
+  });
+
+  it("does not fabricate first-screen risk strip items before supplemental data hydrates", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict,
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    expect(view.keyRiskStrip).toEqual([]);
+  });
+
+  it("hydrates first-screen risk strip items from real bond supplemental data", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict,
+      metrics: [],
+      attribution: null,
+      bondHeadline: {
+        report_date: "2026-04-30",
+        prev_report_date: "2026-04-29",
+        kpis: {
+          total_market_value: numeric(328_709_000_000, "3,287.09 亿", "yuan"),
+          unrealized_pnl: numeric(12_300_000, "1,230.00 万", "yuan"),
+          weighted_ytm: numeric(0.023, "2.30%", "pct"),
+          weighted_duration: numeric(4.18, "4.18"),
+          weighted_coupon: numeric(0.031, "3.10%", "pct"),
+          credit_spread_median: numeric(0.0069, "69bp", "bp"),
+          total_dv01: numeric(9_812_345, "9,812,345.00", "dv01"),
+          bond_count: 128,
+        },
+        prev_kpis: null,
+      },
+      portfolio: {
+        report_date: "2026-04-30",
+        total_market_value: numeric(328_709_000_000, "3,287.09 亿", "yuan"),
+        weighted_ytm: numeric(0.023, "2.30%", "pct"),
+        weighted_duration: numeric(4.18, "4.18"),
+        weighted_coupon: numeric(0.031, "3.10%", "pct"),
+        total_dv01: numeric(9_812_345, "9,812,345.00", "dv01"),
+        bond_count: 128,
+        credit_weight: numeric(0.621, "62.10%", "pct"),
+        issuer_hhi: numeric(0.08, "8.00%", "pct"),
+        issuer_top5_weight: numeric(0.412, "41.20%", "pct"),
+        by_asset_class: [],
+        warnings: [],
+        computed_at: "2026-04-30T16:00:00Z",
+      },
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    expect(view.keyRiskStrip).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "risk-dv01", value: "9,812,345.00" }),
+        expect.objectContaining({ id: "risk-duration", value: "4.18" }),
+        expect.objectContaining({ id: "risk-credit", value: "62.10%" }),
+        expect.objectContaining({ id: "risk-top5", value: "41.20%" }),
+      ]),
     );
   });
 
@@ -279,6 +413,7 @@ describe("dashboard home first-screen actions", () => {
       alertCount: 0,
       snapshotUnavailable: false,
       snapshotStale: false,
+      snapshotLoading: false,
     });
 
     expect(decisionActions(view)).toEqual([

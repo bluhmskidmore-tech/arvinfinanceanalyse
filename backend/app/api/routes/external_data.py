@@ -6,14 +6,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-import duckdb
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
-from backend.app.services.external_data_query_service import (
-    fetch_series_data_page,
-    fetch_series_data_recent,
-)
 from backend.app.services.external_data_service import default_service
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
@@ -89,17 +83,10 @@ def get_series_data(
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
     _ensure_external_data_read_allowed(auth)
-    settings = get_settings()
-    path = str(settings.duckdb_path)
-    conn = duckdb.connect(path, read_only=True)
-    try:
-        repo = ExternalDataCatalogRepository(conn=conn)
-        entry = repo.get_by_series_id(series_id.strip())
-        if entry is None:
-            raise HTTPException(status_code=404, detail="series_id not found")
-        page = fetch_series_data_page(conn, entry, limit=limit, offset=offset)
-    finally:
-        conn.close()
+    svc = default_service()
+    page = svc.get_series_data_page(series_id.strip(), limit=limit, offset=offset)
+    if page is None:
+        raise HTTPException(status_code=404, detail="series_id not found")
     return jsonable_encoder(
         {
             "series_id": series_id,
@@ -120,17 +107,10 @@ def get_series_data_recent(
     limit: int = Query(10_000, ge=1, le=50_000),
 ) -> dict[str, object]:
     _ensure_external_data_read_allowed(auth)
-    settings = get_settings()
-    path = str(settings.duckdb_path)
-    conn = duckdb.connect(path, read_only=True)
-    try:
-        repo = ExternalDataCatalogRepository(conn=conn)
-        entry = repo.get_by_series_id(series_id.strip())
-        if entry is None:
-            raise HTTPException(status_code=404, detail="series_id not found")
-        page = fetch_series_data_recent(conn, entry, days=days, limit=limit)
-    finally:
-        conn.close()
+    svc = default_service()
+    page = svc.get_series_data_recent(series_id.strip(), days=days, limit=limit)
+    if page is None:
+        raise HTTPException(status_code=404, detail="series_id not found")
     return jsonable_encoder(
         {
             "series_id": series_id,

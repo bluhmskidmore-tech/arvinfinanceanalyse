@@ -6,6 +6,7 @@ import {
   mapToHomeFirstScreenView,
   type MapToHomeFirstScreenViewInput,
 } from "./dashboardHomeFirstScreenView";
+import { useMockHomeFirstScreenView } from "./useMockHomeFirstScreenView";
 
 export type DashboardHomeFirstScreenModel = ReturnType<typeof useDashboardHomeFirstScreenViewModel>;
 export type DashboardHomeSnapshotBoundary = DashboardHomeFirstScreenModel["snapshotBoundary"];
@@ -37,6 +38,9 @@ export function useDashboardHomeFirstScreenViewModel() {
     snapshotReportDate || initialEffectiveReportDate || requestedReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
+  const snapshotLoading =
+    dataClient.mode === "real" && snapshotQuery.isFetching && !snapshotResult;
+  const mockFirstScreenView = useMockHomeFirstScreenView(useMockFallback);
   const snapshotStale =
     dataClient.mode === "real" && Boolean(reportDateDataWarning) && Boolean(snapshotResult);
 
@@ -67,6 +71,7 @@ export function useDashboardHomeFirstScreenViewModel() {
       alertCount,
       snapshotUnavailable,
       snapshotStale,
+      snapshotLoading,
     }),
     [
       alertCount,
@@ -76,11 +81,13 @@ export function useDashboardHomeFirstScreenViewModel() {
       sanitizedMetrics,
       snapshotMeta,
       snapshotStale,
+      snapshotLoading,
       snapshotUnavailable,
       useMockFallback,
     ],
   );
-  const view = useMemo(() => mapToHomeFirstScreenView(firstScreenInput), [firstScreenInput]);
+  const mappedView = useMemo(() => mapToHomeFirstScreenView(firstScreenInput), [firstScreenInput]);
+  const view = useMockFallback && mockFirstScreenView ? mockFirstScreenView : mappedView;
 
   return {
     view,

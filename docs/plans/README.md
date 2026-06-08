@@ -22,4 +22,7 @@ execution authority by itself.
 ## Related Areas
 
 - `docs/plans/artifacts/`: generated planning evidence linked to plan work.
+- `docs/plans/archive/`: historical planning packets moved out of the active
+  planning surface after reference checks. These files remain supporting,
+  non-authorizing evidence.
 - `.omx/plans/`: workflow-local planning state and evidence, not repo authority.

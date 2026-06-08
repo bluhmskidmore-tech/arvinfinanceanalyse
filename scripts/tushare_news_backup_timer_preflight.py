@@ -781,12 +781,58 @@ def _format_ops_gap_activation_sequence(report: dict[str, object]) -> list[str]:
     if report.get("stage") == "all":
         rows.extend(
             (
-                "Do not create the external timer while `pre-enable` is blocked.",
-                "After `pre-enable` passes, create the external timer outside this packet and collect first-run evidence.",
+                "`pre-enable` is no longer blocked. Create the external timer outside this packet and collect first-run evidence."
+                if _ready_to_create_timer(report)
+                else "Do not create the external timer while `pre-enable` is blocked.",
                 "",
             )
         )
     return rows
+
+
+def _ready_to_create_timer(report: dict[str, object]) -> bool:
+    if report.get("stage") == "pre-enable":
+        return report.get("verdict") == "pass"
+    if report.get("stage") == "all":
+        ops_gap = report.get("ops_gap", {})
+        if isinstance(ops_gap, dict):
+            return bool(ops_gap.get("ready_to_create_timer"))
+    return False
+
+
+def _format_external_timer_status(report: dict[str, object]) -> str:
+    if _ready_to_create_timer(report):
+        return (
+            "External timer is not enabled. The `pre-enable` preflight now returns `pass`; "
+            "create the external timer outside this read-only packet and collect first scheduled-run evidence."
+        )
+    return "External timer is not enabled. Do not enable the timer until the `pre-enable` preflight returns `pass`."
+
+
+def _format_operator_fill_order(report: dict[str, object]) -> list[str]:
+    if _ready_to_create_timer(report):
+        return [
+            "1. Pre-enable gates are complete; no immediate pre-enable actions remain.",
+            "2. Create the external timer outside this packet using the operations-owned scheduler configuration.",
+            "3. After the first scheduled run, attach timer evidence and rerun `--stage post-enable`.",
+        ]
+    return [
+        "1. Fill owner fields first in `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`.",
+        "2. Confirm boundary rows with evidence, without exposing secrets.",
+        "3. Complete the timer enablement packet in `docs/templates/tushare_news_backup_timer_enablement_packet.md`.",
+        "4. Record page acceptance sign-off for the attached homepage evidence.",
+        "5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.",
+        "6. After the first scheduled run, attach timer evidence and rerun `--stage post-enable`.",
+    ]
+
+
+def _format_ops_gap_intro(report: dict[str, object]) -> str:
+    if _ready_to_create_timer(report):
+        return (
+            "This packet does not enable the timer. The `pre-enable` gates now pass; "
+            "it keeps the remaining first scheduled-run evidence inputs explicit."
+        )
+    return "This packet does not enable the timer. It converts the current blocked preflight gates into external operations inputs to collect before enablement."
 
 
 def render_timer_preflight_markdown(report: dict[str, object]) -> str:
@@ -861,7 +907,7 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
         "",
         f"Status timestamp: {date.today().isoformat()}",
         "",
-        "External timer is not enabled. Do not enable the timer until the `pre-enable` preflight returns `pass`.",
+        _format_external_timer_status(report),
         "",
         "Combined verdict: `" + str(report["verdict"]) + "`",
         "",
@@ -885,12 +931,7 @@ def render_timer_preflight_markdown(report: dict[str, object]) -> str:
         "",
         "## Operator Fill Order",
         "",
-        "1. Fill owner fields first in `docs/templates/tushare_news_backup_refresh_go_live_checklist.md`.",
-        "2. Confirm boundary rows with evidence, without exposing secrets.",
-        "3. Complete the timer enablement packet in `docs/templates/tushare_news_backup_timer_enablement_packet.md`.",
-        "4. Record page acceptance sign-off for the attached homepage evidence.",
-        "5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.",
-        "6. After the first scheduled run, attach timer evidence and rerun `--stage post-enable`.",
+        *_format_operator_fill_order(report),
         "",
         *_format_ops_gap_activation_sequence(report),
         "## Required Boundary Confirmations",
@@ -978,7 +1019,7 @@ def render_timer_ops_gap_markdown(report: dict[str, object]) -> str:
             "",
             f"Status timestamp: {date.today().isoformat()}",
             "",
-            "This packet does not enable the timer. It converts the current blocked preflight gates into external operations inputs to collect before enablement.",
+            _format_ops_gap_intro(report),
             "",
             "Do not run a real Tushare refresh from this packet.",
             "Do not open reserved ingest routes.",

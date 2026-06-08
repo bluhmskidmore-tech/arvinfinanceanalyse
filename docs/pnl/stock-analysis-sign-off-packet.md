@@ -12,6 +12,14 @@ Closure approved: `closure_approved=false`
 
 This packet is a review anchor for the Stock Analysis observational lane. It does not approve page closure, trading instructions, execution approval, allocation advice, or formal stock-analysis metric truth.
 
+## Evidence Scope
+
+- `approves_metric_or_page=false`
+- `writes_governance_records=false`
+- `proves_page_execution=false`
+- `captures_business_owner_approval=false`
+- `certification_effect=none`
+
 ## Required Review Before Signature
 
 - Direct page/API governance records for `/stock-analysis` and `/ui/market-data/livermore`

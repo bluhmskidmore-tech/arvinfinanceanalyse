@@ -5,8 +5,12 @@ from pathlib import Path
 
 import duckdb
 
-from backend.app.services.market_data_livermore_service import _load_cycle_input_evidence
-from backend.app.tasks.cycle_rotation_macro_seed import materialize_cycle_rotation_macro_fixture
+from backend.app.services.market_data_livermore_service import (
+    _load_cycle_input_evidence,
+)
+from backend.app.tasks.cycle_rotation_macro_seed import (
+    materialize_cycle_rotation_macro_fixture,
+)
 
 
 def test_seed_fixture_makes_macro_score_ready(tmp_path: Path) -> None:

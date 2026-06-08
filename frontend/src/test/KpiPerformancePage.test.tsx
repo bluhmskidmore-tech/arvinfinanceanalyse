@@ -1,11 +1,16 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { createApiClient } from "../api/client";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 describe("KpiPerformancePage", () => {
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules("kpi");
+  }, 20_000);
+
   it("exposes stable local layout hooks for the /kpi governance surface", async () => {
     const mockClient = createApiClient({ mode: "mock" });
 

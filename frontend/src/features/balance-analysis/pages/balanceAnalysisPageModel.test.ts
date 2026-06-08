@@ -37,6 +37,10 @@ import {
   parseBalanceChartMagnitude,
   summarizeBalanceAmountsByPositionScope,
 } from "./balanceAnalysisPageModel";
+import {
+  PORTFOLIO_CROSS_PAGE_EXPECTED,
+  portfolioCrossPageBalanceOverview,
+} from "../../../test/portfolioCrossPageGoldenSample";
 
 describe("balanceAnalysisPageModel", () => {
   describe("display formatters", () => {
@@ -279,6 +283,20 @@ describe("balanceAnalysisPageModel", () => {
       expect(model.stateSurfaces).toContainEqual(
         expect.objectContaining({ variant: "neutral", title: "报告日已匹配" }),
       );
+    });
+
+    it("keeps the shared portfolio golden sample balance values aligned with the source page model", () => {
+      const cards = buildBalanceHeadlineCards({
+        overview: portfolioCrossPageBalanceOverview(),
+        positionScope: "all",
+      });
+
+      expect(cards.find((card) => card.key === "asset-market-value")).toMatchObject({
+        value: PORTFOLIO_CROSS_PAGE_EXPECTED.balanceAssetYi,
+      });
+      expect(cards.find((card) => card.key === "liability-market-value")).toMatchObject({
+        value: PORTFOLIO_CROSS_PAGE_EXPECTED.balanceLiabilityYi,
+      });
     });
 
     it("does not present an unavailable report date as a formal business read surface", () => {

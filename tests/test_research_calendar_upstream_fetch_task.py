@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-import json
 
 import pytest
+
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
-from backend.app.tasks.research_calendar_upstream_fetch import _fetch_research_calendar_upstream_once
+from backend.app.tasks.research_calendar_upstream_fetch import (
+    _fetch_research_calendar_upstream_once,
+)
 
 
 @dataclass

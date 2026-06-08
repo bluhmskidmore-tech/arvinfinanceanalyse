@@ -7,9 +7,16 @@ frontend/.env.local
 
 ## Local runtime and orchestration state
 .omx/
+.planning/reports/
 .cursor/
 .claude/settings.local.json
 .codex-tmp/
+.codex-bt/
+.codex-pytest-basetemp-check/
+.btfix*/
+.btph-fixed/
+.codex-delete-root-check.txt
+codex-delete-probe.txt
 tmp-governance/
 .gitnexus/
 .gitnexus-tool/
@@ -37,6 +44,7 @@ data_input/
 
 ## Local visual verification artifacts
 .playwright-mcp/
+.codex-audits/
 .codex/screenshots/
 artifacts/
 /dashboard-*.png
@@ -45,7 +53,9 @@ artifacts/
 /macro-toolkit-*.png
 /agent-conversation-smoke.png
 /frontend/dashboard-home-pnl-links.png
+/frontend/macro-toolkit-*.png
 /frontend/test-results/
+/frontend/test-output/
 /frontend/vitest-*.json
 
 ## Node / frontend build state
@@ -82,9 +92,11 @@ __pycache__/
 .tmp-pytest/
 .tmp_pytest/
 codex_pytest_tmp/
+codex-pytest-temp/
 pytesttmp-parent/
 py_temp_pytest/
 test_output/
+test-output/
 tmp-pytest/
 tmp-test-runs/
 tmp_pytest_*/
@@ -100,6 +112,7 @@ tests/CURSOR_TEST_PROMPT.md
 
 # Ephemeral working directories
 /tmp*/
+/bt-*/
 tmphv10t71n/
 tmp-governance/
 .impeccable.md

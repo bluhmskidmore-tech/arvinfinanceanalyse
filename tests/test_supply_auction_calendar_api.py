@@ -9,8 +9,8 @@ from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
 )
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.external_data_query_service import fetch_series_data_page
 from tests.helpers import load_module
 

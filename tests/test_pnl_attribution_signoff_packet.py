@@ -37,6 +37,7 @@ def test_pnl_attribution_signoff_packet_preserves_candidate_boundary() -> None:
     assert "- `writes_governance_records=false`" in text
     assert "- `proves_page_execution=false`" in text
     assert "- `captures_business_owner_approval=false`" in text
+    assert "- `certification_effect=none`" in text
     assert "## Business Owner Approval Action Items" in text
     assert "- Business owner name: `Business owner legal or operating name` (`missing`)" in text
     assert "- Approval decision: `approve` (`missing`)" in text
@@ -151,6 +152,7 @@ def test_pnl_attribution_business_owner_approval_template_is_pending_only() -> N
     assert "- `writes_governance_records=false`" in template
     assert "- `proves_page_execution=false`" in template
     assert "- `captures_business_owner_approval=false`" in template
+    assert "- `certification_effect=none`" in template
     assert "Business owner name: `<required>`" in template
     assert "Approval decision: `<approve | reject | request_changes>`" in template
     assert "Approval date: `<YYYY-MM-DD>`" in template
@@ -172,6 +174,7 @@ def test_pnl_attribution_approval_summaries_match_checker_output() -> None:
             "- `captures_business_owner_approval="
             f"{str(status['evidence_scope']['captures_business_owner_approval']).lower()}`"
         ),
+        f"- `certification_effect={status['evidence_scope']['certification_effect']}`",
     ]
 
     signoff_packet = PACKET.read_text(encoding="utf-8")
@@ -235,6 +238,7 @@ def test_pnl_attribution_packets_reference_owner_evidence_packet() -> None:
     assert "# PnL Attribution Owner Evidence Packet" in owner_packet
     assert "Golden sample boundary: `primary_workbench_dto_only`" in owner_packet
     assert "Governance record write status: `not_requested`" in owner_packet
+    assert "- `certification_effect=none`" in owner_packet
     assert "This packet does not approve page closure" in owner_packet
 
 

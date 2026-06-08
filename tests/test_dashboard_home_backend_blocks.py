@@ -8,7 +8,11 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.news_warehouse_repo import ensure_news_warehouse_schema, upsert_news_event
+from backend.app.repositories.news_warehouse_repo import (
+    ensure_news_warehouse_schema,
+    upsert_news_event,
+)
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
@@ -40,6 +44,11 @@ def _authorized_client():
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     client.headers.update(READ_HEADERS)
     return client
+
+
+def _replace_dashboard_home_bond_rows(repo: Any, *, report_date: str, rows: list[Any]) -> None:
+    with repository_task_write_scope("backend.app.tasks.dashboard_home_backend_blocks_test"):
+        repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
 
 
 def _make_bond_row(
@@ -102,7 +111,8 @@ def test_position_changes_endpoint_compares_adjacent_report_dates(tmp_path, monk
     get_settings.cache_clear()
     try:
         repo = BondAnalyticsRepository(str(duckdb_path))
-        repo.replace_bond_analytics_rows(
+        _replace_dashboard_home_bond_rows(
+            repo,
             report_date=PREV_REPORT_DATE,
             rows=[
                 _make_bond_row(
@@ -119,7 +129,8 @@ def test_position_changes_endpoint_compares_adjacent_report_dates(tmp_path, monk
                 ),
             ],
         )
-        repo.replace_bond_analytics_rows(
+        _replace_dashboard_home_bond_rows(
+            repo,
             report_date=REPORT_DATE,
             rows=[
                 _make_bond_row(
@@ -175,28 +186,29 @@ def test_home_research_reports_endpoint_reads_research_news_only(tmp_path, monke
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         ensure_news_warehouse_schema(conn)
-        upsert_news_event(
-            conn,
-            source="tushare_research",
-            source_kind="research",
-            title="利率债周报",
-            url="https://example.com/research.pdf",
-            content=None,
-            summary="关注久期和曲线",
-            pub_time_iso="2026-03-30T09:00:00+00:00",
-            extra={"category": "fixed_income"},
-        )
-        upsert_news_event(
-            conn,
-            source="tushare_news",
-            source_kind="news",
-            title="普通新闻",
-            url="https://example.com/news",
-            content=None,
-            summary="不应进入研究报告列表",
-            pub_time_iso="2026-03-30T10:00:00+00:00",
-            extra={},
-        )
+        with repository_task_write_scope("backend.app.tasks.dashboard_home_test_seed"):
+            upsert_news_event(
+                conn,
+                source="tushare_research",
+                source_kind="research",
+                title="利率债周报",
+                url="https://example.com/research.pdf",
+                content=None,
+                summary="关注久期和曲线",
+                pub_time_iso="2026-03-30T09:00:00+00:00",
+                extra={"category": "fixed_income"},
+            )
+            upsert_news_event(
+                conn,
+                source="tushare_news",
+                source_kind="news",
+                title="普通新闻",
+                url="https://example.com/news",
+                content=None,
+                summary="不应进入研究报告列表",
+                pub_time_iso="2026-03-30T10:00:00+00:00",
+                extra={},
+            )
     finally:
         conn.close()
 
@@ -233,39 +245,40 @@ def test_home_research_reports_does_not_fallback_to_future_rows(
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         ensure_news_warehouse_schema(conn)
-        upsert_news_event(
-            conn,
-            source="tushare_research",
-            source_kind="research",
-            title="6月利率债周报",
-            url="https://example.com/june-research.pdf",
-            content=None,
-            summary="关注曲线陡峭化",
-            pub_time_iso="2026-06-01T09:00:00+00:00",
-            extra={"category": "fixed_income"},
-        )
-        upsert_news_event(
-            conn,
-            source="tushare_research",
-            source_kind="research",
-            title="6月电力设备行业跟踪周报",
-            url="https://example.com/power-research.pdf",
-            content=None,
-            summary="锂电和工控需求持续向上",
-            pub_time_iso="2026-06-02T09:00:00+00:00",
-            extra={"category": "行业研报"},
-        )
-        upsert_news_event(
-            conn,
-            source="tushare_research",
-            source_kind="research",
-            title="证券行业报告：流动性宽松支撑业绩",
-            url="https://example.com/broker-research.pdf",
-            content=None,
-            summary="非固收研报",
-            pub_time_iso="2026-06-03T09:00:00+00:00",
-            extra={"category": "行业研报"},
-        )
+        with repository_task_write_scope("backend.app.tasks.dashboard_home_test_seed"):
+            upsert_news_event(
+                conn,
+                source="tushare_research",
+                source_kind="research",
+                title="6月利率债周报",
+                url="https://example.com/june-research.pdf",
+                content=None,
+                summary="关注曲线陡峭化",
+                pub_time_iso="2026-06-01T09:00:00+00:00",
+                extra={"category": "fixed_income"},
+            )
+            upsert_news_event(
+                conn,
+                source="tushare_research",
+                source_kind="research",
+                title="6月电力设备行业跟踪周报",
+                url="https://example.com/power-research.pdf",
+                content=None,
+                summary="锂电和工控需求持续向上",
+                pub_time_iso="2026-06-02T09:00:00+00:00",
+                extra={"category": "行业研报"},
+            )
+            upsert_news_event(
+                conn,
+                source="tushare_research",
+                source_kind="research",
+                title="证券行业报告：流动性宽松支撑业绩",
+                url="https://example.com/broker-research.pdf",
+                content=None,
+                summary="非固收研报",
+                pub_time_iso="2026-06-03T09:00:00+00:00",
+                extra={"category": "行业研报"},
+            )
     finally:
         conn.close()
 
@@ -363,6 +376,17 @@ def _seed_product_category_income_trend(duckdb_path: Any) -> None:
         conn.close()
 
 
+def _patch_home_income_batch_from_single(service_mod: Any, monkeypatch: Any, single_fetch: Any) -> None:
+    def fake_batch(report_dates, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        return {
+            value.isoformat(): single_fetch(value, period_type, benchmark_id)
+            for value in report_dates
+        }
+
+    monkeypatch.setattr(service_mod, "get_benchmark_excess_many", fake_batch)
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", single_fetch)
+
+
 def test_home_income_trend_endpoint_reads_product_category_monthly_grand_total(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "income-trend.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -434,7 +458,7 @@ def test_home_income_trend_endpoint_derives_cdb_benchmark_and_excess_pnl(tmp_pat
         "backend.app.services.executive_service",
         "backend/app/services/executive_service.py",
     )
-    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
 
     try:
         _grant_read_scope(tmp_path, monkeypatch, resource="executive")
@@ -508,7 +532,7 @@ def test_home_income_trend_endpoint_accepts_bounded_cdb_curve_fallback(tmp_path,
         "backend.app.services.executive_service",
         "backend/app/services/executive_service.py",
     )
-    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
 
     try:
         _grant_read_scope(tmp_path, monkeypatch, resource="executive")
@@ -558,7 +582,7 @@ def test_home_income_trend_endpoint_accepts_flat_numeric_benchmark_returns(tmp_p
         "backend.app.services.executive_service",
         "backend/app/services/executive_service.py",
     )
-    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
 
     try:
         _grant_read_scope(tmp_path, monkeypatch, resource="executive")
@@ -620,7 +644,7 @@ def test_home_income_trend_endpoint_keeps_partial_when_cdb_curve_fallback_too_st
         "backend.app.services.executive_service",
         "backend/app/services/executive_service.py",
     )
-    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
 
     try:
         _grant_read_scope(tmp_path, monkeypatch, resource="executive")
@@ -678,7 +702,7 @@ def test_home_income_trend_endpoint_keeps_partial_when_cdb_benchmark_missing(tmp
         "backend.app.services.executive_service",
         "backend/app/services/executive_service.py",
     )
-    monkeypatch.setattr(service_mod, "get_benchmark_excess", fake_benchmark_excess)
+    _patch_home_income_batch_from_single(service_mod, monkeypatch, fake_benchmark_excess)
 
     try:
         _grant_read_scope(tmp_path, monkeypatch, resource="executive")
@@ -696,4 +720,185 @@ def test_home_income_trend_endpoint_keeps_partial_when_cdb_benchmark_missing(tmp
         assert result["points"][0]["excess_pnl"]["raw"] is None
         assert any("CDB_INDEX" in warning for warning in result["warnings"])
     finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_fetches_benchmark_points_in_one_batch(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-concurrent-benchmark.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    called_dates: list[str] = []
+
+    def numeric(raw: Decimal, unit: str = "pct") -> dict[str, object]:
+        return {
+            "raw": float(raw),
+            "unit": unit,
+            "display": str(raw),
+            "precision": 8,
+            "sign_aware": True,
+        }
+
+    def fake_benchmark_excess_many(report_dates, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        assert period_type == "MoM"
+        assert benchmark_id == "CDB_INDEX"
+        called_dates.extend(value.isoformat() for value in report_dates)
+        return {
+            value.isoformat(): {
+                "result": {
+                    "report_date": value.isoformat(),
+                    "benchmark_id": benchmark_id,
+                    "portfolio_return": numeric(Decimal("0.012")),
+                    "benchmark_return": numeric(Decimal("0.008")),
+                    "excess_return": numeric(Decimal("40"), "bp"),
+                    "warnings": [],
+                },
+                "result_meta": {
+                    "source_version": "sv_cdb_curve_test",
+                    "rule_version": "rv_benchmark_excess_test",
+                    "vendor_status": "ok",
+                },
+            }
+            for value in report_dates
+        }
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    monkeypatch.setattr(service_mod, "get_benchmark_excess_many", fake_benchmark_excess_many)
+
+    try:
+        payload = service_mod.home_income_trend_envelope(
+            report_date=REPORT_DATE,
+            window=3,
+        )
+
+        assert payload["result"]["source_status"] == "ready"
+        assert called_dates == ["2026-01-31", "2026-02-28", "2026-03-31"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_reuses_cached_envelope_for_same_window(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-cache.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    service_mod.invalidate_home_snapshot_cache()
+
+    original_repo = service_mod.ProductCategoryPnlRepository
+
+    class CountingProductCategoryPnlRepository(original_repo):
+        list_report_dates_calls = 0
+        fetch_rows_calls = 0
+
+        def list_report_dates(self):
+            type(self).list_report_dates_calls += 1
+            return super().list_report_dates()
+
+        def fetch_rows(self, report_date: str, view: str):
+            type(self).fetch_rows_calls += 1
+            return super().fetch_rows(report_date, view)
+
+    benchmark_calls = 0
+
+    def fake_benchmark_excess_many(report_dates, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        nonlocal benchmark_calls
+        benchmark_calls += 1
+        return {
+            value.isoformat(): {
+                "result": {
+                    "report_date": value.isoformat(),
+                    "benchmark_id": benchmark_id,
+                    "portfolio_return": "1.2",
+                    "benchmark_return": "0.8",
+                    "excess_return": "40",
+                    "warnings": [],
+                },
+                "result_meta": {
+                    "source_version": "sv_cdb_curve_test",
+                    "rule_version": "rv_benchmark_excess_test",
+                    "vendor_status": "ok",
+                },
+            }
+            for value in report_dates
+        }
+
+    monkeypatch.setattr(service_mod, "ProductCategoryPnlRepository", CountingProductCategoryPnlRepository)
+    monkeypatch.setattr(service_mod, "get_benchmark_excess_many", fake_benchmark_excess_many)
+
+    try:
+        first = service_mod.home_income_trend_envelope(report_date=REPORT_DATE, window=2)
+        first["result"]["points"][0]["portfolio_pnl"]["display"] = "mutated"
+        second = service_mod.home_income_trend_envelope(report_date=REPORT_DATE, window=2)
+
+        assert second["result"]["source_status"] == "ready"
+        assert second["result"]["points"][0]["portfolio_pnl"]["display"] != "mutated"
+        assert CountingProductCategoryPnlRepository.list_report_dates_calls == 1
+        assert CountingProductCategoryPnlRepository.fetch_rows_calls == 2
+        assert benchmark_calls == 1
+    finally:
+        service_mod.invalidate_home_snapshot_cache()
+        get_settings.cache_clear()
+
+
+def test_home_income_trend_uses_batch_benchmark_fetch_when_available(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "income-trend-batch-benchmark.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    _seed_product_category_income_trend(duckdb_path)
+
+    service_mod = load_module(
+        "backend.app.services.executive_service",
+        "backend/app/services/executive_service.py",
+    )
+    service_mod.invalidate_home_snapshot_cache()
+
+    batch_calls: list[list[str]] = []
+
+    def fake_batch(report_dates, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict[str, Any]:
+        batch_calls.append([value.isoformat() for value in report_dates])
+        return {
+            value.isoformat(): {
+                "result": {
+                    "report_date": value.isoformat(),
+                    "benchmark_id": benchmark_id,
+                    "portfolio_return": "1.2",
+                    "benchmark_return": "0.8",
+                    "excess_return": "40",
+                    "warnings": [],
+                },
+                "result_meta": {
+                    "source_version": "sv_cdb_curve_test",
+                    "rule_version": "rv_benchmark_excess_batch_test",
+                    "vendor_status": "ok",
+                },
+            }
+            for value in report_dates
+        }
+
+    def fail_single(*_args, **_kwargs):
+        raise AssertionError("income trend should use batch benchmark fetch for windows")
+
+    monkeypatch.setattr(service_mod, "get_benchmark_excess_many", fake_batch)
+    monkeypatch.setattr(service_mod, "get_benchmark_excess", fail_single)
+
+    try:
+        payload = service_mod.home_income_trend_envelope(report_date=REPORT_DATE, window=3)
+
+        assert payload["result"]["source_status"] == "ready"
+        assert batch_calls == [["2026-01-31", "2026-02-28", "2026-03-31"]]
+        assert "rv_benchmark_excess_batch_test" in payload["result_meta"]["rule_version"]
+    finally:
+        service_mod.invalidate_home_snapshot_cache()
         get_settings.cache_clear()

@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """W-krd-2026-04-21 caliber migration: krd.map_accounting_class vs canonical hat_mapping."""
+
+from __future__ import annotations
 
 import pytest
 

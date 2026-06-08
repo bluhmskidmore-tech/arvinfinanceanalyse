@@ -22,10 +22,10 @@ function makeVM(partial: Partial<CashflowProjectionVM> = {}): CashflowProjection
   return {
     reportDate: "2026-04-01",
     kpis: {
-      durationGap: n({ unit: "ratio" }),
-      assetDuration: n({ unit: "ratio" }),
-      liabilityDuration: n({ unit: "ratio" }),
-      equityDuration: n({ unit: "ratio" }),
+      durationGap: n({ unit: "years" }),
+      assetDuration: n({ unit: "years" }),
+      liabilityDuration: n({ unit: "years" }),
+      equityDuration: n({ unit: "years" }),
       rateSensitivity1bp: n(),
       reinvestmentRisk12m: n({ unit: "pct" }),
     },

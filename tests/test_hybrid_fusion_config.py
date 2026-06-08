@@ -41,9 +41,10 @@ def test_load_hybrid_fusion_thresholds_overrides_subset(tmp_path: Path) -> None:
 
 
 def test_custom_thresholds_change_life_long_gate() -> None:
-    from typing import Any, cast
 
-    from backend.app.core_finance.hybrid_fusion_candidates import compute_hybrid_fusion_candidates
+    from backend.app.core_finance.hybrid_fusion_candidates import (
+        compute_hybrid_fusion_candidates,
+    )
 
     strict = HybridFusionThresholds(
         life_long_top_q=0.99,

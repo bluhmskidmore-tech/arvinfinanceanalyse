@@ -8,6 +8,7 @@ import { FilterBar } from "../../components/FilterBar";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
 import { KpiCard } from "../../components/KpiCard";
+import type { ResultMeta } from "../../api/contracts";
 
 const NEWS_EVENTS_PAGE_SIZE = 50;
 
@@ -77,6 +78,30 @@ const sectionDescriptionStyle: CSSProperties = {
   lineHeight: 1.7,
 };
 
+const analyticalBoundaryStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  marginTop: 16,
+  padding: "14px 16px",
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#f7fbff",
+  color: "#42526b",
+  fontSize: 12,
+  lineHeight: 1.6,
+};
+
+const boundaryCodeStyle: CSSProperties = {
+  color: "#162033",
+  fontWeight: 700,
+};
+
+const metaLineStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "6px 12px",
+};
+
 function summarizeNewsPayload(event: {
   payload_text: string | null;
   payload_json: string | null;
@@ -109,6 +134,34 @@ function currentPage(offset: number, pageSize: number) {
 
 function totalPages(totalRows: number, pageSize: number) {
   return Math.max(1, Math.ceil(totalRows / pageSize));
+}
+
+function formatMetaList(values?: string[]) {
+  return values?.filter(Boolean).join(" / ") || "missing";
+}
+
+function NewsEventsBoundary({ meta }: { meta: ResultMeta }) {
+  return (
+    <section data-testid="news-events-analytical-boundary" style={analyticalBoundaryStyle}>
+      <strong style={boundaryCodeStyle}>PAGE-CONTRACT-PENDING:/news-events</strong>
+      <span>
+        GAP-NEWS-EVENTS-PAGE is analytical temporary-exception event context only; headlines, topic counts,
+        event counts, stock filters, and error rows are not business truth, not trading instruction, and
+        not source data-quality approval.
+      </span>
+      <div data-testid="news-events-result-meta" style={metaLineStyle}>
+        <span>basis={meta.basis}</span>
+        <span>formal_use_allowed={String(meta.formal_use_allowed)}</span>
+        <span>result_kind={meta.result_kind}</span>
+        <span>source_surface={meta.source_surface ?? "missing"}</span>
+        <span>source_version={meta.source_version}</span>
+        <span>rule_version={meta.rule_version}</span>
+        <span>cache_version={meta.cache_version}</span>
+        <span>tables_used={formatMetaList(meta.tables_used)}</span>
+        <span>generated_at={meta.generated_at}</span>
+      </div>
+    </section>
+  );
 }
 
 function SectionLead(props: {
@@ -156,6 +209,7 @@ export default function NewsEventsPage() {
     [eventsQuery.data?.result.events],
   );
   const totalRows = eventsQuery.data?.result.total_rows ?? 0;
+  const resultMeta = eventsQuery.data?.result_meta;
   const isEmpty =
     !eventsQuery.isLoading &&
     !eventsQuery.isError &&
@@ -244,6 +298,7 @@ export default function NewsEventsPage() {
           <KpiCard title="当前专题" value={activeTopicLabel} detail="切换专题后分页会自动归零" valueVariant="text" />
         </div>
       </div>
+      {resultMeta ? <NewsEventsBoundary meta={resultMeta} /> : null}
 
       <SectionLead
         eyebrow="浏览"

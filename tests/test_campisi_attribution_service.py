@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 import duckdb
 import pytest
 
-from backend.app.repositories.yield_curve_repo import FORMAL_FACT_TABLE, YieldCurveRepository, ensure_yield_curve_tables
+from backend.app.repositories.yield_curve_repo import (
+    FORMAL_FACT_TABLE,
+    YieldCurveRepository,
+    ensure_yield_curve_tables,
+)
 from backend.app.services import campisi_attribution_service as campisi_svc
 from backend.app.services.campisi_attribution_service import (
     _add_market_curve_quality,

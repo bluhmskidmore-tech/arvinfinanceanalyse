@@ -138,6 +138,114 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-self: end;
   }
+
+  /* Desktop submission cockpit dedupe pass */
+  .macro-toolkit-committee-first-screen-pipeline {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border-left-width: 2px;
+    background: color-mix(in srgb, var(--macro-toolkit-card) 92%, var(--macro-toolkit-primary-soft));
+  }
+
+  .macro-toolkit-committee-first-screen-pipeline__head {
+    display: none;
+  }
+
+  .macro-toolkit-committee-first-screen-pipeline__step,
+  .macro-toolkit-committee-first-screen-pipeline__step--action .macro-toolkit-committee-action {
+    min-height: 34px;
+    padding: 4px 6px;
+  }
+
+  .macro-toolkit-committee-first-screen-pipeline strong {
+    font-size: 11px;
+  }
+
+  .macro-toolkit-committee-first-screen-pipeline small {
+    display: none;
+  }
+
+  .macro-toolkit-committee-decision-memo {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 4px 0;
+    border-top-style: dashed;
+  }
+
+  .macro-toolkit-committee-decision-memo__verdict {
+    display: none;
+  }
+
+  .macro-toolkit-committee-decision-memo__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .macro-toolkit-committee-decision-memo__grid > div,
+  .macro-toolkit-committee-decision-memo__rationale,
+  .macro-toolkit-committee-decision-memo__grid > a,
+  .macro-toolkit-committee-decision-memo__grid > button {
+    min-height: 38px;
+    padding-left: 6px;
+  }
+
+  .macro-toolkit-committee-next-step-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px 6px;
+    border-left-width: 2px;
+    background: color-mix(in srgb, var(--macro-toolkit-card) 96%, var(--macro-toolkit-primary-soft));
+  }
+
+  .macro-toolkit-committee-next-step-strip > div {
+    min-height: 30px;
+    padding-left: 6px;
+  }
+
+  .macro-toolkit-committee-next-step-strip strong {
+    font-size: 11px;
+  }
+
+  .macro-toolkit-committee-decision-memo small,
+  .macro-toolkit-committee-next-step-strip small {
+    display: none;
+  }
+
+  .macro-toolkit-committee-final-signoff {
+    display: grid;
+    grid-template-columns: minmax(118px, 0.42fr) minmax(0, 0.58fr);
+    gap: 4px;
+    min-height: 44px;
+    padding: 4px 6px;
+    border-left-width: 2px;
+    background: color-mix(in srgb, var(--macro-toolkit-card) 97%, var(--macro-toolkit-warning-soft));
+  }
+
+  .macro-toolkit-committee-final-signoff__decision {
+    padding-right: 6px;
+  }
+
+  .macro-toolkit-committee-final-signoff__metrics {
+    gap: 4px;
+  }
+
+  .macro-toolkit-committee-final-signoff__metrics > div {
+    min-height: 32px;
+    padding: 4px;
+  }
+
+  .macro-toolkit-committee-final-signoff strong {
+    font-size: 11px;
+  }
+
+  .macro-toolkit-committee-final-signoff__decision strong {
+    font-size: 12px;
+  }
+
+  .macro-toolkit-committee-final-signoff small {
+    display: none;
+  }
 }
 
 .macro-toolkit-house-view__decision-chain {
@@ -486,8 +594,134 @@
   order: 1;
 }
 
-.macro-toolkit-committee-first-screen-pipeline {
+.macro-toolkit-submission-cockpit {
   order: 2;
+  display: grid;
+  grid-template-columns: minmax(148px, 0.62fr) minmax(128px, 0.48fr) minmax(280px, 1.08fr);
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--macro-toolkit-primary) 42%, var(--macro-toolkit-border-soft));
+  border-left: 3px solid var(--macro-toolkit-primary);
+  border-radius: var(--moss-radius-sm);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--macro-toolkit-card) 78%, var(--macro-toolkit-primary-soft)) 0%,
+      var(--macro-toolkit-card) 62%,
+      color-mix(in srgb, var(--macro-toolkit-card) 78%, var(--macro-toolkit-info-soft)) 100%
+    );
+}
+
+.macro-toolkit-submission-cockpit__verdict,
+.macro-toolkit-submission-cockpit__owner,
+.macro-toolkit-submission-cockpit__metrics > div,
+.macro-toolkit-submission-cockpit__lane {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid var(--macro-toolkit-border-muted);
+  border-radius: var(--moss-radius-sm);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 90%, transparent);
+}
+
+.macro-toolkit-submission-cockpit__verdict,
+.macro-toolkit-submission-cockpit__owner {
+  min-height: 92px;
+  padding: 8px;
+}
+
+.macro-toolkit-submission-cockpit__verdict {
+  border-left: 3px solid var(--macro-toolkit-danger);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 80%, var(--macro-toolkit-danger-soft));
+}
+
+.macro-toolkit-submission-cockpit__owner {
+  border-left: 3px solid var(--macro-toolkit-warning);
+}
+
+.macro-toolkit-submission-cockpit__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.macro-toolkit-submission-cockpit__metrics > div {
+  min-height: 42px;
+  padding: 6px;
+}
+
+.macro-toolkit-submission-cockpit__lanes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.macro-toolkit-submission-cockpit__lane {
+  min-height: 62px;
+  padding: 7px;
+  border-left: 3px solid var(--macro-toolkit-success);
+  color: inherit;
+  text-decoration: none;
+}
+
+.macro-toolkit-submission-cockpit__lane--block {
+  border-left-color: var(--macro-toolkit-danger);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 82%, var(--macro-toolkit-danger-soft));
+}
+
+.macro-toolkit-submission-cockpit__lane--pending {
+  border-left-color: var(--macro-toolkit-warning);
+  background: color-mix(in srgb, var(--macro-toolkit-card) 84%, var(--macro-toolkit-warning-soft));
+}
+
+.macro-toolkit-submission-cockpit__lane:hover,
+.macro-toolkit-submission-cockpit__lane[aria-current="true"] {
+  border-color: color-mix(in srgb, var(--macro-toolkit-primary) 46%, var(--macro-toolkit-border-muted));
+  border-left-color: var(--macro-toolkit-primary);
+  background: var(--macro-toolkit-primary-soft);
+}
+
+.macro-toolkit-submission-cockpit span,
+.macro-toolkit-submission-cockpit small,
+.macro-toolkit-submission-cockpit em {
+  color: var(--moss-color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-submission-cockpit strong {
+  color: var(--moss-color-text-primary);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.macro-toolkit-submission-cockpit__verdict strong {
+  color: var(--macro-toolkit-danger);
+  font-size: 24px;
+  line-height: 1.08;
+}
+
+.macro-toolkit-submission-cockpit__owner strong {
+  color: var(--macro-toolkit-primary);
+  font-size: 16px;
+}
+
+.macro-toolkit-submission-cockpit__lane em {
+  color: var(--macro-toolkit-primary);
+}
+
+.macro-toolkit-committee-first-screen-pipeline {
+  order: 3;
   display: grid;
   grid-template-columns: minmax(150px, 0.9fr) repeat(4, minmax(96px, 1fr));
   gap: 6px;
@@ -567,7 +801,7 @@
 }
 
 .macro-toolkit-investment-brief__grid {
-  order: 11;
+  order: 12;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
@@ -575,7 +809,7 @@
 }
 
 .macro-toolkit-committee-decision-memo {
-  order: 3;
+  order: 4;
   display: grid;
   grid-template-columns: minmax(140px, 0.58fr) minmax(0, 1.42fr);
   gap: 6px;
@@ -690,7 +924,7 @@
 }
 
 .macro-toolkit-committee-next-step-strip {
-  order: 4;
+  order: 5;
   display: grid;
   grid-template-columns: minmax(126px, 0.72fr) minmax(150px, 0.86fr) minmax(118px, 0.68fr) minmax(132px, 0.74fr);
   gap: 6px;
@@ -761,7 +995,7 @@
 }
 
 .macro-toolkit-committee-final-signoff {
-  order: 5;
+  order: 6;
   display: grid;
   grid-template-columns: minmax(132px, 0.62fr) minmax(0, 1.38fr);
   gap: 8px;
@@ -830,7 +1064,7 @@
 }
 
 .macro-toolkit-committee-readiness {
-  order: 6;
+  order: 7;
   display: grid;
   grid-template-areas:
     "decision blocker"
@@ -909,7 +1143,7 @@
 }
 
 .macro-toolkit-current-repair-status {
-  order: 6;
+  order: 8;
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -1235,7 +1469,7 @@ button.macro-toolkit-current-repair-status__tape-action:hover:not(:disabled) str
 }
 
 .macro-toolkit-committee-closure-rail {
-  order: 7;
+  order: 9;
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -1407,7 +1641,7 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 }
 
 .macro-toolkit-committee-readiness-summary {
-  order: 6;
+  order: 10;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
@@ -1448,7 +1682,7 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 }
 
 .macro-toolkit-committee-decision-language {
-  order: 10;
+  order: 14;
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -1536,7 +1770,7 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 }
 
 .macro-toolkit-committee-redline {
-  order: 9;
+  order: 13;
   display: grid;
   grid-template-columns: minmax(160px, 0.8fr) minmax(130px, 0.62fr) minmax(220px, 1.1fr);
   gap: 8px;
@@ -1601,7 +1835,7 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 }
 
 .macro-toolkit-data-health-signoff-pack {
-  order: 7;
+  order: 11;
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -1678,7 +1912,7 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 }
 
 .macro-toolkit-committee-checklist {
-  order: 8;
+  order: 12;
   display: grid;
   gap: 8px;
   min-width: 0;
@@ -1840,7 +2074,7 @@ button.macro-toolkit-committee-closure-rail__step:hover:not(:disabled),
 }
 
 .macro-toolkit-committee-pack {
-  order: 6;
+  order: 10;
   display: grid;
   gap: 5px;
   min-width: 0;
@@ -7192,6 +7426,18 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .macro-toolkit-submission-cockpit {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .macro-toolkit-submission-cockpit__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .macro-toolkit-submission-cockpit__lanes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .macro-toolkit-committee-readiness {
     grid-template-columns: minmax(160px, 0.72fr) minmax(0, 1.28fr);
   }
@@ -7234,12 +7480,14 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-workspace__rail {
+    order: 3;
     grid-column: auto;
     grid-row: auto;
     position: static;
   }
 
   .macro-toolkit-committee-workspace__main {
+    order: 2;
     grid-column: auto;
     grid-row: auto;
   }
@@ -7382,16 +7630,84 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
 
   .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view {
     order: 1;
+    /* Mobile house view auxiliary review strip pass */
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view .macro-toolkit-cockpit__conclusion {
+    gap: 3px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-cockpit--toolkit .macro-toolkit-house-view .macro-toolkit-cockpit__conclusion p {
+    display: none;
+  }
+
+  .macro-toolkit-house-view__decision-chain {
+    gap: 3px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-house-view__decision-head {
+    grid-template-columns: minmax(0, 1fr) minmax(72px, auto);
+  }
+
+  .macro-toolkit-house-view__decision-head strong {
+    font-size: 13px;
+  }
+
+  .macro-toolkit-house-view__decision-head small {
+    font-size: 9px;
+  }
+
+  .macro-toolkit-house-view__decision-body {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    padding-top: 4px;
+  }
+
+  .macro-toolkit-house-view__decision-body small,
+  .macro-toolkit-committee-action--house small {
+    display: none;
+  }
+
+  .macro-toolkit-committee-action--house {
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-house-view__decision-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .macro-toolkit-house-view__decision-metrics > div {
+    padding: 4px;
+  }
+
+  .macro-toolkit-house-view__decision-metrics strong {
+    font-size: 12px;
   }
 
   .macro-toolkit-house-view__dossier {
-    grid-template-columns: 1fr;
-    gap: 5px;
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
   }
 
   .macro-toolkit-house-view__dossier-item {
-    min-height: auto;
-    padding: 7px;
+    flex: 0 0 128px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-house-view__dossier-item small {
+    display: none;
   }
 
   .macro-toolkit-investment-brief {
@@ -7403,8 +7719,73 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     order: 1;
   }
 
+  /* Mobile submission cockpit approval compression pass */
+  .macro-toolkit-submission-cockpit {
+    order: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-submission-cockpit__verdict,
+  .macro-toolkit-submission-cockpit__owner {
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-submission-cockpit__verdict strong {
+    font-size: 16px;
+  }
+
+  .macro-toolkit-submission-cockpit__owner strong {
+    font-size: 12px;
+  }
+
+  .macro-toolkit-submission-cockpit__metrics {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .macro-toolkit-submission-cockpit__lanes {
+    /* Mobile submission cockpit evidence rail pass */
+    grid-column: 1 / -1;
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 3px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-submission-cockpit__metrics > div {
+    min-height: 34px;
+    padding: 4px;
+  }
+
+  .macro-toolkit-submission-cockpit__lane {
+    flex: 0 0 112px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-submission-cockpit__lane small {
+    display: none;
+  }
+
+  .macro-toolkit-submission-cockpit span,
+  .macro-toolkit-submission-cockpit small,
+  .macro-toolkit-submission-cockpit em {
+    font-size: 8px;
+  }
+
+  .macro-toolkit-submission-cockpit strong {
+    font-size: 10px;
+  }
+
   .macro-toolkit-committee-decision-memo {
-    order: 3;
+    order: 5;
     grid-template-columns: 1fr;
     gap: 4px;
     padding: 4px 0;
@@ -7431,26 +7812,29 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     font-size: 15px;
   }
 
-  /* Mobile decision strip owns first-screen summary */
+  /* Mobile submission cockpit owns first-screen summary */
   .macro-toolkit-cockpit--toolkit .macro-toolkit-committee-decision-memo {
     display: none;
   }
 
   .macro-toolkit-committee-first-screen-pipeline {
-    order: 2;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px;
-    padding: 6px;
+    order: 9;
+    grid-template-columns: 1fr;
+    gap: 3px;
+    padding: 4px 5px;
   }
 
   .macro-toolkit-committee-first-screen-pipeline__head {
-    grid-column: 1 / -1;
+    display: none;
   }
 
-  .macro-toolkit-committee-first-screen-pipeline__head,
   .macro-toolkit-committee-first-screen-pipeline__step {
-    min-height: 40px;
-    padding: 5px 6px;
+    min-height: 34px;
+    padding: 4px 6px;
+  }
+
+  .macro-toolkit-committee-first-screen-pipeline small {
+    display: none;
   }
 
   .macro-toolkit-committee-first-screen-pipeline span,
@@ -7463,8 +7847,8 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-mobile-committee-strip {
-    order: 3;
-    display: grid;
+    order: 4;
+    display: none;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
     min-width: 0;
@@ -7520,10 +7904,10 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-final-signoff {
-    order: 5;
-    grid-template-columns: 1fr;
-    gap: 5px;
-    padding: 6px;
+    order: 10;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    padding: 5px;
   }
 
   .macro-toolkit-committee-final-signoff__decision {
@@ -7534,8 +7918,9 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-final-signoff__metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
   }
 
   .macro-toolkit-committee-final-signoff__decision strong {
@@ -7543,11 +7928,11 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-readiness-summary {
-    order: 6;
+    order: 11;
   }
 
   .macro-toolkit-committee-next-step-strip {
-    order: 4;
+    order: 7;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px;
     padding: 6px;
@@ -7568,15 +7953,15 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-current-repair-status {
-    order: 7;
+    order: 3;
   }
 
   .macro-toolkit-data-health-signoff-pack {
-    order: 9;
+    order: 12;
   }
 
   .macro-toolkit-committee-closure-rail {
-    order: 8;
+    order: 9;
   }
 
   .macro-toolkit-committee-readiness {
@@ -7584,7 +7969,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-redline {
-    order: 11;
+    order: 14;
   }
 
   .macro-toolkit-committee-checklist {
@@ -7592,15 +7977,15 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-pack {
-    order: 13;
+    order: 16;
   }
 
   .macro-toolkit-investment-brief__grid {
-    order: 6;
+    order: 13;
   }
 
   .macro-toolkit-committee-decision-language {
-    order: 10;
+    order: 15;
   }
 
   .macro-toolkit-investment-brief .macro-toolkit-panel-kicker {
@@ -7679,12 +8064,13 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-current-repair-status {
-    gap: 4px;
-    padding: 6px;
+    /* Mobile current repair status signoff strip pass */
+    gap: 3px;
+    padding: 5px;
   }
 
   .macro-toolkit-current-repair-status__head {
-    gap: 4px;
+    display: none;
   }
 
   .macro-toolkit-current-repair-status__head span,
@@ -7706,19 +8092,24 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   .macro-toolkit-current-repair-status__tape {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 3px;
+    gap: 2px;
     max-width: 100%;
   }
 
   .macro-toolkit-current-repair-status__tape-item,
   .macro-toolkit-current-repair-status__tape-action {
     gap: 2px;
-    min-height: 42px;
-    padding: 3px 6px;
+    min-height: 34px;
+    padding: 3px 5px;
     border: 1px solid var(--macro-toolkit-border-muted);
     border-left: 3px solid color-mix(in srgb, var(--macro-toolkit-primary) 42%, var(--macro-toolkit-border-muted));
     border-radius: var(--moss-radius-sm);
     background: color-mix(in srgb, var(--macro-toolkit-card) 92%, var(--macro-toolkit-primary-soft));
+  }
+
+  a.macro-toolkit-current-repair-status__tape-action,
+  button.macro-toolkit-current-repair-status__tape-action {
+    min-height: 44px;
   }
 
   .macro-toolkit-current-repair-status__tape-item--primary {
@@ -7731,19 +8122,21 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-current-repair-status__tape small {
+    display: none;
     font-size: 9px;
   }
 
   .macro-toolkit-current-repair-status__triage {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 3px;
+    gap: 2px;
     max-width: 100%;
+    padding-top: 2px;
   }
 
   .macro-toolkit-current-repair-status__triage-item {
-    min-height: 58px;
-    padding: 4px 6px;
+    min-height: 32px;
+    padding: 3px 5px;
   }
 
   .macro-toolkit-current-repair-status__triage-item span,
@@ -7757,11 +8150,17 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     font-size: 11px;
   }
 
+  .macro-toolkit-current-repair-status__triage-item em,
+  .macro-toolkit-current-repair-status__triage-item small,
+  .macro-toolkit-current-repair-status__triage-item b {
+    display: none;
+  }
+
   .macro-toolkit-current-repair-status__manual,
   .macro-toolkit-current-repair-status__full-review {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 2px;
-    padding-top: 4px;
+    padding-top: 2px;
   }
 
   .macro-toolkit-current-repair-status__manual span,
@@ -7772,7 +8171,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   .macro-toolkit-current-repair-status__full-review strong,
   .macro-toolkit-current-repair-status__full-review em,
   .macro-toolkit-current-repair-status__full-review small {
-    min-height: 28px;
+    min-height: 24px;
     padding: 3px 6px;
     border: 1px solid var(--macro-toolkit-border-muted);
     border-radius: var(--moss-radius-sm);
@@ -7788,7 +8187,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   .macro-toolkit-current-repair-status__locator {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 2px;
-    padding-top: 4px;
+    padding-top: 2px;
   }
 
   .macro-toolkit-current-repair-status__locator span,
@@ -7797,7 +8196,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   .macro-toolkit-current-repair-status__locator small,
   .macro-toolkit-current-repair-status__locator a,
   .macro-toolkit-current-repair-status__locator button {
-    min-height: 28px;
+    min-height: 24px;
     padding: 3px 6px;
     border: 1px solid var(--macro-toolkit-border-muted);
     border-radius: var(--moss-radius-sm);
@@ -7813,6 +8212,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   .macro-toolkit-current-repair-status__locator a,
   .macro-toolkit-current-repair-status__locator button {
     grid-column: span 2;
+    min-height: 44px;
   }
 
   @media (max-width: 360px) {
@@ -7949,7 +8349,7 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 28px;
+    min-height: 44px;
     padding: 4px 7px;
     border: 1px solid color-mix(in srgb, var(--macro-toolkit-primary) 34%, var(--macro-toolkit-border-muted));
     border-radius: var(--moss-radius-sm);
@@ -8004,7 +8404,15 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-pack__review-row a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     grid-column: 1 / -1;
+    min-height: 44px;
+    padding: 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--macro-toolkit-primary) 34%, var(--macro-toolkit-border-muted));
+    border-radius: var(--moss-radius-sm);
+    background: var(--macro-toolkit-card);
   }
 
   .macro-toolkit-committee-pack,
@@ -8176,8 +8584,15 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .macro-toolkit-evidence-book__pack-receipt-actions .ant-btn {
+    min-height: 44px;
+  }
+
+  /* Mobile evidence entry touch target pass */
   .macro-toolkit-evidence-book__evidence-link {
     grid-template-columns: minmax(86px, 0.68fr) minmax(0, 1.32fr) minmax(0, 1fr);
+    min-height: 44px;
+    padding: 6px 8px;
   }
 
   .macro-toolkit-evidence-book__submission-summary {
@@ -8207,8 +8622,18 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-operations-console__metrics {
+    order: 6;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .macro-toolkit-committee-workspace__main {
+    /* Mobile committee workspace action-first pass */
+    order: 2;
+  }
+
+  .macro-toolkit-committee-workspace__rail {
+    order: 3;
   }
 
   .macro-toolkit-committee-work-queue__metrics {
@@ -8227,9 +8652,31 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     display: none;
   }
 
+  .macro-toolkit-committee-work-queue__matrix {
+    /* Mobile committee work queue rail compression pass */
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding: 5px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-committee-work-queue__matrix-head {
+    flex: 0 0 118px;
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    min-height: 44px;
+  }
+
   .macro-toolkit-committee-work-queue__matrix-row {
-    grid-template-columns: minmax(0, 1fr) minmax(88px, 0.62fr);
-    gap: 4px 7px;
+    flex: 0 0 136px;
+    grid-template-columns: 1fr;
+    gap: 2px;
+    min-height: 44px;
+    padding: 5px;
   }
 
   .macro-toolkit-committee-work-queue__matrix-row > span,
@@ -8237,25 +8684,74 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     grid-column: 1 / -1;
   }
 
+  .macro-toolkit-committee-work-queue__matrix-row span,
+  .macro-toolkit-committee-work-queue__matrix-row > div,
+  .macro-toolkit-committee-work-queue__matrix-row small {
+    display: none;
+  }
+
+  .macro-toolkit-committee-work-queue__matrix-row a {
+    min-height: 44px;
+  }
+
   .macro-toolkit-committee-work-queue__desk {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Mobile committee work queue signoff desk rail pass */
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    border: 0;
+    background: transparent;
+    scrollbar-width: thin;
   }
 
   .macro-toolkit-committee-work-queue__desk > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--macro-toolkit-border-muted);
+    flex: 0 0 112px;
+    min-height: 44px;
+    padding: 5px;
+    border: 1px solid var(--macro-toolkit-border-muted);
+    border-left: 3px solid color-mix(in srgb, var(--macro-toolkit-primary) 42%, var(--macro-toolkit-border-muted));
+    border-radius: var(--moss-radius-sm);
+    background: var(--macro-toolkit-card);
   }
 
-  .macro-toolkit-committee-work-queue__desk > div:nth-child(odd) {
-    border-right: 1px solid var(--macro-toolkit-border-muted);
+  .macro-toolkit-committee-work-queue__desk span {
+    display: none;
   }
 
-  .macro-toolkit-committee-work-queue__desk > div:nth-last-child(-n + 1) {
-    border-bottom: 0;
+  .macro-toolkit-committee-work-queue__desk strong {
+    font-size: 11px;
+  }
+
+  .macro-toolkit-committee-work-queue__signoff {
+    gap: 4px;
+    padding: 5px;
   }
 
   .macro-toolkit-committee-work-queue__signoff-grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-committee-work-queue__signoff-item {
+    flex: 0 0 126px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-committee-work-queue__signoff-item strong {
+    font-size: 11px;
+  }
+
+  .macro-toolkit-committee-work-queue__signoff-item small {
+    display: none;
   }
 
   .macro-toolkit-committee-work-queue,
@@ -8263,10 +8759,26 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     padding: 9px;
   }
 
-  .macro-toolkit-committee-work-queue__todo {
-    grid-template-columns: 1fr;
+  .macro-toolkit-committee-work-queue {
+    order: 3;
+  }
+
+  .macro-toolkit-committee-work-queue__todos {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
     gap: 4px;
-    padding: 8px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-committee-work-queue__todo {
+    flex: 0 0 150px;
+    grid-template-columns: 1fr;
+    gap: 3px;
+    min-height: 44px;
+    padding: 5px;
   }
 
   .macro-toolkit-committee-work-queue__todo-columns {
@@ -8274,8 +8786,8 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-committee-work-queue__todo-main {
-    grid-template-columns: minmax(74px, 0.7fr) minmax(0, 1.3fr);
-    gap: 4px 7px;
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
   .macro-toolkit-committee-work-queue__todo-main strong,
@@ -8284,8 +8796,15 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
     grid-column: 1 / -1;
   }
 
+  .macro-toolkit-committee-work-queue__todo-main em,
+  .macro-toolkit-committee-work-queue__todo-main small {
+    display: none;
+  }
+
   .macro-toolkit-committee-work-queue__execution {
     justify-items: start;
+    min-height: 44px;
+    width: 100%;
   }
 
   .macro-toolkit-committee-work-queue__receipt {
@@ -8294,20 +8813,40 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
   }
 
   .macro-toolkit-operations-console__actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    /* Mobile operations console execution priority pass */
+    order: 2;
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
   }
 
   .macro-toolkit-operations-console__actions .ant-btn {
-    width: 100%;
+    flex: 0 0 128px;
+    min-height: 44px;
     min-width: 0;
     padding-inline: 8px;
   }
 
   .macro-toolkit-operations-console__actions .ant-btn:first-child,
   .macro-toolkit-operations-console__actions .ant-btn:last-child {
-    grid-column: 1 / -1;
+    flex-basis: 148px;
+  }
+
+  .macro-toolkit-action-receipt {
+    /* Mobile operations receipt rail compression pass */
+    order: 4;
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-action-queue {
+    order: 5;
+    gap: 4px;
+    padding: 6px;
   }
 
   .macro-toolkit-action-queue__columns {
@@ -8383,5 +8922,345 @@ button.macro-toolkit-committee-work-queue__execution:focus-visible {
 
   .macro-toolkit-section-headline {
     display: grid;
+  }
+
+  .macro-toolkit-action-receipt__head {
+    display: none;
+  }
+
+  .macro-toolkit-action-receipt__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .macro-toolkit-action-receipt__field {
+    min-height: 34px;
+    padding: 4px;
+  }
+
+  .macro-toolkit-action-receipt__field span,
+  .macro-toolkit-action-queue__item span {
+    font-size: 9px;
+  }
+
+  .macro-toolkit-action-receipt__field strong {
+    font-size: 10px;
+    line-height: 1.18;
+  }
+
+  .macro-toolkit-action-queue__head {
+    gap: 4px;
+  }
+
+  .macro-toolkit-action-queue__list {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-action-queue__item {
+    flex: 0 0 160px;
+    grid-template-columns: 1fr;
+    gap: 3px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-action-queue__item > div {
+    gap: 3px;
+  }
+
+  .macro-toolkit-action-queue__item strong {
+    font-size: 11px;
+  }
+
+  .macro-toolkit-action-queue__item small {
+    display: none;
+  }
+
+  .macro-toolkit-action-queue__item a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  /* Mobile data health detail committee rail pass */
+  .macro-toolkit-data-health-summary,
+  .macro-toolkit-data-health {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .macro-toolkit-data-health-summary__head,
+  .macro-toolkit-data-health__head,
+  .macro-toolkit-data-health__repairs-head {
+    gap: 5px;
+  }
+
+  .macro-toolkit-data-health-summary__grid,
+  .macro-toolkit-data-health__grid,
+  .macro-toolkit-data-health__repair-ticket-grid,
+  .macro-toolkit-data-health__repair-list {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 5px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-data-health-summary__grid > div,
+  .macro-toolkit-data-health__tile,
+  .macro-toolkit-data-health__repair-ticket-grid > div {
+    flex: 0 0 126px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-data-health-summary__grid strong,
+  .macro-toolkit-data-health__tile strong,
+  .macro-toolkit-data-health__repair-ticket-grid strong {
+    font-size: 12px;
+  }
+
+  .macro-toolkit-data-health-summary__grid small,
+  .macro-toolkit-data-health__tile small,
+  .macro-toolkit-data-health__repair-main small,
+  .macro-toolkit-data-health__repair-action small {
+    display: none;
+  }
+
+  .macro-toolkit-data-health__notes {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-data-health__notes .ant-tag {
+    flex: 0 0 auto;
+    max-width: 132px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .macro-toolkit-data-health__repairs {
+    gap: 5px;
+    padding-top: 0;
+  }
+
+  .macro-toolkit-data-health__repair-summary {
+    gap: 2px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-data-health__repair-summary span {
+    display: none;
+  }
+
+  .macro-toolkit-data-health__repair-ticket {
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-data-health__repair-ticket-head {
+    gap: 5px;
+  }
+
+  .macro-toolkit-data-health__repair-ticket small {
+    display: none;
+  }
+
+  .macro-toolkit-data-health__repair {
+    flex: 0 0 178px;
+    min-height: 44px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-data-health__repair-main,
+  .macro-toolkit-data-health__repair-meta,
+  .macro-toolkit-data-health__repair-action {
+    gap: 4px;
+  }
+
+  .macro-toolkit-data-health__repair-action .ant-btn,
+  .macro-toolkit-data-health__repair-ticket-evidence {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .macro-toolkit-data-health__repair-overflow {
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  /* Mobile evidence book committee dossier rail pass */
+  .macro-toolkit-evidence-book {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .macro-toolkit-evidence-book__submission-summary {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-evidence-book__submission-summary > div {
+    flex: 0 0 96px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-evidence-book__submission-summary span,
+  .macro-toolkit-evidence-book__submission-gate-main small,
+  .macro-toolkit-evidence-book__pack-receipt-main small {
+    display: none;
+  }
+
+  .macro-toolkit-evidence-book__submission-gate,
+  .macro-toolkit-evidence-book__pack-receipt {
+    gap: 5px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-evidence-book__submission-gate-verdict,
+  .macro-toolkit-evidence-book__pack-receipt-verdict {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-evidence-book__submission-gate-verdict > div,
+  .macro-toolkit-evidence-book__pack-receipt-verdict > div {
+    flex: 0 0 126px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-evidence-book__submission-gate-metrics,
+  .macro-toolkit-evidence-book__pack-receipt-metrics {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-evidence-book__submission-gate-metrics span,
+  .macro-toolkit-evidence-book__pack-receipt-metrics span {
+    flex: 0 0 118px;
+    min-height: 34px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-evidence-book__pack-receipt-trace {
+    grid-template-columns: 1fr;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-evidence-book__pack-receipt-trace span,
+  .macro-toolkit-evidence-book__submission-gate-verdict span,
+  .macro-toolkit-evidence-book__pack-receipt-verdict span {
+    display: none;
+  }
+
+  .macro-toolkit-evidence-book__grid {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 5px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-evidence-book__row {
+    flex: 0 0 210px;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    min-height: 44px;
+    padding: 6px;
+  }
+
+  .macro-toolkit-evidence-book__evidence-link {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .macro-toolkit-evidence-book__evidence-link > span:not(.macro-toolkit-evidence-book__delivery) {
+    display: none;
+  }
+
+  .macro-toolkit-evidence-book__delivery {
+    justify-self: stretch;
+    padding: 4px;
+  }
+
+  .macro-toolkit-evidence-book__delivery i,
+  .macro-toolkit-evidence-book__action small {
+    display: none;
+  }
+
+  .macro-toolkit-evidence-book__action {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .macro-toolkit-evidence-book__action > a,
+  .macro-toolkit-evidence-book__action > button {
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-operations-console__metrics {
+    /* Mobile operations metrics evidence rail pass */
+    order: 6;
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .macro-toolkit-operations-console__metrics .macro-toolkit-metric {
+    flex: 0 0 118px;
+    min-height: 44px;
+    padding: 5px;
+  }
+
+  .macro-toolkit-operations-console__metrics .macro-toolkit-metric strong {
+    font-size: 12px;
+  }
+
+  .macro-toolkit-operations-console__metrics .macro-toolkit-metric small {
+    display: none;
   }
 }

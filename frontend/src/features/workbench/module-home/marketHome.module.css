@@ -1,10 +1,21 @@
 .marketTopbar {
   min-width: 0;
-  padding: 14px 18px;
-  border-color: rgba(24, 80, 161, 0.16);
-  border-left: 3px solid var(--dh-blue, #1850a1);
+  padding: 12px 16px;
+  border: 1px solid rgba(28, 49, 78, 0.96);
+  border-left: 0;
+  border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(232, 241, 251, 0.74) 0%, rgba(255, 255, 255, 0.96) 34%, #ffffff 100%);
+    linear-gradient(135deg, #07111f 0%, #0c1a2c 54%, #122945 100%);
+  color: #e7eefb;
+  box-shadow: 0 14px 34px rgba(4, 10, 20, 0.22);
+}
+
+.marketTopbar h1 {
+  color: #ffffff;
+}
+
+.marketTopbar :where(span) {
+  border-color: rgba(114, 147, 190, 0.26);
 }
 
 .marketTopbarLeft {
@@ -25,26 +36,56 @@
   min-width: 0;
 }
 
+.marketTopbarMeta > span {
+  color: rgba(201, 216, 238, 0.78);
+}
+
+.marketTopbarMeta > span:first-child {
+  background: rgba(47, 129, 247, 0.18);
+  border-color: rgba(123, 183, 255, 0.36);
+  color: #9cc9ff;
+  font-weight: 800;
+}
+
+.marketTopbarMeta > span:first-child[data-tone="ok"] {
+  background: rgba(27, 151, 103, 0.18);
+  border-color: rgba(84, 211, 150, 0.32);
+  color: #8ef0bf;
+}
+
+.marketTopbarMeta > span:first-child[data-tone="watch"],
+.marketTopbarMeta > span:first-child[data-tone="muted"] {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #ffd38a;
+}
+
+.marketTopbarMeta > span:first-child[data-tone="error"] {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.34);
+  color: #ffc2c2;
+}
+
 .topbarDate {
   margin-right: 6px;
-  color: var(--dh-ink, #0c1c33);
+  color: #ffffff;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   white-space: nowrap;
 }
 
 .topbarSummary {
   margin: 0;
-  color: var(--dh-ink-2, #2c3e5a);
+  color: #f8fbff;
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 800;
   line-height: 1.42;
   max-width: 68ch;
 }
 
 .topbarScope {
   margin: 0;
-  color: var(--dh-muted, #6b7d95);
+  color: rgba(190, 208, 234, 0.76);
   font-size: 11px;
   line-height: 1.45;
   max-width: 74ch;
@@ -52,8 +93,33 @@
 
 .marketPageMain {
   display: grid;
-  gap: 22px;
+  gap: 0;
   align-items: start;
+}
+
+.marketInstitutionalCockpit {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(20, 37, 61, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #07111f 0, #07111f 238px, #f3f6fa 238px, #f3f6fa 100%);
+  box-shadow: 0 18px 42px rgba(12, 28, 51, 0.12);
+}
+
+.marketPrimaryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 308px);
+  gap: 12px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.marketPrimaryColumn {
+  display: grid;
+  min-width: 0;
 }
 
 .marketWorkbenchSection,
@@ -62,17 +128,18 @@
   display: grid;
   gap: var(--dh-space-3, 16px);
   min-width: 0;
+  padding: 2px;
 }
 
 .decisionSection {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
 .marketHero {
-  grid-template-columns: minmax(360px, 0.96fr) minmax(560px, 1.38fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   min-height: 0;
   margin-bottom: 0;
   align-items: stretch;
@@ -85,13 +152,13 @@
 
 .judgementCard {
   position: relative;
-  min-height: 176px;
-  padding: 18px 20px 16px;
+  min-height: 142px;
+  padding: 15px 18px 14px;
   overflow: hidden;
-  border-color: rgba(24, 80, 161, 0.18);
+  border-color: rgba(193, 205, 222, 0.92);
   background:
-    linear-gradient(135deg, #ffffff 0%, rgba(232, 241, 251, 0.88) 100%);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035), 0 12px 28px rgba(16, 53, 106, 0.08);
+    linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(16, 53, 106, 0.08);
 }
 
 .judgementCard::before {
@@ -99,14 +166,14 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
-  background: linear-gradient(180deg, var(--dh-blue, #1850a1), var(--dh-green, #1f7a55));
+  background: linear-gradient(180deg, #1f6feb, #f59e0b 52%, #18a058);
 }
 
 .judgementCard h2 {
-  margin: 10px 0 10px;
+  margin: 8px 0 9px;
   max-width: 58ch;
   color: var(--dh-ink, #0c1c33);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.48;
 }
 
@@ -204,12 +271,12 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   align-content: stretch;
-  min-height: 176px;
+  min-height: 132px;
   overflow: hidden;
   padding: 0;
-  border-color: rgba(205, 213, 225, 0.9);
+  border-color: rgba(193, 205, 222, 0.92);
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035), 0 8px 20px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 .marketKpiTile {
@@ -217,7 +284,7 @@
   grid-template-rows: auto auto 1fr;
   align-content: start;
   min-width: 0;
-  padding: 14px 14px 12px;
+  padding: 12px 12px 10px;
   border-right: 1px solid rgba(228, 233, 240, 0.85);
   background:
     linear-gradient(180deg, #ffffff 0%, rgba(247, 249, 252, 0.86) 100%);
@@ -237,7 +304,7 @@
 .marketKpiTile > div:nth-child(2) {
   margin-bottom: 8px;
   color: var(--dh-blue-deep, #10356a);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 850;
   line-height: 1.12;
   overflow-wrap: anywhere;
@@ -252,6 +319,217 @@
 
 .marketKpiDetail em {
   font-style: normal;
+}
+
+.aiDecisionRail {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(75, 104, 143, 0.36);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #0b1728 0%, #101f35 100%);
+  color: #dce8f8;
+  box-shadow: 0 14px 30px rgba(3, 8, 18, 0.24);
+}
+
+.aiRailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(128, 154, 190, 0.18);
+}
+
+.aiRailHeader span {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.aiRailHeader strong {
+  max-width: 112px;
+  padding: 2px 8px;
+  border: 1px solid rgba(123, 183, 255, 0.34);
+  border-radius: 999px;
+  background: rgba(47, 129, 247, 0.16);
+  color: #9cc9ff;
+  font-size: 10px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiRailHeader strong[data-tone="ok"] {
+  border-color: rgba(142, 240, 191, 0.28);
+  background: rgba(27, 151, 103, 0.18);
+  color: #8ef0bf;
+}
+
+.aiRailHeader strong[data-tone="watch"],
+.aiRailHeader strong[data-tone="muted"] {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(245, 158, 11, 0.16);
+  color: #ffd38a;
+}
+
+.aiRailHeader strong[data-tone="error"] {
+  border-color: rgba(239, 68, 68, 0.34);
+  background: rgba(239, 68, 68, 0.16);
+  color: #ffc2c2;
+}
+
+.aiRailState {
+  margin: 0;
+  color: rgba(201, 216, 238, 0.76);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.aiRailMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.aiRailMetric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(128, 154, 190, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.aiRailMetric[data-tone="watch"] {
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.aiRailMetric[data-tone="error"] {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.aiRailMetric span {
+  overflow: hidden;
+  color: rgba(201, 216, 238, 0.68);
+  font-size: 9.5px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiRailMetric strong {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.aiRailCard {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(128, 154, 190, 0.18);
+  border-left: 3px solid #2f81f7;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.aiRailCard[data-tone="watch"] {
+  border-left-color: #f59e0b;
+}
+
+.aiRailCard[data-tone="error"] {
+  border-left-color: #ef4444;
+}
+
+.aiRailLabel {
+  color: #7bb7ff;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.aiRailCard strong {
+  color: #ffffff;
+  font-size: 12.5px;
+  line-height: 1.38;
+}
+
+.aiRailCard p {
+  margin: 0;
+  color: rgba(201, 216, 238, 0.72);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.aiRailStatusList,
+.aiRailActionList {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.aiRailStatusList span {
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(47, 129, 247, 0.12);
+  color: #dbeafe;
+  font-size: 10.5px;
+  font-weight: 780;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiRailStatusList span[data-tone="watch"] {
+  background: rgba(245, 158, 11, 0.14);
+  color: #ffd38a;
+}
+
+.aiRailStatusList span[data-tone="error"] {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ffc2c2;
+}
+
+.aiRailLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(128, 154, 190, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: none;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.aiRailLink::after {
+  content: "›";
+  color: #7bb7ff;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.aiRailLink:hover {
+  border-color: rgba(123, 183, 255, 0.46);
+  background: rgba(47, 129, 247, 0.18);
 }
 
 .insightRow {
@@ -335,7 +613,7 @@
 
 .decisionMatrixGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   min-width: 0;
@@ -1394,6 +1672,24 @@
   }
 }
 
+@media (max-width: 860px) {
+  .marketPrimaryGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aiDecisionRail {
+    position: static;
+  }
+
+  .aiRailActionList {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .aiRailStatusList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 980px) {
   .decisionMatrix,
   .actionQueue {
@@ -1422,6 +1718,12 @@
     justify-content: stretch;
   }
 
+  .marketInstitutionalCockpit {
+    padding: 10px;
+    background:
+      linear-gradient(180deg, #07111f 0, #07111f 160px, #f3f6fa 160px, #f3f6fa 100%);
+  }
+
   .insightRow,
   .decisionMatrix,
   .decisionMatrixGrid,
@@ -1430,6 +1732,9 @@
   .macroSignalGrid,
   .macroSummaryGrid,
   .macroGroupedGrid,
+  .aiRailMetricGrid,
+  .aiRailActionList,
+  .aiRailStatusList,
   .observationGrid,
   .drillGrid {
     grid-template-columns: minmax(0, 1fr);

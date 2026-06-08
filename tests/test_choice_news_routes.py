@@ -15,6 +15,7 @@ def _choice_news_read_client(tmp_path, monkeypatch, *, grant_read: bool = True) 
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_USER_ID", "choice-news-test-user")
     get_settings.cache_clear()
     if grant_read:
         UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
@@ -125,6 +126,20 @@ def _seed_choice_news_topics(tmp_path) -> None:
                     "600000.SH unrelated headline",
                     None,
                 ),
+                (
+                    "ev_future",
+                    "2099-01-01T00:00:00+08:00",
+                    "g1",
+                    "sectornews",
+                    6,
+                    1,
+                    0,
+                    "",
+                    "TOPIC_FUTURE",
+                    0,
+                    "future dated headline",
+                    None,
+                ),
             ],
         )
     finally:
@@ -138,8 +153,26 @@ def test_choice_events_latest_authorized_returns_envelope(tmp_path, monkeypatch)
     payload = response.json()
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result_meta"]["result_kind"] == "news.choice.latest"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["source_surface"] == "choice_news"
+    assert payload["result_meta"]["tables_used"] == ["choice_news_event"]
     assert isinstance(payload["result"]["events"], list)
     assert payload["result"]["total_rows"] >= 0
+    get_settings.cache_clear()
+
+
+def test_choice_events_latest_excludes_future_rows_by_default(tmp_path, monkeypatch) -> None:
+    _seed_choice_news_topics(tmp_path)
+    client = _choice_news_read_client(tmp_path, monkeypatch)
+
+    response = client.get("/ui/news/choice-events/latest", params={"limit": 10, "offset": 0})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"]["excluded_future_rows"] == 1
+    assert payload["result_meta"]["filters_applied"]["future_rows_excluded"] == 1
+    assert all(item["event_key"] != "ev_future" for item in payload["result"]["events"])
     get_settings.cache_clear()
 
 

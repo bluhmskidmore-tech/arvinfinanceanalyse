@@ -270,6 +270,26 @@ def _treasury_10y_on_or_before(
     return fallback_value, resolved_date if fallback_value is not None else None
 
 
+def _treasury_10y_on_or_before_many(
+    curve_repo: YieldCurveRepository,
+    trade_dates: list[str],
+) -> dict[str, tuple[float | None, str | None]]:
+    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
+    fetch_many = getattr(curve_repo, "fetch_tenor_on_or_before_many", None)
+    if not requested:
+        return {}
+    if fetch_many is None:
+        return {trade_date: _treasury_10y_on_or_before(curve_repo, trade_date) for trade_date in requested}
+    values = fetch_many(curve_type="treasury", tenor="10Y", trade_dates=requested)
+    return {
+        trade_date: (
+            float(value[0]) if value and value[0] is not None else None,
+            str(value[1]) if value and value[1] not in (None, "") else None,
+        )
+        for trade_date, value in values.items()
+    }
+
+
 def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
     try:
         row = conn.execute(
@@ -332,6 +352,79 @@ def _dr007_on_or_before(duckdb_path: str, trade_date: str) -> tuple[float | None
     finally:
         conn.close()
     return None, None
+
+
+def _choice_macro_values_on_or_before_many(
+    *,
+    conn: duckdb.DuckDBPyConnection,
+    relation_name: str,
+    series_id: str,
+    trade_dates: list[str],
+) -> dict[str, tuple[float | None, str | None]]:
+    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
+    if not requested or not _relation_exists(conn, relation_name):
+        return {}
+    requested_sql = " union all ".join("select ? as requested_trade_date" for _ in requested)
+    try:
+        rows = conn.execute(
+            f"""
+            with requested as (
+              {requested_sql}
+            ), ranked as (
+              select
+                r.requested_trade_date,
+                m.value_numeric,
+                cast(m.trade_date as varchar) as resolved_trade_date,
+                row_number() over (
+                  partition by r.requested_trade_date
+                  order by cast(m.trade_date as varchar) desc
+                ) as row_num
+              from requested r
+              left join {relation_name} m
+                on m.series_id = ?
+               and cast(m.trade_date as varchar) <= r.requested_trade_date
+               and m.value_numeric is not null
+            )
+            select requested_trade_date, value_numeric, resolved_trade_date
+            from ranked
+            where row_num = 1
+            """,
+            [*requested, series_id],
+        ).fetchall()
+    except duckdb.Error:
+        return {}
+    return {
+        str(requested_trade_date): (
+            float(value) if value is not None else None,
+            str(resolved_date) if resolved_date not in (None, "") else None,
+        )
+        for requested_trade_date, value, resolved_date in rows
+    }
+
+
+def _dr007_on_or_before_many(duckdb_path: str, trade_dates: list[str]) -> dict[str, tuple[float | None, str | None]]:
+    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
+    if not requested:
+        return {}
+    out = {trade_date: (None, None) for trade_date in requested}
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
+    except duckdb.Error:
+        return out
+    try:
+        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
+            values = _choice_macro_values_on_or_before_many(
+                conn=conn,
+                relation_name=relation_name,
+                series_id="CA.DR007",
+                trade_dates=[trade_date for trade_date, value in out.items() if value[0] is None],
+            )
+            for trade_date, value in values.items():
+                if value[0] is not None:
+                    out[trade_date] = value
+    finally:
+        conn.close()
+    return out
 
 
 def _anchor_on_or_before(dates: list[str], day: str) -> str | None:
@@ -479,6 +572,115 @@ def _to_workbook_percent_point_scalars(
         raw = value.get("raw")
         out[field] = None if raw is None else float(raw) * 100.0
     return out
+
+
+def _volume_rate_summary_components(
+    *,
+    dates: list[str],
+    report_date: str | None,
+) -> tuple[dict[str, Any], dict[str, Any], str, str | None]:
+    repo = _pnl_repo()
+    rd = _resolve_formal_report_date(dates, report_date)
+    ym = rd[:7]
+    prev_ym = _prev_month_ym(ym)
+    cur_snap = _max_date_in_month(dates, ym) or rd
+    prev_snap = _max_date_in_month(dates, prev_ym)
+    snaps = [snap for snap in (cur_snap, prev_snap) if snap]
+    fetch_business_many = getattr(repo, "fetch_by_business_summary_rows_by_report_date", None)
+    rows_by_date = (
+        fetch_business_many(snaps)
+        if fetch_business_many is not None
+        else {snap: repo.fetch_by_business_summary_rows(snap) for snap in snaps}
+    )
+    cur_rows = rows_by_date.get(cur_snap, [])
+    prev_rows = rows_by_date.get(prev_snap, []) if prev_snap else []
+    payload = pa_wb.build_volume_rate_attribution_from_grouped_rows(
+        current_rows=_business_rows_as_pnl_rows(cur_rows),
+        prior_rows=_business_rows_as_pnl_rows(prev_rows) if prev_snap else None,
+        current_period=ym,
+        previous_period=prev_ym if prev_snap else "",
+        compare_type="mom",
+        group_field="invest_type_std",
+        pnl_field="total_pnl",
+        scale_field="scale_amount",
+    )
+    meta = {
+        "source_versions": [SOURCE_VERSION_BUSINESS_BALANCE],
+        "tables_used": TABLES_BUSINESS_BALANCE,
+        "evidence_rows": _business_evidence_rows(cur_rows) + _business_evidence_rows(prev_rows),
+        "warning": not cur_rows or not prev_snap or not prev_rows,
+    }
+    return payload, meta, cur_snap, prev_snap
+
+
+def _tpl_market_summary_components(
+    *,
+    dates: list[str],
+    report_date: str,
+    months: int = 12,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    curve = _curve_repo()
+    repo = _pnl_repo()
+    series = _month_series_descending_until(dates, months, report_date)
+    series = list(reversed(series))
+    snapshots = [snap for ym in series if (snap := _max_date_in_month(dates, ym))]
+    fetch_tpl_many = getattr(repo, "fetch_tpl_pnl_summary_by_report_date", None)
+    tpl_summaries = (
+        fetch_tpl_many(snapshots)
+        if fetch_tpl_many is not None
+        else {snap: repo.fetch_tpl_pnl_summary(snap) for snap in snapshots}
+    )
+    treasury_dates = list(snapshots)
+    points: list[dict[str, Any]] = []
+    prev_tsy: float | None = None
+    if series:
+        prior_ym = _prev_month_ym(series[0])
+        prior_snap = _max_date_in_month(dates, prior_ym)
+        if prior_snap:
+            treasury_dates.insert(0, prior_snap)
+    treasury_values = _treasury_10y_on_or_before_many(curve, treasury_dates)
+    if series:
+        prior_ym = _prev_month_ym(series[0])
+        prior_snap = _max_date_in_month(dates, prior_ym)
+        if prior_snap:
+            prev_tsy = treasury_values.get(prior_snap, (None, None))[0]
+    curve_path = str(getattr(curve, "path", "") or "")
+    dr007_values = _dr007_on_or_before_many(curve_path, snapshots) if curve_path else {}
+    for ym in series:
+        snap = _max_date_in_month(dates, ym)
+        if not snap:
+            continue
+        tpl_summary = tpl_summaries.get(snap) or {}
+        tpl_fv = float(tpl_summary.get("tpl_fair_value_change") or 0)
+        tpl_tot = float(tpl_summary.get("tpl_total_pnl") or 0)
+        tsy, _tsy_date = treasury_values.get(snap, (None, None))
+        dtsy = ((tsy - prev_tsy) * 100.0) if tsy is not None and prev_tsy is not None else None
+        prev_tsy = tsy if tsy is not None else prev_tsy
+        dr007, _dr007_date = dr007_values.get(snap, (None, None))
+        points.append(
+            {
+                "period": ym,
+                "period_label": _period_label_cn(ym),
+                "tpl_fair_value_change": tpl_fv,
+                "tpl_total_pnl": tpl_tot,
+                "tpl_scale": 0.0,
+                "treasury_10y": tsy,
+                "treasury_10y_change": dtsy,
+                "dr007": dr007,
+            }
+        )
+    payload = pa_wb.build_tpl_market_correlation(
+        monthly_points=points,
+        start_period=series[0] if series else "",
+        end_period=series[-1] if series else "",
+    )
+    meta = {
+        "tables_used": TABLES_FORMAL_MARKET,
+        "evidence_rows": len(points),
+        "warning": len(points) < 2
+        or any(point.get("treasury_10y") is None or point.get("dr007") is None for point in points),
+    }
+    return payload, meta
 
 
 def volume_rate_attribution_envelope(
@@ -789,24 +991,38 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
     """Summarizes only the formal FI / bond-analysis attribution lens."""
     repo_dates = _pnl_repo().list_formal_fi_report_dates()
     rd = report_date or (repo_dates[0] if repo_dates else "")
-    vol_env = volume_rate_attribution_envelope(report_date=rd or None, compare_type="mom")
-    tpl_env = tpl_market_correlation_envelope(months=12, report_date=rd or None)
-    vol_meta = dict(vol_env.get("result_meta") or {})
-    tpl_meta = dict(tpl_env.get("result_meta") or {})
-    vol_raw = dict(vol_env.get("result") or {})
-    tpl_raw = dict(tpl_env.get("result") or {})
-    vol = _to_workbook_scalars(vol_raw)
-    tpl = _to_workbook_scalars(tpl_raw)
+    if not repo_dates:
+        summary = pa_wb.build_pnl_attribution_analysis_summary(
+            report_date=str(rd or ""),
+            volume_effect=None,
+            rate_effect=None,
+            correlation_tpl_treasury=None,
+        )
+        promoted = _promote_payload_numerics(summary, PnlAttributionAnalysisSummary)
+        p = PnlAttributionAnalysisSummary.model_validate(promoted).model_dump(mode="json")
+        return build_formal_result_envelope(
+            result_meta=_meta_warn(
+                "pnl_attribution.summary",
+                filters_applied={
+                    "requested_report_date": report_date,
+                    "resolved_report_date": None,
+                    "components": ["volume_rate_fast", "tpl_market_fast"],
+                },
+            ),
+            result_payload=_with_optional_warnings(p, warn=True),
+        )
 
+    vol, vol_meta, resolved_rd, previous_rd = _volume_rate_summary_components(dates=repo_dates, report_date=rd or None)
+    tpl, tpl_meta = _tpl_market_summary_components(dates=repo_dates, report_date=resolved_rd, months=12)
     corr = tpl.get("correlation_coefficient")
     corr_f = float(corr) if corr is not None else None
     summary = pa_wb.build_pnl_attribution_analysis_summary(
-        report_date=str(rd or ""),
+        report_date=str(resolved_rd or ""),
         volume_effect=vol.get("total_volume_effect"),
         rate_effect=vol.get("total_rate_effect"),
         correlation_tpl_treasury=corr_f,
     )
-    warn = bool(vol_raw.get("warnings")) or bool(tpl_raw.get("warnings"))
+    warn = bool(vol_meta.get("warning")) or bool(tpl_meta.get("warning"))
     promoted = _promote_payload_numerics(summary, PnlAttributionAnalysisSummary)
     p = PnlAttributionAnalysisSummary.model_validate(promoted).model_dump(mode="json")
     tables_used = list(
@@ -820,7 +1036,7 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
     )
     source_versions = [
         str(version)
-        for version in (vol_meta.get("source_version"), tpl_meta.get("source_version"))
+        for version in [*(vol_meta.get("source_versions") or []), SOURCE_VERSION_MARKET]
         if version and str(version) != SOURCE_EMPTY
     ]
     evidence_rows = sum(
@@ -829,8 +1045,9 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
     )
     filters = {
         "requested_report_date": report_date,
-        "resolved_report_date": rd or None,
-        "components": ["volume_rate", "tpl_market"],
+        "resolved_report_date": resolved_rd or None,
+        "previous_report_date": previous_rd,
+        "components": ["volume_rate_fast", "tpl_market_fast"],
     }
     source_version = "__".join(dict.fromkeys(source_versions)) if evidence_rows else SOURCE_EMPTY
     return build_formal_result_envelope(

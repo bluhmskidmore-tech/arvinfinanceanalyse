@@ -92,6 +92,7 @@ export function adaptLiabilityCounterparty(input: AdaptLiabilityCounterpartyInpu
     value: x.value ?? null,
   }));
   const vm: LiabilityCounterpartyVM = { totalValue: p.total_value, rows, byType };
-  const kind = numericYuanRaw(p.total_value) === 0 && rows.length === 0 ? "empty" : "ok";
+  const totalRaw = numericYuanRaw(p.total_value);
+  const kind = totalRaw !== null && totalRaw === 0 && rows.length === 0 ? "empty" : "ok";
   return { vm, state: { kind } };
 }

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import tomllib
 from pathlib import Path
 
-from tests.helpers import load_module
+import tomllib
 
+from tests.helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
 

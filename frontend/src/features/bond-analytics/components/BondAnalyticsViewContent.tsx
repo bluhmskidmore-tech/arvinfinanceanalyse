@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 
-import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
+import type { ApiEnvelope, Numeric, ResultMeta } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
@@ -32,6 +32,232 @@ const BondAnalyticsDetailSection = lazy(() =>
     default: module.BondAnalyticsDetailSection,
   })),
 );
+
+type BondDecisionTrustState = "loading" | "ok" | "warning" | "blocked";
+
+interface BondAnalyticsDecisionCockpitProps {
+  reportDate: string;
+  periodType: PeriodType;
+  clientMode: "mock" | "real";
+  result: ActionAttributionResponse | null;
+  resultMeta: ResultMeta | null | undefined;
+  errorMessage: string | null;
+  isFetching: boolean;
+  topAnomalies: string[];
+  onOpenActionAttribution: () => void;
+}
+
+const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
+  "金额指标按人民币/CNY口径展示，外币债券金额已折算为人民币。";
+
+function formatDecisionNumeric(value: Numeric | null | undefined): string {
+  return value?.display ?? "—";
+}
+
+function formatDecisionBasis(meta: ResultMeta | null | undefined): string {
+  if (!meta) return "证据加载中";
+  if (meta.basis === "formal" && meta.formal_use_allowed) return "正式口径";
+  if (meta.basis === "formal") return "正式口径待放行";
+  if (meta.basis === "analytical") return "分析口径";
+  if (meta.basis === "scenario") return "情景口径";
+  if (meta.basis === "mock") return "演示口径";
+  return "非正式口径";
+}
+
+function deriveDecisionTrustState({
+  clientMode,
+  errorMessage,
+  isFetching,
+  resultMeta,
+  warningCount,
+}: {
+  clientMode: "mock" | "real";
+  errorMessage: string | null;
+  isFetching: boolean;
+  resultMeta: ResultMeta | null | undefined;
+  warningCount: number;
+}): BondDecisionTrustState {
+  if (errorMessage || resultMeta?.quality_flag === "error" || resultMeta?.quality_flag === "missing") {
+    return "blocked";
+  }
+  if (isFetching && !resultMeta) {
+    return "loading";
+  }
+  if (
+    clientMode !== "real" ||
+    resultMeta?.formal_use_allowed === false ||
+    resultMeta?.basis !== "formal" ||
+    resultMeta?.quality_flag === "warning" ||
+    resultMeta?.quality_flag === "stale" ||
+    resultMeta?.fallback_mode !== "none" ||
+    resultMeta?.vendor_status !== "ok" ||
+    warningCount > 0
+  ) {
+    return "warning";
+  }
+  return "ok";
+}
+
+function labelDecisionTrustState(state: BondDecisionTrustState): string {
+  if (state === "ok") return "可用于复核";
+  if (state === "warning") return "需带条件复核";
+  if (state === "blocked") return "归因证据受阻";
+  return "证据加载中";
+}
+
+function BondAnalyticsDecisionCockpit({
+  reportDate,
+  periodType,
+  clientMode,
+  result,
+  resultMeta,
+  errorMessage,
+  isFetching,
+  topAnomalies,
+  onOpenActionAttribution,
+}: BondAnalyticsDecisionCockpitProps) {
+  if (!reportDate) {
+    return null;
+  }
+
+  const warningCount = result?.warnings.length ?? (errorMessage ? 1 : 0);
+  const trustState = deriveDecisionTrustState({
+    clientMode,
+    errorMessage,
+    isFetching,
+    resultMeta,
+    warningCount,
+  });
+  const pnlDisplay = formatDecisionNumeric(result?.total_pnl_from_actions);
+  const durationDisplay = formatDecisionNumeric(result?.duration_change_from_actions);
+  const startDv01Display = formatDecisionNumeric(result?.period_start_dv01);
+  const endDv01Display = formatDecisionNumeric(result?.period_end_dv01);
+  const hasMetricEvidence = [
+    result?.total_pnl_from_actions,
+    result?.duration_change_from_actions,
+    result?.period_start_dv01,
+    result?.period_end_dv01,
+  ].some((value) => value?.raw !== null && value?.raw !== undefined);
+  const dv01Display =
+    result?.period_start_dv01 || result?.period_end_dv01
+      ? `${startDv01Display} -> ${endDv01Display}`
+      : "—";
+  const warningDetail =
+    errorMessage ?? result?.warnings[0] ?? topAnomalies[0] ?? "未发现需要提前阻断的动作归因告警";
+  const primaryConclusion = errorMessage
+    ? `动作归因证据不可用：${errorMessage}`
+    : isFetching && !result
+      ? "正在装载动作归因、久期与 DV01 证据。"
+      : result && !hasMetricEvidence
+        ? `动作归因已返回，但 PnL、久期与 DV01 当前为空；需先复核 ${warningDetail}。`
+      : `动作归因贡献 ${pnlDisplay}，久期变动 ${durationDisplay}，DV01 ${dv01Display}。`;
+  const sourceDetail = [
+    `报告日 ${result?.report_date ?? reportDate}`,
+    periodType,
+    clientMode === "real" ? "管理视角" : "演示视角",
+    formatDecisionBasis(resultMeta),
+  ].join(" / ");
+  const nextActionLabel =
+    trustState === "blocked"
+      ? "打开归因错误复核"
+      : trustState === "ok"
+        ? "进入动作归因明细"
+        : "打开动作归因复核";
+
+  return (
+    <section
+      data-testid="bond-analysis-decision-cockpit"
+      className={styles.decisionCockpit}
+      aria-label="债券持仓首屏决策"
+    >
+      <div className={styles.decisionHeader}>
+        <div className={styles.decisionCopy}>
+          <span className={styles.decisionEyebrow}>FI RISK DECISION</span>
+          <p
+            data-testid="bond-analysis-decision-primary"
+            className={styles.decisionPrimary}
+          >
+            {primaryConclusion}
+          </p>
+          <span
+            data-testid="bond-analysis-decision-source"
+            className={styles.decisionSource}
+          >
+            {sourceDetail}
+          </span>
+        </div>
+        <span
+          data-testid="bond-analysis-decision-trust"
+          className={styles.decisionTrust}
+          data-state={trustState}
+        >
+          {labelDecisionTrustState(trustState)}
+        </span>
+      </div>
+
+      <div className={styles.decisionBody}>
+        <div className={styles.decisionMetrics}>
+          <div className={styles.decisionMetric}>
+            <span className={styles.decisionMetricLabel}>动作 PnL（人民币/CNY）</span>
+            <strong
+              data-testid="bond-analysis-decision-pnl"
+              className={styles.decisionMetricValue}
+            >
+              {pnlDisplay}
+            </strong>
+          </div>
+          <div className={styles.decisionMetric}>
+            <span className={styles.decisionMetricLabel}>久期动作</span>
+            <strong
+              data-testid="bond-analysis-decision-duration"
+              className={styles.decisionMetricValue}
+            >
+              {durationDisplay}
+            </strong>
+          </div>
+          <div className={styles.decisionMetric}>
+            <span className={styles.decisionMetricLabel}>DV01 起止</span>
+            <strong
+              data-testid="bond-analysis-decision-dv01"
+              className={styles.decisionMetricValue}
+            >
+              {dv01Display}
+            </strong>
+          </div>
+          <div className={styles.decisionMetric}>
+            <span className={styles.decisionMetricLabel}>告警</span>
+            <strong
+              data-testid="bond-analysis-decision-warning"
+              className={styles.decisionMetricValue}
+            >
+              {warningCount}
+            </strong>
+          </div>
+        </div>
+
+        <div className={styles.decisionAction}>
+          <div
+            data-testid="bond-analysis-currency-basis-note"
+            className={styles.decisionBasisNote}
+          >
+            {BOND_ANALYTICS_CURRENCY_BASIS_TEXT}
+          </div>
+          <span className={styles.decisionWarning} title={warningDetail}>
+            {warningDetail}
+          </span>
+          <button
+            type="button"
+            data-testid="bond-analysis-decision-next-action"
+            className={styles.decisionNextButton}
+            onClick={onOpenActionAttribution}
+          >
+            {nextActionLabel}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function BondAnalyticsViewContent() {
   const client = useApiClient();
@@ -112,6 +338,7 @@ export function BondAnalyticsViewContent() {
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
       "research-calendar",
+      client.mode,
       effectiveReportDate,
     ],
     queryFn: () => client.getResearchCalendarEvents({ reportDate: effectiveReportDate }),
@@ -303,6 +530,18 @@ export function BondAnalyticsViewContent() {
           </button>
         </div>
       </header>
+
+      <BondAnalyticsDecisionCockpit
+        reportDate={effectiveReportDate}
+        periodType={periodType}
+        clientMode={client.mode}
+        result={actionAttributionResult}
+        resultMeta={actionAttributionResultMeta}
+        errorMessage={actionAttributionErrorMessage}
+        isFetching={actionAttributionQuery.isFetching}
+        topAnomalies={overviewModel.topAnomalies}
+        onOpenActionAttribution={() => openModuleDetail("action-attribution")}
+      />
 
       <DataQualityBanner
         resultMeta={actionAttributionResultMeta}

@@ -213,6 +213,45 @@ describe("buildPnlByBusinessSheets", () => {
     expect(blob.size).toBeGreaterThan(1000);
   });
 
+  it("exports true-zero ADB as zero while leaving denominator metrics unavailable", () => {
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd",
+      reportDate: "2025-12-31",
+      year: 2025,
+      periodStart: "2025-01-01",
+      periodEnd: "2025-12-31",
+      periodLabel: "2025 YTD",
+      ytdRows: [minimalYtdRow()],
+      adbAvgByBusinessType: new Map([["政策性金融债", 0]]),
+      formalRows: [],
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisDimension: undefined,
+      analysisRows: [],
+      selectedBusinessLabel: "政策性金融债",
+    });
+
+    const ytdSheet = sheets.find((sheet) => sheet.sheet === "YTD年累计明细");
+
+    const businessRow = ytdSheet?.data[1];
+    const footerRow = ytdSheet?.data[2];
+
+    expect(businessRow?.[0]).toBe("政策性金融债");
+    expect(businessRow?.[1]).toBe(0);
+    expect(businessRow?.[7]).toBeNull();
+    expect(businessRow?.[8]).toBeNull();
+    expect(businessRow?.[9]).toBeNull();
+    expect(footerRow?.[0]).toBe("父级汇总");
+    expect(footerRow?.[1]).toBe(0);
+    expect(footerRow?.[7]).toBeNull();
+    expect(footerRow?.[8]).toBeNull();
+    expect(footerRow?.[9]).toBeNull();
+  });
+
   it("builds a formal detail sheet with the writer sheet contract", () => {
     const sheets = buildPnlByBusinessSheets({
       viewMode: "formal",

@@ -156,6 +156,43 @@ describe("CashflowProjectionPage", () => {
     expect(screen.getByTestId("cashflow-conclusion")).toHaveTextContent("资产久期长于负债");
   });
 
+  it("displays the 1bp sensitivity KPI in yi-yuan even when the API display is raw yuan", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result: {
+          ...envelope.result,
+          rate_sensitivity_1bp: {
+            raw: 125_000_000,
+            unit: "yuan",
+            display: "+125,000,000.00",
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const page = await screen.findByTestId("cashflow-projection-page");
+    expect(await screen.findByTestId("cashflow-kpi-dv01")).toHaveTextContent("+1.25");
+    expect(page).not.toHaveTextContent("+125,000,000.00");
+  });
+
   it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
     const client = createApiClient({ mode: "mock" });
     const orig = client.getCashflowProjection.bind(client);

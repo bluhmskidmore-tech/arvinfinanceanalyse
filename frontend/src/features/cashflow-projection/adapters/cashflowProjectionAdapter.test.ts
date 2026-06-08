@@ -38,10 +38,10 @@ function meta(partial: Partial<ResultMeta> = {}): ResultMeta {
 function env(overrides: Partial<CashflowProjectionPayload> = {}, metaOverride: Partial<ResultMeta> = {}): ApiEnvelope<CashflowProjectionPayload> {
   const base: CashflowProjectionPayload = {
     report_date: "2025-04-30",
-    duration_gap: n({ raw: 1.25, unit: "ratio" }),
-    asset_duration: n({ raw: 3.8, unit: "ratio", sign_aware: false }),
-    liability_duration: n({ raw: 2.55, unit: "ratio", sign_aware: false }),
-    equity_duration: n({ raw: 5.2, unit: "ratio" }),
+    duration_gap: n({ raw: 1.25, unit: "years" }),
+    asset_duration: n({ raw: 3.8, unit: "years", sign_aware: false }),
+    liability_duration: n({ raw: 2.55, unit: "years", sign_aware: false }),
+    equity_duration: n({ raw: 5.2, unit: "years" }),
     rate_sensitivity_1bp: n({ raw: 125000, unit: "yuan" }),
     reinvestment_risk_12m: n({ raw: 0.185, unit: "pct", sign_aware: false }),
     monthly_buckets: [],
@@ -97,7 +97,7 @@ describe("adaptCashflowProjection", () => {
   it("preserves sign_aware = true display on negative raw", () => {
     const out = adaptCashflowProjection({
       envelope: env({
-        duration_gap: n({ raw: -0.75, unit: "ratio", display: "-0.75", sign_aware: true }),
+        duration_gap: n({ raw: -0.75, unit: "years", display: "-0.75", sign_aware: true }),
         monthly_buckets: [
           {
             year_month: "2025-05",

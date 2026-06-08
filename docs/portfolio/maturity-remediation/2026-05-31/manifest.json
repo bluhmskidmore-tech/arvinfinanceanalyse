@@ -1,0 +1,36 @@
+{
+  "packet_kind": "portfolio_home_maturity_remediation_export",
+  "page_id": "PAGE-PORTFOLIO-HOME-001",
+  "page_slug": "portfolio",
+  "report_date": "2026-05-31",
+  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
+  "export_status": "blocked",
+  "remediation_blockers": [
+    "bond_maturity_queue_not_empty",
+    "tyw_liability_maturity_queue_not_empty"
+  ],
+  "export_summary": {
+    "bond_missing_maturity_rows": 114,
+    "tyw_liability_missing_maturity_rows": 1455,
+    "bond_missing_maturity_market_value": "37622164239.83000008",
+    "tyw_liability_missing_maturity_principal": "43822652393.01000002"
+  },
+  "acceptance_criteria": {
+    "strict_gate_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+    "requires_source_remediation_or_signed_exclusion": true,
+    "no_frontend_or_inferred_fill": true,
+    "generated_owner_fields_must_be_blank": true,
+    "rerun_required": [
+      "formal bond analytics materialization",
+      "formal TYW balance materialization",
+      "risk tensor materialization",
+      "portfolio full-closure evidence"
+    ]
+  },
+  "export_files": {
+    "bond_missing_maturity_csv": "docs\\portfolio\\maturity-remediation\\2026-05-31\\bond_missing_maturity.csv",
+    "tyw_liability_missing_maturity_csv": "docs\\portfolio\\maturity-remediation\\2026-05-31\\tyw_liability_missing_maturity.csv",
+    "manifest_json": "docs\\portfolio\\maturity-remediation\\2026-05-31\\manifest.json",
+    "owner_summary_md": "docs\\portfolio\\maturity-remediation\\2026-05-31\\owner_summary.md"
+  }
+}

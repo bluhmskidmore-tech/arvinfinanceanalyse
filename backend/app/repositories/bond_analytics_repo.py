@@ -12,6 +12,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_portfolio_risk,
 )
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
 SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
@@ -300,6 +301,7 @@ class BondAnalyticsRepository:
         report_date: str,
         rows: list[BondAnalyticsRow],
     ) -> None:
+        require_repository_task_write_scope("replace_bond_analytics_rows")
         conn = duckdb.connect(self.path, read_only=False)
         try:
             conn.execute("begin transaction")
@@ -436,6 +438,69 @@ class BondAnalyticsRepository:
                 params,
             ).fetchall()
             return [dict(zip(_ANALYTICS_COLUMNS, row, strict=True)) for row in rows]
+        finally:
+            conn.close()
+
+    def fetch_bond_analytics_rows_for_dates(
+        self,
+        *,
+        report_dates: list[str],
+    ) -> dict[str, list[dict[str, object]]]:
+        requested = [str(value).strip() for value in dict.fromkeys(report_dates) if str(value or "").strip()]
+        if not requested:
+            return {}
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return {value: [] for value in requested}
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return {value: [] for value in requested}
+            interest_mode_expr = (
+                "interest_mode"
+                if _column_exists(conn, FACT_TABLE, "interest_mode")
+                else "'' as interest_mode"
+            )
+            interest_payment_frequency_expr = (
+                "interest_payment_frequency"
+                if _column_exists(conn, FACT_TABLE, "interest_payment_frequency")
+                else "'annual' as interest_payment_frequency"
+            )
+            interest_rate_style_expr = (
+                "interest_rate_style"
+                if _column_exists(conn, FACT_TABLE, "interest_rate_style")
+                else "'unknown' as interest_rate_style"
+            )
+            next_call_date_expr = (
+                "next_call_date"
+                if _column_exists(conn, FACT_TABLE, "next_call_date")
+                else "null as next_call_date"
+            )
+            market_value_native_expr = (
+                "market_value_native"
+                if _column_exists(conn, FACT_TABLE, "market_value_native")
+                else "null as market_value_native"
+            )
+            placeholders = ",".join(["?"] * len(requested))
+            rows = conn.execute(
+                f"""
+                select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+                       asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
+                       accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, maturity_date, {next_call_date_expr},
+                       years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
+                       convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
+                       ingest_batch_id, trace_id
+                from {FACT_TABLE}
+                where cast(report_date as varchar) in ({placeholders})
+                order by cast(report_date as varchar), instrument_code
+                """,
+                requested,
+            ).fetchall()
+            grouped = {value: [] for value in requested}
+            for row in rows:
+                mapped = dict(zip(_ANALYTICS_COLUMNS, row, strict=True))
+                grouped.setdefault(str(mapped.get("report_date") or ""), []).append(mapped)
+            return grouped
         finally:
             conn.close()
 

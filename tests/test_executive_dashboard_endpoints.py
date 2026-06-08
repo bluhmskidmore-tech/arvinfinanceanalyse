@@ -1,13 +1,12 @@
+import logging
 import uuid
 
-import logging
 import pytest
-from fastapi import FastAPI
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import AuthContext, ROLE_HEADER_TRUST_ENV
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV, AuthContext
 from tests.helpers import load_module
 
 EXECUTIVE_READ_HEADERS = {"X-User-Id": "executive-read-user", "X-User-Role": "viewer"}

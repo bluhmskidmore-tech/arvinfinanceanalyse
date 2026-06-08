@@ -6,12 +6,12 @@ from decimal import Decimal
 
 import duckdb
 import pytest
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 REPORT_DATE = date(2026, 4, 10)

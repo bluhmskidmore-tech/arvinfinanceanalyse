@@ -11,6 +11,12 @@ import { IndustryTable } from "../features/bond-dashboard/components/IndustryTab
 import { MaturityStructureChart } from "../features/bond-dashboard/components/MaturityStructureChart";
 import BondDashboardPage from "../features/bond-dashboard/pages/BondDashboardPage";
 import { formatRawAsNumeric } from "../utils/format";
+import {
+  PORTFOLIO_CROSS_PAGE_EXPECTED,
+  PORTFOLIO_CROSS_PAGE_REPORT_DATE,
+  portfolioCrossPageBondHomeSummary,
+  portfolioCrossPageEnvelope,
+} from "./portfolioCrossPageGoldenSample";
 
 vi.mock("../lib/echarts", () => ({
   default: ({ option }: { option: unknown }) => (
@@ -296,6 +302,43 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
       expect(screen.getByTestId("bond-dashboard-business-type-metrics")).toHaveTextContent("2.57%");
     });
+  });
+
+  it("renders the shared portfolio golden sample on the bond dashboard source page", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const sample = portfolioCrossPageBondHomeSummary();
+    client.getBondDashboardDates = async () =>
+      portfolioCrossPageEnvelope("bond_dashboard.dates", {
+        report_dates: [PORTFOLIO_CROSS_PAGE_REPORT_DATE],
+      });
+    client.getBondDashboardHeadlineKpis = async () =>
+      portfolioCrossPageEnvelope("bond_dashboard.headline_kpis", sample.headline);
+    client.getBondDashboardRiskIndicators = async () =>
+      portfolioCrossPageEnvelope("bond_dashboard.risk_indicators", sample.risk);
+    client.getBondDashboardPortfolioComparison = async () =>
+      portfolioCrossPageEnvelope("bond_dashboard.portfolio_comparison", sample.portfolio_comparison);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const headline = await screen.findByTestId("bond-dashboard-headline-kpis");
+    expect(within(headline).getByTestId("bond-dashboard-kpi-total_market_value")).toHaveTextContent(
+      PORTFOLIO_CROSS_PAGE_EXPECTED.bondMarketValueYi,
+    );
+    expect(within(headline).getByTestId("bond-dashboard-kpi-weighted_duration")).toHaveTextContent(
+      PORTFOLIO_CROSS_PAGE_EXPECTED.bondDuration,
+    );
+    expect(within(headline).getByTestId("bond-dashboard-kpi-total_dv01")).toHaveTextContent(
+      PORTFOLIO_CROSS_PAGE_EXPECTED.bondDv01Wan,
+    );
   });
 
   it("surfaces candidate metric and risk-source boundaries on the governed dashboard", async () => {

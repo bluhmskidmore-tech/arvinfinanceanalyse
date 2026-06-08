@@ -15,7 +15,6 @@ from backend.app.core_finance.campisi import (
     maturity_bucket_attribution,
 )
 
-
 START_DATE = date(2026, 1, 1)
 END_DATE = date(2026, 1, 31)
 ONE_YEAR_MATURITY = date(2027, 1, 1)

@@ -4,7 +4,6 @@ from typing import Annotated
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.choice_news_service import choice_news_latest_envelope
-from backend.app.services.tushare_news_ingest_service import ingest_tushare_npr_to_choice_news
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/ui/news")
@@ -62,21 +61,6 @@ def choice_events_latest(
         received_from=received_from,
         received_to=received_to,
     )
-
-
-def _tushare_npr_ingest_handler(limit: int, auth: AuthContext) -> dict[str, object]:
-    """Pull Tushare `pro.npr` headlines into `choice_news_event` (local dev / fallback)."""
-    settings = get_settings()
-    try:
-        ensure_user_allowed(auth=auth, settings=settings, resource="choice_news.data", action="import")
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    try:
-        return ingest_tushare_npr_to_choice_news(settings.duckdb_path, limit=limit)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Tushare ingest failed: {exc}") from exc
 
 
 @router.post("/tushare-npr/ingest")

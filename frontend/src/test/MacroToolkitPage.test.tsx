@@ -53,6 +53,29 @@ function expectElementBefore(first: HTMLElement, second: HTMLElement) {
   expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 }
 
+function extractCssBlock(css: string, selector: string): string {
+  const start = css.indexOf(selector);
+  if (start === -1) {
+    throw new Error(`Missing CSS selector: ${selector}`);
+  }
+
+  let depth = 0;
+  for (let index = start; index < css.length; index += 1) {
+    const char = css[index];
+    if (char === "{") {
+      depth += 1;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return css.slice(start, index + 1);
+      }
+    }
+  }
+
+  throw new Error(`Unclosed CSS block: ${selector}`);
+}
+
 function withCrisisScoreInputEvidence(
   envelope: MacroToolkitAnalysisEnvelope,
   inputs: MacroToolkitInputEvidenceFixture[],
@@ -162,12 +185,246 @@ describe("MacroToolkitPage", () => {
     expect(css).toMatch(/\.macro-toolkit-committee-decision-memo__grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   });
 
-  it("lets the compact committee strip own the mobile first-screen decision summary", () => {
+  it("compresses the mobile submission cockpit into an approval summary", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 
-    expect(css).toContain("Mobile decision strip owns first-screen summary");
+    expect(css).toContain("Mobile submission cockpit approval compression pass");
     expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-submission-cockpit\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-submission-cockpit__metrics\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-submission-cockpit__lanes\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-submission-cockpit__verdict,\s*[\s\S]*?\.macro-toolkit-submission-cockpit__owner\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-submission-cockpit__metrics > div\s*\{[\s\S]*?min-height:\s*34px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-submission-cockpit__lane\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+  });
+
+  it("turns the mobile submission cockpit lanes into a horizontal evidence rail", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile submission cockpit evidence rail pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-submission-cockpit__lanes\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-submission-cockpit__lane\s*\{[\s\S]*?flex:\s*0\s*0\s*112px[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-submission-cockpit__lane small\s*\{[\s\S]*?display:\s*none/,
+    );
+  });
+
+  it("compresses the mobile house view into an auxiliary review strip", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile house view auxiliary review strip pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-cockpit--toolkit \.macro-toolkit-house-view\s*\{[\s\S]*?gap:\s*4px[\s\S]*?padding:\s*6px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-cockpit--toolkit \.macro-toolkit-house-view \.macro-toolkit-cockpit__conclusion p\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-house-view__decision-chain\s*\{[\s\S]*?gap:\s*3px[\s\S]*?padding:\s*5px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-house-view__dossier\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-house-view__dossier-item\s*\{[\s\S]*?flex:\s*0\s*0\s*128px[\s\S]*?min-height:\s*44px/,
+    );
+  });
+
+  it("lets the mobile submission cockpit own the first-screen decision summary", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile submission cockpit owns first-screen summary");
+    expect(mobileCss).toMatch(
       /\.macro-toolkit-cockpit--toolkit \.macro-toolkit-committee-decision-memo\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(/\.macro-toolkit-current-repair-status\s*\{[\s\S]*?order:\s*3/);
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline\s*\{[\s\S]*?order:\s*9[\s\S]*?grid-template-columns:\s*1fr/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline__head\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline small\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(/\.macro-toolkit-mobile-committee-strip\s*\{[\s\S]*?display:\s*none/);
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-final-signoff\s*\{[\s\S]*?order:\s*10[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+  });
+
+  it("compresses the mobile current repair status into a signoff strip", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile current repair status signoff strip pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-current-repair-status__head\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-current-repair-status__tape-item,\s*[\s\S]*?\.macro-toolkit-current-repair-status__tape-action\s*\{[\s\S]*?min-height:\s*34px/,
+    );
+    expect(mobileCss).toMatch(
+      /a\.macro-toolkit-current-repair-status__tape-action,\s*[\s\S]*?button\.macro-toolkit-current-repair-status__tape-action\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-current-repair-status__triage-item\s*\{[\s\S]*?min-height:\s*32px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-current-repair-status__triage-item em,\s*[\s\S]*?\.macro-toolkit-current-repair-status__triage-item small,\s*[\s\S]*?\.macro-toolkit-current-repair-status__triage-item b\s*\{[\s\S]*?display:\s*none/,
+    );
+  });
+
+  it("prioritizes the mobile Action Console execution controls", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile operations console execution priority pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-operations-console__actions\s*\{[\s\S]*?order:\s*2[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-operations-console__actions \.ant-btn\s*\{[\s\S]*?flex:\s*0\s*0\s*128px[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue\s*\{[\s\S]*?order:\s*3/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-receipt\s*\{[\s\S]*?order:\s*4/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-queue\s*\{[\s\S]*?order:\s*5/,
+    );
+  });
+
+  it("compresses the mobile Action Console receipts into a scannable rail", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile operations receipt rail compression pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-receipt\s*\{[\s\S]*?order:\s*4[\s\S]*?gap:\s*4px[\s\S]*?padding:\s*6px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-receipt__head\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-receipt__grid\s*\{[\s\S]*?display:\s*grid[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-receipt__field\s*\{[\s\S]*?min-height:\s*34px[\s\S]*?padding:\s*4px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-queue\s*\{[\s\S]*?order:\s*5[\s\S]*?gap:\s*4px[\s\S]*?padding:\s*6px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-queue__list\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-queue__item\s*\{[\s\S]*?flex:\s*0\s*0\s*160px[\s\S]*?grid-template-columns:\s*1fr[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-queue__item small\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-action-queue__item a\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+  });
+
+  it("compresses the mobile Action Console metrics into a horizontal evidence rail", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile operations metrics evidence rail pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-operations-console__metrics\s*\{[\s\S]*?order:\s*6[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-operations-console__metrics \.macro-toolkit-metric\s*\{[\s\S]*?flex:\s*0\s*0\s*118px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*5px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-operations-console__metrics \.macro-toolkit-metric strong\s*\{[\s\S]*?font-size:\s*12px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-operations-console__metrics \.macro-toolkit-metric small\s*\{[\s\S]*?display:\s*none/,
+    );
+  });
+
+  it("places the mobile committee main workspace before the governance rail", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile committee workspace action-first pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-workspace__main\s*\{[\s\S]*?order:\s*2/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-workspace__rail\s*\{[\s\S]*?order:\s*3/,
+    );
+  });
+
+  it("compresses the mobile committee work queue into scannable rails", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile committee work queue rail compression pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__matrix\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__matrix-row\s*\{[\s\S]*?flex:\s*0\s*0\s*136px[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__todos\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__todo\s*\{[\s\S]*?flex:\s*0\s*0\s*150px[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__execution\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+  });
+
+  it("compresses the mobile committee work queue signoff and desk into evidence rails", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile committee work queue signoff desk rail pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__desk\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__desk > div\s*\{[\s\S]*?flex:\s*0\s*0\s*112px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*5px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__desk span\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__signoff-grid\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__signoff-item\s*\{[\s\S]*?flex:\s*0\s*0\s*126px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*5px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-committee-work-queue__signoff-item small\s*\{[\s\S]*?display:\s*none/,
     );
   });
 
@@ -175,11 +432,54 @@ describe("MacroToolkitPage", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
 
     expect(css).toContain("Desktop investment brief first-screen pack pass");
-    expect(css).toMatch(/\.macro-toolkit-committee-pack\s*\{[\s\S]*?order:\s*6/);
-    expect(css).toMatch(/\.macro-toolkit-data-health-signoff-pack\s*\{[\s\S]*?order:\s*7/);
-    expect(css).toMatch(/\.macro-toolkit-committee-checklist\s*\{[\s\S]*?order:\s*8/);
-    expect(css).toMatch(/\.macro-toolkit-committee-redline\s*\{[\s\S]*?order:\s*9/);
+    expect(css).toMatch(/\.macro-toolkit-submission-cockpit\s*\{[\s\S]*?order:\s*2/);
+    expect(css).toMatch(/\.macro-toolkit-committee-final-signoff\s*\{[\s\S]*?order:\s*6/);
+    expect(css).toMatch(/\.macro-toolkit-current-repair-status\s*\{[\s\S]*?order:\s*8/);
+    expect(css).toMatch(/\.macro-toolkit-committee-pack\s*\{[\s\S]*?order:\s*10/);
+    expect(css).toMatch(/\.macro-toolkit-data-health-signoff-pack\s*\{[\s\S]*?order:\s*11/);
+    expect(css).toMatch(/\.macro-toolkit-committee-checklist\s*\{[\s\S]*?order:\s*12/);
+    expect(css).toMatch(/\.macro-toolkit-committee-redline\s*\{[\s\S]*?order:\s*13/);
     expect(css).toMatch(/\.macro-toolkit-committee-pack__grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  });
+
+  it("lets the desktop submission cockpit own the primary decision while old rails compact", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const desktopCss = extractCssBlock(css, "@media (min-width: 1101px)");
+
+    expect(desktopCss).toContain("Desktop submission cockpit dedupe pass");
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)[\s\S]*?padding:\s*4px/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline__head\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline__step,\s*[\s\S]*?\.macro-toolkit-committee-first-screen-pipeline__step--action \.macro-toolkit-committee-action\s*\{[\s\S]*?min-height:\s*34px/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-first-screen-pipeline small\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-decision-memo\s*\{[\s\S]*?grid-template-columns:\s*1fr/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-decision-memo__verdict\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-next-step-strip\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)[\s\S]*?padding:\s*4px\s*6px/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-next-step-strip > div\s*\{[\s\S]*?min-height:\s*30px/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-decision-memo small,\s*[\s\S]*?\.macro-toolkit-committee-next-step-strip small\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-final-signoff\s*\{[\s\S]*?display:\s*grid[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*4px\s*6px/,
+    );
+    expect(desktopCss).toMatch(
+      /\.macro-toolkit-committee-final-signoff__decision strong\s*\{[\s\S]*?font-size:\s*12px/,
+    );
   });
 
   it("balances the desktop house view against the investment brief cockpit", () => {
@@ -485,6 +785,36 @@ describe("MacroToolkitPage", () => {
     expect(finalSignoff).toHaveTextContent("数据运营负责人");
     expect(finalSignoff).toHaveTextContent("待确认");
     expect(finalSignoff).not.toHaveTextContent("提交包 0/0");
+  });
+
+  it("opens with a submission cockpit that owns the committee decision state", async () => {
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    const investmentBrief = await screen.findByTestId("macro-toolkit-investment-brief");
+    const submissionCockpit = within(investmentBrief).getByLabelText("投委会提交总控台");
+    const pipeline = within(investmentBrief).getByLabelText("投委会首屏流水线");
+
+    await waitFor(() => expect(submissionCockpit).toHaveTextContent("提交包 1/4"));
+
+    expect(submissionCockpit).toHaveTextContent("提交结论");
+    expect(submissionCockpit).toHaveTextContent("暂缓提交");
+    expect(submissionCockpit).toHaveTextContent("责任人");
+    expect(submissionCockpit).toHaveTextContent("数据运营负责人");
+    expect(submissionCockpit).toHaveTextContent("提交包 1/4");
+    expect(submissionCockpit).toHaveTextContent("签核 1/3");
+    expect(submissionCockpit).toHaveTextContent("剩余风险 1");
+    expect(submissionCockpit).toHaveTextContent("待复核回执 0");
+
+    const laneOverview = within(submissionCockpit).getByLabelText("投委会提交链路总览");
+    expect(laneOverview).toHaveTextContent("数据健康");
+    expect(laneOverview).toHaveTextContent("策略供数");
+    expect(laneOverview).toHaveTextContent("工具执行");
+    expect(laneOverview).toHaveTextContent("提交门禁");
+    expect(within(laneOverview).getByRole("link", { name: /数据健康.*处理数据缺口/s })).toHaveAttribute(
+      "href",
+      "#macro-toolkit-data-health-detail",
+    );
+    expectElementBefore(submissionCockpit, pipeline);
   });
 
   it("turns the committee material pack into a review index", async () => {
@@ -902,6 +1232,80 @@ describe("MacroToolkitPage", () => {
     );
   });
 
+  it("keeps deep evidence entry links touchable on mobile", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+
+    expect(css).toContain("Mobile evidence entry touch target pass");
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-evidence-book__evidence-link\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-committee-pack__review-row a\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-data-health-signoff-pack > a\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.macro-toolkit-evidence-book__pack-receipt-actions \.ant-btn\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+  });
+
+  it("compresses the mobile Evidence Book into committee dossier rails", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile evidence book committee dossier rail pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__submission-summary\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__submission-summary > div\s*\{[\s\S]*?flex:\s*0\s*0\s*96px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*5px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__submission-gate-verdict,\s*[\s\S]*?\.macro-toolkit-evidence-book__pack-receipt-verdict\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__submission-gate-verdict > div,\s*[\s\S]*?\.macro-toolkit-evidence-book__pack-receipt-verdict > div\s*\{[\s\S]*?flex:\s*0\s*0\s*126px[\s\S]*?min-height:\s*44px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__grid\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__row\s*\{[\s\S]*?flex:\s*0\s*0\s*210px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*6px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__evidence-link > span:not\(\.macro-toolkit-evidence-book__delivery\)\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-evidence-book__delivery i,\s*[\s\S]*?\.macro-toolkit-evidence-book__action small\s*\{[\s\S]*?display:\s*none/,
+    );
+  });
+
+  it("compresses the mobile data health detail into committee review rails", () => {
+    const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
+    const mobileCss = extractCssBlock(css, "@media (max-width: 760px)");
+
+    expect(mobileCss).toContain("Mobile data health detail committee rail pass");
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-data-health-summary,\s*[\s\S]*?\.macro-toolkit-data-health\s*\{[\s\S]*?gap:\s*6px[\s\S]*?padding:\s*8px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-data-health-summary__grid,\s*[\s\S]*?\.macro-toolkit-data-health__grid,\s*[\s\S]*?\.macro-toolkit-data-health__repair-ticket-grid,\s*[\s\S]*?\.macro-toolkit-data-health__repair-list\s*\{[\s\S]*?display:\s*flex[\s\S]*?overflow-x:\s*auto[\s\S]*?scrollbar-width:\s*thin/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-data-health-summary__grid > div,\s*[\s\S]*?\.macro-toolkit-data-health__tile,\s*[\s\S]*?\.macro-toolkit-data-health__repair-ticket-grid > div\s*\{[\s\S]*?flex:\s*0\s*0\s*126px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*5px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-data-health__repair\s*\{[\s\S]*?flex:\s*0\s*0\s*178px[\s\S]*?min-height:\s*44px[\s\S]*?padding:\s*6px/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-data-health-summary__grid small,\s*[\s\S]*?\.macro-toolkit-data-health__tile small,\s*[\s\S]*?\.macro-toolkit-data-health__repair-main small,\s*[\s\S]*?\.macro-toolkit-data-health__repair-action small\s*\{[\s\S]*?display:\s*none/,
+    );
+    expect(mobileCss).toMatch(
+      /\.macro-toolkit-data-health__repair-action \.ant-btn,\s*[\s\S]*?\.macro-toolkit-data-health__repair-ticket-evidence\s*\{[\s\S]*?min-height:\s*44px/,
+    );
+  });
+
   it("contains deep-page tables and committee work queue rows without clipping", () => {
     const css = readFileSync(MACRO_TOOLKIT_CSS_PATH, "utf8");
     const source = readFileSync(MACRO_TOOLKIT_PAGE_PATH, "utf8");
@@ -1124,6 +1528,18 @@ describe("MacroToolkitPage", () => {
   });
 
   it("executes the located first-screen repair action and leaves a review receipt", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const originalWindowClipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
     const coreAnalysisEnvelope = {
@@ -1176,171 +1592,206 @@ describe("MacroToolkitPage", () => {
         return baseClient.runMacroToolkitScript(name, options);
       },
     } as ApiClient;
-    const user = userEvent.setup();
+    try {
+      renderWorkbenchApp(["/macro-toolkit"], { client });
 
-    renderWorkbenchApp(["/macro-toolkit"], { client });
+      const investmentBrief = await screen.findByTestId("macro-toolkit-investment-brief");
+      const currentRepairStatus = investmentBrief.querySelector(".macro-toolkit-current-repair-status");
+      const pipeline = investmentBrief.querySelector(".macro-toolkit-committee-first-screen-pipeline");
+      expect(currentRepairStatus).toBeTruthy();
+      expect(pipeline).toBeTruthy();
+      await waitFor(() => expect(currentRepairStatus).toHaveTextContent("M0041813"));
 
-    const investmentBrief = await screen.findByTestId("macro-toolkit-investment-brief");
-    const currentRepairStatus = investmentBrief.querySelector(".macro-toolkit-current-repair-status");
-    const pipeline = investmentBrief.querySelector(".macro-toolkit-committee-first-screen-pipeline");
-    expect(currentRepairStatus).toBeTruthy();
-    expect(pipeline).toBeTruthy();
-    await waitFor(() => expect(currentRepairStatus).toHaveTextContent("M0041813"));
+      const pipelineAction = within(pipeline as HTMLElement).getByRole("link", {
+        name: /流水线下一步.*处理数据缺口/s,
+      });
+      expect(fireEvent.click(pipelineAction)).toBe(false);
 
-    const pipelineAction = within(pipeline as HTMLElement).getByRole("link", {
-      name: /流水线下一步.*处理数据缺口/s,
-    });
-    expect(fireEvent.click(pipelineAction)).toBe(false);
+      const actionLocator = currentRepairStatus?.querySelector(".macro-toolkit-current-repair-status__locator");
+      expect(actionLocator).toHaveTextContent("M0041813");
+      await user.click(within(actionLocator as HTMLElement).getByRole("button", { name: "执行来源补齐" }));
 
-    const actionLocator = currentRepairStatus?.querySelector(".macro-toolkit-current-repair-status__locator");
-    expect(actionLocator).toHaveTextContent("M0041813");
-    await user.click(within(actionLocator as HTMLElement).getByRole("button", { name: "执行来源补齐" }));
-
-    await waitFor(() =>
-      expect(sourceBackfillCalls).toEqual([expect.objectContaining({ alias: "M0041813" })]),
-    );
-    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
-    const sourceBackfillReceipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
-    await waitFor(() => expect(sourceBackfillReceipt).toHaveTextContent("来源补齐"));
-    expect(sourceBackfillReceipt).toHaveTextContent("已完成");
-
-    const investmentBriefAfterExecution = await screen.findByTestId("macro-toolkit-investment-brief");
-    const readinessSummary = within(investmentBriefAfterExecution).getByLabelText("投委会提交包就绪摘要");
-    expect(readinessSummary).toHaveTextContent(/硬阻断\s*0/);
-    expect(readinessSummary).toHaveTextContent(/待复核回执\s*1/);
-
-    const currentRepairActionAfterExecution = within(investmentBriefAfterExecution).getByRole("button", {
-      name: "复核数据健康回执",
-    });
-    await user.click(currentRepairActionAfterExecution);
-
-    const investmentBriefAfterSignoff = await screen.findByTestId("macro-toolkit-investment-brief");
-    const summaryAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会提交包就绪摘要");
-    expect(summaryAfterSignoff).toHaveTextContent(/硬阻断\s*0/);
-    expect(summaryAfterSignoff).toHaveTextContent(/待复核回执\s*0/);
-    const committeeReadinessAfterSignoff = within(investmentBriefAfterSignoff).getByTestId(
-      "macro-toolkit-committee-readiness",
-    );
-    expect(committeeReadinessAfterSignoff).toHaveTextContent("待确认闭环");
-    expect(committeeReadinessAfterSignoff).toHaveTextContent("策略供数待确认");
-    expect(committeeReadinessAfterSignoff).toHaveTextContent("权益策略负责人");
-    expect(
-      within(committeeReadinessAfterSignoff).getByRole("button", { name: "执行策略供数刷新" }),
-    ).toBeInTheDocument();
-    expect(committeeReadinessAfterSignoff).not.toHaveTextContent("查看签核证据");
-    expect(committeeReadinessAfterSignoff).not.toHaveTextContent("数据健康回执待复核");
-    const decisionMemoAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会决策稿");
-    expect(
-      within(decisionMemoAfterSignoff).getByRole("button", { name: "执行策略供数刷新" }),
-    ).toHaveTextContent("执行策略供数刷新");
-    const currentRepairStatusAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会当前处理状态");
-    expect(currentRepairStatusAfterSignoff).toHaveTextContent("M0041813");
-    expect(currentRepairStatusAfterSignoff).toHaveTextContent("签核已确认");
-    const committeePackAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会材料包");
-    expect(within(committeePackAfterSignoff).getByLabelText("投委会材料包-数据健康")).toHaveTextContent("已签核");
-
-    const firstScreenStrategyAction = within(committeeReadinessAfterSignoff).getByRole("button", {
-      name: "执行策略供数刷新",
-    });
-    await user.click(firstScreenStrategyAction);
-
-    await waitFor(() => expect(choiceStockCalls).toHaveLength(1));
-    await waitFor(() => {
-      const investmentBriefAfterRefresh = screen.getByTestId("macro-toolkit-investment-brief");
-      const committeePackAfterRefresh = within(investmentBriefAfterRefresh).getByLabelText("投委会材料包");
-      expect(within(committeePackAfterRefresh).getByLabelText("投委会材料包-策略供数")).toHaveTextContent(
-        "回执待复核",
+      await waitFor(() =>
+        expect(sourceBackfillCalls).toEqual([expect.objectContaining({ alias: "M0041813" })]),
       );
-    });
-    await waitFor(() => {
-      const investmentBriefAfterRefresh = screen.getByTestId("macro-toolkit-investment-brief");
-      const committeeReadinessAfterRefresh = within(investmentBriefAfterRefresh).getByTestId(
+      const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+      const sourceBackfillReceipt = within(operationsConsole).getByTestId("macro-toolkit-action-receipt");
+      await waitFor(() => expect(sourceBackfillReceipt).toHaveTextContent("来源补齐"));
+      expect(sourceBackfillReceipt).toHaveTextContent("已完成");
+
+      const investmentBriefAfterExecution = await screen.findByTestId("macro-toolkit-investment-brief");
+      const readinessSummary = within(investmentBriefAfterExecution).getByLabelText("投委会提交包就绪摘要");
+      expect(readinessSummary).toHaveTextContent(/硬阻断\s*0/);
+      expect(readinessSummary).toHaveTextContent(/待复核回执\s*1/);
+
+      const currentRepairActionAfterExecution = within(investmentBriefAfterExecution).getByRole("button", {
+        name: "复核数据健康回执",
+      });
+      await user.click(currentRepairActionAfterExecution);
+
+      const investmentBriefAfterSignoff = await screen.findByTestId("macro-toolkit-investment-brief");
+      const summaryAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会提交包就绪摘要");
+      expect(summaryAfterSignoff).toHaveTextContent(/硬阻断\s*0/);
+      expect(summaryAfterSignoff).toHaveTextContent(/待复核回执\s*0/);
+      const committeeReadinessAfterSignoff = within(investmentBriefAfterSignoff).getByTestId(
         "macro-toolkit-committee-readiness",
       );
-      expect(committeeReadinessAfterRefresh).toHaveTextContent("策略供数回执待复核");
-    });
-    const investmentBriefAfterStrategyReceipt = await screen.findByTestId("macro-toolkit-investment-brief");
-    const committeeReadinessAfterStrategyReceipt = within(investmentBriefAfterStrategyReceipt).getByTestId(
-      "macro-toolkit-committee-readiness",
-    );
-    expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("待复核回执");
-    expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("策略供数回执待复核");
-    expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("复核策略供数回执");
-    expect(committeeReadinessAfterStrategyReceipt).not.toHaveTextContent("待补全证据");
-    expect(analysisCalls.some((item) => item?.detail === "full")).toBe(true);
-    const strategySignoffAction = within(committeeReadinessAfterStrategyReceipt).getByRole("button", {
-      name: "复核策略供数回执",
-    });
-    const committeePackAfterStrategyReceipt = within(investmentBriefAfterStrategyReceipt).getByLabelText("投委会材料包");
-    expect(within(committeePackAfterStrategyReceipt).getByLabelText("投委会材料包-策略供数")).toHaveTextContent(
-      "回执待复核",
-    );
+      expect(committeeReadinessAfterSignoff).toHaveTextContent("待确认闭环");
+      expect(committeeReadinessAfterSignoff).toHaveTextContent("策略供数待确认");
+      expect(committeeReadinessAfterSignoff).toHaveTextContent("权益策略负责人");
+      expect(
+        within(committeeReadinessAfterSignoff).getByRole("button", { name: "执行策略供数刷新" }),
+      ).toBeInTheDocument();
+      expect(committeeReadinessAfterSignoff).not.toHaveTextContent("查看签核证据");
+      expect(committeeReadinessAfterSignoff).not.toHaveTextContent("数据健康回执待复核");
+      const decisionMemoAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会决策稿");
+      expect(
+        within(decisionMemoAfterSignoff).getByRole("button", { name: "执行策略供数刷新" }),
+      ).toHaveTextContent("执行策略供数刷新");
+      const currentRepairStatusAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会当前处理状态");
+      expect(currentRepairStatusAfterSignoff).toHaveTextContent("M0041813");
+      expect(currentRepairStatusAfterSignoff).toHaveTextContent("签核已确认");
+      const committeePackAfterSignoff = within(investmentBriefAfterSignoff).getByLabelText("投委会材料包");
+      expect(within(committeePackAfterSignoff).getByLabelText("投委会材料包-数据健康")).toHaveTextContent("已签核");
 
-    await user.click(strategySignoffAction);
+      const firstScreenStrategyAction = within(committeeReadinessAfterSignoff).getByRole("button", {
+        name: "执行策略供数刷新",
+      });
+      await user.click(firstScreenStrategyAction);
 
-    const investmentBriefAfterStrategySignoff = await screen.findByTestId("macro-toolkit-investment-brief");
-    const committeeReadinessAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByTestId(
-      "macro-toolkit-committee-readiness",
-    );
-    expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("待确认闭环");
-    expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("工具执行待确认");
-    expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("复核工具执行结果");
-    expect(committeeReadinessAfterStrategySignoff).not.toHaveTextContent("策略供数待确认");
-    const summaryAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByLabelText(
-      "投委会提交包就绪摘要",
-    );
-    expect(summaryAfterStrategySignoff).toHaveTextContent(/提交包就绪度\s*3\/4/);
-    expect(summaryAfterStrategySignoff).toHaveTextContent(/待复核回执\s*0/);
-    const committeePackAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByLabelText("投委会材料包");
-    expect(within(committeePackAfterStrategySignoff).getByLabelText("投委会材料包-策略供数")).toHaveTextContent("已签核");
+      await waitFor(() => expect(choiceStockCalls).toHaveLength(1));
+      await waitFor(() => {
+        const investmentBriefAfterRefresh = screen.getByTestId("macro-toolkit-investment-brief");
+        const committeePackAfterRefresh = within(investmentBriefAfterRefresh).getByLabelText("投委会材料包");
+        expect(within(committeePackAfterRefresh).getByLabelText("投委会材料包-策略供数")).toHaveTextContent(
+          "回执待复核",
+        );
+      });
+      await waitFor(() => {
+        const investmentBriefAfterRefresh = screen.getByTestId("macro-toolkit-investment-brief");
+        const committeeReadinessAfterRefresh = within(investmentBriefAfterRefresh).getByTestId(
+          "macro-toolkit-committee-readiness",
+        );
+        expect(committeeReadinessAfterRefresh).toHaveTextContent("策略供数回执待复核");
+      });
+      const investmentBriefAfterStrategyReceipt = await screen.findByTestId("macro-toolkit-investment-brief");
+      const committeeReadinessAfterStrategyReceipt = within(investmentBriefAfterStrategyReceipt).getByTestId(
+        "macro-toolkit-committee-readiness",
+      );
+      expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("待复核回执");
+      expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("策略供数回执待复核");
+      expect(committeeReadinessAfterStrategyReceipt).toHaveTextContent("复核策略供数回执");
+      expect(committeeReadinessAfterStrategyReceipt).not.toHaveTextContent("待补全证据");
+      expect(analysisCalls.some((item) => item?.detail === "full")).toBe(true);
+      const strategySignoffAction = within(committeeReadinessAfterStrategyReceipt).getByRole("button", {
+        name: "复核策略供数回执",
+      });
+      const committeePackAfterStrategyReceipt = within(investmentBriefAfterStrategyReceipt).getByLabelText("投委会材料包");
+      expect(within(committeePackAfterStrategyReceipt).getByLabelText("投委会材料包-策略供数")).toHaveTextContent(
+        "回执待复核",
+      );
 
-    const firstScreenToolAction = within(committeeReadinessAfterStrategySignoff).getByRole("button", {
-      name: "复核工具执行结果",
-    });
-    await user.click(firstScreenToolAction);
+      await user.click(strategySignoffAction);
 
-    await waitFor(() => expect(scriptCalls).toHaveLength(1));
-    await waitFor(() => {
-      const investmentBriefAfterToolReceipt = screen.getByTestId("macro-toolkit-investment-brief");
+      const investmentBriefAfterStrategySignoff = await screen.findByTestId("macro-toolkit-investment-brief");
+      const committeeReadinessAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByTestId(
+        "macro-toolkit-committee-readiness",
+      );
+      expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("待确认闭环");
+      expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("工具执行待确认");
+      expect(committeeReadinessAfterStrategySignoff).toHaveTextContent("复核工具执行结果");
+      expect(committeeReadinessAfterStrategySignoff).not.toHaveTextContent("策略供数待确认");
+      const summaryAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByLabelText(
+        "投委会提交包就绪摘要",
+      );
+      expect(summaryAfterStrategySignoff).toHaveTextContent(/提交包就绪度\s*3\/4/);
+      expect(summaryAfterStrategySignoff).toHaveTextContent(/待复核回执\s*0/);
+      const committeePackAfterStrategySignoff = within(investmentBriefAfterStrategySignoff).getByLabelText("投委会材料包");
+      expect(within(committeePackAfterStrategySignoff).getByLabelText("投委会材料包-策略供数")).toHaveTextContent("已签核");
+
+      const firstScreenToolAction = within(committeeReadinessAfterStrategySignoff).getByRole("button", {
+        name: "复核工具执行结果",
+      });
+      await user.click(firstScreenToolAction);
+
+      await waitFor(() => expect(scriptCalls).toHaveLength(1));
+      await waitFor(() => {
+        const investmentBriefAfterToolReceipt = screen.getByTestId("macro-toolkit-investment-brief");
+        const committeeReadinessAfterToolReceipt = within(investmentBriefAfterToolReceipt).getByTestId(
+          "macro-toolkit-committee-readiness",
+        );
+        expect(committeeReadinessAfterToolReceipt).toHaveTextContent("工具执行回执待复核");
+      });
+      const investmentBriefAfterToolReceipt = await screen.findByTestId("macro-toolkit-investment-brief");
       const committeeReadinessAfterToolReceipt = within(investmentBriefAfterToolReceipt).getByTestId(
         "macro-toolkit-committee-readiness",
       );
-      expect(committeeReadinessAfterToolReceipt).toHaveTextContent("工具执行回执待复核");
-    });
-    const investmentBriefAfterToolReceipt = await screen.findByTestId("macro-toolkit-investment-brief");
-    const committeeReadinessAfterToolReceipt = within(investmentBriefAfterToolReceipt).getByTestId(
-      "macro-toolkit-committee-readiness",
-    );
-    expect(committeeReadinessAfterToolReceipt).toHaveTextContent("待复核回执");
-    expect(committeeReadinessAfterToolReceipt).toHaveTextContent("复核工具执行回执");
-    const committeePackAfterToolReceipt = within(investmentBriefAfterToolReceipt).getByLabelText("投委会材料包");
-    expect(within(committeePackAfterToolReceipt).getByLabelText("投委会材料包-工具执行")).toHaveTextContent(
-      "回执待复核",
-    );
+      expect(committeeReadinessAfterToolReceipt).toHaveTextContent("待复核回执");
+      expect(committeeReadinessAfterToolReceipt).toHaveTextContent("复核工具执行回执");
+      const committeePackAfterToolReceipt = within(investmentBriefAfterToolReceipt).getByLabelText("投委会材料包");
+      expect(within(committeePackAfterToolReceipt).getByLabelText("投委会材料包-工具执行")).toHaveTextContent(
+        "回执待复核",
+      );
 
-    const toolSignoffAction = within(committeeReadinessAfterToolReceipt).getByRole("button", {
-      name: "复核工具执行回执",
-    });
-    await user.click(toolSignoffAction);
+      const toolSignoffAction = within(committeeReadinessAfterToolReceipt).getByRole("button", {
+        name: "复核工具执行回执",
+      });
+      await user.click(toolSignoffAction);
 
-    const investmentBriefAfterToolSignoff = await screen.findByTestId("macro-toolkit-investment-brief");
-    const finalReadinessSummary = within(investmentBriefAfterToolSignoff).getByLabelText("投委会提交包就绪摘要");
-    expect(finalReadinessSummary).toHaveTextContent(/提交包就绪度\s*4\/4/);
-    expect(finalReadinessSummary).toHaveTextContent(/待复核回执\s*0/);
-    const committeeReadinessAfterToolSignoff = within(investmentBriefAfterToolSignoff).getByTestId(
-      "macro-toolkit-committee-readiness",
-    );
-    expect(committeeReadinessAfterToolSignoff).toHaveTextContent("可进入复核");
-    const finalSignoff = within(investmentBriefAfterToolSignoff).getByLabelText("最终投委会签核态");
-    expect(finalSignoff).toHaveTextContent("最终投委会签核态");
-    expect(finalSignoff).toHaveTextContent("可提交复核");
-    expect(finalSignoff).toHaveTextContent("主席复核");
-    expect(finalSignoff).toHaveTextContent("提交包 4/4");
-    expect(finalSignoff).toHaveTextContent("签核 3/3");
-    expect(finalSignoff).toHaveTextContent("剩余风险 0");
-    expect(finalSignoff).toHaveTextContent("待复核回执 0");
-    const committeePackAfterToolSignoff = within(investmentBriefAfterToolSignoff).getByLabelText("投委会材料包");
-    expect(within(committeePackAfterToolSignoff).getByLabelText("投委会材料包-工具执行")).toHaveTextContent("已签核");
+      const investmentBriefAfterToolSignoff = await screen.findByTestId("macro-toolkit-investment-brief");
+      const finalReadinessSummary = within(investmentBriefAfterToolSignoff).getByLabelText("投委会提交包就绪摘要");
+      expect(finalReadinessSummary).toHaveTextContent(/提交包就绪度\s*4\/4/);
+      expect(finalReadinessSummary).toHaveTextContent(/待复核回执\s*0/);
+      const committeeReadinessAfterToolSignoff = within(investmentBriefAfterToolSignoff).getByTestId(
+        "macro-toolkit-committee-readiness",
+      );
+      expect(committeeReadinessAfterToolSignoff).toHaveTextContent("可进入复核");
+      const finalSignoff = within(investmentBriefAfterToolSignoff).getByLabelText("最终投委会签核态");
+      expect(finalSignoff).toHaveTextContent("最终投委会签核态");
+      expect(finalSignoff).toHaveTextContent("可提交复核");
+      expect(finalSignoff).toHaveTextContent("主席复核");
+      expect(finalSignoff).toHaveTextContent("提交包 4/4");
+      expect(finalSignoff).toHaveTextContent("签核 3/3");
+      expect(finalSignoff).toHaveTextContent("剩余风险 0");
+      expect(finalSignoff).toHaveTextContent("待复核回执 0");
+      const committeePackAfterToolSignoff = within(investmentBriefAfterToolSignoff).getByLabelText("投委会材料包");
+      expect(within(committeePackAfterToolSignoff).getByLabelText("投委会材料包-工具执行")).toHaveTextContent("已签核");
+
+      const evidenceBookAfterToolSignoff = await screen.findByTestId("macro-toolkit-evidence-book");
+      const finalSubmissionGate = within(evidenceBookAfterToolSignoff).getByLabelText("投委会最终提交门禁");
+      expect(finalSubmissionGate).toHaveTextContent("准入提交");
+      expect(finalSubmissionGate).toHaveTextContent("当前结论");
+      expect(finalSubmissionGate).toHaveTextContent("可提交复核");
+      expect(finalSubmissionGate).toHaveTextContent("责任人");
+      expect(finalSubmissionGate).toHaveTextContent("主席复核");
+      expect(finalSubmissionGate).toHaveTextContent("提交包 4/4");
+      expect(finalSubmissionGate).toHaveTextContent("签核 3/3");
+      expect(finalSubmissionGate).toHaveTextContent("剩余风险 0");
+      expect(finalSubmissionGate).toHaveTextContent("待复核回执 0");
+
+      const finalPackReceipt = within(evidenceBookAfterToolSignoff).getByLabelText("投委会材料包封面回执");
+      expect(finalPackReceipt).toHaveTextContent("可提交复核");
+      expect(finalPackReceipt).toHaveTextContent("主席复核");
+      expect(finalPackReceipt).toHaveTextContent("提交包 4/4");
+      fireEvent.click(within(finalPackReceipt).getByRole("button", { name: "复制材料包摘要" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("提交结论 可提交复核")));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("责任人 主席复核"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("提交包 4/4"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("签核 3/3"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("剩余风险 0"));
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("待复核回执 0"));
+    } finally {
+      if (originalClipboard) {
+        Object.defineProperty(navigator, "clipboard", originalClipboard);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+      if (originalWindowClipboard) {
+        Object.defineProperty(window.navigator, "clipboard", originalWindowClipboard);
+      } else {
+        Reflect.deleteProperty(window.navigator, "clipboard");
+      }
+    }
   });
 
   it("renders from the workbench route", async () => {

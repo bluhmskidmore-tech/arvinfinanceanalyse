@@ -6,7 +6,12 @@ from decimal import Decimal
 
 import duckdb
 
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from tests.helpers import load_module
+
+
+def _task_write_scope():
+    return repository_task_write_scope("backend.app.tasks.risk_tensor_repo_test")
 
 
 def _sample_tensor(core_mod):
@@ -54,17 +59,18 @@ def test_risk_tensor_repo_round_trip_preserves_lineage_and_warnings(tmp_path):
 
     tensor = _sample_tensor(core_mod)
 
-    repo.replace_risk_tensor_row(
-        report_date="2026-03-31",
-        tensor=tensor,
-        source_version="sv_risk_tensor__sv_bond_snap_1",
-        upstream_source_version="sv_bond_snap_1",
-        liability_source_version="sv_tyw_liability_synthetic",
-        liability_rule_version="rv_tyw_formal_synthetic",
-        rule_version="rv_risk_tensor_formal_materialize_v1",
-        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
-        trace_id="trace_risk_tensor_20260331",
-    )
+    with _task_write_scope():
+        repo.replace_risk_tensor_row(
+            report_date="2026-03-31",
+            tensor=tensor,
+            source_version="sv_risk_tensor__sv_bond_snap_1",
+            upstream_source_version="sv_bond_snap_1",
+            liability_source_version="sv_tyw_liability_synthetic",
+            liability_rule_version="rv_tyw_formal_synthetic",
+            rule_version="rv_risk_tensor_formal_materialize_v1",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+            trace_id="trace_risk_tensor_20260331",
+        )
 
     row = None
     for _ in range(10):
@@ -106,17 +112,18 @@ def test_risk_tensor_read_paths_work_while_read_only_connection_is_open(tmp_path
     )
     duckdb_path = tmp_path / "moss.duckdb"
     repo = repo_mod.RiskTensorRepository(str(duckdb_path))
-    repo.replace_risk_tensor_row(
-        report_date="2026-03-31",
-        tensor=_sample_tensor(core_mod),
-        source_version="sv_risk_tensor__sv_bond_snap_1",
-        upstream_source_version="sv_bond_snap_1",
-        liability_source_version="sv_tyw_liability_synthetic",
-        liability_rule_version="rv_tyw_formal_synthetic",
-        rule_version="rv_risk_tensor_formal_materialize_v1",
-        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
-        trace_id="trace_risk_tensor_20260331",
-    )
+    with _task_write_scope():
+        repo.replace_risk_tensor_row(
+            report_date="2026-03-31",
+            tensor=_sample_tensor(core_mod),
+            source_version="sv_risk_tensor__sv_bond_snap_1",
+            upstream_source_version="sv_bond_snap_1",
+            liability_source_version="sv_tyw_liability_synthetic",
+            liability_rule_version="rv_tyw_formal_synthetic",
+            rule_version="rv_risk_tensor_formal_materialize_v1",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+            trace_id="trace_risk_tensor_20260331",
+        )
 
     held_read_conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
@@ -308,17 +315,18 @@ def test_risk_tensor_write_path_aligns_legacy_applied_v4_schema(tmp_path):
         conn.close()
 
     repo = repo_mod.RiskTensorRepository(str(duckdb_path))
-    repo.replace_risk_tensor_row(
-        report_date="2026-03-31",
-        tensor=_sample_tensor(core_mod),
-        source_version="sv_risk_tensor__sv_bond_snap_1",
-        upstream_source_version="sv_bond_snap_1",
-        liability_source_version="sv_tyw_liability_synthetic",
-        liability_rule_version="rv_tyw_formal_synthetic",
-        rule_version="rv_risk_tensor_formal_materialize_v1",
-        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
-        trace_id="trace_risk_tensor_20260331",
-    )
+    with _task_write_scope():
+        repo.replace_risk_tensor_row(
+            report_date="2026-03-31",
+            tensor=_sample_tensor(core_mod),
+            source_version="sv_risk_tensor__sv_bond_snap_1",
+            upstream_source_version="sv_bond_snap_1",
+            liability_source_version="sv_tyw_liability_synthetic",
+            liability_rule_version="rv_tyw_formal_synthetic",
+            rule_version="rv_risk_tensor_formal_materialize_v1",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+            trace_id="trace_risk_tensor_20260331",
+        )
 
     row = repo.fetch_risk_tensor_row("2026-03-31")
     assert row is not None

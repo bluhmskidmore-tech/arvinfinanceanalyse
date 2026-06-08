@@ -81,6 +81,86 @@
   color: #26364a;
 }
 
+.balance-movement-freshness-strip {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, 1.2fr);
+  gap: 12px;
+  align-items: center;
+  margin: -4px 0 18px;
+  padding: 12px;
+  border: 1px solid #d7dfea;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.balance-movement-freshness-strip--ok {
+  border-color: #b7d8c5;
+  background: #f6fbf7;
+}
+
+.balance-movement-freshness-strip--warn {
+  border-color: #f3c96b;
+  background: #fffaf0;
+}
+
+.balance-movement-freshness-strip--info {
+  border-color: #cfd9e6;
+  background: #fbfcfe;
+}
+
+.balance-movement-freshness-strip__summary {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.balance-movement-freshness-strip__summary span {
+  color: #10284a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.balance-movement-freshness-strip--warn .balance-movement-freshness-strip__summary span {
+  color: #ad6800;
+}
+
+.balance-movement-freshness-strip__summary strong {
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.balance-movement-freshness-strip__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.balance-movement-freshness-strip__facts div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.balance-movement-freshness-strip__facts dt {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.balance-movement-freshness-strip__facts dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: #10284a;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .balance-movement-evidence-strip {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -1839,6 +1919,8 @@
   }
 
   .balance-movement-evidence-strip,
+  .balance-movement-freshness-strip,
+  .balance-movement-freshness-strip__facts,
   .balance-movement-anomaly-grid,
   .balance-movement-closure-grid,
   .balance-movement-dimension-grid,

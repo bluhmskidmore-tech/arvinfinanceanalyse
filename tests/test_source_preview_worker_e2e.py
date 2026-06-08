@@ -12,14 +12,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import ROOT, load_module
+from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_tables
 from tests.test_bond_analytics_materialize_flow import (
     _seed_bond_snapshot_rows,
     seed_yield_curves_for_bond_analytics_tests,
 )
-from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_tables
 from tests.test_product_category_pnl_flow import _write_month_pair
 
 

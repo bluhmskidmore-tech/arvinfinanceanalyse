@@ -635,6 +635,38 @@ describe("pnlByBusinessPageModel", () => {
     });
   });
 
+  it("counts true-zero ADB as covered but zero-denominator limited", () => {
+    const model = buildPnlByBusinessPageModel({
+      viewMode: "ytd",
+      selectedReportDate: "2026-04-30",
+      selectedYear: 2026,
+      selectedBusinessKey: null,
+      adbAvgByBusinessType: new Map([
+        ["债券投资", 100_000_000],
+        ["信托计划", 0],
+        ["证券业资管计划", 0],
+      ]),
+      datesState: { isLoading: false, isError: false },
+      monthlyState: { isLoading: false, isError: false },
+      ytdState: { isLoading: false, isError: false },
+      formalState: { isLoading: false, isError: false },
+      ytdResult: ytdPayload(),
+      ytdMeta: meta({ quality_flag: "ok" }),
+    });
+
+    expect(model.insight).toMatchObject({
+      confidenceLabel: "日均为0",
+      missingAdbCount: 0,
+      zeroAdbCount: 1,
+      ftpAvailable: false,
+    });
+    expect(model.insight.recommendedDrilldown).toMatchObject({
+      priorityLabel: "日均为0",
+      dimensionLabel: "日均分母",
+      evidenceLabel: "日均为0 1 项",
+    });
+  });
+
   it("does not block YTD FTP analysis on zero-activity parent rows without ADB", () => {
     const model = buildPnlByBusinessPageModel({
       viewMode: "ytd",

@@ -37,6 +37,25 @@ describe("DashboardHomeStatus", () => {
     expect(screen.getByText("等待主快照")).toBeInTheDocument();
   });
 
+  it("does not replace a failed real snapshot with preview sample KPIs", async () => {
+    const client = createRealModeHomeClient({
+      getHomeSnapshot: vi.fn(async () => {
+        throw new Error("snapshot unavailable");
+      }),
+    });
+
+    renderWorkbenchApp(["/"], { client });
+
+    const hero = await screen.findByTestId("dashboard-home-hero");
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-data-status")).toHaveTextContent("主快照不可用");
+      expect(screen.getByTestId("dashboard-home-rail-data-status")).toHaveTextContent("主快照不可用");
+      expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("—");
+      expect(hero).not.toHaveTextContent("3,708.10");
+      expect(hero).not.toHaveTextContent("样例");
+    });
+  });
+
   it("marks retained previous snapshot data as stale when a new report date request fails", async () => {
     const mockSource = createApiClient({ mode: "mock" });
     const firstReportDate = "2026-04-30";

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 
@@ -10,15 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
-
-from backend.app.repositories.akshare_adapter import VendorAdapter
-from backend.app.repositories.yield_curve_repo import YieldCurveRepository
-
-
-SUPPORTED_CURVE_TYPES = ("treasury", "cdb", "aaa_credit")
-# Keep this aligned with backend.app.tasks.yield_curve_materialize.RULE_VERSION.
-RULE_VERSION = "rv_yield_curve_formal_materialize_v1"
+from backend.app.tasks.yield_curve_materialize import (  # noqa: E402
+    RULE_VERSION,
+    SUPPORTED_CURVE_TYPES,
+    list_yield_curve_month_end_anchors,
+    materialize_yield_curve_month_end_backfill,
+)
 
 
 def _resolve_workspace_path(path_text: str) -> Path:
@@ -57,69 +54,6 @@ def _normalize_curve_types(raw_value: str) -> list[str]:
     return normalized
 
 
-def get_month_end_dates(duckdb_path: Path, start_date: str, end_date: str) -> list[str]:
-    """Return the last available trading date of each month from zqtz snapshots."""
-    conn = duckdb.connect(str(duckdb_path), read_only=True)
-    try:
-        row = conn.execute(
-            """
-            select 1
-            from information_schema.tables
-            where table_name = 'zqtz_bond_daily_snapshot'
-            limit 1
-            """
-        ).fetchone()
-        if row is None:
-            raise RuntimeError("DuckDB is missing table zqtz_bond_daily_snapshot.")
-
-        rows = conn.execute(
-            """
-            with scoped_dates as (
-              select cast(report_date as date) as report_date
-              from zqtz_bond_daily_snapshot
-              where cast(report_date as date) between ? and ?
-            )
-            select max(report_date) as month_end
-            from scoped_dates
-            group by extract(year from report_date), extract(month from report_date)
-            order by month_end
-            """,
-            [start_date, end_date],
-        ).fetchall()
-        return [month_end.isoformat() for (month_end,) in rows if month_end is not None]
-    finally:
-        conn.close()
-
-
-def backfill_curve(
-    *,
-    adapter: VendorAdapter,
-    repo: YieldCurveRepository,
-    trade_date: str,
-    curve_type: str,
-    rule_version: str,
-    max_backtrack_days: int,
-) -> tuple[bool, str]:
-    """Fetch and persist a single curve snapshot, walking backward when the anchor date is unavailable."""
-    anchor = date.fromisoformat(trade_date)
-    failures: list[str] = []
-    for offset in range(max_backtrack_days + 1):
-        candidate_date = (anchor - timedelta(days=offset)).isoformat()
-        try:
-            snapshot = adapter.fetch_yield_curve(curve_type=curve_type, trade_date=candidate_date)
-            repo.replace_curve_snapshots(
-                trade_date=snapshot.trade_date,
-                snapshots=[snapshot],
-                rule_version=rule_version,
-            )
-            if snapshot.trade_date == trade_date:
-                return True, f"{snapshot.vendor_name} @ {snapshot.trade_date}"
-            return True, f"{snapshot.vendor_name} @ {snapshot.trade_date} (fallback from {trade_date})"
-        except Exception as exc:
-            failures.append(f"{candidate_date}: {exc}")
-    return False, " | ".join(failures[-3:])
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Backfill governed yield curves for month-end trade dates.")
     parser.add_argument("--duckdb-path", default="data/moss.duckdb", help="DuckDB file path.")
@@ -136,6 +70,8 @@ def main() -> int:
         default=40,
         help="How many calendar days to walk backward when the anchor date has no curve snapshot.",
     )
+    parser.add_argument("--governance-dir", default="", help="Governance output directory.")
+    parser.add_argument("--run-id", default="", help="Optional governance run id.")
     parser.add_argument("--dry-run", action="store_true", help="Print resolved month-end dates without writing data.")
     args = parser.parse_args()
 
@@ -157,7 +93,11 @@ def main() -> int:
         return 2
 
     try:
-        dates = get_month_end_dates(duckdb_path, start.isoformat(), end.isoformat())
+        dates = list_yield_curve_month_end_anchors(
+            duckdb_path=str(duckdb_path),
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+        )
     except Exception as exc:
         print(f"ERROR: Failed to resolve month-end dates: {exc}", file=sys.stderr)
         return 2
@@ -182,64 +122,36 @@ def main() -> int:
         print("--dry-run enabled; no data was written.")
         return 0
 
-    adapter = VendorAdapter()
-    preflight = adapter.preflight()
-    print(f"AkShare preflight: {preflight.detail}")
-    if not preflight.ok:
-        print("Continuing anyway: fetch_yield_curve may still succeed through Choice or ChinaBond fallbacks.")
-    print()
-
-    repo = YieldCurveRepository(str(duckdb_path))
-    total = len(dates) * len(curve_types)
-    skipped = 0
-    written = 0
-    failed = 0
-    failures: list[tuple[str, str, str]] = []
-
-    for index, trade_date in enumerate(dates, start=1):
-        print(f"[{index}/{len(dates)}] {trade_date}")
-        for curve_type in curve_types:
-            existing = repo.fetch_curve_snapshot(trade_date, curve_type)
-            if existing is not None:
-                print(f"  SKIP {curve_type}: already present")
-                skipped += 1
-                continue
-
-            ok, detail = backfill_curve(
-                adapter=adapter,
-                repo=repo,
-                trade_date=trade_date,
-                curve_type=curve_type,
-                rule_version=RULE_VERSION,
-                max_backtrack_days=args.max_backtrack_days,
-            )
-            if ok:
-                print(f"  OK   {curve_type}: written via {detail}")
-                written += 1
-            else:
-                print(f"  FAIL {curve_type}: {detail}")
-                failed += 1
-                failures.append((trade_date, curve_type, detail))
+    payload = materialize_yield_curve_month_end_backfill.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=args.governance_dir or None,
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        curve_types=curve_types,
+        max_backtrack_days=args.max_backtrack_days,
+        run_id=args.run_id or None,
+    )
 
     print()
     print("=== Backfill Summary ===")
-    print(f"Total tasks: {total}")
-    print(f"Written: {written}")
-    print(f"Skipped: {skipped}")
-    print(f"Failed: {failed}")
+    print(f"Total tasks: {payload['total_tasks']}")
+    print(f"Written: {payload['written']}")
+    print(f"Skipped: {payload['skipped']}")
+    print(f"Failed: {payload['failed']}")
 
+    failures = payload["failures"]
     if failures:
         print()
         print("Failed curves:")
-        for trade_date, curve_type, message in failures:
-            print(f"  - {trade_date} {curve_type}: {message}")
+        for failure in failures:
+            print(f"  - {failure['anchor_date']} {failure['curve_type']}: {failure['message']}")
 
     print()
     print(
         "After rerunning the downstream bond analytics materialization, "
         "Campisi roll_down / rate_effect / spread_effect can read governed curve data."
     )
-    return 1 if failed else 0
+    return 1 if payload["failed"] else 0
 
 
 if __name__ == "__main__":

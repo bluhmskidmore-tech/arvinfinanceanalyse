@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Collapse, Tabs, type TabsProps } from "antd";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import type { ModuleHomeDetailPanel, ModuleHomeTone } from "./moduleHomeModel";
@@ -23,6 +24,66 @@ function toneClass(tone: ModuleHomeTone) {
   return "";
 }
 
+function hasRows(panel?: ModuleHomeDetailPanel) {
+  return Boolean(panel && panel.rows.length > 0);
+}
+
+type MacroDetailPanelConfig = {
+  panel: ModuleHomeDetailPanel;
+  testId: string;
+  compact?: boolean;
+};
+
+function MacroDetailSummary({ panel }: { panel: ModuleHomeDetailPanel }) {
+  const primaryRow = panel.rows[0];
+  const latestDate = panel.rows.find((row) => row.tradeDate && row.tradeDate !== "-")?.tradeDate;
+
+  return (
+    <article className={marketStyles.macroDetailSummaryCard}>
+      <div className={marketStyles.macroDetailSummaryMain}>
+        <span className={marketStyles.macroDetailSummaryTitle}>{panel.title}</span>
+        <strong className={`${marketStyles.macroDetailSummaryValue} ${toneClass(primaryRow?.tone ?? panel.tone)}`}>
+          {primaryRow?.value ?? panel.stateLabel}
+        </strong>
+        <span className={marketStyles.macroDetailSummaryMeta}>
+          {panel.rows.length} 条明细{latestDate ? ` · ${latestDate}` : ""}
+        </span>
+      </div>
+      <span className={marketStyles.statusChip}>{panel.stateLabel}</span>
+    </article>
+  );
+}
+
+function MacroGroupedDetails({ panels }: { panels: MacroDetailPanelConfig[] }) {
+  return (
+    <div className={marketStyles.macroDetailGroup}>
+      <div className={marketStyles.macroSummaryGrid}>
+        {panels.map(({ panel }) => (
+          <MacroDetailSummary panel={panel} key={panel.key} />
+        ))}
+      </div>
+      <Collapse
+        className={marketStyles.macroDetailCollapse}
+        destroyOnHidden
+        ghost
+        items={[
+          {
+            key: "details",
+            label: "展开明细",
+            children: (
+              <div className={marketStyles.macroGroupedGrid}>
+                {panels.map(({ panel, testId, compact }) => (
+                  <MarketDepthPanel panel={panel} testId={testId} compact={compact} key={panel.key} />
+                ))}
+              </div>
+            ),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
 export default function MarketMacroToolkitSection({
   overviewPanel,
   signalPanel,
@@ -39,6 +100,59 @@ export default function MarketMacroToolkitSection({
   const hitRateRow = overviewPanel?.rows.find((row) => row.key === "macro-hit-rate");
   const summaryRow = overviewPanel?.rows.find((row) => row.key === "macro-summary");
   const scriptsRow = overviewPanel?.rows.find((row) => row.key === "macro-scripts");
+  const groupItems: NonNullable<TabsProps["items"]> = [];
+
+  if (hasRows(aShareRiskPanel) && aShareRiskPanel) {
+    groupItems.push({
+      key: "core",
+      label: "核心归因",
+      children: <MacroGroupedDetails panels={[{ panel: aShareRiskPanel, testId: "module-home-macro-a-share-risk" }]} />,
+    });
+  }
+
+  if (hasRows(capabilityPanel) || hasRows(indicatorPanel) || hasRows(strategyPanel)) {
+    groupItems.push({
+      key: "tooling",
+      label: "工具明细",
+      children: (
+        <MacroGroupedDetails
+          panels={[
+            ...(hasRows(capabilityPanel) && capabilityPanel
+              ? [{ panel: capabilityPanel, testId: "module-home-macro-capabilities", compact: true }]
+              : []),
+            ...(hasRows(indicatorPanel) && indicatorPanel
+              ? [{ panel: indicatorPanel, testId: "module-home-macro-indicators" }]
+              : []),
+            ...(hasRows(strategyPanel) && strategyPanel
+              ? [{ panel: strategyPanel, testId: "module-home-macro-strategies", compact: true }]
+              : []),
+          ]}
+        />
+      ),
+    });
+  }
+
+  if (hasRows(hasonPanel) || hasRows(shadowPanel) || hasRows(runtimePanel)) {
+    groupItems.push({
+      key: "runtime",
+      label: "组合运行",
+      children: (
+        <MacroGroupedDetails
+          panels={[
+            ...(hasRows(hasonPanel) && hasonPanel
+              ? [{ panel: hasonPanel, testId: "module-home-macro-hason", compact: true }]
+              : []),
+            ...(hasRows(shadowPanel) && shadowPanel ? [{ panel: shadowPanel, testId: "module-home-macro-shadow" }] : []),
+            ...(hasRows(runtimePanel) && runtimePanel
+              ? [{ panel: runtimePanel, testId: "module-home-macro-runtime", compact: true }]
+              : []),
+          ]}
+        />
+      ),
+    });
+  }
+
+  const defaultMacroGroupKey = groupItems[0]?.key;
 
   return (
     <section className={marketStyles.macroSection} data-testid="module-home-macro-toolkit">
@@ -80,35 +194,14 @@ export default function MarketMacroToolkitSection({
         </div>
       ) : null}
 
-      <div className={marketStyles.macroFeaturedGrid}>
-        {aShareRiskPanel && aShareRiskPanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={aShareRiskPanel} testId="module-home-macro-a-share-risk" />
-        ) : null}
-        {hasonPanel && hasonPanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={hasonPanel} testId="module-home-macro-hason" compact />
-        ) : null}
-      </div>
-
-      <div className={marketStyles.macroDetailGrid}>
-        {capabilityPanel && capabilityPanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={capabilityPanel} testId="module-home-macro-capabilities" compact />
-        ) : null}
-        {indicatorPanel && indicatorPanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={indicatorPanel} testId="module-home-macro-indicators" />
-        ) : null}
-        {strategyPanel && strategyPanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={strategyPanel} testId="module-home-macro-strategies" compact />
-        ) : null}
-      </div>
-
-      <div className={marketStyles.macroSecondaryGrid}>
-        {shadowPanel && shadowPanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={shadowPanel} testId="module-home-macro-shadow" />
-        ) : null}
-        {runtimePanel && runtimePanel.rows.length > 0 ? (
-          <MarketDepthPanel panel={runtimePanel} testId="module-home-macro-runtime" compact />
-        ) : null}
-      </div>
+      {defaultMacroGroupKey ? (
+        <Tabs
+          className={marketStyles.macroGroupTabs}
+          data-testid="module-home-macro-groups"
+          defaultActiveKey={defaultMacroGroupKey}
+          items={groupItems}
+        />
+      ) : null}
     </section>
   );
 }

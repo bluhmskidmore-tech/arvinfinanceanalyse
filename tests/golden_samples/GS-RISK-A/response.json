@@ -90,9 +90,9 @@
       "sign_aware": false
     },
     "portfolio_convexity": {
-      "raw": 36.65108294,
+      "raw": 35.23794449,
       "unit": "ratio",
-      "display": "36.65",
+      "display": "35.24",
       "precision": 2,
       "sign_aware": false
     },

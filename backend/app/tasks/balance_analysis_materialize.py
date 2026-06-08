@@ -12,6 +12,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
@@ -253,11 +254,12 @@ def _execute_balance_analysis_materialization(
 
     combined_source_version = "__".join(sorted(source_versions | fx_source_versions)) or "sv_balance_analysis_empty"
     try:
-        repo.replace_formal_balance_rows(
-            report_date=report_date,
-            zqtz_rows=zqtz_fact_rows,
-            tyw_rows=tyw_fact_rows,
-        )
+        with repository_task_write_scope(__name__):
+            repo.replace_formal_balance_rows(
+                report_date=report_date,
+                zqtz_rows=zqtz_fact_rows,
+                tyw_rows=tyw_fact_rows,
+            )
     except Exception as exc:
         raise FormalComputeMaterializeFailure(
             source_version=combined_source_version,

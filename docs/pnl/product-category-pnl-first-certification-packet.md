@@ -41,6 +41,10 @@ This packet does not approve page closure, write governance records, prove page 
 - Frontend typecheck: `passed`
 - Frontend debt audit: `passed`
 - Frontend production build: `passed`
+- Golden boundary status: `approved`
+- Golden artifact status: `captured-awaiting-approval`
+- Golden artifact approved: `false`
+- Golden artifact mismatch: `true`
 - Boundary: This evidence proves the verification gate passed; it does not capture business-owner approval, manual audit closure, or golden approval artifact reconciliation.
 - Rerun boundary: Regenerating this packet only records the latest available gate evidence; the pre-approval runbook must rerun the gate before owner signature.
 
@@ -65,12 +69,13 @@ This packet does not approve page closure, write governance records, prove page 
 | `owner_decisions` | `pending_owner_decisions` | `docs/pnl/product-category-pnl-owner-decision-packet.md` | `false` | Resolve 3 product decisions and 2 backend/API contract decisions. |
 | `golden_sample_approval` | `captured-awaiting-approval; mismatch=true` | `tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md` | `false` | Approve GS-PROD-CAT-PNL-A with non-placeholder owner, approver, and approval date. |
 | `manual_closure_checklist` | `10 partial units remain` | `docs/pnl/product-category-closure-checklist.md` | `false` | Review and close each checklist unit from PARTIAL to CLOSED only when evidence and decisions support it. |
-| `business_owner_approval` | `pending; 15 action items` | `docs/pnl/product-category-pnl-business-owner-approval-template.md` | `false` | Complete and sign the approval template after reviewing all prior gates. |
+| `business_owner_approval` | `pending; 15 action items; 0 signed; 15 pending or missing` | `docs/pnl/product-category-pnl-business-owner-approval-template.md` | `false` | Complete and sign the approval template after reviewing all prior gates. |
 
 ## Owner Readiness Receipt
 
 - Receipt kind: `pre_signature_owner_readiness_receipt`
 - `owner_signable=false`
+- `captures_business_owner_approval=false`
 - `machine_evidence_ready=true`
 - `business_decisions_ready=false`
 - `golden_sample_ready=false`
@@ -149,16 +154,66 @@ Missing required artifacts:
 | `first_certification_packet` | `docs/pnl/product-category-pnl-first-certification-packet.md` | `true` | `freshness_status=valid` | `missing_markers=0` |
 | `owner_decision_packet` | `docs/pnl/product-category-pnl-owner-decision-packet.md` | `true` | `freshness_status=valid` | `missing_markers=0` |
 
+- Scope kind: `generated_artifact_freshness_scope`
+- `artifact_count=2`
+- `valid_artifact_count=2`
+- `stale_or_missing_artifact_count=0`
+- `freshness_check_effect=none`
+- `captures_business_owner_approval=false`
+- `captures_product_or_api_decisions=false`
+- `captures_golden_sample_approval=false`
+- `captures_closure_approval=false`
+- `writes_governance_records=false`
+- `certification_effect=none`
+- Boundary: Generated artifact freshness proves only that script-owned packet outputs match the current renderers; it does not approve, sign, certify, write governance records, or capture decisions.
+
+## Certification Packet Consistency
+
+- Consistency kind: `product_category_pnl_certification_packet_consistency`
+- `consistency_status=valid`
+- Template path: `docs/pnl/product-category-pnl-business-owner-approval-template.md`
+- First-certification packet path: `docs/pnl/product-category-pnl-first-certification-packet.md`
+- Owner decision packet path: `docs/pnl/product-category-pnl-owner-decision-packet.md`
+- `formal_decision_item_count=5`
+- `next_review_queue_item_count=4`
+- `approval_action_item_count=15`
+- `business_owner_action_signoff_item_count=15`
+- `business_owner_action_signed_item_count=0`
+- `business_owner_action_pending_or_missing_item_count=15`
+- `business_owner_action_missing_or_invalid_item_count=5`
+- `business_owner_action_pending_review_item_count=10`
+- `approves_metric_or_page=false`
+- `owner_signable=false`
+- `captures_business_owner_approval=false`
+- `captures_business_owner_signature=false`
+- `captures_product_or_api_decisions=false`
+- `captures_golden_sample_approval=false`
+- `captures_closure_approval=false`
+- `writes_governance_records=false`
+- `can_promote_certification=false`
+- `verification_commands_rerun_captured=false`
+- `certification_effect=none`
+- Boundary: Consistency only proves packet/template counts and non-approval boundaries align; it captures no approval, signature, product/API decision, golden approval, closure approval, governance write, or certification.
+
+Missing consistency markers:
+
+- `none`
+
 ## Owner Decision Packet Bridge
 
 - Bridge kind: `owner_decision_packet_bridge`
 - Packet path: `docs/pnl/product-category-pnl-owner-decision-packet.md`
 - `packet_exists=true`
+- `packet_freshness_status=valid`
+- `missing_freshness_markers=0`
 - `formal_decision_item_count=5`
-- `next_review_queue_item_count=5`
+- `next_review_queue_item_count=4`
 - `counts_next_review_as_decision=false`
 - `captures_product_or_api_decisions=false`
-- Required owner action: Review 5 formal decision items plus 5 next-review queue topics; the queue topics are intake follow-ups and do not capture decisions.
+- `captures_golden_sample_approval=false`
+- `captures_closure_approval=false`
+- `certification_effect=none`
+- Required owner action: Review 5 formal decision items plus 4 next-review queue topics; the queue topics are intake follow-ups and do not capture decisions.
 
 ## Pre-Signature Verification Rerun Receipt
 
@@ -171,8 +226,10 @@ Missing required artifacts:
 
 Pre-signature required commands:
 
-- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\codex-page-readiness.ps1 -PageSlug product-category-pnl -Run -CheckLive`
+- `python scripts\product_category_pnl_first_certification_packet.py`
+- `python scripts\product_category_pnl_owner_decision_packet.py`
 - `python scripts\check_product_category_pnl_business_owner_approval.py`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\codex-page-readiness.ps1 -PageSlug product-category-pnl -Run -CheckLive`
 - `python scripts\check_product_category_pnl_business_owner_approval.py --require-captured`
 
 Current recorded evidence:
@@ -226,13 +283,51 @@ Still blocking after rerun:
 
 - Confirm current UI/API payload matches MTR-PCP-001 through MTR-PCP-012 source-to-screen trace rows.
 - Review docs/pnl/product-category-pnl-owner-decision-packet.md for the 3 product decisions and 2 API/contract blockers.
-- Review docs/pnl/product-category-pnl-owner-decision-packet.md for 5 formal decision items and 5 next-review queue topics; queue topics do not count as captured decisions.
+- Review docs/pnl/product-category-pnl-owner-decision-packet.md for 5 formal decision items and 4 next-review queue topics; queue topics do not count as captured decisions.
 - Confirm reviewed boundary, first-certification, and owner-decision packet artifacts exist before marking template review fields yes.
 - Resolve golden_sample_approval_artifact_mismatch before certification wording.
 - Review closure checklist units that remain PARTIAL.
 - Review liability fallback model-boundary evidence without synthetic production proof.
 - Run live smoke/browser evidence review before signature.
 - Complete and sign docs/pnl/product-category-pnl-business-owner-approval-template.md.
+
+## Owner Reviewer Receipt
+
+- Receipt kind: `owner_reviewer_checklist_receipt`
+- `owner_reviewer_receipt_item_count=9`
+- `signed_item_count=0`
+- `pending_item_count=9`
+- `owner_signable=false`
+- `captures_business_owner_approval=false`
+- `can_promote_certification=false`
+- Boundary: Reviewer receipt structures owner-review work for signature intake only; it does not capture business-owner approval, close manual audit, approve golden samples, or certify the route.
+
+| Review key | Checklist item | Evidence path | Approval action fields | Current status | Blocking condition |
+| --- | --- | --- | --- | --- | --- |
+| `source_to_screen_trace_review` | Confirm current UI/API payload matches MTR-PCP-001 through MTR-PCP-012 source-to-screen trace rows. | `docs/pnl/product-category-pnl-first-certification-packet.md#source-to-screen-trace` | `ui_api_payload_review` | `pending_owner_review` | `ui_api_payload_review=pending` |
+| `formal_decision_item_review` | Review docs/pnl/product-category-pnl-owner-decision-packet.md for the 3 product decisions and 2 API/contract blockers. | `docs/pnl/product-category-pnl-owner-decision-packet.md#decision-items` | `reviewed_owner_decision_packet` | `pending_owner_review` | `reviewed_owner_decision_packet=pending` |
+| `next_review_queue_acknowledgement` | Review docs/pnl/product-category-pnl-owner-decision-packet.md for 5 formal decision items and 4 next-review queue topics; queue topics do not count as captured decisions. | `docs/pnl/product-category-pnl-owner-decision-packet.md#next-review-queue` | `owner_decision_next_review_queue_acknowledgement` | `pending_owner_review` | `owner_decision_next_review_queue_acknowledgement=pending` |
+| `artifact_freshness_review` | Confirm reviewed boundary, first-certification, and owner-decision packet artifacts exist before marking template review fields yes. | `docs/pnl/product-category-pnl-first-certification-packet.md#owner-review-intake-checklist` | `reviewed_boundary_packet`, `reviewed_first_certification_packet`, `reviewed_owner_decision_packet`, `governance_record_review` | `pending_owner_review` | `governance_record_review=pending` |
+| `golden_sample_reconciliation` | Resolve golden_sample_approval_artifact_mismatch before certification wording. | `tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md` | `golden_sample_artifact_reconciliation` | `pending_owner_review` | `golden_sample_artifact_reconciliation=pending` |
+| `manual_closure_checklist_review` | Review closure checklist units that remain PARTIAL. | `docs/pnl/product-category-closure-checklist.md` | `closure_checklist_review` | `pending_owner_review` | `closure_checklist_review=pending` |
+| `fallback_liability_boundary_review` | Review liability fallback model-boundary evidence without synthetic production proof. | `docs/pnl/product-category-page-truth-contract.md` | `fallback_liability_branch_boundary_review` | `pending_owner_review` | `fallback_liability_branch_boundary_review=pending` |
+| `live_smoke_evidence_review` | Run live smoke/browser evidence review before signature. | `latest_readiness_gate_evidence` | `live_smoke_evidence_review`, `verification_commands_rerun` | `pending_owner_review` | `live_smoke_evidence_review=pending; verification_commands_rerun=pending` |
+| `business_owner_signature_completion` | Complete and sign docs/pnl/product-category-pnl-business-owner-approval-template.md. | `docs/pnl/product-category-pnl-business-owner-approval-template.md` | `business_owner_name`, `business_owner_role`, `approval_decision`, `approval_date`, `business_owner_signature`, `evidence_pending_boundary_acceptance` | `owner_signature_missing` | `business_owner_approval_captured=false` |
+
+## Owner Reviewer Receipt Field Coverage
+
+- Coverage kind: `owner_reviewer_receipt_approval_field_coverage`
+- `receipt_item_count=9`
+- `referenced_approval_field_count=17`
+- `all_referenced_fields_known=true`
+- `owner_signable=false`
+- `captures_business_owner_approval=false`
+- Referenced approval fields: `approval_date`, `approval_decision`, `business_owner_name`, `business_owner_role`, `business_owner_signature`, `closure_checklist_review`, `evidence_pending_boundary_acceptance`, `fallback_liability_branch_boundary_review`, `golden_sample_artifact_reconciliation`, `governance_record_review`, `live_smoke_evidence_review`, `owner_decision_next_review_queue_acknowledgement`, `reviewed_boundary_packet`, `reviewed_first_certification_packet`, `reviewed_owner_decision_packet`, `ui_api_payload_review`, `verification_commands_rerun`
+- Boundary: Coverage only proves receipt fields are known to the approval checker; it does not mark any field reviewed, signed, or certification-ready.
+
+Missing approval action fields:
+
+- `none`
 
 ## Business Owner Action Items
 
@@ -252,9 +347,94 @@ Still blocking after rerun:
 - Verification commands rerun before approval: `yes` (`pending`)
 - Evidence-pending boundary accepted: `yes` (`pending`)
 
+## Business Owner Action Signoff Matrix
+
+- Matrix kind: `business_owner_action_signoff_matrix`
+- `business_owner_action_signoff_item_count=15`
+- `signed_item_count=0`
+- `pending_or_missing_item_count=15`
+- `missing_or_invalid_item_count=5`
+- `pending_review_item_count=10`
+- `owner_signable=false`
+- `captures_business_owner_approval=false`
+- `can_promote_certification=false`
+- Group counts: `boundary_acceptance=1`, `evidence_review=7`, `owner_decision=3`, `owner_identity=2`, `pre_signature_verification=2`
+- Signed group counts: `none=0`
+- Pending or missing group counts: `boundary_acceptance=1`, `evidence_review=7`, `owner_decision=3`, `owner_identity=2`, `pre_signature_verification=2`
+- Boundary: Action signoff matrix prepares owner signature intake only. Only current_status=valid counts as signed; all other statuses still block business-owner approval capture and business-contract certification.
+
+| Blocker | Signoff group | Owner type | Template field | Required value | Current status | Evidence path | Pre-signature action | Blocks certification |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `business_owner_name` | `owner_identity` | `business_owner` | Business owner name | `Business owner legal or operating name` | `missing` | `docs/pnl/product-category-pnl-business-owner-approval-template.md#required-business-decision` | Fill the business owner legal or operating name. | `true` |
+| `business_owner_role` | `owner_identity` | `business_owner` | Business owner role | `Business owner accountability role` | `missing` | `docs/pnl/product-category-pnl-business-owner-approval-template.md#required-business-decision` | Fill the accountable business owner role. | `true` |
+| `approval_decision` | `owner_decision` | `business_owner` | Approval decision | `approve` | `missing` | `docs/pnl/product-category-pnl-business-owner-approval-template.md#required-business-decision` | Set approval decision to approve after all review gates are satisfied. | `true` |
+| `approval_date` | `owner_decision` | `business_owner` | Approval date | `YYYY-MM-DD` | `missing` | `docs/pnl/product-category-pnl-business-owner-approval-template.md#required-business-decision` | Fill an approval date in YYYY-MM-DD format. | `true` |
+| `business_owner_signature` | `owner_decision` | `business_owner` | Business owner signature | `Business owner signature` | `missing` | `docs/pnl/product-category-pnl-business-owner-approval-template.md#required-business-decision` | Capture the business owner signature after all prerequisite review fields are valid. | `true` |
+| `governance_record_review` | `evidence_review` | `business_owner` | Governance record reviewed | `yes` | `pending` | `docs/audits/2026-06-05-product-category-pnl-gate-i-boundary-status.json` | Review the governance boundary record and mark this field yes only after review. | `true` |
+| `reviewed_owner_decision_packet` | `evidence_review` | `business_owner` | Owner decision packet reviewed | `yes` | `pending` | `docs/pnl/product-category-pnl-owner-decision-packet.md` | Review the owner decision packet and keep unresolved product/API decisions pending. | `true` |
+| `owner_decision_next_review_queue_acknowledgement` | `evidence_review` | `business_owner` | Owner decision next-review queue acknowledged | `yes` | `pending` | `docs/pnl/product-category-pnl-owner-decision-packet.md#next-review-queue` | Acknowledge 4 next-review queue topics as intake follow-ups, not captured decisions. | `true` |
+| `golden_sample_artifact_reconciliation` | `evidence_review` | `business_owner` | Golden sample `GS-PROD-CAT-PNL-A` approval artifact reconciled | `yes` | `pending` | `tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md` | Reconcile the golden sample approval artifact to approved with non-placeholder owner, approver, and approval date. | `true` |
+| `closure_checklist_review` | `evidence_review` | `business_owner` | Closure checklist units reviewed | `yes` | `pending` | `docs/pnl/product-category-closure-checklist.md` | Review closure checklist units and leave certification pending while any unit remains PARTIAL. | `true` |
+| `fallback_liability_branch_boundary_review` | `evidence_review` | `business_owner` | Fallback liability branch model-boundary evidence reviewed | `yes` | `pending` | `docs/pnl/product-category-page-truth-contract.md` | Review fallback liability branch boundary evidence without treating it as synthetic production proof. | `true` |
+| `ui_api_payload_review` | `evidence_review` | `business_owner` | UI/API payload evidence reviewed | `yes` | `pending` | `docs/pnl/product-category-pnl-first-certification-packet.md#source-to-screen-trace` | Review current UI/API payload against MTR-PCP-001 through MTR-PCP-012 source-to-screen trace. | `true` |
+| `live_smoke_evidence_review` | `pre_signature_verification` | `business_owner` | Live smoke evidence reviewed | `yes` | `pending` | `latest_readiness_gate_evidence` | Review fresh live smoke/browser evidence before signature. | `true` |
+| `verification_commands_rerun` | `pre_signature_verification` | `business_owner` | Verification commands rerun before approval | `yes` | `pending` | `docs/pnl/product-category-pnl-first-certification-packet.md#pre-signature-verification-rerun-receipt` | Rerun the pre-signature readiness and approval checker commands. | `true` |
+| `evidence_pending_boundary_acceptance` | `boundary_acceptance` | `business_owner` | Evidence-pending boundary accepted | `yes` | `pending` | `docs/pnl/product-category-pnl-first-certification-packet.md#evidence-scope` | Explicitly accept the evidence-pending boundary if approval proceeds without route certification. | `true` |
+
+## Owner Action Status Scope
+
+- Scope kind: `owner_action_status_scope`
+- `missing_or_invalid_item_count=5`
+- `pending_review_item_count=10`
+- `owner_signable=false`
+- `captures_business_owner_approval=false`
+- `captures_product_or_api_decisions=false`
+- `can_promote_certification=false`
+- `certification_effect=none`
+- Boundary: Owner-action status split is approval-checker evidence only; it does not capture business-owner approval, product/API decisions, or route certification.
+
+## Owner Pre-Signature Blocker Scope
+
+- Scope kind: `owner_pre_signature_blocker_scope`
+- `remaining_blocker_count=16`
+- `approval_action_item_count=15`
+- `signed_item_count=0`
+- `unsigned_item_count=15`
+- `missing_or_invalid_item_count=5`
+- `pending_review_item_count=10`
+- `owner_signable=false`
+- `captures_business_owner_approval=false`
+- `captures_product_or_api_decisions=false`
+- `can_promote_certification=false`
+- `certification_effect=none`
+- Group counts: `boundary_acceptance=1`, `evidence_review=7`, `owner_decision=3`, `owner_identity=2`, `pre_signature_verification=2`
+- Signed group counts: `none=0`
+- Unsigned group counts: `boundary_acceptance=1`, `evidence_review=7`, `owner_decision=3`, `owner_identity=2`, `pre_signature_verification=2`
+- Boundary: Owner pre-signature blocker scope is a checklist boundary only; it does not approve, sign, certify, or capture product/API decisions.
+
+| Blocker | Signoff group | Template field | Required value | Current status | Blocks owner signature | Certification effect |
+| --- | --- | --- | --- | --- | --- | --- |
+| `business_owner_name` | `owner_identity` | Business owner name | `Business owner legal or operating name` | `missing` | `true` | `none` |
+| `business_owner_role` | `owner_identity` | Business owner role | `Business owner accountability role` | `missing` | `true` | `none` |
+| `approval_decision` | `owner_decision` | Approval decision | `approve` | `missing` | `true` | `none` |
+| `approval_date` | `owner_decision` | Approval date | `YYYY-MM-DD` | `missing` | `true` | `none` |
+| `business_owner_signature` | `owner_decision` | Business owner signature | `Business owner signature` | `missing` | `true` | `none` |
+| `governance_record_review` | `evidence_review` | - Governance record reviewed | `yes` | `pending` | `true` | `none` |
+| `reviewed_owner_decision_packet` | `evidence_review` | - Owner decision packet reviewed | `yes` | `pending` | `true` | `none` |
+| `owner_decision_next_review_queue_acknowledgement` | `evidence_review` | - Owner decision next-review queue acknowledged | `yes` | `pending` | `true` | `none` |
+| `golden_sample_artifact_reconciliation` | `evidence_review` | - Golden sample `GS-PROD-CAT-PNL-A` approval artifact reconciled | `yes` | `pending` | `true` | `none` |
+| `closure_checklist_review` | `evidence_review` | - Closure checklist units reviewed | `yes` | `pending` | `true` | `none` |
+| `fallback_liability_branch_boundary_review` | `evidence_review` | - Fallback liability branch model-boundary evidence reviewed | `yes` | `pending` | `true` | `none` |
+| `ui_api_payload_review` | `evidence_review` | - UI/API payload evidence reviewed | `yes` | `pending` | `true` | `none` |
+| `live_smoke_evidence_review` | `pre_signature_verification` | - Live smoke evidence reviewed | `yes` | `pending` | `true` | `none` |
+| `verification_commands_rerun` | `pre_signature_verification` | - Verification commands rerun before approval | `yes` | `pending` | `true` | `none` |
+| `evidence_pending_boundary_acceptance` | `boundary_acceptance` | - Evidence-pending boundary accepted | `yes` | `pending` | `true` | `none` |
+
 ## Evidence Scope
 
 - `approves_metric_or_page=false`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `captures_product_or_api_decisions=false`
+- `certification_effect=none`

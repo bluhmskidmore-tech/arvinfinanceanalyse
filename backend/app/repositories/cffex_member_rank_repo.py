@@ -6,6 +6,7 @@ from typing import Any
 
 import duckdb
 import pandas as pd
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
 TABLE_NAME = "fact_cffex_member_rank_daily"
@@ -162,6 +163,7 @@ def load_member_rank_frame(
 
 
 def replace_member_rank_rows(conn: duckdb.DuckDBPyConnection, rows: list[CffexMemberRankRow]) -> int:
+    require_repository_task_write_scope("replace_member_rank_rows")
     if not rows:
         return 0
     ensure_cffex_member_rank_schema(conn)

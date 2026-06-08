@@ -188,10 +188,24 @@ def _build_yield_history_series(
     idx = all_dates.index(anchor_date)
     slice_desc = all_dates[idx : idx + max_points]
     slice_asc = list(reversed(slice_desc))
+    zqtz_rows_by_date: dict[str, list[dict[str, Any]]] = {}
+    tyw_rows_by_date: dict[str, list[dict[str, Any]]] = {}
+    fetch_yield_rows = getattr(repo, "fetch_yield_rows_for_dates", None)
+    if callable(fetch_yield_rows):
+        try:
+            zqtz_rows_by_date, tyw_rows_by_date = fetch_yield_rows(slice_desc)
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            zqtz_rows_by_date, tyw_rows_by_date = {}, {}
     history: list[dict[str, object]] = []
     for d in slice_asc:
-        zq = repo.fetch_zqtz_yield_rows(d)
-        ty = repo.fetch_tyw_rows(d)
+        if d in zqtz_rows_by_date:
+            zq = zqtz_rows_by_date[d]
+        else:
+            zq = repo.fetch_zqtz_yield_rows(d)
+        if d in tyw_rows_by_date:
+            ty = tyw_rows_by_date[d]
+        else:
+            ty = repo.fetch_tyw_rows(d)
         try:
             m = compute_liability_yield_metrics(d, zq, ty)
         except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):

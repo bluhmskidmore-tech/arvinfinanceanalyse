@@ -25,6 +25,10 @@ type MockIntersectionObserver = {
 };
 
 afterEach(() => {
+  if (restoreHomeGateTimers) {
+    restoreHomeGateTimers();
+    restoreHomeGateTimers = null;
+  }
   vi.unstubAllGlobals();
 });
 
@@ -80,7 +84,54 @@ function renderDashboardHome(client?: ApiClient) {
   });
 }
 
+function renderPolicyFundingDeepLink(client?: ApiClient) {
+  return renderWorkbenchApp(["/政策与资金面"], {
+    client: client ?? createApiClient({ mode: "mock" }),
+  });
+}
+
+let restoreHomeGateTimers: (() => void) | null = null;
+
+function compressedHomeGateDelay(timeout: number | undefined) {
+  if (timeout == null || timeout <= 0) {
+    return timeout;
+  }
+  const knownHomeGateDelayMs = new Set([600, 650, 800, 850, 900, 1_000, 1_100, 1_200, 2_000, 2_100]);
+  if (!knownHomeGateDelayMs.has(timeout)) {
+    return timeout;
+  }
+  return Math.max(1, Math.ceil(timeout / 50));
+}
+
+function enableHomeGateTimerCompression() {
+  if (restoreHomeGateTimers) {
+    return;
+  }
+
+  const originalSetTimeout = window.setTimeout.bind(window);
+  const originalClearTimeout = window.clearTimeout.bind(window);
+
+  window.setTimeout = ((...args: Parameters<typeof window.setTimeout>) => {
+    const [handler, timeout, ...rest] = args;
+    return originalSetTimeout(handler, compressedHomeGateDelay(timeout), ...rest);
+  }) as unknown as typeof window.setTimeout;
+  window.clearTimeout = ((...args: Parameters<typeof window.clearTimeout>) =>
+    originalClearTimeout(...args)) as typeof window.clearTimeout;
+
+  restoreHomeGateTimers = () => {
+    window.setTimeout = originalSetTimeout;
+    window.clearTimeout = originalClearTimeout;
+  };
+}
+
+async function waitForTestClock(ms: number) {
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, ms));
+  });
+}
+
 function stubIdleCallbacks() {
+  enableHomeGateTimerCompression();
   const callbacks = new Map<number, () => void>();
   let nextHandle = 1;
 
@@ -115,59 +166,94 @@ function stubIdleCallbacks() {
 type StubbedIdleCallbacks = ReturnType<typeof stubIdleCallbacks>;
 
 async function runNextIdle(idle: StubbedIdleCallbacks) {
-  await waitFor(() => {
-    expect(idle.pendingCount()).toBeGreaterThan(0);
+  await waitFor(
+    () => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    },
+    { interval: 1 },
+  );
+  await act(async () => {
+    idle.runPending();
   });
+}
+
+async function runPendingIdleIfAny(idle: StubbedIdleCallbacks) {
+  if (idle.pendingCount() === 0) {
+    await waitForTestClock(0);
+  }
+  if (idle.pendingCount() === 0) {
+    return;
+  }
   await act(async () => {
     idle.runPending();
   });
 }
 
 async function waitForDeferredHomeContentDelay() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 850));
-  });
+  await waitForTestClock(850);
 }
 
 async function waitForBodyAutoRevealDelay() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 2_100));
-  });
+  await waitForTestClock(2_100);
+}
+
+async function waitForFirstScreenHydrationDelay() {
+  await waitForTestClock(650);
 }
 
 async function waitForBodyDetailDataDelay() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-  });
+  await waitForTestClock(1_100);
+}
+
+async function waitForBodyStructureDataDelay() {
+  await waitForTestClock(1_100);
 }
 
 async function waitForEventFeedDataDelay() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-  });
+  await waitForTestClock(1_100);
 }
 
 async function waitForSecondaryEventFeedDataDelay() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-  });
+  await waitForTestClock(1_100);
 }
 
-async function revealHomeBodyAndDetailData(idle: StubbedIdleCallbacks) {
+async function waitForBondNewsFeedDataDelay() {
+  await waitForTestClock(1_100);
+}
+
+async function waitForFormalContextDataDelay() {
+  await waitForTestClock(1_100);
+}
+
+async function revealHomeBodyStructureData(idle: StubbedIdleCallbacks) {
   await runNextIdle(idle);
   await waitForBodyAutoRevealDelay();
   await runNextIdle(idle);
   await screen.findByTestId("dashboard-home-work-grid");
   await waitForBodyDetailDataDelay();
   await runNextIdle(idle);
+  await waitForBodyStructureDataDelay();
+  await runNextIdle(idle);
 }
 
 async function revealHomeBodyDetailAndEventFeeds(idle: StubbedIdleCallbacks) {
-  await revealHomeBodyAndDetailData(idle);
+  await revealHomeBodyStructureData(idle);
   await waitForEventFeedDataDelay();
-  await runNextIdle(idle);
+  await runPendingIdleIfAny(idle);
   await waitForSecondaryEventFeedDataDelay();
-  await runNextIdle(idle);
+  await runPendingIdleIfAny(idle);
+}
+
+async function revealHomeBodyDetailAndBondNewsFeeds(idle: StubbedIdleCallbacks) {
+  await revealHomeBodyDetailAndEventFeeds(idle);
+  await waitForBondNewsFeedDataDelay();
+  await runPendingIdleIfAny(idle);
+}
+
+async function revealHomeFormalContextData(idle: StubbedIdleCallbacks) {
+  await revealHomeBodyDetailAndBondNewsFeeds(idle);
+  await waitForFormalContextDataDelay();
+  await runPendingIdleIfAny(idle);
 }
 
 function requestedNewsTopicCodes(spy: {
@@ -188,6 +274,10 @@ function bondNewsTopicCodesExcludingFallbackTopics(): string[] {
   return DASHBOARD_BOND_NEWS_TOPICS.filter((topic) => !fallbackTopicCodes.has(topic.code)).map(
     (topic) => topic.code,
   );
+}
+
+function bondNewsOnlyTopicCodesAfterProbe(): string[] {
+  return bondNewsTopicCodesExcludingFallbackTopics().slice(1);
 }
 
 function bondNewsProbeTopicCode(): string {
@@ -392,7 +482,7 @@ describe("DashboardHomePage", () => {
     releaseSnapshot?.();
   });
 
-  it("keeps event feeds behind a separate idle gate after body detail data", async () => {
+  it("starts event feeds and income trend from the post-snapshot idle gate", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -441,6 +531,7 @@ describe("DashboardHomePage", () => {
     await runNextIdle(idle);
     await waitForBodyAutoRevealDelay();
     await runNextIdle(idle);
+    await screen.findByTestId("dashboard-home-work-grid");
     expect(getResearchCalendarEvents).not.toHaveBeenCalled();
     expect(getChoiceNewsEvents).not.toHaveBeenCalled();
     expect(getHomeIncomeTrend).not.toHaveBeenCalled();
@@ -448,35 +539,20 @@ describe("DashboardHomePage", () => {
     await waitForBodyDetailDataDelay();
     await runNextIdle(idle);
     await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-    });
-    expect(getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(getHomeIncomeTrend).toHaveBeenCalled();
-    });
-
-    await waitForEventFeedDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
       expect(getChoiceNewsEvents).toHaveBeenCalled();
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual([
-      DASHBOARD_MACRO_NEWS_TOPICS[0].code,
-    ]);
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        ...DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.code),
-      ]),
-    );
+    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
 
+    await waitForBodyStructureDataDelay();
+    await runNextIdle(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code),
-      );
+      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
     });
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
+    );
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
       expect.arrayContaining([
         ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
@@ -485,13 +561,97 @@ describe("DashboardHomePage", () => {
     );
 
     await waitForSecondaryEventFeedDataDelay();
-    await runNextIdle(idle);
+    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual([
-        ...DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code),
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        ...bondNewsTopicCodesExcludingFallbackTopics(),
-      ]);
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
+      );
+    });
+
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      );
+    });
+
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(getHomeIncomeTrend).toHaveBeenCalled();
+  });
+
+  it("starts policy funding event feeds immediately on the Chinese deep link", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    let releaseSnapshot: (() => void) | undefined;
+    const idle = stubIdleCallbacks();
+    const getResearchCalendarEvents = vi.fn(async () => []);
+    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
+      if (options.topicCode === "tushare.news.sina") {
+        return choiceNewsEnvelope([
+          choiceNewsEvent({
+            event_key: "tushare-policy-funding-deep-link",
+            received_at: "2026-06-04T10:17:00Z",
+            topic_code: "tushare.news.sina",
+            payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+          }),
+        ]);
+      }
+      return choiceNewsEnvelope([]);
+    });
+    const client = createRealModeHomeClient({
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+      getResearchCalendarEvents,
+      getChoiceNewsEvents,
+      getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
+        mockSnapshotSource.getHomeIncomeTrend(...args),
+      ),
+      getBondAnalyticsTopHoldings: vi.fn(
+        async (...args: Parameters<ApiClient["getBondAnalyticsTopHoldings"]>) =>
+          mockSnapshotSource.getBondAnalyticsTopHoldings(...args),
+      ),
+      getBondAnalyticsPositionChanges: vi.fn(
+        async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) =>
+          mockSnapshotSource.getBondAnalyticsPositionChanges(...args),
+      ),
+    });
+
+    renderPolicyFundingDeepLink(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    releaseSnapshot?.();
+    await runNextIdle(idle);
+    await screen.findByTestId("dashboard-home-policy-funding-pane");
+
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
+      );
+    });
+    await waitForSecondaryEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(expect.arrayContaining(["tushare.news.sina"]));
+    });
+    const policyFundingPane = screen.getByTestId("dashboard-home-policy-funding-pane");
+    await waitFor(() => {
+      expect(policyFundingPane).toHaveAttribute("data-focused", "true");
+      expect(policyFundingPane).toHaveTextContent(
+        "当前使用 Tushare 兜底：Choice 快讯无可展示项，已切换到兜底源。",
+      );
+      expect(policyFundingPane).toHaveTextContent("仅展示 1 条，未发现筛选剔除；样本偏少。");
+      expect(policyFundingPane).toHaveTextContent("样本偏少，请结合兜底源原始明细复核。");
     });
   });
 
@@ -545,10 +705,23 @@ describe("DashboardHomePage", () => {
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual([
-        ...DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code),
-        ...bondNewsTopicCodesExcludingFallbackTopics(),
-      ]);
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
+      );
+    });
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining(DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.code)),
+    );
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
+    );
+
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      );
     });
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
@@ -609,11 +782,22 @@ describe("DashboardHomePage", () => {
     await revealHomeBodyDetailAndEventFeeds(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual([
-        DASHBOARD_MACRO_NEWS_TOPICS[0].code,
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        ...bondNewsTopicCodesExcludingFallbackTopics(),
-      ]);
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining([
+          DASHBOARD_MACRO_NEWS_TOPICS[0].code,
+          ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
+        ]),
+      );
+    });
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining([
+          ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
+          ...bondNewsTopicCodesExcludingFallbackTopics(),
+        ]),
+      );
     });
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.slice(1).map((topic) => topic.code)),
@@ -679,6 +863,72 @@ describe("DashboardHomePage", () => {
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
+  it("loads macro fallback news as soon as Choice macro news has no usable policy funding rows", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    let releaseSnapshot: (() => void) | undefined;
+    const idle = stubIdleCallbacks();
+    const getResearchCalendarEvents = vi.fn(async () => []);
+    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
+      if (options.topicCode === "tushare.news.sina") {
+        return choiceNewsEnvelope([
+          choiceNewsEvent({
+            event_key: "tushare-policy-funding",
+            received_at: "2026-06-04T10:17:00Z",
+            topic_code: "tushare.news.sina",
+            payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+          }),
+        ]);
+      }
+      return choiceNewsEnvelope([]);
+    });
+    const client = createRealModeHomeClient({
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+      getResearchCalendarEvents,
+      getChoiceNewsEvents,
+      getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
+        mockSnapshotSource.getHomeIncomeTrend(...args),
+      ),
+      getBondAnalyticsTopHoldings: vi.fn(
+        async (...args: Parameters<ApiClient["getBondAnalyticsTopHoldings"]>) =>
+          mockSnapshotSource.getBondAnalyticsTopHoldings(...args),
+      ),
+      getBondAnalyticsPositionChanges: vi.fn(
+        async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) =>
+          mockSnapshotSource.getBondAnalyticsPositionChanges(...args),
+      ),
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    releaseSnapshot?.();
+    await revealHomeBodyStructureData(idle);
+    await waitForEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(["tushare.news.sina"]),
+      );
+    });
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+    );
+    await waitFor(() => {
+      expect(screen.getAllByText("10年期美国国债收益率最新上涨2.8个基点，报4.483%。").length).toBeGreaterThan(0);
+    });
+  });
+
   it("does not request the shared fallback news topic twice for bond news", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
@@ -740,6 +990,16 @@ describe("DashboardHomePage", () => {
         ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
       ]),
     );
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      );
+    });
+    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.npr")).toBe(1);
+    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.research")).toBe(1);
+    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.news")).toBe(1);
   });
 
   it("stops bond news topic loading when the bond probe is empty", async () => {
@@ -795,14 +1055,39 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await revealHomeBodyStructureData(idle);
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
+    );
 
+    await waitForEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual([
-        DASHBOARD_MACRO_NEWS_TOPICS[0].code,
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        bondNewsProbeTopicCode(),
-      ]);
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
+      );
+    });
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
+    );
+
+    await waitForSecondaryEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
+      );
+    });
+    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
+    );
+
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining([bondNewsProbeTopicCode()]),
+      );
     });
     expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
       expect.arrayContaining(remainingBondNewsTopicCodesAfterProbe()),
@@ -870,16 +1155,16 @@ describe("DashboardHomePage", () => {
     releaseSnapshot?.();
     await revealHomeBodyDetailAndEventFeeds(idle);
 
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual([
-        DASHBOARD_MACRO_NEWS_TOPICS[0].code,
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        ...bondNewsTopicCodesExcludingFallbackTopics(),
-      ]);
+      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      );
     });
   });
 
-  it("starts only first-screen hydration queries after the first idle gate", async () => {
+  it("lets below-fold basic data start before slow first-screen hydration queries", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -918,10 +1203,8 @@ describe("DashboardHomePage", () => {
     }
 
     await runNextIdle(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
-      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
-    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
     expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
     expect(supplementalCalls.getCoreMetrics).not.toHaveBeenCalled();
     expect(supplementalCalls.getDailyChanges).not.toHaveBeenCalled();
@@ -936,6 +1219,8 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
     });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
     expect(supplementalCalls.getCoreMetrics).not.toHaveBeenCalled();
     expect(supplementalCalls.getDailyChanges).not.toHaveBeenCalled();
     expect(supplementalCalls.getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
@@ -944,31 +1229,52 @@ describe("DashboardHomePage", () => {
     expect(supplementalCalls.getResearchCalendarEvents).not.toHaveBeenCalled();
     expect(supplementalCalls.getChoiceNewsEvents).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondDashboardAssetStructure).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
+
+    await waitForFirstScreenHydrationDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps body structure requests behind a separate idle gate after market rates", async () => {
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...supplementalCalls,
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    await runNextIdle(idle);
+
+    await waitForBodyAutoRevealDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
+    expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
 
     await waitForBodyDetailDataDelay();
     await runNextIdle(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
-    });
-    expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledWith("2026-04-18");
-    expect(supplementalCalls.getBondDashboardAssetStructure).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondDashboardMaturityStructure).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondDashboardIndustryDistribution).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondDashboardRiskIndicators).not.toHaveBeenCalled();
-    expect(supplementalCalls.getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getChoiceNewsEvents).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalled();
-    });
+    expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
+    expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
 
-    await waitForEventFeedDataDelay();
+    await waitForBodyStructureDataDelay();
     await runNextIdle(idle);
     await waitFor(() => {
-      expect(supplementalCalls.getResearchCalendarEvents).toHaveBeenCalled();
-      expect(supplementalCalls.getChoiceNewsEvents).toHaveBeenCalled();
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsTopHoldings).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsPositionChanges).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getHomeResearchReports).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -983,9 +1289,7 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
+    await waitForTestClock(500);
 
     expect(idle.pendingCount()).toBe(0);
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
@@ -995,14 +1299,27 @@ describe("DashboardHomePage", () => {
     await waitForDeferredHomeContentDelay();
     await runNextIdle(idle);
 
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
+    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
+
+    await waitForBodyAutoRevealDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
+
+    await waitForFirstScreenHydrationDelay();
+    await runNextIdle(idle);
     await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
-    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
   });
 
-  it("starts deferred content immediately when the user reaches below-fold content", async () => {
+  it("starts deferred content immediately when the user reaches below-fold content without starting slow hydration", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -1013,9 +1330,7 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    await waitForTestClock(100);
     expect(idle.pendingCount()).toBe(0);
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
 
@@ -1023,12 +1338,17 @@ describe("DashboardHomePage", () => {
       fireEvent.scroll(window);
     });
 
+    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+    expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
+
+    await waitForFirstScreenHydrationDelay();
+    await runNextIdle(idle);
     await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
-    expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
   });
 
   it("remembers below-fold reach that happens while the snapshot is still pending", async () => {
@@ -1187,11 +1507,30 @@ describe("DashboardHomePage", () => {
 
     await waitForBodyAutoRevealDelay();
     await runNextIdle(idle);
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
     expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
 
     await waitForBodyDetailDataDelay();
     await runNextIdle(idle);
+    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
+
+    await waitForBodyStructureDataDelay();
+    await runNextIdle(idle);
+    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
+
+    await waitForEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
+
+    await waitForSecondaryEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
+
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
+
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
     await waitFor(() => {
       expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(1);
     });
@@ -1206,7 +1545,7 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(releaseNewSnapshot).toBeDefined();
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForTestClock(50);
 
     expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(incomeTrendCallsBeforeSwitch);
     expect(supplementalCalls.getCockpitWarnings).toHaveBeenCalledTimes(cockpitWarningCallsBeforeSwitch);
@@ -1243,14 +1582,14 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       idle.runPending();
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitForTestClock(50);
 
     for (const spy of Object.values(supplementalCalls)) {
       expect(spy).not.toHaveBeenCalled();
     }
   });
 
-  it("waits to request income trend until heavy bond lists have settled", async () => {
+  it("starts income trend before heavy formal context waits for heavy bond lists", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1318,21 +1657,251 @@ describe("DashboardHomePage", () => {
 
     await waitForBodyAutoRevealDelay();
     await runNextIdle(idle);
+    await screen.findByTestId("dashboard-home-work-grid");
     expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
     expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
-    await waitForBodyDetailDataDelay();
+    await waitForEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
+      expect(releaseIncomeTrend).toBeDefined();
+    });
+    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    await waitForBodyStructureDataDelay();
     await runNextIdle(idle);
     await waitFor(() => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
       expect(releaseTopHoldings).toBeDefined();
     });
-    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
     expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
     expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
     expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
 
-    releaseTopHoldings?.();
+    await waitForSecondaryEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseTopHoldings?.();
+    });
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
+    });
+
+    releaseIncomeTrend?.();
+  });
+
+  it("waits to request formal queries until position changes have settled", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+    let releaseSnapshot: (() => void) | undefined;
+    let releasePositionChanges: (() => void) | undefined;
+    let releaseIncomeTrend: (() => void) | undefined;
+    const getBondAnalyticsTopHoldings = vi.fn(mockSnapshotSource.getBondAnalyticsTopHoldings);
+    const getBondAnalyticsPositionChanges = vi.fn(
+      async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) => {
+        await new Promise<void>((resolve) => {
+          releasePositionChanges = resolve;
+        });
+        return mockSnapshotSource.getBondAnalyticsPositionChanges(...args);
+      },
+    );
+    const getHomeIncomeTrend = vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) => {
+      await new Promise<void>((resolve) => {
+        releaseIncomeTrend = resolve;
+      });
+      return mockSnapshotSource.getHomeIncomeTrend(...args);
+    });
+    const getBondAnalyticsReturnDecomposition = vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition);
+    const getPnlCampisiFourEffects = vi.fn(mockSnapshotSource.getPnlCampisiFourEffects);
+    const getBondAnalyticsYieldCurveTermStructure = vi.fn(
+      mockSnapshotSource.getBondAnalyticsYieldCurveTermStructure,
+    );
+    const client = createRealModeHomeClient({
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+      getBondAnalyticsTopHoldings,
+      getBondAnalyticsPositionChanges,
+      getHomeIncomeTrend,
+      getBondAnalyticsReturnDecomposition,
+      getPnlCampisiFourEffects,
+      getBondAnalyticsYieldCurveTermStructure,
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    await act(async () => {
+      releaseSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    });
+
+    await runNextIdle(idle);
+    await waitForBodyAutoRevealDelay();
+    await runNextIdle(idle);
+    await screen.findByTestId("dashboard-home-work-grid");
+    await waitForEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
+      expect(releaseIncomeTrend).toBeDefined();
+    });
+    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
+
+    await waitForBodyStructureDataDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+      expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
+      expect(releasePositionChanges).toBeDefined();
+    });
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    await waitForSecondaryEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releasePositionChanges?.();
+    });
+    await waitFor(() => {
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
+      expect(releaseIncomeTrend).toBeDefined();
+      expect(getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
+      expect(getPnlCampisiFourEffects).toHaveBeenCalled();
+      expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
+    });
+
+    releaseIncomeTrend?.();
+  });
+
+  it("waits to request formal queries until failed position changes have settled", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+    let releaseSnapshot: (() => void) | undefined;
+    let rejectPositionChanges: (() => void) | undefined;
+    let releaseIncomeTrend: (() => void) | undefined;
+    const getBondAnalyticsTopHoldings = vi.fn(mockSnapshotSource.getBondAnalyticsTopHoldings);
+    const getBondAnalyticsPositionChanges = vi.fn(
+      async () => {
+        await new Promise<void>((resolve) => {
+          rejectPositionChanges = resolve;
+        });
+        throw new Error("position changes unavailable");
+      },
+    );
+    const getHomeIncomeTrend = vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) => {
+      await new Promise<void>((resolve) => {
+        releaseIncomeTrend = resolve;
+      });
+      return mockSnapshotSource.getHomeIncomeTrend(...args);
+    });
+    const getBondAnalyticsReturnDecomposition = vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition);
+    const getPnlCampisiFourEffects = vi.fn(mockSnapshotSource.getPnlCampisiFourEffects);
+    const getBondAnalyticsYieldCurveTermStructure = vi.fn(
+      mockSnapshotSource.getBondAnalyticsYieldCurveTermStructure,
+    );
+    const client = createRealModeHomeClient({
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return mockSnapshotSource.getHomeSnapshot(...args);
+      },
+      getBondAnalyticsTopHoldings,
+      getBondAnalyticsPositionChanges,
+      getHomeIncomeTrend,
+      getBondAnalyticsReturnDecomposition,
+      getPnlCampisiFourEffects,
+      getBondAnalyticsYieldCurveTermStructure,
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(releaseSnapshot).toBeDefined();
+    });
+    await act(async () => {
+      releaseSnapshot?.();
+    });
+    await waitFor(() => {
+      expect(idle.pendingCount()).toBeGreaterThan(0);
+    });
+
+    await runNextIdle(idle);
+    await waitForBodyAutoRevealDelay();
+    await runNextIdle(idle);
+    await screen.findByTestId("dashboard-home-work-grid");
+    await waitForEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitFor(() => {
+      expect(getHomeIncomeTrend).toHaveBeenCalled();
+      expect(releaseIncomeTrend).toBeDefined();
+    });
+    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
+
+    await waitForBodyStructureDataDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+      expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
+      expect(rejectPositionChanges).toBeDefined();
+    });
+
+    await waitForSecondaryEventFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitForBondNewsFeedDataDelay();
+    await runPendingIdleIfAny(idle);
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+    expect(getBondAnalyticsReturnDecomposition).not.toHaveBeenCalled();
+    expect(getPnlCampisiFourEffects).not.toHaveBeenCalled();
+    expect(getBondAnalyticsYieldCurveTermStructure).not.toHaveBeenCalled();
+
+    await act(async () => {
+      rejectPositionChanges?.();
+    });
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
@@ -1358,9 +1927,7 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getMarketDataRates).toHaveBeenCalledTimes(1);
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    await waitForTestClock(100);
     expect(getMarketDataRates).toHaveBeenCalledTimes(1);
   });
 
@@ -1443,6 +2010,72 @@ describe("DashboardHomePage", () => {
                 tone: "positive" as const,
                 detail: "测试真实接口返回值。",
               },
+              {
+                id: "yield",
+                label: "年度损益（不扣FTP）",
+                caliber_label: "FI + 非标桥接",
+                value: {
+                  raw: 3_639_159_930.63,
+                  unit: "yuan" as const,
+                  display: "+36.39 亿",
+                  precision: 2,
+                  sign_aware: true,
+                },
+                delta: {
+                  raw: 0.2251,
+                  unit: "pct" as const,
+                  display: "+22.51%",
+                  precision: 2,
+                  sign_aware: true,
+                },
+                tone: "positive" as const,
+                detail: "测试真实接口返回值。",
+                history: [2_970_577_023.0, 3_639_159_930.63],
+              },
+              {
+                id: "nim",
+                label: "净息差",
+                caliber_label: null,
+                value: {
+                  raw: 0.01046,
+                  unit: "pct" as const,
+                  display: "+1.05%",
+                  precision: 2,
+                  sign_aware: true,
+                },
+                delta: {
+                  raw: 10.44,
+                  unit: "bp" as const,
+                  display: "+0.10pp",
+                  precision: 2,
+                  sign_aware: true,
+                },
+                tone: "positive" as const,
+                detail: "测试真实接口返回值。",
+                history: [0.0094, 0.01046],
+              },
+              {
+                id: "dv01",
+                label: "组合DV01",
+                caliber_label: null,
+                value: {
+                  raw: 106_223_757,
+                  unit: "dv01" as const,
+                  display: "106,223,757",
+                  precision: 0,
+                  sign_aware: false,
+                },
+                delta: {
+                  raw: -0.0185,
+                  unit: "pct" as const,
+                  display: "-1.85%",
+                  precision: 2,
+                  sign_aware: true,
+                },
+                tone: "warning" as const,
+                detail: "测试真实接口返回值。",
+                history: [108_230_899, 106_223_757],
+              },
             ],
           },
         },
@@ -1459,10 +2092,13 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(getHomeSnapshot).toHaveBeenCalled();
       expect(within(hero).getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("4,567.89");
+      expect(within(hero).getByTestId("dashboard-home-kpi-yield")).toHaveTextContent("+36.39");
+      expect(within(hero).getByTestId("dashboard-home-kpi-nim")).toHaveTextContent("+1.05");
+      expect(within(hero).getByTestId("dashboard-home-kpi-dv01")).toHaveTextContent("106,223,757");
     });
   });
 
-  it("hydrates first-screen KPI cards from deferred supplemental data after idle work starts", async () => {
+  it("hydrates first-screen KPI cards only after below-fold basic data has started", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1574,7 +2210,7 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     const hero = await screen.findByTestId("dashboard-home-hero");
-    expect(within(hero).getByTestId("dashboard-home-kpi-bond-market-value")).toHaveTextContent("—");
+    expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(idle.pendingCount()).toBeGreaterThan(0);
     });
@@ -1582,6 +2218,14 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       idle.runPending();
     });
+    expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+
+    await waitForBodyAutoRevealDelay();
+    await runNextIdle(idle);
+    expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+
+    await waitForFirstScreenHydrationDelay();
+    await runNextIdle(idle);
 
     await waitFor(() => {
       expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-04-30");
@@ -1592,7 +2236,7 @@ describe("DashboardHomePage", () => {
     });
   });
 
-  it("keeps below-fold home body behind a second idle gate after supplemental hydration starts", async () => {
+  it("keeps below-fold home body behind a second idle gate before slow hydration starts", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -1611,20 +2255,11 @@ describe("DashboardHomePage", () => {
       idle.runPending();
     });
 
-    await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
-      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
-    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
     expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
     expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-    });
-    expect(idle.pendingCount()).toBe(0);
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1_200));
-    });
+    await waitForTestClock(1_200);
     await waitFor(() => {
       expect(idle.pendingCount()).toBeGreaterThan(0);
     });
@@ -1636,6 +2271,15 @@ describe("DashboardHomePage", () => {
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
+
+    await waitForFirstScreenHydrationDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1658,9 +2302,7 @@ describe("DashboardHomePage", () => {
       idle.runPending();
     });
 
-    await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
-    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
     expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(idle.pendingCount()).toBeGreaterThan(0);
@@ -1671,6 +2313,13 @@ describe("DashboardHomePage", () => {
     });
 
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+
+    await waitForFirstScreenHydrationDelay();
+    await runNextIdle(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("renders terminal holdings and newly landed home backend blocks", async () => {
@@ -1850,7 +2499,7 @@ describe("DashboardHomePage", () => {
     const idle = stubIdleCallbacks();
 
     renderDashboardHome(client);
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await revealHomeFormalContextData(idle);
 
     await waitFor(() => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalledWith(
@@ -2000,7 +2649,7 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await waitForTestClock(0);
 
     expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
 
@@ -2045,7 +2694,10 @@ describe("DashboardHomePage", () => {
       },
     });
 
+    const idle = stubIdleCallbacks();
+
     renderDashboardHome(client);
+    await revealHomeBodyDetailAndEventFeeds(idle);
 
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
@@ -2090,10 +2742,9 @@ describe("DashboardHomePage", () => {
         "S888005004API",
         "C000003006",
         "C000003002",
-        "tushare.news",
       ]),
     );
-    expect(topicCodes).not.toEqual(
+    expect(topicCodes).toEqual(
       expect.arrayContaining(["tushare.major", "tushare.npr", "tushare.research"]),
     );
   });

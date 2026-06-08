@@ -4,11 +4,14 @@ from pathlib import Path
 import duckdb
 import pytest
 from fastapi import FastAPI
-from backend.app.governance.settings import get_settings
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
-from backend.app.services.macro_vendor_service import load_choice_macro_latest_payload
 from fastapi.testclient import TestClient
 
+from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.services.macro_vendor_service import (
+    choice_macro_refresh_status,
+    load_choice_macro_latest_payload,
+)
 from tests.helpers import load_module
 
 MACRO_VENDOR_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
@@ -82,20 +85,13 @@ def test_macro_vendor_read_surfaces_require_explicit_read_scope(
     def _unexpected_service_call(*_args, **_kwargs):
         raise AssertionError("Macro vendor read service should not run without macro_vendor/read.")
 
-    class _UnexpectedGovernanceRepository:
-        def __init__(self, *_args, **_kwargs) -> None:
-            pass
-
-        def read_all(self, *_args, **_kwargs):
-            raise AssertionError("Macro vendor refresh-status governance read should not run without macro_vendor/read.")
-
     monkeypatch.setattr(route_module, "choice_macro_formal_envelope", _unexpected_service_call)
     monkeypatch.setattr(route_module, "macro_foundation_formal_envelope", _unexpected_service_call)
     monkeypatch.setattr(route_module, "macro_vendor_envelope", _unexpected_service_call)
     monkeypatch.setattr(route_module, "choice_macro_latest_envelope", _unexpected_service_call)
     monkeypatch.setattr(route_module, "fx_formal_status_envelope", _unexpected_service_call)
     monkeypatch.setattr(route_module, "fx_analytical_envelope", _unexpected_service_call)
-    monkeypatch.setattr(route_module, "GovernanceRepository", _UnexpectedGovernanceRepository)
+    monkeypatch.setattr(route_module, "choice_macro_refresh_status", _unexpected_service_call)
 
     app = FastAPI()
     app.include_router(route_module.router)
@@ -104,6 +100,29 @@ def test_macro_vendor_read_surfaces_require_explicit_read_scope(
     response = client.get(path, params=params, headers=MACRO_VENDOR_READ_HEADERS)
 
     assert response.status_code == 403, f"Expected 403 for {path}, got {response.status_code}: {response.text}"
+
+
+def test_choice_macro_refresh_status_reads_governance_runs(tmp_path):
+    governance_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    governance_mod.GovernanceRepository(base_dir=tmp_path).append(
+        governance_mod.CACHE_BUILD_RUN_STREAM,
+        {
+            "job_name": "choice_macro_refresh",
+            "cache_key": "choice_macro.latest",
+            "run_id": "choice-run-1",
+            "status": "running",
+        },
+    )
+
+    payload = choice_macro_refresh_status(tmp_path, run_id="choice-run-1")
+
+    assert payload["run_id"] == "choice-run-1"
+    assert payload["trigger_mode"] == "async"
+    with pytest.raises(ValueError, match="missing-run"):
+        choice_macro_refresh_status(tmp_path, run_id="missing-run")
 
 
 def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_path, monkeypatch):

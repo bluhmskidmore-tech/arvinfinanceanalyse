@@ -1,0 +1,246 @@
+{
+  "page_slug": "ledger-pnl",
+  "page_id": "PAGE-LEDGER-PNL-001",
+  "generated_at": "2026-06-05T19:37:47.1102259+08:00",
+  "generated_by": "local MCP stdio read-only calls from Codex App session",
+  "purpose": "Route the Gate I direct page/API governance-record blocker into concrete missing fields, failed field groups, and next remediation lane without approving closure.",
+  "evidence_scope": {
+    "writes_governance_records": false,
+    "checks_record_existence": true,
+    "validates_required_fields": true,
+    "proves_page_execution": false,
+    "approves_metric_or_page": false,
+    "approves_formal_use": false,
+    "captures_business_owner_approval": false
+  },
+  "mcp_calls": [
+    {
+      "server": "moss-lineage-evidence",
+      "tool": "get_page_governance_record_requirements",
+      "arguments": {
+        "page_slugs": [
+          "PAGE-LEDGER-PNL-001"
+        ],
+        "max_results": 20
+      },
+      "available": true
+    },
+    {
+      "server": "moss-lineage-evidence",
+      "tool": "validate_page_governance_records",
+      "arguments": {
+        "page_slugs": [
+          "PAGE-LEDGER-PNL-001"
+        ],
+        "max_results": 20
+      },
+      "available": true
+    },
+    {
+      "server": "moss-lineage-evidence",
+      "tool": "get_page_governance_record_blueprint",
+      "arguments": {
+        "page_slug": "PAGE-LEDGER-PNL-001"
+      },
+      "available": true
+    },
+    {
+      "server": "moss-lineage-evidence",
+      "tool": "get_page_governance_gap_queue",
+      "arguments": {
+        "page_slugs": [
+          "PAGE-LEDGER-PNL-001"
+        ],
+        "max_results": 20
+      },
+      "available": true
+    },
+    {
+      "server": "moss-lineage-evidence",
+      "tool": "get_page_governance_record_blueprint_queue",
+      "arguments": {
+        "page_slugs": [
+          "PAGE-LEDGER-PNL-001"
+        ],
+        "max_results": 20
+      },
+      "available": true
+    }
+  ],
+  "current_status": {
+    "gate_i_status": "evidence-pending",
+    "validation_status": "missing_direct_records",
+    "direct_record_count": 0,
+    "expanded_anchor_record_count": 0,
+    "gap_type": "missing_direct_and_expanded_records",
+    "priority": "P1",
+    "remediation_lane": "create_direct_record_and_supporting_lineage",
+    "candidate_record_validation_status": "incomplete",
+    "closure_approved": false
+  },
+  "accepted_direct_anchors": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary",
+    "supporting_apis": [
+      "/api/ledger-pnl/dates",
+      "/api/ledger-pnl/data",
+      "/api/ledger-pnl/formal-financial-indicators"
+    ]
+  },
+  "required_fields": [
+    "page_id",
+    "page_slug",
+    "frontend_route",
+    "primary_api",
+    "report_date",
+    "basis",
+    "source_surface",
+    "tables_used",
+    "source_version",
+    "rule_version",
+    "created_at"
+  ],
+  "required_field_groups": [
+    {
+      "name": "direct_page_or_api_anchor",
+      "one_of": [
+        "PAGE-LEDGER-PNL-001",
+        "/ledger-pnl",
+        "/api/ledger-pnl/summary",
+        "/api/ledger-pnl/dates",
+        "/api/ledger-pnl/data",
+        "/api/ledger-pnl/formal-financial-indicators"
+      ],
+      "status": "satisfied_by_candidate_blueprint",
+      "reason": "A direct record must contain at least one accepted page ID, frontend route, primary API, or supporting API anchor."
+    },
+    {
+      "name": "execution_identifier",
+      "one_of": [
+        "cache_key",
+        "run_id"
+      ],
+      "status": "failed",
+      "reason": "A direct record needs either a stable cache key or an execution/run identifier."
+    },
+    {
+      "name": "configured_table_anchor",
+      "one_of": [
+        "qdb_general_ledger_workbook",
+        "ledger_import_batch",
+        "ledger_raw_row"
+      ],
+      "status": "satisfied_by_candidate_blueprint",
+      "reason": "A direct record should include at least one explicitly configured catalog/date table anchor for this page."
+    },
+    {
+      "name": "record_formal_use_allowed",
+      "one_of": [
+        "formal_use_allowed=false"
+      ],
+      "status": "satisfied_by_candidate_blueprint",
+      "reason": "Candidate, mixed-source, GAP, and unclassified pages must not claim formal-use approval."
+    }
+  ],
+  "candidate_blueprint": {
+    "prefilled_fields": {
+      "page_id": "PAGE-LEDGER-PNL-001",
+      "page_slug": "ledger-pnl",
+      "frontend_route": "/ledger-pnl",
+      "primary_api": "/api/ledger-pnl/summary",
+      "tables_used": [
+        "qdb_general_ledger_workbook",
+        "ledger_import_batch",
+        "ledger_raw_row"
+      ],
+      "formal_use_allowed": false
+    },
+    "missing_required_fields": [
+      "report_date",
+      "basis",
+      "source_surface",
+      "source_version",
+      "rule_version",
+      "created_at"
+    ],
+    "failed_required_field_groups": [
+      "execution_identifier"
+    ],
+    "manual_fill_fields": [
+      "report_date",
+      "basis",
+      "source_surface",
+      "source_version",
+      "rule_version",
+      "created_at",
+      "cache_key_or_run_id"
+    ]
+  },
+  "manual_fill_field_details": [
+    {
+      "name": "report_date",
+      "status": "missing",
+      "evidence_hint": "Use catalog/date evidence or the audited page/API payload date binding for the reviewed run; do not infer the date from unrelated upstream tables."
+    },
+    {
+      "name": "basis",
+      "status": "missing",
+      "evidence_hint": "Use explicit page contract, source basis, or approval-status evidence for the reviewed run; do not infer formal or analytical basis from the page slug alone."
+    },
+    {
+      "name": "source_surface",
+      "status": "missing",
+      "evidence_hint": "Use page/API result metadata, route/service source-surface evidence, or direct lineage metadata for the reviewed run."
+    },
+    {
+      "name": "source_version",
+      "status": "missing",
+      "evidence_hint": "Use source manifest, cache, run, or vendor/feed evidence tied to the reviewed run; do not invent a source version."
+    },
+    {
+      "name": "rule_version",
+      "status": "missing",
+      "evidence_hint": "Use calculation rule, metric contract, service version, or release evidence tied to the reviewed run; do not invent a rule version."
+    },
+    {
+      "name": "created_at",
+      "status": "missing",
+      "evidence_hint": "Use the governance record creation or review timestamp; do not substitute the report date."
+    },
+    {
+      "name": "execution_identifier",
+      "status": "failed",
+      "evidence_hint": "Use a cache_key or run_id from the audited page/API execution evidence; expanded source-table or result-kind anchors are supporting evidence only."
+    }
+  ],
+  "configured_table_names": [
+    "qdb_general_ledger_workbook",
+    "ledger_import_batch",
+    "ledger_raw_row"
+  ],
+  "catalog_date_context_from_previous_gate_i_artifact": {
+    "source_artifact": "docs/audits/2026-06-05-ledger-pnl-gate-i-mcp-evidence.json",
+    "ledger_import_batch": "present with sampled as_of_date values including 2026-03-31",
+    "ledger_raw_row": "present without a date column",
+    "qdb_general_ledger_workbook": "unknown_table"
+  },
+  "remediation": {
+    "next_step": "create_direct_record_and_supporting_lineage_then_preflight",
+    "actions": [
+      "Add or locate a direct PAGE-LEDGER-PNL-001/API governance record for the audited page run or endpoint result.",
+      "Fill report_date, basis, source_surface, source_version, rule_version, created_at, and cache_key or run_id from audited evidence.",
+      "Add supporting source-table/result-kind lineage records for the configured ledger table anchors where evidence exists.",
+      "Run preflight_page_governance_record and validate_page_governance_records after manual evidence is filled.",
+      "Only after field validation passes, proceed to contract, catalog/date, lineage freshness, UI/API payload, live-smoke, and business-owner approval review."
+    ]
+  },
+  "non_approvals": [
+    "This artifact does not certify PAGE-LEDGER-PNL-001.",
+    "This artifact does not approve MTR-LPN-001 through MTR-LPN-003 for formal use.",
+    "This artifact does not retire pending_confirmation, stale, fallback, no-data, or governance markers.",
+    "This artifact does not write governance JSONL records.",
+    "This artifact does not prove page/API execution completeness.",
+    "This artifact does not capture business-owner approval."
+  ]
+}

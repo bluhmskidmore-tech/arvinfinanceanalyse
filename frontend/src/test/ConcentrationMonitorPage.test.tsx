@@ -192,4 +192,34 @@ describe("ConcentrationMonitorPage", () => {
     expect(contractPanel).toHaveTextContent("fact_formal_bond_analytics_daily");
     expect(contractPanel).toHaveTextContent("证据行 10");
   });
+
+  it("renders candidate concentration KPI ratios as two-decimal percentages", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: { ...resultMeta, result_kind: "bond_analytics.dates" },
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async (reportDate: string) =>
+        creditSpreadEnvelope(reportDate),
+      ),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    renderConcentrationMonitor(client, queryClient);
+
+    const kpiGrid = await waitFor(() => {
+      const panel = document.querySelector('[data-testid="concentration-monitor-kpi-grid"]');
+      expect(panel).not.toBeNull();
+      return panel as HTMLElement;
+    });
+
+    expect(kpiGrid).toHaveTextContent("12.00%");
+    expect(kpiGrid).toHaveTextContent("30.00%");
+    expect(kpiGrid).toHaveTextContent("20.00%");
+    expect(kpiGrid).toHaveTextContent("8.00%");
+  });
 });

@@ -723,6 +723,7 @@ def test_liability_analytics_yield_rows_prefer_formal_cny_zqtz_weights(tmp_path)
     )
 
     assert {row["source_version"] for row in zqtz_rows["2026-04-30"]} == {"sv_formal_cny"}
+    assert sum(row["market_value_native"] for row in zqtz_rows["2026-04-30"]) == 800
     assert payload["kpi"]["asset_yield"] == 0.0275
     assert payload["kpi"]["nim"] == 0.0175
 

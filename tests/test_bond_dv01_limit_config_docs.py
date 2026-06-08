@@ -8,7 +8,6 @@ from backend.app.services.bond_analytics_service import (
 )
 from tests.helpers import ROOT
 
-
 TEMPLATE_PATH = ROOT / "docs" / "templates" / "bond_dv01_limit_config_template.csv"
 RUNBOOK_PATH = ROOT / "docs" / "BOND_DV01_LIMIT_CONFIG_RUNBOOK.md"
 

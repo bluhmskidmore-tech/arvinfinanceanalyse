@@ -83,10 +83,10 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
 
     response = CashflowProjectionResponse(
         report_date=report_date,
-        duration_gap=numeric_json(result.duration_gap, "ratio", True),
-        asset_duration=numeric_json(result.asset_weighted_duration, "ratio", False),
-        liability_duration=numeric_json(result.liability_weighted_duration, "ratio", False),
-        equity_duration=numeric_json(result.equity_duration, "ratio", True),
+        duration_gap=numeric_json(result.duration_gap, "years", True),
+        asset_duration=numeric_json(result.asset_weighted_duration, "years", False),
+        liability_duration=numeric_json(result.liability_weighted_duration, "years", False),
+        equity_duration=numeric_json(result.equity_duration, "years", True),
         rate_sensitivity_1bp=numeric_json(result.rate_sensitivity_1bp, "yuan", True),
         reinvestment_risk_12m=numeric_json(result.reinvestment_risk_12m, "pct", False),
         monthly_buckets=[_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],

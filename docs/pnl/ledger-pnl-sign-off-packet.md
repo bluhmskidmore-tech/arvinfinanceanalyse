@@ -33,6 +33,7 @@ This packet is prepared for business-owner review only. It does not approve page
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 
 ## Reviewer Checklist
 

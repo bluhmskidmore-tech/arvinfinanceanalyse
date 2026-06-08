@@ -409,6 +409,8 @@ describe("AgentPanel", () => {
     await user.click(screen.getByTestId("agent-panel-submit"));
     await screen.findByTestId("agent-panel-answer");
     await user.click(screen.getByRole("button", { name: "\u7ec4\u5408\u6982\u89c8" }));
+    expect(screen.getByRole("button", { name: "\u786e\u8ba4\u6267\u884c\uff1a\u7ec4\u5408\u6982\u89c8" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "\u786e\u8ba4\u6267\u884c\uff1a\u7ec4\u5408\u6982\u89c8" }));
 
     expect(await screen.findByText("Formal portfolio overview answered.")).toBeInTheDocument();
     expect(screen.getByLabelText(AGENT_CONVERSATION_LABEL)).toHaveTextContent(

@@ -75,6 +75,13 @@ def _metric_raw(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
+def _replace_bond_headline_rows(repo: Any, *, report_date: str, rows: list[Any]) -> None:
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
+
+    with repository_task_write_scope("backend.app.tasks.bond_dashboard_headlines_contract_test"):
+        repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
+
+
 def _assert_formal_envelope(payload: dict[str, Any]) -> None:
     assert "result_meta" in payload
     assert "result" in payload
@@ -119,7 +126,8 @@ def test_portfolio_headlines_weighted_yield_and_duration_exclude_other_or_no_mat
     get_settings.cache_clear()
     try:
         repo = BondAnalyticsRepository(str(duckdb_path))
-        repo.replace_bond_analytics_rows(
+        _replace_bond_headline_rows(
+            repo,
             report_date=REPORT_DATE,
             rows=[
                 _make_bond_analytics_row(

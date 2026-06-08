@@ -1,6 +1,7 @@
 import type { ModuleHomeDetailPanel, ModuleHomeTone } from "./moduleHomeModel";
 import { PortfolioStructureChart } from "./PortfolioStructureChart";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { MarketPanelSummary } from "./MarketPanelSummary";
 import marketStyles from "./marketHome.module.css";
 
 function toneClass(tone: ModuleHomeTone) {
@@ -17,13 +18,14 @@ export function MarketStructureTabPanel({ panel }: MarketStructureTabPanelProps)
   const hasChart = Boolean(panel.chart && panel.chart.categories.length > 0);
 
   return (
-    <div className={marketStyles.terminalPanel}>
+    <div className={`${marketStyles.terminalPanel} ${hasChart ? marketStyles.terminalPanelSplit : ""}`}>
       <div className={marketStyles.terminalPanelMeta}>
         <p className={marketStyles.panelMeta}>{panel.meta}</p>
         <span className={marketStyles.statusChip}>{panel.stateLabel}</span>
       </div>
+      <MarketPanelSummary panel={panel} />
       {panel.rows.length > 0 ? (
-        <div className={marketStyles.terminalTable}>
+        <div className={`${marketStyles.terminalTable} ${marketStyles.terminalTableScroll}`}>
           <div className={marketStyles.terminalTableHead} aria-hidden="true">
             <span>序列</span>
             <span>最新</span>
@@ -49,7 +51,7 @@ export function MarketStructureTabPanel({ panel }: MarketStructureTabPanelProps)
       )}
       {hasChart && panel.chart ? (
         <div className={`${dhStyles.dhInsetSurface} ${marketStyles.terminalChart}`}>
-          <PortfolioStructureChart chart={panel.chart} />
+          <PortfolioStructureChart chart={panel.chart} height={190} />
         </div>
       ) : null}
     </div>

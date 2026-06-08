@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from backend.scripts.audit_caliber_violations import (
-    KNOWN_RULES,
     _GATE_ENFORCED_RULES,
+    KNOWN_RULES,
     scan_violations,
 )
 

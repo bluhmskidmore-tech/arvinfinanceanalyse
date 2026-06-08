@@ -342,6 +342,8 @@ def test_bond_analytics_dv01_risk_returns_numeric_payload(tmp_path, monkeypatch)
     assert result["shock_scenarios"][0]["estimated_pnl"]["unit"] == "yuan"
     assert result["tenor_buckets"][0]["dv01_share"]["unit"] == "ratio"
     assert result["top_bonds"][0]["dv01"]["unit"] == "dv01"
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert "CNY/RMB basis" in payload["result_meta"]["amount_currency_basis_note"]
     get_settings.cache_clear()
 
 
@@ -684,10 +686,10 @@ def test_bond_analytics_refresh_requires_explicit_refresh_scope_grant(tmp_path, 
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
-    calls: list[str] = []
+    calls: list[tuple[str, str | None]] = []
 
-    def fake_refresh(settings, *, report_date):
-        calls.append(report_date)
+    def fake_refresh(settings, *, report_date, idempotency_key=None):
+        calls.append((report_date, idempotency_key))
         return {"status": "queued", "run_id": "bond-analytics-refresh-auth-test"}
 
     app = load_module("backend.app.main", "backend/app/main.py").app
@@ -720,7 +722,7 @@ def test_bond_analytics_refresh_requires_explicit_refresh_scope_grant(tmp_path, 
     )
     assert allowed.status_code == 200, allowed.text
     assert allowed.json()["run_id"] == "bond-analytics-refresh-auth-test"
-    assert calls == [REPORT_DATE]
+    assert calls == [(REPORT_DATE, None)]
     get_settings.cache_clear()
 
 

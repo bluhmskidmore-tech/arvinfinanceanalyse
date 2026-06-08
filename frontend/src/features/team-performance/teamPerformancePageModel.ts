@@ -100,6 +100,7 @@ export type TeamPerformanceEvidenceRow = {
   rowName: string;
   amountYuan: number | null;
   scaleYuan: number | null;
+  additive: boolean;
   unitLabel: string;
   confidence: MappingConfidence;
   note?: string;
@@ -223,6 +224,10 @@ function pickProductValue(
   return toNumber(row[field]);
 }
 
+function isAdditiveMapping(mapping: CenterPnlMapping2025): boolean {
+  return mapping.additive ?? mapping.confidence !== "linked";
+}
+
 function buildEvidenceWarnings(inputs: EvidenceWarningInput[]): string[] {
   const warnings: string[] = [];
 
@@ -298,6 +303,7 @@ function buildEvidenceRows(
           rowName: row.business_type,
           amountYuan: toNumber(row.total_pnl),
           scaleYuan: toNumber(row.current_balance),
+          additive: isAdditiveMapping(mapping),
           unitLabel: "损益按万元展示，规模按亿元展示",
           confidence: mapping.confidence,
           note: mapping.note,
@@ -315,6 +321,7 @@ function buildEvidenceRows(
         rowName: row.category_name,
         amountYuan: pickProductValue(row, mapping.pnlField),
         scaleYuan: mapping.scaleField ? pickProductValue(row, mapping.scaleField) : null,
+        additive: isAdditiveMapping(mapping),
         unitLabel: "损益按万元展示，规模按亿元展示",
         confidence: mapping.confidence,
         note: mapping.note,
@@ -336,9 +343,13 @@ function buildCenterSummary(
   const weightTotal = centerIndicators.reduce((sum, item) => sum + item.weight, 0);
   const workbookScore = centerIndicators.reduce((sum, item) => sum + (item.score ?? 0), 0);
   const hasPendingScore = centerIndicators.some((item) => item.score === null);
+  const centerMappings = mappings.filter((item) => item.centerId === centerId);
+  const hasOnlyLinkedMappings =
+    centerMappings.length > 0 && centerMappings.every((mapping) => !isAdditiveMapping(mapping));
   const evidenceRows = buildEvidenceRows(centerId, mappings, byBusinessItems, productCategoryRows);
+  const additiveRows = evidenceRows.filter((row) => row.additive);
   const provisionalStatus: TeamPerformanceCenterSummary["mappingStatus"] =
-    centerId === "jinan-branch"
+    hasOnlyLinkedMappings || (evidenceRows.length > 0 && additiveRows.length === 0)
       ? "挂钩引用"
       : evidenceRows.length === 0
         ? "仅表内"
@@ -352,7 +363,6 @@ function buildCenterSummary(
     provisionalStatus === "已映射" && provisionalWarnings.length > 0
       ? "部分映射"
       : provisionalStatus;
-  const additiveRows = centerId === "jinan-branch" ? [] : evidenceRows;
   const mappedPnlTotalYuan =
     additiveRows.length > 0
       ? additiveRows.reduce((sum, item) => sum + (item.amountYuan ?? 0), 0)

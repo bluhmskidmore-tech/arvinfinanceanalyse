@@ -285,6 +285,29 @@ refresh_accounting_asset_movement_window = register_actor_once(
 )
 
 
+def refresh_accounting_asset_movement_window_sync(
+    *,
+    report_dates: list[str],
+    anchor_report_date: str,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+    currency_basis: str = "CNX",
+    product_category_refreshed_dates: list[str] | None = None,
+    formal_balance_refreshed_dates: list[str] | None = None,
+    run_id: str | None = None,
+) -> dict[str, object]:
+    return _refresh_accounting_asset_movement_window(
+        report_dates=report_dates,
+        anchor_report_date=anchor_report_date,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        currency_basis=currency_basis,
+        product_category_refreshed_dates=product_category_refreshed_dates,
+        formal_balance_refreshed_dates=formal_balance_refreshed_dates,
+        run_id=run_id,
+    )
+
+
 def _movement_refresh_via_task_enabled() -> bool:
     return str(os.environ.get("MOSS_MOVEMENT_REFRESH_VIA_TASK", "1")).strip().lower() not in {
         "0",

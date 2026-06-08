@@ -399,6 +399,120 @@ def test_allocation_effect_uses_non_carry_sector_returns() -> None:
     assert summary["explained_excess"] == summary["excess_return"]
 
 
+def test_benchmark_excess_reuses_return_decomposition_for_allocation(monkeypatch: pytest.MonkeyPatch) -> None:
+    read_models = _read_models_module()
+    calls = 0
+    original = read_models.summarize_return_decomposition
+
+    def counting_summary(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(read_models, "summarize_return_decomposition", counting_summary)
+
+    summary = read_models.compute_benchmark_excess(
+        [
+            {
+                "instrument_code": "R1",
+                "instrument_name": "Treasury 1Y",
+                "asset_class_raw": "rate",
+                "asset_class_std": "rate",
+                "bond_type": "treasury",
+                "accounting_class": "AC",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("1"),
+                "tenor_bucket": "1Y",
+                "macaulay_duration": Decimal("1"),
+                "modified_duration": Decimal("1"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+            {
+                "instrument_code": "C1",
+                "instrument_name": "Credit 5Y",
+                "asset_class_raw": "credit",
+                "asset_class_std": "credit",
+                "bond_type": "credit",
+                "accounting_class": "OCI",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "macaulay_duration": Decimal("5"),
+                "modified_duration": Decimal("5"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+        ],
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="TREASURY_INDEX",
+        benchmark_curve_current={"1Y": Decimal("3.00"), "5Y": Decimal("3.00")},
+        benchmark_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
+        treasury_curve_current={"1Y": Decimal("3.00"), "5Y": Decimal("3.00")},
+        treasury_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
+        aaa_credit_curve_current={"5Y": Decimal("3.00")},
+        aaa_credit_curve_prior={"5Y": Decimal("3.00")},
+    )
+
+    assert calls == 1
+    assert summary["allocation_effect"] == Decimal("-200.0000000")
+
+
+def test_benchmark_excess_reuses_prepared_curve_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    read_models = _read_models_module()
+    calls = 0
+    original = read_models.build_full_curve
+
+    def counting_build_full_curve(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(read_models, "build_full_curve", counting_build_full_curve)
+    rows = [
+        {
+            "instrument_code": f"R{i}",
+            "instrument_name": f"Treasury {i}Y",
+            "asset_class_raw": "rate",
+            "asset_class_std": "rate",
+            "bond_type": "treasury",
+            "accounting_class": "AC",
+            "currency_code": "CNY",
+            "face_value": Decimal("100"),
+            "market_value": Decimal("100"),
+            "coupon_rate": Decimal("0"),
+            "years_to_maturity": Decimal(str(i)),
+            "tenor_bucket": "5Y",
+            "macaulay_duration": Decimal(str(i)),
+            "modified_duration": Decimal(str(i)),
+            "convexity": Decimal("1"),
+            "dv01": Decimal("0"),
+        }
+        for i in range(1, 7)
+    ]
+
+    summary = read_models.compute_benchmark_excess(
+        rows,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="TREASURY_INDEX",
+        benchmark_curve_current={"1Y": Decimal("3.00"), "3Y": Decimal("3.20"), "5Y": Decimal("3.40")},
+        benchmark_curve_prior={"1Y": Decimal("2.00"), "3Y": Decimal("2.20"), "5Y": Decimal("2.40")},
+        treasury_curve_current={"1Y": Decimal("3.00"), "3Y": Decimal("3.20"), "5Y": Decimal("3.40")},
+        treasury_curve_prior={"1Y": Decimal("2.00"), "3Y": Decimal("2.20"), "5Y": Decimal("2.40")},
+    )
+
+    assert summary["benchmark_return"] != Decimal("0")
+    assert calls <= 4
+
+
 def test_portfolio_return_is_invariant_across_benchmark_choice() -> None:
     read_models = _read_models_module()
     rows = [

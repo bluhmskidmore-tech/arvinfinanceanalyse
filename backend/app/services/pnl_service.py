@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
@@ -76,10 +75,7 @@ TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
 FTP_RATE_PCT = Decimal("1.600000")
 FTP_RATE_RATIO = Decimal("0.016")
-PNL_BY_BUSINESS_PRECOMPUTE_TABLE = "fact_pnl_by_business_precompute"
 PNL_BY_BUSINESS_ADJUSTMENT_STREAM = "pnl_by_business_adjustments"
-PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION = "sv_pnl_by_business_precompute_v1"
-PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION = "rv_pnl_by_business_precompute_v1"
 V1_INTEREST_INCOME_JOURNAL_TYPE = LEDGER_PNL_ACCOUNT_PREFIXES[0]
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
     "bond_bucket",
@@ -185,19 +181,34 @@ class PnlRefreshConflictError(RuntimeError):
     pass
 
 
-def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[str, object]:
+def refresh_pnl(
+    settings: Settings,
+    *,
+    report_date: str | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
     _clear_pnl_by_business_analysis_cache()
     refresh_input = load_latest_pnl_refresh_input(
         governance_dir=settings.governance_path,
         data_root=resolve_pnl_data_input_root(),
         report_date=report_date,
     )
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
             _refresh_trigger_lock(report_date=refresh_input.report_date),
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    report_date=refresh_input.report_date,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(
                 settings,
                 report_date=refresh_input.report_date,
@@ -223,6 +234,7 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
                     ).model_dump(),
                     "report_date": refresh_input.report_date,
                     "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
             )
 
@@ -244,6 +256,8 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
                     "trigger_mode": "async",
                     "cache_key": CACHE_KEY,
                     "report_date": refresh_input.report_date,
+                    "idempotency_key": normalized_idempotency_key,
+                    "idempotency_replay": False,
                 }
             except Exception as exc:
                 if _should_use_sync_fallback(settings, exc):
@@ -259,6 +273,8 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
                         **payload.model_dump(mode="json"),
                         "job_name": PNL_JOB_NAME,
                         "trigger_mode": "sync-fallback",
+                        "idempotency_key": normalized_idempotency_key,
+                        "idempotency_replay": False,
                     }
 
                 _record_dispatch_failure(
@@ -1375,461 +1391,6 @@ def _clear_pnl_by_business_analysis_cache() -> None:
 def _clear_pnl_by_business_manual_adjustment_caches() -> None:
     clear_pnl_by_business_ytd_cache()
     _clear_pnl_by_business_analysis_cache()
-
-
-def precompute_pnl_by_business_payloads(
-    *,
-    duckdb_path: str,
-    governance_dir: str,
-    year: int,
-    as_of_date: str | None = None,
-) -> dict[str, object]:
-    """Materialize the page-local `/pnl-by-business` read model for one cutoff date."""
-    _ = governance_dir
-    repo = PnlRepository(duckdb_path)
-    as_cap = as_of_date or repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=None)
-    if not as_cap:
-        raise ValueError(f"No formal pnl rows found for year={year}.")
-    if not str(as_cap).startswith(f"{year:04d}-"):
-        raise ValueError(f"as_of_date={as_cap} is outside requested year={year}.")
-
-    period_end = repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=str(as_cap))
-    if period_end is None:
-        raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
-    loaded_dates = sorted(
-        d
-        for d in repo.list_union_report_dates()
-        if str(d).startswith(f"{year:04d}") and str(d) <= period_end
-    )
-    if not loaded_dates:
-        raise ValueError(f"No formal pnl rows found for year={year} through as_of_date={as_cap}.")
-
-    period_start = f"{min(loaded_dates)[:7]}-01"
-    _clear_pnl_by_business_analysis_cache()
-    pnl_rows = repo.fetch_by_business_analysis_pnl_rows(year=year, as_of_date=period_end)
-    balance_rows = repo.fetch_by_business_analysis_balance_rows(
-        start_date=period_start,
-        end_date=period_end,
-    )
-    if not pnl_rows:
-        raise ValueError(f"No aggregated pnl positions for year={year} through as_of_date={period_end}.")
-
-    source_tables = [
-        "fact_formal_pnl_fi",
-        "fact_nonstd_pnl_bridge",
-        "fact_formal_zqtz_balance_daily",
-        "ZQTZ_ASSET_BOND_ROWS",
-    ]
-    source_version_resolver = getattr(repo, "pnl_by_business_precompute_source_version", None)
-    precompute_source_version = (
-        source_version_resolver(year=year, as_of_date=period_end)
-        if callable(source_version_resolver)
-        else PNL_BY_BUSINESS_PRECOMPUTE_SOURCE_VERSION
-    )
-    generated_at = datetime.now(UTC).isoformat()
-    records: list[dict[str, object]] = []
-
-    monthly_payload = PnlByBusinessMonthlyPayload(
-        year=year,
-        as_of_date=period_end,
-        source_tables=source_tables,
-        months=_build_pnl_by_business_monthly_buckets(
-            pnl_rows=tuple(pnl_rows),
-            balance_rows=tuple(balance_rows),
-            loaded_dates=loaded_dates,
-        ),
-    )
-    records.append(
-        _pnl_by_business_precompute_record(
-            year=year,
-            as_of_date=period_end,
-            result_kind="monthly",
-            dimension="",
-            business_key="",
-            payload=monthly_payload,
-            generated_at=generated_at,
-            source_version=precompute_source_version,
-        )
-    )
-
-    analysis_payloads = _build_pnl_by_business_analysis_payloads_for_precompute(
-        year=year,
-        period_start=period_start,
-        period_end=period_end,
-        source_tables=source_tables,
-        pnl_rows=pnl_rows,
-        balance_rows=balance_rows,
-        loaded_dates=loaded_dates,
-    )
-    for payload in analysis_payloads:
-        records.append(
-            _pnl_by_business_precompute_record(
-                year=year,
-                as_of_date=period_end,
-                result_kind="analysis",
-                dimension=payload.dimension,
-                business_key=payload.business_key or "",
-                payload=payload,
-                generated_at=generated_at,
-                source_version=precompute_source_version,
-            )
-        )
-
-    repo.replace_pnl_by_business_precompute(year=year, as_of_date=period_end, records=records)
-    _clear_pnl_by_business_analysis_cache()
-    return {
-        "year": year,
-        "as_of_date": period_end,
-        "records": len(records),
-        "monthly_records": 1,
-        "analysis_records": len(records) - 1,
-    }
-
-
-def _pnl_by_business_precompute_record(
-    *,
-    year: int,
-    as_of_date: str,
-    result_kind: str,
-    dimension: str,
-    business_key: str,
-    payload: PnlByBusinessMonthlyPayload | PnlByBusinessAnalysisPayload,
-    generated_at: str,
-    source_version: str,
-) -> dict[str, object]:
-    return {
-        "year": year,
-        "as_of_date": as_of_date,
-        "result_kind": result_kind,
-        "dimension": dimension,
-        "business_key": business_key,
-        "payload_json": json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
-        "source_version": source_version,
-        "rule_version": PNL_BY_BUSINESS_PRECOMPUTE_RULE_VERSION,
-        "generated_at": generated_at,
-    }
-
-
-def _build_pnl_by_business_analysis_payloads_for_precompute(
-    *,
-    year: int,
-    period_start: str,
-    period_end: str,
-    source_tables: list[str],
-    pnl_rows: list[dict[str, object]],
-    balance_rows: list[dict[str, object]],
-    loaded_dates: list[str],
-) -> list[PnlByBusinessAnalysisPayload]:
-    balance_lookup = _analysis_balance_lookup(balance_rows)
-    historical_balance_lookup = _analysis_historical_balance_lookup(balance_rows)
-    sub_type_by_date_code = _analysis_sub_type_by_date_code(balance_rows)
-    month_end_by_month: dict[str, str] = {}
-    for report_date in sorted(loaded_dates):
-        month_end_by_month[str(report_date)[:7]] = str(report_date)
-
-    bucket_maps: dict[tuple[str | None, PnlByBusinessAnalysisDimension], dict[str, dict[str, object]]] = {}
-    avg_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal] = {}
-    current_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal] = {}
-    coverage_dates = {_norm_text(row.get("report_date")) for row in balance_rows if _norm_text(row.get("report_date"))}
-    coverage_dates_by_month_key: dict[str, set[str]] = {}
-    business_keys = tuple(str(row_def["row_key"]) for row_def in ZQTZ_ASSET_BOND_ROWS)
-
-    def _bucket_map(
-        business_key: str | None,
-        dimension: PnlByBusinessAnalysisDimension,
-    ) -> dict[str, dict[str, object]]:
-        map_key = (business_key, dimension)
-        if map_key not in bucket_maps:
-            bucket_maps[map_key] = {}
-            if business_key is None and dimension == "bond_bucket":
-                for key, label in ANALYSIS_BOND_BUCKET_LABELS.items():
-                    bucket_maps[map_key][key] = _new_analysis_dimension_bucket(key, label)
-            elif business_key is None and dimension == "bond_bucket_monthly":
-                for month_end in sorted(month_end_by_month.values()):
-                    for key, label in ANALYSIS_BOND_BUCKET_LABELS.items():
-                        dimension_key = f"{month_end}::{key}"
-                        bucket_maps[map_key][dimension_key] = _new_analysis_dimension_bucket(
-                            dimension_key,
-                            f"{month_end} {label}",
-                        )
-        return bucket_maps[map_key]
-
-    for dimension in PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS:
-        _bucket_map(None, dimension)
-
-    def _add_pnl(
-        *,
-        business_key: str | None,
-        dimension: PnlByBusinessAnalysisDimension,
-        key_label: tuple[str, str] | None,
-        row: dict[str, object],
-    ) -> None:
-        if key_label is None:
-            return
-        dimension_key, dimension_label = key_label
-        bucket = _bucket_map(business_key, dimension).setdefault(
-            dimension_key,
-            _new_analysis_dimension_bucket(dimension_key, dimension_label),
-        )
-        bucket["interest_income"] = Decimal(str(bucket["interest_income"])) + _decimal_value(
-            row.get("interest_income_514")
-        )
-        bucket["fair_value_change"] = Decimal(str(bucket["fair_value_change"])) + _decimal_value(
-            row.get("fair_value_change_516")
-        )
-        bucket["capital_gain"] = Decimal(str(bucket["capital_gain"])) + _decimal_value(row.get("capital_gain_517"))
-        bucket["manual_adjustment"] = Decimal(str(bucket["manual_adjustment"])) + _decimal_value(
-            row.get("manual_adjustment")
-        )
-        bucket["total_pnl"] = Decimal(str(bucket["total_pnl"])) + _decimal_value(row.get("total_pnl"))
-        code = _norm_text(row.get("instrument_code"))
-        if code:
-            bucket["asset_codes"].add(code)
-
-    def _add_balance(
-        *,
-        business_key: str | None,
-        dimension: PnlByBusinessAnalysisDimension,
-        key_label: tuple[str, str] | None,
-        row: dict[str, object],
-    ) -> None:
-        if key_label is None:
-            return
-        dimension_key, _dimension_label = key_label
-        sum_key = (business_key, dimension, dimension_key)
-        avg_sums[sum_key] = avg_sums.get(sum_key, Decimal("0")) + _decimal_value(row.get("avg_amount"))
-        report_date = _norm_text(row.get("report_date"))
-        dimension_report_date = _analysis_dimension_report_date(dimension_key)
-        if (_analysis_is_monthly_dimension(dimension) and report_date == dimension_report_date) or (
-            not _analysis_is_monthly_dimension(dimension) and report_date == period_end
-        ):
-            current_sums[sum_key] = current_sums.get(sum_key, Decimal("0")) + _decimal_value(
-                row.get("current_amount")
-            )
-
-    for pnl_row in pnl_rows:
-        classification = (
-            _pnl_by_business_manual_classification(pnl_row)
-            if _norm_text(pnl_row.get("source_kind")) == "manual_adjustment"
-            else _analysis_classification_for_pnl_row(
-                pnl_row=pnl_row,
-                balance_lookup=balance_lookup,
-                historical_balance_lookup=historical_balance_lookup,
-                sub_type_by_date_code=sub_type_by_date_code,
-                fallback_date=period_end,
-            )
-        )
-        matched_keys = _analysis_matched_business_keys(classification)
-        for dimension in PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS:
-            _add_pnl(
-                business_key=None,
-                dimension=dimension,
-                key_label=_analysis_global_bond_bucket_dimension_for_pnl_row(pnl_row, matched_keys, dimension),
-                row=pnl_row,
-            )
-        for business_key in matched_keys:
-            for dimension in PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS:
-                _add_pnl(
-                    business_key=business_key,
-                    dimension=dimension,
-                    key_label=_analysis_dimension_for_pnl_row(pnl_row, classification, dimension),
-                    row=pnl_row,
-                )
-
-    for row in balance_rows:
-        report_date = _norm_text(row.get("report_date"))
-        month_key = month_end_by_month.get(report_date[:7])
-        if month_key:
-            coverage_dates_by_month_key.setdefault(month_key, set()).add(report_date)
-        classification = _analysis_classification_from_balance_row(row)
-        matched_keys = _analysis_matched_business_keys(classification)
-        for dimension in PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS:
-            _add_balance(
-                business_key=None,
-                dimension=dimension,
-                key_label=_analysis_global_bond_bucket_dimension_for_balance_row(
-                    row,
-                    matched_keys,
-                    dimension,
-                    month_end_by_month,
-                ),
-                row=row,
-            )
-        for business_key in matched_keys:
-            for dimension in PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS:
-                _add_balance(
-                    business_key=business_key,
-                    dimension=dimension,
-                    key_label=_analysis_dimension_for_balance_row(row, dimension, month_end_by_month),
-                    row=row,
-                )
-
-    payloads: list[PnlByBusinessAnalysisPayload] = []
-    for dimension in PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS:
-        payloads.append(
-            PnlByBusinessAnalysisPayload(
-                year=year,
-                as_of_date=period_end,
-                business_key=None,
-                dimension=dimension,
-                period_start_date=period_start,
-                period_end_date=period_end,
-                source_tables=source_tables,
-                rows=_analysis_rows_from_precompute_buckets(
-                    bucket_map=_bucket_map(None, dimension),
-                    avg_sums=avg_sums,
-                    current_sums=current_sums,
-                    coverage_dates=coverage_dates,
-                    coverage_dates_by_month_key=coverage_dates_by_month_key,
-                    period_start=period_start,
-                    period_end=period_end,
-                    business_key=None,
-                    dimension=dimension,
-                ),
-            )
-        )
-    for business_key in business_keys:
-        for dimension in PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS:
-            payloads.append(
-                PnlByBusinessAnalysisPayload(
-                    year=year,
-                    as_of_date=period_end,
-                    business_key=business_key,
-                    dimension=dimension,
-                    period_start_date=period_start,
-                    period_end_date=period_end,
-                    source_tables=source_tables,
-                    rows=_analysis_rows_from_precompute_buckets(
-                        bucket_map=bucket_maps.get((business_key, dimension), {}),
-                        avg_sums=avg_sums,
-                        current_sums=current_sums,
-                        coverage_dates=coverage_dates,
-                        coverage_dates_by_month_key=coverage_dates_by_month_key,
-                        period_start=period_start,
-                        period_end=period_end,
-                        business_key=business_key,
-                        dimension=dimension,
-                    ),
-                )
-            )
-    return payloads
-
-
-def _analysis_rows_from_precompute_buckets(
-    *,
-    bucket_map: dict[str, dict[str, object]],
-    avg_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal],
-    current_sums: dict[tuple[str | None, PnlByBusinessAnalysisDimension, str], Decimal],
-    coverage_dates: set[str],
-    coverage_dates_by_month_key: dict[str, set[str]],
-    period_start: str,
-    period_end: str,
-    business_key: str | None,
-    dimension: PnlByBusinessAnalysisDimension,
-) -> list[PnlByBusinessAnalysisRow]:
-    period_calendar_days = _calendar_days(period_start, period_end)
-    rows: list[PnlByBusinessAnalysisRow] = []
-    for bucket in sorted(bucket_map.values(), key=lambda item: _analysis_dimension_row_sort_key(item, dimension)):
-        dimension_key = str(bucket["dimension_key"])
-        if _analysis_is_monthly_dimension(dimension):
-            month_end_key = _analysis_dimension_report_date(dimension_key)
-            denom = len(coverage_dates_by_month_key.get(month_end_key, set()))
-            calendar_days = _calendar_days(f"{month_end_key[:7]}-01", month_end_key)
-        else:
-            denom = len(coverage_dates)
-            calendar_days = period_calendar_days
-        sum_key = (business_key, dimension, dimension_key)
-        avg_balance = (avg_sums.get(sum_key, Decimal("0")) / Decimal(str(denom))) if denom > 0 else Decimal("0")
-        current_balance = current_sums.get(sum_key, Decimal("0"))
-        total_pnl = Decimal(str(bucket["total_pnl"]))
-        annualized_yield_pct = _analysis_annualized_yield_pct(total_pnl, avg_balance, calendar_days)
-        ftp_values = _analysis_ftp_values(
-            total_pnl=total_pnl,
-            avg_balance=avg_balance,
-            annualized_yield_pct=annualized_yield_pct,
-            calendar_days=calendar_days,
-        )
-        rows.append(
-            PnlByBusinessAnalysisRow(
-                dimension_key=dimension_key,
-                dimension_label=str(bucket["dimension_label"]),
-                interest_income=_quantize_decimal(Decimal(str(bucket["interest_income"]))),
-                fair_value_change=_quantize_decimal(Decimal(str(bucket["fair_value_change"]))),
-                capital_gain=_quantize_decimal(Decimal(str(bucket["capital_gain"]))),
-                manual_adjustment=_quantize_decimal(Decimal(str(bucket["manual_adjustment"]))),
-                total_pnl=_quantize_decimal(total_pnl),
-                avg_balance=_quantize_decimal(avg_balance),
-                current_balance=_quantize_decimal(current_balance),
-                annualized_yield_pct=annualized_yield_pct,
-                ftp_rate_pct=FTP_RATE_PCT,
-                ftp_cost=ftp_values["ftp_cost"],
-                ftp_net_pnl=ftp_values["ftp_net_pnl"],
-                ftp_net_annualized_yield_pct=ftp_values["ftp_net_annualized_yield_pct"],
-                asset_count=len(bucket["asset_codes"]) if bucket["asset_codes"] else 0,
-            )
-        )
-    return rows
-
-
-def _analysis_dimension_row_sort_key(
-    item: dict[str, object],
-    dimension: PnlByBusinessAnalysisDimension,
-) -> tuple[object, ...]:
-    if dimension == "monthly":
-        return (str(item["dimension_key"]),)
-    if dimension == "bond_bucket_monthly":
-        dimension_key = str(item["dimension_key"])
-        report_date = _analysis_dimension_report_date(dimension_key)
-        bucket_key = dimension_key.split("::", 1)[1] if "::" in dimension_key else ""
-        return (report_date, ANALYSIS_BOND_BUCKET_SORT.get(bucket_key, 99))
-    if dimension == "bond_bucket":
-        return (ANALYSIS_BOND_BUCKET_SORT.get(str(item["dimension_key"]), 99),)
-    return (-abs(Decimal(str(item["total_pnl"]))), str(item["dimension_label"]))
-
-
-def _analysis_matched_business_keys(classification: dict[str, object]) -> tuple[str, ...]:
-    manual_key = _norm_text(classification.get("manual_business_row_key"))
-    if manual_key:
-        return (manual_key,)
-    return tuple(str(row_def.get("row_key")) for row_def in match_zqtz_asset_bond_rows(classification))
-
-
-def _analysis_bond_bucket_for_matched_keys(matched_keys: tuple[str, ...]) -> tuple[str, str]:
-    matched_set = set(matched_keys)
-    for bucket_key, label, row_keys in ANALYSIS_BOND_BUCKETS:
-        if matched_set & row_keys:
-            return bucket_key, label
-    return "other_bond", ANALYSIS_BOND_BUCKET_LABELS["other_bond"]
-
-
-def _analysis_global_bond_bucket_dimension_for_pnl_row(
-    row: dict[str, object],
-    matched_keys: tuple[str, ...],
-    dimension: PnlByBusinessAnalysisDimension,
-) -> tuple[str, str] | None:
-    bucket_key, label = _analysis_bond_bucket_for_matched_keys(matched_keys)
-    if dimension == "bond_bucket":
-        return bucket_key, label
-    report_date = _norm_text(row.get("report_date"))
-    if not report_date:
-        return None
-    return f"{report_date}::{bucket_key}", f"{report_date} {label}"
-
-
-def _analysis_global_bond_bucket_dimension_for_balance_row(
-    row: dict[str, object],
-    matched_keys: tuple[str, ...],
-    dimension: PnlByBusinessAnalysisDimension,
-    month_end_by_month: dict[str, str],
-) -> tuple[str, str] | None:
-    bucket_key, label = _analysis_bond_bucket_for_matched_keys(matched_keys)
-    if dimension == "bond_bucket":
-        return bucket_key, label
-    report_date = _norm_text(row.get("report_date"))
-    month_end = month_end_by_month.get(report_date[:7])
-    if not month_end:
-        return None
-    return f"{month_end}::{bucket_key}", f"{month_end} {label}"
 
 
 def _build_pnl_by_business_analysis_rows(
@@ -2988,6 +2549,47 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
         if str(record.get("cache_key")) == CACHE_KEY and str(record.get("job_name")) == PNL_JOB_NAME
     ]
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records(settings)):
+        if str(record.get("report_date")) != report_date:
+            continue
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_inflight_record(record):
+            _mark_stale_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                report_date=report_date,
+                error_message="Marked stale pnl idempotent refresh run as failed.",
+            )
+            return None
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": PNL_JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": CACHE_KEY,
+        "idempotency_replay": True,
+    }
 
 
 def _latest_inflight_refresh(

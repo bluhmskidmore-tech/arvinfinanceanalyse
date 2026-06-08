@@ -6,7 +6,6 @@ import pytest
 from scripts.agent_eval import validate_task as validate_task_cli
 from scripts.agent_eval.spec import validate_result_spec, validate_task_spec
 
-
 VALID_TASK = {
     "id": "ledger_pnl_unit_mismatch_001",
     "page": "ledger-pnl",

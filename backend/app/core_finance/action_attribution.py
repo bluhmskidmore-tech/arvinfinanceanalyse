@@ -134,6 +134,32 @@ def build_action_attribution_placeholder_payload(
     }
 
 
+def select_action_attribution_pnl_report_dates(
+    *,
+    available_report_dates: list[str],
+    period_type: str,
+    period_start: date,
+    period_end: date,
+) -> tuple[list[str], list[str]]:
+    codes: list[str] = []
+    if period_type == "MoM":
+        return [period_end.isoformat()], codes
+
+    selected: list[str] = []
+    for raw in available_report_dates:
+        try:
+            ds = date.fromisoformat(str(raw))
+        except ValueError:
+            continue
+        if period_start <= ds <= period_end:
+            selected.append(str(raw))
+
+    selected = sorted(set(selected))
+    if len(selected) > 1:
+        codes.append("ACTION_ATTRIBUTION_PNL517_MULTI_MONTH_SUM")
+    return selected, codes
+
+
 def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []

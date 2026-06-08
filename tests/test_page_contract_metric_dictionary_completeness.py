@@ -64,6 +64,10 @@ PAGES_WITHOUT_FORMAL_METRIC_BINDINGS = {
     "PAGE-PERFORMANCE-HOME-001": (
         "performance module home is a navigation summary; downstream KPI/PnL pages own bindings."
     ),
+    "PAGE-PNL-BY-BUSINESS-001": (
+        "business type PnL remains a temporary-exception analytical page; page contract explicitly "
+        "has no newly approved `MTR-*` binding in this pass."
+    ),
     "PAGE-REPORTS-HOME-001": (
         "reports module home is a diagnostics/query entry surface; no standalone business metrics."
     ),

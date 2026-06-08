@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BalanceMovementDatesPayload,
   BalanceMovementPayload,
   BalanceBasisMovementDecomposition,
   BalanceDifferenceAttributionWaterfall,
@@ -1344,6 +1345,87 @@ function EvidenceStrip({ meta }: { meta: ResultMeta }) {
   );
 }
 
+type BalanceMovementFreshnessStatus = NonNullable<BalanceMovementDatesPayload["freshness_status"]>;
+
+function freshnessStatusLabel(status: BalanceMovementFreshnessStatus | undefined) {
+  switch (status) {
+    case "fresh":
+      return "数据已同步";
+    case "read_model_lagging":
+      return "读模型落后上游";
+    case "read_model_empty":
+      return "读模型未生成";
+    case "upstream_empty":
+      return "上游暂无控制账";
+    default:
+      return "新鲜度待确认";
+  }
+}
+
+function freshnessStatusDetail(status: BalanceMovementFreshnessStatus | undefined) {
+  switch (status) {
+    case "fresh":
+      return "上游控制账与页面读模型日期一致。";
+    case "read_model_lagging":
+      return "上游已有更晚月份，当前页面仍停留在读模型已有月份。";
+    case "read_model_empty":
+      return "上游已有控制账数据，但页面读模型尚未生成可选日期。";
+    case "upstream_empty":
+      return "页面有读模型日期，但未发现同口径上游控制账。";
+    default:
+      return "当前接口未返回上游与读模型的日期对齐信息。";
+  }
+}
+
+function freshnessStatusTone(status: BalanceMovementFreshnessStatus | undefined) {
+  if (status === "fresh") {
+    return "ok";
+  }
+  if (status === "read_model_lagging" || status === "read_model_empty") {
+    return "warn";
+  }
+  return "info";
+}
+
+function FreshnessStrip({
+  dates,
+  selectedDate,
+}: {
+  dates: BalanceMovementDatesPayload;
+  selectedDate: string;
+}) {
+  const status = dates.freshness_status;
+  const latestReadModelDate = dates.latest_read_model_report_date ?? dates.report_dates[0] ?? null;
+  const latestUpstreamDate = dates.latest_upstream_control_report_date ?? null;
+  const tone = freshnessStatusTone(status);
+  return (
+    <section
+      className={`balance-movement-freshness-strip balance-movement-freshness-strip--${tone}`}
+      data-testid="balance-movement-analysis-freshness"
+      aria-label="余额变动分析数据新鲜度"
+    >
+      <div className="balance-movement-freshness-strip__summary">
+        <span>{freshnessStatusLabel(status)}</span>
+        <strong>{freshnessStatusDetail(status)}</strong>
+      </div>
+      <dl className="balance-movement-freshness-strip__facts">
+        <div>
+          <dt>上游最新</dt>
+          <dd>{latestUpstreamDate ?? "未发现"}</dd>
+        </div>
+        <div>
+          <dt>读模型最新</dt>
+          <dd>{latestReadModelDate ?? "未生成"}</dd>
+        </div>
+        <div>
+          <dt>当前选择</dt>
+          <dd>{selectedDate || "未选择"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 function AnalysisDimensionOverview({
   cards,
   onEvidence,
@@ -2603,6 +2685,9 @@ export default function BalanceMovementAnalysisPage() {
           <strong>{dateStatus.title}</strong>
           <span>{dateStatus.detail}</span>
         </div>
+      ) : null}
+      {datesQuery.data?.result ? (
+        <FreshnessStrip dates={datesQuery.data.result} selectedDate={selectedDate} />
       ) : null}
       {resultMeta ? <EvidenceStrip meta={resultMeta} /> : null}
 

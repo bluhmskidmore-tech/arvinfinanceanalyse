@@ -48,7 +48,7 @@ export const workbenchTheme: ThemeConfig = {
       borderRadius: designTokens.radius.sm,
       paddingInline: designTokens.space[4],
       paddingBlock: designTokens.space[2],
-      fontWeight: 500,
+      fontWeight: 600,
       primaryShadow: "none",
     },
     Input: {
@@ -63,15 +63,16 @@ export const workbenchTheme: ThemeConfig = {
       borderRadiusLG: shellTokens.radiusCard,
       paddingLG: designTokens.card.padding,
       headerBg: "transparent",
+      boxShadow: shellTokens.shadowCard,
     },
     Table: {
       borderRadius: designTokens.radius.sm,
-      cellPaddingBlock: Math.round((designTokens.density.tableRowNormal - designTokens.fontSize[13] * 1.35) / 2),
+      cellPaddingBlock: Math.round((designTokens.density.tableRowCompact - designTokens.fontSize[13] * 1.35) / 2),
       cellPaddingInline: designTokens.space[3],
       cellFontSize: designTokens.fontSize[13],
       headerBg: shellTokens.colorBgMuted,
-      headerColor: shellTokens.colorTextSecondary,
-      rowHoverBg: shellTokens.colorBgCanvas,
+      headerColor: designTokens.color.institutional.textMuted,
+      rowHoverBg: designTokens.color.institutional.rowHover,
     },
     Layout: {
       bodyBg: shellTokens.colorBgApp,
@@ -81,6 +82,8 @@ export const workbenchTheme: ThemeConfig = {
     Tabs: {
       horizontalMargin: `0 0 ${designTokens.space[4]}px 0`,
       titleFontSize: designTokens.fontSize[14],
+      cardBg: shellTokens.colorBgMuted,
+      itemSelectedColor: shellTokens.colorAccent,
     },
     Modal: {
       boxShadow: designTokens.shadow.modal,

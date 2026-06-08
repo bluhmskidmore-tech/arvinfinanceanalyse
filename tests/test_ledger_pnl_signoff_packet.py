@@ -53,6 +53,7 @@ def test_ledger_pnl_approval_packets_match_checker_output() -> None:
             "- `captures_business_owner_approval="
             f"{str(status['evidence_scope']['captures_business_owner_approval']).lower()}`"
         ),
+        f"- `certification_effect={status['evidence_scope']['certification_effect']}`",
         "## Business Owner Approval Action Items",
         *[
             (

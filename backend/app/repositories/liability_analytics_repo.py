@@ -117,7 +117,6 @@ class LiabilityAnalyticsRepository:
             select cast(report_date as varchar) as report_date,
                    instrument_code,
                    instrument_name,
-                   portfolio_name,
                    asset_class,
                    invest_type_std as asset_type,
                    bond_type,
@@ -129,8 +128,7 @@ class LiabilityAnalyticsRepository:
                    ytm_value,
                    maturity_date,
                    source_version,
-                   rule_version,
-                   currency_code
+                   rule_version
             from fact_formal_zqtz_balance_daily
             where report_date in ({placeholders})
               and currency_basis = 'CNY'

@@ -195,6 +195,20 @@ materialize_product_category_pnl = register_actor_once(
 )
 
 
+def materialize_product_category_pnl_sync(
+    duckdb_path: str | None = None,
+    source_dir: str | None = None,
+    governance_dir: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, object]:
+    return _materialize_product_category_pnl(
+        duckdb_path=duckdb_path,
+        source_dir=source_dir,
+        governance_dir=governance_dir,
+        run_id=run_id,
+    )
+
+
 def product_category_pnl_payload_from_canonical_ytd_anchor(
     duckdb_path: str,
     governance_dir: str,

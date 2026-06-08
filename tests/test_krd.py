@@ -14,18 +14,16 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-
 from backend.app.core_finance.krd import (
     KRD_TENORS,
     STANDARD_KRD_SCENARIOS,
     build_krd_position_metrics,
     classify_asset_class,
+    compute_curve_scenario,
     compute_krd_by_tenor,
     compute_krd_curve_risk,
-    compute_curve_scenario,
     map_accounting_class,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -243,7 +241,6 @@ class TestComputeKrdByTenor:
         krd_sum = sum(r["krd"] for r in result)
 
         metrics = build_krd_position_metrics(positions, report_date=REPORT_DATE)
-        total_mv = sum(m["market_value"] for m in metrics)
         portfolio_mod_dur = sum(
             m["weight"] * m["modified_duration"] for m in metrics
         )

@@ -9,12 +9,12 @@ Covers:
 - Four effects sum to total return (within 1bp tolerance)
 - Edge cases: zero coupon bond, negative yield, zero duration
 """
-import pytest
 from datetime import date
 from decimal import Decimal
 
-from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
+import pytest
 
+from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
 
 # ---------------------------------------------------------------------------
 # Helpers

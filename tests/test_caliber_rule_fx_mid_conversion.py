@@ -15,12 +15,11 @@ from backend.app.core_finance.calibers import (
     get_caliber_rule,
 )
 from backend.app.core_finance.calibers.rules.fx_mid_conversion import (
+    _FX_DATE_POLICY,
     DESCRIPTOR,
     InapplicableFxConversion,
-    _FX_DATE_POLICY,
     select_fx_date,
 )
-
 
 _BD = date(2024, 1, 2)
 _ASOF = date(2024, 3, 4)

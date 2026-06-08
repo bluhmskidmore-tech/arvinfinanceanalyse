@@ -87,6 +87,8 @@ Current active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-01
 - Unit 2/9 nonzero 3C display semantics: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` freezes asset signed display, liability absolute display, yuan-to-yi-yuan scaling, and yield non-money scaling for `MTR-PCP-004`~`MTR-PCP-012`
 - Unit 10 scenario promotion gate: `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md`, `docs/pnl/product-category-golden-sample-a.md`, and `tests/test_golden_samples_capture_ready.py` now define the evidence required before the companion scenario probe can become a second full golden matrix sample.
 - 2026-05-11 decisions recorded: 1B no standalone `as_of_date`, 2A no silent selected-date switch, 3C active detail metric expansion for `MTR-PCP-004`~`MTR-PCP-012`
+- outward `as_of_date`: decision 1B is already recorded in `docs/pnl/product-category-page-truth-contract.md`; the current page must not expose a standalone outward `as_of_date` unless product/API decision 1B is reopened with targeted tests.
+- fallback-date boundary: `docs/pnl/product-category-page-truth-contract.md` section 10.2 now states there is no outward `fallback_date`, fallback evidence cannot be inferred from `report_date` / `resolved_report_date` / `generated_at`, and raw `fallback_mode` visibility is not replacement date truth.
 - governance regression tests: `tests/test_governance_doc_contract.py` and `tests/test_golden_samples_capture_ready.py`
 
 ## Blockers that need user/product decision (Class 1)
@@ -95,10 +97,9 @@ Current active product-category metric ids are `MTR-PCP-001` through `MTR-PCP-01
 - Unit 4: validation copy / edge-case rules beyond two empty-payload tests
 - Unit 5: dual-sort rationale (documentation of intent)
 
-## Next cursor-safe tasks
+## Owner Review Queue
 
-1. **fallback-date semantics:** document the user-facing behavior for fallback dates before widening stale-state copy.
-2. **outward `as_of_date`:** decide whether the page should expose `as_of_date` separately from the selected `report_date`.
-3. **refresh timeout/stale copy:** specify the copy shown when refresh exceeds the current UI polling window.
-4. **Unit 4 extended validation copy:** freeze any additional backend validation wording beyond the two covered empty-payload cases.
-5. **dual-sort rationale:** record the product intent for keeping current and event sort controls independent.
+1. **refresh timeout/stale copy:** specify the copy shown when refresh exceeds the current UI polling window.
+2. **Unit 4 extended validation copy:** freeze any additional backend validation wording beyond the two covered empty-payload cases.
+3. **dual-sort rationale:** record the product intent for keeping current and event sort controls independent.
+4. **revoke confirmation policy:** freeze whether destructive revoke needs policy beyond the already tested browser confirmation gate.

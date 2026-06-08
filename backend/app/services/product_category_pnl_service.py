@@ -78,7 +78,12 @@ class ProductCategoryReadModelUnavailableError(RuntimeError):
     pass
 
 
-def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
+def queue_product_category_pnl_refresh(
+    settings: Settings,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     source_dir = _resolve_product_category_refresh_source_dir(settings)
     try:
         with acquire_lock(
@@ -86,6 +91,14 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(settings)
             if existing is not None:
                 raise ProductCategoryRefreshConflictError(
@@ -108,6 +121,7 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                         vendor_version="vv_none",
                     ).model_dump(),
                     "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
             )
 
@@ -143,6 +157,8 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                     **payload,
                     "job_name": PRODUCT_CATEGORY_JOB_NAME,
                     "trigger_mode": "sync-fallback",
+                    "idempotency_key": normalized_idempotency_key,
+                    "idempotency_replay": False,
                 }
 
             return {
@@ -151,6 +167,8 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                 "job_name": PRODUCT_CATEGORY_JOB_NAME,
                 "trigger_mode": "async",
                 "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+                "idempotency_key": normalized_idempotency_key,
+                "idempotency_replay": False,
             }
     except TimeoutError as exc:
         raise ProductCategoryRefreshConflictError(
@@ -409,8 +427,12 @@ def restore_product_category_manual_adjustment(
     return restored.model_dump(mode="json")
 
 
-def refresh_product_category_pnl(settings: Settings) -> dict[str, object]:
-    return queue_product_category_pnl_refresh(settings)
+def refresh_product_category_pnl(
+    settings: Settings,
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    return queue_product_category_pnl_refresh(settings, idempotency_key=idempotency_key)
 
 
 def run_product_category_refresh_sync(settings: Settings, run_id: str | None = None) -> dict[str, object]:
@@ -751,6 +773,51 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         if str(record.get("job_name")) == PRODUCT_CATEGORY_JOB_NAME
         and str(record.get("cache_key")) == PRODUCT_CATEGORY_CACHE_KEY
     ]
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records(settings)):
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_inflight_record(record):
+            _mark_stale_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                error_message="Marked stale product-category idempotent refresh run as failed.",
+            )
+            refreshed_records = _load_refresh_run_records(settings)
+            return next(
+                (
+                    refreshed
+                    for refreshed in reversed(refreshed_records)
+                    if str(refreshed.get("run_id")) == str(record.get("run_id"))
+                ),
+                record,
+            )
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": PRODUCT_CATEGORY_JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+        "idempotency_replay": True,
+    }
 
 
 def _latest_inflight_refresh(settings: Settings) -> dict[str, object] | None:

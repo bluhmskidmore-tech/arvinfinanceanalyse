@@ -8,15 +8,12 @@ from backend.app.api.response_cache import (
     market_home_response_cache,
 )
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    GovernanceRepository,
-)
 from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.macro_vendor_service import (
     choice_macro_formal_envelope,
     choice_macro_latest_envelope,
+    choice_macro_refresh_status,
     fx_analytical_envelope,
     fx_formal_status_envelope,
     macro_foundation_formal_envelope,
@@ -29,9 +26,6 @@ from backend.app.tasks.choice_macro import (
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter()
-
-CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
-CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 
 
 def _ensure_macro_vendor_read_allowed(auth: AuthContext) -> None:
@@ -173,26 +167,7 @@ def choice_series_refresh_status(
 ) -> dict[str, object]:
     _ensure_macro_vendor_read_allowed(auth)
     settings = get_settings()
-    records = [
-        record
-        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
-        if str(record.get("job_name")) == CHOICE_MACRO_REFRESH_JOB_NAME
-        and str(record.get("cache_key")) == CHOICE_MACRO_REFRESH_CACHE_KEY
-    ]
-    if run_id:
-        records = [record for record in records if str(record.get("run_id")) == run_id]
-        if not records:
-            raise HTTPException(status_code=404, detail=f"Unknown choice macro refresh run_id={run_id}")
-    if not records:
-        return {
-            "status": "idle",
-            "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
-            "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
-            "trigger_mode": "idle",
-        }
-    latest = records[-1]
-    status = str(latest.get("status", "unknown"))
-    return {
-        **latest,
-        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
-    }
+    try:
+        return choice_macro_refresh_status(settings.governance_path, run_id=run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

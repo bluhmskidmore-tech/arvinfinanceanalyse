@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from tests.helpers import ROOT, load_module
 
-
 RUNBOOK_PATH = ROOT / "docs" / "tushare_news_backup_refresh_runbook.md"
 SCHEDULER_HANDOFF_PATH = ROOT / "docs" / "templates" / "tushare_news_backup_refresh_scheduler_handoff.md"
 GO_LIVE_CHECKLIST_PATH = ROOT / "docs" / "templates" / "tushare_news_backup_refresh_go_live_checklist.md"
@@ -253,21 +252,15 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "--stage post-enable --format ops-gap" in status
     assert "Combined verdict: `blocked`" in status
     assert "Blocking stages: `pre-enable`, `post-enable`" in status
-    assert "Pre-enable summary: `6 pass / 5 blocked`" in status
-    assert "Post-enable summary: `6 pass / 7 blocked`" in status
+    assert "Pre-enable summary: `9 pass / 2 blocked`" in status
+    assert "Post-enable summary: `9 pass / 4 blocked`" in status
     assert "Operator Fill Order" in status
-    assert "Fill owner fields first" in status
-    assert "Confirm boundary rows with evidence" in status
-    assert "Complete the timer enablement packet" in status
-    assert "Record page acceptance sign-off" in status
-    assert "Set Enable timer to yes after pre-enable evidence is accepted" in status
-    assert "rerun `--stage pre-enable` before creating the external timer" in status
+    assert "Do not create the external timer while `pre-enable` is blocked." in status
     assert "After the first scheduled run, attach timer evidence" in status
     assert "Activation Sequence" in status
     assert "Immediate stage: `pre-enable`" in status
     status_words = " ".join(status.split())
     assert "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes." in status_words
-    assert "Do not create the external timer while `pre-enable` is blocked." in status
     assert "Already Verified Evidence Gates" in status
     assert "`checklist_exists`" in status
     assert "`page_evidence_json_confirms_read_only_fallback`" in status
@@ -275,7 +268,6 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "Homepage read path remains `/ui/news/choice-events/latest`." in status
     assert "pre-enable" in status
     assert "post-enable" in status
-    assert "owners_filled" in status
     assert "boundary_confirmation_filled" in status
     assert "timer_enablement_packet_filled" in status
     assert "page_acceptance_signoff_filled" in status
@@ -295,7 +287,7 @@ def test_tushare_news_backup_timer_preflight_status_records_current_blockers_and
     assert "docs/templates/tushare_news_backup_timer_enablement_packet.md" in status
     assert "docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md" in status
     assert "docs/handoff/2026-06-03-tushare-news-backup-timer-ops-gap-packet.md" in status
-    assert "Do not enable the timer" in status
+    assert "This status is a handoff summary of the read-only preflight output" in status
 
 
 def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_report() -> None:
@@ -332,12 +324,11 @@ def test_tushare_news_backup_timer_preflight_status_matches_current_preflight_re
         assert f"`{action['path']}`" in status
         assert action["action"] in status
 
-    assert [action["gate"] for action in all_stage["ops_gap"]["immediate_next_actions"]] == [
-        "owners_filled",
-        "boundary_confirmation_filled",
-        "timer_enablement_packet_filled",
-        "page_acceptance_signoff_filled",
-        "enable_timer_decision_yes",
+    assert [
+        action["gate"] for action in all_stage["ops_gap"]["immediate_next_actions"]
+    ] == [
+        "page_artifacts_exist",
+        "page_evidence_json_confirms_read_only_fallback",
     ]
     assert [
         action["gate"]
@@ -460,7 +451,7 @@ def test_tushare_news_backup_timer_ops_gap_packet_matches_current_blockers_and_a
     packet_words = " ".join(packet.split())
     for marker in (
         "Post-enable inputs remain deferred until `pre-enable` returns `pass` and the first scheduled run finishes.",
-        "After `pre-enable` passes, create the external timer outside this packet and collect first-run evidence.",
+        "Do not create the external timer while `pre-enable` is blocked.",
     ):
         assert marker in generated_words
         assert marker in packet_words

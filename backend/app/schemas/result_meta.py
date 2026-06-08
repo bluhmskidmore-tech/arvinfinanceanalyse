@@ -14,6 +14,7 @@ SourceSurface = Literal[
     "cashflow",
     "pnl_bridge",
     "market_data",
+    "choice_news",
 ]
 
 _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
@@ -27,6 +28,7 @@ _GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
     ("cashflow_projection.", "cashflow"),
     ("pnl.bridge", "pnl_bridge"),
     ("market_data.", "market_data"),
+    ("news.choice.", "choice_news"),
 ]
 
 _GOVERNED_RESULT_KIND_PREFIXES = tuple(
@@ -46,10 +48,13 @@ class ResultMeta(BaseModel):
     basis: Literal["formal", "scenario", "analytical", "ledger"] = "formal"
     result_kind: str = "analysis_view"
     formal_use_allowed: bool = True
+    amount_currency_basis: str | None = None
+    amount_currency_basis_note: str | None = None
     source_version: str
     vendor_version: str = "vv_none"
     rule_version: str
     cache_version: str
+    cache_key: str | None = None
     quality_flag: Literal["ok", "warning", "error", "stale"] = "ok"
     vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok"
     fallback_mode: Literal["none", "latest_snapshot"] = "none"

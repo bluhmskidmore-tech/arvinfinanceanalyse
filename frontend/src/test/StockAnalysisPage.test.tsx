@@ -64,6 +64,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function expectElementBefore(first: HTMLElement, second: HTMLElement) {
+  expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+}
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -1326,6 +1330,8 @@ describe("StockAnalysisPage", () => {
 
   it("does not fan out lower-page diagnostics before the first screen", async () => {
     const client = stockClient();
+    const strategySpy = vi.spyOn(client, "getLivermoreStrategy");
+    const confluenceSpy = vi.spyOn(client, "getLivermoreSignalConfluence");
     const strategyScoreSpy = vi.spyOn(client, "getLivermoreStrategyScore");
     const strategyOptimizationSpy = vi.spyOn(client, "getLivermoreStrategyOptimization");
     const candidateHistorySpy = vi.spyOn(client, "getLivermoreCandidateHistory");
@@ -1335,6 +1341,10 @@ describe("StockAnalysisPage", () => {
     renderWorkbenchApp(["/stock-analysis"], { client });
 
     expect(await screen.findByTestId("stock-analysis-tailwind-cockpit")).toBeInTheDocument();
+    await waitFor(() => expect(strategySpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(confluenceSpy).toHaveBeenCalledTimes(1));
+    expect(strategySpy).toHaveBeenCalledWith();
+    expect(confluenceSpy).toHaveBeenCalledWith({ asOfDate: "2026-04-29" });
     expect(strategyScoreSpy).not.toHaveBeenCalled();
     expect(strategyOptimizationSpy).not.toHaveBeenCalled();
     expect(candidateHistorySpy).not.toHaveBeenCalled();
@@ -1537,12 +1547,12 @@ describe("StockAnalysisPage", () => {
       /\[data-testid="stock-analysis-review-queue"\],[\s\S]*?\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?grid-template-rows:\s*22px\s*40px\s*!important[\s\S]*?max-height:\s*78px/,
     );
     expect(narrowRailCss).toMatch(
-      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-risk-section"\][\s\S]*?display:\s*none/,
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-risk-section"\][\s\S]*?display:\s*grid\s*!important/,
     );
     expect(narrowRailCss).toMatch(
-      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-boundary-rail"\][\s\S]*?display:\s*none/,
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-boundary-rail"\][\s\S]*?display:\s*grid\s*!important/,
     );
-    expect(narrowRailCss).toMatch(/\.stock-analysis-page__rail-check-list\s*\{[\s\S]*?display:\s*none\s*!important/);
+    expect(narrowRailCss).toMatch(/\.stock-analysis-page__rail-check-list\s*\{[\s\S]*?display:\s*grid\s*!important/);
   });
 
   it("keeps first-screen KPI cards compact and icon-led", () => {
@@ -1745,6 +1755,74 @@ describe("StockAnalysisPage", () => {
     expect(narrowCss).toMatch(
       /\[data-testid="stock-analysis-theme-leaders-first-screen"\]\s*>\s*\.stock-analysis-page__empty,[\s\S]*?min-height:\s*48px/,
     );
+  });
+
+  it("keeps the narrow stock decision path evidence-led before chart exploration", () => {
+    const css = readFileSync(STOCK_ANALYSIS_CSS_PATH, "utf8");
+    const gateStart = css.indexOf("Stock Gate C decision order pass");
+    const gateCss = css.slice(gateStart);
+
+    expect(gateStart).toBeGreaterThan(-1);
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-primary"\]\s*\{[\s\S]*?display:\s*contents\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /@media \(max-width:\s*900px\)[\s\S]*?\[data-testid="stock-analysis-review-queue"\]\s*\{[\s\S]*?order:\s*3\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-consensus-first-screen"\]\s*\{[\s\S]*?order:\s*4\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\{[\s\S]*?order:\s*5\s*!important[\s\S]*?max-height:\s*none\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-strategy-lens"\]\s*\{[\s\S]*?order:\s*6\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-sector-strength-panel"\]\s*\{[\s\S]*?order:\s*7\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-observation-preview"\],[\s\S]*?\[data-testid="stock-analysis-first-screen-analytics"\]\s*\{[\s\S]*?order:\s*8\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-risk-section"\],[\s\S]*?\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-boundary-rail"\]\s*\{[\s\S]*?display:\s*grid\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__rail-check-list\s*\{[\s\S]*?display:\s*grid\s*!important/,
+    );
+    expect(gateCss).not.toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-risk-section"\],[\s\S]*?\[data-testid="stock-analysis-first-screen-rail"\]\s*>\s*\[data-testid="stock-analysis-boundary-rail"\]\s*\{[\s\S]*?display:\s*none\s*!important/,
+    );
+    expect(gateCss).toMatch(
+      /\[data-testid="stock-analysis-first-screen-rail"\]\s*\.stock-analysis-page__rail-metric-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+    );
+  });
+
+  it("keeps stock trust evidence and review controls before deep analysis", async () => {
+    renderWorkbenchApp(["/stock-analysis"], { client: stockClient() });
+
+    const decisionPanel = await screen.findByTestId("stock-analysis-decision-panel");
+    const reviewQueue = await screen.findByTestId("stock-analysis-review-queue");
+    const reviewStrip = await screen.findByTestId("stock-analysis-review-workbench-strip");
+    const consensus = await screen.findByTestId("stock-analysis-consensus-first-screen");
+    const consensusStrip = await screen.findByTestId("stock-analysis-consensus-workbench-strip");
+    const closedLoop = await screen.findByTestId("stock-analysis-closed-loop-summary");
+    const verdict = await screen.findByTestId("stock-analysis-closed-loop-verdict");
+    const boundary = await screen.findByTestId("stock-analysis-boundary-summary");
+    const sector = await screen.findByTestId("stock-analysis-sector-strength-panel");
+    const deepZone = await screen.findByTestId("stock-analysis-deep-zone");
+
+    expect(decisionPanel).toBeInTheDocument();
+    expect(reviewStrip).toBeInTheDocument();
+    expect(consensusStrip).toBeInTheDocument();
+    expect(verdict).toBeInTheDocument();
+    expect(boundary).toBeInTheDocument();
+    expect(within(closedLoop).getByTestId("stock-analysis-rail-check-matrix")).toBeInTheDocument();
+
+    expectElementBefore(decisionPanel, reviewQueue);
+    expectElementBefore(reviewQueue, consensus);
+    expectElementBefore(consensus, sector);
+    expectElementBefore(closedLoop, deepZone);
   });
 
   it("surfaces backend supply status and stock selection on the first screen", async () => {
@@ -3683,15 +3761,7 @@ describe("StockAnalysisPage", () => {
 
     renderWorkbenchApp(["/stock-analysis"], { client });
 
-    await screen.findByTestId("stock-analysis-decision-panel");
-    const picker = screen.getByTestId("stock-analysis-as-of-picker");
-    const pickerInput = picker instanceof HTMLInputElement ? picker : picker.querySelector("input");
-    expect(pickerInput).toBeInstanceOf(HTMLInputElement);
-    await user.clear(pickerInput as HTMLInputElement);
-    await user.type(pickerInput as HTMLInputElement, "2026-05-08");
-    await user.keyboard("{Enter}");
-
-    await waitFor(() => expect(strategySpy).toHaveBeenCalledWith({ asOfDate: "2026-05-08" }));
+    await requestStockAnalysisAsOfDate(user, strategySpy);
     const decisionPanel = screen.getByTestId("stock-analysis-decision-panel");
     expect(decisionPanel).toHaveTextContent("数据日期");
     expect(decisionPanel).toHaveTextContent("2026-04-29");

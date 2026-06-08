@@ -7,7 +7,6 @@ from pathlib import Path
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE_PATHS = [
     ROOT / "backend" / "app" / "services" / "bond_analytics_service.py",

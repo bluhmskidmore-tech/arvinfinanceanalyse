@@ -25,7 +25,7 @@ from backend.app.services.balance_analysis_service import (
     refresh_balance_analysis,
     update_balance_analysis_decision_status,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
 router = APIRouter(prefix="/ui/balance-analysis")
 
@@ -404,6 +404,7 @@ def export_workbook(
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_date: str = Query(...),
 ) -> dict[str, object]:
     settings = get_settings()
@@ -414,7 +415,11 @@ def refresh(
             resource="balance_analysis",
             action="refresh",
         )
-        return refresh_balance_analysis(settings, report_date=report_date)
+        return refresh_balance_analysis(
+            settings,
+            report_date=report_date,
+            idempotency_key=idempotency_key,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except BalanceAnalysisRefreshConflictError as exc:

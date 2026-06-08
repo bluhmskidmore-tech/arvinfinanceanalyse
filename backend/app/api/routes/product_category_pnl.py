@@ -27,7 +27,7 @@ from backend.app.services.product_category_pnl_service import (
     revoke_product_category_manual_adjustment,
     update_product_category_manual_adjustment,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 
 router = APIRouter(prefix="/ui/pnl/product-category")
@@ -100,6 +100,7 @@ def attribution(
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, object]:
     settings = get_settings()
     try:
@@ -114,7 +115,7 @@ def refresh(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return refresh_product_category_pnl(settings)
+        return refresh_product_category_pnl(settings, idempotency_key=idempotency_key)
     except ProductCategoryRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ProductCategoryRefreshServiceError as exc:

@@ -40,6 +40,18 @@ def _quality_for_evidence(evidence_rows: int | None) -> Literal["ok", "warning"]
     return "ok" if evidence_rows and evidence_rows > 0 else "warning"
 
 
+def _ledger_pnl_cache_key(
+    result_kind: str,
+    report_date: str | None = None,
+    currency: str | None = None,
+) -> str:
+    parts = [result_kind]
+    if report_date:
+        parts.append(report_date)
+    parts.append(currency or "ALL")
+    return ":".join(parts)
+
+
 def _empty_ledger_next_drill(report_date: str | None = None, currency: str | None = None) -> list[dict[str, str]]:
     checks = [
         {
@@ -303,6 +315,7 @@ def ledger_pnl_data_envelope(
         trace_id="tr_ledger_pnl_data",
         result_kind="ledger_pnl.data",
         cache_version=CACHE_VERSION,
+        cache_key=_ledger_pnl_cache_key("ledger_pnl.data", payload["report_date"], currency),
         source_version=payload.get("source_version", "sv_ledger_pnl_data"),
         rule_version=RULE_VERSION,
         quality_flag=_quality_for_evidence(evidence_rows),
@@ -338,6 +351,7 @@ def ledger_pnl_summary_envelope(
         trace_id="tr_ledger_pnl_summary",
         result_kind="ledger_pnl.summary",
         cache_version=CACHE_VERSION,
+        cache_key=_ledger_pnl_cache_key("ledger_pnl.summary", payload["report_date"], currency),
         source_version=payload.get("source_version", "sv_ledger_pnl_summary"),
         rule_version=RULE_VERSION,
         quality_flag=_quality_for_evidence(evidence_rows),

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from tests.helpers import ROOT
 
-
 DOCS_DIR = ROOT / "docs"
 
 

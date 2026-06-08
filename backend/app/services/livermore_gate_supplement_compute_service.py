@@ -19,11 +19,19 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import date
+import os
+import time
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 import duckdb
+from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.tasks.livermore_gate_supplement import (
+    RULE_VERSION as LIVERMORE_GATE_SUPPLEMENT_MATERIALIZE_RULE_VERSION,
+)
 from backend.app.tasks.livermore_gate_supplement import (
     materialize_livermore_gate_supplement_daily,
 )
@@ -36,6 +44,14 @@ PCT_CHG_SERIES_ID = "CA.CSI300_PCT_CHG"
 BREADTH_WINDOW = 5
 # Minimum number of historical daily returns needed to compute supplement.
 MIN_HISTORY_FOR_SUPPLEMENT = BREADTH_WINDOW + 1
+LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME = "livermore_gate_supplement_refresh"
+LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY = "livermore_gate_supplement_daily"
+LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_VERSION = "cv_livermore_gate_supplement_refresh_v1"
+LIVERMORE_GATE_SUPPLEMENT_REFRESH_LOCK_TIMEOUT_SECONDS = 30.0
+LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_WAIT_TIMEOUT_SECONDS = 300.0
+LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_LOCK_ATTEMPT_SECONDS = 0.25
+LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_SECONDS = 0.05
+LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_MAX_SECONDS = 1.0
 
 
 def compute_and_materialize_gate_supplement(
@@ -43,12 +59,151 @@ def compute_and_materialize_gate_supplement(
     duckdb_path: str,
     as_of_date: date | None = None,
     lookback_days: int = 30,
+    idempotency_key: str | None = None,
 ) -> dict[str, object]:
     """Compute breadth_5d + limit_up_quality_ok and write to DuckDB supplement table.
 
     Returns a summary dict suitable for API response.
     """
     target_date = as_of_date or date.today()
+    target_date_text = target_date.isoformat()
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
+    storage_target_digest = _storage_target_digest(duckdb_path)
+    settings = get_settings()
+
+    lock_definition = _refresh_trigger_lock(
+        as_of_date=target_date_text,
+        lookback_days=lookback_days,
+        storage_target_digest=storage_target_digest,
+    )
+    if normalized_idempotency_key is not None:
+        return _run_idempotent_refresh(
+            duckdb_path=duckdb_path,
+            target_date=target_date,
+            target_date_text=target_date_text,
+            lookback_days=lookback_days,
+            idempotency_key=normalized_idempotency_key,
+            storage_target_digest=storage_target_digest,
+            lock_definition=lock_definition,
+        )
+
+    with acquire_lock(
+        lock_definition,
+        base_dir=settings.governance_path,
+        timeout_seconds=LIVERMORE_GATE_SUPPLEMENT_REFRESH_LOCK_TIMEOUT_SECONDS,
+    ):
+        return _compute_gate_supplement_payload(
+            duckdb_path=duckdb_path,
+            target_date=target_date,
+            target_date_text=target_date_text,
+            lookback_days=lookback_days,
+            idempotency_key=None,
+            storage_target_digest=storage_target_digest,
+        )
+
+
+def _run_idempotent_refresh(
+    *,
+    duckdb_path: str,
+    target_date: date,
+    target_date_text: str,
+    lookback_days: int,
+    idempotency_key: str,
+    storage_target_digest: str,
+    lock_definition: LockDefinition,
+) -> dict[str, object]:
+    settings = get_settings()
+    deadline = time.monotonic() + LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_WAIT_TIMEOUT_SECONDS
+    poll_seconds = LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_SECONDS
+
+    while True:
+        existing_run = _latest_refresh_for_idempotency_key(
+            as_of_date=target_date_text,
+            lookback_days=lookback_days,
+            idempotency_key=idempotency_key,
+            storage_target_digest=storage_target_digest,
+        )
+        if existing_run is not None:
+            return _idempotent_refresh_response(existing_run)
+
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            existing_run = _latest_refresh_for_idempotency_key(
+                as_of_date=target_date_text,
+                lookback_days=lookback_days,
+                idempotency_key=idempotency_key,
+                storage_target_digest=storage_target_digest,
+            )
+            if existing_run is not None:
+                return _idempotent_refresh_response(existing_run)
+            raise TimeoutError(
+                "Timed out waiting for Livermore gate supplement idempotency replay "
+                f"as_of_date={target_date_text} lookback_days={int(lookback_days)}."
+            )
+
+        acquired_lock = False
+        try:
+            with acquire_lock(
+                lock_definition,
+                base_dir=settings.governance_path,
+                timeout_seconds=min(
+                    LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_LOCK_ATTEMPT_SECONDS,
+                    remaining_seconds,
+                ),
+                poll_interval_seconds=min(
+                    LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_SECONDS,
+                    max(remaining_seconds, 0.0),
+                ),
+            ):
+                acquired_lock = True
+                existing_run = _latest_refresh_for_idempotency_key(
+                    as_of_date=target_date_text,
+                    lookback_days=lookback_days,
+                    idempotency_key=idempotency_key,
+                    storage_target_digest=storage_target_digest,
+                )
+                if existing_run is not None:
+                    return _idempotent_refresh_response(existing_run)
+                return _compute_gate_supplement_payload(
+                    duckdb_path=duckdb_path,
+                    target_date=target_date,
+                    target_date_text=target_date_text,
+                    lookback_days=lookback_days,
+                    idempotency_key=idempotency_key,
+                    storage_target_digest=storage_target_digest,
+                )
+        except TimeoutError:
+            if acquired_lock:
+                raise
+            existing_run = _latest_refresh_for_idempotency_key(
+                as_of_date=target_date_text,
+                lookback_days=lookback_days,
+                idempotency_key=idempotency_key,
+                storage_target_digest=storage_target_digest,
+            )
+            if existing_run is not None:
+                return _idempotent_refresh_response(existing_run)
+            sleep_seconds = min(
+                poll_seconds,
+                max(deadline - time.monotonic(), 0.0),
+            )
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+                poll_seconds = min(
+                    poll_seconds * 2,
+                    LIVERMORE_GATE_SUPPLEMENT_IDEMPOTENCY_POLL_MAX_SECONDS,
+                )
+
+
+def _compute_gate_supplement_payload(
+    *,
+    duckdb_path: str,
+    target_date: date,
+    target_date_text: str,
+    lookback_days: int,
+    idempotency_key: str | None,
+    storage_target_digest: str,
+) -> dict[str, object]:
     daily_returns = _load_csi300_daily_returns(
         duckdb_path=duckdb_path,
         end_date=target_date,
@@ -63,6 +218,8 @@ def compute_and_materialize_gate_supplement(
                 f"observations; found {len(daily_returns)}."
             ),
             "computed_rows": 0,
+            "idempotency_key": idempotency_key,
+            "idempotency_replay": False,
         }
 
     supplement_rows = _compute_supplement_rows(daily_returns)
@@ -71,6 +228,8 @@ def compute_and_materialize_gate_supplement(
             "status": "no_computable_dates",
             "message": "No trade dates yielded computable supplement rows.",
             "computed_rows": 0,
+            "idempotency_key": idempotency_key,
+            "idempotency_replay": False,
         }
 
     result = materialize_livermore_gate_supplement_daily(
@@ -78,13 +237,122 @@ def compute_and_materialize_gate_supplement(
         rows=supplement_rows,
     )
 
-    return {
+    payload: dict[str, object] = {
         "status": "completed",
         "computed_rows": len(supplement_rows),
         "first_date": str(supplement_rows[0]["trade_date"]),
         "last_date": str(supplement_rows[-1]["trade_date"]),
         "materialize_result": result,
+        "idempotency_key": idempotency_key,
+        "idempotency_replay": False,
     }
+    if idempotency_key is not None:
+        _record_idempotent_refresh(
+            as_of_date=target_date_text,
+            lookback_days=lookback_days,
+            idempotency_key=idempotency_key,
+            storage_target_digest=storage_target_digest,
+            response_payload=payload,
+        )
+    return payload
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _storage_target_digest(duckdb_path: str) -> str:
+    target = Path(duckdb_path).expanduser().resolve(strict=False)
+    return hashlib.sha256(os.path.normcase(str(target)).encode("utf-8")).hexdigest()[:16]
+
+
+def _refresh_trigger_lock(*, as_of_date: str, lookback_days: int, storage_target_digest: str) -> LockDefinition:
+    return LockDefinition(
+        key=(
+            "lock:livermore-gate-supplement-refresh:"
+            f"{as_of_date}:{int(lookback_days)}:{storage_target_digest}"
+        ),
+        ttl_seconds=30,
+    )
+
+
+def _load_refresh_run_records() -> list[dict[str, object]]:
+    settings = get_settings()
+    return [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("cache_key")) == LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY
+        and str(record.get("job_name")) == LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME
+    ]
+
+
+def _latest_refresh_for_idempotency_key(
+    *,
+    as_of_date: str,
+    lookback_days: int,
+    idempotency_key: str,
+    storage_target_digest: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records()):
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("as_of_date")) != as_of_date:
+            continue
+        if str(record.get("lookback_days")) != str(int(lookback_days)):
+            continue
+        if str(record.get("storage_target_digest") or "").strip() != storage_target_digest:
+            continue
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    response_payload = record.get("response_payload")
+    if isinstance(response_payload, dict):
+        payload = dict(response_payload)
+    else:
+        payload = {
+            "status": str(record.get("status") or "completed"),
+            "materialize_result": {"run_id": str(record.get("run_id") or "")},
+        }
+    payload["idempotency_key"] = _normalize_idempotency_key(str(record.get("idempotency_key") or ""))
+    payload["idempotency_replay"] = True
+    return payload
+
+
+def _record_idempotent_refresh(
+    *,
+    as_of_date: str,
+    lookback_days: int,
+    idempotency_key: str,
+    storage_target_digest: str,
+    response_payload: dict[str, object],
+) -> None:
+    settings = get_settings()
+    materialize_result = response_payload.get("materialize_result")
+    materialize_payload = materialize_result if isinstance(materialize_result, dict) else {}
+    run_id = str(materialize_payload.get("run_id") or "")
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": LIVERMORE_GATE_SUPPLEMENT_REFRESH_JOB_NAME,
+            "status": "completed",
+            "cache_key": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_KEY,
+            "cache_version": LIVERMORE_GATE_SUPPLEMENT_REFRESH_CACHE_VERSION,
+            "rule_version": str(
+                materialize_payload.get("rule_version") or LIVERMORE_GATE_SUPPLEMENT_MATERIALIZE_RULE_VERSION
+            ),
+            "report_date": as_of_date,
+            "as_of_date": as_of_date,
+            "lookback_days": int(lookback_days),
+            "idempotency_key": idempotency_key,
+            "storage_target_digest": storage_target_digest,
+            "response_payload": response_payload,
+            "finished_at": datetime.now(UTC).isoformat(),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

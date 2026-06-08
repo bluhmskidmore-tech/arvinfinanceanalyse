@@ -5,8 +5,8 @@ from pathlib import Path
 
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.services.research_calendar_upstream_fetch_service import (
-    archive_research_calendar_supply_auction_raw,
     archive_mof_treasury_supply_auction_raw,
+    archive_research_calendar_supply_auction_raw,
     fetch_adbc_policy_bank_supply_auction_rows,
     fetch_chinabond_policy_bank_supply_auction_rows,
     fetch_mof_treasury_supply_auction_rows,

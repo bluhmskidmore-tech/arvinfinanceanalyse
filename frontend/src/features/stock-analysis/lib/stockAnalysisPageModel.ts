@@ -118,6 +118,14 @@ export type StockSectorViewRow = StockSectorRow & {
   metricBarNormalized: number;
 };
 
+export type StockSectorOverviewState<TRow extends StockSectorRow> = {
+  leaderRow: TRow | null;
+  tailRow: TRow | null;
+  coverageCount: number;
+  topBars: TRow[];
+  bottomBars: TRow[];
+};
+
 export type StockDailyJudgmentStrip = {
   headline: string;
   gateChip: string;
@@ -194,6 +202,30 @@ export type StockViewModelMeta = Partial<
     "quality_flag" | "vendor_status" | "source_version" | "rule_version" | "trace_id" | "fallback_mode"
   >
 >;
+
+export function pickStockFreshnessMeta(meta: StockViewModelMeta | null | undefined): StockViewModelMeta {
+  return {
+    quality_flag: meta?.quality_flag,
+    vendor_status: meta?.vendor_status,
+    fallback_mode: meta?.fallback_mode,
+  };
+}
+
+export function mergeStockClosedLoopMeta(
+  hasClosedLoopState: boolean,
+  strategyMeta: StockViewModelMeta | null | undefined,
+  confluenceMeta: StockViewModelMeta | null | undefined,
+): StockViewModelMeta {
+  if (!hasClosedLoopState) return strategyMeta ?? {};
+  return {
+    quality_flag: confluenceMeta?.quality_flag ?? strategyMeta?.quality_flag,
+    vendor_status: confluenceMeta?.vendor_status ?? strategyMeta?.vendor_status,
+    fallback_mode: confluenceMeta?.fallback_mode ?? strategyMeta?.fallback_mode,
+    source_version: confluenceMeta?.source_version ?? strategyMeta?.source_version,
+    rule_version: confluenceMeta?.rule_version ?? strategyMeta?.rule_version,
+    trace_id: confluenceMeta?.trace_id ?? strategyMeta?.trace_id,
+  };
+}
 
 export type StockDataBoundarySummary = {
   boundaryCount: number;
@@ -286,6 +318,15 @@ export type StockCandidateReviewQueueItem = {
   invalidationFocus: string;
   invalidationRules: string[];
   rawFields: { key: string; label: string; value: string }[];
+};
+
+export type StockReviewQueueSectorFilterView = {
+  sectorOptions: [string, string][];
+  filteredCandidates: StockCandidateReviewQueueItem[];
+  selectedSectorLeadCandidate: StockCandidateReviewQueueItem | null;
+  sectorLinkTone: "active" | "empty" | "all";
+  sectorLinkSummary: string;
+  sectorLinkFocus: string;
 };
 
 export type StockThemeBreakoutLeader = {
@@ -550,8 +591,26 @@ function buildHybridFusionEvidenceCards(
       { key: "confidence", label: "置信度", value: fusionConfidenceLabel(item.confidence) },
       { key: "formula_version", label: "公式版本", value: formula },
     ];
-    const sourceKinds = Array.isArray(item.evidence?.source_kinds)
-      ? item.evidence.source_kinds.map(sectorHeavyweightSourceLabel).join(" / ")
+    const sourceKindValues = Array.isArray(item.evidence?.source_kinds)
+      ? item.evidence.source_kinds
+      : [];
+    const hasProxySourceKind = sourceKindValues.some((sourceKind) => {
+      const normalized = sourceKind.toLowerCase().replace(/[\s-]+/g, "_");
+      const compact = normalized.replace(/_/g, "");
+      return (
+        normalized.includes("external_vendor") ||
+        normalized.includes("vendor_") ||
+        normalized.includes("source_table") ||
+        normalized.includes("proxy") ||
+        compact.includes("externalvendor") ||
+        compact.includes("sourcetable")
+      );
+    });
+    const proxyCounterEvidence = hasProxySourceKind
+      ? ["代理信号仅作来源线索，仍需人工确认与正式数据校验。"]
+      : [];
+    const sourceKinds = sourceKindValues.length > 0
+      ? sourceKindValues.map(sectorHeavyweightSourceLabel).join(" / ")
       : "待补";
     const evidence = evidenceBullets.map((bullet) => `${bullet.label}：${bullet.value}`);
 
@@ -569,6 +628,7 @@ function buildHybridFusionEvidenceCards(
       evidence,
       counterEvidence: [
         "生命法庭层仍是观察线索，真实大V文本、OCR/ASR和社交情绪生产线仍待补。",
+        ...proxyCounterEvidence,
         "仅作观察与复核，不作为执行依据。",
         `来源命中：${sourceKinds}`,
       ],
@@ -1808,6 +1868,53 @@ export function buildSectorFilterSummary(
   };
 }
 
+export function buildReviewQueueSectorFilterView({
+  reviewQueue,
+  sectorFilterSectorCode,
+  selectedSectorLabel,
+}: {
+  reviewQueue: StockCandidateReviewQueueItem[];
+  sectorFilterSectorCode: string | null;
+  selectedSectorLabel?: string | null;
+}): StockReviewQueueSectorFilterView {
+  const sectorMap = new Map<string, string>();
+  for (const card of reviewQueue) {
+    sectorMap.set(card.sectorCode, card.sectorName || card.sectorCode);
+  }
+  const sectorOptions: [string, string][] = [...sectorMap.entries()].sort(([a], [b]) =>
+    a.localeCompare(b, "zh-Hans-CN"),
+  );
+  const filteredCandidates = sectorFilterSectorCode
+    ? reviewQueue.filter((candidate) => candidate.sectorCode === sectorFilterSectorCode)
+    : reviewQueue;
+  const selectedSectorLeadCandidate = filteredCandidates[0] ?? null;
+  const sectorLabel = selectedSectorLabel ?? sectorFilterSectorCode;
+  const sectorLinkTone = sectorFilterSectorCode
+    ? filteredCandidates.length > 0
+      ? "active"
+      : "empty"
+    : "all";
+  const sectorLinkSummary = sectorFilterSectorCode
+    ? filteredCandidates.length > 0
+      ? `${sectorLabel} · ${filteredCandidates.length} 个候选`
+      : `${sectorLabel} · 无候选`
+    : `全部行业 · ${reviewQueue.length} 个候选`;
+  const sectorLinkFocus = selectedSectorLeadCandidate
+    ? `首位 ${selectedSectorLeadCandidate.stockName} · 距观察 ${selectedSectorLeadCandidate.distanceToBreakoutPct}`
+    : sectorFilterSectorCode
+      ? "该行业暂无线索"
+      : "按板块收敛";
+
+  return {
+    sectorOptions,
+    filteredCandidates,
+    selectedSectorLeadCandidate,
+    sectorLinkTone,
+    sectorLinkSummary,
+    sectorLinkFocus,
+  };
+}
+
 export function buildCandidateReviewQueue(
   payload: LivermoreStrategyPayload,
 ): StockCandidateReviewQueueItem[] {
@@ -2265,6 +2372,18 @@ export function buildSectorRows(payload: LivermoreStrategyPayload): StockSectorR
       isBottom: n > 0 && item.rank >= n - 4,
     };
   });
+}
+
+export function buildStockSectorOverviewState<TRow extends StockSectorRow>(
+  rows: TRow[],
+): StockSectorOverviewState<TRow> {
+  return {
+    leaderRow: rows[0] ?? null,
+    tailRow: rows.length > 0 ? rows[rows.length - 1] : null,
+    coverageCount: rows.reduce((sum, row) => sum + row.constituentCount, 0),
+    topBars: rows.slice(0, 5),
+    bottomBars: rows.slice(Math.max(rows.length - 5, 0)),
+  };
 }
 
 export function buildSectorViewModel(
@@ -3103,6 +3222,13 @@ export type StockDeepAnalysisGateSummary = {
   tone: StockClosedLoopTone;
 };
 
+export type StockDeepZoneAuditRow = {
+  key: "supply" | "replay" | "review" | "events";
+  label: string;
+  value: string;
+  tone: StockClosedLoopTone;
+};
+
 export function localizeImplementationStage(stage: string): string {
   const normalized = stage.trim().toLowerCase();
   const labels: Record<string, string> = {
@@ -3252,6 +3378,46 @@ export function buildDeepAnalysisGateSummary(input: {
   }
 
   return { line: parts.join(" · "), tone };
+}
+
+export function buildDeepZoneAuditRows(input: {
+  cycleRotationSummary?: Pick<StockStrategyPanelResultSummary, "badgeLabel" | "tone"> | null;
+  themeBreakoutSummary?: Pick<StockStrategyPanelResultSummary, "badgeLabel" | "tone"> | null;
+  strategyBacktestSummary: Pick<StockStrategyPanelResultSummary, "badgeLabel" | "tone">;
+  strategyBacktestDateRangeLabel: string;
+  consensusItemCount: number;
+  reviewQueueCount: number;
+  consensusReviewSummary: Pick<StockStrategyPanelResultSummary, "tone">;
+  marketPrioritySummary: Pick<StockStrategyPanelResultSummary, "tone">;
+  eventsMonitoringSummary: Pick<StockStrategyPanelResultSummary, "badgeLabel" | "tone">;
+  eventMonitorCount: number;
+}): StockDeepZoneAuditRow[] {
+  return [
+    {
+      key: "supply",
+      label: "供数",
+      value: input.cycleRotationSummary?.badgeLabel ?? input.themeBreakoutSummary?.badgeLabel ?? "待确认",
+      tone: input.cycleRotationSummary?.tone ?? input.themeBreakoutSummary?.tone ?? "neutral",
+    },
+    {
+      key: "replay",
+      label: "回放",
+      value: input.strategyBacktestSummary.badgeLabel ?? input.strategyBacktestDateRangeLabel,
+      tone: input.strategyBacktestSummary.tone ?? "neutral",
+    },
+    {
+      key: "review",
+      label: "候选",
+      value: `${input.consensusItemCount} / ${input.reviewQueueCount}`,
+      tone: input.consensusReviewSummary.tone ?? input.marketPrioritySummary.tone ?? "neutral",
+    },
+    {
+      key: "events",
+      label: "事件",
+      value: input.eventsMonitoringSummary.badgeLabel ?? `${input.eventMonitorCount}`,
+      tone: input.eventsMonitoringSummary.tone ?? "neutral",
+    },
+  ];
 }
 
 function eventMonitorPriority(row: StockAnalysisEventMonitorRow): number {

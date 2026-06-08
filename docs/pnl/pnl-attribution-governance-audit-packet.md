@@ -37,6 +37,7 @@ Closure approved: `false`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 
 ## Business Owner Approval Action Items
 

@@ -5,11 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.pnl_attribution_owner_evidence_packet import build_packet
+from scripts.pnl_attribution_owner_evidence_packet import build_packet, render_markdown
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pnl_attribution_owner_evidence_packet.py"
+OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "pnl-attribution-owner-evidence-packet.md"
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -49,6 +50,13 @@ def test_pnl_attribution_owner_evidence_packet_preserves_candidate_boundary(
     assert packet["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
     assert packet["golden_sample_approval_artifact_mismatch"] is False
     assert packet["golden_sample_boundary"] == "primary_workbench_dto_only"
+    assert (
+        packet["primary_api_result_meta_scope"]
+        == "primary_api_dto_formal_result_meta_only"
+    )
+    assert packet["primary_api_result_meta_formal_use_allowed"] is True
+    assert packet["page_formal_use_allowed"] is False
+    assert packet["page_owner_approval_required"] is True
     assert packet["governance_record_write_status"] == "not_requested"
     assert packet["governance_validation_status"] == "ready_for_audit_review"
     assert packet["governance_existing_record_line"] is None
@@ -65,6 +73,7 @@ def test_pnl_attribution_owner_evidence_packet_preserves_candidate_boundary(
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
         "validates_required_fields": True,
     }
     assert packet["latest_verification_evidence"] == {
@@ -125,6 +134,7 @@ def test_pnl_attribution_owner_evidence_packet_cli_writes_markdown(
     assert payload["approval_action_item_count"] == 11
     assert payload["governance_record_write_status"] == "not_requested"
     assert payload["evidence_scope"]["writes_governance_records"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
 
     text = output_path.read_text(encoding="utf-8")
     assert "# PnL Attribution Owner Evidence Packet" in text
@@ -132,6 +142,14 @@ def test_pnl_attribution_owner_evidence_packet_cli_writes_markdown(
     assert "Formal use allowed: `formal_use_allowed=false`" in text
     assert "Closure approved: `closure_approved=false`" in text
     assert "Golden sample boundary: `primary_workbench_dto_only`" in text
+    assert "Primary API DTO result_meta may be formal/formal_use_allowed=true." in text
+    assert (
+        "This does not approve PAGE-PNL-ATTR-WB-001 page closure, owner approval, "
+        "or full-page formal use."
+    ) in text
+    assert "Primary API result_meta scope: `primary_api_dto_formal_result_meta_only`" in text
+    assert "Page formal use allowed: `false`" in text
+    assert "Page owner approval required: `true`" in text
     assert "Governance record write status: `not_requested`" in text
     assert "Governance validation status: `ready_for_audit_review`" in text
     assert "Latest Verification Evidence" in text
@@ -141,8 +159,16 @@ def test_pnl_attribution_owner_evidence_packet_cli_writes_markdown(
     assert "Full readiness run: `passed`" in text
     assert "technical evidence only; owner approval remains pending" in text
     assert "This packet does not approve page closure" in text
+    assert "- `certification_effect=none`" in text
     assert "Advanced attribution surfaces" in text
     assert "Campisi surfaces" in text
     assert "Business Owner Approval Action Items" in text
     assert "Candidate-only boundary accepted: `yes` (`pending`)" in text
     assert "- - Candidate-only boundary accepted" not in text
+
+
+def test_pnl_attribution_owner_evidence_packet_matches_generator_output() -> None:
+    expected = render_markdown(build_packet())
+    actual = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
+
+    assert actual == expected

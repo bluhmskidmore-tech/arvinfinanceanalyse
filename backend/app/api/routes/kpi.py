@@ -337,7 +337,14 @@ def fetch_and_recalc_kpi(
 ) -> dict:
     settings = get_settings()
     try:
-        ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="kpi.value",
+            action="write",
+            scope_key="owner_id",
+            scope_value=str(owner_id),
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 

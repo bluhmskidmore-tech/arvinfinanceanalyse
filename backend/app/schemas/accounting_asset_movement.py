@@ -311,6 +311,14 @@ class AccountingAssetMovementDatesPayload(BaseModel):
 
     report_dates: list[str]
     currency_basis: str
+    latest_read_model_report_date: str | None = None
+    latest_upstream_control_report_date: str | None = None
+    freshness_status: Literal[
+        "fresh",
+        "read_model_lagging",
+        "read_model_empty",
+        "upstream_empty",
+    ]
 
 
 class AccountingAssetMovementRefreshPayload(BaseModel):

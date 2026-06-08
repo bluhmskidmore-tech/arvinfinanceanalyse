@@ -12,9 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.audit_governance_lineage import audit_governance_lineage
+from scripts.audit_governance_lineage import audit_governance_lineage  # noqa: E402
 
 RELEASE_SUITE_NAME = "governed-phase2-backend-release-suite"
+GOVERNANCE_MCP_SUITE_NAME = "governance-mcp-contract-suite"
 EXECUTIVE_RELEASE_SAMPLE_IDS = [
     "GS-EXEC-OVERVIEW-A",
     "GS-EXEC-PNL-ATTR-A",
@@ -39,8 +40,8 @@ RELEASE_SUITE_TESTS = [
     "tests/test_golden_sample_release_matrix.py",
     "tests/test_live_route_page_contract_completeness.py",
     "tests/test_no_finance_logic_in_frontend.py",
-    "tests/test_project_mcp_servers.py",
 ]
+GOVERNANCE_MCP_SUITE_TESTS = ["tests/test_project_mcp_servers.py"]
 
 
 def _release_suite_env() -> dict[str, str]:
@@ -53,6 +54,10 @@ def _release_suite_env() -> dict[str, str]:
 
 def _pytest_args() -> list[str]:
     return ["-m", "pytest", "-q", *RELEASE_SUITE_TESTS]
+
+
+def _governance_mcp_pytest_args() -> list[str]:
+    return ["-m", "pytest", "-q", *GOVERNANCE_MCP_SUITE_TESTS]
 
 
 def _write_governance_audit_output(
@@ -77,6 +82,10 @@ def build_release_suite_plan(
         "governance_audit_output": governance_audit_output,
         "executive_release_sample_ids": EXECUTIVE_RELEASE_SAMPLE_IDS,
         "pytest_args": _pytest_args(),
+        "governance_mcp_suite": {
+            "suite_name": GOVERNANCE_MCP_SUITE_NAME,
+            "pytest_args": _governance_mcp_pytest_args(),
+        },
         "env": _release_suite_env(),
     }
 

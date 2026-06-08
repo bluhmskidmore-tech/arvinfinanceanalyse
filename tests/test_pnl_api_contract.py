@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import logging
-from datetime import datetime, timedelta, timezone
 import json
+import logging
 import sys
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -611,9 +611,10 @@ def test_pnl_by_business_monthly_bypasses_precompute_when_manual_adjustment_exis
 
 
 def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
-    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
-    if hasattr(pnl_service, "_clear_pnl_by_business_analysis_cache"):
-        pnl_service._clear_pnl_by_business_analysis_cache()
+    precompute_module = load_module(
+        "backend.app.tasks.pnl_by_business_precompute",
+        "backend/app/tasks/pnl_by_business_precompute.py",
+    )
 
     row_defs = (
         {
@@ -690,11 +691,11 @@ def test_pnl_by_business_precompute_writes_page_payloads(monkeypatch):
             assert as_of_date == "2025-12-31"
             type(self).written_records = records
 
-    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
-    monkeypatch.setattr(pnl_service, "ZQTZ_ASSET_BOND_ROWS", row_defs)
-    monkeypatch.setattr(pnl_service, "match_zqtz_asset_bond_rows", lambda _classification: row_defs)
+    monkeypatch.setattr(precompute_module, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(precompute_module, "ZQTZ_ASSET_BOND_ROWS", row_defs)
+    monkeypatch.setattr(precompute_module, "match_zqtz_asset_bond_rows", lambda _classification: row_defs)
 
-    summary = pnl_service.precompute_pnl_by_business_payloads(
+    summary = precompute_module.precompute_pnl_by_business_payloads(
         duckdb_path="fake.duckdb",
         governance_dir="fake-governance",
         year=2025,
@@ -2213,6 +2214,346 @@ def test_pnl_by_business_daily_uses_formal_facts_not_refresh_source_override(tmp
     assert "source-only" not in by_business
 
 
+def test_pnl_by_business_balance_lookup_stays_on_requested_report_date(tmp_path):
+    pnl_repo_module = load_module(
+        "backend.app.repositories.pnl_repo_date_scoped_business_lookup",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              currency_basis varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8),
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_nonstd_pnl_bridge (
+              report_date varchar,
+              bond_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              currency_basis varchar,
+              business_type_primary varchar,
+              sub_type varchar,
+              asset_class varchar,
+              position_scope varchar,
+              market_value_amount decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values
+            ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'A', 'FVOCI', 'CNY', 10, 0, 0, 0, 10, 'sv', 'rv', 'batch', 'tr')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-03-31', 'BOND-001', 'FIOA', 'CC', 'CNY', 'old-month-credit', '', '', 'asset', 900),
+            ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'CNY', '', '', '', 'asset', 100)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    rows = repo.fetch_by_business_rows("2026-04-30")
+
+    assert len(rows) == 1
+    assert rows[0]["business_type_primary"] == "A"
+    assert Decimal(str(rows[0]["scale_amount"])) == Decimal("0E-8")
+    assert rows[0]["balance_row_count"] == 0
+
+
+def test_pnl_by_business_balance_query_filters_balance_dates_to_pnl_dates(monkeypatch):
+    pnl_repo_module = load_module(
+        "backend.app.repositories.pnl_repo_balance_date_filter_contract",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    captured_sql: list[str] = []
+
+    class FakeCursor:
+        def fetchall(self):
+            return []
+
+    class FakeConnection:
+        def execute(self, sql, _params=None):
+            captured_sql.append(sql)
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        pnl_repo_module.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+
+    pnl_repo_module.PnlRepository("unused.duckdb").fetch_by_business_rows("2026-04-30")
+
+    query = "\n".join(captured_sql).lower()
+    assert "from fact_formal_zqtz_balance_daily" in query
+    assert "select distinct report_date from pnl_rows" in query
+
+
+def test_pnl_by_business_summary_rows_stay_on_requested_report_date(tmp_path):
+    pnl_repo_module = load_module(
+        "backend.app.repositories.pnl_repo_date_scoped_business_summary",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              currency_basis varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8),
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_nonstd_pnl_bridge (
+              report_date varchar,
+              bond_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              currency_basis varchar,
+              business_type_primary varchar,
+              sub_type varchar,
+              asset_class varchar,
+              position_scope varchar,
+              market_value_amount decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values
+            ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'A', 'FVOCI', 'CNY', 10, 0, 0, 0, 10, 'sv', 'rv', 'batch', 'tr')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-03-31', 'BOND-001', 'FIOA', 'CC', 'CNY', 'old-month-credit', '', '', 'asset', 900),
+            ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'CNY', '', '', '', 'asset', 100)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    rows = repo.fetch_by_business_summary_rows("2026-04-30")
+
+    assert len(rows) == 1
+    assert rows[0]["business_type_primary"] == "A"
+    assert Decimal(str(rows[0]["scale_amount"])) == Decimal("0E-8")
+    assert rows[0]["balance_row_count"] == 0
+
+
+def test_pnl_by_business_summary_rows_batch_groups_by_report_date(tmp_path):
+    pnl_repo_module = load_module(
+        "backend.app.repositories.pnl_repo_date_scoped_business_summary_batch",
+        "backend/app/repositories/pnl_repo.py",
+    )
+    import duckdb
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              currency_basis varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8),
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_nonstd_pnl_bridge (
+              report_date varchar,
+              bond_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              currency_basis varchar,
+              business_type_primary varchar,
+              sub_type varchar,
+              asset_class varchar,
+              position_scope varchar,
+              market_value_amount decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values
+            ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'A', 'FVOCI', 'CNY', 10, 0, 0, 0, 10, 'sv', 'rv', 'batch', 'tr'),
+            ('2026-03-31', 'BOND-002', 'FIOA', 'CC', 'H', 'FVOCI', 'CNY', 20, 0, 0, 0, 20, 'sv', 'rv', 'batch', 'tr')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'BOND-001', 'FIOA', 'CC', 'CNY', 'A', '', '', 'asset', 100),
+            ('2026-03-31', 'BOND-002', 'FIOA', 'CC', 'CNY', 'H', '', '', 'asset', 200),
+            ('2026-02-28', 'BOND-001', 'FIOA', 'CC', 'CNY', 'old-month-credit', '', '', 'asset', 900)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    by_date = repo.fetch_by_business_summary_rows_by_report_date(["2026-04-30", "2026-03-31", "2026-02-28"])
+
+    assert [row["business_type_primary"] for row in by_date["2026-04-30"]] == ["A"]
+    assert Decimal(str(by_date["2026-04-30"][0]["scale_amount"])) == Decimal("100.00000000")
+    assert [row["business_type_primary"] for row in by_date["2026-03-31"]] == ["H"]
+    assert Decimal(str(by_date["2026-03-31"][0]["scale_amount"])) == Decimal("200.00000000")
+    assert by_date["2026-02-28"] == []
+
+
+def test_tpl_pnl_summary_batch_keeps_report_date_grain(tmp_path):
+    pnl_repo_module = load_module(
+        "backend.app.repositories.pnl_repo_tpl_summary_batch",
+        "backend/app/repositories/pnl_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+              report_date varchar,
+              accounting_basis varchar,
+              fair_value_change_516 decimal(24, 8),
+              total_pnl decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values
+            ('2026-04-30', 'FVTPL', 10, 12),
+            ('2026-04-30', 'FVOCI', 99, 99),
+            ('2026-03-31', 'TPL', 1, 2)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = pnl_repo_module.PnlRepository(str(duckdb_path))
+    summaries = repo.fetch_tpl_pnl_summary_by_report_date(["2026-04-30", "2026-03-31", "2026-02-28"])
+
+    assert Decimal(str(summaries["2026-04-30"]["tpl_fair_value_change"])) == Decimal("10.00000000")
+    assert Decimal(str(summaries["2026-04-30"]["tpl_total_pnl"])) == Decimal("12.00000000")
+    assert summaries["2026-04-30"]["row_count"] == 1
+    assert Decimal(str(summaries["2026-03-31"]["tpl_total_pnl"])) == Decimal("2.00000000")
+    assert summaries["2026-02-28"]["tpl_total_pnl"] == 0
+    assert summaries["2026-02-28"]["row_count"] == 0
+
+
 def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
@@ -3325,13 +3666,93 @@ def test_pnl_refresh_queue_and_latest_import_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_pnl_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    _, governance_dir = _configure_refresh_sources(tmp_path, monkeypatch)
+    queued_messages: list[dict[str, object]] = []
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    headers = {"Idempotency-Key": "pnl-refresh-2026-02-28"}
+
+    first_response = client.post("/api/data/refresh_pnl", headers=headers)
+    second_response = client.post("/api/data/refresh_pnl", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "pnl-refresh-2026-02-28"
+    assert second_payload["idempotency_replay"] is True
+    assert len(queued_messages) == 1
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("job_name") == "pnl_materialize"
+        and record.get("run_id") == first_payload["run_id"]
+    ]
+    assert len(records) == 1
+    get_settings.cache_clear()
+
+
+def test_pnl_refresh_requeues_stale_inflight_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    _, governance_dir = _configure_refresh_sources(tmp_path, monkeypatch)
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-stale-idempotent",
+        status="running",
+        source_version="sv_pending",
+        report_date="2026-02-28",
+        queued_at=stale_time,
+        idempotency_key="pnl-refresh-2026-02-28",
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post(
+        "/api/data/refresh_pnl",
+        headers={"Idempotency-Key": "pnl-refresh-2026-02-28"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["idempotency_key"] == "pnl-refresh-2026-02-28"
+    assert payload["idempotency_replay"] is False
+    assert payload["run_id"] != "run-stale-idempotent"
+    assert len(queued_messages) == 1
+    assert queued_messages[0]["run_id"] == payload["run_id"]
+    assert queued_messages[0]["report_date"] == "2026-02-28"
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    stale_records = [record for record in records if record.get("run_id") == "run-stale-idempotent"]
+    assert stale_records[-1]["status"] == "failed"
+    assert stale_records[-1]["error_message"] == "Marked stale pnl idempotent refresh run as failed."
+    get_settings.cache_clear()
+
+
 def test_pnl_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch):
     _configure_refresh_sources(tmp_path, monkeypatch)
     scope_repo = _setup_route_scope_store(tmp_path, monkeypatch)
     route_module = load_module("backend.app.api.routes.pnl", "backend/app/api/routes/pnl.py")
     calls: list[str | None] = []
 
-    def fake_refresh(settings, *, report_date=None):
+    def fake_refresh(settings, *, report_date=None, **_kwargs):
         calls.append(report_date)
         return {"status": "queued", "run_id": "pnl-refresh-auth-test"}
 

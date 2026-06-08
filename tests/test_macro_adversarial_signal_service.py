@@ -8,7 +8,10 @@ from fastapi.testclient import TestClient
 import backend.app.api.routes.macro_toolkit as macro_toolkit_route
 from backend.app.api.routes.macro_toolkit import router as macro_toolkit_router
 from backend.app.services import macro_adversarial_signal_service
-from tests.test_macro_toolkit_scripts import MACRO_TOOLKIT_READ_HEADERS, _seed_macro_toolkit_read_scope
+from tests.test_macro_toolkit_scripts import (
+    MACRO_TOOLKIT_READ_HEADERS,
+    _seed_macro_toolkit_read_scope,
+)
 
 
 def _write_csv(path: Path, content: str) -> None:

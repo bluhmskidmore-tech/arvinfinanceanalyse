@@ -79,7 +79,12 @@ export type PnlSummaryCard = Pick<
   "label" | "value" | "detail" | "tone" | "valueVariant"
 >;
 
-export type PnlByBusinessInsightConfidence = "可分析" | "缺日均" | "仅对账" | "预警/降级";
+export type PnlByBusinessInsightConfidence =
+  | "可分析"
+  | "缺日均"
+  | "日均为0"
+  | "仅对账"
+  | "预警/降级";
 
 export type PnlByBusinessDrilldownRecommendation = {
   targetBusinessLabel: string;
@@ -101,6 +106,7 @@ export type PnlByBusinessInsightModel = {
   topShareDisplay: string;
   ftpAvailable: boolean;
   missingAdbCount: number;
+  zeroAdbCount: number;
   manualAdjustmentCount: number;
   formalUntracedCount: number;
   formalUntracedValueDisplay: string;
@@ -801,6 +807,7 @@ function buildYtdDrilldownRecommendation(input: {
   topDrag?: PnlByBusinessYtdItem;
   topShare?: PnlByBusinessYtdItem;
   missingAdbCount: number;
+  zeroAdbCount: number;
   ftpAvailable: boolean;
 }): PnlByBusinessDrilldownRecommendation {
   const targetBusinessLabel =
@@ -820,7 +827,7 @@ function buildYtdDrilldownRecommendation(input: {
     };
   }
 
-  if (!input.ftpAvailable || input.missingAdbCount > 0) {
+  if (input.missingAdbCount > 0) {
     return {
       targetBusinessLabel,
       priorityLabel: "补日均",
@@ -828,6 +835,17 @@ function buildYtdDrilldownRecommendation(input: {
       actionLabel: "先补齐 ADB 再判断 FTP 后收益",
       evidenceLabel: `缺日均 ${input.missingAdbCount} 项`,
       reasonLabel: "父级业务仍有损益或余额活动，但 ADB 未全覆盖；年化收益率和 FTP 后收益先不作为决策结论。",
+    };
+  }
+
+  if (input.zeroAdbCount > 0) {
+    return {
+      targetBusinessLabel,
+      priorityLabel: "日均为0",
+      dimensionLabel: "日均分母",
+      actionLabel: "先确认 ADB 为真实零，再查看损益贡献；收益率/FTP 暂不计算",
+      evidenceLabel: `日均为0 ${input.zeroAdbCount} 项`,
+      reasonLabel: "ADB 已返回但存在零分母；可展示真实日均为 0，但年化收益率和 FTP 后收益不作为决策结论。",
     };
   }
 
@@ -874,6 +892,7 @@ function buildPnlByBusinessInsight(input: {
       topShareDisplay: "不与月报/YTD 混加",
       ftpAvailable: false,
       missingAdbCount: 0,
+      zeroAdbCount: 0,
       manualAdjustmentCount: 0,
       formalUntracedCount,
       formalUntracedValueDisplay: `${formalUntracedCount} 条未追溯`,
@@ -907,6 +926,7 @@ function buildPnlByBusinessInsight(input: {
       topShareDisplay: formatRatioPct(input.topMonthlyRow?.proportion),
       ftpAvailable: numeric(input.activeMonthlyBucket?.summary.ftp_net_pnl) !== null,
       missingAdbCount: 0,
+      zeroAdbCount: 0,
       manualAdjustmentCount: 0,
       formalUntracedCount: 0,
       formalUntracedValueDisplay: "未读取",
@@ -927,21 +947,26 @@ function buildPnlByBusinessInsight(input: {
   const topContribution = pickTopPositiveYtdRow(input.parentYtdRows);
   const topDrag = pickTopNegativeYtdRow(input.parentYtdRows);
   const topShare = pickTopShareYtdRow(input.parentYtdRows);
-  const missingAdbCount = input.parentYtdRows.filter((row) => {
-    if (!hasYtdBusinessActivity(row)) {
-      return false;
-    }
-    const adb = input.adbAvgByBusinessType
-      ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType)
-      : undefined;
-    return adb === undefined || adb <= 0;
-  }).length;
-  const ftpAvailable = missingAdbCount === 0 && input.parentYtdRows.length > 0;
+  const resolvedAdbValues = input.parentYtdRows
+    .filter(hasYtdBusinessActivity)
+    .map((row) =>
+      input.adbAvgByBusinessType
+        ? resolveAdbAvgYuan(row.business_type, input.adbAvgByBusinessType)
+        : undefined,
+    );
+  const missingAdbCount = resolvedAdbValues.filter((adb) => adb === undefined).length;
+  const zeroAdbCount = resolvedAdbValues.filter((adb) => adb === 0).length;
+  const ftpAvailable =
+    missingAdbCount === 0 &&
+    zeroAdbCount === 0 &&
+    input.parentYtdRows.length > 0;
   const confidenceLabel: PnlByBusinessInsightConfidence = isWarning
     ? "预警/降级"
     : ftpAvailable
       ? "可分析"
-      : "缺日均";
+      : zeroAdbCount > 0
+        ? "日均为0"
+        : "缺日均";
 
   return {
     confidenceLabel,
@@ -954,6 +979,7 @@ function buildPnlByBusinessInsight(input: {
     topShareDisplay: formatRatioPct(topShare?.proportion),
     ftpAvailable,
     missingAdbCount,
+    zeroAdbCount,
     manualAdjustmentCount: input.manualAdjustmentCount ?? 0,
     formalUntracedCount: 0,
     formalUntracedValueDisplay: "未读取",
@@ -968,6 +994,7 @@ function buildPnlByBusinessInsight(input: {
       topDrag,
       topShare,
       missingAdbCount,
+      zeroAdbCount,
       ftpAvailable,
     }),
   };

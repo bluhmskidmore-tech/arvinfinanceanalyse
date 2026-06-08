@@ -28,6 +28,9 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
       return buildMockApiEnvelope("balance-analysis.movement.dates", {
         report_dates: ["2026-02-28"],
         currency_basis: currencyBasis,
+        latest_read_model_report_date: "2026-02-28",
+        latest_upstream_control_report_date: "2026-02-28",
+        freshness_status: "fresh",
       });
     },
     async getBalanceMovementAnalysis({ reportDate, currencyBasis = "CNX" }) {

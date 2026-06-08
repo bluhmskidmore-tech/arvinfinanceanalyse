@@ -53,7 +53,7 @@ if ($env:MOSS_DEV_RELOAD -eq "1") {
 }
 
 if ([string]::IsNullOrWhiteSpace($env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED)) {
-  $env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "0"
+  $env:MOSS_HOME_SNAPSHOT_PREWARM_ENABLED = "1"
 }
 
 if ([string]::IsNullOrWhiteSpace($env:MOSS_MARKET_HOME_PREWARM_ENABLED)) {

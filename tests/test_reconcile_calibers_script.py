@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.app.core_finance.calibers import list_caliber_rules
-
 from tests.helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]

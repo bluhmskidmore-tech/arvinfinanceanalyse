@@ -7,7 +7,11 @@ import duckdb
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
+from backend.app.repositories.task_write_guard import repository_task_write_scope
+from tests.test_bond_analytics_materialize_flow import (
+    REPORT_DATE,
+    _seed_bond_snapshot_rows,
+)
 from tests.test_bond_analytics_service import _configure_and_materialize
 
 
@@ -191,17 +195,18 @@ def _replace_test_risk_tensor_row(
         quality_flag="ok",
         warnings=[],
     )
-    repo.replace_risk_tensor_row(
-        report_date=report_date,
-        tensor=tensor,
-        source_version=source_version,
-        upstream_source_version=upstream_source_version,
-        liability_source_version="",
-        liability_rule_version="",
-        rule_version="rv_risk_tensor_formal_materialize_v2",
-        cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
-        trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
-    )
+    with repository_task_write_scope("backend.app.tasks.risk_tensor_service_test"):
+        repo.replace_risk_tensor_row(
+            report_date=report_date,
+            tensor=tensor,
+            source_version=source_version,
+            upstream_source_version=upstream_source_version,
+            liability_source_version="",
+            liability_rule_version="",
+            rule_version="rv_risk_tensor_formal_materialize_v2",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v2",
+            trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
+        )
 
 
 def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monkeypatch):
@@ -524,6 +529,10 @@ def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, 
     assert Path(str(calls[0]["governance_dir"])).resolve() == Path(str(governance_dir)).resolve()
     assert payload["result_meta"]["result_kind"] == "risk.tensor.dates"
     assert payload["result_meta"]["source_version"]
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
+    assert payload["result_meta"]["date_basis"] == "formal_snapshot"
     assert payload["result"]["report_dates"] == [REPORT_DATE]
     get_settings.cache_clear()
 
@@ -582,6 +591,9 @@ def test_risk_tensor_dates_envelope_falls_back_to_upstream_source_version_when_m
     assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
     assert payload["result_meta"]["rule_version"] == service_mod.RULE_VERSION
     assert payload["result_meta"]["cache_version"] == service_mod.CACHE_VERSION
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
     assert payload["result"]["report_dates"] == [REPORT_DATE]
     get_settings.cache_clear()
 
@@ -623,6 +635,9 @@ def test_risk_tensor_dates_envelope_blocks_stale_report_dates(tmp_path, monkeypa
     )
 
     assert payload["result"]["report_dates"] == []
+    assert payload["result_meta"]["requested_report_date"] is None
+    assert payload["result_meta"]["resolved_report_date"] is None
+    assert payload["result_meta"]["as_of_date"] is None
     assert payload["result"]["blocked_report_dates"] == [
         {
             "report_date": REPORT_DATE,

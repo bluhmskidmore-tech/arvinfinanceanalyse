@@ -1,0 +1,359 @@
+{
+  "report_kind": "business_display_coverage_report",
+  "generated_at": "2026-06-07T03:16:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "summary": {
+    "tracked_route_count": 8,
+    "route_gap_count": 0,
+    "browser_smoke_a11y_configured_route_count": 8,
+    "browser_smoke_a11y_gap_count": 0,
+    "coverage_status": "tracked"
+  },
+  "evidence_scope": {
+    "runs_tests": false,
+    "proves_business_correctness": false,
+    "approves_metric_or_page": false,
+    "captures_business_owner_approval": false,
+    "maps_existing_test_evidence": true,
+    "maps_browser_smoke_a11y_config": true,
+    "executes_browser_smoke_a11y": false
+  },
+  "routes": [
+    {
+      "route": "/product-category-pnl",
+      "page_id": "PAGE-PROD-CAT-PNL-001",
+      "risk_tier": "critical",
+      "business_boundary": "owner_signable_not_owner_approved",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/ProductCategoryPnlPage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_product_category_pnl_flow.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_product_category_pnl_business_owner_approval_status.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"product-category-page\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/ledger-pnl",
+      "page_id": "PAGE-LEDGER-PNL-001",
+      "risk_tier": "critical",
+      "business_boundary": "candidate_summary_owner_pending",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/LedgerPnlPage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/test/LedgerPnlPage.test.tsx",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_ledger_analytics_api.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_ledger_pnl_business_owner_approval_status.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"ledger-pnl-page\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/pnl-attribution",
+      "page_id": "PAGE-PNL-ATTR-WB-001",
+      "risk_tier": "critical",
+      "business_boundary": "primary_api_dto_formal_result_meta_only",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/PnlAttributionPage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/features/pnl-attribution/adapters/pnlAttributionAdapter.test.ts",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_pnl_api_contract.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_pnl_attribution_owner_evidence_packet.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"pnl-attribution-page-title\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/bond-analysis",
+      "page_id": "PAGE-BOND-ANALYSIS-001",
+      "risk_tier": "critical",
+      "business_boundary": "fixed_income_candidate_no_dashboard_borrow",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/BondAnalyticsView.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/features/bond-analytics/adapters/bondAnalyticsAdapter.test.ts",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_bond_analytics_api.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_bond_analysis_owner_evidence_packet.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"bond-analysis-overview\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/stock-analysis",
+      "page_id": "GAP-STOCK-ANALYSIS-PAGE",
+      "risk_tier": "critical",
+      "business_boundary": "observational_no_trading",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/StockAnalysisPage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/features/market-data/lib/livermoreStrategyModel.test.ts",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_market_data_livermore_api.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_stock_analysis_owner_evidence_packet.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"stock-analysis-page\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/cashflow-projection",
+      "page_id": "GAP-CASHFLOW-PROJECTION-PAGE",
+      "risk_tier": "high",
+      "business_boundary": "candidate_liquidity_projection",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/CashflowProjectionPage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/features/cashflow-projection/pages/cashflowProjectionPageModel.test.ts",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_cashflow_projection.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_project_mcp_servers.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"cashflow-projection-page\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/concentration-monitor",
+      "page_id": "GAP-CONCENTRATION-MONITOR-PAGE",
+      "risk_tier": "high",
+      "business_boundary": "candidate_concentration_monitor",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/ConcentrationMonitorPage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/test/ConcentrationMonitorPage.test.tsx",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_bond_analytics_service.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_project_mcp_servers.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"concentration-monitor-kpi-grid\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    },
+    {
+      "route": "/team-performance",
+      "page_id": "GAP-TEAM-PERFORMANCE-PAGE",
+      "risk_tier": "high",
+      "business_boundary": "candidate_non_additive_mapping",
+      "coverage_status": "tracked",
+      "missing_evidence": [],
+      "evidence": {
+        "frontend_page_test": {
+          "path": "frontend/src/test/TeamPerformancePage.test.tsx",
+          "exists": true
+        },
+        "frontend_model_or_adapter_test": {
+          "path": "frontend/src/features/team-performance/teamPerformancePageModel.test.ts",
+          "exists": true
+        },
+        "backend_or_api_test": {
+          "path": "tests/test_pnl_api_contract.py",
+          "exists": true
+        },
+        "readiness_or_mcp_test": {
+          "path": "tests/test_project_mcp_servers.py",
+          "exists": true
+        },
+        "owner_boundary_test": {
+          "path": "tests/test_codex_page_readiness_gate.py",
+          "exists": true
+        },
+        "browser_smoke_a11y_config": {
+          "path": "frontend/tests/playwright/a11y-visual-smoke.spec.mjs",
+          "exists": true,
+          "configured": true,
+          "ready_selector": "[data-testid=\"team-performance-page\"]",
+          "runs_test": false
+        }
+      },
+      "required_when_frontend_display_logic_changes": [
+        "targeted frontend page/model/adapter test",
+        "npm.cmd run typecheck",
+        "npm.cmd run debt:audit"
+      ]
+    }
+  ]
+}

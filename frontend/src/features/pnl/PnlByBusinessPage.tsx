@@ -30,6 +30,7 @@ import {
 } from "../../components/page/PagePrimitives";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { formatAnnualizedYieldPctDisplay, inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
+import { buildAdbAvgByBusinessTypeMap } from "./pnlByBusinessAdbMap";
 import { downloadPnlByBusinessExcel } from "./pnlByBusinessExport";
 import {
   VIEW_MODE_SUBTITLES,
@@ -68,6 +69,11 @@ function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightM
       : insight.confidenceLabel === "预警/降级"
         ? "pnl-by-business-insight-strip__confidence--warning"
         : "pnl-by-business-insight-strip__confidence--limited";
+  const adbStatusLabel = insight.ftpAvailable
+    ? "FTP 可分析"
+    : insight.zeroAdbCount > 0
+      ? `${insight.zeroAdbCount} 项日均为0`
+      : `${insight.missingAdbCount} 项缺日均`;
 
   return (
     <section className="pnl-by-business-insight-strip" data-testid="pnl-by-business-insight-strip">
@@ -100,7 +106,7 @@ function PnlByBusinessInsightStrip({ insight }: { insight: PnlByBusinessInsightM
         </div>
         <div>
           <small>FTP / 日均</small>
-          <strong>{insight.ftpAvailable ? "FTP 可分析" : `${insight.missingAdbCount} 项缺日均`}</strong>
+          <strong>{adbStatusLabel}</strong>
           <span>{insight.manualAdjustmentCount} 条手工调整</span>
         </div>
         <div>
@@ -320,6 +326,7 @@ function BusinessRowsTable({
     let totalPnl = 0;
     let assets = 0;
     let adbSum = 0;
+    let hasAnyAdb = false;
     for (const row of parentRows) {
       interest += numeric(row.interest_income) ?? 0;
       fairValue += numeric(row.fair_value_change) ?? 0;
@@ -328,12 +335,13 @@ function BusinessRowsTable({
       totalPnl += numeric(row.total_pnl) ?? 0;
       assets += row.assets_count;
       const adb = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
-      if (adb !== undefined && adb > 0) {
+      if (adb !== undefined) {
+        hasAnyAdb = true;
         adbSum += adb;
       }
     }
-    const adbCell = adbSum > 0 ? formatAdbAvgYiCell(adbSum) : "-";
-    const ftp = ftpValuesForYtdRow(totalPnl, adbSum > 0 ? adbSum : undefined, ytdCalendarDays);
+    const adbCell = hasAnyAdb ? formatAdbAvgYiCell(adbSum) : "-";
+    const ftp = ftpValuesForYtdRow(totalPnl, hasAnyAdb ? adbSum : undefined, ytdCalendarDays);
     return {
       interest,
       fairValue,
@@ -351,7 +359,7 @@ function BusinessRowsTable({
 
   const renderRow = (row: PnlByBusinessYtdItem, selectable: boolean) => {
     const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
-    const avgDisplay = adbAvg !== undefined && adbAvg > 0 ? formatAdbAvgYiCell(adbAvg) : "-";
+    const avgDisplay = adbAvg !== undefined ? formatAdbAvgYiCell(adbAvg) : "-";
     const ftp = ftpValuesForYtdRow(row.total_pnl, adbAvg, ytdCalendarDays);
     return (
       <tr
@@ -1250,7 +1258,12 @@ function SelectedBusinessDrilldownPanel({
       : ftp.ftpNetPnl < 0
         ? "FTP 后转负"
         : "FTP 后仍为正";
-  const dataLimit = avgBalance === undefined || avgBalance <= 0 ? "缺日均，收益率/FTP 仅能对账" : "日均已接入，可看收益率与 FTP 后结果";
+  const dataLimit =
+    avgBalance === undefined
+      ? "缺日均，收益率/FTP 仅能对账"
+      : avgBalance === 0
+        ? "日均为0，收益率/FTP 暂不计算"
+        : "日均已接入，可看收益率与 FTP 后结果";
 
   return (
     <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-selected-drilldown">
@@ -1378,7 +1391,7 @@ function FtpBridgePanel({
         <KpiCard
           label="FTP成本"
           value={formatYuanAsWanUnit(ftp.ftpCost)}
-          detail={avgBalance && avgBalance > 0 ? "日均 × 1.6%" : "日均缺失"}
+          detail={avgBalance === undefined ? "日均缺失" : avgBalance === 0 ? "日均为0" : "日均 × 1.6%"}
           tone={ftp.ftpCost && ftp.ftpCost > 0 ? "negative" : "default"}
         />
         <KpiCard
@@ -1543,14 +1556,7 @@ export default function PnlByBusinessPage() {
   });
 
   const adbAvgByBusinessType = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of adbComparisonQuery.data?.assets_breakdown ?? []) {
-      const label = item.category?.trim();
-      if (label) {
-        map.set(label, item.avg_balance);
-      }
-    }
-    return map;
+    return buildAdbAvgByBusinessTypeMap(adbComparisonQuery.data?.assets_breakdown);
   }, [adbComparisonQuery.data?.assets_breakdown]);
 
   const formalResult = formalBusinessQuery.data?.result;

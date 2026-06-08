@@ -11,6 +11,7 @@ DEFAULT_TEMPLATE = ROOT / "docs" / "pnl" / "bond-analysis-business-owner-approva
 EXPECTED_SIGNOFF_PACKET = "docs/pnl/bond-analysis-sign-off-packet.md"
 EXPECTED_GOVERNANCE_AUDIT_PACKET = "docs/pnl/bond-analysis-governance-audit-packet.md"
 EXPECTED_OWNER_EVIDENCE_PACKET = "docs/pnl/bond-analysis-owner-evidence-packet.md"
+EXPECTED_FIXED_INCOME_DECISION_DRAFT = "docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md"
 
 ACTION_ITEM_DEFINITIONS = {
     "business_owner_name": {
@@ -45,6 +46,10 @@ ACTION_ITEM_DEFINITIONS = {
         "template_field": "Reviewed owner evidence packet",
         "required_value": EXPECTED_OWNER_EVIDENCE_PACKET,
     },
+    "reviewed_fixed_income_decision_draft": {
+        "template_field": "Reviewed fixed-income convention decision draft",
+        "required_value": EXPECTED_FIXED_INCOME_DECISION_DRAFT,
+    },
     "governance_record_review": {
         "template_field": "- Governance record reviewed",
         "required_value": "yes",
@@ -55,6 +60,10 @@ ACTION_ITEM_DEFINITIONS = {
     },
     "fixed_income_rule_review": {
         "template_field": "- Fixed-income units/sign/date rules reviewed",
+        "required_value": "yes",
+    },
+    "fixed_income_convention_review": {
+        "template_field": "- Fixed-income convention decision draft reviewed",
         "required_value": "yes",
     },
     "ui_api_payload_review": {
@@ -85,6 +94,11 @@ ACTION_ITEM_DEFINITIONS = {
         "template_field": "Closure approved",
         "required_value": "closure_approved=false",
     },
+    "certification_effect_boundary": {
+        "template_field": "- `certification_effect=none`",
+        "required_value": "none",
+        "status_key": "certification_effect",
+    },
 }
 
 
@@ -101,6 +115,14 @@ def _extract_assignment(value: str, name: str) -> str:
     if not value.startswith(prefix):
         raise ValueError(f"Expected {name}=... but found {value!r}")
     return value[len(prefix) :]
+
+
+def _extract_scope_assignment(text: str, name: str) -> str | None:
+    prefix = f"- `{name}="
+    for line in text.splitlines():
+        if line.startswith(prefix) and line.endswith("`"):
+            return line[len(prefix) : -1]
+    return None
 
 
 def _extract_plain_value(text: str, label: str) -> str:
@@ -201,6 +223,10 @@ def _approval_blockers(
             "reviewed_owner_evidence_packet",
             EXPECTED_OWNER_EVIDENCE_PACKET,
         ),
+        "Reviewed fixed-income convention decision draft": (
+            "reviewed_fixed_income_decision_draft",
+            EXPECTED_FIXED_INCOME_DECISION_DRAFT,
+        ),
     }
     for label, (blocker, expected_path) in packet_fields.items():
         if _review_packet_status(text, label, expected_path, template_path=template_path) != "valid":
@@ -218,6 +244,7 @@ def _approval_blockers(
     review_fields = {
         "- Governance record reviewed": "governance_record_review",
         "- Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed": "golden_sample_review",
+        "- Fixed-income convention decision draft reviewed": "fixed_income_convention_review",
         "- Fixed-income units/sign/date rules reviewed": "fixed_income_rule_review",
         "- UI/API payload evidence reviewed": "ui_api_payload_review",
         "- Live smoke evidence reviewed": "live_smoke_evidence_review",
@@ -232,6 +259,8 @@ def _approval_blockers(
         field_blockers.append("formal_use_promotion_boundary")
     if closure_approved != "false":
         field_blockers.append("closure_promotion_boundary")
+    if _extract_scope_assignment(text, "certification_effect") != "none":
+        field_blockers.append("certification_effect_boundary")
 
     if approval_status != "approved" or field_blockers:
         return ["business_owner_approval", *field_blockers]
@@ -270,8 +299,18 @@ def _approval_field_status(
             EXPECTED_OWNER_EVIDENCE_PACKET,
             template_path=template_path,
         ),
+        "reviewed_fixed_income_decision_draft": _review_packet_status(
+            text,
+            "Reviewed fixed-income convention decision draft",
+            EXPECTED_FIXED_INCOME_DECISION_DRAFT,
+            template_path=template_path,
+        ),
         "governance_record_review": _review_status(text, "- Governance record reviewed"),
         "golden_sample_review": _review_status(text, "- Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed"),
+        "fixed_income_convention_review": _review_status(
+            text,
+            "- Fixed-income convention decision draft reviewed",
+        ),
         "fixed_income_rule_review": _review_status(text, "- Fixed-income units/sign/date rules reviewed"),
         "ui_api_payload_review": _review_status(text, "- UI/API payload evidence reviewed"),
         "live_smoke_evidence_review": _review_status(text, "- Live smoke evidence reviewed"),
@@ -280,6 +319,9 @@ def _approval_field_status(
         "decision_notes": _decision_notes_status(text, approval_decision),
         "formal_use_allowed": "valid" if formal_use_allowed == "false" else "invalid",
         "closure_approved": "valid" if closure_approved == "false" else "invalid",
+        "certification_effect": "valid"
+        if _extract_scope_assignment(text, "certification_effect") == "none"
+        else "missing",
     }
 
 
@@ -297,7 +339,7 @@ def _approval_action_items(
                 "blocker": blocker,
                 "template_field": definition["template_field"],
                 "required_value": definition["required_value"],
-                "current_status": field_status.get(blocker, "invalid"),
+                "current_status": field_status.get(definition.get("status_key", blocker), "invalid"),
             }
         )
     return action_items
@@ -366,6 +408,7 @@ def build_status(template_path: Path) -> dict[str, object]:
             "writes_governance_records": False,
             "proves_page_execution": False,
             "captures_business_owner_approval": approval_captured,
+            "certification_effect": "none",
         },
     }
 

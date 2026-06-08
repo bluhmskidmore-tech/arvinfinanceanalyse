@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 
 def _position_book_key(portfolio_name: object, cost_center: object) -> str:
@@ -216,6 +217,7 @@ class PnlRepository:
         as_of_date: str,
         records: list[dict[str, object]],
     ) -> None:
+        require_repository_task_write_scope("replace_pnl_by_business_precompute")
         in_transaction = False
         try:
             conn = duckdb.connect(self.path, read_only=False)
@@ -365,6 +367,87 @@ class PnlRepository:
             ],
         )
 
+    def fetch_tpl_pnl_summary(self, report_date: str) -> dict[str, object]:
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            row = conn.execute(
+                """
+                select
+                  coalesce(sum(fair_value_change_516), 0) as tpl_fair_value_change,
+                  coalesce(sum(total_pnl), 0) as tpl_total_pnl,
+                  count(*) as row_count
+                from fact_formal_pnl_fi
+                where report_date = ?
+                  and (
+                    upper(coalesce(accounting_basis, '')) like '%TPL%'
+                    or upper(coalesce(accounting_basis, '')) like '%FVTPL%'
+                    or coalesce(accounting_basis, '') like '%交易性%'
+                  )
+                """,
+                [report_date],
+            ).fetchone()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return {"tpl_fair_value_change": 0, "tpl_total_pnl": 0, "row_count": 0}
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return {
+            "tpl_fair_value_change": row[0] if row else 0,
+            "tpl_total_pnl": row[1] if row else 0,
+            "row_count": row[2] if row else 0,
+        }
+
+    def fetch_tpl_pnl_summary_by_report_date(self, report_dates: list[str]) -> dict[str, dict[str, object]]:
+        requested = [str(report_date) for report_date in dict.fromkeys(report_dates) if str(report_date or "")]
+        if not requested:
+            return {}
+        empty = {
+            report_date: {
+                "tpl_fair_value_change": 0,
+                "tpl_total_pnl": 0,
+                "row_count": 0,
+            }
+            for report_date in requested
+        }
+        placeholders = ", ".join("?" for _ in requested)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                f"""
+                select
+                  cast(report_date as varchar) as report_date,
+                  coalesce(sum(fair_value_change_516), 0) as tpl_fair_value_change,
+                  coalesce(sum(total_pnl), 0) as tpl_total_pnl,
+                  count(*) as row_count
+                from fact_formal_pnl_fi
+                where cast(report_date as varchar) in ({placeholders})
+                  and (
+                    upper(coalesce(accounting_basis, '')) like '%TPL%'
+                    or upper(coalesce(accounting_basis, '')) like '%FVTPL%'
+                    or coalesce(accounting_basis, '') like '%交易性%'
+                  )
+                group by 1
+                """,
+                requested,
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return empty
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        out = dict(empty)
+        for report_date, tpl_fair_value_change, tpl_total_pnl, row_count in rows:
+            out[str(report_date)] = {
+                "tpl_fair_value_change": tpl_fair_value_change,
+                "tpl_total_pnl": tpl_total_pnl,
+                "row_count": row_count,
+            }
+        return out
+
     def fetch_nonstd_bridge_rows(self, report_date: str) -> list[dict[str, object]]:
         return self._fetch_rows(
             "fact_nonstd_pnl_bridge",
@@ -447,6 +530,25 @@ class PnlRepository:
 
     def fetch_by_business_rows(self, report_date: str) -> list[dict[str, object]]:
         return self._fetch_by_business_rows(where_sql="p.report_date = ?", params=[report_date])
+
+    def fetch_by_business_summary_rows(self, report_date: str) -> list[dict[str, object]]:
+        return self._fetch_by_business_rows(where_sql="p.report_date = ?", params=[report_date])
+
+    def fetch_by_business_summary_rows_by_report_date(
+        self,
+        report_dates: list[str],
+    ) -> dict[str, list[dict[str, object]]]:
+        requested = [str(report_date) for report_date in dict.fromkeys(report_dates) if str(report_date or "")]
+        if not requested:
+            return {}
+        placeholders = ", ".join("?" for _ in requested)
+        rows = self._fetch_by_business_rows(where_sql=f"cast(p.report_date as varchar) in ({placeholders})", params=requested)
+        out = {report_date: [] for report_date in requested}
+        for row in rows:
+            report_date = str(row.get("report_date") or "")
+            if report_date in out:
+                out[report_date].append(row)
+        return out
 
     def fetch_yearly_business_rows(self, year: int) -> list[dict[str, object]]:
         return self._fetch_by_business_rows(
@@ -1248,6 +1350,8 @@ class PnlRepository:
                     total_pnl
                   from fact_nonstd_pnl_bridge p
                   where {where_sql}
+                ), pnl_report_dates as (
+                  select distinct report_date from pnl_rows
                 ), balance_by_position as (
                   select
                     cast(report_date as varchar) as report_date,
@@ -1264,6 +1368,7 @@ class PnlRepository:
                     count(*) as balance_row_count
                   from fact_formal_zqtz_balance_daily
                   where position_scope = 'asset'
+                    and cast(report_date as varchar) in (select report_date from pnl_report_dates)
                   group by 1, 2, 3, 4, 5, 6
                 ), balance_strict_choice as (
                   select *

@@ -5,7 +5,9 @@ from pathlib import Path
 
 import duckdb
 
-from scripts.backfill_livermore_gate_supplement import backfill_livermore_gate_supplement
+from scripts.backfill_livermore_gate_supplement import (
+    backfill_livermore_gate_supplement,
+)
 
 
 def _seed_csi300(duckdb_path: Path, *, start: date, n_days: int) -> None:

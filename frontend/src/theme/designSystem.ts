@@ -173,6 +173,27 @@ export const designTokens = {
       white: "#ffffff",
       shortWhite: "#fff",
     },
+    /** Institutional console palette: visual-only shell, tables, and analytical surfaces. */
+    institutional: {
+      canvas: "#edf2f7",
+      canvasDeep: "#dfe7f0",
+      surface: "#fbfcfe",
+      surfaceRaised: "#ffffff",
+      surfaceMuted: "#f4f7fa",
+      border: "#c9d4df",
+      borderStrong: "#9fb1c4",
+      divider: "#e3eaf2",
+      rowStripe: "#f7f9fc",
+      rowHover: "#eef5ff",
+      text: "#17212f",
+      textMuted: "#5c6675",
+      railTop: "#071421",
+      railBottom: "#0b1f32",
+      railEdge: "#1d3b5c",
+      accentGold: "#b88a2d",
+      accentCyan: "#2f80a8",
+      focusRing: "rgba(24, 80, 161, 0.28)",
+    },
     semantic: {
       /** Positive P&L, surplus, favorable move */
       profit: "#2d8a5e",
@@ -215,14 +236,12 @@ export const designTokens = {
     relaxed: 1.7,
   },
   fontFamily: {
-    /**
-     * UI：Plus Jakarta Sans（拉丁）+ 中文系统栈；经 index.html Google Fonts 加载。
-     */
+    /** UI: local Chinese/system font stack; avoid remote font fetch on first paint. */
     sans:
-      '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
-    /** 数字列、KPI（IBM Plex Mono + tabular nums） */
+      '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+    /** Numeric/KPI text: local monospace stack with tabular number support. */
     tabular:
-      '"IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
+      'ui-monospace, "Cascadia Mono", "Microsoft YaHei UI", Menlo, Monaco, Consolas, monospace',
   },
   radius: {
     sm: 6,

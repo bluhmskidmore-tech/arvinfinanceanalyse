@@ -27,6 +27,9 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
+from backend.app.tasks.pnl_by_business_precompute import (
+    precompute_pnl_by_business_payloads,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +203,6 @@ def _materialize_pnl_facts(
                 raise
             finally:
                 conn.close()
-
-        from backend.app.services.pnl_service import precompute_pnl_by_business_payloads
 
         precompute_summary = precompute_pnl_by_business_payloads(
             duckdb_path=str(duckdb_file),

@@ -3,13 +3,70 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+from pathlib import Path
 
 os.environ.setdefault("MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS", "1")
 os.environ.setdefault("MOSS_SKIP_POSTGRES_MIGRATIONS", "1")
 
 
 import pytest
+
+
+def _install_windows_readable_pytest_basetemp() -> None:
+    """Keep pytest temp roots readable in this Windows sandbox.
+
+    Pytest creates tmp_path basetemp with mode=0o700. Here that can translate to
+    a directory the same process cannot enumerate, so use default mkdir ACLs.
+    """
+
+    if os.name != "nt":
+        return
+
+    from _pytest.tmpdir import TempPathFactory
+
+    def _getbasetemp_windows_readable(self: TempPathFactory) -> Path:
+        if self._basetemp is not None:
+            return self._basetemp
+        if self._given_basetemp is not None:
+            basetemp = Path(self._given_basetemp)
+            if basetemp.exists():
+                shutil.rmtree(basetemp, ignore_errors=True)
+                if basetemp.exists():
+                    basetemp = basetemp.with_name(f"{basetemp.name}-readable")
+            basetemp.mkdir(parents=True, exist_ok=True)
+        else:
+            basetemp = Path.cwd() / ".pytest-basetemp"
+            basetemp.mkdir(exist_ok=True)
+        self._basetemp = basetemp.resolve()
+        return self._basetemp
+
+    def _mktemp_windows_readable(
+        self: TempPathFactory,
+        basename: str,
+        numbered: bool = True,
+    ) -> Path:
+        basename = self._ensure_relative_to_basetemp(basename)
+        base = self.getbasetemp()
+        if not numbered:
+            path = base / basename
+            path.mkdir(exist_ok=False)
+            return path
+        index = 0
+        while True:
+            path = base / f"{basename}{index}"
+            try:
+                path.mkdir()
+                return path
+            except FileExistsError:
+                index += 1
+
+    TempPathFactory.getbasetemp = _getbasetemp_windows_readable
+    TempPathFactory.mktemp = _mktemp_windows_readable
+
+
+_install_windows_readable_pytest_basetemp()
 
 
 @pytest.fixture()

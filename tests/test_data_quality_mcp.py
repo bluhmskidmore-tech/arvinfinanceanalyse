@@ -92,9 +92,14 @@ def test_data_quality_mcp_exposes_summary_and_tools() -> None:
 
         resources = server.request("resources/list")["resources"]
         assert any(item["uri"] == "moss://data-quality/summary" for item in resources)
+        assert any(item["uri"] == "moss://data-quality/readiness" for item in resources)
 
         tools = server.request("tools/list")["tools"]
-        assert {tool["name"] for tool in tools} >= {"get_quality_summary", "list_quality_targets"}
+        assert {tool["name"] for tool in tools} >= {
+            "get_quality_summary",
+            "get_readiness_report",
+            "list_quality_targets",
+        }
     finally:
         server.close()
 
@@ -110,6 +115,11 @@ def test_data_quality_mcp_is_safe_when_duckdb_is_missing(tmp_path: Path) -> None
         payload = json.loads(summary["contents"][0]["text"])
         assert payload["duckdb_exists"] is False
         assert payload["targets"] == []
+
+        readiness = server.request("resources/read", {"uri": "moss://data-quality/readiness"})
+        readiness_payload = json.loads(readiness["contents"][0]["text"])
+        assert readiness_payload["status"] == "block"
+        assert readiness_payload["issues"][0]["code"] == "duckdb_unavailable"
     finally:
         server.close()
 
@@ -169,6 +179,28 @@ def test_data_quality_mcp_reports_quality_summary_for_known_view(tmp_path: Path)
         server.close()
 
 
+def test_data_quality_mcp_exposes_readiness_report_tool(tmp_path: Path) -> None:
+    db_path = _build_readiness_duckdb(tmp_path)
+    server = McpProcess("data-quality", env={"MOSS_DUCKDB_PATH": str(db_path)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        result = server.request(
+            "tools/call",
+            {"name": "get_readiness_report", "arguments": {"as_of_date": "2026-06-06"}},
+        )
+        payload = json.loads(result["content"][0]["text"])
+
+        assert payload["status"] == "block"
+        assert payload["duckdb_path"] == str(db_path)
+        assert payload["summary"]["blocking_issue_count"] == 1
+        assert payload["issues"][0]["code"] == "latest_date_before_target"
+        assert payload["issues"][0]["table"] == "fact_formal_yield_curve_daily"
+    finally:
+        server.close()
+
+
 def _build_quality_duckdb(tmp_path: Path) -> Path:
     duckdb = pytest.importorskip("duckdb")
     db_path = tmp_path / "quality.duckdb"
@@ -193,6 +225,63 @@ def _build_quality_duckdb(tmp_path: Path) -> Path:
             """
         )
         conn.execute("create view positions_view as select report_date, as_of_date, amount from positions")
+    finally:
+        conn.close()
+    return db_path
+
+
+def _build_readiness_duckdb(tmp_path: Path) -> Path:
+    duckdb = pytest.importorskip("duckdb")
+    db_path = tmp_path / "readiness.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        readiness_tables = {
+            "fact_formal_zqtz_balance_daily": ("report_date", "source_version varchar, rule_version varchar"),
+            "fact_formal_tyw_balance_daily": ("report_date", "source_version varchar, rule_version varchar"),
+            "fact_formal_bond_analytics_daily": ("report_date", "source_version varchar, rule_version varchar"),
+            "fact_formal_risk_tensor_daily": (
+                "report_date",
+                "source_version varchar, rule_version varchar, cache_version varchar, quality_flag varchar",
+            ),
+            "fact_formal_pnl_fi": ("report_date", "source_version varchar, rule_version varchar"),
+            "fact_nonstd_pnl_bridge": ("report_date", "source_version varchar, rule_version varchar"),
+            "product_category_pnl_canonical_fact": ("report_date", "source_version varchar, rule_version varchar"),
+            "product_category_pnl_formal_read_model": ("report_date", "source_version varchar, rule_version varchar"),
+            "product_category_pnl_scenario_read_model": ("report_date", "source_version varchar, rule_version varchar"),
+            "fact_formal_yield_curve_daily": (
+                "trade_date",
+                "source_version varchar, rule_version varchar, vendor_version varchar",
+            ),
+            "fx_daily_mid": ("trade_date", "source_version varchar, vendor_version varchar"),
+            "fact_accounting_asset_movement_monthly": ("report_date", "source_version varchar, rule_version varchar"),
+            "position_snapshot": ("as_of_date", "source_version varchar, rule_version varchar"),
+            "position_snapshot_agg": ("as_of_date", "source_version varchar, rule_version varchar"),
+            "choice_stock_daily_observation": (
+                "trade_date",
+                "source_version varchar, rule_version varchar, vendor_version varchar",
+            ),
+            "fact_choice_macro_daily": (
+                "trade_date",
+                "source_version varchar, rule_version varchar, vendor_version varchar, quality_flag varchar",
+            ),
+            "choice_news_event": ("received_at", ""),
+            "fact_news_event": ("pub_time", ""),
+            "fact_commodity_futures_daily": (
+                "trade_date",
+                "source_version varchar, rule_version varchar, vendor_version varchar",
+            ),
+            "phase1_source_preview_summary": ("report_date", "source_version varchar, rule_version varchar"),
+        }
+        for table, (date_column, metadata_sql) in readiness_tables.items():
+            extra_columns = f", {metadata_sql}" if metadata_sql else ""
+            conn.execute(f"create table {table} ({date_column} varchar{extra_columns})")
+            if table == "product_category_pnl_scenario_read_model":
+                continue
+            date_value = "2026-04-30" if table == "fact_formal_yield_curve_daily" else "2026-05-31"
+            value_count = 1 + (metadata_sql.count(",") + 1 if metadata_sql else 0)
+            values = [date_value, *(["v"] * (value_count - 1))]
+            placeholders = ", ".join("?" for _ in values)
+            conn.execute(f"insert into {table} values ({placeholders})", values)
     finally:
         conn.close()
     return db_path

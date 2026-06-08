@@ -1,9 +1,9 @@
 import importlib
 import os
-from pathlib import Path
 import sys
-from types import SimpleNamespace
 import types
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 

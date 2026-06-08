@@ -12,7 +12,6 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
-
 POSITIONS_READ_HEADERS = {"X-User-Id": "positions-read-user", "X-User-Role": "viewer"}
 
 

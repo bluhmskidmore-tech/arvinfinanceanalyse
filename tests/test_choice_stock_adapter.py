@@ -7,8 +7,8 @@ from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.choice_stock_adapter import (
     CHOICE_STOCK_REQUIRED_INPUT_FAMILIES,
     choice_stock_optional_input_status,
-    load_choice_stock_request_plan,
     load_choice_stock_readiness,
+    load_choice_stock_request_plan,
 )
 
 

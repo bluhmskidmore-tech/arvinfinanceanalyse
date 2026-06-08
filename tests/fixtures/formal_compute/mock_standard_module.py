@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 
-
 MOCK_STANDARD_MODULE = FormalComputeModuleDescriptor(
     module_name="mock_standard_module",
     basis="formal",

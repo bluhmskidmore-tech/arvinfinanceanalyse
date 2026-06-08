@@ -7,6 +7,7 @@ from backend.app.core_finance.action_attribution import (
     bond_analytics_action_line_payload,
     build_action_attribution_placeholder_payload,
     build_action_attribution_success_payload,
+    select_action_attribution_pnl_report_dates,
 )
 
 
@@ -168,3 +169,34 @@ def test_build_action_attribution_placeholder_payload_uses_summary_defaults_and_
     assert payload["warnings_detail"] == [
         {"code": "empty", "level": "warning", "message": "no attribution rows"}
     ]
+
+
+def test_select_action_attribution_pnl_report_dates_filters_period_and_warns_on_multi_month() -> None:
+    selected, warnings = select_action_attribution_pnl_report_dates(
+        available_report_dates=[
+            "2026-01-31",
+            "2026-02-28",
+            "2026-03-31",
+            "2026-03-31",
+            "not-a-date",
+            "2026-04-30",
+        ],
+        period_type="YTD",
+        period_start=date(2026, 2, 1),
+        period_end=date(2026, 3, 31),
+    )
+
+    assert selected == ["2026-02-28", "2026-03-31"]
+    assert warnings == ["ACTION_ATTRIBUTION_PNL517_MULTI_MONTH_SUM"]
+
+
+def test_select_action_attribution_pnl_report_dates_uses_period_end_for_mom() -> None:
+    selected, warnings = select_action_attribution_pnl_report_dates(
+        available_report_dates=["2026-01-31", "not-a-date"],
+        period_type="MoM",
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+    )
+
+    assert selected == ["2026-03-31"]
+    assert warnings == []

@@ -6,18 +6,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import pandas as pd
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import (
     DEFAULT_CFFEX_CONTRACTS,
     CffexMemberRankRow,
-    ensure_cffex_member_rank_schema,
     load_member_rank_frame,
     normalize_cffex_contract,
     normalize_trade_date,
     product_code_from_contract,
-    replace_member_rank_rows,
     rows_from_records,
 )
 from backend.app.repositories.choice_client import ChoiceClient
@@ -25,6 +22,7 @@ from backend.app.repositories.tushare_adapter import (
     import_tushare_pro,
     resolve_tushare_token_with_settings_fallback,
 )
+from backend.app.tasks.cffex_member_rank import persist_cffex_member_rank_rows
 
 
 @dataclass(frozen=True)
@@ -45,40 +43,40 @@ def materialize_cffex_member_rank(
 ) -> dict[str, object]:
     settings = get_settings()
     resolved_path = Path(duckdb_path or settings.duckdb_path)
-    resolved_path.parent.mkdir(parents=True, exist_ok=True)
     ingest_batch_id = _new_ingest_batch_id()
     attempts: list[SourceFetchResult] = []
-    conn = duckdb.connect(str(resolved_path), read_only=False)
-    try:
-        ensure_cffex_member_rank_schema(conn)
-        for contract in contracts:
-            normalized_contract = normalize_cffex_contract(contract)
-            for source in sources:
-                source_name = source.strip().lower()
-                if source_name == "choice":
-                    result, rows = _fetch_choice_rows(
-                        trade_date=trade_date,
-                        contract=normalized_contract,
-                        ingest_batch_id=ingest_batch_id,
-                    )
-                elif source_name == "tushare":
-                    result, rows = _fetch_tushare_rows(
-                        trade_date=trade_date,
-                        contract=normalized_contract,
-                        ingest_batch_id=ingest_batch_id,
-                        settings=settings,
-                    )
-                else:
-                    result, rows = (
-                        SourceFetchResult(source_name, normalized_contract, "unsupported_source", 0),
-                        [],
-                    )
-                if rows:
-                    replace_member_rank_rows(conn, rows)
-                    result = SourceFetchResult(result.source_vendor, result.contract, "materialized", len(rows), result.detail)
-                attempts.append(result)
-    finally:
-        conn.close()
+    for contract in contracts:
+        normalized_contract = normalize_cffex_contract(contract)
+        for source in sources:
+            source_name = source.strip().lower()
+            if source_name == "choice":
+                result, rows = _fetch_choice_rows(
+                    trade_date=trade_date,
+                    contract=normalized_contract,
+                    ingest_batch_id=ingest_batch_id,
+                )
+            elif source_name == "tushare":
+                result, rows = _fetch_tushare_rows(
+                    trade_date=trade_date,
+                    contract=normalized_contract,
+                    ingest_batch_id=ingest_batch_id,
+                    settings=settings,
+                )
+            else:
+                result, rows = (
+                    SourceFetchResult(source_name, normalized_contract, "unsupported_source", 0),
+                    [],
+                )
+            if rows:
+                row_count = persist_cffex_member_rank_rows(duckdb_path=resolved_path, rows=rows)
+                result = SourceFetchResult(
+                    result.source_vendor,
+                    result.contract,
+                    "materialized",
+                    row_count,
+                    result.detail,
+                )
+            attempts.append(result)
     return {
         "ingest_batch_id": ingest_batch_id,
         "trade_date": normalize_trade_date(trade_date) if trade_date else None,

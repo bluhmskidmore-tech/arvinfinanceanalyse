@@ -23,6 +23,7 @@ def test_result_meta_schema_defines_governance_fields():
         "as_of_date",
         "formal_use_allowed",
         "generated_at",
+        "cache_key",
     } <= fields
     assert "result_kind" in fields
     assert "scenario_flag" in fields
@@ -61,7 +62,9 @@ def test_result_meta_keeps_as_of_date_empty_when_not_explicitly_provided():
         vendor_version="vv_none",
         rule_version="rv_result_meta",
         cache_version="cv_result_meta",
+        cache_key="ledger_pnl.summary:2026-05-31:ALL",
         generated_at="2026-05-10T09:30:00Z",
     )
 
     assert payload.as_of_date is None
+    assert payload.cache_key == "ledger_pnl.summary:2026-05-31:ALL"

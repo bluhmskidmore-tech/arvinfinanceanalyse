@@ -9,6 +9,14 @@ Closure approved: `closure_approved=false`
 
 This packet prepares fixed-income review only. It does not approve page closure, write governance records, certify fixed-income metrics, or capture business-owner approval.
 
+## Evidence Scope
+
+- `approves_metric_or_page=false`
+- `writes_governance_records=false`
+- `proves_page_execution=false`
+- `captures_business_owner_approval=false`
+- `certification_effect=none`
+
 ## Required Review
 
 - Review `docs/pnl/bond-analysis-owner-evidence-packet.md`.

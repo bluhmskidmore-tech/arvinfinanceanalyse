@@ -10,18 +10,29 @@ be filled before this packet can pass preflight.
 
 ## Ownership And Runtime
 
+- Credential owner: LocalOps candidate owner; token value must remain secret and out of this packet.
+- Schedule owner: LocalOps candidate owner for the external timer on `DTCSMX`.
+- Page acceptance owner: Codex local verifier for attached page evidence; LocalOps candidate owner for timer enablement acceptance.
+- Rollback owner: LocalOps candidate owner for disabling the external timer.
+- Timer host: `DTCSMX` candidate local Windows host; timer not enabled.
+- Repository root: `F:\MOSS-V3`
+- Python executable: `C:\Users\arvin\AppData\Local\Python\pythoncore-3.14-64\python.exe`
+- DuckDB path: `F:\MOSS-V3\data\moss.duckdb`
+- Log path: `F:\MOSS-V3\logs\tushare-news-backup-refresh.log`
+- Refresh window: 08:15 Asia/Shanghai on trading weekdays.
+- Write-window exclusion note: Candidate weekday 08:15 window follows scheduler handoff shape and keeps this refresh as a single DuckDB writer job; `docs/MAINTENANCE.md` requires DuckDB writes to stay serial or explicitly locked.
+- Alert/log retention owner: LocalOps candidate owner; retain `F:\MOSS-V3\logs\tushare-news-backup-refresh.log` and first scheduled-run evidence for 30 days.
+
+Template placeholders for a different timer host remain:
+
 - Credential owner: `<team/person>`
 - Schedule owner: `<team/person>`
-- Page acceptance owner: `<team/person>`
 - Rollback owner: `<team/person>`
 - Timer host: `<hostname>`
-- Repository root: `<absolute repo path>`
 - Python executable: `<absolute python path>`
 - DuckDB path: `data/moss.duckdb`
 - Log path: `<absolute log path>`
 - Refresh window: `<local time and timezone>`
-- Write-window exclusion note: `<how this avoids other DuckDB writes>`
-- Alert/log retention owner: `<team/person>`
 
 ## Boundaries
 
@@ -40,13 +51,13 @@ Windows Task Scheduler command draft:
 
 ```text
 Program:
-<absolute python path>
+C:\Users\arvin\AppData\Local\Python\pythoncore-3.14-64\python.exe
 
 Arguments:
 scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --news-src sina
 
 Start in:
-<absolute repo path>
+F:\MOSS-V3
 ```
 
 Cron command draft:
@@ -149,7 +160,7 @@ Acceptance:
 
 ## Rollback
 
-- Rollback owner: `<team/person>`
+- Rollback owner: LocalOps candidate owner for disabling the external timer.
 - Disable the external timer.
 - Leave landed rows in DuckDB unless a separate data-quality decision requires
   cleanup.

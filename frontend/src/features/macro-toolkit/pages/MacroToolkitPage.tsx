@@ -3498,6 +3498,74 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         <span>Investment Committee Brief</span>
         <strong>{analysis?.as_of_date ?? "日期待确认"}</strong>
       </div>
+      <section className="macro-toolkit-submission-cockpit" aria-label="投委会提交总控台">
+        <div className="macro-toolkit-submission-cockpit__verdict">
+          <span>Submission Cockpit</span>
+          <strong>{committeeFinalSignoffStatus}</strong>
+          <small>提交结论 · {committeeFinalGateOutcome}</small>
+        </div>
+        <div className="macro-toolkit-submission-cockpit__owner">
+          <span>责任人</span>
+          <strong>{committeeFinalSignoffOwner}</strong>
+          <small>{committeeDecisionBlocker}</small>
+        </div>
+        <div className="macro-toolkit-submission-cockpit__metrics">
+          <div>
+            <span>提交包</span>
+            <strong>提交包 {committeeFinalPackValue}</strong>
+          </div>
+          <div>
+            <span>签核</span>
+            <strong>签核 {committeeFinalSignoffValue}</strong>
+          </div>
+          <div>
+            <span>剩余风险</span>
+            <strong>剩余风险 {committeeFinalResidualRiskValue}</strong>
+          </div>
+          <div>
+            <span>回执</span>
+            <strong>待复核回执 {committeeFinalReceiptReviewValue}</strong>
+          </div>
+        </div>
+        <div className="macro-toolkit-submission-cockpit__lanes" aria-label="投委会提交链路总览">
+          {committeeChecklistItems.map((item) => {
+            const href = committeePackItemByKey.get(item.key)?.receipt?.evidenceHref ?? item.href;
+            const actionLabel = item.key === "data-health" && item.status === "block" ? "处理数据缺口" : item.action;
+            return (
+              <a
+                key={item.key}
+                className={`macro-toolkit-submission-cockpit__lane macro-toolkit-submission-cockpit__lane--${item.status}`}
+                href={href}
+                aria-current={selectedEvidenceHref === href ? "true" : undefined}
+                onClick={() => {
+                  if (href === "#macro-toolkit-data-health-detail") {
+                    focusDataHealthRepair();
+                    return;
+                  }
+                  setSelectedEvidenceHref(href);
+                  setSelectedGovernanceFocus(governanceFocusFromEvidenceHref(href));
+                }}
+              >
+                <span>{item.condition}</span>
+                <strong>{item.statusLabel}</strong>
+                <small>{item.owner}</small>
+                <em>{actionLabel}</em>
+              </a>
+            );
+          })}
+          <a
+            className={`macro-toolkit-submission-cockpit__lane macro-toolkit-submission-cockpit__lane--${
+              isCommitteeFinalSignoffReady ? "pass" : "block"
+            }`}
+            href="#macro-toolkit-evidence-book"
+          >
+            <span>提交门禁</span>
+            <strong>{committeeFinalSignoffStatus}</strong>
+            <small>{committeeFinalSignoffOwner}</small>
+            <em>{committeeFinalGateOutcome}</em>
+          </a>
+        </div>
+      </section>
       <div className="macro-toolkit-committee-first-screen-pipeline" aria-label="投委会首屏流水线">
         <div className="macro-toolkit-committee-first-screen-pipeline__head">
           <span>投委会首屏流水线</span>

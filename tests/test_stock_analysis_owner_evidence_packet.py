@@ -10,6 +10,8 @@ from scripts.stock_analysis_owner_evidence_packet import build_packet
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "stock_analysis_owner_evidence_packet.py"
+SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-sign-off-packet.md"
+GOVERNANCE_AUDIT_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-governance-audit-packet.md"
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -42,6 +44,13 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
     assert packet["approval_action_item_count"] == 11
     assert packet["golden_sample_boundary"] == "observational_page_dto_capture_ready_pending_approval"
     assert packet["dedicated_golden_sample_id"] == "GS-STOCK-ANALYSIS-OBS-A"
+    assert packet["route_specific_evidence_scope"] == "stock_analysis_observational_livermore_dto_only"
+    assert packet["trading_instruction_allowed"] is False
+    assert packet["execution_approval_allowed"] is False
+    assert packet["allocation_advice_allowed"] is False
+    assert packet["position_change_command_allowed"] is False
+    assert packet["formal_stock_metric_promotion_allowed"] is False
+    assert packet["observational_boundary_status"] == "no_trading_instruction_boundary_pending_owner_acceptance"
     assert packet["governance_record_write_status"] == "not_requested"
     assert packet["governance_validation_status"] == "missing_direct_records"
     assert packet["configured_table_names"] == [
@@ -55,6 +64,7 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
         "validates_required_fields": True,
     }
     assert "trading instructions" in packet["out_of_scope_surfaces"]
@@ -73,6 +83,7 @@ def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path
     assert payload["approval_action_item_count"] == 11
     assert payload["governance_record_write_status"] == "not_requested"
     assert payload["evidence_scope"]["writes_governance_records"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
 
     text = output_path.read_text(encoding="utf-8")
     assert "# Stock Analysis Owner Evidence Packet" in text
@@ -80,7 +91,31 @@ def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path
     assert "Formal use allowed: `formal_use_allowed=false`" in text
     assert "Golden sample boundary: `observational_page_dto_capture_ready_pending_approval`" in text
     assert "Dedicated golden sample: `GS-STOCK-ANALYSIS-OBS-A`" in text
+    assert "Route-specific evidence scope: `stock_analysis_observational_livermore_dto_only`" in text
+    assert "Trading instruction allowed: `false`" in text
+    assert "Execution approval allowed: `false`" in text
+    assert "Allocation advice allowed: `false`" in text
+    assert "Position-change command allowed: `false`" in text
+    assert "Formal stock metric promotion allowed: `false`" in text
+    assert (
+        "Observational boundary status: "
+        "`no_trading_instruction_boundary_pending_owner_acceptance`"
+    ) in text
     assert "Governance record write status: `not_requested`" in text
     assert "Governance validation status: `missing_direct_records`" in text
     assert "This packet does not approve page closure" in text
+    assert "- `certification_effect=none`" in text
     assert "No-trading-instruction boundary accepted: `yes` (`pending`)" in text
+
+
+def test_stock_analysis_signoff_and_audit_packets_surface_no_certification_scope() -> None:
+    signoff_packet = SIGNOFF_PACKET.read_text(encoding="utf-8")
+    audit_packet = GOVERNANCE_AUDIT_PACKET.read_text(encoding="utf-8")
+
+    for text in (signoff_packet, audit_packet):
+        assert "## Evidence Scope" in text
+        assert "- `approves_metric_or_page=false`" in text
+        assert "- `writes_governance_records=false`" in text
+        assert "- `proves_page_execution=false`" in text
+        assert "- `captures_business_owner_approval=false`" in text
+        assert "- `certification_effect=none`" in text

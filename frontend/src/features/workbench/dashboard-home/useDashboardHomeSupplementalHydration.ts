@@ -9,6 +9,7 @@ import {
 } from "./dashboardHomeFirstScreenView";
 import type { DashboardHomeFirstScreenHydration } from "./dashboardHomeFirstScreenTypes";
 import type { DashboardHomeSnapshotBoundary } from "./useDashboardHomeFirstScreenViewModel";
+import { useMockHomeFirstScreenView } from "./useMockHomeFirstScreenView";
 
 type IdleWindow = Window & {
   requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
@@ -95,6 +96,7 @@ export function useDashboardHomeSupplementalHydration(
   } = snapshotBoundary;
 
   const useMockFallback = dataClient.mode !== "real" || isLiveDataFallback;
+  const mockFirstScreenView = useMockHomeFirstScreenView(useMockFallback);
   const snapshotReportDate = snapshotResult?.report_date?.trim() || "";
   const hasInitialEffectiveReportDate = Boolean(initialEffectiveReportDate);
   const hasDeferredSupplementalData =
@@ -122,7 +124,7 @@ export function useDashboardHomeSupplementalHydration(
     queryFn: () => dataClient.getBondDashboardHeadlineKpis(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
+    enabled: !useMockFallback && hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
   });
 
   const portfolioHeadlinesQuery = useQuery({
@@ -130,7 +132,7 @@ export function useDashboardHomeSupplementalHydration(
     queryFn: () => dataClient.getBondAnalyticsPortfolioHeadlines(supplementalReportDate ?? ""),
     retry: false,
     staleTime: 60_000,
-    enabled: hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
+    enabled: !useMockFallback && hasDeferredSupplementalReportDate && hasFirstScreenHydrationData,
   });
 
   const sanitizedMetrics = useMemo(
@@ -141,6 +143,8 @@ export function useDashboardHomeSupplementalHydration(
   const effectiveReportDate = snapshotReportDate || initialEffectiveReportDate;
   const snapshotUnavailable =
     dataClient.mode === "real" && snapshotQuery.isError && !snapshotResult;
+  const snapshotLoading =
+    dataClient.mode === "real" && snapshotQuery.isFetching && !snapshotResult;
   const snapshotStale =
     dataClient.mode === "real" && Boolean(reportDateDataWarning) && Boolean(snapshotResult);
 
@@ -165,6 +169,7 @@ export function useDashboardHomeSupplementalHydration(
       alertCount,
       snapshotUnavailable,
       snapshotStale,
+      snapshotLoading,
     }),
     [
       adapterOutput.attribution.vm,
@@ -176,12 +181,14 @@ export function useDashboardHomeSupplementalHydration(
       sanitizedMetrics,
       snapshotMeta,
       snapshotStale,
+      snapshotLoading,
       snapshotUnavailable,
       useMockFallback,
     ],
   );
 
-  const view = useMemo(() => mapToHomeFirstScreenView(firstScreenInput), [firstScreenInput]);
+  const mappedView = useMemo(() => mapToHomeFirstScreenView(firstScreenInput), [firstScreenInput]);
+  const view = useMockFallback && mockFirstScreenView ? mockFirstScreenView : mappedView;
 
   return useMemo(
     () => ({

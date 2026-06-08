@@ -14,6 +14,7 @@ from backend.app.repositories.risk_tensor_repo import (
     RiskTensorRepository,
     load_latest_bond_analytics_lineage,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
@@ -149,17 +150,18 @@ def _execute_risk_tensor_materialization(
     )
 
     try:
-        RiskTensorRepository(str(duckdb_file)).replace_risk_tensor_row(
-            report_date=report_date,
-            tensor=tensor,
-            source_version=source_version,
-            upstream_source_version=upstream_lineage["source_version"],
-            liability_source_version=liability_source_version,
-            liability_rule_version=liability_rule_version,
-            rule_version=RULE_VERSION,
-            cache_version=CACHE_VERSION,
-            trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
-        )
+        with repository_task_write_scope(__name__):
+            RiskTensorRepository(str(duckdb_file)).replace_risk_tensor_row(
+                report_date=report_date,
+                tensor=tensor,
+                source_version=source_version,
+                upstream_source_version=upstream_lineage["source_version"],
+                liability_source_version=liability_source_version,
+                liability_rule_version=liability_rule_version,
+                rule_version=RULE_VERSION,
+                cache_version=CACHE_VERSION,
+                trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",
+            )
     except Exception as exc:
         raise FormalComputeMaterializeFailure(
             source_version=source_version,

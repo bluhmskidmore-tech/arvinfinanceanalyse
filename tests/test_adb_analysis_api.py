@@ -17,7 +17,6 @@ from tests.helpers import load_module
 from tests.test_balance_analysis_api import _configure_and_materialize
 from tests.test_balance_analysis_materialize_flow import _patch_skip_fx_refresh
 
-
 BOND_ASSET_CLASS = "\u503a\u5238\u7c7b"
 BOND_GOV = "\u56fd\u503a"
 BOND_CORP = "\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a"
@@ -335,6 +334,43 @@ def test_adb_read_surfaces_require_explicit_read_scope(
     response = client.get(path, params=params, headers=ADB_READ_HEADERS)
 
     assert response.status_code == 403, response.text
+
+
+def test_adb_route_keeps_duckdb_reads_in_service_layer() -> None:
+    source = Path("backend/app/api/routes/adb_analysis.py").read_text(encoding="utf-8")
+
+    assert "import duckdb" not in source
+    assert "duckdb.connect" not in source
+
+
+def test_adb_backfill_candidate_dates_filters_formal_dates_to_cny(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from backend.app.services import adb_analysis_service
+
+    db_path = tmp_path / "adb-backfill-currency.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date date)")
+        conn.execute("insert into zqtz_bond_daily_snapshot values ('2025-06-02')")
+        conn.execute(
+            "create table fact_formal_zqtz_balance_daily (report_date date, currency_basis varchar)"
+        )
+        conn.execute(
+            "insert into fact_formal_zqtz_balance_daily values ('2025-06-02', 'CNX')"
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    get_settings.cache_clear()
+
+    result = adb_analysis_service.adb_backfill_candidate_dates("2025-06-02", "2025-06-02")
+
+    assert result["snapshot_dates"] == ["2025-06-02"]
+    assert result["formal_dates"] == []
+    assert result["missing_dates"] == ["2025-06-02"]
 
 
 def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:

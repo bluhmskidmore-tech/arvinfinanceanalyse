@@ -12,7 +12,6 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
 
-
 QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-export-read-user", "X-User-Role": "viewer"}
 
 

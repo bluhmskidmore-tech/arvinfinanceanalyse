@@ -1,14 +1,17 @@
 ﻿import importlib
-from datetime import datetime, timezone
 import sys
+from datetime import datetime, timezone
 
 import duckdb
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 
@@ -250,6 +253,49 @@ def test_source_preview_refresh_queues_async_run_and_reports_latest_status(tmp_p
     get_settings.cache_clear()
 
 
+def test_source_preview_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    _, governance_dir, _ = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    queued_messages: list[dict[str, object]] = []
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    headers = {"Idempotency-Key": "source-preview-refresh"}
+
+    first_response = client.post("/ui/preview/source-foundation/refresh", headers=headers)
+    second_response = client.post("/ui/preview/source-foundation/refresh", headers=headers)
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "source-preview-refresh"
+    assert second_payload["idempotency_replay"] is True
+    assert len(queued_messages) == 1
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("job_name") == "source_preview_refresh"
+        and record.get("run_id") == first_payload["run_id"]
+    ]
+    assert len(records) == 1
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch):
     sqlite_path = _configure_source_preview_refresh_scope_store(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
@@ -262,7 +308,7 @@ def test_source_preview_refresh_requires_explicit_refresh_scope_grant(tmp_path, 
     )
     calls: list[str] = []
 
-    def fake_refresh(_settings):
+    def fake_refresh(_settings, **_kwargs):
         calls.append("called")
         return {"status": "queued", "run_id": "source-preview-refresh-auth-test"}
 

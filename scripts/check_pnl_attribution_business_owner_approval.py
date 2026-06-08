@@ -81,6 +81,11 @@ ACTION_ITEM_DEFINITIONS = {
         "template_field": "Closure approved",
         "required_value": "closure_approved=false",
     },
+    "certification_effect_boundary": {
+        "template_field": "- `certification_effect=none`",
+        "required_value": "none",
+        "status_key": "certification_effect",
+    },
 }
 
 
@@ -97,6 +102,14 @@ def _extract_assignment(value: str, name: str) -> str:
     if not value.startswith(prefix):
         raise ValueError(f"Expected {name}=... but found {value!r}")
     return value[len(prefix) :]
+
+
+def _extract_scope_assignment(text: str, name: str) -> str | None:
+    prefix = f"- `{name}="
+    for line in text.splitlines():
+        if line.startswith(prefix) and line.endswith("`"):
+            return line[len(prefix) : -1]
+    return None
 
 
 def _extract_plain_value(text: str, label: str) -> str:
@@ -195,6 +208,8 @@ def _approval_blockers(
         field_blockers.append("formal_use_promotion_boundary")
     if closure_approved != "false":
         field_blockers.append("closure_promotion_boundary")
+    if _extract_scope_assignment(text, "certification_effect") != "none":
+        field_blockers.append("certification_effect_boundary")
 
     if approval_status != "approved" or field_blockers:
         return ["business_owner_approval", *field_blockers]
@@ -238,6 +253,9 @@ def _approval_field_status(
         "decision_notes": _decision_notes_status(text, approval_decision),
         "formal_use_allowed": "valid" if formal_use_allowed == "false" else "invalid",
         "closure_approved": "valid" if closure_approved == "false" else "invalid",
+        "certification_effect": "valid"
+        if _extract_scope_assignment(text, "certification_effect") == "none"
+        else "missing",
     }
 
 
@@ -255,7 +273,7 @@ def _approval_action_items(
                 "blocker": blocker,
                 "template_field": definition["template_field"],
                 "required_value": definition["required_value"],
-                "current_status": field_status.get(blocker, "invalid"),
+                "current_status": field_status.get(definition.get("status_key", blocker), "invalid"),
             }
         )
     return action_items
@@ -323,6 +341,7 @@ def build_status(template_path: Path) -> dict[str, object]:
             "writes_governance_records": False,
             "proves_page_execution": False,
             "captures_business_owner_approval": approval_captured,
+            "certification_effect": "none",
         },
     }
 

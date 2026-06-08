@@ -4,7 +4,7 @@
  * Mirrors backend ``backend/app/schemas/common_numeric.py::Numeric``.
  * See ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md`` § 3.
  */
-export type NumericUnit = "yuan" | "pct" | "bp" | "ratio" | "count" | "dv01" | "yi";
+export type NumericUnit = "yuan" | "pct" | "bp" | "ratio" | "years" | "count" | "dv01" | "yi";
 
 export type Numeric = {
   raw: number | null;
@@ -44,9 +44,11 @@ export type ResultMeta = {
   vendor_version: string;
   rule_version: string;
   cache_version: string;
+  cache_key?: string | null;
   quality_flag: ApiQuality;
   vendor_status: "ok" | "vendor_stale" | "vendor_unavailable";
   fallback_mode: "none" | "latest_snapshot";
+  source_surface?: string | null;
   scenario_flag: boolean;
   requested_report_date?: string | null;
   resolved_report_date?: string | null;
@@ -3211,6 +3213,13 @@ export type BalanceMovementPayload = {
 export type BalanceMovementDatesPayload = {
   report_dates: string[];
   currency_basis: string;
+  latest_read_model_report_date?: string | null;
+  latest_upstream_control_report_date?: string | null;
+  freshness_status?:
+    | "fresh"
+    | "read_model_lagging"
+    | "read_model_empty"
+    | "upstream_empty";
 };
 
 export type BalanceMovementRefreshPayload = {
@@ -3710,6 +3719,7 @@ export type AgentSuggestedAction = {
   label: string;
   payload: Record<string, unknown>;
   requires_confirmation: boolean;
+  confirmation_token?: string | null;
 };
 
 export type AgentCard = {
@@ -5233,7 +5243,7 @@ export type AdbPayload = {
 export type AdbCategoryItem = {
   category: string;
   spot_balance: number;
-  avg_balance: number;
+  avg_balance: number | null;
   proportion: number;
   weighted_rate?: number | null;
 };

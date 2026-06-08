@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import sys
-from unittest.mock import Mock
 from datetime import date, datetime, timezone
+from unittest.mock import Mock
 
 from sqlalchemy.orm import sessionmaker
 

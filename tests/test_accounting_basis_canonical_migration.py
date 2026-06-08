@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from backend.app.core_finance import field_normalization as field_normalization_mod
 from backend.app.core_finance.accounting_basis_constants import (
     ACCOUNTING_BASIS_AC,
     ACCOUNTING_BASIS_FVOCI,
@@ -11,9 +12,10 @@ from backend.app.core_finance.accounting_basis_constants import (
 )
 from backend.app.core_finance.bond_analytics import common as bond_analytics_common
 from backend.app.core_finance.bond_duration import infer_accounting_class
-from backend.app.core_finance import field_normalization as field_normalization_mod
 from backend.app.core_finance.field_normalization import derive_accounting_basis_value
-from backend.app.core_finance.krd import map_accounting_class as krd_map_accounting_class
+from backend.app.core_finance.krd import (
+    map_accounting_class as krd_map_accounting_class,
+)
 from backend.scripts.audit_caliber_violations import _GATE_ENFORCED_RULES
 
 

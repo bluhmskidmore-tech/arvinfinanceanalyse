@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import subprocess
 import sys
 from pathlib import Path
 
+import scripts.codex_page_readiness as readiness_module
 from scripts.codex_page_readiness import (
     _balance_movement_read_model_freshness_gate,
     build_all_page_readiness_report,
@@ -80,6 +82,9 @@ def test_product_category_readiness_static_gates_surface_contract_evidence() -> 
     assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"
     assert gates["direct_governance_record_ready"]["outcome"] == "pass"
     assert gates["golden_sample_boundary"]["outcome"] == "pass"
+    assert gates["golden_sample_boundary"]["detail"] == (
+        "approved; artifact_status=captured-awaiting-approval; artifact_approved=false"
+    )
     assert gates["formal_promotion_boundary"]["outcome"] == "pass"
 
     assert report["route"] == "/product-category-pnl"
@@ -134,6 +139,17 @@ def test_product_category_readiness_static_gates_surface_contract_evidence() -> 
         "artifact_path": "tests/golden_samples/GS-PROD-CAT-PNL-A/approval.md",
         "approved": False,
     }
+    consistency = report["certification_packet_consistency"]
+    assert consistency["status"] == "valid"
+    assert consistency["missing_markers"] == []
+    assert consistency["formal_decision_item_count"] == 5
+    assert consistency["next_review_queue_item_count"] == 4
+    assert consistency["approval_action_item_count"] == 15
+    assert consistency["business_owner_action_signoff_item_count"] == 15
+    assert consistency["owner_signable"] is False
+    assert consistency["captures_business_owner_approval"] is False
+    assert consistency["can_promote_certification"] is False
+    assert consistency["verification_commands_rerun_captured"] is False
     assert report["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
     assert report["golden_sample_approval_artifact_owner"] == "TBD"
     assert report["golden_sample_approval_artifact_approver"] == "TBD"
@@ -213,11 +229,22 @@ def test_balance_analysis_readiness_exposes_direct_record_and_run_commands(
     assert report["governance_record_validation"]["ready_record_count"] == 1
     assert report["audit_review"]["status"] == "ready_for_audit_review"
     assert report["audit_review"]["closure_approved"] is False
+    assert report["business_owner_approval_status"]["approval_status"] == "pending"
+    assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
+    assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
+    assert report["business_owner_approval_status"]["formal_use_allowed"] is True
+    assert report["business_owner_approval_status"]["closure_approved"] is False
     assert "python scripts/emit_balance_analysis_governance_record.py" in report["governance_record_commands"]
     assert (
         "python scripts/emit_balance_analysis_governance_record.py --write"
         in report["governance_record_commands"]
     )
+    assert report["approval_status_commands"] == [
+        "python scripts/check_balance_analysis_business_owner_approval.py",
+        "python scripts/check_balance_analysis_business_owner_approval.py --require-captured",
+        "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 "
+        "-PageSlug balance-analysis -RequireApprovalCaptured",
+    ]
     assert any("Business owner approval is still required" in gap for gap in report["residual_gaps"])
 
 
@@ -358,6 +385,13 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
     ]
     assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
     assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
+    assert report["business_owner_approval_status"]["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+    }
     assert "codex-page-smoke.ps1 -PageSlug bond-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug bond-analysis -Run" in report["required_commands"][1]
     assert "check_bond_analysis_business_owner_approval.py --require-captured" in report["approval_status_commands"][1]
@@ -468,6 +502,7 @@ def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promoti
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
     }
     assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
     assert {
@@ -715,6 +750,7 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
     }
 
     gates = {gate["name"]: gate for gate in report["static_gates"]}
@@ -789,6 +825,7 @@ def test_pnl_attribution_readiness_exposes_run_commands_without_formal_pnl_promo
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
     }
     assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
     assert report["business_owner_approval_status"]["approval_action_items"][0] == {
@@ -858,14 +895,17 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     assert payload["summary"]["run_supported_count"] == sum(
         1 for page in payload["pages"] if page["run_supported"]
     )
-    assert payload["summary"]["business_owner_approval_pending_count"] == 5
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 59
+    assert payload["summary"]["business_owner_approval_pending_count"] == 6
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 70
+    assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
+    assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["blocking_pages"] == []
     pending_by_slug = {
         page["page_slug"]: page
         for page in payload["business_owner_approval_pending_pages"]
     }
     assert set(pending_by_slug) == {
+        "balance-analysis",
         "bond-analysis",
         "ledger-pnl",
         "pnl-attribution",
@@ -894,6 +934,97 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     }
     assert product_pending["closure_blocker_triage"]["decision_required_count"] == 3
     assert product_pending["closure_blocker_triage"]["api_contract_required_count"] == 2
+    assert product_pending["business_owner_action_signoff_group_counts"] == {
+        "boundary_acceptance": 1,
+        "evidence_review": 7,
+        "owner_decision": 3,
+        "owner_identity": 2,
+        "pre_signature_verification": 2,
+    }
+    assert product_pending["business_owner_action_signed_group_counts"] == {}
+    assert product_pending["business_owner_action_pending_or_missing_group_counts"] == {
+        "boundary_acceptance": 1,
+        "evidence_review": 7,
+        "owner_decision": 3,
+        "owner_identity": 2,
+        "pre_signature_verification": 2,
+    }
+    assert product_pending["business_owner_action_missing_or_invalid_item_count"] == 5
+    assert product_pending["business_owner_action_pending_review_item_count"] == 10
+    assert product_pending["certification_effect"] == "none"
+    assert product_pending["captures_product_or_api_decisions"] is False
+    assert product_pending["owner_action_status_scope"] == {
+        "scope_kind": "owner_action_status_scope",
+        "missing_or_invalid_item_count": 5,
+        "pending_review_item_count": 10,
+        "owner_signable": False,
+        "captures_business_owner_approval": False,
+        "captures_product_or_api_decisions": False,
+        "can_promote_certification": False,
+        "certification_effect": "none",
+        "boundary": (
+            "Owner-action status split is approval-checker evidence only; it does not capture "
+            "business-owner approval, product/API decisions, or route certification."
+        ),
+    }
+    assert product_pending["generated_artifact_freshness_scope"] == {
+        "scope_kind": "generated_artifact_freshness_scope",
+        "artifact_count": 2,
+        "valid_artifact_count": 2,
+        "stale_or_missing_artifact_count": 0,
+        "freshness_check_effect": "none",
+        "captures_business_owner_approval": False,
+        "captures_product_or_api_decisions": False,
+        "captures_golden_sample_approval": False,
+        "captures_closure_approval": False,
+        "writes_governance_records": False,
+        "certification_effect": "none",
+        "boundary": (
+            "Generated artifact freshness proves only that script-owned packet outputs match expected "
+            "freshness markers; it does not approve, sign, certify, write governance records, or capture decisions."
+        ),
+    }
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "remaining_blocker_count"
+    ] == 16
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "approval_action_item_count"
+    ] == 15
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "unsigned_item_count"
+    ] == 15
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "missing_or_invalid_item_count"
+    ] == 5
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "pending_review_item_count"
+    ] == 10
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "captures_product_or_api_decisions"
+    ] is False
+    assert product_pending["owner_pre_signature_blocker_scope"][
+        "certification_effect"
+    ] == "none"
+    assert (
+        "owner_decision_next_review_queue_acknowledgement"
+        in product_pending["owner_pre_signature_blocker_scope"]["approval_action_blockers"]
+    )
+    balance_pending = pending_by_slug["balance-analysis"]
+    assert balance_pending["page_id"] == "PAGE-BALANCE-001"
+    assert balance_pending["approval_status"] == "pending"
+    assert balance_pending["business_owner_approval_captured"] is False
+    assert balance_pending["approval_action_item_count"] == 11
+    assert "formal_balance_boundary_acceptance" in balance_pending["remaining_blockers"]
+    assert balance_pending["approval_field_status"]["formal_use_allowed"] == "valid"
+    assert balance_pending["approval_field_status"]["closure_approved"] == "valid"
+    assert balance_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
+    assert balance_pending["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+    }
     ledger_pending = pending_by_slug["ledger-pnl"]
     assert ledger_pending["page_id"] == "PAGE-LEDGER-PNL-001"
     assert ledger_pending["approval_status"] == "pending"
@@ -907,6 +1038,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
     }
     assert {
         "blocker": "dedicated_golden_sample_review",
@@ -914,6 +1046,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
         "required_value": "yes",
         "current_status": "pending",
     } in ledger_pending["approval_action_items"]
+
     pnl_pending = pending_by_slug["pnl-attribution"]
     assert pnl_pending["page_id"] == "PAGE-PNL-ATTR-WB-001"
     assert pnl_pending["approval_action_item_count"] == 11
@@ -924,6 +1057,14 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     assert bond_pending["approval_action_item_count"] == 11
     assert "fixed_income_rule_review" in bond_pending["remaining_blockers"]
     assert bond_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
+    assert bond_pending["business_owner_approval_captured"] is False
+    assert bond_pending["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+    }
     stock_pending = pending_by_slug["stock-analysis"]
     assert stock_pending["page_id"] == "GAP-STOCK-ANALYSIS-PAGE"
     assert stock_pending["approval_action_item_count"] == 11
@@ -934,6 +1075,79 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     ]
     assert any(page["page_slug"] == "balance-analysis" for page in payload["pages"])
     assert any(page["page_slug"] == "reports-home" for page in payload["pages"])
+
+
+def test_product_category_readiness_uses_canonical_owner_action_status_aliases(monkeypatch) -> None:
+    original_business_owner_approval_status = readiness_module._business_owner_approval_status
+
+    def alias_only_business_owner_approval_status(page_slug):
+        status = original_business_owner_approval_status(page_slug)
+        if page_slug != "product-category-pnl" or status is None:
+            return status
+        alias_only_status = deepcopy(status)
+        signoff_summary = alias_only_status["business_owner_action_signoff_summary"]
+        signoff_summary.pop("invalid_or_missing_item_count", None)
+        signoff_summary.pop("pending_item_count", None)
+        signoff_summary["missing_or_invalid_item_count"] = 5
+        signoff_summary["pending_review_item_count"] = 10
+        return alias_only_status
+
+    monkeypatch.setattr(readiness_module, "_business_owner_approval_status", alias_only_business_owner_approval_status)
+
+    route_scope_report = readiness_module.build_route_scope_classification_report()
+    all_page_report = readiness_module.build_all_page_readiness_report()
+    rows_by_slug = {
+        row["page_slug"]: row
+        for row in route_scope_report["routes"]
+    }
+    pending_by_slug = {
+        page["page_slug"]: page
+        for page in all_page_report["business_owner_approval_pending_pages"]
+    }
+
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_missing_or_invalid_item_count"] == 5
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_pending_review_item_count"] == 10
+    assert all_page_report["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
+    assert all_page_report["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
+    assert pending_by_slug["product-category-pnl"]["business_owner_action_missing_or_invalid_item_count"] == 5
+    assert pending_by_slug["product-category-pnl"]["business_owner_action_pending_review_item_count"] == 10
+
+
+def test_page_readiness_powershell_prefers_canonical_owner_action_status_aliases() -> None:
+    script = (ROOT / "scripts" / "codex-page-readiness.ps1").read_text(encoding="utf-8")
+
+    assert "function Get-OwnerActionStatusCount" in script
+    assert (
+        'Get-OwnerActionStatusCount -Summary $Summary '
+        '-CanonicalField "missing_or_invalid_item_count" '
+        '-LegacyField "invalid_or_missing_item_count"'
+    ) in script
+    assert (
+        'Get-OwnerActionStatusCount -Summary $Summary '
+        '-CanonicalField "pending_review_item_count" '
+        '-LegacyField "pending_item_count"'
+    ) in script
+
+
+def test_route_scope_classification_preserves_missing_consistency_no_effect_fields() -> None:
+    page = deepcopy(build_page_readiness_report("product-category-pnl"))
+    page["certification_packet_consistency"] = deepcopy(
+        page["certification_packet_consistency"]
+    )
+    page["certification_packet_consistency"].pop("captures_closure_approval")
+
+    payload = build_route_scope_classification_report([page])
+    rows_by_slug = {
+        row["page_slug"]: row
+        for row in payload["routes"]
+    }
+
+    assert (
+        rows_by_slug["product-category-pnl"][
+            "certification_packet_consistency_captures_closure_approval"
+        ]
+        is None
+    )
 
 
 def test_route_scope_classification_keeps_certification_claim_route_scoped() -> None:
@@ -952,6 +1166,8 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert payload["summary"]["not_started_count"] == 0
     assert payload["summary"]["visible_unseeded_route_count"] == 0
     assert payload["summary"]["unclassified_count"] == 0
+    assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
+    assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["claim_boundary"] == (
         "No seeded route is business-contract-certified until direct golden approval, "
         "manual audit closure, and captured business-owner approval all exist."
@@ -962,8 +1178,145 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["product-category-pnl"]["has_approval_checker"] is True
     assert rows_by_slug["product-category-pnl"]["business_owner_approval_captured"] is False
     assert rows_by_slug["product-category-pnl"]["golden_sample_approved"] is False
+    assert rows_by_slug["product-category-pnl"]["golden_sample_boundary_status"] == "approved"
+    assert rows_by_slug["product-category-pnl"]["golden_sample_artifact_status"] == "captured-awaiting-approval"
+    assert rows_by_slug["product-category-pnl"]["golden_sample_artifact_approved"] is False
+    assert rows_by_slug["product-category-pnl"]["golden_sample_artifact_mismatch"] is True
     assert rows_by_slug["product-category-pnl"]["has_metric_dictionary_evidence"] is True
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_status"] == "valid"
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_missing_marker_count"] == 0
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_business_owner_action_signed_item_count"] == 0
+    assert (
+        rows_by_slug["product-category-pnl"][
+            "certification_packet_consistency_business_owner_action_pending_or_missing_item_count"
+        ]
+        == 15
+    )
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_owner_signable"] is False
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_can_promote"] is False
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_approves_metric_or_page"] is False
+    assert (
+        rows_by_slug["product-category-pnl"]["certification_packet_consistency_captures_business_owner_approval"]
+        is False
+    )
+    assert (
+        rows_by_slug["product-category-pnl"]["certification_packet_consistency_captures_business_owner_signature"]
+        is False
+    )
+    assert (
+        rows_by_slug["product-category-pnl"]["certification_packet_consistency_captures_product_or_api_decisions"]
+        is False
+    )
+    assert (
+        rows_by_slug["product-category-pnl"]["certification_packet_consistency_captures_golden_sample_approval"]
+        is False
+    )
+    assert (
+        rows_by_slug["product-category-pnl"]["certification_packet_consistency_captures_closure_approval"]
+        is False
+    )
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_writes_governance_records"] is False
+    assert (
+        rows_by_slug["product-category-pnl"]["certification_packet_consistency_verification_commands_rerun_captured"]
+        is False
+    )
+    assert rows_by_slug["product-category-pnl"]["certification_packet_consistency_certification_effect"] == "none"
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_signoff_group_counts"] == {
+        "boundary_acceptance": 1,
+        "evidence_review": 7,
+        "owner_decision": 3,
+        "owner_identity": 2,
+        "pre_signature_verification": 2,
+    }
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_signed_group_counts"] == {}
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_pending_or_missing_group_counts"] == {
+        "boundary_acceptance": 1,
+        "evidence_review": 7,
+        "owner_decision": 3,
+        "owner_identity": 2,
+        "pre_signature_verification": 2,
+    }
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_missing_or_invalid_item_count"] == 5
+    assert rows_by_slug["product-category-pnl"]["business_owner_action_pending_review_item_count"] == 10
+    assert rows_by_slug["product-category-pnl"]["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "captures_product_or_api_decisions": False,
+        "certification_effect": "none",
+    }
+    assert rows_by_slug["product-category-pnl"]["certification_effect"] == "none"
+    assert rows_by_slug["product-category-pnl"]["captures_product_or_api_decisions"] is False
+    assert rows_by_slug["product-category-pnl"]["owner_action_status_scope"] == {
+        "scope_kind": "owner_action_status_scope",
+        "missing_or_invalid_item_count": 5,
+        "pending_review_item_count": 10,
+        "owner_signable": False,
+        "captures_business_owner_approval": False,
+        "captures_product_or_api_decisions": False,
+        "can_promote_certification": False,
+        "certification_effect": "none",
+        "boundary": (
+            "Owner-action status split is approval-checker evidence only; it does not capture "
+            "business-owner approval, product/API decisions, or route certification."
+        ),
+    }
+    assert rows_by_slug["product-category-pnl"]["generated_artifact_freshness_scope"] == {
+        "scope_kind": "generated_artifact_freshness_scope",
+        "artifact_count": 2,
+        "valid_artifact_count": 2,
+        "stale_or_missing_artifact_count": 0,
+        "freshness_check_effect": "none",
+        "captures_business_owner_approval": False,
+        "captures_product_or_api_decisions": False,
+        "captures_golden_sample_approval": False,
+        "captures_closure_approval": False,
+        "writes_governance_records": False,
+        "certification_effect": "none",
+        "boundary": (
+            "Generated artifact freshness proves only that script-owned packet outputs match expected "
+            "freshness markers; it does not approve, sign, certify, write governance records, or capture decisions."
+        ),
+    }
+    assert rows_by_slug["product-category-pnl"]["owner_pre_signature_blocker_scope"][
+        "remaining_blocker_count"
+    ] == 16
+    assert rows_by_slug["product-category-pnl"]["owner_pre_signature_blocker_scope"][
+        "approval_action_item_count"
+    ] == 15
+    assert rows_by_slug["product-category-pnl"]["owner_pre_signature_blocker_scope"][
+        "unsigned_item_count"
+    ] == 15
+    assert rows_by_slug["product-category-pnl"]["owner_pre_signature_blocker_scope"][
+        "signoff_group_counts"
+    ] == {
+        "boundary_acceptance": 1,
+        "evidence_review": 7,
+        "owner_decision": 3,
+        "owner_identity": 2,
+        "pre_signature_verification": 2,
+    }
+    assert rows_by_slug["product-category-pnl"]["owner_pre_signature_blocker_scope"][
+        "captures_product_or_api_decisions"
+    ] is False
+    assert rows_by_slug["product-category-pnl"]["owner_pre_signature_blocker_scope"][
+        "certification_effect"
+    ] == "none"
 
+    assert rows_by_slug["balance-analysis"]["classification"] == "evidence-pending"
+    assert rows_by_slug["balance-analysis"]["blocking_reason"] == "business_owner_approval_pending"
+    assert rows_by_slug["balance-analysis"]["has_approval_checker"] is True
+    assert rows_by_slug["balance-analysis"]["business_owner_approval_captured"] is False
+    assert rows_by_slug["balance-analysis"]["formal_use_allowed"] is True
+    assert rows_by_slug["balance-analysis"]["audit_review_closure_approved"] is False
+    assert rows_by_slug["balance-analysis"]["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+    }
     assert rows_by_slug["pnl-attribution"]["classification"] == "evidence-pending"
     assert rows_by_slug["pnl-attribution"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["pnl-attribution"]["has_approval_checker"] is True
@@ -975,6 +1328,15 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["bond-analysis"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["bond-analysis"]["page_id"] == "PAGE-BOND-ANALYSIS-001"
     assert rows_by_slug["bond-analysis"]["has_approval_checker"] is True
+    assert rows_by_slug["bond-analysis"]["business_owner_approval_captured"] is False
+    assert rows_by_slug["bond-analysis"]["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+    }
+    assert rows_by_slug["bond-analysis"]["certification_effect"] == "none"
     assert rows_by_slug["stock-analysis"]["classification"] == "evidence-pending"
     assert rows_by_slug["stock-analysis"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["stock-analysis"]["has_approval_checker"] is True
@@ -1091,6 +1453,18 @@ def test_all_page_readiness_embeds_route_scope_classification_summary() -> None:
     assert payload["route_scope_classification"]["summary"]["seeded_trace_bundle_count"] == payload["summary"]["page_count"]
     assert payload["route_scope_classification"]["summary"]["route_count"] >= payload["summary"]["page_count"]
     assert payload["route_scope_classification"]["summary"]["business_contract_certified_count"] == 0
+    assert (
+        payload["route_scope_classification"]["summary"][
+            "business_owner_action_signoff_missing_or_invalid_item_count"
+        ]
+        == 5
+    )
+    assert (
+        payload["route_scope_classification"]["summary"][
+            "business_owner_action_signoff_pending_review_item_count"
+        ]
+        == 10
+    )
     assert payload["summary"]["route_scope_business_contract_certified_count"] == 0
     assert payload["summary"]["route_scope_evidence_pending_count"] >= 3
     assert payload["summary"]["route_scope_gate_i_gap_count"] == 0
@@ -1116,13 +1490,30 @@ def test_page_readiness_cli_all_mode_emits_batch_report() -> None:
     assert payload["summary"]["page_count"] == 39
     assert payload["summary"]["blocked_count"] == 0
     assert payload["summary"]["run_supported_count"] == 27
-    assert payload["summary"]["business_owner_approval_pending_count"] == 5
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 59
+    assert payload["summary"]["business_owner_approval_pending_count"] == 6
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 70
+    assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
+    assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["blocking_pages"] == []
     assert {
         page["page_slug"]
         for page in payload["business_owner_approval_pending_pages"]
-    } == {"bond-analysis", "ledger-pnl", "pnl-attribution", "product-category-pnl", "stock-analysis"}
+    } == {
+        "balance-analysis",
+        "bond-analysis",
+        "ledger-pnl",
+        "pnl-attribution",
+        "product-category-pnl",
+        "stock-analysis",
+    }
+    pending_by_slug = {
+        page["page_slug"]: page
+        for page in payload["business_owner_approval_pending_pages"]
+    }
+    assert pending_by_slug["product-category-pnl"]["golden_sample_boundary_status"] == "approved"
+    assert pending_by_slug["product-category-pnl"]["golden_sample_artifact_status"] == "captured-awaiting-approval"
+    assert pending_by_slug["product-category-pnl"]["golden_sample_artifact_approved"] is False
+    assert pending_by_slug["product-category-pnl"]["golden_sample_artifact_mismatch"] is True
     assert payload["approval_status_commands"] == [
         "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 -All -RequireApprovalCaptured",
     ]
@@ -1153,6 +1544,7 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
     assert payload["scope"] == "route-scope-classification"
     assert payload["summary"]["business_contract_certified_count"] == 0
     assert rows_by_slug["product-category-pnl"]["classification"] == "evidence-pending"
+    assert rows_by_slug["balance-analysis"]["classification"] == "evidence-pending"
     assert rows_by_slug["bond-analysis"]["classification"] == "evidence-pending"
     assert rows_by_slug["stock-analysis"]["classification"] == "evidence-pending"
     assert rows_by_slug["decision-items"]["classification"] == "evidence-pending"
@@ -1164,6 +1556,60 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
     assert rows_by_slug["news-events"]["classification"] == "evidence-pending"
     assert payload["summary"]["visible_unseeded_route_count"] == 0
     assert payload["summary"]["not_started_count"] == 0
+
+
+def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summary() -> None:
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(ROOT / "scripts" / "codex-page-readiness.ps1"),
+            "-RouteScope",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert "MOSS page readiness gate: route-scope classification" in completed.stdout
+    assert (
+        "Summary: route_count=39; seeded_trace_bundle_count=39; "
+        "visible_unseeded_route_count=0; business_contract_certified_count=0; "
+        "evidence_pending_count=23; gate_i_gap_count=0; unclassified_count=0; "
+        "business_owner_action_signoff_missing_or_invalid_item_count=5; "
+        "business_owner_action_signoff_pending_review_item_count=10"
+    ) in completed.stdout
+    assert "Route classification rows:" in completed.stdout
+    assert (
+        "- product-category-pnl: evidence-pending; route=/product-category-pnl; "
+        "source=seeded_trace_bundle; blocking_reason=business_owner_approval_pending; "
+        "business_owner_approval_captured=False; golden_sample_approved=False; "
+        "golden_boundary_status=approved; golden_artifact_status=captured-awaiting-approval; "
+        "golden_artifact_approved=False; golden_artifact_mismatch=True; "
+        "owner_action_missing_or_invalid=5; owner_action_pending_review=10; "
+        "owner_signable=False; can_promote_certification=False; "
+        "certification_effect=none; captures_product_or_api_decisions=False; "
+        "consistency_certification_effect=none; "
+        "consistency_captures_product_or_api_decisions=False; "
+        "consistency_writes_governance_records=False; "
+        "freshness_check_effect=none; "
+        "freshness_writes_governance_records=False; "
+        "freshness_certification_effect=none"
+    ) in completed.stdout
+    assert (
+        "- reports-home: frontend-only; route=/reports; source=seeded_trace_bundle; "
+        "blocking_reason=home_or_summary_surface_not_page_certification"
+    ) in completed.stdout
+    assert (
+        "Boundary: No seeded route is business-contract-certified until direct golden approval, "
+        "manual audit closure, and captured business-owner approval all exist."
+    ) in completed.stdout
+    assert "Route-scope dry run complete. Classification only; no approval is captured." in completed.stdout
 
 
 def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() -> None:
@@ -1207,6 +1653,94 @@ def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() 
     assert "- Verification commands rerun before approval: yes (pending)" in completed.stdout
     assert "- Candidate-only boundary accepted: yes (pending)" in completed.stdout
     assert "- - Candidate-only boundary accepted" not in completed.stdout
+
+
+def test_product_category_page_readiness_powershell_surfaces_packet_consistency_boundary() -> None:
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(ROOT / "scripts" / "codex-page-readiness.ps1"),
+            "-PageSlug",
+            "product-category-pnl",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert "Certification packet consistency:" in completed.stdout
+    assert "- status=valid" in completed.stdout
+    assert "- missing_marker_count=0" in completed.stdout
+    assert "- formal_decision_item_count=5" in completed.stdout
+    assert "- next_review_queue_item_count=4" in completed.stdout
+    assert "- approval_action_item_count=15" in completed.stdout
+    assert "- business_owner_action_signoff_item_count=15" in completed.stdout
+    assert "- business_owner_action_signed_item_count=0" in completed.stdout
+    assert "- business_owner_action_pending_or_missing_item_count=15" in completed.stdout
+    assert "- owner_signable=False" in completed.stdout
+    assert "- can_promote_certification=False" in completed.stdout
+    assert "- approves_metric_or_page=False" in completed.stdout
+    assert "- captures_business_owner_approval=False" in completed.stdout
+    assert "- captures_business_owner_signature=False" in completed.stdout
+    assert "- captures_product_or_api_decisions=False" in completed.stdout
+    assert "- captures_golden_sample_approval=False" in completed.stdout
+    assert "- captures_closure_approval=False" in completed.stdout
+    assert "- writes_governance_records=False" in completed.stdout
+    assert "- verification_commands_rerun_captured=False" in completed.stdout
+    assert "- certification_effect=none" in completed.stdout
+    assert "consistency only; does not capture approval or certify route" in completed.stdout
+    assert "Business owner action signoff summary:" in completed.stdout
+    assert "- missing_or_invalid_item_count=5" in completed.stdout
+    assert "- pending_review_item_count=10" in completed.stdout
+    assert "- invalid_or_missing_item_count=5" not in completed.stdout
+    assert "- pending_item_count=10" not in completed.stdout
+    assert "- signoff_group_counts.owner_identity=2" in completed.stdout
+    assert "- signoff_group_counts.owner_decision=3" in completed.stdout
+    assert "- signoff_group_counts.evidence_review=7" in completed.stdout
+    assert "- signoff_group_counts.pre_signature_verification=2" in completed.stdout
+    assert "- signoff_group_counts.boundary_acceptance=1" in completed.stdout
+    assert "- signed_group_counts.none=0" in completed.stdout
+    assert "- pending_or_missing_group_counts.owner_identity=2" in completed.stdout
+    assert "- pending_or_missing_group_counts.owner_decision=3" in completed.stdout
+    assert "- pending_or_missing_group_counts.evidence_review=7" in completed.stdout
+    assert "- pending_or_missing_group_counts.pre_signature_verification=2" in completed.stdout
+    assert "- pending_or_missing_group_counts.boundary_acceptance=1" in completed.stdout
+    assert "Owner pre-signature blocker scope:" in completed.stdout
+    assert "- remaining_blocker_count=16" in completed.stdout
+    assert "- approval_action_item_count=15" in completed.stdout
+    assert "- signed_item_count=0" in completed.stdout
+    assert "- unsigned_item_count=15" in completed.stdout
+    assert "- missing_or_invalid_item_count=5" in completed.stdout
+    assert "- pending_review_item_count=10" in completed.stdout
+    assert "- owner_signable=False" in completed.stdout
+    assert "- captures_business_owner_approval=False" in completed.stdout
+    assert "- captures_product_or_api_decisions=False" in completed.stdout
+    assert "- can_promote_certification=False" in completed.stdout
+    assert "- certification_effect=none" in completed.stdout
+    assert "- signoff_group_counts.evidence_review=7" in completed.stdout
+    assert "- signoff_group_counts.owner_decision=3" in completed.stdout
+    assert "- signed_group_counts.none=0" in completed.stdout
+    assert "- unsigned_group_counts.evidence_review=7" in completed.stdout
+    assert "- unsigned_group_counts.owner_decision=3" in completed.stdout
+    assert "- boundary=pre-signature scope only; does not approve, sign, or certify route" in completed.stdout
+    assert "Generated artifact freshness scope:" in completed.stdout
+    assert "- artifact_count=2" in completed.stdout
+    assert "- valid_artifact_count=2" in completed.stdout
+    assert "- stale_or_missing_artifact_count=0" in completed.stdout
+    assert "- freshness_check_effect=none" in completed.stdout
+    assert "- captures_business_owner_approval=False" in completed.stdout
+    assert "- captures_product_or_api_decisions=False" in completed.stdout
+    assert "- captures_golden_sample_approval=False" in completed.stdout
+    assert "- captures_closure_approval=False" in completed.stdout
+    assert "- writes_governance_records=False" in completed.stdout
+    assert "- certification_effect=none" in completed.stdout
+    assert "- boundary=freshness scope only; does not approve, sign, write governance, or certify route" in completed.stdout
 
 
 def test_pnl_attribution_page_readiness_powershell_can_require_captured_approval() -> None:
@@ -1284,6 +1818,42 @@ def test_all_page_readiness_powershell_can_require_captured_approval() -> None:
     assert "Approval evidence scope:" in combined_output
     assert "  - proves_page_execution=False" in combined_output
     assert "  - captures_business_owner_approval=False" in combined_output
+    assert "Owner pre-signature blocker scope:" in combined_output
+    assert "  - remaining_blocker_count=16" in combined_output
+    assert "  - approval_action_item_count=15" in combined_output
+    assert "  - signed_item_count=0" in combined_output
+    assert "  - unsigned_item_count=15" in combined_output
+    assert "  - missing_or_invalid_item_count=5" in combined_output
+    assert "  - pending_review_item_count=10" in combined_output
+    assert "  - owner_signable=False" in combined_output
+    assert "  - captures_business_owner_approval=False" in combined_output
+    assert "  - captures_product_or_api_decisions=False" in combined_output
+    assert "  - can_promote_certification=False" in combined_output
+    assert "  - certification_effect=none" in combined_output
+    assert "  - signoff_group_counts.evidence_review=7" in combined_output
+    assert "  - signoff_group_counts.owner_decision=3" in combined_output
+    assert "  - signed_group_counts.none=0" in combined_output
+    assert "  - unsigned_group_counts.evidence_review=7" in combined_output
+    assert "  - unsigned_group_counts.owner_decision=3" in combined_output
+    assert (
+        "  - boundary=pre-signature scope only; does not approve, sign, or certify route"
+        in combined_output
+    )
+    assert "Generated artifact freshness scope:" in combined_output
+    assert "  - artifact_count=2" in combined_output
+    assert "  - valid_artifact_count=2" in combined_output
+    assert "  - stale_or_missing_artifact_count=0" in combined_output
+    assert "  - freshness_check_effect=none" in combined_output
+    assert "  - captures_business_owner_approval=False" in combined_output
+    assert "  - captures_product_or_api_decisions=False" in combined_output
+    assert "  - captures_golden_sample_approval=False" in combined_output
+    assert "  - captures_closure_approval=False" in combined_output
+    assert "  - writes_governance_records=False" in combined_output
+    assert "  - certification_effect=none" in combined_output
+    assert (
+        "  - boundary=freshness scope only; does not approve, sign, write governance, or certify route"
+        in combined_output
+    )
     assert "Approval action items:" in combined_output
     assert "  - Business owner name: Business owner legal or operating name (missing)" in combined_output
     assert "  - Verification commands rerun before approval: yes (pending)" in combined_output
@@ -1312,8 +1882,20 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     )
 
     assert "Business-owner approval pending pages:" in completed.stdout
-    assert "business_owner_approval_action_item_count=59" in completed.stdout
+    assert "business_owner_approval_action_item_count=70" in completed.stdout
+    assert "business_owner_action_signoff_missing_or_invalid_item_count=5" in completed.stdout
+    assert "business_owner_action_signoff_pending_review_item_count=10" in completed.stdout
+    assert (
+        "- product-category-pnl: static-pass; approval=formal_or_governed; "
+        "golden_boundary_status=approved; golden_artifact_status=captured-awaiting-approval; "
+        "golden_artifact_approved=False; golden_artifact_mismatch=True; run_supported=True"
+    ) in completed.stdout
+    assert (
+        "- product-category-pnl: static-pass; approval=formal_or_governed; "
+        "golden=approved;"
+    ) not in completed.stdout
     assert "- product-category-pnl (PAGE-PROD-CAT-001): pending; captured=False; action_items=15" in completed.stdout
+    assert "- balance-analysis (PAGE-BALANCE-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- ledger-pnl (PAGE-LEDGER-PNL-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- pnl-attribution (PAGE-PNL-ATTR-WB-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- bond-analysis (PAGE-BOND-ANALYSIS-001): pending; captured=False; action_items=11" in completed.stdout
@@ -1321,6 +1903,74 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     assert "Approval evidence scope:" in completed.stdout
     assert "  - proves_page_execution=False" in completed.stdout
     assert "  - captures_business_owner_approval=False" in completed.stdout
+    assert "  - certification_effect=none" in completed.stdout
+    assert "Certification packet consistency:" in completed.stdout
+    assert "  - status=valid" in completed.stdout
+    assert "  - business_owner_action_signed_item_count=0" in completed.stdout
+    assert "  - business_owner_action_pending_or_missing_item_count=15" in completed.stdout
+    assert "  - owner_signable=False" in completed.stdout
+    assert "  - can_promote_certification=False" in completed.stdout
+    assert "  - approves_metric_or_page=False" in completed.stdout
+    assert "  - captures_business_owner_approval=False" in completed.stdout
+    assert "  - captures_business_owner_signature=False" in completed.stdout
+    assert "  - captures_product_or_api_decisions=False" in completed.stdout
+    assert "  - captures_golden_sample_approval=False" in completed.stdout
+    assert "  - captures_closure_approval=False" in completed.stdout
+    assert "  - writes_governance_records=False" in completed.stdout
+    assert "  - verification_commands_rerun_captured=False" in completed.stdout
+    assert "  - certification_effect=none" in completed.stdout
+    assert "Business owner action signoff summary:" in completed.stdout
+    assert "  - missing_or_invalid_item_count=5" in completed.stdout
+    assert "  - pending_review_item_count=10" in completed.stdout
+    assert "  - invalid_or_missing_item_count=5" not in completed.stdout
+    assert "  - pending_item_count=10" not in completed.stdout
+    assert "  - signoff_group_counts.owner_identity=2" in completed.stdout
+    assert "  - signoff_group_counts.owner_decision=3" in completed.stdout
+    assert "  - signoff_group_counts.evidence_review=7" in completed.stdout
+    assert "  - signoff_group_counts.pre_signature_verification=2" in completed.stdout
+    assert "  - signoff_group_counts.boundary_acceptance=1" in completed.stdout
+    assert "  - signed_group_counts.none=0" in completed.stdout
+    assert "  - pending_or_missing_group_counts.owner_identity=2" in completed.stdout
+    assert "  - pending_or_missing_group_counts.owner_decision=3" in completed.stdout
+    assert "  - pending_or_missing_group_counts.evidence_review=7" in completed.stdout
+    assert "  - pending_or_missing_group_counts.pre_signature_verification=2" in completed.stdout
+    assert "  - pending_or_missing_group_counts.boundary_acceptance=1" in completed.stdout
+    assert "Owner pre-signature blocker scope:" in completed.stdout
+    assert "  - remaining_blocker_count=16" in completed.stdout
+    assert "  - approval_action_item_count=15" in completed.stdout
+    assert "  - signed_item_count=0" in completed.stdout
+    assert "  - unsigned_item_count=15" in completed.stdout
+    assert "  - missing_or_invalid_item_count=5" in completed.stdout
+    assert "  - pending_review_item_count=10" in completed.stdout
+    assert "  - owner_signable=False" in completed.stdout
+    assert "  - captures_business_owner_approval=False" in completed.stdout
+    assert "  - captures_product_or_api_decisions=False" in completed.stdout
+    assert "  - can_promote_certification=False" in completed.stdout
+    assert "  - certification_effect=none" in completed.stdout
+    assert "  - signoff_group_counts.evidence_review=7" in completed.stdout
+    assert "  - signoff_group_counts.owner_decision=3" in completed.stdout
+    assert "  - signed_group_counts.none=0" in completed.stdout
+    assert "  - unsigned_group_counts.evidence_review=7" in completed.stdout
+    assert "  - unsigned_group_counts.owner_decision=3" in completed.stdout
+    assert (
+        "  - boundary=pre-signature scope only; does not approve, sign, or certify route"
+        in completed.stdout
+    )
+    assert "Generated artifact freshness scope:" in completed.stdout
+    assert "  - artifact_count=2" in completed.stdout
+    assert "  - valid_artifact_count=2" in completed.stdout
+    assert "  - stale_or_missing_artifact_count=0" in completed.stdout
+    assert "  - freshness_check_effect=none" in completed.stdout
+    assert "  - captures_business_owner_approval=False" in completed.stdout
+    assert "  - captures_product_or_api_decisions=False" in completed.stdout
+    assert "  - captures_golden_sample_approval=False" in completed.stdout
+    assert "  - captures_closure_approval=False" in completed.stdout
+    assert "  - writes_governance_records=False" in completed.stdout
+    assert "  - certification_effect=none" in completed.stdout
+    assert (
+        "  - boundary=freshness scope only; does not approve, sign, write governance, or certify route"
+        in completed.stdout
+    )
     assert "Approval action items:" in completed.stdout
     assert "  - Business owner name: Business owner legal or operating name (missing)" in completed.stdout
     assert "  - Verification commands rerun before approval: yes (pending)" in completed.stdout

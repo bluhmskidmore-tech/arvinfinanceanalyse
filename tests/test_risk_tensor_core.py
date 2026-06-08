@@ -157,6 +157,21 @@ def test_krd_buckets_sum_to_portfolio_dv01():
     ) == tensor.portfolio_dv01
 
 
+def test_six_month_tenor_maps_to_nearest_one_year_krd_bucket():
+    mod = _risk_tensor_module()
+
+    tensor = mod.compute_portfolio_risk_tensor(
+        [
+            _row(dv01="0.25", tenor_bucket="6M"),
+            _row(dv01="1.00", tenor_bucket="1Y"),
+        ],
+        report_date=date(2026, 3, 31),
+    )
+
+    assert tensor.krd_1y == Decimal("1.25")
+    assert not any("Unsupported tenor buckets excluded" in warning for warning in tensor.warnings)
+
+
 def test_cs01_only_includes_credit_bonds():
     mod = _risk_tensor_module()
 

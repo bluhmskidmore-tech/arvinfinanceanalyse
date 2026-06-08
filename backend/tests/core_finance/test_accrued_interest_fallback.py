@@ -1,9 +1,7 @@
 """Tests for accrued interest fallback marking in four effects."""
+import logging
 from datetime import date
 from decimal import Decimal
-import logging
-
-import pytest
 
 from backend.app.core_finance.bond_four_effects import compute_bond_four_effects
 

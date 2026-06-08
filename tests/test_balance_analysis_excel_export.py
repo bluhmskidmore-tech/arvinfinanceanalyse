@@ -10,7 +10,6 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 from tests.test_balance_analysis_api import _configure_and_materialize
 
-
 REPORT_DATE = "2025-12-31"
 EXPECTED_SHEETS = ["概览", "债券持仓", "同业持仓", "期限分布", "利率分布"]
 TABLE_KEY_CANDIDATES = {

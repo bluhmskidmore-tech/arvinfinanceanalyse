@@ -13,8 +13,8 @@ from backend.app.tasks.macro_backfill import (
     _infer_frequency,
     _is_tushare_macro_series,
     _map_tushare_records,
-    _resolve_tushare_api,
     _resolve_sources,
+    _resolve_tushare_api,
     backfill_macro_series,
 )
 

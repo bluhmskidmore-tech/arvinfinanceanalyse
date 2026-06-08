@@ -630,6 +630,20 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["report_date"] == "2026-01-01"
     assert "duration_gap" in payload["result"]
+    assert payload["result"]["duration_gap"]["unit"] == "years"
+    assert payload["result"]["duration_gap"]["precision"] == 2
+    assert payload["result"]["duration_gap"]["sign_aware"] is True
+    assert payload["result"]["asset_duration"]["unit"] == "years"
+    assert payload["result"]["asset_duration"]["precision"] == 2
+    assert payload["result"]["asset_duration"]["sign_aware"] is False
+    assert payload["result"]["liability_duration"]["unit"] == "years"
+    assert payload["result"]["liability_duration"]["precision"] == 2
+    assert payload["result"]["liability_duration"]["sign_aware"] is False
+    assert payload["result"]["equity_duration"]["unit"] == "years"
+    assert payload["result"]["equity_duration"]["precision"] == 2
+    assert payload["result"]["equity_duration"]["sign_aware"] is True
+    assert payload["result"]["rate_sensitivity_1bp"]["unit"] == "yuan"
+    assert payload["result"]["reinvestment_risk_12m"]["unit"] == "pct"
     assert "monthly_buckets" in payload["result"]
     assert "top_maturing_assets_12m" in payload["result"]
     assert "computed_at" in payload["result"]

@@ -16,7 +16,7 @@ This packet does not approve page closure, write governance records, prove page 
 
 - `golden_sample_boundary=action_attribution_capture_ready_pending_approval`
 - `golden_sample_approval_artifact_status=captured-awaiting-approval`
-- `approval_action_item_count=11`
+- `approval_action_item_count=12`
 - `business_owner_approval_captured=false`
 
 ## Boundary

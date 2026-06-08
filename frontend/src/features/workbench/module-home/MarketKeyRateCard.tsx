@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import type { ModuleHomeDetailPanel, ModuleHomeTone } from "./moduleHomeModel";
+import { MarketPanelSummary } from "./MarketPanelSummary";
 import marketStyles from "./marketHome.module.css";
 
 function toneClass(tone: ModuleHomeTone) {
@@ -17,11 +18,12 @@ type MarketRateLadderProps = {
 
 export function MarketRateLadder({ panel, viewAllPath = "/market-data" }: MarketRateLadderProps) {
   const rows = panel.rows;
+  const isEmpty = rows.length === 0;
 
   return (
     <section
       data-testid="module-home-rate-snapshot"
-      className={`${dhStyles.dhCard} ${marketStyles.ratePanel}`}
+      className={`${dhStyles.dhCard} ${marketStyles.ratePanel} ${isEmpty ? marketStyles.marketCompactEmptyPanel : ""}`}
     >
       <div className={dhStyles.dhSectionTitle}>
         <span>关键利率快照</span>
@@ -32,8 +34,9 @@ export function MarketRateLadder({ panel, viewAllPath = "/market-data" }: Market
         ) : null}
       </div>
       <p className={marketStyles.panelMeta}>{panel.meta}</p>
+      <MarketPanelSummary panel={panel} />
       {rows.length > 0 ? (
-        <div className={marketStyles.rateTable}>
+        <div className={`${marketStyles.rateTable} ${marketStyles.rateTableScroll}`}>
           <div className={marketStyles.rateTableHead} aria-hidden="true">
             <span>品种</span>
             <span>最新</span>

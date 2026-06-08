@@ -135,6 +135,7 @@ def test_ledger_pnl_summary_envelope_is_ledger_basis_not_formal(monkeypatch):
     assert meta["filters_applied"] == {"report_date": "2026-04-30", "currency": "CNX"}
     assert meta["tables_used"] == ["qdb_general_ledger_workbook"]
     assert meta["evidence_rows"] == 2
+    assert meta["cache_key"] == "ledger_pnl.summary:2026-04-30:CNX"
 
 
 def test_ledger_pnl_data_envelope_is_ledger_basis_not_formal(monkeypatch):
@@ -166,6 +167,7 @@ def test_ledger_pnl_data_envelope_is_ledger_basis_not_formal(monkeypatch):
     assert meta["filters_applied"] == {"report_date": "2026-04-30", "currency": "ALL"}
     assert meta["tables_used"] == ["qdb_general_ledger_workbook"]
     assert meta["evidence_rows"] == 2
+    assert meta["cache_key"] == "ledger_pnl.data:2026-04-30:ALL"
 
 
 def test_ledger_pnl_summary_envelope_marks_missing_source_as_warning(monkeypatch):

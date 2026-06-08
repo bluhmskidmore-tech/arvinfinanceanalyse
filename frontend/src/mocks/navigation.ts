@@ -34,8 +34,8 @@ export type WorkbenchNavigationGroup = {
 const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections">> = [
   {
     key: "overview",
-    label: "经营驾驶舱",
-    description: "先看今日判断、经营总览和跨页待办。",
+    label: "经营日报",
+    description: "先看主快照读数、数据边界和跨页待办。",
     icon: "dashboard",
     defaultPath: "/",
   },
@@ -137,10 +137,10 @@ export function resolveWorkbenchPathAlias(pathname: string): string {
 export const workbenchNavigation: WorkbenchSection[] = [
   {
     key: "dashboard",
-    label: "经营驾驶舱",
+    label: "经营日报",
     path: "/",
     icon: "dashboard",
-    description: "管理总览与壳层入口",
+    description: "主快照读数与数据边界入口",
     readiness: "live",
     readinessLabel: "已开放",
     readinessNote: "已接真实只读链路，缺数时由后端返回受控回退值。",

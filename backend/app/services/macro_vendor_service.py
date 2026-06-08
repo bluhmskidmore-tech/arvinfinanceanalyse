@@ -11,6 +11,10 @@ from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
     discover_formal_fx_candidates,
 )
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroLatestPayload,
     ChoiceMacroLatestPoint,
@@ -33,6 +37,8 @@ LIVE_CACHE_VERSION = "cv_choice_macro_thin_slice_v1"
 CHOICE_MACRO_REFRESH_TIERS = {"stable", "fallback", "isolated"}
 CHOICE_MACRO_FETCH_MODES = {"date_slice", "latest"}
 CHOICE_MACRO_FETCH_GRANULARITIES = {"batch", "single"}
+CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
 
 
 def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
@@ -658,6 +664,32 @@ def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
         fallback_mode="latest_snapshot" if any(point.refresh_tier == "fallback" for point in points) else "none",
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def choice_macro_refresh_status(governance_path: str | Path, *, run_id: str = "") -> dict[str, object]:
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name")) == CHOICE_MACRO_REFRESH_JOB_NAME
+        and str(record.get("cache_key")) == CHOICE_MACRO_REFRESH_CACHE_KEY
+    ]
+    if run_id:
+        records = [record for record in records if str(record.get("run_id")) == run_id]
+        if not records:
+            raise ValueError(f"Unknown choice macro refresh run_id={run_id}")
+    if not records:
+        return {
+            "status": "idle",
+            "job_name": CHOICE_MACRO_REFRESH_JOB_NAME,
+            "cache_key": CHOICE_MACRO_REFRESH_CACHE_KEY,
+            "trigger_mode": "idle",
+        }
+    latest = records[-1]
+    status = str(latest.get("status", "unknown"))
+    return {
+        **latest,
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
+    }
 
 
 def _load_latest_fx_mid_rows(

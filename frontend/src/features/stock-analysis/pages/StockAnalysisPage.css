@@ -6559,7 +6559,9 @@
 
   [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-risk-section"],
   [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-boundary-rail"] {
-    display: none !important;
+    display: grid !important;
+    gap: 7px;
+    padding: 9px 10px;
   }
 
   [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-closed-loop-summary"] {
@@ -6605,7 +6607,8 @@
   }
 
   .stock-analysis-page__rail-check-list {
-    display: none !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -7988,5 +7991,105 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+/* Stock Gate C decision order pass: narrow screens surface trust evidence before chart exploration. */
+@media (max-width: 900px) {
+  [data-testid="stock-analysis-tailwind-cockpit"] {
+    order: 1 !important;
+  }
+
+  [data-testid="stock-analysis-kpi-section"] {
+    order: 2 !important;
+  }
+
+  [data-testid="stock-analysis-stock-selection"] {
+    display: contents !important;
+  }
+
+  [data-testid="stock-analysis-first-screen-primary"] {
+    display: contents !important;
+  }
+
+  [data-testid="stock-analysis-review-queue"] {
+    order: 3 !important;
+  }
+
+  [data-testid="stock-analysis-consensus-first-screen"] {
+    order: 4 !important;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] {
+    order: 5 !important;
+    display: grid;
+    gap: 0;
+    max-height: none !important;
+    padding: 8px 10px;
+    overflow: visible !important;
+  }
+
+  [data-testid="stock-analysis-strategy-lens"] {
+    order: 6 !important;
+  }
+
+  [data-testid="stock-analysis-sector-strength-panel"] {
+    order: 7 !important;
+  }
+
+  [data-testid="stock-analysis-observation-preview"],
+  [data-testid="stock-analysis-theme-leaders-first-screen"],
+  [data-testid="stock-analysis-sector-heavyweights-first-screen"],
+  [data-testid="stock-analysis-first-screen-analytics"] {
+    order: 8 !important;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-closed-loop-summary"] {
+    padding: 8px 10px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-risk-section"],
+  [data-testid="stock-analysis-first-screen-rail"] > [data-testid="stock-analysis-boundary-rail"] {
+    display: grid !important;
+    gap: 6px;
+    padding: 7px 9px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__dh-section-head {
+    min-height: 20px;
+    padding-bottom: 5px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__rail-verdict {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 6px;
+    margin-top: 3px;
+    padding: 6px 7px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__rail-metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__rail-metric-grid > div {
+    min-height: 34px;
+    padding: 4px 5px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__rail-stat-icon {
+    display: none;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__rail-next-action {
+    min-height: 26px;
+    margin-top: 4px;
+    padding: 4px 7px;
+  }
+
+  [data-testid="stock-analysis-first-screen-rail"] .stock-analysis-page__rail-check-list {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
   }
 }

@@ -90,9 +90,9 @@
       "sign_aware": false
     },
     "portfolio_convexity": {
-      "raw": 180.77409483,
+      "raw": 174.83326646,
       "unit": "ratio",
-      "display": "180.77",
+      "display": "174.83",
       "precision": 2,
       "sign_aware": false
     },
@@ -205,7 +205,7 @@
     "bond_count": 3,
     "quality_flag": "warning",
     "warnings": [
-      "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y",
+      "Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 6M",
       "1 rows carry market_value=99.00000000 and are excluded from portfolio duration denominator: 1 without maturity_date; 0 with non-positive modified_duration. DV01 totals remain sourced from row dv01; duration metrics ignore these rows until inputs are remediated.",
       "Excluded 1 rows without maturity_date from liquidity gap calculation."
     ],

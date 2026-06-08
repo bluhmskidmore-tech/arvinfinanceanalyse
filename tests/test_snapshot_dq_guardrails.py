@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 import duckdb
+import pytest
 
 from backend.app.repositories.snapshot_repo import (
     merge_tyw_rows_by_grain,
     merge_zqtz_rows_by_grain,
     replace_tyw_snapshot_rows,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 
 
 def _tyw_row(*, position_id: str, principal: str, accrued: str = "0", rate: str = "0.015", counterparty: str = "银行A") -> dict[str, object]:
@@ -164,13 +164,14 @@ def test_replace_tyw_snapshot_rows_can_replace_all_rows_for_report_date(tmp_path
         )
 
         rows = [_tyw_row(position_id="new-1", principal="200", counterparty="银行B")]
-        replace_tyw_snapshot_rows(
-            conn,
-            rows,
-            ingest_batch_ids=["ib-new"],
-            report_dates=["2026-02-26"],
-            replace_all_for_report_dates=True,
-        )
+        with repository_task_write_scope("backend.app.tasks.snapshot_dq_guardrails_test"):
+            replace_tyw_snapshot_rows(
+                conn,
+                rows,
+                ingest_batch_ids=["ib-new"],
+                report_dates=["2026-02-26"],
+                replace_all_for_report_dates=True,
+            )
 
         result = conn.execute(
             "select position_id, ingest_batch_id, principal_native from tyw_interbank_daily_snapshot order by position_id"

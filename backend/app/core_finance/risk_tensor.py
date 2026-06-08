@@ -37,6 +37,7 @@ SUPPORTED_KRD_BUCKETS = {
 
 # Non-standard tenors mapped to nearest supported KRD bucket.
 KRD_BUCKET_FALLBACK: dict[str, str] = {
+    "6M": "krd_1y",
     "2Y": "krd_3y",
     "4Y": "krd_5y",
     "6Y": "krd_7y",

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
 from datetime import date, timedelta
-import json
 
 import duckdb
 import pytest
@@ -13,9 +13,9 @@ from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_backtest_window_summary,
+    livermore_candidate_history_cycle_proxy_backtest_envelope,
     livermore_candidate_history_envelope,
     livermore_candidate_history_portfolio_backtest_envelope,
-    livermore_candidate_history_cycle_proxy_backtest_envelope,
 )
 from backend.app.tasks.livermore_candidate_history_materialize import (
     backfill_livermore_candidate_history,

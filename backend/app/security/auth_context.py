@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from threading import Lock
 from typing import Annotated
 
 from backend.app.governance.settings import Settings
@@ -11,6 +12,8 @@ from fastapi import Header
 DEFAULT_AUTH_USER_ID = "anonymous"
 DEFAULT_AUTH_ROLE = "viewer"
 ROLE_HEADER_TRUST_ENV = "MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST"
+_USER_SCOPE_REPO_CACHE: dict[tuple[object, str], UserScopeRepository] = {}
+_USER_SCOPE_REPO_CACHE_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -58,7 +61,7 @@ def ensure_user_allowed(
     scope_value: str | None = None,
 ) -> None:
     try:
-        repo = UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn)
+        repo = _get_user_scope_repository(settings.governance_sql_dsn or settings.postgres_dsn)
         if repo.has_permission(
             user_id=auth.user_id,
             role=auth.role,
@@ -73,15 +76,30 @@ def ensure_user_allowed(
     raise PermissionError(f"User is not allowed to {action} {resource}.")
 
 
+def _get_user_scope_repository(dsn: str) -> UserScopeRepository:
+    repo_cls = UserScopeRepository
+    key = (repo_cls, str(dsn or "").strip())
+    with _USER_SCOPE_REPO_CACHE_LOCK:
+        cached = _USER_SCOPE_REPO_CACHE.get(key)
+        if cached is not None:
+            return cached
+
+    repo = repo_cls(key[1])
+
+    with _USER_SCOPE_REPO_CACHE_LOCK:
+        return _USER_SCOPE_REPO_CACHE.setdefault(key, repo)
+
+
 def _header_trust_enabled() -> bool:
     return os.environ.get(ROLE_HEADER_TRUST_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def validate_auth_startup_guardrails(settings: Settings) -> None:
-    if str(settings.environment).strip().lower() == "production" and _header_trust_enabled():
+    environment = str(settings.environment).strip().lower()
+    if environment != "development" and _header_trust_enabled():
         raise RuntimeError(
-            "production environment cannot trust X-User-Id/X-User-Role headers "
-            f"via {ROLE_HEADER_TRUST_ENV}"
+            f"{environment} environment cannot trust X-User-Id/X-User-Role headers "
+            f"via {ROLE_HEADER_TRUST_ENV}; only development can enable this trust switch"
         )
 
 

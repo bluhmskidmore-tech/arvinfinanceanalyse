@@ -5,10 +5,15 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as ReactRouterDom from "react-router-dom";
 import { RouterProvider } from "react-router-dom";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
+
+const { balanceAnalysisEchartsOptions } = vi.hoisted(() => ({
+  balanceAnalysisEchartsOptions: [] as unknown[],
+}));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type {
+  AdbComparisonResponse,
   ApiEnvelope,
   BalanceAnalysisCurrentUserPayload,
   BalanceAnalysisAdvancedAttributionBundlePayload,
@@ -32,6 +37,7 @@ import {
   getBalanceDetailGridRowId,
   getBalanceSummaryGridRowId,
 } from "../features/balance-analysis/pages/balanceAnalysisGridRows";
+import AdbAnalyticalPreview from "../features/balance-analysis/components/AdbAnalyticalPreview";
 
 const BALANCE_ANALYSIS_CSS_PATH = resolve(
   process.cwd(),
@@ -47,8 +53,15 @@ const BALANCE_ANALYSIS_STYLES_PATH = resolve(
 );
 
 vi.mock("../lib/echarts", () => ({
-  default: () => <div data-testid="balance-analysis-echarts-stub" />,
+  default: ({ option }: { option?: unknown }) => {
+    balanceAnalysisEchartsOptions.push(option);
+    return <div data-testid="balance-analysis-echarts-stub" />;
+  },
 }));
+
+beforeAll(async () => {
+  await import("../features/balance-analysis/pages/BalanceAnalysisPage");
+}, 60_000);
 
 function renderBalanceAnalysisWithClient(
   client: ReturnType<typeof createApiClient>,
@@ -894,6 +907,64 @@ describe("BalanceAnalysisPage", () => {
       expect(supplementalPanels).not.toHaveTextContent("partial");
       expect(supplementalPanels).not.toHaveTextContent("bond_analytics");
     });
+  });
+
+  it("preserves missing comparison average balance in the analytical preview chart", () => {
+    balanceAnalysisEchartsOptions.length = 0;
+    const comparison: AdbComparisonResponse = {
+      report_date: "2025-12-31",
+      start_date: "2025-01-01",
+      end_date: "2025-12-31",
+      calendar_days_inclusive: 365,
+      adb_denominator_basis: "snapshot_calendar",
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 100_000_000,
+      total_avg_assets: 50_000_000,
+      total_spot_liabilities: 0,
+      total_avg_liabilities: 0,
+      total_avg_interbank_assets: 0,
+      total_avg_interbank_liabilities: 0,
+      asset_yield: null,
+      liability_cost: null,
+      net_interest_margin: null,
+      assets_breakdown: [
+        {
+          category: "missing-adb",
+          spot_balance: 100_000_000,
+          avg_balance: null,
+          proportion: 50,
+          weighted_rate: null,
+        },
+        {
+          category: "true-zero-adb",
+          spot_balance: 0,
+          avg_balance: 0,
+          proportion: 0,
+          weighted_rate: null,
+        },
+      ],
+      liabilities_breakdown: [],
+    };
+
+    render(
+      <ReactRouterDom.MemoryRouter>
+        <AdbAnalyticalPreview comparison={comparison} href="/average-balance" />
+      </ReactRouterDom.MemoryRouter>,
+    );
+
+    const comparisonOption = balanceAnalysisEchartsOptions.find((option) => {
+      const labels = (option as { xAxis?: { data?: string[] } })?.xAxis?.data ?? [];
+      return labels.some((label) => label.includes("missing-adb"));
+    }) as {
+      series: { name: string; label?: { formatter?: (params: { dataIndex: number }) => string } }[];
+      tooltip: { formatter: (items: { dataIndex: number }[]) => string };
+    };
+    const adbSeries = comparisonOption.series.find((series) => series.name.includes("ADB"));
+
+    expect(comparisonOption.tooltip.formatter([{ dataIndex: 0 }])).toContain("ADB: —");
+    expect(adbSeries?.label?.formatter?.({ dataIndex: 0 })).toBe("—");
+    expect(comparisonOption.tooltip.formatter([{ dataIndex: 1 }])).toContain("ADB: 0.00");
   });
 
   it("keeps the no-report-date state compact instead of rendering empty workbench placeholders", async () => {

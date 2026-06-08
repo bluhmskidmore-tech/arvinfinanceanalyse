@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from backend.app.services.executive_service import (
-    _compute_unified_report_date,
     _HOME_SNAPSHOT_CALIBERS,
+    _compute_unified_report_date,
 )
 
 
@@ -278,6 +278,41 @@ class TestHomeSnapshotEnvelope:
         assert env["result"]["report_date"] == "2026-04-30"
         assert calls == []
 
+    def test_snapshot_uses_short_overview_history_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        es = _executive_service()
+        dates = {
+            "balance": ["2026-04-08"],
+            "pnl": ["2026-04-08"],
+            "liability": ["2026-04-08"],
+            "bond": ["2026-04-08"],
+        }
+        captured: dict[str, object] = {}
+
+        def fake_overview(**kwargs):
+            captured.update(kwargs)
+            return {"result_meta": {}, "result": {"title": "overview", "metrics": []}}
+
+        monkeypatch.setattr(es, "_list_domain_date_context", lambda: dates)
+        monkeypatch.setattr(es, "executive_overview", fake_overview)
+        monkeypatch.setattr(
+            es,
+            "executive_pnl_attribution",
+            lambda report_date=None: {
+                "result_meta": {},
+                "result": es._pnl_attribution_unavailable_payload().model_dump(mode="json"),
+            },
+        )
+        monkeypatch.setattr(es, "_build_product_category_ytd_headline", lambda _rd: None)
+        monkeypatch.setattr(es, "_build_product_category_monthly_headline", lambda _rd: None)
+
+        env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+        assert env["result"]["report_date"] == "2026-04-08"
+        assert captured["report_date"] == "2026-04-08"
+        assert captured["date_context"] == dates
+        assert captured["history_points"] == 3
+        assert es._HOME_SNAPSHOT_OVERVIEW_HISTORY_POINTS == 3
+
     def test_build_product_category_ytd_headline_matches_envelope_grand_total(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -526,12 +561,12 @@ class TestHomeSnapshotEnvelope:
 
 class TestHomeSnapshotPayloadSchema:
     def test_roundtrip(self) -> None:
+        from backend.app.schemas.common_numeric import Numeric
         from backend.app.schemas.executive_dashboard import (
             HomeSnapshotPayload,
             OverviewPayload,
             PnlAttributionPayload,
         )
-        from backend.app.schemas.common_numeric import Numeric
 
         payload = HomeSnapshotPayload(
             report_date="2026-04-08",

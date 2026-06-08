@@ -1,17 +1,16 @@
 """
 Unit tests for rate_units.py — explicit unit conversions and normalization.
 """
-import pytest
 from decimal import Decimal
 
 from backend.app.core_finance.rate_units import (
-    pct_to_decimal,
-    decimal_to_pct,
     bp_to_decimal,
-    decimal_to_bp,
-    pct_to_bp,
     bp_to_pct,
+    decimal_to_bp,
+    decimal_to_pct,
     normalize_annual_rate_to_decimal,
+    pct_to_bp,
+    pct_to_decimal,
 )
 
 

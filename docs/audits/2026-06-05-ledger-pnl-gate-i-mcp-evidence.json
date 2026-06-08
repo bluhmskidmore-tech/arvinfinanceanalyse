@@ -1,0 +1,204 @@
+{
+  "page_slug": "ledger-pnl",
+  "generated_by": "local MCP stdio read-only calls from Codex App session",
+  "codex_app_tool_discovery": {
+    "moss_metric_contracts_exposed_as_direct_tool": false,
+    "moss_lineage_evidence_exposed_as_direct_tool": false,
+    "moss_data_catalog_exposed_as_direct_tool": false,
+    "gitnexus_exposed_as_direct_tool": false,
+    "note": "tool_search exposed Playwright/node_repl/GitHub/Canva only; local MCP scripts were invoked directly over stdio for read-only evidence."
+  },
+  "local_mcp": {
+    "metric_contracts": {
+      "server": "moss-metric-contracts",
+      "tool": "get_page_trace_bundle",
+      "available": true,
+      "page_id": "PAGE-LEDGER-PNL-001",
+      "frontend_route": "/ledger-pnl",
+      "primary_api": "/api/ledger-pnl/summary",
+      "supporting_apis": [
+        "/api/ledger-pnl/dates",
+        "/api/ledger-pnl/data",
+        "/api/ledger-pnl/formal-financial-indicators"
+      ],
+      "truth_chain": [
+        "docs/page_contracts.md PAGE-LEDGER-PNL-001",
+        "docs/metric_dictionary.md MTR-LPN-001 through MTR-LPN-003 as candidate metrics with pending_confirmation=true",
+        "backend/app/services/ledger_pnl_service.py ledger_pnl.summary / ledger_pnl.data / ledger_pnl.dates",
+        "backend/app/services/ledger_pnl_service.py ledger_pnl.formal_financial_indicator_source_contract",
+        "backend/app/core_finance/formal_financial_indicators.py GS-LEDGER-PNL-FIN-IND-202603-B contract fixture builder",
+        "tests/fixtures/formal_financial_indicators/ledger_pnl_202603_financial_indicator_golden.json GS-LEDGER-PNL-FIN-IND-202603-B",
+        "LedgerPnlSummaryPayload",
+        "LedgerPnlDataPayload",
+        "LedgerPnlFormalFinancialIndicatorContractPayload",
+        "/api/ledger-pnl/summary",
+        "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx"
+      ],
+      "backend_touchpoints": [
+        "backend/app/api/routes/ledger_pnl.py",
+        "backend/app/services/ledger_pnl_service.py",
+        "backend/app/core_finance/formal_financial_indicators.py",
+        "backend/app/core_finance/config/classification_rules.py",
+        "backend/app/services/product_category_source_service.py"
+      ],
+      "frontend_touchpoints": [
+        "frontend/src/api/pnlCoreClient.ts",
+        "frontend/src/api/contracts.ts",
+        "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx",
+        "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.css",
+        "frontend/src/mocks/ledgerPnlMocks.ts"
+      ],
+      "test_touchpoints": [
+        "tests/test_ledger_pnl_service.py",
+        "tests/test_ledger_pnl_formal_financial_indicator_golden_sample.py",
+        "tests/test_governance_doc_contract.py",
+        "tests/test_live_route_page_contract_completeness.py",
+        "frontend/src/test/LedgerPnlPage.test.tsx",
+        "frontend/src/test/LedgerPnlRoutesSmoke.test.tsx",
+        "tests/fixtures/formal_financial_indicators/ledger_pnl_202603_financial_indicator_golden.json"
+      ],
+      "golden_samples": [],
+      "guardrails": [
+        "Treat MTR-LPN-001 through MTR-LPN-003 as candidate display metrics with pending_confirmation=true.",
+        "Do not use ledger summary cards to replace formal PnL, product-category PnL, PnL bridge, or formal financial indicator truth.",
+        "Do not render formal_pending financial indicator values as zero; keep value null and show missing-source status until a governed production source is approved.",
+        "Do not promote candidate_qdb_aligned values or reconciliation probes into formal financial indicator truth without updating contracts, samples, and tests.",
+        "Do not hide result_meta, report_month/report_date binding, stale/fallback/vendor degradation, no-data states, or missing-source states.",
+        "Do not recompute ledger summary totals in the frontend; consume /api/ledger-pnl/summary and keep currency filtering bound to the backend read chain."
+      ],
+      "verification_focus": [
+        "No dedicated golden sample is currently registered for PAGE-LEDGER-PNL-001 summary metrics; verify summary cards through page contract, metric dictionary, ledger service tests, and frontend page tests.",
+        "Trace /api/ledger-pnl/summary, /api/ledger-pnl/data, and /api/ledger-pnl/formal-financial-indicators through pnlCoreClient, LedgerPnlPage, summary cards, detail tables, source-contract panel, and result_meta display before changing display logic.",
+        "Check report_date, report_month, currency filter, yuan-to-yi display conversion, signed amount display, source_version, rule_version, cache_version, trace_id, as_of_date, and date_basis.",
+        "Keep GS-LEDGER-PNL-FIN-IND-202603-B as a formal financial indicator source-contract fixture only; it freezes source status and Excel sample values but does not approve system values for formal use."
+      ]
+    },
+    "lineage_evidence": {
+      "server": "moss-lineage-evidence",
+      "tool": "get_page_governance_audit_evidence_packet",
+      "available": true,
+      "status": null,
+      "page_slug": "ledger-pnl",
+      "summary": {
+        "mcp_evidence_sections": [],
+        "manual_review_blocker_count": 1,
+        "closure_approved": false
+      },
+      "manual_review_blockers": [
+        "direct_page_api_record_fields"
+      ],
+      "closure_approved": false,
+      "raw_top_level_keys": [
+        "audit_review_queue_item",
+        "audit_review_status",
+        "blocked_reason",
+        "closure_approved",
+        "disclaimer",
+        "evidence_scope",
+        "manual_review_blockers",
+        "page_id",
+        "page_slug",
+        "scope",
+        "summary"
+      ]
+    },
+    "data_catalog": {
+      "server": "moss-data-catalog",
+      "tool": "get_page_catalog_date_evidence",
+      "available": true,
+      "summary": {
+        "page_count": 1,
+        "table_anchor_count": 3,
+        "present_table_count": 2,
+        "date_sampled_table_count": 1
+      },
+      "page_evidence": [
+        {
+          "page_slug": "ledger-pnl",
+          "page_id": "PAGE-LEDGER-PNL-001",
+          "page_name": "Ledger PnL",
+          "frontend_route": "/ledger-pnl",
+          "primary_api": "/api/ledger-pnl/summary",
+          "catalog_date_anchors": [
+            "PAGE-LEDGER-PNL-001",
+            "/api/ledger-pnl/summary",
+            "/api/ledger-pnl/data",
+            "/api/ledger-pnl/formal-financial-indicators",
+            "ledger_pnl.",
+            "qdb_general_ledger_workbook",
+            "formal_financial_indicator_source_contract",
+            "GS-LEDGER-PNL-FIN-IND-202603-B",
+            "docs/page_contracts.md PAGE-LEDGER-PNL-001",
+            "backend/app/core_finance/formal_financial_indicators.py GS-LEDGER-PNL-FIN-IND-202603-B contract fixture builder",
+            "tests/fixtures/formal_financial_indicators/ledger_pnl_202603_financial_indicator_golden.json GS-LEDGER-PNL-FIN-IND-202603-B",
+            "backend/app/services/ledger_pnl_service.py ledger_pnl.summary / ledger_pnl.data / ledger_pnl.dates",
+            "backend/app/services/ledger_pnl_service.py ledger_pnl.formal_financial_indicator_source_contract",
+            "LedgerPnlSummaryPayload",
+            "LedgerPnlDataPayload",
+            "LedgerPnlFormalFinancialIndicatorContractPayload",
+            "frontend/src/features/ledger-pnl/pages/LedgerPnlPage.tsx",
+            "backend/app/api/routes/ledger_pnl.py",
+            "backend/app/services/ledger_pnl_service.py",
+            "No dedicated golden sample is currently registered for PAGE-LEDGER-PNL-001 summary metrics; verify summary cards through page contract, metric dictionary, ledger service tests, and frontend page tests.",
+            "Trace /api/ledger-pnl/summary, /api/ledger-pnl/data, and /api/ledger-pnl/formal-financial-indicators through pnlCoreClient, LedgerPnlPage, summary cards, detail tables, source-contract panel, and result_meta display before changing display logic.",
+            "Check report_date, report_month, currency filter, yuan-to-yi display conversion, signed amount display, source_version, rule_version, cache_version, trace_id, as_of_date, and date_basis.",
+            "Keep GS-LEDGER-PNL-FIN-IND-202603-B as a formal financial indicator source-contract fixture only; it freezes source status and Excel sample values but does not approve system values for formal use."
+          ],
+          "sampled_table_names": [
+            "qdb_general_ledger_workbook",
+            "ledger_import_batch",
+            "ledger_raw_row"
+          ],
+          "evidence_scope": {
+            "catalog_describe_checked": true,
+            "date_sample_checked": true,
+            "quality_checked": false,
+            "lineage_checked": false,
+            "formal_metric_approval_checked": false,
+            "page_execution_checked": false
+          },
+          "table_evidence": [
+            {
+              "table_name": "qdb_general_ledger_workbook",
+              "status": "unknown_table",
+              "column_count": 0,
+              "date_column": null,
+              "available_dates": [],
+              "error": "Unknown table: qdb_general_ledger_workbook"
+            },
+            {
+              "table_name": "ledger_import_batch",
+              "status": "present",
+              "column_count": 11,
+              "date_column": "as_of_date",
+              "available_dates": [
+                "2026-03-31",
+                "2026-03-17",
+                "2026-03-14",
+                "2026-03-12",
+                "2026-03-11"
+              ],
+              "error": null
+            },
+            {
+              "table_name": "ledger_raw_row",
+              "status": "present_no_date_column",
+              "column_count": 5,
+              "date_column": null,
+              "available_dates": [],
+              "error": null
+            }
+          ]
+        }
+      ],
+      "raw_top_level_keys": [
+        "disclaimer",
+        "duckdb_exists",
+        "duckdb_path",
+        "pages",
+        "scope",
+        "summary"
+      ]
+    }
+  }
+}

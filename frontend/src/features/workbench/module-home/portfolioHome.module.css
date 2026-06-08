@@ -66,6 +66,272 @@
   font-weight: 850;
 }
 
+.decisionPanel {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 0.78fr) minmax(320px, 0.92fr);
+  gap: 1px;
+  align-items: stretch;
+  padding: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(32, 48, 74, 0.1);
+  border-radius: 8px;
+  background: #dfe5ec;
+  box-shadow: none;
+}
+
+.decisionLedger,
+.decisionMatrix,
+.evidenceConsole {
+  display: grid;
+  min-width: 0;
+  background: #f8fafc;
+}
+
+.decisionLedger {
+  gap: 12px;
+  align-content: stretch;
+  padding: 16px 18px;
+  background: #f3f6fa;
+}
+
+.decisionLedgerHead,
+.terminalPanelHead {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.terminalPanelHead {
+  min-height: 34px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(32, 48, 74, 0.1);
+}
+
+.terminalPanelHead span {
+  color: var(--dh-ink, #0c1c33);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.terminalPanelHead strong {
+  color: var(--dh-muted, #6b7d95);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.decisionKicker {
+  color: var(--dh-ink-2, #2c3e5a);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.terminalStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 5px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.decisionTitle {
+  margin: 0;
+  color: var(--dh-ink, #0c1c33);
+  font-size: 24px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.decisionDetail {
+  max-width: 76ch;
+  margin: 0;
+  color: var(--dh-ink-2, #2c3e5a);
+  font-size: 12px;
+  line-height: 1.58;
+}
+
+.decisionReadinessBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  margin-top: auto;
+  padding: 10px 11px;
+  border: 1px solid rgba(32, 48, 74, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.decisionReadinessBar span {
+  color: var(--dh-muted, #6b7d95);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.decisionReadinessBar strong {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.decisionMatrix {
+  align-content: start;
+}
+
+.decisionFactGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: rgba(32, 48, 74, 0.1);
+}
+
+.decisionFact {
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  min-width: 0;
+  min-height: 76px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.decisionFact span {
+  overflow: hidden;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decisionFact strong {
+  overflow-wrap: normal;
+  word-break: normal;
+  color: var(--dh-ink, #0c1c33);
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.evidenceConsole {
+  align-content: start;
+}
+
+.evidenceFactList {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  background: rgba(32, 48, 74, 0.1);
+}
+
+.evidenceFactList .decisionFact {
+  grid-template-columns: minmax(96px, 0.48fr) minmax(0, 1fr);
+  min-height: 46px;
+  padding-block: 8px;
+}
+
+.evidenceFactList .decisionFact span {
+  white-space: normal;
+}
+
+.evidenceFactList .decisionFact strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  text-align: right;
+}
+
+.decisionActionQueue {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-top: 1px solid rgba(32, 48, 74, 0.1);
+  background: rgba(248, 251, 255, 0.86);
+}
+
+.decisionActionLabel {
+  color: var(--dh-muted, #6b7d95);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.decisionActionList {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.decisionAction {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 10px;
+  color: inherit;
+  border: 1px solid rgba(32, 48, 74, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.decisionAction:hover {
+  border-color: rgba(32, 48, 74, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.decisionActionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.decisionActionText {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.decisionActionText strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.decisionActionText small {
+  overflow-wrap: anywhere;
+  color: var(--dh-ink-2, #2c3e5a);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.decisionActionTarget {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--dh-blue-deep, #10356a);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .briefGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
@@ -757,6 +1023,24 @@
   background: var(--dh-red-soft, #fbf1f0);
 }
 
+@media (max-width: 1100px) {
+  .decisionPanel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decisionFactGrid {
+    grid-template-columns: repeat(3, minmax(128px, 1fr));
+  }
+
+  .evidenceFactList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .evidenceFactList .decisionFact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1280px) {
   .briefGrid {
     grid-template-columns: minmax(0, 1fr);
@@ -790,6 +1074,35 @@
 }
 
 @media (max-width: 900px) {
+  .decisionPanel {
+    padding: 16px;
+  }
+
+  .decisionTitle {
+    font-size: 18px;
+  }
+
+  .decisionFactGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evidenceFactList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .evidenceFactList .decisionFact strong {
+    text-align: left;
+  }
+
+  .decisionAction {
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+
+  .decisionActionTarget {
+    grid-column: 2;
+    justify-self: start;
+  }
+
   .kpiGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

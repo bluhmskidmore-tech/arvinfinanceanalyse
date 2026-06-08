@@ -13,7 +13,6 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from tests.helpers import load_module
 
-
 REPORT_DATE = "2026-03-31"
 
 

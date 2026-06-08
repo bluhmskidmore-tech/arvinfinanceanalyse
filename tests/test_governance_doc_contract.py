@@ -4,8 +4,7 @@ import json
 import re
 
 from tests.helpers import ROOT
-from tests.test_golden_samples_capture_ready import CAPTURE_READY_CASES
-
+from tests.test_golden_samples_capture_ready import CAPTURE_READY_CASES, SUPPORTING_ONLY_SAMPLE_IDS
 
 DOCS_DIR = ROOT / "docs"
 GOLDEN_ROOT = ROOT / "tests" / "golden_samples"
@@ -226,6 +225,96 @@ def test_live_route_maturity_registry_is_supporting_and_authority_safe():
         assert required in registry
 
 
+def test_formal_compute_chain_inventory_is_supporting_and_non_authorizing():
+    inventory = _read_doc("formal_compute_chain_inventory.md")
+    maturity_registry = _read_doc("live_route_maturity.md")
+    page_contracts = _read_doc("page_contracts.md")
+
+    for required in (
+        "Status label: supporting-only",
+        "Boundary: non-authorizing",
+        "not a metric contract",
+        "not a source of formal truth",
+        "does not approve page closure",
+        "does not change formal_use_allowed",
+        "does not set or imply closure_approved",
+        "Lane A completion proves only that trace links are present.",
+        "No formulas.",
+        "No unit definitions.",
+        "No field semantics.",
+        "No independent metric definitions.",
+        "No page-closure approval.",
+        "No formal-use promotion.",
+    ):
+        assert required in inventory
+
+    for chain_name in (
+        "Formal balance",
+        "Formal PnL",
+        "Formal FX",
+        "Formal yield curve",
+        "PnL bridge",
+        "Risk tensor",
+        "Core bond analytics formal read surfaces",
+    ):
+        assert chain_name in inventory
+
+    for required in (
+        "| `/agent` | live | governed-mixed-source | PAGE-AGENT-001 |",
+        "| `/cube-query` | live | candidate | PAGE-CUBE-QUERY-001 |",
+        "| `/liability-analytics` | live | governed-mixed-source | PAGE-LIAB-ANALYTICS-001 |",
+    ):
+        assert required in maturity_registry
+
+    for required in (
+        "Primary front-end route: `/agent`",
+        "Primary front-end route: `/cube-query`",
+        "Primary front-end route: `/liability-analytics`",
+        "liability_analytics_compat",
+    ):
+        assert required in page_contracts
+
+    for required in (
+        "| `/agent` | live / governed-mixed-source / `PAGE-AGENT-001` |",
+        "| `/cube-query` | live / candidate / `PAGE-CUBE-QUERY-001` |",
+        "| `/liability-analytics` | live / governed-mixed-source / `PAGE-LIAB-ANALYTICS-001` |",
+        "| `liability_analytics_compat` | non-route dependency note consumed by `/liability-analytics`; "
+        "not a separate live frontend route |",
+        "not as a route row",
+    ):
+        assert required in inventory
+
+    forbidden_positive_claims = (
+        "source of truth",
+        "authoritative metric definition",
+        "approved metric definition",
+        "closure approved",
+        "page closure approved",
+        "formal_use_allowed=true",
+        "closure_approved=true",
+        "decision-ready metric",
+        "business approval granted",
+    )
+    for forbidden in forbidden_positive_claims:
+        assert forbidden not in inventory
+
+    forbidden_route_claims = (
+        "/agent` | live / candidate",
+        "/agent` | live / excluded",
+        "PAGE-AGENT-001` | candidate",
+        "PAGE-AGENT-001` | excluded",
+        "Agent MVP expansion",
+        "/cube-query` | live / governed-mixed-source",
+        "/liability-analytics` | live / candidate",
+        "liability_analytics_compat` | live",
+        "liability_analytics_compat` | candidate",
+        "liability_analytics_compat` | governed",
+        "liability_analytics_compat` | excluded",
+    )
+    for forbidden in forbidden_route_claims:
+        assert forbidden not in inventory
+
+
 def test_operations_analysis_contract_matches_current_product_category_headline_binding():
     ops_contract = _page_contract_section("## 13.5 PAGE-OPS-001", "## 13.6 PAGE-BOND-001")
     metric_dictionary = _read_doc("metric_dictionary.md")
@@ -270,11 +359,13 @@ def test_ledger_pnl_candidate_metrics_bind_existing_page_contract_without_formal
         )
         assert "status=candidate" in metric_line
         assert "bound_page_id=PAGE-LEDGER-PNL-001" in metric_line
+        assert "bound_sample_id=GS-LEDGER-PNL-SUMMARY-A" in metric_line
         assert "pending_confirmation=true" in metric_line
 
     assert (
         "| `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | "
-        "`PAGE-LEDGER-PNL-001` | `none` | live 只读链路已有独立 PAGE 合同；"
+        "`PAGE-LEDGER-PNL-001` | `GS-LEDGER-PNL-SUMMARY-A` | "
+        "dedicated summary DTO 已 capture-ready 但未审批；"
         "三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |"
     ) in metric_dictionary
     assert "PAGE-CONTRACT-PENDING:/ledger-pnl" not in metric_dictionary
@@ -338,21 +429,28 @@ def test_golden_sample_dirs_keep_required_four_file_structure():
 
 def test_capture_ready_sample_count_stays_in_sync_across_docs_and_gate():
     sample_dirs = _sample_dirs()
+    sample_dir_ids = set(sample_dirs)
+    capture_ready_sample_ids = sorted(sample_dir_ids - SUPPORTING_ONLY_SAMPLE_IDS)
+    supporting_only_sample_ids = sorted(sample_dir_ids & SUPPORTING_ONLY_SAMPLE_IDS)
     actual_count = len(sample_dirs)
+    capture_ready_count = len(capture_ready_sample_ids)
+    supporting_only_count = len(supporting_only_sample_ids)
     metric_dictionary_sample_ids = _metric_dictionary_capture_ready_sample_ids()
     golden_plan = _read_doc("golden_sample_plan.md")
     golden_catalog = _read_doc("golden_sample_catalog.md")
     metric_dictionary = _read_doc("metric_dictionary.md")
     golden_samples_readme = (GOLDEN_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert actual_count == 13
-    assert len(CAPTURE_READY_CASES) == actual_count
-    assert metric_dictionary_sample_ids == sample_dirs
+    assert actual_count == 18
+    assert sorted(CAPTURE_READY_CASES) == capture_ready_sample_ids
+    assert sorted(SUPPORTING_ONLY_SAMPLE_IDS) == supporting_only_sample_ids
+    assert metric_dictionary_sample_ids == capture_ready_sample_ids
 
     assert f"`tests/golden_samples/` 已经存在 **{actual_count}** 个样本包" in golden_plan
-    assert f"与 `tests/test_golden_samples_capture_ready.py` 中注册的 {actual_count} 个 `sample_id` 对齐" in golden_catalog
-    assert f"覆盖当前 {actual_count} 个 capture-ready 样本包。" in metric_dictionary
-    assert f"Current capture-ready sample packs ({actual_count} total):" in golden_samples_readme
+    assert f"与 `tests/test_golden_samples_capture_ready.py` 中注册的 {capture_ready_count} 个 `sample_id` 对齐" in golden_catalog
+    assert f"覆盖当前 {capture_ready_count} 个 capture-ready 样本包。" in metric_dictionary
+    assert f"Current capture-ready sample packs ({capture_ready_count} total):" in golden_samples_readme
+    assert f"Supporting-only governance sample packs ({supporting_only_count} total):" in golden_samples_readme
 
 
 def test_page_contracts_bind_sample_backed_governed_pages_to_golden_samples():
@@ -366,6 +464,7 @@ def test_page_contracts_bind_sample_backed_governed_pages_to_golden_samples():
         "GS-PNL-DATA-A",
         "GS-BRIDGE-A",
         "GS-RISK-A",
+        "GS-RISK-WARN-B",
         "GS-EXEC-OVERVIEW-A",
         "GS-EXEC-SUMMARY-A",
         "GS-EXEC-PNL-ATTR-A",
@@ -433,7 +532,7 @@ def test_product_category_detail_unit_stays_partial_until_closure_evidence_exist
         "`qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements",
         "first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1",
         "three P0 headline metrics are active in `docs/metric_dictionary.md`",
-        "decision 3C (2026-05-11) approves expanding detail rows into formal metrics for scale, FTP, net income, and yield fields",
+        "decision 3C (2026-05-11) approved expanding detail rows into formal metrics for scale, FTP, net income, and yield fields; concrete numbering / dictionary rows / golden assertions / model tests are now present for `MTR-PCP-004` through `MTR-PCP-012`",
         "core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only",
         "productCategoryPnlPageModel.test.ts",
     ):
@@ -465,8 +564,8 @@ def test_product_category_first_stage_field_freeze_is_explicitly_bounded():
         assert field_path in field_freeze
 
     for rule in (
-        "This is a page-level field freeze for detail semantics. It is also the starting field set for the 2026-05-11 detail-metric expansion decision",
-        "do not invent detail `metric_id` numbers from this table; add the approved field matrix and dictionary rows first",
+        "This is a page-level field freeze for detail semantics. It is also the source field set for the active 2026-05-11 decision 3C detail metrics in `docs/metric_dictionary.md`.",
+        "do not invent detail `metric_id` numbers beyond active `MTR-PCP-004` through `MTR-PCP-012`",
         "do not treat liability sign normalization as backend truth",
         "do not use `available_views` to add first-screen controls",
         "do not recompute `grand_total` in frontend",
@@ -483,10 +582,10 @@ def test_product_category_p0_closure_gate_stays_decision_safe():
 
     for required in (
         "P0 is a closure gate, not a new feature lane.",
-        "P0-approved active formal metric ids are currently `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003`.",
-        "detail `metric_id` expansion is approved directionally by decision 3C",
+        "P0-approved active formal metric ids are currently `MTR-PCP-001` through `MTR-PCP-012`.",
+        "detail `metric_id` expansion for decision 3C is implemented only for the approved row fields",
         "standalone outward `as_of_date` is a no-field product/API decision for this page",
-        "do not add additional `MTR-*` rows for product-category fields from sample evidence alone",
+        "do not add additional `MTR-*` rows for product-category fields from sample evidence alone; use a new approved matrix / dictionary / sample / test bundle",
         "do not infer `as_of_date` from `report_date` or `generated_at`",
         "P0 evidence can lock known stale/fallback behavior, but cannot choose unresolved product copy or API shape",
     ):
@@ -512,8 +611,15 @@ def test_product_category_metric_dictionary_does_not_promote_unapproved_fields()
     assert "MTR-PCP-001" in metric_dictionary
     assert "MTR-PCP-002" in metric_dictionary
     assert "MTR-PCP-003" in metric_dictionary
+    for metric_id in (f"MTR-PCP-{index:03d}" for index in range(4, 13)):
+        assert metric_id in metric_dictionary
     assert "category_id / side / view / report_date are dimensions, not separate metrics" in metric_dictionary
     assert "scenario outputs remain analytical scenario payloads, not formal dictionary metrics" in metric_dictionary
+    assert (
+        "row-level `cnx_scale`, `cny_scale`, `foreign_scale`, `cny_ftp`, `foreign_ftp`, "
+        "`cny_net`, `foreign_net`, `business_net_income`, and `weighted_yield` are active "
+        "only through `MTR-PCP-004`~`MTR-PCP-012`"
+    ) in metric_dictionary
 
     forbidden_promotions = (
         "| `MTR-PROD",
@@ -528,6 +634,12 @@ def test_product_category_metric_dictionary_does_not_promote_unapproved_fields()
         "`business_net_income`",
         "`weighted_yield`",
         "`cnx_scale`",
+        "`cny_scale`",
+        "`foreign_scale`",
+        "`cny_ftp`",
+        "`foreign_ftp`",
+        "`cny_net`",
+        "`foreign_net`",
     ):
         assert field_name in metric_dictionary
 
@@ -639,6 +751,21 @@ def test_product_category_as_of_date_decision_has_no_standalone_field():
     ):
         assert required in time_semantics
 
+    fallback_boundary = time_semantics.split("### 10.2 Fallback-Date Boundary", maxsplit=1)[
+        1
+    ]
+
+    for required in (
+        "This subsection is a boundary, not an approval to add a new date field.",
+        "The current outward product-category PnL contract has no standalone `fallback_date` field and no standalone `as_of_date` field.",
+        "Do not infer a fallback date from `report_date`, `resolved_report_date`, or `generated_at`.",
+        "If backend `result_meta` or lineage evidence reports fallback behavior, the page may surface raw `fallback_mode` / source-status evidence only.",
+        "Raw fallback evidence is not replacement date truth.",
+        "Any future outward `fallback_date` or `as_of_date` field requires reopening product/API decision 1B and adding targeted API/schema/page tests in the same change.",
+        "Current evidence is governance-strip and formal-readiness visibility only; it is not page certification or business-owner approval.",
+    ):
+        assert required in fallback_boundary
+
 
 def test_product_category_manual_adjustment_surface_ownership_is_bounded():
     page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
@@ -650,12 +777,13 @@ def test_product_category_manual_adjustment_surface_ownership_is_bounded():
     ].split("## 10. Time Semantics", maxsplit=1)[0]
 
     for required in (
-        "This section documents existing tested surfaces; it does not add lifecycle friction or change endpoint policy.",
+        "This section documents existing tested surfaces; it does not change endpoint policy.",
         "`/product-category-pnl`: canonical first-screen summary and quick-action surface.",
         "`/product-category-pnl/audit`: canonical full audit surface for current-state list, event timeline, filters, dual sort, pagination, retry, and CSV export.",
         "Full event-timeline evidence belongs to the audit page; the main page may show only a summary count and audit link.",
         "Lifecycle actions (`edit`, `revoke`, `restore`) are allowed on both surfaces only as already tested; the source-of-truth behavior is the shared manual-adjustment API plus PnL refresh path.",
-        "No confirmation modal, dual-sort rationale, or export policy is approved by this surface note.",
+        "`revoke` is destructive and requires browser confirmation on both surfaces before the shared API is called; cancel leaves the API and refresh workflow untouched.",
+        "No dual-sort rationale or export policy is approved by this surface note.",
     ):
         assert required in surface_section
 
@@ -671,10 +799,10 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
     page_contracts = _read_doc("page_contracts.md")
     readiness = _read_pnl_doc("product-category-development-data-readiness.md")
 
-    for doc in (metric_dictionary, page_contracts, readiness):
-        assert "MTR-PCP-001" in doc
-        assert "MTR-PCP-002" in doc
-        assert "MTR-PCP-003" in doc
+    for doc in (metric_dictionary, page_contracts):
+        for metric_id in (f"MTR-PCP-{index:03d}" for index in range(1, 13)):
+            assert metric_id in doc
+    assert "`MTR-PCP-001` through `MTR-PCP-012`" in readiness
 
     for stale_statement in (
         "formal product-category `metric_id` approval is still missing",
@@ -683,13 +811,16 @@ def test_product_category_p0_metric_approval_is_consistent_across_docs():
         "对 `GS-PROD-CAT-PNL-A` 另走业务审批，批准后再补字典级 `metric_id`",
         "Field-level truth only; no approved `metric_id` freeze",
         "Explicitly forbids inventing product-category metric IDs before approval",
+        "P0 keeps only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003` active",
+        "only the three headline product-category metrics are dictionary-active",
+        "Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics",
     ):
         assert stale_statement not in "\n".join((metric_dictionary, page_contracts, readiness))
 
     for required in (
-        "P0 keeps only `MTR-PCP-001`, `MTR-PCP-002`, and `MTR-PCP-003` active; decision 3C approves detail expansion directionally pending matrix / numbering / tests.",
-        "Decision 3C approves detail metric expansion directionally, but only the three headline product-category metrics are dictionary-active until the detail field matrix, numbering, dictionary rows, and tests land.",
-        "Keep `GS-PROD-CAT-PNL-A` bound to the three headline `MTR-PCP-*` metrics and carry decision 3C into a detail field matrix before adding any new detail `MTR-PCP-*` rows.",
+        "P0 keeps `MTR-PCP-001` through `MTR-PCP-012` active; decision 3C detail expansion is limited to the approved row-level fields.",
+        "Decision 3C detail metric expansion is dictionary-active for `MTR-PCP-004` through `MTR-PCP-012`; these rows bind only approved `result.rows[]` detail fields and do not promote dimensions or scenario payloads to formal metrics.",
+        "Keep `GS-PROD-CAT-PNL-A` bound to the approved product-category `MTR-PCP-*` set (`001`~`012`) and require a new matrix / dictionary / sample / test bundle before adding any further detail rows.",
     ):
         assert required in "\n".join((metric_dictionary, page_contracts, readiness))
 
@@ -709,12 +840,17 @@ def test_product_category_manual_adjustment_edit_policy_is_documented_without_ne
         "`operator`, `approval_status`, `account_code`, `currency`, `account_name`, `beginning_balance`, `ending_balance`, `monthly_pnl`, `daily_avg_balance`, and `annual_avg_balance` are the current editable draft fields.",
         "`approval_status` controls revoke/restore availability only as already tested: approved -> revoke enabled, pending -> neither, rejected -> restore enabled.",
         "Edit remains enabled for approved, pending, and rejected rows in the existing tests; do not infer this as final product policy for every edge case.",
-        "No confirmation modal or additional revoke friction is approved here.",
+        "Additional revoke friction beyond the tested confirmation gate is not approved here.",
     ):
         assert required in edit_policy
 
     assert "field-level edit policy is now documented" in checklist
-    assert "Unit 7 field-level edit policy" not in blocker_triage.split("## Next cursor-safe tasks", maxsplit=1)[1]
+    completed_evidence = blocker_triage.split("## Completed cursor-safe P0 evidence", maxsplit=1)[
+        1
+    ].split("## Blockers that need user/product decision", maxsplit=1)[0]
+    owner_review_queue = blocker_triage.split("## Owner Review Queue", maxsplit=1)[1]
+    assert "Unit 7 field-level edit policy" in completed_evidence
+    assert "Unit 7 field-level edit policy" not in owner_review_queue
 
 
 def test_product_category_stale_refresh_cross_surface_matrix_is_evidence_only():
@@ -741,7 +877,9 @@ def test_product_category_stale_refresh_cross_surface_matrix_is_evidence_only():
     ):
         assert required in matrix
 
-    assert "Unit 8 stale/refresh cross-surface refinement" not in blocker_triage.split(
-        "## Next cursor-safe tasks",
-        maxsplit=1,
-    )[1]
+    completed_evidence = blocker_triage.split("## Completed cursor-safe P0 evidence", maxsplit=1)[
+        1
+    ].split("## Blockers that need user/product decision", maxsplit=1)[0]
+    owner_review_queue = blocker_triage.split("## Owner Review Queue", maxsplit=1)[1]
+    assert "Unit 8 stale/refresh cross-surface matrix" in completed_evidence
+    assert "Unit 8 stale/refresh cross-surface refinement" not in owner_review_queue

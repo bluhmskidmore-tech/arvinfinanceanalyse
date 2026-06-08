@@ -10,6 +10,7 @@ from backend.app.repositories.duckdb_migrations import (
     ensure_risk_tensor_legacy_columns,
 )
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
 
 FACT_TABLE = "fact_formal_risk_tensor_daily"
@@ -95,6 +96,7 @@ class RiskTensorRepository:
         cache_version: str,
         trace_id: str,
     ) -> None:
+        require_repository_task_write_scope("replace_risk_tensor_row")
         conn = duckdb.connect(self.path, read_only=False)
         try:
             conn.execute("begin transaction")

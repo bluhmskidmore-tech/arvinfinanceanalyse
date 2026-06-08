@@ -9,7 +9,6 @@ import pytest
 
 from tests.helpers import load_module
 
-
 REPORT_DATE = "2026-03-31"
 
 
@@ -272,6 +271,7 @@ BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
 
 def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
     """Minimal formal yield curves so refresh-time `ensure_yield_curve_inputs_on_or_before` skips network fetches."""
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
     from backend.app.repositories.yield_curve_repo import YieldCurveRepository
     from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
     from backend.app.tasks.yield_curve_materialize import RULE_VERSION
@@ -301,7 +301,8 @@ def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
             )
             for curve_type in ("treasury", "cdb", "aaa_credit")
         ]
-        repo.replace_curve_snapshots(trade_date=trade_date, snapshots=snapshots, rule_version=RULE_VERSION)
+        with repository_task_write_scope("backend.app.tasks.bond_analytics_test_seed"):
+            repo.replace_curve_snapshots(trade_date=trade_date, snapshots=snapshots, rule_version=RULE_VERSION)
 
 
 def _materialize_sample_facts(tmp_path):

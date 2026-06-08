@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Contract source:
 - `docs/metric_dictionary.md`
@@ -18,6 +16,8 @@ Follow-up plan:
   exists and they are promoted into the metric dictionary binding.
 - Remove whitelist entries once the sample becomes bound and capture-ready.
 """
+
+from __future__ import annotations
 
 import re
 from pathlib import Path

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
@@ -47,6 +48,16 @@ def _perf_records(caplog, endpoint: str):
         for record in caplog.records
         if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
     ]
+
+
+def _replace_dashboard_bond_rows(
+    repo: BondAnalyticsRepository,
+    *,
+    report_date: str,
+    rows: list[BondAnalyticsRow],
+) -> None:
+    with repository_task_write_scope("backend.app.tasks.dashboard_api_contract_test"):
+        repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
 
 
 def _tyw_ddl() -> str:
@@ -272,11 +283,13 @@ def test_core_metrics_latest_anchor_and_three_cards(tmp_path, monkeypatch) -> No
     d1 = "2026-03-30"
     d2 = "2026-03-31"
     repo = BondAnalyticsRepository(str(duckdb_path))
-    repo.replace_bond_analytics_rows(
+    _replace_dashboard_bond_rows(
+        repo,
         report_date=d1,
         rows=[_one_bond_row(rd=d1, mv=Decimal("1000000"), ytm=Decimal("0.03"))],
     )
-    repo.replace_bond_analytics_rows(
+    _replace_dashboard_bond_rows(
+        repo,
         report_date=d2,
         rows=[
             _one_bond_row(rd=d2, mv=Decimal("1100000"), ytm=Decimal("0.032")),
@@ -501,7 +514,8 @@ def test_daily_changes_use_formal_zqtz_balance_when_bond_analytics_prior_is_spar
     d1 = "2026-04-29"
     d2 = "2026-04-30"
     repo = BondAnalyticsRepository(str(duckdb_path))
-    repo.replace_bond_analytics_rows(
+    _replace_dashboard_bond_rows(
+        repo,
         report_date=d2,
         rows=[_one_bond_row(rd=d2, mv=Decimal("900000"), ytm=Decimal("0.03"))],
     )
@@ -565,7 +579,8 @@ def test_core_metrics_falls_back_to_bond_analytics_when_zqtz_date_is_missing(
     d1 = "2026-04-29"
     d2 = "2026-04-30"
     repo = BondAnalyticsRepository(str(duckdb_path))
-    repo.replace_bond_analytics_rows(
+    _replace_dashboard_bond_rows(
+        repo,
         report_date=d2,
         rows=[
             _one_bond_row(rd=d2, mv=Decimal("1200000"), ytm=Decimal("0.04"), bond_type="gov"),
@@ -613,7 +628,8 @@ def test_daily_changes_missing_formal_zqtz_balance_baseline_returns_null_numeric
     d1 = "2026-04-29"
     d2 = "2026-04-30"
     repo = BondAnalyticsRepository(str(duckdb_path))
-    repo.replace_bond_analytics_rows(
+    _replace_dashboard_bond_rows(
+        repo,
         report_date=d2,
         rows=[_one_bond_row(rd=d2, mv=Decimal("1000000"), ytm=Decimal("0.03"))],
     )

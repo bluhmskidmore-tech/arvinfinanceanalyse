@@ -13,17 +13,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from backend.app.core_finance.curve_engine.bootstrapper import (
-    BootstrapResult,
-    CrossValidationResult,
     bootstrap_zero_curve,
     cross_validate_spot_curve,
     direct_spot_result,
 )
 from backend.app.core_finance.curve_engine.curve_types import CurvePoint
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

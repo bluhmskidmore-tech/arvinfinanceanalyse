@@ -17,7 +17,6 @@ from backend.app.services.bond_analytics_service import (
 )
 from tests.helpers import load_module
 
-
 STREAM = "bond_dv01_limit_config"
 REPORT_DATE = "2026-03-31"
 EFFECTIVE_DATE = "2026-03-01"

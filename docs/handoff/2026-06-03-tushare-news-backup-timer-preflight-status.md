@@ -1,9 +1,10 @@
 # Tushare News Backup Timer Preflight Status
 
-Status timestamp: 2026-06-03
+Status timestamp: 2026-06-07
 
 External timer is not enabled. Do not enable the timer until the `pre-enable`
-preflight returns `pass`.
+preflight returns `pass`; the current run is still blocked by missing homepage
+page evidence artifacts.
 
 This status is a handoff summary of the read-only preflight output. It does not
 call Tushare, write DuckDB, enqueue the actor, create a scheduler job, or open
@@ -80,9 +81,9 @@ Combined verdict: `blocked`
 
 Blocking stages: `pre-enable`, `post-enable`
 
-Pre-enable summary: `6 pass / 5 blocked`
+Pre-enable summary: `9 pass / 2 blocked`
 
-Post-enable summary: `6 pass / 7 blocked`
+Post-enable summary: `9 pass / 4 blocked`
 
 ## Operator Fill Order
 
@@ -92,7 +93,8 @@ Post-enable summary: `6 pass / 7 blocked`
 3. Complete the timer enablement packet in
    `docs/templates/tushare_news_backup_timer_enablement_packet.md`.
 4. Record page acceptance sign-off for the attached homepage evidence.
-5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun `--stage pre-enable` before creating the external timer.
+5. Set Enable timer to yes after pre-enable evidence is accepted, then rerun
+   `--stage pre-enable` before creating the external timer.
 6. After the first scheduled run, attach timer evidence and rerun
    `--stage post-enable`.
 
@@ -104,8 +106,6 @@ Post-enable inputs remain deferred until `pre-enable` returns `pass` and the
 first scheduled run finishes.
 
 Do not create the external timer while `pre-enable` is blocked.
-After `pre-enable` passes, create the external timer outside this packet and
-collect first-run evidence.
 
 ## Required Boundary Confirmations
 
@@ -166,21 +166,15 @@ Current verdict: `blocked`
 
 Current blocking items:
 
-- `owners_filled`
-- `boundary_confirmation_filled`
-- `timer_enablement_packet_filled`
-- `page_acceptance_signoff_filled`
-- `enable_timer_decision_yes`
+- `page_artifacts_exist`
+- `page_evidence_json_confirms_read_only_fallback`
 
 Current `next_actions`:
 
 | Gate | Path | Action |
 | --- | --- | --- |
-| `owners_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Credential owner, Schedule owner, Page acceptance owner, Rollback owner, and Evidence location. |
-| `boundary_confirmation_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Mark each boundary row yes and attach evidence without secrets. |
-| `timer_enablement_packet_filled` | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Fill timer host, repository root, Python executable, DuckDB path, log path, refresh window, write-window note, alert/log retention owner, and packet owners. |
-| `page_acceptance_signoff_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Page evidence owner sign-off. |
-| `enable_timer_decision_yes` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set Enable timer to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
+| `page_artifacts_exist` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Attach page screenshot and browser evidence JSON. |
+| `page_evidence_json_confirms_read_only_fallback` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Regenerate browser evidence JSON showing landed-data read behavior and no reserved write request. |
 
 ## Post-Enable Status
 
@@ -194,13 +188,10 @@ Current verdict: `blocked`
 
 Current blocking items:
 
-- `owners_filled`
-- `boundary_confirmation_filled`
-- `timer_enablement_packet_filled`
-- `page_acceptance_signoff_filled`
-- `enable_timer_decision_yes`
 - `timer_evidence_filled`
 - `post_enable_evidence_confirms_timer_enabled`
+- `page_artifacts_exist`
+- `page_evidence_json_confirms_read_only_fallback`
 
 Additional post-enable `next_actions`:
 
@@ -216,9 +207,12 @@ These gates currently pass in both stages:
 - `checklist_exists`
 - `timer_enablement_packet_exists`
 - `evidence_exists`
+- `owners_filled`
+- `boundary_confirmation_filled`
+- `timer_enablement_packet_filled`
 - `refresh_and_page_evidence_attached`
-- `page_artifacts_exist`
-- `page_evidence_json_confirms_read_only_fallback`
+- `page_acceptance_signoff_filled`
+- `enable_timer_decision_yes`
 
 Reserved routes remain reserved:
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-
-
 from tests.helpers import load_module
 
 

@@ -12,6 +12,7 @@ from typing import Any
 import duckdb
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.duckdb_repo import DuckDBRepository
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 _URL_KEY_CANDIDATES = (
     "url",
@@ -120,6 +121,7 @@ def upsert_news_event(
     pub_time_iso: str | None,
     extra: dict[str, object],
 ) -> bool:
+    require_repository_task_write_scope("upsert_news_event")
     extra_json = json.dumps(extra, ensure_ascii=False, default=str)
     identity = (url or title or summary or extra_json or "").strip()
     key_seed_pt = str(pub_time_iso or "").strip()
@@ -163,6 +165,7 @@ def upsert_news_event(
 
 
 def purge_expired_news_events(conn: duckdb.DuckDBPyConnection) -> int:
+    require_repository_task_write_scope("purge_expired_news_events")
     before_row = conn.execute(
         "select count(*) from fact_news_event where retention_until < now()",
     ).fetchone()
@@ -431,6 +434,7 @@ def backfill_from_choice_news_event(
     *,
     max_rows: int | None = None,
 ) -> int:
+    require_repository_task_write_scope("backfill_from_choice_news_event")
     ensure_news_warehouse_schema(conn)
     sql = "select group_id, payload_text, payload_json, received_at from choice_news_event"
     params: list[object] = []

@@ -168,4 +168,51 @@ describe("NewsEventsPage", () => {
     });
     expect(screen.getByTestId("news-events-active-topic")).toHaveTextContent(firstTopic);
   });
+
+  it("keeps the analytical event boundary and Choice result meta visible", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(async () => ({
+      result_meta: {
+        ...buildMeta("news.choice.latest", "tr_news_choice_latest"),
+        source_surface: "choice_news",
+        tables_used: ["choice_news_event"],
+      },
+      result: {
+        total_rows: 1,
+        limit: PAGE_SIZE,
+        offset: 0,
+        events: [
+          makeEvent({
+            event_key: "ev-boundary",
+            topic_code: "TOPIC_BOUNDARY",
+            payload_text: "Analytical vendor event only",
+          }),
+        ],
+      },
+    }));
+
+    renderNewsPage({
+      ...base,
+      getChoiceNewsEvents,
+    });
+
+    const boundary = await screen.findByTestId("news-events-analytical-boundary");
+    expect(boundary).toHaveTextContent("PAGE-CONTRACT-PENDING:/news-events");
+    expect(boundary).toHaveTextContent("GAP-NEWS-EVENTS-PAGE");
+    expect(boundary).toHaveTextContent("analytical temporary-exception");
+    expect(boundary).toHaveTextContent("not business truth");
+    expect(boundary).toHaveTextContent("not trading instruction");
+    expect(boundary).toHaveTextContent("not source data-quality approval");
+
+    const meta = screen.getByTestId("news-events-result-meta");
+    expect(meta).toHaveTextContent("basis=analytical");
+    expect(meta).toHaveTextContent("formal_use_allowed=false");
+    expect(meta).toHaveTextContent("result_kind=news.choice.latest");
+    expect(meta).toHaveTextContent("source_surface=choice_news");
+    expect(meta).toHaveTextContent("source_version=sv_news_test");
+    expect(meta).toHaveTextContent("rule_version=rv_news_test");
+    expect(meta).toHaveTextContent("cache_version=cv_news_test");
+    expect(meta).toHaveTextContent("tables_used=choice_news_event");
+    expect(meta).toHaveTextContent("generated_at=2026-04-12T08:00:00Z");
+  });
 });

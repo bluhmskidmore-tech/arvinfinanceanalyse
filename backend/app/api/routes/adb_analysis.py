@@ -107,80 +107,14 @@ def adb_coverage(
     if sd is None or ed is None:
         raise HTTPException(status_code=422, detail="start_date and end_date are required.")
 
-    import duckdb
     from backend.app.governance.settings import get_settings
 
     settings = get_settings()
     _ensure_adb_analysis_read_allowed(auth, settings)
-    db_path = str(settings.duckdb_path)
-    if not Path(db_path).exists():
-        raise HTTPException(status_code=500, detail=f"DuckDB not found: {db_path}")
-
-    conn = duckdb.connect(db_path, read_only=True)
     try:
-        calendar_days = (ed - sd).days + 1
-        result: dict = {
-            "start_date": sd.isoformat(),
-            "end_date": ed.isoformat(),
-            "calendar_days": calendar_days,
-            "snapshot_tables": {},
-            "formal_tables": {},
-        }
-
-        for tbl, label in [
-            ("zqtz_bond_daily_snapshot", "zqtz_snapshot"),
-            ("tyw_interbank_daily_snapshot", "tyw_snapshot"),
-        ]:
-            try:
-                rows = conn.execute(
-                    f"SELECT DISTINCT cast(report_date as varchar) FROM {tbl} "
-                    f"WHERE cast(report_date as date) BETWEEN ? AND ? ORDER BY 1",
-                    [sd, ed],
-                ).fetchall()
-                dates = [r[0] for r in rows]
-                result["snapshot_tables"][label] = {
-                    "dates_count": len(dates),
-                    "dates": dates,
-                }
-            except duckdb.Error:
-                result["snapshot_tables"][label] = {"dates_count": 0, "dates": [], "error": "table_not_found"}
-
-        for tbl, label in [
-            ("fact_formal_zqtz_balance_daily", "formal_zqtz"),
-            ("fact_formal_tyw_balance_daily", "formal_tyw"),
-        ]:
-            try:
-                rows = conn.execute(
-                    f"SELECT DISTINCT cast(report_date as varchar) FROM {tbl} "
-                    f"WHERE cast(report_date as date) BETWEEN ? AND ? AND currency_basis = 'CNY' ORDER BY 1",
-                    [sd, ed],
-                ).fetchall()
-                dates = [r[0] for r in rows]
-                result["formal_tables"][label] = {
-                    "dates_count": len(dates),
-                    "dates": dates,
-                }
-            except duckdb.Error:
-                result["formal_tables"][label] = {"dates_count": 0, "dates": [], "error": "table_not_found"}
-
-        # Compute missing dates: in snapshot but not in formal
-        snap_dates: set[str] = set()
-        for info in result["snapshot_tables"].values():
-            snap_dates.update(info.get("dates", []))
-        formal_dates: set[str] = set()
-        for info in result["formal_tables"].values():
-            formal_dates.update(info.get("dates", []))
-
-        missing = sorted(snap_dates - formal_dates)
-        result["snapshot_date_count"] = len(snap_dates)
-        result["formal_date_count"] = len(formal_dates)
-        result["missing_dates"] = missing
-        result["missing_count"] = len(missing)
-        result["coverage_pct"] = round(len(formal_dates) / max(len(snap_dates), 1) * 100, 1)
-
-        return result
-    finally:
-        conn.close()
+        return adb_analysis_service.adb_coverage_diagnostics(sd.isoformat(), ed.isoformat())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/adb/backfill")
@@ -196,7 +130,6 @@ def adb_backfill(
     if (ed - sd).days > 365:
         raise HTTPException(status_code=400, detail="Range too large; max 365 days.")
 
-    import duckdb
     from backend.app.governance.settings import get_settings
 
     settings = get_settings()
@@ -211,46 +144,19 @@ def adb_backfill(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    db_path = str(settings.duckdb_path)
-    if not Path(db_path).exists():
-        raise HTTPException(status_code=500, detail=f"DuckDB not found: {db_path}")
-
-    # Find snapshot dates in range
-    conn = duckdb.connect(db_path, read_only=True)
     try:
-        snap_dates: set[str] = set()
-        for tbl in ("zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"):
-            try:
-                rows = conn.execute(
-                    f"SELECT DISTINCT cast(report_date as varchar) FROM {tbl} "
-                    f"WHERE cast(report_date as date) BETWEEN ? AND ?",
-                    [sd, ed],
-                ).fetchall()
-                snap_dates.update(r[0] for r in rows if r[0])
-            except duckdb.Error:
-                pass
+        candidate_dates = adb_analysis_service.adb_backfill_candidate_dates(sd.isoformat(), ed.isoformat())
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        formal_dates: set[str] = set()
-        for tbl in ("fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"):
-            try:
-                rows = conn.execute(
-                    f"SELECT DISTINCT cast(report_date as varchar) FROM {tbl} "
-                    f"WHERE cast(report_date as date) BETWEEN ? AND ?",
-                    [sd, ed],
-                ).fetchall()
-                formal_dates.update(r[0] for r in rows if r[0])
-            except duckdb.Error:
-                pass
-    finally:
-        conn.close()
-
-    missing = sorted(snap_dates - formal_dates)
+    db_path = str(settings.duckdb_path)
+    missing = list(candidate_dates["missing_dates"])
     if not missing:
         return {
             "status": "no_action",
             "message": "All snapshot dates already materialized.",
-            "snapshot_dates": len(snap_dates),
-            "formal_dates": len(formal_dates),
+            "snapshot_dates": len(candidate_dates["snapshot_dates"]),
+            "formal_dates": len(candidate_dates["formal_dates"]),
         }
 
     # Import materialization function

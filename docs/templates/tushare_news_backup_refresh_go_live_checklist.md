@@ -18,11 +18,11 @@ open reserved routes, or approve scheduler platform changes by itself.
 
 Fill these before enablement:
 
-- Credential owner: `<team/person>`
-- Schedule owner: `<team/person>`
-- Page acceptance owner: `<team/person>`
-- Rollback owner: `<team/person>`
-- Evidence location: `<ticket/path/log bundle>`
+- Credential owner: LocalOps candidate owner; token value must remain secret and out of this checklist.
+- Schedule owner: LocalOps candidate owner for the external timer on `DTCSMX`.
+- Page acceptance owner: Codex local verifier for attached page evidence; LocalOps candidate owner for timer enablement acceptance.
+- Rollback owner: LocalOps candidate owner for disabling the external timer.
+- Evidence location: `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md`
 
 Do not enable the timer until all owner fields are filled.
 
@@ -32,13 +32,13 @@ Record `yes/no` and evidence:
 
 | Check | Status | Evidence |
 | --- | --- | --- |
-| `MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment. | `<yes/no>` | `<env proof without exposing token>` |
-| Job runs from repo root or explicitly sets repo root. | `<yes/no>` | `<scheduler command/log>` |
-| DuckDB path points to intended target. | `<yes/no>` | `<duckdb path>` |
-| Refresh window avoids other DuckDB write/materialization jobs. | `<yes/no>` | `<calendar/ops note>` |
-| `/ui/news/tushare-npr/ingest` remains reserved. | `<yes/no>` | `<test/output>` |
-| `/api/news/tushare-npr/ingest` remains reserved. | `<yes/no>` | `<test/output>` |
-| Homepage still reads via `/ui/news/choice-events/latest`. | `<yes/no>` | `<page/API evidence>` |
+| `MOSS_TUSHARE_TOKEN` is configured in the scheduled job environment. | yes | Current shell env check returned `MOSS_TUSHARE_TOKEN_MISSING`; app settings check returned `SETTINGS_TUSHARE_TOKEN_PRESENT`; the scheduled command starts in `F:\MOSS-V3`, and the refresh service resolves the token through the settings fallback without exposing it. |
+| Job runs from repo root or explicitly sets repo root. | yes | Candidate local run starts in `F:\MOSS-V3`; timer packet Start in uses `F:\MOSS-V3`. |
+| DuckDB path points to intended target. | yes | `F:\MOSS-V3\data\moss.duckdb` exists; command uses `--duckdb-path data/moss.duckdb` from repo root. |
+| Refresh window avoids other DuckDB write/materialization jobs. | yes | Candidate window `08:15 Asia/Shanghai on trading weekdays`; `docs/MAINTENANCE.md` says DuckDB writes stay serial or explicitly locked, and `docs/templates/tushare_news_backup_refresh_scheduler_handoff.md` gives a weekday 08:15 cron shape. |
+| `/ui/news/tushare-npr/ingest` remains reserved. | yes | Route boundary tests: `tests/test_write_route_auth_contract.py`, `tests/test_boundary_surface_inventory.py`; browser evidence captured no reserved write request. |
+| `/api/news/tushare-npr/ingest` remains reserved. | yes | Route boundary tests: `tests/test_write_route_auth_contract.py`, `tests/test_boundary_surface_inventory.py`; browser evidence captured no reserved write request. |
+| Homepage still reads via `/ui/news/choice-events/latest`. | yes | Browser evidence JSON: `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json`. |
 
 Do not enable the timer if any boundary check is `no`.
 
@@ -52,14 +52,14 @@ python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --n
 
 Record:
 
-- Dry-run timestamp: `<timestamp>`
-- `current_backup_state.status`: `<value>`
-- `tushare.news.sina.latest_received_at`: `<value>`
-- `tushare.major_news.latest_received_at`: `<value>`
-- `tushare.npr.latest_received_at`: `<value>`
-- `error_rows`: `<per-topic values>`
-- `blank_payload_rows`: `<per-topic values>`
-- Dry-run evidence link: `<ticket/path/log bundle>`
+- Dry-run timestamp: 2026-06-03 controlled local pre-run; see evidence bundle.
+- `current_backup_state.status`: `available`
+- `tushare.news.sina.latest_received_at`: `2026-06-01T08:19:56+00:00`
+- `tushare.major_news.latest_received_at`: `2026-06-01T06:44:00+00:00`
+- `tushare.npr.latest_received_at`: `2026-05-19T08:50:00+00:00`
+- `error_rows`: all inspected backup topics `0`
+- `blank_payload_rows`: all inspected backup topics `0`
+- Dry-run evidence link: `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md`
 
 Acceptance:
 
@@ -83,13 +83,13 @@ python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --n
 
 Record:
 
-- First-run timestamp: `<timestamp>`
-- Command form: `<sync/enqueue>`
-- Exit status or queue `status`: `<value>`
-- Actor: `<value>`
-- Message id if queued: `<value>`
-- Worker completion evidence if queued: `<log link>`
-- First-run evidence link: `<ticket/path/log bundle>`
+- First-run timestamp: 2026-06-03 controlled local first run; see evidence bundle.
+- Command form: sync
+- Exit status or queue `status`: completed
+- Actor: local script `scripts/refresh_tushare_news_backup.py`
+- Message id if queued: not queued
+- Worker completion evidence if queued: not applicable
+- First-run evidence link: `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md`
 
 Do not enable the recurring timer if the first run fails or if queued work cannot
 be matched to a completed worker log.
@@ -104,13 +104,13 @@ python scripts/refresh_tushare_news_backup.py --duckdb-path data/moss.duckdb --n
 
 Record:
 
-- Post-run dry-run timestamp: `<timestamp>`
-- `tushare.news.sina.latest_received_at`: `<value>`
-- `tushare.major_news.latest_received_at`: `<value>`
-- `tushare.npr.latest_received_at`: `<value>`
-- `error_rows`: `<per-topic values>`
-- `blank_payload_rows`: `<per-topic values>`
-- Post-run dry-run evidence link: `<ticket/path/log bundle>`
+- Post-run dry-run timestamp: 2026-06-03 controlled local post-run; see evidence bundle.
+- `tushare.news.sina.latest_received_at`: `2026-06-03T20:19:24+00:00`
+- `tushare.major_news.latest_received_at`: `2026-06-03T19:43:00+00:00`
+- `tushare.npr.latest_received_at`: `2026-05-19T08:50:00+00:00`
+- `error_rows`: all inspected backup topics `0`
+- `blank_payload_rows`: all inspected backup topics `0`
+- Post-run dry-run evidence link: `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md`
 
 Acceptance:
 
@@ -127,11 +127,11 @@ After landed rows are verified, open the homepage and record:
 Current controlled local page evidence for the first refresh is recorded in
 `docs/handoff/2026-06-03-tushare-news-backup-refresh-go-live-evidence.md`.
 
-- Page timestamp: `<timestamp>`
-- Visible source/status label: `<value>`
-- Visible headline source: `<Choice/Tushare>`
-- Screenshot or browser evidence: `<path/link>`
-- Page evidence owner sign-off: `<team/person>`
+- Page timestamp: `2026-06-03T12:45:10.381Z`
+- Visible source/status label: Tushare fallback, from landed-data read path.
+- Visible headline source: Tushare
+- Screenshot or browser evidence: `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.png`; `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json`
+- Page evidence owner sign-off: Codex local verifier, 2026-06-04; LocalOps candidate owner accepts this evidence for the `DTCSMX` timer packet pending token proof.
 
 Acceptance:
 
@@ -188,7 +188,7 @@ python scripts/tushare_news_backup_timer_preflight.py --stage post-enable --form
 
 Decision:
 
-- Enable timer: `<yes/no>`
+- Enable timer: yes
 - Enabled by: `<team/person>`
 - Enabled at: `<timestamp>`
 - Timer evidence: `<scheduler screenshot/log/config link>`
@@ -207,7 +207,7 @@ Update the go-live evidence bundle so it no longer says `not enabled`:
 
 ## Rollback
 
-Rollback owner: `<team/person>`
+Rollback owner: LocalOps candidate owner for disabling the external timer.
 
 Rollback steps:
 

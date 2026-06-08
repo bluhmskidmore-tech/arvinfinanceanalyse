@@ -16,6 +16,7 @@ from backend.app.repositories.duckdb_migrations import (
     ensure_balance_zqtz_legacy_columns,
 )
 from backend.app.repositories.duckdb_repo import DuckDBRepository
+from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 
 
 def _zqtz_snapshot_row_from_tuple(row: tuple) -> ZqtzSnapshotRow:
@@ -297,6 +298,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
         zqtz_rows: list[FormalZqtzBalanceFactRow],
         tyw_rows: list[FormalTywBalanceFactRow],
     ) -> None:
+        require_repository_task_write_scope("replace_formal_balance_rows")
         conn = duckdb.connect(self.path, read_only=False)
         try:
             conn.execute("begin transaction")

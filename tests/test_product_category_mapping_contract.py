@@ -17,7 +17,9 @@ from backend.app.config.product_category_mapping import (
     build_product_category_config_for_report_date,
     resolve_product_category_ftp_rate_pct,
 )
-from backend.app.core_finance.config import product_category_mapping as authority_mapping
+from backend.app.core_finance.config import (
+    product_category_mapping as authority_mapping,
+)
 
 _REQUIRED_KEYS = frozenset(
     {"id", "name", "side", "level", "scale_accounts", "pnl_accounts", "ftp_rate_pct", "children"}

@@ -44,19 +44,8 @@ def test_product_category_owner_decision_packet_groups_product_and_api_blockers(
     }
     assert packet["next_review_queue"] == [
         {
-            "review_key": "next_1_outward_as_of_date",
+            "review_key": "next_1_refresh_timeout_stale_copy",
             "rank": "1",
-            "topic": "outward `as_of_date`",
-            "required_review": "decide whether the page should expose `as_of_date` separately from the selected `report_date`.",
-            "review_owner_type": "product_owner",
-            "evidence_path": "docs/pnl/product-category-page-truth-contract.md",
-            "blocker_reason": "The page currently preserves selected report_date and resolved report_date semantics, but no owner-approved outward as_of_date field exists.",
-            "pre_signature_action": "Owner must either approve no standalone outward as_of_date or specify the exact API/UI field before signature.",
-            "current_status": "pending_review",
-        },
-        {
-            "review_key": "next_2_refresh_timeout_stale_copy",
-            "rank": "2",
             "topic": "refresh timeout/stale copy",
             "required_review": "specify the copy shown when refresh exceeds the current UI polling window.",
             "review_owner_type": "product_owner",
@@ -66,8 +55,8 @@ def test_product_category_owner_decision_packet_groups_product_and_api_blockers(
             "current_status": "pending_review",
         },
         {
-            "review_key": "next_3_unit_4_extended_validation_copy",
-            "rank": "3",
+            "review_key": "next_2_unit_4_extended_validation_copy",
+            "rank": "2",
             "topic": "Unit 4 extended validation copy",
             "required_review": "freeze any additional backend validation wording beyond the two covered empty-payload cases.",
             "review_owner_type": "product_owner",
@@ -77,8 +66,8 @@ def test_product_category_owner_decision_packet_groups_product_and_api_blockers(
             "current_status": "pending_review",
         },
         {
-            "review_key": "next_4_dual_sort_rationale",
-            "rank": "4",
+            "review_key": "next_3_dual_sort_rationale",
+            "rank": "3",
             "topic": "dual-sort rationale",
             "required_review": "record the product intent for keeping current and event sort controls independent.",
             "review_owner_type": "product_owner",
@@ -88,8 +77,8 @@ def test_product_category_owner_decision_packet_groups_product_and_api_blockers(
             "current_status": "pending_review",
         },
         {
-            "review_key": "next_5_revoke_confirmation_policy",
-            "rank": "5",
+            "review_key": "next_4_revoke_confirmation_policy",
+            "rank": "4",
             "topic": "revoke confirmation policy",
             "required_review": "freeze whether destructive revoke needs policy beyond the already tested browser confirmation gate.",
             "review_owner_type": "product_owner",
@@ -100,10 +89,18 @@ def test_product_category_owner_decision_packet_groups_product_and_api_blockers(
         },
     ]
     assert packet["next_review_queue_scope"] == {
-        "source_section": "Next cursor-safe tasks",
-        "item_count": 5,
+        "source_section": "Owner Review Queue",
+        "item_count": 4,
+        "formal_decision_item_count": 5,
+        "formal_decision_class_count": 5,
+        "supplemental_review_topic_count": 1,
         "counts_as_owner_decision": False,
         "captures_product_or_api_decisions": False,
+        "boundary": (
+            "Owner Review Queue has 4 review topics. Three map to formal Class 1 product "
+            "decision blockers and one is supplemental revoke-policy review; the queue does "
+            "not change the 5 formal decision/API contract item count."
+        ),
     }
     assert packet["evidence_scope"] == {
         "approves_metric_or_page": False,
@@ -111,6 +108,9 @@ def test_product_category_owner_decision_packet_groups_product_and_api_blockers(
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
         "captures_product_or_api_decisions": False,
+        "captures_golden_sample_approval": False,
+        "captures_closure_approval": False,
+        "certification_effect": "none",
     }
     assert packet["decision_intake_checklist"] == {
         "checklist_kind": "owner_decision_intake_checklist",
@@ -152,7 +152,33 @@ def test_product_category_owner_decision_packet_cli_writes_markdown(tmp_path: Pa
     assert payload["decision_status"] == "pending_owner_decisions"
     assert payload["owner_decision_ready"] is False
     assert payload["decision_item_count"] == 5
-    assert payload["next_review_queue_item_count"] == 5
+    assert payload["next_review_queue_item_count"] == 4
+    assert payload["formal_decision_item_count"] == 5
+    assert payload["formal_decision_class_count"] == 5
+    assert payload["supplemental_review_topic_count"] == 1
+    assert payload["decision_intake_checklist"] == {
+        "decision_intake_ready": True,
+        "owner_decision_ready": False,
+        "captures_product_or_api_decisions": False,
+        "pending_decision_count": 5,
+    }
+    assert payload["next_review_queue_scope"] == {
+        "counts_as_owner_decision": False,
+        "captures_product_or_api_decisions": False,
+        "formal_decision_item_count": 5,
+        "supplemental_review_topic_count": 1,
+    }
+    assert payload["certification_effect"] == "none"
+    assert payload["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "captures_product_or_api_decisions": False,
+        "captures_golden_sample_approval": False,
+        "captures_closure_approval": False,
+        "certification_effect": "none",
+    }
 
     text = output_path.read_text(encoding="utf-8")
     assert "Product-Category PnL Owner Decision Packet" in text
@@ -164,19 +190,26 @@ def test_product_category_owner_decision_packet_cli_writes_markdown(tmp_path: Pa
     assert "decision_intake_ready=true" in text
     assert "pending_decision_count=5" in text
     assert "Next Review Queue" in text
-    assert "next_review_queue_item_count=5" in text
+    assert "next_review_queue_item_count=4" in text
+    assert "formal_decision_item_count=5" in text
+    assert "supplemental_review_topic_count=1" in text
+    assert "supplemental revoke-policy review" in text
     assert "Evidence path" in text
     assert "Blocker reason" in text
     assert "Pre-signature action" in text
-    assert "next_1_outward_as_of_date" in text
-    assert "next_5_revoke_confirmation_policy" in text
-    assert "docs/pnl/product-category-page-truth-contract.md" in text
+    assert "next_1_refresh_timeout_stale_copy" in text
+    assert "next_4_revoke_confirmation_policy" in text
+    assert "next_1_outward_as_of_date" not in text
+    assert "outward `as_of_date`" not in text
     assert "Owner must approve browser confirmation as sufficient or specify an additional revoke policy gate." in text
     assert "counts_as_owner_decision=false" in text
     assert "unit_3_long_running_refresh_timeout_messaging" in text
     assert "unit_6_backend_global_utf_8_bom_policy_for_generated_csv" in text
     assert "unit_7_destructive_revoke_confirmation_policy" not in text
     assert "captures_product_or_api_decisions=false" in text
+    assert "captures_golden_sample_approval=false" in text
+    assert "captures_closure_approval=false" in text
+    assert "certification_effect=none" in text
     assert "This packet does not approve page closure" in text
 
 

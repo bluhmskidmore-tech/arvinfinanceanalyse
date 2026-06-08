@@ -1,7 +1,7 @@
 ﻿import json
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -611,10 +611,6 @@ def test_materialize_uses_same_lock_for_same_duckdb_across_governance_dirs(tmp_p
     task_module = sys.modules.get("backend.app.tasks.materialize")
     if task_module is None:
         task_module = load_module("backend.app.tasks.materialize", "backend/app/tasks/materialize.py")
-    locks_module = load_module(
-        "backend.app.governance.locks",
-        "backend/app/governance/locks.py",
-    )
 
     original_acquire_lock = task_module.acquire_lock
 

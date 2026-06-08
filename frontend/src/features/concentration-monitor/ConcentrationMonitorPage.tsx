@@ -18,12 +18,7 @@ import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
-import {
-  formatRatioAsPercent,
-  limitTone,
-  limitToneToKpi,
-  type LimitTone,
-} from "../workbench/components/kpiFormat";
+import { limitTone, limitToneToKpi, type LimitTone } from "../workbench/components/kpiFormat";
 
 /** 前端展示用限额常量；与后端口径无关。 */
 const LIMITS = {
@@ -102,6 +97,15 @@ function parseRatio(value: string | Numeric | undefined): number | null {
   }
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function formatConcentrationPercent(value: string | Numeric | undefined): string {
+  const ratio = parseRatio(value);
+  if (ratio === null) {
+    return displayStr(value);
+  }
+  const pct = ratio >= 0 && ratio <= 1 ? ratio * 100 : ratio;
+  return `${pct.toFixed(2)}%`;
 }
 
 function toneColor(tone: LimitTone) {
@@ -239,21 +243,21 @@ export default function ConcentrationMonitorPage() {
     return [
       {
         label: "单一发行人占比",
-        currentDisplay: top1w ? displayStr(top1w) : "—",
+        currentDisplay: top1w ? formatConcentrationPercent(top1w) : "—",
         currentNum: maxSingleWeight,
         limitDisplay: String(LIMITS.issuer_single_max),
         tone: limitTone(maxSingleWeight, LIMITS.issuer_single_max),
       },
       {
         label: "发行人前五集中度",
-        currentDisplay: displayStr(issuer?.top5_concentration),
+        currentDisplay: formatConcentrationPercent(issuer?.top5_concentration),
         currentNum: top5,
         limitDisplay: String(LIMITS.issuer_top5_max),
         tone: limitTone(top5, LIMITS.issuer_top5_max),
       },
       {
         label: "发行人 HHI",
-        currentDisplay: displayStr(issuer?.hhi),
+        currentDisplay: formatConcentrationPercent(issuer?.hhi),
         currentNum: hhi,
         limitDisplay: String(LIMITS.hhi_warning),
         tone: limitTone(hhi, LIMITS.hhi_warning),
@@ -262,7 +266,7 @@ export default function ConcentrationMonitorPage() {
         label: "评级 AA 及以下占比",
         currentDisplay:
           credit?.rating_aa_and_below_weight !== undefined && credit.rating_aa_and_below_weight != null
-            ? displayStr(credit.rating_aa_and_below_weight)
+            ? formatConcentrationPercent(credit.rating_aa_and_below_weight)
             : "—",
         currentNum: belowAa,
         limitDisplay: String(LIMITS.below_aa_max),
@@ -377,25 +381,25 @@ export default function ConcentrationMonitorPage() {
             <div data-testid="concentration-monitor-kpi-grid" style={summaryGridStyle}>
               <KpiCard
                 title="发行人 HHI 指数"
-                value={formatRatioAsPercent(displayStr(issuer?.hhi))}
+                value={formatConcentrationPercent(issuer?.hhi)}
                 detail="来自 concentration_by_issuer.hhi。"
                 tone={limitToneToKpi(limitTone(parseRatio(issuer?.hhi), LIMITS.hhi_warning))}
               />
               <KpiCard
                 title="发行人前五集中度"
-                value={formatRatioAsPercent(displayStr(issuer?.top5_concentration))}
+                value={formatConcentrationPercent(issuer?.top5_concentration)}
                 detail="来自 concentration_by_issuer.top5_concentration。"
                 tone={limitToneToKpi(limitTone(parseRatio(issuer?.top5_concentration), LIMITS.issuer_top5_max))}
               />
               <KpiCard
                 title="信用债占比"
-                value={formatRatioAsPercent(displayStr(credit.credit_weight))}
+                value={formatConcentrationPercent(credit.credit_weight)}
                 detail="来自 credit_weight（信用子集相对组合的权重）。"
                 tone={limitToneToKpi(limitTone(parseRatio(credit.credit_weight), 0.85))}
               />
               <KpiCard
                 title="评级 AA 及以下占比"
-                value={formatRatioAsPercent(displayStr(credit.rating_aa_and_below_weight))}
+                value={formatConcentrationPercent(credit.rating_aa_and_below_weight)}
                 detail="rating_aa_and_below_weight（信用债 AA 及以下市值 / 组合总市值）。"
                 tone={limitToneToKpi(
                   belowAa === null ? "ok" : limitTone(belowAa, LIMITS.below_aa_max),

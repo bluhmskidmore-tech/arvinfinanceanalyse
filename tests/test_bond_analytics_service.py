@@ -4,6 +4,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import duckdb
+
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -14,6 +16,7 @@ from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
     _seed_bond_snapshot_rows,
+    _seed_formal_zqtz_balance_for_cb001,
 )
 
 
@@ -261,10 +264,33 @@ def test_action_attribution_success_response_uses_core_payload_builder(tmp_path,
     assert captured["pnl_by_key"] == {"BOND-001::Portfolio A::Desk 7": Decimal("12.50")}
     assert captured["pnl_warning_codes"] == []
     assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result"]["status"] == "ready"
     assert payload["result"]["warnings"] == ["CORE_WARNING"]
     get_settings.cache_clear()
+
+
+def test_action_attribution_mom_pnl_dates_do_not_list_union_report_dates(monkeypatch):
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    class FakePnlRepository:
+        def list_union_report_dates(self):
+            raise AssertionError("MoM action attribution should use period_end directly.")
+
+    dates, warnings = service_mod._pnl_report_dates_for_action_attribution(
+        FakePnlRepository(),
+        period_type="MoM",
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+    )
+
+    assert dates == ["2026-03-31"]
+    assert warnings == []
 
 
 def test_bond_analytics_service_uses_shared_formal_result_runtime_helper():
@@ -373,6 +399,23 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     get_settings.cache_clear()
 
 
+def test_bond_analytics_return_decomposition_discloses_cny_amount_basis(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "all", "all")
+
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert "CNY/RMB" in payload["result_meta"]["amount_currency_basis_note"]
+    get_settings.cache_clear()
+
+
 def test_benchmark_excess_with_curve_data(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     _seed_curve_rows(str(tmp_path / "moss.duckdb"))
@@ -415,6 +458,53 @@ def test_benchmark_excess_with_cdb_curve_data(tmp_path, monkeypatch):
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_cdb_current" in payload["result_meta"]["source_version"]
     assert result["warnings"] == []
+    get_settings.cache_clear()
+
+
+def test_benchmark_excess_reuses_cached_envelope(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(tmp_path / "moss.duckdb"))
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    call_count = 0
+    original_compute = service_mod.compute_benchmark_excess
+
+    def counting_compute(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return original_compute(*args, **kwargs)
+
+    monkeypatch.setattr(service_mod, "compute_benchmark_excess", counting_compute)
+
+    first = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "CDB_INDEX")
+    second = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "CDB_INDEX")
+
+    assert first == second
+    assert call_count == 1
+    get_settings.cache_clear()
+
+
+def test_benchmark_excess_many_matches_single_payload(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(tmp_path / "moss.duckdb"))
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    single = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "CDB_INDEX")
+    service_mod._benchmark_excess_cache.clear()
+    batch = service_mod.get_benchmark_excess_many([date(2026, 3, 31)], "MoM", "CDB_INDEX")["2026-03-31"]
+
+    assert batch["result"]["portfolio_return"] == single["result"]["portfolio_return"]
+    assert batch["result"]["benchmark_return"] == single["result"]["benchmark_return"]
+    assert batch["result"]["excess_return"] == single["result"]["excess_return"]
+    assert batch["result"]["warnings"] == single["result"]["warnings"]
+    assert batch["result_meta"]["vendor_status"] == single["result_meta"]["vendor_status"]
+    assert batch["result_meta"]["fallback_mode"] == single["result_meta"]["fallback_mode"]
     get_settings.cache_clear()
 
 
@@ -519,6 +609,94 @@ def test_bond_analytics_dv01_risk_defaults_to_oci_scope_and_parallel_shocks(tmp_
     assert [row["tenor_bucket"] for row in result["tenor_buckets"]] == ["5Y"]
     assert result["top_bonds"][0]["instrument_code"] == "CB-001"
     assert result["top_issuers"][0]["issuer_name"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_risk(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                REPORT_DATE,
+                "USD-CB-SVC",
+                "USD service bond",
+                "Portfolio USD",
+                "CC-USD",
+                "bank book",
+                "credit bond",
+                "corporate bond",
+                "Issuer USD",
+                "Industry",
+                "A",
+                "USD",
+                Decimal("100"),
+                Decimal("100"),
+                Decimal("98"),
+                Decimal("1"),
+                Decimal("0.03"),
+                Decimal("0.04"),
+                "2031-03-31",
+                None,
+                0,
+                False,
+                "annual",
+                "sv_bond_snap_usd",
+                "rv_bond_snap_usd",
+                "ib_bond_usd",
+                "trace_usd_svc",
+            ],
+        )
+    finally:
+        conn.close()
+
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-CB-SVC",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_top_holdings(date(2026, 3, 31), top_n=10)
+
+    assert payload["result_meta"]["amount_currency_basis"] == "CNY"
+    assert "CNY/RMB basis" in payload["result_meta"]["amount_currency_basis_note"]
+    assert any("row-level fallback markers" in warning for warning in payload["result"]["warnings"])
+    assert any("USD" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 

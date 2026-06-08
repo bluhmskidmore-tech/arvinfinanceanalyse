@@ -15,7 +15,7 @@ describe("Tailwind integration", () => {
     };
     const viteConfig = readFileSync(VITE_CONFIG_PATH, "utf8");
     const globalCss = readFileSync(GLOBAL_CSS_PATH, "utf8");
-    const normalizedGlobalCss = globalCss.replace(/^\uFEFF/, "");
+    const normalizedGlobalCss = globalCss.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 
     expect({
       ...packageJson.dependencies,

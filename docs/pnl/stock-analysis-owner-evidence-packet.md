@@ -23,6 +23,13 @@ This packet does not approve page closure, write governance records, prove page 
 
 Golden sample boundary: `observational_page_dto_capture_ready_pending_approval`
 Dedicated golden sample: `GS-STOCK-ANALYSIS-OBS-A`
+Route-specific evidence scope: `stock_analysis_observational_livermore_dto_only`
+Trading instruction allowed: `false`
+Execution approval allowed: `false`
+Allocation advice allowed: `false`
+Position-change command allowed: `false`
+Formal stock metric promotion allowed: `false`
+Observational boundary status: `no_trading_instruction_boundary_pending_owner_acceptance`
 
 Out of scope:
 
@@ -88,4 +95,5 @@ Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-da
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 - `validates_required_fields=true`

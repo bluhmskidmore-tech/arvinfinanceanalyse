@@ -2,17 +2,24 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from backend.app.api import router as api_router
 from backend.app.governance.settings import get_settings
-from backend.app.observability import setup_opentelemetry
 from backend.app.security.auth_context import validate_auth_startup_guardrails
-from backend.app.services.executive_service import warm_home_snapshot_cache_if_configured
-from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured
-from backend.app.services.market_home_warmup_service import warm_market_home_cache_if_configured
-from backend.app.storage_bootstrap import run_startup_storage_migrations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+
+_settings = get_settings()
+validate_auth_startup_guardrails(_settings)
+
+from backend.app.api import router as api_router  # noqa: E402
+from backend.app.observability import setup_opentelemetry  # noqa: E402
+from backend.app.services.executive_service import (  # noqa: E402
+    warm_home_income_trend_cache_if_configured,
+    warm_home_snapshot_cache_if_configured,
+)
+from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured  # noqa: E402
+from backend.app.services.market_home_warmup_service import warm_market_home_cache_if_configured  # noqa: E402
+from backend.app.storage_bootstrap import run_startup_storage_migrations  # noqa: E402
 
 if not logging.getLogger().handlers:
     logging.basicConfig(
@@ -30,6 +37,7 @@ async def lifespan(_app: FastAPI):
     settings = get_settings()
     warm_hermes_bridge_if_configured(settings)
     warm_home_snapshot_cache_if_configured(settings)
+    warm_home_income_trend_cache_if_configured(settings)
     warm_market_home_cache_if_configured(settings)
     yield
 
@@ -40,8 +48,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 setup_opentelemetry(app)
-_settings = get_settings()
-validate_auth_startup_guardrails(_settings)
 app.add_middleware(
     GZipMiddleware,
     minimum_size=1024,

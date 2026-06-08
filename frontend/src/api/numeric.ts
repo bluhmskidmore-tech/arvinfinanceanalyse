@@ -11,6 +11,7 @@ const NUMERIC_UNITS: ReadonlySet<NumericUnit> = new Set<NumericUnit>([
   "pct",
   "bp",
   "ratio",
+  "years",
   "count",
   "dv01",
   "yi",

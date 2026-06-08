@@ -13,8 +13,13 @@ from fastapi.testclient import TestClient
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.balance_analysis_repo import ensure_balance_analysis_tables
-from backend.app.repositories.governance_repo import CACHE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.repositories.balance_analysis_repo import (
+    ensure_balance_analysis_tables,
+)
+from backend.app.repositories.governance_repo import (
+    CACHE_MANIFEST_STREAM,
+    GovernanceRepository,
+)
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.tasks.balance_analysis_materialize import CACHE_KEY, RULE_VERSION
 from tests.helpers import load_module

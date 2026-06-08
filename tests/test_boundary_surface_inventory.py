@@ -11,8 +11,12 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.security.route_policy import (
+    ADMIN_SCOPE_ACTIONS,
+    POLICY_SCOPE_SEMANTICS,
+    RoutePolicySemantics,
+)
 from tests.helpers import load_module
-
 
 # Committed docs only — clean clones must pass without local `.omx/plans/` (often gitignored).
 REQUIRED_AUTHORITY_DOCS = (
@@ -66,8 +70,8 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("preview.source-foundation.traces", "/ui/preview/source-foundation/zqtz/traces", "GET", params={"limit": 1, "offset": 0}),
     SurfaceCase("preview.source-foundation.refresh", "/ui/preview/source-foundation/refresh", "POST", side_effect_target="refresh_source_preview", side_effect_module="backend.app.api.routes.source_preview", side_effect_file="backend/app/api/routes/source_preview.py"),
     SurfaceCase("preview.source-foundation.refresh-status", "/ui/preview/source-foundation/refresh-status", "GET"),
-    SurfaceCase("news.ui.ingest", "/ui/news/tushare-npr/ingest", "POST", side_effect_target="ingest_tushare_npr_to_choice_news", side_effect_module="backend.app.api.routes.choice_news", side_effect_file="backend/app/api/routes/choice_news.py"),
-    SurfaceCase("news.api.ingest", "/api/news/tushare-npr/ingest", "POST", side_effect_target="ingest_tushare_npr_to_choice_news", side_effect_module="backend.app.api.routes.choice_news", side_effect_file="backend/app/api/routes/choice_news.py"),
+    SurfaceCase("news.ui.ingest", "/ui/news/tushare-npr/ingest", "POST"),
+    SurfaceCase("news.api.ingest", "/api/news/tushare-npr/ingest", "POST"),
     SurfaceCase(
         "executive.risk-overview",
         "/ui/risk/overview",
@@ -99,11 +103,22 @@ FRONTEND_RESERVED_KEYS = (
     "source-preview",
 )
 
-PUBLIC_OR_ECHO_READ_SURFACES = {
-    ("GET", "backend/app/api/routes/health.py", "/live", "live"),
-    ("GET", "backend/app/api/routes/health.py", "", "health"),
-    ("GET", "backend/app/api/routes/health.py", "/ready", "ready"),
-    ("GET", "backend/app/api/routes/balance_analysis.py", "/current-user", "current_user"),
+PUBLIC_OR_ECHO_READ_POLICIES = {
+    ("GET", "backend/app/api/routes/health.py", "/live", "live"): RoutePolicySemantics(
+        policy_class="public",
+        owner="Platform health owner",
+        reason="Liveness probe returns only service status.",
+    ),
+    ("GET", "backend/app/api/routes/health.py", "", "health"): RoutePolicySemantics(
+        policy_class="public",
+        owner="Platform health owner",
+        reason="Basic health probe returns only service status.",
+    ),
+    ("GET", "backend/app/api/routes/health.py", "/ready", "ready"): RoutePolicySemantics(
+        policy_class="public",
+        owner="Platform health owner",
+        reason="Readiness probe returns dependency health only, not governed business data.",
+    ),
 }
 
 READ_LIKE_POST_SURFACES = {
@@ -112,9 +127,31 @@ READ_LIKE_POST_SURFACES = {
     ("POST", "backend/app/api/routes/cube_query.py", "/query", "cube_query"),
 }
 
-RESERVED_WRITE_SURFACES = {
-    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_ui"),
-    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_api"),
+PUBLIC_OR_ECHO_READ_SURFACES = set(PUBLIC_OR_ECHO_READ_POLICIES)
+
+CAPABILITY_PROBE_READ_SURFACES = {
+    ("GET", "backend/app/api/routes/balance_analysis.py", "/current-user", "current_user")
+}
+
+RESERVED_WRITE_POLICIES = {
+    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_ui"): RoutePolicySemantics(
+        policy_class="admin",
+        owner="Market news owner",
+        state="reserved",
+        reason="Choice news ingest is intentionally fail-closed until the import lane is approved.",
+    ),
+    ("POST", "backend/app/api/routes/choice_news.py", "/tushare-npr/ingest", "tushare_npr_ingest_api"): RoutePolicySemantics(
+        policy_class="admin",
+        owner="Market news owner",
+        state="reserved",
+        reason="API alias for the reserved Choice news ingest lane.",
+    ),
+}
+
+RESERVED_WRITE_SURFACES = set(RESERVED_WRITE_POLICIES)
+
+RESERVED_HELPER_SCOPES = {
+    ("choice_news.data", "import"),
 }
 
 
@@ -420,12 +457,257 @@ def test_backend_authorized_routes_expose_stable_resource_action_policy() -> Non
     assert missing_policy == []
 
 
+def test_backend_route_exceptions_expose_explicit_policy_semantics() -> None:
+    unauthenticated_surfaces = {
+        surface.key
+        for surface in _route_auth_surfaces()
+        if not surface.reaches_authz
+    }
+
+    assert unauthenticated_surfaces == set(PUBLIC_OR_ECHO_READ_POLICIES) | set(RESERVED_WRITE_POLICIES)
+    assert [
+        key
+        for key, policy in PUBLIC_OR_ECHO_READ_POLICIES.items()
+        if policy.policy_class != "public" or policy.state != "active" or not policy.owner
+    ] == []
+    assert [
+        key
+        for key, policy in RESERVED_WRITE_POLICIES.items()
+        if policy.policy_class != "admin" or policy.state != "reserved" or not policy.owner
+    ] == []
+
+
+@pytest.mark.parametrize(
+    "route_key",
+    tuple(PUBLIC_OR_ECHO_READ_POLICIES),
+    ids=lambda route_key: f"{route_key[0]} {route_key[2] or '/'}",
+)
+def test_public_or_echo_routes_do_not_return_governed_result_meta(
+    route_key: tuple[str, str, str, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    method, _file_path, path, _function = route_key
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get(f"/health{path}" if path in {"", "/live", "/ready"} else "/ui/balance-analysis/current-user")
+
+    assert method == "GET"
+    assert response.status_code == 200
+    assert "result_meta" not in response.json()
+    get_settings.cache_clear()
+
+
+def test_backend_authorized_routes_expose_explicit_policy_semantics() -> None:
+    used_scope_semantics = {
+        scope
+        for surface in _route_auth_surfaces()
+        for scope in surface.authz_scopes
+    }
+    missing_scope_semantics = [
+        (surface.key, resource, action)
+        for surface in _route_auth_surfaces()
+        for resource, action in surface.authz_scopes
+        if (resource, action) not in POLICY_SCOPE_SEMANTICS
+    ]
+    public_scoped_routes = [
+        (surface.key, resource, action)
+        for surface in _route_auth_surfaces()
+        for resource, action in surface.authz_scopes
+        if POLICY_SCOPE_SEMANTICS[(resource, action)].policy_class == "public"
+    ]
+    ownerless_semantics = [
+        (resource, action)
+        for (resource, action), policy in POLICY_SCOPE_SEMANTICS.items()
+        if not policy.owner.strip()
+    ]
+    unused_scope_semantics = [
+        scope
+        for scope in POLICY_SCOPE_SEMANTICS
+        if scope not in used_scope_semantics and scope not in RESERVED_HELPER_SCOPES
+    ]
+    invalid_reserved_helper_semantics = [
+        scope
+        for scope in RESERVED_HELPER_SCOPES
+        if scope not in POLICY_SCOPE_SEMANTICS
+        or POLICY_SCOPE_SEMANTICS[scope].policy_class != "admin"
+        or POLICY_SCOPE_SEMANTICS[scope].state != "reserved"
+    ]
+
+    assert missing_scope_semantics == []
+    assert public_scoped_routes == []
+    assert ownerless_semantics == []
+    assert unused_scope_semantics == []
+    assert invalid_reserved_helper_semantics == []
+
+
+def test_backend_policy_taxonomy_matches_audit_contract() -> None:
+    allowed_policy_classes = {"public", "internal", "admin"}
+    unexpected_scope_classes = [
+        (resource, action, policy.policy_class)
+        for (resource, action), policy in POLICY_SCOPE_SEMANTICS.items()
+        if policy.policy_class not in allowed_policy_classes
+    ]
+    unexpected_exception_classes = [
+        (key, policy.policy_class)
+        for key, policy in {
+            **PUBLIC_OR_ECHO_READ_POLICIES,
+            **RESERVED_WRITE_POLICIES,
+        }.items()
+        if policy.policy_class not in allowed_policy_classes
+    ]
+
+    assert unexpected_scope_classes == []
+    assert unexpected_exception_classes == []
+
+
+def test_backend_policy_classes_match_resource_action_semantics() -> None:
+    read_scope_misclassified_as_admin = [
+        (resource, action)
+        for (resource, action), policy in POLICY_SCOPE_SEMANTICS.items()
+        if action == "read" and policy.policy_class == "admin"
+    ]
+    admin_action_without_admin_class = [
+        (resource, action, policy.policy_class)
+        for (resource, action), policy in POLICY_SCOPE_SEMANTICS.items()
+        if action in ADMIN_SCOPE_ACTIONS and policy.policy_class != "admin"
+    ]
+
+    assert read_scope_misclassified_as_admin == []
+    assert admin_action_without_admin_class == []
+
+
+def test_api_router_registry_classifies_every_included_router() -> None:
+    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+
+    registry = tuple(api_module.ROUTE_REGISTRY)
+    route_groups = {entry.group for entry in registry}
+    entries_by_name = {entry.name: entry for entry in registry}
+    missing_tags = [entry.name for entry in registry if not entry.tags]
+    missing_owner = [entry.name for entry in registry if not entry.owner.strip()]
+
+    assert len(registry) == 33
+    assert len({entry.name for entry in registry}) == len(registry)
+    assert missing_tags == []
+    assert missing_owner == []
+    assert route_groups >= {
+        "formal_mainline",
+        "preview",
+        "macro_market",
+        "agent_experimental",
+        "support",
+    }
+    assert entries_by_name["agent"].group == "agent_experimental"
+    assert entries_by_name["source_preview"].group == "preview"
+    assert entries_by_name["macro_toolkit"].group == "macro_market"
+    assert entries_by_name["pnl"].group == "formal_mainline"
+
+
+def test_api_router_registry_covers_every_route_module_file() -> None:
+    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+
+    route_modules = {
+        path.stem
+        for path in Path("backend/app/api/routes").glob("*.py")
+        if path.name != "__init__.py"
+    }
+    registered_modules = {
+        entry.name.rsplit("_ui", maxsplit=1)[0].rsplit("_api", maxsplit=1)[0]
+        for entry in api_module.ROUTE_REGISTRY
+    }
+
+    assert sorted(route_modules - registered_modules) == []
+
+
+def test_api_route_groups_expose_claim_boundary_metadata() -> None:
+    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+
+    registry = tuple(api_module.ROUTE_REGISTRY)
+    route_groups = {entry.group for entry in registry}
+    group_metadata = dict(api_module.ROUTE_GROUP_METADATA)
+    missing_group_metadata = sorted(route_groups - set(group_metadata))
+    extra_group_metadata = sorted(set(group_metadata) - route_groups)
+    incomplete_metadata = [
+        group
+        for group, metadata in group_metadata.items()
+        if not metadata.label.strip()
+        or not metadata.claim_boundary.strip()
+        or not metadata.risk_boundary.strip()
+        or not metadata.owner.strip()
+    ]
+
+    assert missing_group_metadata == []
+    assert extra_group_metadata == []
+    assert incomplete_metadata == []
+    assert group_metadata["formal_mainline"].claim_boundary != group_metadata["preview"].claim_boundary
+    assert "certified" not in group_metadata["agent_experimental"].claim_boundary.lower()
+
+
+def test_route_scope_audit_documents_backend_api_route_groups() -> None:
+    route_scope_doc = Path("docs/audits/2026-06-06-route-scope-classification.md").read_text(
+        encoding="utf-8"
+    )
+
+    for required in (
+        "Backend API Router Grouping Boundary",
+        "backend/app/api/__init__.py",
+        "ROUTE_REGISTRY",
+        "ROUTE_GROUP_METADATA",
+        "`formal_mainline`",
+        "`preview`",
+        "`macro_market`",
+        "`agent_experimental`",
+        "`support`",
+        "registration alone is not route certification",
+        "tool isolation, evidence strength separation, and confirmation-token controls",
+    ):
+        assert required in route_scope_doc
+
+
+def test_api_router_registry_matches_included_route_surface() -> None:
+    api_module = load_module("backend.app.api", "backend/app/api/__init__.py")
+
+    registry = tuple(api_module.ROUTE_REGISTRY)
+    registered_route_count = sum(len(entry.router.routes) for entry in registry)
+    group_route_counts = {
+        group: sum(len(entry.router.routes) for entry in registry if entry.group == group)
+        for group in {entry.group for entry in registry}
+    }
+
+    assert len(api_module.router.routes) == registered_route_count
+    assert group_route_counts["formal_mainline"] > group_route_counts["agent_experimental"]
+    assert group_route_counts["macro_market"] > 0
+    assert group_route_counts["preview"] > 0
+
+
+def test_api_router_includes_only_registered_entries() -> None:
+    tree = ast.parse(Path("backend/app/api/__init__.py").read_text(encoding="utf-8"))
+    include_calls = [
+        call
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "include_router"
+    ]
+
+    assert len(include_calls) == 1
+    include_call = include_calls[0]
+    assert isinstance(include_call.func.value, ast.Name)
+    assert include_call.func.value.id == "router"
+    assert len(include_call.args) == 1
+    assert isinstance(include_call.args[0], ast.Attribute)
+    assert isinstance(include_call.args[0].value, ast.Name)
+    assert include_call.args[0].value.id == "entry"
+    assert include_call.args[0].attr == "router"
+
+
 def test_backend_read_and_mutation_routes_use_expected_policy_actions() -> None:
     read_like_wrong_action = [
         surface
         for surface in _route_auth_surfaces()
         if (surface.method == "GET" or surface.key in READ_LIKE_POST_SURFACES)
         and surface.key not in PUBLIC_OR_ECHO_READ_SURFACES
+        and surface.key not in CAPABILITY_PROBE_READ_SURFACES
         and "read" not in {action for _resource, action in surface.authz_scopes}
     ]
     mutation_wrong_action = [
@@ -449,6 +731,9 @@ def test_backend_boundary_surfaces_fail_closed_without_governed_result_meta(
 ) -> None:
     if case.expected_status == 403:
         _create_empty_scope_store(tmp_path, monkeypatch)
+        monkeypatch.setenv("MOSS_ENVIRONMENT", "development")
+        monkeypatch.setenv("MOSS_USER_ID", "boundary-no-scope-user")
+        monkeypatch.setenv("MOSS_USER_ROLE", "viewer")
     client = _build_client(tmp_path, monkeypatch)
 
     response = _call_case(client, case)

@@ -1,7 +1,36 @@
 import { useQuery } from "@tanstack/react-query";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import type {
+  ApiEnvelope,
+  AssetStructurePayload,
+  BondBusinessTypeMetricsPayload,
+  BondDashboardHeadlinePayload,
+  BondDashboardHomeSummaryPayload,
+  IndustryDistPayload,
+  MaturityStructurePayload,
+  PortfolioComparisonPayload,
+  SpreadAnalysisPayload,
+  YieldDistributionPayload,
+} from "../../../api/contracts";
 import type { ModuleHomeSourceQueries } from "./moduleHomeModel";
+
+function fromBondHomeSummary<T>(
+  query: UseQueryResult<ApiEnvelope<BondDashboardHomeSummaryPayload>>,
+  pick: (summary: BondDashboardHomeSummaryPayload) => T,
+): UseQueryResult<ApiEnvelope<T>> {
+  const data = query.data
+    ? {
+        ...query.data,
+        result: pick(query.data.result),
+      }
+    : undefined;
+  return {
+    ...query,
+    data,
+  } as UseQueryResult<ApiEnvelope<T>>;
+}
 
 export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
   const client = useApiClient();
@@ -35,14 +64,18 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
   });
   const bondReportDate = bondDatesQuery.data?.result.report_dates[0] ?? "";
 
-  const bondHeadlineQuery = useQuery({
-    queryKey: ["module-home", "bond-headline", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardHeadlineKpis(bondReportDate),
+  const bondHomeSummaryQuery = useQuery({
+    queryKey: ["module-home", "bond-home-summary", client.mode, bondReportDate],
+    queryFn: () => client.getBondDashboardHomeSummary(bondReportDate),
     enabled: Boolean(bondReportDate),
     retry: false,
     staleTime: 60_000,
   });
 
+  const bondHeadlineQuery = fromBondHomeSummary<BondDashboardHeadlinePayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.headline,
+  );
   const bondRiskQuery = useQuery({
     queryKey: ["module-home", "bond-risk", client.mode, bondReportDate],
     queryFn: () => client.getBondDashboardRiskIndicators(bondReportDate),
@@ -50,70 +83,38 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     retry: false,
     staleTime: 60_000,
   });
-
-  const bondAssetTypeQuery = useQuery({
-    queryKey: ["module-home", "bond-asset-type", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardAssetStructure(bondReportDate, "bond_type"),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondAssetRatingQuery = useQuery({
-    queryKey: ["module-home", "bond-asset-rating", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardAssetStructure(bondReportDate, "rating"),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondMaturityQuery = useQuery({
-    queryKey: ["module-home", "bond-maturity", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardMaturityStructure(bondReportDate),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondIndustryQuery = useQuery({
-    queryKey: ["module-home", "bond-industry", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardIndustryDistribution(bondReportDate),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondYieldQuery = useQuery({
-    queryKey: ["module-home", "bond-yield", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardYieldDistribution(bondReportDate),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondPortfolioComparisonQuery = useQuery({
-    queryKey: ["module-home", "bond-portfolio-comparison", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardPortfolioComparison(bondReportDate),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondSpreadQuery = useQuery({
-    queryKey: ["module-home", "bond-spread", client.mode, bondReportDate],
-    queryFn: () => client.getBondDashboardSpreadAnalysis(bondReportDate),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const bondBusinessTypeQuery = useQuery({
-    queryKey: ["module-home", "bond-business-type", client.mode, bondReportDate],
-    queryFn: () => client.getBondBusinessTypeMetrics({ reportDate: bondReportDate }),
-    enabled: Boolean(bondReportDate),
-    retry: false,
-    staleTime: 60_000,
-  });
+  const bondAssetTypeQuery = fromBondHomeSummary<AssetStructurePayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.asset_type,
+  );
+  const bondAssetRatingQuery = fromBondHomeSummary<AssetStructurePayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.asset_rating,
+  );
+  const bondMaturityQuery = fromBondHomeSummary<MaturityStructurePayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.maturity,
+  );
+  const bondIndustryQuery = fromBondHomeSummary<IndustryDistPayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.industry,
+  );
+  const bondYieldQuery = fromBondHomeSummary<YieldDistributionPayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.yield_distribution,
+  );
+  const bondPortfolioComparisonQuery = fromBondHomeSummary<PortfolioComparisonPayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.portfolio_comparison,
+  );
+  const bondSpreadQuery = fromBondHomeSummary<SpreadAnalysisPayload>(
+    bondHomeSummaryQuery,
+    (summary) => summary.spread,
+  );
+  const bondBusinessTypeQuery = fromBondHomeSummary<BondBusinessTypeMetricsPayload["result"]>(
+    bondHomeSummaryQuery,
+    (summary) => summary.business_type,
+  ) as UseQueryResult<BondBusinessTypeMetricsPayload>;
 
   const balanceBasisQuery = useQuery({
     queryKey: ["module-home", "balance-basis", client.mode, balanceReportDate],
@@ -136,6 +137,13 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     staleTime: 60_000,
   });
 
+  const riskDatesQuery = useQuery({
+    queryKey: ["module-home", "portfolio-risk-dates", client.mode],
+    queryFn: () => client.getRiskTensorDates(),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   return {
     balanceDates: balanceDatesQuery,
     balanceOverview: balanceOverviewQuery,
@@ -152,5 +160,6 @@ export function usePortfolioHomeQueries(): ModuleHomeSourceQueries {
     bondBusinessType: bondBusinessTypeQuery,
     balanceBasis: balanceBasisQuery,
     pnlSummary: pnlSummaryQuery,
+    riskDates: riskDatesQuery,
   };
 }

@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
-
 
 QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-read-user", "X-User-Role": "viewer"}
 
@@ -151,6 +155,17 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
     workbook_payload = workbook_response.json()
     assert workbook_payload["result_meta"]["basis"] == "analytical"
     assert workbook_payload["result_meta"]["result_kind"] == "qdb-gl-monthly-analysis.workbook"
+    assert workbook_payload["result_meta"]["tables_used"] == [
+        "qdb_gl_average_balance_workbook",
+        "qdb_gl_ledger_reconciliation_workbook",
+    ]
+    assert workbook_payload["result_meta"]["evidence_rows"] == 2
+    assert workbook_payload["result_meta"]["requested_report_date"] == "202602"
+    assert workbook_payload["result_meta"]["resolved_report_date"] == "202602"
+    assert workbook_payload["result_meta"]["filters_applied"]["comparison_months"]["prior_month"] == {
+        "report_month": "202601",
+        "status": "missing",
+    }
     assert workbook_payload["result"]["report_month"] == "202602"
     assert [sheet["title"] for sheet in workbook_payload["result"]["sheets"]] == [
         "经营概览",
@@ -196,6 +211,15 @@ def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists
     assert response.status_code == 200
     payload = response.json()
     assert "prior_month:202601" in payload["result_meta"]["source_version"]
+    assert payload["result_meta"]["evidence_rows"] == 4
+    assert payload["result_meta"]["tables_used"] == [
+        "qdb_gl_average_balance_workbook",
+        "qdb_gl_ledger_reconciliation_workbook",
+    ]
+    assert payload["result_meta"]["filters_applied"]["comparison_months"]["prior_month"] == {
+        "report_month": "202601",
+        "status": "loaded",
+    }
     assert "segment_scale_compare" in [sheet["key"] for sheet in payload["result"]["sheets"]]
     segment_sheet = next(
         sheet for sheet in payload["result"]["sheets"] if sheet["key"] == "segment_scale_compare"
@@ -274,6 +298,19 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
     assert refresh_response.status_code == 200
     refresh_payload = refresh_response.json()
     assert refresh_payload["job_name"] == "qdb_gl_monthly_analysis"
+    assert refresh_payload["source_version"].startswith("sv_qdb_gl_")
+    assert refresh_payload["source_version"] != "202602"
+    assert refresh_payload["report_date"] == "202602"
+    assert refresh_payload["sheet_count"] > 0
+    assert refresh_payload["tables_used"] == [
+        "qdb_gl_average_balance_workbook",
+        "qdb_gl_ledger_reconciliation_workbook",
+    ]
+    assert refresh_payload["evidence_rows"] == 2
+    assert refresh_payload["comparison_months"]["prior_month"] == {
+        "report_month": "202601",
+        "status": "missing",
+    }
 
     status_response = client.get(
         "/ui/qdb-gl-monthly-analysis/refresh-status",
@@ -281,6 +318,8 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
     )
     assert status_response.status_code == 200
     assert status_response.json()["run_id"] == refresh_payload["run_id"]
+    assert status_response.json()["source_version"] == refresh_payload["source_version"]
+    assert status_response.json()["report_date"] == "202602"
 
     scenario_response = client.get(
         "/ui/qdb-gl-monthly-analysis/scenario",
@@ -299,6 +338,120 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
         "DEVIATION_WARN": 6,
         "DEVIATION_ALERT": 12,
     }
+    get_settings.cache_clear()
+
+
+def test_api_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    governance_dir = tmp_path / "governance"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202602")
+
+    _grant_qdb_refresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    headers = {"Idempotency-Key": "qdb-gl-refresh-202602"}
+
+    first_response = client.post(
+        "/ui/qdb-gl-monthly-analysis/refresh",
+        params={"report_month": "202602"},
+        headers=headers,
+    )
+    second_response = client.post(
+        "/ui/qdb-gl-monthly-analysis/refresh",
+        params={"report_month": "202602"},
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_payload = first_response.json()
+    second_payload = second_response.json()
+    assert second_payload["run_id"] == first_payload["run_id"]
+    assert second_payload["idempotency_key"] == "qdb-gl-refresh-202602"
+    assert second_payload["idempotency_replay"] is True
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("job_name") == "qdb_gl_monthly_analysis"
+        and record.get("run_id") == first_payload["run_id"]
+    ]
+    assert len(records) == 1
+    get_settings.cache_clear()
+
+
+def test_api_refresh_returns_failed_payload_when_requested_month_rebuild_fails(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ゅ潎"
+    governance_dir = tmp_path / "governance"
+    source_dir.mkdir(parents=True)
+    _avg_path, ledger_path = _write_month_pair(source_dir, "202602")
+    workbook = load_workbook(ledger_path)
+    try:
+        workbook.active["A6"] = "invalid-header"
+        workbook.save(ledger_path)
+    finally:
+        workbook.close()
+
+    _grant_qdb_read(tmp_path, monkeypatch)
+    _grant_qdb_refresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    refresh_response = client.post(
+        "/ui/qdb-gl-monthly-analysis/refresh",
+        params={"report_month": "202602"},
+    )
+
+    assert refresh_response.status_code == 200
+    refresh_payload = refresh_response.json()
+    assert refresh_payload["status"] == "failed"
+    assert refresh_payload["failure_category"] == "qdb_gl_monthly_analysis_build"
+    assert "202602" in refresh_payload["error_message"]
+
+    status_response = client.get(
+        "/ui/qdb-gl-monthly-analysis/refresh-status",
+        params={"run_id": refresh_payload["run_id"]},
+    )
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "failed"
+    assert status_response.json()["error_message"] == refresh_payload["error_message"]
+
+    get_settings.cache_clear()
+
+
+def test_api_refresh_returns_404_when_requested_month_is_missing(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ゅ潎"
+    governance_dir = tmp_path / "governance"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202602")
+
+    _grant_qdb_refresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post(
+        "/ui/qdb-gl-monthly-analysis/refresh",
+        params={"report_month": "202601"},
+    )
+
+    assert refresh_response.status_code == 404
+    assert "202601" in refresh_response.text
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    assert [
+        record
+        for record in records
+        if record.get("job_name") == "qdb_gl_monthly_analysis"
+        and record.get("report_date") == "202601"
+    ] == []
     get_settings.cache_clear()
 
 

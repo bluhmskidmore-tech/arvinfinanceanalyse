@@ -1,16 +1,15 @@
 """
 Unit tests for bond_duration.py — Macaulay duration, modified duration, convexity.
 """
-from decimal import Decimal
 from datetime import date
-
+from decimal import Decimal
 
 from backend.app.core_finance.bond_duration import (
-    compute_macaulay_duration,
-    modified_duration_from_macaulay,
-    estimate_convexity_bond,
     _estimate_macaulay_duration_years,
+    compute_macaulay_duration,
+    estimate_convexity_bond,
     estimate_duration,
+    modified_duration_from_macaulay,
 )
 
 

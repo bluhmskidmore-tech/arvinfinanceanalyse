@@ -18,11 +18,15 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 **13** 个样本包（与 `tests/test_golden_samples_capture_ready.py` 矩阵一致）：
+- `tests/golden_samples/` 已经存在 **18** 个样本包（其中 17 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
   - `GS-PNL-DATA-A`
+  - `GS-PNL-ATTR-WB-A`
+  - `GS-BOND-HEADLINE-A`
+  - `GS-BOND-ANALYSIS-ACTION-ATTR-A`
+  - `GS-STOCK-ANALYSIS-OBS-A`
   - `GS-PROD-CAT-PNL-A`
   - `GS-BRIDGE-A`
   - `GS-BRIDGE-WARN-B`
@@ -31,6 +35,8 @@
   - `GS-EXEC-OVERVIEW-A`
   - `GS-EXEC-SUMMARY-A`
   - `GS-EXEC-PNL-ATTR-A`
+  - `GS-LEDGER-PNL-SUMMARY-A`
+  - `GS-PORTFOLIO-HOME-A`（supporting-only，不进入 capture-ready 矩阵）
 - `scripts/backend_release_suite.py` 已经把 `tests/test_golden_samples_capture_ready.py` 纳入固定 release suite。
 
 结论：当前缺的不是“从零开始做黄金样本”，而是把已有样本资产变成正式、版本化、可维护的治理体系。
@@ -41,6 +47,8 @@
 - `GS-EXEC-OVERVIEW-A` 已补齐 `metrics[].caliber_label` 冻结字段；`yield` 当前冻结为 `年度损益（不扣FTP）` / `FI + 非标桥接`，与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 当前契约一致。
 - 当前样本集中没有首页 `/` 的聚合样本。
 - `GS-BOND-HEADLINE-A` 已落地为 **capture-ready 页面样本**：`tests/golden_samples/GS-BOND-HEADLINE-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 **metric 字典同源** caveat：Headline / 风险卡字段尚未因为该样本而自动升级为字典级 `MTR-*` 绑定。
+- `GS-BOND-ANALYSIS-ACTION-ATTR-A` 已落地为 **capture-ready 页面 DTO 样本**：`tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 `formal_use_allowed=false`，只冻结 `/bond-analysis` action-attribution DTO 边界，不批准固定收益公式、人工审计闭环或业务 owner 签核。
+- `GS-STOCK-ANALYSIS-OBS-A` 已落地为 **capture-ready observational 页面 DTO 样本**：`tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 `formal_use_allowed=false`，只冻结 `/stock-analysis` Livermore observation DTO 边界，不批准 PAGE-STOCK contract、MTR-STOCK metrics、交易指令、人工审计闭环或业务 owner 签核。
 - Wave 1 四条工作台路由已在本文件 §7.4 与 `docs/metric_dictionary.md` §12.5 做 **文档层** `page_id → metric_id → sample_id → test file` 绑定；全量强约束（含 CI 校验矩阵）仍待后续。
 
 ## 3. 什么样的样本才算“黄金样本”
@@ -68,7 +76,10 @@
 | `GS-BAL-WORKBOOK-A` | `/ui/balance-analysis/workbook` | 已有样本包 | `tests/test_balance_analysis_workbook_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-PNL-OVERVIEW-A` | `/api/pnl/overview` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-PNL-DATA-A` | `/api/pnl/data` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
+| `GS-PNL-ATTR-WB-A` | `GET /api/pnl-attribution/volume-rate` | 已有样本包 | `tests/test_pnl_attribution_workbench_contract.py` + `tests/golden_samples/GS-PNL-ATTR-WB-A/` + capture-ready | 冻结 workbench primary API DTO；不替代 formal PnL truth 或 bridge truth |
 | `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | 已有样本包 | `tests/test_bond_dashboard_api_contract.py` + `tests/golden_samples/GS-BOND-HEADLINE-A/` + capture-ready | 冻结 bond-dashboard headline 页面真值，保留字典级 metric caveat |
+| `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GET /api/bond-analytics/action-attribution` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/` + capture-ready | 冻结 `/bond-analysis` action-attribution DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
+| `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/` + capture-ready | 冻结 `/stock-analysis` Livermore observation DTO；保留 observational-only / no-trading-instruction / `formal_use_allowed=false` 边界 |
 | `GS-PROD-CAT-PNL-A` | `/ui/pnl/product-category` | 已有样本包 | `tests/test_product_category_pnl_flow.py` + `tests/golden_samples/GS-PROD-CAT-PNL-A/` + capture-ready | 与 `docs/pnl/product-category-page-truth-contract.md` / `PAGE-PROD-CAT-PNL-001` 绑定 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 作为受控 warning profile 样本纳入版本基线 |
@@ -77,6 +88,7 @@
 | `GS-EXEC-OVERVIEW-A` | `/ui/home/overview` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | 已有样本包 | `tests/test_executive_service_contract.py` + 样本目录 | 与 page contract 对齐 |
+| `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | 已有样本包 | `tests/test_ledger_pnl_service.py` + `tests/test_golden_samples_capture_ready.py` + 样本目录 | 冻结 Ledger PnL 页面级 summary DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
 
 补充说明：
 
@@ -89,6 +101,7 @@
 | --- | --- | --- | --- |
 | `/` 驾驶舱聚合页 | 暂不冻结 | 页面混合了 live、placeholder、excluded section，不适合作为第一批系统真值页 | 首页 page contract 明确“允许 section / 禁止 section”后 |
 | `GS-BOND-HEADLINE-A` | 已纳入 capture-ready | `PAGE-BOND-001` 已有；样本目录与 gate 已齐，**metric mapping** 仍待单独审计 | 保持 page/sample truth 冻结，单独处理 `GAP-BOND-DASH-HL` |
+| `GS-PORTFOLIO-HOME-A` | supporting-only | 仅记录 `/portfolio` 证据边界；不是 live API capture，不证明页面执行，也不批准页面级 formal use | 只有在 page contract、live evidence 和业务审批齐备后，才可另行评估是否转入 capture-ready |
 | `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution` | excluded / compat | 当前 cutover 边界外，按 `503` / reserved 处理，不应该伪装成 live 样本 | 真正进入 governed cutover 后 |
 
 ## 6. 样本目录标准
@@ -145,6 +158,8 @@ tests/golden_samples/
 | `PAGE-OPS-001` / `/operations-analysis` | `MTR-BAL-004`, `MTR-BAL-005`, `MTR-BAL-006`, `MTR-BAL-103`, `MTR-BAL-104`, `MTR-BAL-105` | — | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
 | `PAGE-OPS-001` / `/operations-analysis` | —（macro / FX / news / 运营） | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
 | `PAGE-BOND-001` / `/bond-dashboard` | —（**GAP-BOND-DASH-***） | `GS-BOND-HEADLINE-A`（capture-ready 页面样本；非字典级 `metric_id` 批准） | `tests/test_bond_dashboard_api_contract.py`，`tests/test_golden_samples_capture_ready.py`，`frontend/src/test/BondDashboardPage.test.tsx` |
+| `PAGE-BOND-ANALYSIS-001` / `/bond-analysis` | `MTR-BOND-ACT-001`~`MTR-BOND-ACT-006`（candidate；pending owner approval） | `GS-BOND-ANALYSIS-ACTION-ATTR-A`（capture-ready 页面 DTO 样本；`formal_use_allowed=false`） | `tests/test_golden_samples_capture_ready.py`；`tests/test_bond_analysis_business_owner_approval_status.py` |
+| `GAP-STOCK-ANALYSIS-PAGE` / `/stock-analysis` | —（observational-only；no `PAGE-STOCK-*` / `MTR-STOCK-*` approval） | `GS-STOCK-ANALYSIS-OBS-A`（capture-ready Livermore observation DTO；`formal_use_allowed=false`；no trading instruction） | `tests/test_golden_samples_capture_ready.py`；`tests/test_stock_analysis_business_owner_approval_status.py` |
 | `PAGE-POS-001` / `/positions` | —（**GAP-POS-LIST**） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
 | `PAGE-MKT-001` / `/market-data` | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
@@ -155,7 +170,7 @@ tests/golden_samples/
 ### 8.1 本周必须完成
 
 1. 把 `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md`、`tests/golden_samples/` 纳入版本控制。
-2. 复核 13 个现有样本目录是否都符合 `request/response/assertions/approval` 结构。
+2. 复核 17 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
 3. 在 catalog 中补充每个样本对应的 `page_id`、`metric_id`、`tests/...`。
 
 ### 8.2 下周必须完成

@@ -30,6 +30,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import AdbComparisonChart, { type AdbComparisonChartRow } from "./AdbComparisonChart";
+import { computeComparisonDeviationPct } from "./adbComparisonMetrics";
 import AdbDailyTrendChart from "./AdbDailyTrendChart";
 import AdbDenominatorSummary from "./AdbDenominatorSummary";
 import AdbAccountingBasisSection from "./AdbAccountingBasisSection";
@@ -117,12 +118,18 @@ function buildPresetRange(reportDate: string, rangeKey: Exclude<RangeKey, "custo
 type AdbYoYAmountRow = {
   key: string;
   label: string;
-  current: number;
-  prior: number;
+  current: number | null;
+  prior: number | null;
 };
 
-function computeYoyPct(current: number, prior: number): number | null {
-  if (!Number.isFinite(current) || !Number.isFinite(prior) || prior === 0) return null;
+function computeYoyPct(current: number | null, prior: number | null): number | null {
+  if (
+    current === null ||
+    prior === null ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(prior) ||
+    prior === 0
+  ) return null;
   return ((current - prior) / prior) * 100;
 }
 
@@ -136,7 +143,7 @@ function buildCategoryYoyRows(
     key: `${side}-${item.category}`,
     label: `${side === "asset" ? "资产" : "负债"} · ${item.category}`,
     current: item.avg_balance,
-    prior: priorMap.get(item.category)?.avg_balance ?? 0,
+    prior: priorMap.get(item.category)?.avg_balance ?? null,
   }));
 }
 
@@ -167,6 +174,14 @@ function formatSignedYiBillions(deltaYuan: number): string {
   return `${sign}${yi.toFixed(2)}`;
 }
 
+function formatYoyPriorYi(value: number | null): string {
+  return value === null ? "缺去年同期" : (value / YI).toFixed(2);
+}
+
+function formatYoyDeltaYi(current: number | null, prior: number | null): string {
+  return current === null || prior === null ? "—" : formatSignedYiBillions(current - prior);
+}
+
 function buildYoYAmountColumns(): ColumnsType<AdbYoYAmountRow> {
   return [
     { title: "项目", dataIndex: "label", key: "label", ellipsis: true },
@@ -174,19 +189,20 @@ function buildYoYAmountColumns(): ColumnsType<AdbYoYAmountRow> {
       title: "本期（亿元）",
       key: "cur",
       align: "right",
-      render: (_: unknown, row: AdbYoYAmountRow) => (row.current / YI).toFixed(2),
+      render: (_: unknown, row: AdbYoYAmountRow) =>
+        row.current === null ? "—" : (row.current / YI).toFixed(2),
     },
     {
       title: "去年同期（亿元）",
       key: "pri",
       align: "right",
-      render: (_: unknown, row: AdbYoYAmountRow) => (row.prior / YI).toFixed(2),
+      render: (_: unknown, row: AdbYoYAmountRow) => formatYoyPriorYi(row.prior),
     },
     {
       title: "增减（亿元）",
       key: "delta",
       align: "right",
-      render: (_: unknown, row: AdbYoYAmountRow) => formatSignedYiBillions(row.current - row.prior),
+      render: (_: unknown, row: AdbYoYAmountRow) => formatYoyDeltaYi(row.current, row.prior),
     },
     {
       title: "同比（%）",
@@ -201,7 +217,7 @@ function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
   return [
     { title: "分类", dataIndex: "category", key: "category" },
     { title: "期末时点（亿元）", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
-    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => (value === null ? "—" : (value / YI).toFixed(2)) },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
   ];
@@ -537,7 +553,7 @@ export default function AverageBalanceView() {
         label: `${prefix} · ${item.category}`,
         spot: item.spot_balance,
         avg: item.avg_balance,
-        deviationPct: item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
+        deviationPct: computeComparisonDeviationPct(item.spot_balance, item.avg_balance),
       }));
     return {
       comparisonAssetRows: mapRows(dailyData.assets_breakdown, "资产"),

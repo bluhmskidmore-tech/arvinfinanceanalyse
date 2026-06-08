@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
 from backend.app.repositories.tushare_adapter import VendorAdapter
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES

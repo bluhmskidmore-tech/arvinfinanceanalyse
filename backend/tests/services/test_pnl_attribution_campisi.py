@@ -6,10 +6,8 @@ from math import isfinite
 from typing import Any
 
 import pytest
-
 from backend.app.core_finance.campisi import CampisiResult
 from backend.app.services import pnl_attribution_service as svc
-
 
 START_DATE = "2026-01-01"
 END_DATE = "2026-01-31"

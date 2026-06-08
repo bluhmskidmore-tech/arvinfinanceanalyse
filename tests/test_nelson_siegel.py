@@ -17,7 +17,6 @@ import pytest
 
 from backend.app.core_finance.curve_engine.curve_types import CurvePoint
 from backend.app.core_finance.curve_engine.nelson_siegel import (
-    NSFitResult,
     NSParams,
     SvenssonParams,
     fit_nelson_siegel,
@@ -26,7 +25,6 @@ from backend.app.core_finance.curve_engine.nelson_siegel import (
     ns_rate,
     svensson_rate,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

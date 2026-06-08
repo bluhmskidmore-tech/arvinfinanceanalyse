@@ -227,7 +227,7 @@ export default function DashboardHomePage() {
   return (
     <section data-testid="dashboard-home-page" className={styles.dhPage}>
       <DashboardHomeToolbar
-        title="经营驾驶舱"
+        title="组合经营日报"
         headerStatus={firstScreenView.headerStatus}
         reportDateInput={reportDate || effectiveReportDate}
         onReportDateChange={setReportDate}
@@ -261,6 +261,7 @@ export default function DashboardHomePage() {
           reportDate={firstScreenView.reportDate}
           dataSyncPrefix={firstScreenView.decisionRail.dataSyncPrefix}
           dataStatusKind={firstScreenView.headerStatus.dataStatusKind}
+          snapshotMeta={snapshotBoundary.snapshotMeta}
         />
       </div>
     </section>

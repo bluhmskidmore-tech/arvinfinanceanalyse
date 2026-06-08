@@ -293,6 +293,7 @@ def render_audit_packet_markdown(packet: dict[str, Any]) -> str:
             "- `captures_business_owner_approval="
             f"{str(bool(approval_scope.get('captures_business_owner_approval'))).lower()}`"
         ),
+        f"- `certification_effect={approval_scope.get('certification_effect', 'unknown')}`",
         "",
         "## Business Owner Approval Action Items",
         "",

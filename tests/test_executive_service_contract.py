@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 # Windows / Py3.14: SQLAlchemy's import path calls ``platform.machine()`` which may block
 # on WMI; executive_service pulls models that import SQLAlchemy. Stub before backend imports.
 import platform as _platform
-
-_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
-
-import datetime as dt
 import threading
 import uuid
 from pathlib import Path
@@ -17,9 +15,10 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 
-from backend.app.repositories.formal_zqtz_balance_metrics_repo import FormalZqtzBalanceMetricsRepository
-from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from tests.helpers import load_module
+
+# Windows / Py3.14: SQLAlchemy may call platform.machine() during backend imports.
+_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
 
 
 def _assert_numeric_json_shape(x: object) -> dict[str, object]:
@@ -921,6 +920,154 @@ def test_executive_overview_uses_parallel_domain_contexts_when_dates_are_prelist
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert set(metrics) == {"aum", "yield", "nim", "dv01"}
     assert entered == {"aum", "pnl", "nim", "dv01"}
+
+
+def test_executive_overview_reuses_cache_build_run_snapshot_for_lineage(monkeypatch, exec_mod, tmp_path):
+    read_calls: list[str] = []
+    dates = ["2026-04-30", "2026-04-29"]
+
+    class Settings:
+        duckdb_path = str(tmp_path / "x.duckdb")
+        governance_path = tmp_path / "governance"
+        governance_sql_dsn = ""
+        postgres_dsn = ""
+
+    class GovernanceRepo:
+        def __init__(self, *, base_dir):
+            assert str(base_dir).endswith("governance")
+
+        def read_all(self, stream):
+            read_calls.append(stream)
+            return [
+                {
+                    "cache_key": exec_mod.PNL_CACHE_KEY,
+                    "job_name": exec_mod.PNL_JOB_NAME,
+                    "status": "completed",
+                    "report_date": "2026-04-29",
+                    "source_version": "sv_pnl_prior",
+                    "rule_version": "rv_pnl_prior",
+                },
+                {
+                    "cache_key": exec_mod.PNL_CACHE_KEY,
+                    "job_name": exec_mod.PNL_JOB_NAME,
+                    "status": "completed",
+                    "report_date": "2026-04-30",
+                    "source_version": "sv_pnl_current",
+                    "rule_version": "rv_pnl_current",
+                },
+                {
+                    "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+                    "job_name": "bond_analytics_materialize",
+                    "status": "completed",
+                    "report_date": "2026-04-29",
+                    "source_version": "sv_bond_prior",
+                    "rule_version": "rv_bond_prior",
+                    "cache_version": "cv_bond_prior",
+                    "vendor_version": "vv_none",
+                },
+                {
+                    "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+                    "job_name": "bond_analytics_materialize",
+                    "status": "completed",
+                    "report_date": "2026-04-30",
+                    "source_version": "sv_bond_current",
+                    "rule_version": "rv_bond_current",
+                    "cache_version": "cv_bond_current",
+                    "vendor_version": "vv_none",
+                },
+            ]
+
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+    monkeypatch.setattr(exec_mod, "get_settings", lambda: Settings())
+    monkeypatch.setattr(exec_mod, "GovernanceRepository", GovernanceRepo)
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_ytd_context",
+        lambda *_a, **_k: ({"2026-04-30": 20.0, "2026-04-29": 18.0}, [18.0, 20.0]),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_nim_context",
+        lambda *_a, **_k: (
+            {"2026-04-30": {"kpi": {"nim": 0.002}}, "2026-04-29": {"kpi": {"nim": 0.001}}},
+            {"2026-04-30": [{"source_version": "sv_liab_z", "rule_version": "rv_liab_z"}], "2026-04-29": []},
+            {"2026-04-30": [{"source_version": "sv_liab_t", "rule_version": "rv_liab_t"}], "2026-04-29": []},
+            [0.001, 0.002],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_dv01_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
+                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+            },
+            [20.0, 30.0],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {"status": "blocked", "reason": "test", "owner_count": 0, "year": 2026},
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    assert read_calls == [exec_mod.CACHE_BUILD_RUN_STREAM]
+    meta = out["result_meta"]
+    assert "sv_pnl_current" in meta["source_version"]
+    assert "sv_pnl_prior" in meta["source_version"]
+    assert "sv_bond_current" in meta["source_version"]
+    assert "sv_bond_prior" in meta["source_version"]
 
 
 def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):
@@ -2046,6 +2193,10 @@ def test_formal_balance_metrics_repo_lists_report_dates(tmp_path):
     finally:
         conn.close()
 
+    from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
+        FormalZqtzBalanceMetricsRepository,
+    )
+
     repo = FormalZqtzBalanceMetricsRepository(str(db_path))
 
     assert repo.list_report_dates() == ["2024-12-31", "2024-11-30"]
@@ -2108,6 +2259,10 @@ def test_liability_analytics_repo_lists_union_report_dates(tmp_path):
         )
     finally:
         conn.close()
+
+    from backend.app.repositories.liability_analytics_repo import (
+        LiabilityAnalyticsRepository,
+    )
 
     repo = LiabilityAnalyticsRepository(str(db_path))
 

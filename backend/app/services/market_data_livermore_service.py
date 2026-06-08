@@ -60,6 +60,7 @@ from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockReadiness,
     choice_stock_optional_input_status,
     choice_stock_readiness_missing,
+    load_choice_stock_readiness,
 )
 from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
 from backend.app.services.formal_result_runtime import (
@@ -131,6 +132,21 @@ def livermore_strategy_envelope(
         tables_used=cast(list[str], meta["tables_used"]),
         evidence_rows=cast(int, meta["evidence_rows"]),
         result_payload=payload,
+    )
+
+
+def livermore_strategy_envelope_from_catalog(
+    *,
+    duckdb_path: str,
+    choice_stock_catalog_file: str | Path,
+    as_of_date: str | None = None,
+    stock_candidate_policy: str | None = None,
+) -> dict[str, object]:
+    return livermore_strategy_envelope(
+        duckdb_path=duckdb_path,
+        as_of_date=as_of_date,
+        stock_readiness=load_choice_stock_readiness(choice_stock_catalog_file),
+        stock_candidate_policy=stock_candidate_policy,
     )
 
 

@@ -191,7 +191,7 @@ describe("ledger-pnl routed page smoke", () => {
 
     expect(await screen.findByTestId("ledger-pnl-page")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByLabelText("ledger-pnl-report-date")).toHaveValue("2025-12-31");
+      expect(screen.getByTestId("ledger-pnl-report-date-control")).toHaveValue("2025-12-31");
     });
     expect(screen.getByTestId("ledger-pnl-result-meta-panel")).toHaveTextContent("tr_ledger_dates");
     await waitFor(() => {
@@ -209,8 +209,8 @@ describe("ledger-pnl routed page smoke", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByLabelText("ledger-pnl-report-date")).toHaveValue("2025-11-30");
-      expect(screen.getByLabelText("ledger-pnl-currency")).toHaveValue("CNX");
+      expect(screen.getByTestId("ledger-pnl-report-date-control")).toHaveValue("2025-11-30");
+      expect(screen.getByTestId("ledger-pnl-currency-control")).toHaveValue("CNX");
     });
 
     await waitFor(() => {
@@ -223,11 +223,11 @@ describe("ledger-pnl routed page smoke", () => {
     const router = renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());
 
     await waitFor(() => {
-      expect(screen.getByLabelText("ledger-pnl-report-date")).toHaveValue("2025-12-31");
+      expect(screen.getByTestId("ledger-pnl-report-date-control")).toHaveValue("2025-12-31");
     });
 
-    await user.selectOptions(screen.getByLabelText("ledger-pnl-report-date"), "2025-11-30");
-    await user.selectOptions(screen.getByLabelText("ledger-pnl-currency"), "CNX");
+    await user.selectOptions(screen.getByTestId("ledger-pnl-report-date-control"), "2025-11-30");
+    await user.selectOptions(screen.getByTestId("ledger-pnl-currency-control"), "CNX");
 
     await waitFor(() => {
       expect(router.state.location.search).toBe("?report_date=2025-11-30&currency=CNX");

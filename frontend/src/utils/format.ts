@@ -110,6 +110,9 @@ export function formatRawAsNumeric(opts: {
   } else if (unit === "ratio") {
     display = `${signPrefix(rawNorm, sign_aware)}${rawNorm.toFixed(opts.precision ?? 2)}`;
     precision = opts.precision ?? 2;
+  } else if (unit === "years") {
+    display = `${signPrefix(rawNorm, sign_aware)}${rawNorm.toFixed(opts.precision ?? 2)}`;
+    precision = opts.precision ?? 2;
   } else if (unit === "count") {
     display = zhNumberFormat.format(rawNorm);
     precision = 0;

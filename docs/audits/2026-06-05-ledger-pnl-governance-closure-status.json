@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "artifact": "ledger-pnl-governance-closure-status",
+  "created_date": "2026-06-05",
+  "page": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "page_slug": "ledger-pnl",
+    "page_name": "Ledger PnL",
+    "route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary"
+  },
+  "gate_i_verdict": {
+    "frontend_surface": "frontend-ready",
+    "business_contract_status": "evidence-pending",
+    "business_contract_certified": false,
+    "formal_use_allowed": false,
+    "closure_approved": false,
+    "reason": "The direct governance candidate is field-complete in dry-run preflight, but no written direct PAGE/API governance record is located, supporting expanded lineage remains unclosed, no dedicated summary golden sample exists, and business-owner approval is not captured."
+  },
+  "dry_run_governance_record": {
+    "command": "python scripts/emit_ledger_pnl_governance_record.py",
+    "mode": "dry-run",
+    "target_stream": "cache_manifest",
+    "target_path": "data/governance/cache_manifest.jsonl",
+    "record_write_status": "not_requested",
+    "existing_record_line": null,
+    "record_key": {
+      "page_id": "PAGE-LEDGER-PNL-001",
+      "primary_api": "/api/ledger-pnl/summary",
+      "report_date": "2026-05-31",
+      "cache_key": "ledger_pnl.summary:2026-05-31:ALL"
+    },
+    "record": {
+      "basis": "ledger",
+      "source_surface": "ledger_pnl.summary",
+      "tables_used": [
+        "qdb_general_ledger_workbook"
+      ],
+      "source_version": "sv_product_category_3353b116b9a6",
+      "rule_version": "rv_ledger_pnl_v1",
+      "cache_version": "cv_ledger_pnl_v1",
+      "result_kind": "ledger_pnl.summary",
+      "created_at": "2026-06-05T13:47:58.221725Z",
+      "formal_use_allowed": false
+    },
+    "preflight_validation": {
+      "validation_status": "ready_for_audit_review",
+      "missing_required_fields": [],
+      "failed_required_field_groups": [],
+      "direct_anchor_match": {
+        "anchor_type": "page_id",
+        "matched_query": "PAGE-LEDGER-PNL-001",
+        "proves_primary_page_anchor": true
+      },
+      "record_formal_use_allowed": false
+    },
+    "preflight_scope": {
+      "writes_governance_records": false,
+      "checks_record_existence": false,
+      "approves_metric_or_page": false,
+      "proves_page_execution": false,
+      "validates_required_fields": true,
+      "captures_business_owner_approval": false
+    },
+    "write_boundary": "The allowed write command is python scripts/emit_ledger_pnl_governance_record.py --write, but it requires approved governance workflow authorization and was not run for this artifact."
+  },
+  "readiness_evidence": {
+    "command": "python scripts/codex_page_readiness.py --page-slug ledger-pnl",
+    "overall_status": "static-pass",
+    "approval_status": "candidate_or_pending",
+    "formal_use_allowed": false,
+    "blocking_gates": [],
+    "static_gates": {
+      "trace_bundle_present": "pass",
+      "evidence_readiness_explicit": "pass",
+      "lineage_mapping_present": "pass",
+      "catalog_date_review_routed": "pass",
+      "golden_sample_boundary": "pass_missing",
+      "formal_promotion_boundary": "pass",
+      "business_owner_approval_status": "pass_pending"
+    },
+    "catalog_date_evidence": null,
+    "governance_record_validation": null,
+    "audit_review": null,
+    "boundary_note": "Static-pass means ledger contract and readiness evidence is routed. This readiness output does not contain catalog/date evidence, governance validation, or audit-review closure."
+  },
+  "source_and_golden_boundary": {
+    "existing_boundary_artifact": "docs/audits/2026-06-05-ledger-pnl-source-anchor-golden-boundary.json",
+    "grain": "ledger summary per report_date and currency_or_ALL",
+    "execution_identifier": "cache_key",
+    "candidate_metric_ids": [
+      "MTR-LPN-001",
+      "MTR-LPN-002",
+      "MTR-LPN-003"
+    ],
+    "dedicated_summary_golden_sample": null,
+    "known_source_anchor_status": {
+      "qdb_general_ledger_workbook": "unknown_table_in_catalog_date_boundary",
+      "ledger_import_batch": "present_with_as_of_date",
+      "ledger_raw_row": "present_no_date_column"
+    },
+    "boundary_note": "GS-LEDGER-PNL-FIN-IND-202603-B is a formal financial indicator source-contract fixture only; it does not approve ledger summary system values for formal use."
+  },
+  "business_owner_approval": {
+    "command": "python scripts/check_ledger_pnl_business_owner_approval.py",
+    "approval_status": "pending",
+    "business_owner_approval_captured": false,
+    "formal_use_allowed": false,
+    "closure_approved": false,
+    "approval_action_item_count": 11,
+    "remaining_blockers": [
+      "business_owner_approval",
+      "business_owner_name",
+      "business_owner_role",
+      "approval_decision",
+      "approval_date",
+      "business_owner_signature",
+      "governance_record_review",
+      "no_dedicated_golden_sample_review",
+      "ui_api_payload_review",
+      "live_smoke_evidence_review",
+      "verification_commands_rerun",
+      "candidate_boundary_acceptance"
+    ],
+    "template_path": "docs/pnl/ledger-pnl-business-owner-approval-template.md",
+    "evidence_scope": {
+      "approves_metric_or_page": false,
+      "writes_governance_records": false,
+      "proves_page_execution": false,
+      "captures_business_owner_approval": false
+    }
+  },
+  "closure_blockers": [
+    {
+      "blocker": "written_direct_page_api_governance_record",
+      "status": "missing",
+      "evidence": "dry-run returned existing_record_line=null and record_write_status=not_requested"
+    },
+    {
+      "blocker": "supporting_expanded_lineage",
+      "status": "not_closed",
+      "evidence": "prior blocker artifact reported expanded_anchor_record_count=0; current readiness output has governance_record_validation=null"
+    },
+    {
+      "blocker": "dedicated_summary_golden_sample",
+      "status": "missing",
+      "evidence": "readiness reports golden_sample_boundary detail=missing and golden_samples=[]"
+    },
+    {
+      "blocker": "business_owner_approval",
+      "status": "pending",
+      "evidence": "approval checker reports business_owner_approval_captured=false with 11 action items"
+    },
+    {
+      "blocker": "manual_audit_review",
+      "status": "not_closed",
+      "evidence": "readiness output has audit_review=null; preflight residual gap requires page contract, lineage, date/catalog, and current UI/API payload review"
+    }
+  ],
+  "next_actions": [
+    "Keep using dry-run generation until governance workflow authorizes an explicit write.",
+    "After an authorized write, rerun governance validation and require a written direct PAGE/API record plus supporting expanded lineage.",
+    "Create or bind a dedicated ledger summary golden sample before promoting MTR-LPN-001 through MTR-LPN-003.",
+    "Review UI/API payload, live smoke evidence, and candidate-only boundary before completing the business-owner approval template.",
+    "Keep formal_use_allowed=false and closure_approved=false until closure evidence supports any change."
+  ],
+  "guardrails": [
+    "Do not certify /ledger-pnl from dry-run preflight alone.",
+    "Do not run --write without approved governance workflow authorization.",
+    "Do not promote MTR-LPN-001 through MTR-LPN-003 to formal use.",
+    "Do not treat GS-LEDGER-PNL-FIN-IND-202603-B as a ledger summary golden sample.",
+    "Do not hide stale, fallback, no-data, missing-source, result_meta, report date, or candidate-boundary markers."
+  ]
+}

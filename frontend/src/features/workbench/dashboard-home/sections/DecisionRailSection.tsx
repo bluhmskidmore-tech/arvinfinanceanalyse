@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
-import { LightIcon, type LightIconName } from "../../../../components/LightIcon";
+import type { ResultMeta } from "../../../../api/contracts";
+import { LightIcon } from "../../../../components/LightIcon";
 import type {
   DashboardHomeFirstScreenView,
   HomeDecisionAction,
@@ -12,7 +13,28 @@ type DecisionRailSectionProps = {
   reportDate: string;
   dataSyncPrefix: string;
   dataStatusKind: DashboardHomeFirstScreenView["headerStatus"]["dataStatusKind"];
+  snapshotMeta?: ResultMeta | null;
 };
+
+const GAP = "—";
+
+function formatSourceSurfaceLabel(surface: string | null | undefined): string {
+  if (!surface) {
+    return "主快照来源未返回";
+  }
+  if (surface === "executive_analytical") {
+    return "经营主快照（分析读面）";
+  }
+  if (surface === "formal_balance") {
+    return "正式余额读面";
+  }
+  return surface;
+}
+
+function hasRailText(value: string | null | undefined): boolean {
+  const trimmed = value?.trim();
+  return Boolean(trimmed && trimmed !== GAP && trimmed !== "--");
+}
 
 function formatRailUpdatedAt(
   statusKind: DashboardHomeFirstScreenView["headerStatus"]["dataStatusKind"],
@@ -37,11 +59,11 @@ function DecisionActionItem({ action }: { action: HomeDecisionAction }) {
     .join(" ");
   const content = (
     <>
+      <span className={styles.dhDecisionActionMeta}>{action.sourceLabel}</span>
       <span className={styles.dhDecisionActionText}>
         <b>{action.title}</b>
         <small>{action.reason}</small>
       </span>
-      <span className={styles.dhDecisionActionMeta}>{action.sourceLabel}</span>
       {action.to ? <LightIcon name="arrow-right" /> : <LightIcon name="warning" />}
     </>
   );
@@ -73,113 +95,125 @@ function DecisionActionItem({ action }: { action: HomeDecisionAction }) {
   );
 }
 
+function formatBasisLabel(meta: ResultMeta | null | undefined): string {
+  if (!meta) {
+    return "快照元数据未返回";
+  }
+  if (meta.basis === "formal" && meta.formal_use_allowed) {
+    return "正式口径已放行";
+  }
+  if (meta.basis === "formal") {
+    return "正式口径待放行";
+  }
+  if (meta.basis === "analytical") {
+    return "分析读面";
+  }
+  if (meta.basis === "scenario") {
+    return "情景读面";
+  }
+  if (meta.basis === "mock") {
+    return "演示读面";
+  }
+  return meta.basis;
+}
+
+function formatQualityLabel(meta: ResultMeta | null | undefined): string {
+  if (!meta) {
+    return "质量状态未返回";
+  }
+  const quality = meta.quality_flag === "ok" ? "质量正常" : `质量 ${meta.quality_flag}`;
+  const fallback = meta.fallback_mode === "none" ? "无降级" : `降级 ${meta.fallback_mode}`;
+  return `${quality} · ${fallback}`;
+}
+
 export function DecisionRailSection({
   decisionRail,
   reportDate,
   dataSyncPrefix,
   dataStatusKind,
+  snapshotMeta,
 }: DecisionRailSectionProps) {
-  const syncStatusIcon: LightIconName = dataStatusKind === "ok" ? "check-circle" : "warning";
   const railUpdatedAt = formatRailUpdatedAt(
     dataStatusKind,
     reportDate,
     decisionRail.dataUpdatedAt,
   );
+  const hasDrag = hasRailText(decisionRail.maxDragValue);
+  const hasContribution = hasRailText(decisionRail.maxContributionValue);
+  const hasKeyRisk = hasRailText(decisionRail.keyRisk);
 
   return (
     <aside data-testid="dashboard-home-decision-rail" className={styles.dhRail}>
-      <article className={`${styles.dhCard} ${styles.dhDecision}`}>
-        <div className={styles.dhDecisionTitle}>
-          <span className={styles.dhDecisionIcon}>
-            <LightIcon name="thunderbolt" />
-          </span>
-          <span>AI 决策舱</span>
+      <article className={styles.dhReviewRail}>
+        <div className={styles.dhReviewRailHead}>
+          <span>复核记录</span>
+          <b className={styles.dhNum}>{reportDate}</b>
         </div>
 
-        <div className={styles.dhAiCard}>
-          <div className={styles.dhAiCardHead}>
-            <LightIcon name="bulb" />
-            <span>今日结论</span>
+        <dl className={styles.dhReviewList}>
+          <div className={styles.dhReviewListPrimary}>
+            <dt>摘录</dt>
+            <dd>{decisionRail.conclusion}</dd>
           </div>
-          <p>{decisionRail.conclusion}</p>
-        </div>
 
-        <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
-          <span className={`${styles.dhRailIcon} ${styles.dhUpRed}`}>
-            <LightIcon name="arrow-down" />
-          </span>
           <div>
-            <b>最大拖累</b>
-            <p>
-              {decisionRail.maxDragLabel}{" "}
-              <span className={`${styles.dhNum} ${styles.dhUpRed}`}>{decisionRail.maxDragValue}</span>
-            </p>
+            <dt>依据</dt>
+            <dd>{hasKeyRisk ? decisionRail.keyRisk : "主快照未返回可摘录依据"}</dd>
           </div>
-        </div>
 
-        <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
-          <span className={`${styles.dhRailIcon} ${styles.dhDownGreen}`}>
-            <LightIcon name="arrow-up" />
-          </span>
-          <div>
-            <b>最大贡献</b>
-            <p>
-              {decisionRail.maxContributionLabel}{" "}
-              <span className={`${styles.dhNum} ${styles.dhDownGreen}`}>
-                {decisionRail.maxContributionValue}
+          {hasDrag || hasContribution ? (
+            <div>
+              <dt>贡献 / 拖累</dt>
+              <dd className={styles.dhReviewPairList}>
+            {hasDrag ? (
+              <span>
+                最大拖累：{decisionRail.maxDragLabel}{" "}
+                <b className={`${styles.dhNum} ${styles.dhUpRed}`}>{decisionRail.maxDragValue}</b>
               </span>
-            </p>
-          </div>
-        </div>
-
-        <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
-          <span className={`${styles.dhRailIcon} ${styles.dhRailIconBlue}`}>
-            <LightIcon name="warning" />
-          </span>
-          <div>
-            <b>关键风险</b>
-            <p>{decisionRail.keyRisk}</p>
-          </div>
-        </div>
-
-        <div className={styles.dhAiCard}>
-          <div className={styles.dhAiCardHead}>
-            <LightIcon name="check-square" />
-            <span>建议动作</span>
-          </div>
-          {decisionRail.actions.length > 0 ? (
-            <div className={styles.dhDecisionActionList}>
-              {decisionRail.actions.map((action) => (
-                <DecisionActionItem key={action.id} action={action} />
-              ))}
+            ) : null}
+            {hasContribution ? (
+              <span>
+                最大贡献：{decisionRail.maxContributionLabel}{" "}
+                <b className={`${styles.dhNum} ${styles.dhDownGreen}`}>
+                  {decisionRail.maxContributionValue}
+                </b>
+              </span>
+            ) : null}
+              </dd>
             </div>
-          ) : (
-            <ol className={styles.dhSuggestionList}>
-              {decisionRail.suggestions.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ol>
-          )}
-        </div>
+          ) : null}
 
-        <div className={`${styles.dhAiCard} ${styles.dhAiCardMetric}`}>
-          <span className={`${styles.dhRailIcon} ${styles.dhRailIconBlue}`}>
-            <LightIcon name="unordered-list" />
-          </span>
           <div>
-            <b>待处理事项</b>
-            <p>{decisionRail.pendingSummary}</p>
+            <dt>入口</dt>
+            <dd>
+              {decisionRail.actions.length > 0 ? (
+                <div className={styles.dhReviewActionList}>
+                  {decisionRail.actions.map((action) => (
+                    <DecisionActionItem key={action.id} action={action} />
+                  ))}
+                </div>
+              ) : (
+                <ol className={styles.dhSuggestionList}>
+                  {decisionRail.suggestions.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ol>
+              )}
+            </dd>
           </div>
-        </div>
 
-        <button type="button" className={styles.dhReportBtn}>
-          <LightIcon name="file-text" /> 生成完整经营报告 <LightIcon name="arrow-right" />
-        </button>
+          <div>
+            <dt>待办</dt>
+            <dd className={styles.dhNum}>{decisionRail.pendingSummary}</dd>
+          </div>
+        </dl>
       </article>
 
-      <article className={`${styles.dhCard} ${styles.dhCardSecondary} ${styles.dhDataNote}`}>
-        <h3>数据说明</h3>
-        <p>数据来源：交易系统、估值系统、风险系统等</p>
+      <article className={styles.dhDataNote}>
+        <h3>来源台账</h3>
+        <p>来源：{formatSourceSurfaceLabel(snapshotMeta?.source_surface)}</p>
+        <p>口径：{formatBasisLabel(snapshotMeta)}</p>
+        <p>质量：{formatQualityLabel(snapshotMeta)}</p>
         <p>
           更新时间：
           <span className={styles.dhNum} data-testid="dashboard-home-rail-updated-at">
@@ -191,7 +225,7 @@ export function DecisionRailSection({
           data-status-kind={dataStatusKind}
           className={dataStatusKind === "ok" ? styles.dhDataNoteOk : styles.dhDataNoteWarning}
         >
-          <LightIcon name={syncStatusIcon} /> {dataSyncPrefix} · 页面数据以后端 API 为准
+          {dataSyncPrefix} · 主快照读数
         </p>
       </article>
     </aside>

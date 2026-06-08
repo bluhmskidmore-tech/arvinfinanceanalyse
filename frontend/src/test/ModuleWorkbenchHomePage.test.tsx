@@ -1090,6 +1090,29 @@ describe("MarketHomePage", () => {
     expect(within(page).queryByTestId("dashboard-home-hero")).not.toBeInTheDocument();
   });
 
+  it("renders the market overview as an institutional cockpit with an AI decision rail", async () => {
+    renderAt("/market-overview");
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const cockpit = within(page).getByTestId("module-home-market-cockpit");
+    const primaryGrid = within(page).getByTestId("module-home-market-primary-grid");
+    const aiRail = within(page).getByTestId("module-home-market-ai-rail");
+
+    expect(cockpit.className).toEqual(expect.stringContaining("marketInstitutionalCockpit"));
+    expect(primaryGrid).toContainElement(within(page).getByTestId("module-home-briefing"));
+    expect(primaryGrid).toContainElement(aiRail);
+    expect(aiRail).toHaveTextContent("AI 决策舱");
+    expect(within(page).getByTestId("module-home-toolbar")).toHaveTextContent("读取中");
+    expect(within(within(page).getByTestId("module-home-toolbar")).getByText("读取中")).toHaveAttribute(
+      "data-tone",
+      "muted",
+    );
+    expect(within(aiRail).getByText("读取中")).toHaveAttribute("data-tone", "muted");
+    expect(within(aiRail).getByRole("link", { name: "市场数据" })).toHaveAttribute("href", "/market-data");
+    expect(within(aiRail).getByRole("link", { name: "宏观工具" })).toHaveAttribute("href", "/macro-toolkit");
+    expect(within(aiRail).getByRole("link", { name: "跨资产" })).toHaveAttribute("href", "/cross-asset");
+  });
+
   it("renders market key rate snapshot and terminal tabs from market-data reads", async () => {
     const user = userEvent.setup();
     renderAt("/market-overview");

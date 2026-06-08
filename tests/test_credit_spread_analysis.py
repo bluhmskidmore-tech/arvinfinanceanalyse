@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import textwrap
 import time
+import uuid
 from datetime import date
 from decimal import Decimal
-import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -19,8 +19,10 @@ from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
-
+from tests.test_bond_analytics_materialize_flow import (
+    REPORT_DATE,
+    _seed_bond_snapshot_rows,
+)
 
 CREDIT_SPREAD_READ_HEADERS = {"X-User-Id": "credit-spread-read-user", "X-User-Role": "viewer"}
 

@@ -35,6 +35,8 @@ const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资
 const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
 const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组合规模与浮盈快照。";
 const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
+const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
+  "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。";
 const DV01_HOME_TOP_N = 1;
 const DV01_HOME_SHOCK_BPS = "1";
 const DV01_ACCOUNTING_CLASSES = [
@@ -138,17 +140,107 @@ function SectionCardTitle({
   );
 }
 
+type AccountingDv01SummaryRow = {
+  label: string;
+  value: string;
+  payload: DV01RiskPayload | null;
+};
+
+function MobileReadoutField({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className={styles.mobileReadoutField}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {detail ? <small>{detail}</small> : null}
+    </div>
+  );
+}
+
+function pickLargestDv01Row(rows: AccountingDv01SummaryRow[]) {
+  let largest: AccountingDv01SummaryRow | null = null;
+  let largestDv01 = Number.NEGATIVE_INFINITY;
+
+  for (const row of rows) {
+    const rawDv01 = Math.abs(bondNumericRaw(row.payload?.total_dv01));
+    if (Number.isFinite(rawDv01) && rawDv01 > largestDv01) {
+      largest = row;
+      largestDv01 = rawDv01;
+    }
+  }
+
+  return largest;
+}
+
+function AccountingDv01MobileReadout({
+  rows,
+  isLoading,
+  hasError,
+}: {
+  rows: AccountingDv01SummaryRow[];
+  isLoading: boolean;
+  hasError: boolean;
+}) {
+  const largestRow = pickLargestDv01Row(rows);
+  const stateLabel = hasError ? "读面暂未返回" : isLoading ? "读取中" : "移动摘要";
+  const largestDv01Display = largestRow
+    ? formatNumericDisplay(largestRow.payload?.total_dv01)
+    : hasError
+      ? "读面暂未返回"
+      : isLoading
+        ? "读取中"
+        : "暂无可用分类";
+
+  return (
+    <div
+      data-testid="bond-analysis-accounting-dv01-mobile-readout"
+      className={styles.mobileTableReadout}
+    >
+      <div className={styles.mobileReadoutHeader}>
+        <span>会计分类 DV01</span>
+        <strong>{stateLabel}</strong>
+      </div>
+      <div className={styles.mobileReadoutGrid}>
+        <MobileReadoutField
+          label="最高 DV01 分类"
+          value={largestRow?.label ?? "—"}
+          detail={largestDv01Display}
+        />
+        <MobileReadoutField
+          label="面值加权久期"
+          value={formatDurationDisplay(largestRow?.payload?.face_weighted_modified_duration)}
+        />
+        <MobileReadoutField
+          label="DV01"
+          value={largestDv01Display}
+        />
+        <MobileReadoutField
+          label="面值"
+          value={formatMoneyDisplay(largestRow?.payload?.total_face_value)}
+        />
+        <MobileReadoutField
+          label="持仓数"
+          value={largestRow?.payload ? formatNumericString(largestRow.payload.position_count) : "—"}
+        />
+      </div>
+    </div>
+  );
+}
+
 function AccountingDv01SummaryPanel({
   rows,
   isLoading,
   hasError,
   onOpenModuleDetail,
 }: {
-  rows: Array<{
-    label: string;
-    value: string;
-    payload: DV01RiskPayload | null;
-  }>;
+  rows: AccountingDv01SummaryRow[];
   isLoading: boolean;
   hasError: boolean;
   onOpenModuleDetail?: (key: BondAnalyticsModuleKey) => void;
@@ -173,7 +265,11 @@ function AccountingDv01SummaryPanel({
       style={dashboardCardStyle}
       styles={{ body: { padding: 0 } }}
     >
-      <div className={styles.accountingDv01Grid}>
+      <AccountingDv01MobileReadout rows={rows} isLoading={isLoading} hasError={hasError} />
+      <div
+        data-testid="bond-analysis-accounting-dv01-raw-grid"
+        className={styles.accountingDv01Grid}
+      >
         <div className={styles.accountingDv01Header}>
           <span>分类</span>
           <span>面值加权久期</span>
@@ -196,6 +292,40 @@ function AccountingDv01SummaryPanel({
       {isLoading ? <div className={styles.accountingDv01Note}>分类 DV01 正在读取。</div> : null}
       {hasError ? <div className={styles.accountingDv01Note}>分类 DV01 读面暂未返回。</div> : null}
     </Card>
+  );
+}
+
+function HoldingsMobileReadout({
+  holdings,
+  unavailable,
+}: {
+  holdings: BondTopHoldingItem[];
+  unavailable: boolean;
+}) {
+  const leadHolding = unavailable ? null : holdings[0] ?? null;
+  const leadName = leadHolding
+    ? leadHolding.instrument_name ?? leadHolding.instrument_code
+    : unavailable
+      ? "读面暂未返回"
+      : "暂无持仓明细";
+  const leadDetail = leadHolding ? leadHolding.instrument_code : undefined;
+  const statusLabel = unavailable ? "读面暂未返回" : `${holdings.length} 只可见`;
+
+  return (
+    <div data-testid="bond-analysis-holdings-mobile-readout" className={styles.mobileTableReadout}>
+      <div className={styles.mobileReadoutHeader}>
+        <span>前十大持仓</span>
+        <strong>{statusLabel}</strong>
+      </div>
+      <div className={styles.mobileReadoutGrid}>
+        <MobileReadoutField label="最大持仓" value={leadName} detail={leadDetail} />
+        <MobileReadoutField label="评级" value={leadHolding?.rating ?? "—"} />
+        <MobileReadoutField label="市值" value={leadHolding ? formatYi(leadHolding.market_value) : "—"} />
+        <MobileReadoutField label="收益率" value={leadHolding ? formatPct(leadHolding.ytm) : "—"} />
+        <MobileReadoutField label="久期" value={leadHolding?.modified_duration.display ?? "—"} />
+        <MobileReadoutField label="权重" value={leadHolding ? formatPct(leadHolding.weight) : "—"} />
+      </div>
+    </div>
   );
 }
 
@@ -633,11 +763,17 @@ export function BondAnalyticsInstitutionalCockpit({
   const portfolioCreditWeight = portfolioHl ? numOr(portfolioHl.credit_weight) : Number.NaN;
   const creditWeight = Number.isFinite(riskCreditRatio) ? riskCreditRatio : portfolioCreditWeight;
   const spreadMedian = headline ? numOr(headline.kpis.credit_spread_median) : Number.NaN;
-  const conclusion = buildCockpitConclusion({
-    duration: dur,
-    creditWeight,
-    spreadMedian,
-  });
+  const conclusion = isDashboardDateFallback
+    ? {
+        title: "快照待复核",
+        body: "当前请求报告日暂无债券驾驶舱快照。",
+        detail: `请求 ${reportDate}，当前展示 ${dashboardReportDate} 快照；主结论需等目标报告日读面补齐后再确认。`,
+      }
+    : buildCockpitConclusion({
+        duration: dur,
+        creditWeight,
+        spreadMedian,
+      });
 
   const k = headline?.kpis;
   const previousK = headline?.prev_kpis;
@@ -791,12 +927,18 @@ export function BondAnalyticsInstitutionalCockpit({
         <div className={styles.holdingsKpiRail}>
           <div data-testid="bond-analysis-kpi-ribbon" className={styles.holdingsKpiGrid}>
             <ReferenceKpiTile label="组合总览" value={marketValueDisplay} detail={`较上期 ${formatSignedPct(marketValueMomPct)}`} />
-            <ReferenceKpiTile label="债券总市值" value={marketValueDisplay} detail="正式读面市值" />
-            <ReferenceKpiTile label="持仓收益（估值）" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} tone={unrealizedPnlTone} />
-            <ReferenceKpiTile label="今日收益（估值）" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待返回"} tone={actionPnlTone} />
+            <ReferenceKpiTile label="债券总市值（人民币/CNY）" value={marketValueDisplay} detail="正式读面市值，按人民币折算" />
+            <ReferenceKpiTile label="持仓收益（估值，人民币/CNY）" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} tone={unrealizedPnlTone} />
+            <ReferenceKpiTile label="今日收益（估值，人民币/CNY）" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待返回"} tone={actionPnlTone} />
             <ReferenceKpiTile label="加权久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待返回"} />
             <ReferenceKpiTile label="组合 DV01" value={dv01Display} detail="风险指标读面" />
             <ReferenceKpiDonutTile label="信用债占比" value={creditWeightDisplay} detail={`债券只数 ${bondCountDisplay}`} ratio={investmentGradeRatio} />
+          </div>
+          <div
+            data-testid="bond-analysis-currency-basis-banner"
+            className={styles.currencyBasisBanner}
+          >
+            {BOND_ANALYTICS_CURRENCY_BASIS_TEXT}
           </div>
         </div>
 
@@ -907,7 +1049,11 @@ export function BondAnalyticsInstitutionalCockpit({
             className={styles.referenceHoldingsCard}
             styles={{ body: { padding: 0 } }}
           >
-            <div className={styles.holdingsTable}>
+            <HoldingsMobileReadout holdings={topHoldings} unavailable={topHoldingsUnavailable} />
+            <div
+              data-testid="bond-analysis-holdings-raw-grid"
+              className={styles.holdingsTable}
+            >
               <div className={styles.holdingsTableHeader}>
                 <span>债券</span>
                 <span>券种</span>

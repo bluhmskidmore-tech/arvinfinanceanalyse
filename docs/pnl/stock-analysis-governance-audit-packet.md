@@ -12,6 +12,14 @@ Closure approved: `closure_approved=false`
 
 This packet records the audit lane for the Stock Analysis observational route. It does not write governance records, prove page execution, approve a PAGE-STOCK contract, create MTR-STOCK rows, or capture business-owner approval.
 
+## Evidence Scope
+
+- `approves_metric_or_page=false`
+- `writes_governance_records=false`
+- `proves_page_execution=false`
+- `captures_business_owner_approval=false`
+- `certification_effect=none`
+
 ## Required Evidence
 
 - Direct page/API governance record review

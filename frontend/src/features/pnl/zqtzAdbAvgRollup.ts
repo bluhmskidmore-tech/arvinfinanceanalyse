@@ -24,9 +24,8 @@ function resolveAdbAvgYuanFromRollup(
   directMap: Map<string, number>,
   visiting: Set<string>,
 ): number | undefined {
-  const direct = directMap.get(businessType);
-  if (direct !== undefined && direct > 0) {
-    return direct;
+  if (directMap.has(businessType)) {
+    return directMap.get(businessType);
   }
   if (visiting.has(businessType)) {
     return undefined;
@@ -37,12 +36,14 @@ function resolveAdbAvgYuanFromRollup(
   }
   visiting.add(businessType);
   let sum = 0;
+  let resolvedChildCount = 0;
   for (const label of children) {
     const v = resolveAdbAvgYuanFromRollup(label, directMap, visiting);
-    if (v !== undefined && v > 0) {
+    if (v !== undefined) {
+      resolvedChildCount += 1;
       sum += v;
     }
   }
   visiting.delete(businessType);
-  return sum > 0 ? sum : undefined;
+  return resolvedChildCount > 0 ? sum : undefined;
 }

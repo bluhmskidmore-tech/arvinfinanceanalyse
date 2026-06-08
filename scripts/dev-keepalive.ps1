@@ -56,7 +56,7 @@ function Test-HttpEndpoint {
 function Test-FrontendReady {
   return (
     (Test-HttpEndpoint -Url "http://127.0.0.1:5888") -and
-    (Test-HttpEndpoint -Url "http://127.0.0.1:5888/src/api/client.ts")
+    (Test-HttpEndpoint -Url "http://127.0.0.1:5888/src/api/clientContext.ts")
   )
 }
 
@@ -345,7 +345,7 @@ function Invoke-KeepaliveCycle {
     Restart-HttpService `
       -ServiceName "frontend" `
       -ScriptName "dev-frontend.ps1" `
-      -Url "http://127.0.0.1:5888/src/api/client.ts" `
+      -Url "http://127.0.0.1:5888/src/api/clientContext.ts" `
       -Port 5888
   }
 }

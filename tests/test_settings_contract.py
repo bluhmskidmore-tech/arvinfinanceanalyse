@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from backend.app.governance.settings import (
@@ -46,6 +46,7 @@ def test_settings_defaults(monkeypatch):
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
+    assert s.home_snapshot_prewarm_enabled is True
     assert isinstance(s.governance_path, Path)
     assert isinstance(s.data_input_root, Path)
     assert isinstance(s.local_archive_path, Path)
@@ -101,6 +102,15 @@ def test_settings_env_overrides(monkeypatch):
     assert s.governance_path == (repo_root / "custom" / "gov").resolve()
     assert s.data_input_root == (repo_root / "custom" / "in").resolve()
     assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
+
+
+def test_home_snapshot_prewarm_can_be_disabled_by_env(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    monkeypatch.setenv("MOSS_HOME_SNAPSHOT_PREWARM_ENABLED", "false")
+
+    s = Settings(_env_file=None)
+
+    assert s.home_snapshot_prewarm_enabled is False
 
 
 def test_settings_core_storage_paths_resolve_relative_to_repo_root(monkeypatch):

@@ -1937,15 +1937,174 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr(macro_toolkit_route.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
-    monkeypatch.setattr(macro_toolkit_route, "_load_equity_strategy_factor_snapshot", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(macro_toolkit_service, "load_equity_strategy_factor_snapshot", lambda *_args, **_kwargs: None)
 
-    context = macro_toolkit_route._load_equity_strategy_price_context(duckdb_path)
+    context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
 
     assert context is not None
     assert price_query_used_df is True
     assert context["prices"].shape == (90, 2)
     assert len(context["observations"]) == len(price_rows)
+
+
+def test_equity_strategy_price_context_delegates_to_service(tmp_path, monkeypatch) -> None:
+    expected_context = {
+        "prices": pd.DataFrame({"000001.SZ": [10.0, 10.2]}),
+        "observations": pd.DataFrame({"stock_code": ["000001.SZ"]}),
+        "as_of_date": "2026-04-30",
+        "tables_used": ["choice_stock_daily_observation"],
+        "source_versions": ["sv_stock"],
+        "vendor_versions": ["vv_stock"],
+    }
+    calls: list[object] = []
+
+    def fake_load_equity_strategy_price_context(duckdb_path: object) -> dict[str, object]:
+        calls.append(duckdb_path)
+        return expected_context
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_equity_strategy_price_context",
+        fake_load_equity_strategy_price_context,
+        raising=False,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    assert macro_toolkit_route._load_equity_strategy_price_context(duckdb_path) is expected_context
+    assert calls == [duckdb_path]
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_equity_strategy_price_context)
+
+
+def test_a_share_stampede_risk_context_delegates_to_service(tmp_path, monkeypatch) -> None:
+    expected_context = {
+        "observations": pd.DataFrame({"stock_code": ["000001.SZ"]}),
+        "theme_frame": pd.DataFrame({"stock_code": ["000001.SZ"], "industry": ["Bank"]}),
+        "tables_used": ["choice_stock_daily_observation"],
+        "warnings": [],
+    }
+    calls: list[object] = []
+
+    def fake_load_a_share_stampede_risk_context(duckdb_path: object) -> dict[str, object]:
+        calls.append(duckdb_path)
+        return expected_context
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_a_share_stampede_risk_context",
+        fake_load_a_share_stampede_risk_context,
+        raising=False,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    assert macro_toolkit_route._load_a_share_stampede_risk_context(duckdb_path) is expected_context
+    assert calls == [duckdb_path]
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_a_share_stampede_risk_context)
+
+
+def test_macro_curve_rows_delegate_to_service(tmp_path, monkeypatch) -> None:
+    report_date = date(2026, 4, 30)
+    expected_rows = [
+        {
+            "biz_date": "2026-04-30",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.35,
+        }
+    ]
+    calls: list[tuple[object, date]] = []
+
+    def fake_load_macro_curve_rows(duckdb_path: object, report_date_arg: date) -> list[dict[str, object]]:
+        calls.append((duckdb_path, report_date_arg))
+        return expected_rows
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_macro_curve_rows",
+        fake_load_macro_curve_rows,
+        raising=False,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    assert macro_toolkit_route._load_macro_curve_rows(duckdb_path, report_date) is expected_rows
+    assert calls == [(duckdb_path, report_date)]
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_macro_curve_rows)
+
+
+def test_macro_curve_rows_include_reverse_repo_legacy_alias(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    try:
+        rows = macro_toolkit_service.load_macro_curve_rows(duckdb_path, date(2026, 4, 10))
+    finally:
+        get_settings.cache_clear()
+
+    reverse_repo = [
+        row
+        for row in rows
+        if row["curve_id"] == "CN_RRP" and row["tenor"] == "7D"
+    ]
+
+    assert reverse_repo == [
+        {
+            "biz_date": "2026-04-10",
+            "curve_id": "CN_RRP",
+            "tenor": "7D",
+            "rate_value": 1.75,
+        }
+    ]
+
+
+def test_latest_risk_tensor_row_delegates_to_service(tmp_path, monkeypatch) -> None:
+    report_date = date(2026, 4, 30)
+    expected_row = {"report_date": "2026-04-30", "total_market_value": 100.0}
+    calls: list[tuple[object, date]] = []
+
+    def fake_load_latest_risk_tensor_row(duckdb_path: object, report_date_arg: date) -> dict[str, object]:
+        calls.append((duckdb_path, report_date_arg))
+        return expected_row
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_latest_risk_tensor_row",
+        fake_load_latest_risk_tensor_row,
+        raising=False,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    assert macro_toolkit_route._load_latest_risk_tensor_row(duckdb_path, report_date) is expected_row
+    assert calls == [(duckdb_path, report_date)]
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_latest_risk_tensor_row)
+
+
+def test_latest_bond_positions_delegate_to_service(tmp_path, monkeypatch) -> None:
+    report_date = date(2026, 4, 30)
+    expected_positions = [{"market_value": 100.0, "maturity_date": "2027-04-30", "coupon_rate": 2.4}]
+    calls: list[tuple[object, date]] = []
+
+    def fake_load_latest_bond_positions(duckdb_path: object, report_date_arg: date) -> list[dict[str, object]]:
+        calls.append((duckdb_path, report_date_arg))
+        return expected_positions
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_latest_bond_positions",
+        fake_load_latest_bond_positions,
+        raising=False,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    assert macro_toolkit_route._load_latest_bond_positions(duckdb_path, report_date) is expected_positions
+    assert calls == [(duckdb_path, report_date)]
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_latest_bond_positions)
 
 
 def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:
@@ -2729,6 +2888,93 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     assert status_payload["result"]["refresh"]["cache_version"] == "choice_stock_refresh_v1"
 
 
+def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    get_settings.cache_clear()
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    scope_repo.grant_scope(
+        user_id="stock-refresh-user",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+    scope_repo.grant_scope(
+        user_id="stock-refresh-user",
+        role=None,
+        resource="macro_toolkit.choice_stock",
+        action="refresh",
+    )
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "materialize_choice_stock_inputs",
+        lambda **kwargs: calls.append(("history", dict(kwargs)))
+        or {"status": "completed", "row_count": 111, "source_version": "sv_history"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "materialize_choice_stock_factor_snapshot",
+        lambda **kwargs: calls.append(("factor", dict(kwargs)))
+        or {"status": "completed", "row_count": 222, "source_version": "sv_factor"},
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    headers = {
+        "X-User-Id": "stock-refresh-user",
+        "X-User-Role": "viewer",
+        "Idempotency-Key": "choice-stock-refresh-2026-04-30",
+    }
+    body = {
+        "as_of_date": "2026-04-30",
+        "refresh_history": True,
+        "refresh_factors": True,
+        "factor_max_stock_count": None,
+    }
+
+    try:
+        first_response = client.post(
+            "/ui/macro/toolkit/choice-stock/refresh",
+            json=body,
+            headers=headers,
+        )
+        second_response = client.post(
+            "/ui/macro/toolkit/choice-stock/refresh",
+            json=body,
+            headers=headers,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_refresh = first_response.json()["result"]["refresh"]
+    second_refresh = second_response.json()["result"]["refresh"]
+    assert second_refresh["run_id"] == first_refresh["run_id"]
+    assert second_refresh["idempotency_key"] == "choice-stock-refresh-2026-04-30"
+    assert second_refresh["idempotency_replay"] is True
+    assert [name for name, _kwargs in calls] == ["history", "factor"]
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_path).read_all(
+            macro_toolkit_service.CACHE_BUILD_RUN_STREAM
+        )
+        if record.get("job_name") == "choice_stock_refresh"
+        and record.get("run_id") == first_refresh["run_id"]
+        and record.get("status") == "queued"
+    ]
+    assert len(records) == 1
+
+
 def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     governance_path = tmp_path / "governance"
@@ -3232,6 +3478,33 @@ def test_macro_toolkit_commodity_futures_dry_run_returns_baseline_health_summary
     assert refresh["summary"]["nanhua_latest_value_after"] == 3007.05
     assert response.json()["result"]["commodity_futures_refresh"]["status"] == baseline_status
     get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_status_delegates_to_service(tmp_path, monkeypatch) -> None:
+    expected_status = {
+        "materialized": True,
+        "status": "ok",
+        "table": "fact_commodity_futures_daily",
+        "row_count": 1,
+    }
+    calls: list[object] = []
+
+    def fake_commodity_futures_status(duckdb_path: object) -> dict[str, object]:
+        calls.append(duckdb_path)
+        return expected_status
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        fake_commodity_futures_status,
+        raising=False,
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    assert macro_toolkit_route._commodity_futures_status(duckdb_path) == expected_status
+    assert calls == [duckdb_path]
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._commodity_futures_status)
 
 
 def test_macro_toolkit_commodity_futures_refresh_rejects_unknown_products(tmp_path, monkeypatch) -> None:

@@ -60,7 +60,6 @@ class TestNormalizeAnnualRateToDecimal:
         assert normalize_annual_rate_to_decimal(0) == pytest.approx(0.0)
 
     def test_nan_returns_none(self):
-        import math
         assert normalize_annual_rate_to_decimal(float("nan")) is None
 
     def test_inf_returns_none(self):

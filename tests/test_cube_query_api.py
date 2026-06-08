@@ -8,7 +8,6 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_cube_query_service import _seed_cube_tables
 
-
 CUBE_READ_HEADERS = {"X-User-Id": "cube-read-user", "X-User-Role": "viewer"}
 
 

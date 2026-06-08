@@ -7,8 +7,11 @@ describe("WorkbenchShell theme guard", () => {
       resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx"),
       "utf8",
     );
-    const globalCss = readFileSync(resolve(process.cwd(), "src/styles/global.css"), "utf8");
-    const heroRule = globalCss.match(/\.workbench-workspace-hero\s*\{[^}]+\}/)?.[0] ?? "";
+    const deferredChromeCss = readFileSync(
+      resolve(process.cwd(), "src/styles/workbenchDeferredChrome.css"),
+      "utf8",
+    );
+    const heroRule = deferredChromeCss.match(/\.workbench-workspace-hero\s*\{[^}]+\}/)?.[0] ?? "";
 
     expect(shellSource).not.toContain("rgba(255, 253, 248");
     expect(shellSource).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);

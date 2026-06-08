@@ -8,6 +8,11 @@ describe("resolveAdbAvgYuan", () => {
     expect(resolveAdbAvgYuan("政策性金融债", map)).toBe(1e9);
   });
 
+  it("returns direct zero when the category explicitly has true zero ADB", () => {
+    const map = new Map<string, number>([["zero-business", 0]]);
+    expect(resolveAdbAvgYuan("zero-business", map)).toBe(0);
+  });
+
   it("sums known children for 非底层投资资产 when parent key missing", () => {
     const map = new Map<string, number>([
       ["信托计划", 100],
@@ -32,6 +37,19 @@ describe("resolveAdbAvgYuan", () => {
       ["其中：本币专户（成本法）", 40],
     ]);
     expect(resolveAdbAvgYuan("证券业资管计划", map)).toBe(100);
+  });
+
+  it("returns rolled-up zero when child categories explicitly resolve to zero", () => {
+    const map = new Map<string, number>([
+      ["信托计划", 0],
+      ["证券业资管计划", 0],
+    ]);
+    expect(resolveAdbAvgYuan("非底层投资资产", map)).toBe(0);
+  });
+
+  it("keeps missing rollup undefined when neither parent nor children are present", () => {
+    const map = new Map<string, number>();
+    expect(resolveAdbAvgYuan("非底层投资资产", map)).toBeUndefined();
   });
 
   it("rolls 非底层投资资产 through 证券业资管计划 without double counting detail rows", () => {

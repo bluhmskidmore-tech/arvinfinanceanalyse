@@ -193,6 +193,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [lastRefreshRunId, setLastRefreshRunId] = useState<string | null>(null);
   const [lastAdjustmentId, setLastAdjustmentId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProductCategoryManualAdjustmentRequest>(
@@ -366,6 +367,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   }
 
   async function handleRevoke(adjustmentId: string) {
+    if (!window.confirm(`Confirm revoke product-category adjustment ${adjustmentId}?`)) {
+      return;
+    }
     setAdjustmentError(null);
     setIsRefreshing(true);
     try {
@@ -399,6 +403,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   const eventCanNext = eventOffset + eventLimit < eventTotal;
 
   async function handleExport() {
+    setExportError(null);
     try {
       const payload = await client.exportProductCategoryManualAdjustmentsCsv(
         selectedDate,
@@ -406,7 +411,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       );
       downloadAuditCsv(payload.filename, payload.content);
     } catch (error) {
-      setAdjustmentError(error instanceof Error ? error.message : "导出审计失败");
+      setExportError(error instanceof Error ? error.message : "导出审计失败");
     }
   }
 
@@ -434,6 +439,14 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           {adjustmentError ? (
             <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}>
               {adjustmentError}
+            </p>
+          ) : null}
+          {exportError ? (
+            <p
+              data-testid="product-category-audit-export-error"
+              style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}
+            >
+              {exportError}
             </p>
           ) : null}
         </div>

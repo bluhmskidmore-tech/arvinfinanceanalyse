@@ -5,7 +5,7 @@ from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
 from backend.app.schemas.pnl import PnlByBusinessAnalysisDimension, PnlByBusinessManualAdjustmentRequest
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 router = APIRouter(prefix="/api")
 
@@ -319,6 +319,7 @@ def _ensure_by_business_adjustment_write_allowed(auth: AuthContext, settings) ->
 @router.post("/data/refresh_pnl")
 def refresh_pnl(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_date: str | None = Query(None),
 ) -> dict[str, object]:
     settings = get_settings()
@@ -330,7 +331,11 @@ def refresh_pnl(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return service.refresh_pnl(settings, report_date=report_date)
+        return service.refresh_pnl(
+            settings,
+            report_date=report_date,
+            idempotency_key=idempotency_key,
+        )
     except service.PnlRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

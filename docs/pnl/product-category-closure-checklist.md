@@ -379,5 +379,6 @@ Rule:
 Recommended next smallest unit:
 
 - Unit 2: Detail
-  - next evidence target: decide whether detail rows, yield, scale, or FTP fields should become formal metrics
+  - next evidence target: active 3C metrics `MTR-PCP-004` through `MTR-PCP-012` are already governed; keep non-3C/additional detail fields blocked until a new governed metric matrix / dictionary / sample / test bundle exists
+  - do not re-decide whether already-governed 3C scale, FTP, net income, or yield rows should become formal metrics
   - do not invent additional `metric_id` bindings beyond `MTR-PCP-001` through `MTR-PCP-012`

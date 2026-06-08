@@ -294,6 +294,57 @@ describe("teamPerformancePageModel", () => {
     expect(viewModel.centers[0].evidenceRows).toHaveLength(1);
   });
 
+  it("excludes linked non-additive evidence from the mapped-team candidate count", () => {
+    const indicators: AssessmentIndicator2025[] = [
+      assessmentIndicator({
+        centerId: "reference-center",
+        centerName: "挂钩中心",
+        indicatorCategory: "效益类",
+        metric: "挂钩参考收入",
+        target: "参考正式读模型，不并入中心归因",
+        weight: 10,
+        scoringText: "参考口径",
+        actual: "挂钩引用",
+        progress: "挂钩引用",
+        score: 10,
+        sourceRow: 1,
+      }),
+    ];
+    const mappings: CenterPnlMapping2025[] = [
+      {
+        centerId: "reference-center",
+        endpoint: "product-category-ytd",
+        rowId: "intermediate_business_income",
+        pnlField: "business_net_income",
+        confidence: "linked",
+        additive: false,
+      },
+    ];
+
+    const viewModel = buildTeamPerformanceViewModel({
+      indicators,
+      mappings,
+      productCategoryRows: [
+        productRow({
+          category_id: "intermediate_business_income",
+          category_name: "中间业务收入",
+          level: 1,
+          is_total: false,
+          business_net_income: "2000000",
+        }),
+      ],
+    });
+
+    expect(viewModel.mappedCenterCount).toBe(0);
+    expect(viewModel.visibleEvidenceStatus).toBe("暂无正式映射证据");
+    expect(viewModel.centers[0]).toMatchObject({
+      mappingStatus: "挂钩引用",
+      mappedPnlTotalYuan: null,
+      mappedScaleTotalYuan: null,
+    });
+    expect(viewModel.centers[0].evidenceRows).toHaveLength(1);
+  });
+
   it("surfaces unmapped metrics in center coverage warnings", () => {
     const viewModel = buildTeamPerformanceViewModel();
 

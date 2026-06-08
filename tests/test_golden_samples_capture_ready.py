@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import ROOT, load_module
 
@@ -28,6 +29,15 @@ PNL_ATTRIBUTION_SAMPLE_PATHS = {"/api/pnl-attribution/volume-rate"}
 PNL_ATTRIBUTION_READ_HEADERS = {"X-User-Id": "pnl-attribution-read-user", "X-User-Role": "viewer"}
 LEDGER_PNL_SAMPLE_PATHS = {"/api/ledger-pnl/summary"}
 LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
+PNL_SAMPLE_PATHS = {"/api/pnl/bridge", "/api/pnl/data", "/api/pnl/overview"}
+PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
+PRODUCT_CATEGORY_PNL_SAMPLE_PATHS = {"/ui/pnl/product-category"}
+PRODUCT_CATEGORY_PNL_READ_HEADERS = {
+    "X-User-Id": "product-category-pnl-read-user",
+    "X-User-Role": "viewer",
+}
+RISK_TENSOR_SAMPLE_PATHS = {"/api/risk/tensor"}
+RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -187,66 +197,67 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     get_settings.cache_clear()
 
     repo = BondAnalyticsRepository(str(duckdb_path))
-    repo.replace_bond_analytics_rows(
-        report_date="2026-03-30",
-        rows=[
-            module._make_bond_analytics_row(
-                report_date="2026-03-30",
-                instrument_code="RATE_PREV",
-                portfolio_name="P1",
-                asset_class_std="rate",
-                market_value=Decimal("120"),
-                ytm=Decimal("0.025"),
-                modified_duration=Decimal("3"),
-                bond_type_label="Gov",
-            ),
-            module._make_bond_analytics_row(
-                report_date="2026-03-30",
-                instrument_code="CREDIT_PREV",
-                portfolio_name="P2",
-                asset_class_std="credit",
-                market_value=Decimal("180"),
-                ytm=Decimal("0.035"),
-                modified_duration=Decimal("5"),
-                bond_type_label="Credit",
-            ),
-        ],
-    )
-    repo.replace_bond_analytics_rows(
-        report_date="2026-03-31",
-        rows=[
-            module._make_bond_analytics_row(
-                report_date="2026-03-31",
-                instrument_code="RATE_CUR",
-                portfolio_name="P1",
-                asset_class_std="rate",
-                market_value=Decimal("100"),
-                ytm=Decimal("0.02"),
-                modified_duration=Decimal("2"),
-                bond_type_label="Gov",
-            ),
-            module._make_bond_analytics_row(
-                report_date="2026-03-31",
-                instrument_code="CREDIT_CUR",
-                portfolio_name="P2",
-                asset_class_std="credit",
-                market_value=Decimal("300"),
-                ytm=Decimal("0.04"),
-                modified_duration=Decimal("6"),
-                bond_type_label="Credit",
-            ),
-            module._make_bond_analytics_row(
-                report_date="2026-03-31",
-                instrument_code="OTHER_CUR",
-                portfolio_name="P3",
-                asset_class_std="other",
-                market_value=Decimal("600"),
-                ytm=Decimal("0"),
-                modified_duration=Decimal("0"),
-                bond_type_label="Other",
-            ),
-        ],
-    )
+    with repository_task_write_scope("backend.app.tasks.golden_samples_capture_ready_test"):
+        repo.replace_bond_analytics_rows(
+            report_date="2026-03-30",
+            rows=[
+                module._make_bond_analytics_row(
+                    report_date="2026-03-30",
+                    instrument_code="RATE_PREV",
+                    portfolio_name="P1",
+                    asset_class_std="rate",
+                    market_value=Decimal("120"),
+                    ytm=Decimal("0.025"),
+                    modified_duration=Decimal("3"),
+                    bond_type_label="Gov",
+                ),
+                module._make_bond_analytics_row(
+                    report_date="2026-03-30",
+                    instrument_code="CREDIT_PREV",
+                    portfolio_name="P2",
+                    asset_class_std="credit",
+                    market_value=Decimal("180"),
+                    ytm=Decimal("0.035"),
+                    modified_duration=Decimal("5"),
+                    bond_type_label="Credit",
+                ),
+            ],
+        )
+        repo.replace_bond_analytics_rows(
+            report_date="2026-03-31",
+            rows=[
+                module._make_bond_analytics_row(
+                    report_date="2026-03-31",
+                    instrument_code="RATE_CUR",
+                    portfolio_name="P1",
+                    asset_class_std="rate",
+                    market_value=Decimal("100"),
+                    ytm=Decimal("0.02"),
+                    modified_duration=Decimal("2"),
+                    bond_type_label="Gov",
+                ),
+                module._make_bond_analytics_row(
+                    report_date="2026-03-31",
+                    instrument_code="CREDIT_CUR",
+                    portfolio_name="P2",
+                    asset_class_std="credit",
+                    market_value=Decimal("300"),
+                    ytm=Decimal("0.04"),
+                    modified_duration=Decimal("6"),
+                    bond_type_label="Credit",
+                ),
+                module._make_bond_analytics_row(
+                    report_date="2026-03-31",
+                    instrument_code="OTHER_CUR",
+                    portfolio_name="P3",
+                    asset_class_std="other",
+                    market_value=Decimal("600"),
+                    ytm=Decimal("0"),
+                    modified_duration=Decimal("0"),
+                    bond_type_label="Other",
+                ),
+            ],
+        )
 
 
 def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -827,6 +838,30 @@ def _run_request_payload(
             resource="ledger_pnl",
         )
         headers = LEDGER_PNL_READ_HEADERS
+    elif request["path"] in PNL_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="pnl-read-scope.db",
+            resource="pnl",
+        )
+        headers = PNL_READ_HEADERS
+    elif request["path"] in PRODUCT_CATEGORY_PNL_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="product-category-pnl-read-scope.db",
+            resource="product_category_pnl",
+        )
+        headers = PRODUCT_CATEGORY_PNL_READ_HEADERS
+    elif request["path"] in RISK_TENSOR_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="risk-tensor-read-scope.db",
+            resource="risk_tensor",
+        )
+        headers = RISK_TENSOR_READ_HEADERS
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
         request["method"],

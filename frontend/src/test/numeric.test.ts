@@ -150,12 +150,13 @@ describe("parseNumericOrNull", () => {
 });
 
 describe("Numeric unit literal coverage", () => {
-  it("accepts all 7 spec units", () => {
+  it("accepts all 8 spec units", () => {
     const units: Array<Numeric["unit"]> = [
       "yuan",
       "pct",
       "bp",
       "ratio",
+      "years",
       "count",
       "dv01",
       "yi",

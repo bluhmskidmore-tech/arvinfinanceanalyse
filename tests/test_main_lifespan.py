@@ -24,6 +24,11 @@ def test_lifespan_warms_hermes_bridge_after_storage_startup(monkeypatch):
         "warm_home_snapshot_cache_if_configured",
         lambda value: calls.append(("warm-home", value)),
     )
+    monkeypatch.setattr(
+        module,
+        "warm_home_income_trend_cache_if_configured",
+        lambda value: calls.append(("warm-income-trend", value)),
+    )
 
     async def run_lifespan() -> None:
         async with module.lifespan(FastAPI()):
@@ -31,7 +36,13 @@ def test_lifespan_warms_hermes_bridge_after_storage_startup(monkeypatch):
 
     asyncio.run(run_lifespan())
 
-    assert calls == ["storage", ("warm-hermes", settings), ("warm-home", settings), "inside"]
+    assert calls == [
+        "storage",
+        ("warm-hermes", settings),
+        ("warm-home", settings),
+        ("warm-income-trend", settings),
+        "inside",
+    ]
 
 
 def test_main_app_sets_disabled_otel_status_by_default() -> None:

@@ -97,6 +97,7 @@ def build_packet(
             "writes_governance_records": False,
             "proves_page_execution": False,
             "captures_business_owner_approval": False,
+            "certification_effect": "none",
             "validates_required_fields": True,
         },
         "evidence_anchors": {
@@ -191,6 +192,7 @@ Existing record line: `{packet['governance_existing_record_line']}`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 - `validates_required_fields=true`
 """
 

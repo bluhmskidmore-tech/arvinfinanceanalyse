@@ -187,6 +187,33 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(screen.getAllByText("快照回退 2026-02-28").length).toBeGreaterThan(0);
   });
 
+  it("does not present a current business conclusion when dashboard date falls back", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client = {
+      ...base,
+      getBondDashboardDates: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          result_kind: "bond_dashboard.dates",
+        }),
+        result: {
+          report_dates: ["2026-03-31"],
+        },
+      })),
+    };
+
+    renderCockpit(client, { reportDate: "2026-04-30" });
+
+    const conclusion = await screen.findByTestId("bond-analysis-cockpit-conclusion");
+
+    await waitFor(() => {
+      expect(conclusion).toHaveTextContent("2026-04-30");
+      expect(conclusion).toHaveTextContent("2026-03-31");
+      expect(conclusion).not.toHaveTextContent("当前结论");
+      expect(conclusion).not.toHaveTextContent("久期敞口仍是首页第一观察位");
+      expect(conclusion).not.toHaveTextContent("信用敞口偏重");
+    });
+  });
+
   it("shows controlled module fallback copy when portfolio headlines fail", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
@@ -261,7 +288,12 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     expect(within(dashboard).getAllByText("组合总览").length).toBeGreaterThan(0);
     expect(within(dashboard).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
-    expect(within(dashboard).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("债券总市值");
+    expect(within(dashboard).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("债券总市值（人民币/CNY）");
+    expect(within(dashboard).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("持仓收益（估值，人民币/CNY）");
+    expect(within(dashboard).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("今日收益（估值，人民币/CNY）");
+    expect(within(dashboard).getByTestId("bond-analysis-currency-basis-banner")).toHaveTextContent(
+      "金额指标按人民币/CNY口径展示，外币债券市值、摊余成本、应计利息等已折算为人民币。",
+    );
 
     const distributionGrid = screen.getByTestId("bond-analysis-distribution-grid");
     expect(distributionGrid).toHaveTextContent("资产分布");

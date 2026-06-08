@@ -1,19 +1,9 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import {
-  AlertOutlined,
-  AppstoreOutlined,
-  ArrowRightOutlined,
-  BankOutlined,
-  BarChartOutlined,
-  FileTextOutlined,
-  FundOutlined,
-  SettingOutlined,
-  TrophyOutlined,
-} from "@ant-design/icons";
 import { Tabs } from "antd";
 import type { ReactNode } from "react";
 
+import { LightIcon } from "../../../components/LightIcon";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import type {
   ModuleHomeDetailPanel,
@@ -34,17 +24,17 @@ const ANALYSIS_TABS = [
 ] as const;
 
 const DRILL_ICON_MAP: Record<string, ReactNode> = {
-  dashboard: <AppstoreOutlined />,
-  analysis: <BarChartOutlined />,
-  risk: <AlertOutlined />,
-  team: <BarChartOutlined />,
-  kpi: <TrophyOutlined />,
-  decision: <BarChartOutlined />,
-  bond: <BankOutlined />,
-  settings: <SettingOutlined />,
-  market: <FundOutlined />,
-  reports: <FileTextOutlined />,
-  agent: <BarChartOutlined />,
+  dashboard: <LightIcon name="appstore" />,
+  analysis: <LightIcon name="bar-chart" />,
+  risk: <LightIcon name="alert" />,
+  team: <LightIcon name="bar-chart" />,
+  kpi: <LightIcon name="trophy" />,
+  decision: <LightIcon name="bar-chart" />,
+  bond: <LightIcon name="bank" />,
+  settings: <LightIcon name="settings" />,
+  market: <LightIcon name="fund" />,
+  reports: <LightIcon name="file-text" />,
+  agent: <LightIcon name="bar-chart" />,
 };
 
 type PortfolioHomeLayoutProps = {
@@ -53,6 +43,8 @@ type PortfolioHomeLayoutProps = {
   balanceReportDate: string;
   bondReportDate: string;
 };
+
+type PortfolioDecisionFact = NonNullable<ModuleHomeView["decision"]>["facts"][number];
 
 function toneClass(tone: ModuleHomeTone) {
   if (tone === "ok") return styles.toneOk;
@@ -161,6 +153,146 @@ function SectionHead({ label, title }: { label: string; title: string }) {
   );
 }
 
+function splitDecisionFacts(facts: PortfolioDecisionFact[]) {
+  return {
+    exposure: facts.slice(0, 6),
+    evidence: facts.slice(6),
+  };
+}
+
+function decisionUseLabel(decision: NonNullable<ModuleHomeView["decision"]>) {
+  const decisionText = `${decision.conclusion} ${decision.detail}`;
+  if (decisionText.includes("仅供分析")) return "仅供分析";
+  if (decisionText.includes("仅供监控")) return "仅供监控";
+  if (decisionText.includes("不可用于业务决策") || decision.tone === "error") return "不可用于业务决策";
+  return "待复核";
+}
+
+function compactDecisionDetail(detail: string) {
+  const parts = [
+    detail.includes("不生成调仓建议") ? "不生成调仓建议" : "",
+    detail.includes("不使用前端补数") ? "不使用前端补数" : "",
+    detail.match(/风险闭合：([^；。]+)/)?.[0] ?? "",
+  ].filter(Boolean);
+  return parts.join(" / ");
+}
+
+function compactFactValue(fact: PortfolioDecisionFact) {
+  if (fact.label.includes("源日期")) {
+    const entries = fact.value
+      .split("；")
+      .map((entry) => entry.match(/^(.+?)=(\d{4}-\d{2}-\d{2})$/))
+      .filter((entry): entry is RegExpMatchArray => Boolean(entry));
+    const dates = Array.from(new Set(entries.map((entry) => entry[2])));
+    if (entries.length > 0 && dates.length === 1) return `${entries.length} 个来源 / ${dates[0]}`;
+    if (entries.length > 0 && dates.length > 1) return `${entries.length} 个来源 / ${dates.join(" / ")}`;
+  }
+  return fact.value;
+}
+
+function compactActionEvidence(evidence: string) {
+  return evidence
+    .replace(/债券总览 basis=analytical/g, "债券总览为分析口径")
+    .replace(/basis=analytical/g, "分析口径")
+    .replace(/债券总览 formal_use_allowed=false/g, "债券总览尚未允许正式使用")
+    .replace(/formal_use_allowed=false/g, "尚未允许正式使用")
+    .replace(/债券总览 quality=warning/g, "债券总览质量标记为关注")
+    .replace(/quality=warning/g, "质量标记为关注")
+    .replace(/report_date 缺失/g, "报告日缺失")
+    .replace(/bond-dashboard 的 result_meta、正式使用许可、质量标记和报告日/g, "债券总览的来源版本、使用许可、质量标记和报告日")
+    .replace(/pnl-attribution 的正式口径、质量标记和报告日/g, "收益归因的正式口径、质量标记和报告日")
+    .replace(/result_meta/g, "来源元数据");
+}
+
+function DecisionPanel({ view }: { view: ModuleHomeView }) {
+  if (!view.decision) {
+    return null;
+  }
+
+  const actions = view.decision.actions ?? [];
+  const factGroups = splitDecisionFacts(view.decision.facts);
+  const useLabel = decisionUseLabel(view.decision);
+
+  return (
+    <section
+      data-testid="module-home-decision"
+      className={`${dhStyles.dhCard} ${styles.decisionPanel}`}
+    >
+      <div className={styles.decisionLedger}>
+        <div className={styles.decisionLedgerHead}>
+          <span className={styles.decisionKicker}>组合复核</span>
+          <span hidden>{view.decision.title}</span>
+          <span
+            className={`${styles.terminalStatus} ${toneClass(view.decision.tone)}`}
+            data-testid="module-home-decision-use-level"
+          >
+            {useLabel}
+          </span>
+        </div>
+        <h2 className={`${styles.decisionTitle} ${toneClass(view.decision.tone)}`}>
+          {view.decision.conclusion}
+        </h2>
+        <p className={styles.decisionDetail}>{compactDecisionDetail(view.decision.detail)}</p>
+        <span hidden>{view.decision.detail}</span>
+        <div className={styles.decisionReadinessBar} aria-label={`${view.decision.title}: ${useLabel}`}>
+          <span>业务可用</span>
+          <strong className={toneClass(view.decision.tone)}>{useLabel}</strong>
+        </div>
+      </div>
+
+      <div className={styles.decisionMatrix} data-testid="module-home-exposure-matrix">
+        <div className={styles.terminalPanelHead}>
+          <span>风险暴露</span>
+          <strong>核心读数</strong>
+        </div>
+        <div className={styles.decisionFactGrid}>
+          {factGroups.exposure.map((fact) => (
+            <div className={styles.decisionFact} key={fact.label} aria-label={`${fact.label}: ${fact.value}`}>
+              <span>{fact.label}</span>
+              <strong className={toneClass(fact.tone)}>{compactFactValue(fact)}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.evidenceConsole} data-testid="module-home-evidence-console">
+        <div className={styles.terminalPanelHead}>
+          <span>证据口径</span>
+          <strong>来源 / 日期 / 闭合</strong>
+        </div>
+        <div className={styles.evidenceFactList}>
+          {factGroups.evidence.map((fact) => (
+            <div className={styles.decisionFact} key={fact.label} aria-label={`${fact.label}: ${fact.value}`}>
+              <span>{fact.label}</span>
+              <strong className={toneClass(fact.tone)}>{compactFactValue(fact)}</strong>
+            </div>
+          ))}
+        </div>
+        {actions.length > 0 ? (
+          <div className={styles.decisionActionQueue}>
+            <span className={styles.decisionActionLabel}>待复核</span>
+            <div className={styles.decisionActionList}>
+              {actions.map((action) => (
+                <Link className={styles.decisionAction} to={action.path} key={action.title}>
+                  <span className={`${styles.decisionActionDot} ${toneClass(action.tone)}`} />
+                  <span className={styles.decisionActionText}>
+                    <strong className={toneClass(action.tone)}>{action.title}</strong>
+                    <small>{compactActionEvidence(action.evidence)}</small>
+                  </span>
+                  <span className={styles.decisionActionTarget}>
+                    {action.label ?? "下钻"}
+                    <LightIcon name="arrow-right" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export default function PortfolioHomeLayout({
   view,
   config,
@@ -184,7 +316,9 @@ export default function PortfolioHomeLayout({
         children: panel ? (
           <PortfolioStructureTabPanel panel={panel} />
         ) : (
-          <p className={styles.detailSource}>暂无数据</p>
+          <p className={`${styles.detailSource} ${styles.toneWatch}`}>
+            当前无可用正式结构读数；样例明细不作为业务决策依据。
+          </p>
         ),
       };
     });
@@ -218,8 +352,10 @@ export default function PortfolioHomeLayout({
       </header>
 
       <main className={`${dhStyles.dhMain} ${styles.pageStack}`}>
+        <DecisionPanel view={view} />
+
         <section data-testid="module-home-briefing" className={styles.sectionBlock}>
-          <SectionHead label="Portfolio Brief" title="组合摘要" />
+          <SectionHead label="组合" title="组合摘要" />
           <div className={styles.briefGrid}>
             {view.briefings.map((item, index) => (
               <article
@@ -237,7 +373,7 @@ export default function PortfolioHomeLayout({
         </section>
 
         <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
-          <SectionHead label="Core Metrics" title="核心指标" />
+          <SectionHead label="指标" title="核心指标" />
           <div className={styles.kpiGrid}>
             {view.kpis.map((item) => (
               <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi}`} key={item.key}>
@@ -256,7 +392,7 @@ export default function PortfolioHomeLayout({
           className={`${dhStyles.dhCard} ${dhStyles.dhTerminalRiskStrip} ${styles.statusStrip} ${styles.sectionBlock}`}
         >
           <div className={styles.sectionHead}>
-            <span>Read Path</span>
+            <span>来源链路</span>
             <strong>读链路状态</strong>
             <span className={styles.statusScope}>{view.sourceScope}</span>
           </div>
@@ -274,7 +410,7 @@ export default function PortfolioHomeLayout({
         {view.distributionPanels && view.distributionPanels.length > 0 ? (
           <section data-testid="module-home-holdings-structure" className={styles.sectionBlock}>
             <div className={styles.sectionHead}>
-              <span>Holdings</span>
+              <span>持仓</span>
               <strong>持仓结构</strong>
               <Link className={styles.holdingsSectionLink} to="/positions">
                 持仓透视
@@ -286,18 +422,28 @@ export default function PortfolioHomeLayout({
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <section data-testid="module-home-holdings-structure" className={styles.sectionBlock}>
+            <div className={styles.sectionHead}>
+              <span>持仓</span>
+              <strong>持仓结构</strong>
+            </div>
+            <p className={`${styles.dataNote} ${styles.toneWatch}`}>
+              当前无可用正式持仓结构读数；样例明细不展示为组合事实。
+            </p>
+          </section>
+        )}
 
         <section
           data-testid="module-home-portfolio-terminal"
           className={`${dhStyles.dhCard} ${styles.terminalCard} ${styles.sectionBlock}`}
         >
-          <SectionHead label="Structure" title="结构拆解" />
+          <SectionHead label="结构" title="结构拆解" />
           <Tabs items={tabItems} />
         </section>
 
         <section className={styles.sectionBlock}>
-          <SectionHead label="Risk & PnL" title="风险与归因" />
+          <SectionHead label="归因" title="风险与归因" />
           <div className={styles.detailGrid}>
             {riskPanel ? (
               <DetailPanelCard panel={riskPanel} testId={detailPanelTestId(riskPanel.key)} />
@@ -312,10 +458,10 @@ export default function PortfolioHomeLayout({
         </section>
 
         <section data-testid="module-home-drilldowns" className={styles.sectionBlock}>
-          <SectionHead label="Drilldown" title="下钻入口" />
+          <SectionHead label="明细" title="下钻入口" />
           <div className={styles.drillGrid}>
             {config.drilldowns.map((item) => {
-              const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <ArrowRightOutlined />;
+              const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;
               const isCurrentHome = item.key === "portfolio-home";
               return (
                 <Link
@@ -336,7 +482,7 @@ export default function PortfolioHomeLayout({
           </div>
           {view.dataNote.lines.length > 0 ? (
             <p className={styles.dataNote} data-testid="module-home-data-note">
-              {view.dataNote.lines.join(" ")}
+              {compactActionEvidence(view.dataNote.lines.join(" "))}
             </p>
           ) : null}
         </section>

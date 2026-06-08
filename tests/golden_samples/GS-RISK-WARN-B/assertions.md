@@ -15,7 +15,7 @@
 - `result.bond_count == 3`.
 - `result.quality_flag == "warning"`.
 - `warnings` contains:
-  - `Non-standard tenor buckets remapped`
+  - `Non-standard tenor buckets remapped` for `20Y, 6M`
   - `excluded from portfolio duration denominator`
   - `without maturity_date`
 - `duration_excluded_count == 1`.

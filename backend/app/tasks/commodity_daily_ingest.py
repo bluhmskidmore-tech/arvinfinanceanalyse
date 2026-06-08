@@ -122,10 +122,29 @@ def _normalize_trade_date(value: object) -> str | None:
     if not text:
         return None
     if len(text) == 8 and text.isdigit():
-        return f"{text[:4]}-{text[4:6]}-{text[6:8]}"
+        return _compact_trade_date_to_iso(text)
     if len(text) >= 10 and text[4] == "-":
-        return text[:10]
+        candidate = text[:10]
+        try:
+            return date.fromisoformat(candidate).isoformat()
+        except ValueError:
+            return None
     return None
+
+
+def _compact_trade_date_to_iso(value: str) -> str | None:
+    text = str(value or "").strip()
+    if len(text) != 8 or not text.isdigit():
+        return None
+    try:
+        return date(int(text[:4]), int(text[4:6]), int(text[6:8])).isoformat()
+    except ValueError:
+        return None
+
+
+def _is_iso_trade_date(value: object) -> bool:
+    text = str(value or "").strip()
+    return len(text) == 10 and _normalize_trade_date(text) == text
 
 
 def _compact_date(value: str) -> str:
@@ -535,15 +554,16 @@ def _replace_product_rows(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, 
         return 0
     product_code = str(rows[0]["product_code"])
     trade_dates = sorted({str(row["trade_date"]) for row in rows})
+    placeholders = ", ".join("?" for _ in trade_dates)
     conn.execute("begin transaction")
     try:
         conn.execute(
-            """
+            f"""
             delete from fact_commodity_futures_daily
             where product_code = ?
-              and trade_date between ? and ?
+              and trade_date in ({placeholders})
             """,
-            [product_code, trade_dates[0], trade_dates[-1]],
+            [product_code, *trade_dates],
         )
         conn.executemany(INSERT_SQL, [_row_tuple(row) for row in rows])
         conn.execute("commit")
@@ -551,6 +571,107 @@ def _replace_product_rows(conn: duckdb.DuckDBPyConnection, rows: list[dict[str, 
         conn.execute("rollback")
         raise
     return len(rows)
+
+
+def normalize_existing_commodity_trade_dates(duckdb_path: str) -> dict[str, object]:
+    """Normalize historical compact YYYYMMDD commodity dates; existing ISO rows are canonical."""
+    db_file = Path(duckdb_path)
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    duplicate_deleted = 0
+    updated = 0
+    invalid_compact_dates = 0
+    remaining = 0
+
+    with acquire_lock(COMMODITY_DAILY_LOCK, base_dir=db_file.parent):
+        conn = duckdb.connect(str(db_file), read_only=False)
+        tx_started = False
+        try:
+            ensure_commodity_futures_daily_schema(conn)
+            conn.execute("begin transaction")
+            tx_started = True
+            compact_rows = conn.execute(
+                """
+                select trade_date, product_code
+                from fact_commodity_futures_daily
+                where regexp_matches(trade_date, '^\\d{8}$')
+                """
+            ).fetchall()
+            mapping_rows: list[tuple[str, str, str]] = []
+            for compact_date, product_code in compact_rows:
+                iso_date = _compact_trade_date_to_iso(str(compact_date))
+                if iso_date is None:
+                    invalid_compact_dates += 1
+                    continue
+                mapping_rows.append((str(compact_date), str(product_code), iso_date))
+
+            conn.execute(
+                """
+                create temporary table commodity_trade_date_normalize_map (
+                  compact_date varchar,
+                  product_code varchar,
+                  iso_date varchar
+                )
+                """
+            )
+            if mapping_rows:
+                conn.executemany(
+                    """
+                    insert into commodity_trade_date_normalize_map
+                    values (?, ?, ?)
+                    """,
+                    mapping_rows,
+                )
+            duplicate_deleted = int(
+                conn.execute(
+                    """
+                    delete from fact_commodity_futures_daily target
+                    using commodity_trade_date_normalize_map mapping,
+                          fact_commodity_futures_daily existing
+                    where target.trade_date = mapping.compact_date
+                      and target.product_code = mapping.product_code
+                      and existing.trade_date = mapping.iso_date
+                      and existing.product_code = mapping.product_code
+                    returning 1
+                    """
+                ).fetchall().__len__()
+            )
+            updated = int(
+                conn.execute(
+                    """
+                    update fact_commodity_futures_daily target
+                    set trade_date = mapping.iso_date
+                    from commodity_trade_date_normalize_map mapping
+                    where target.trade_date = mapping.compact_date
+                      and target.product_code = mapping.product_code
+                    returning 1
+                    """
+                ).fetchall().__len__()
+            )
+            trade_date_rows = conn.execute(
+                """
+                select trade_date
+                from fact_commodity_futures_daily
+                where trade_date is not null
+                """
+            ).fetchall()
+            remaining = sum(1 for (trade_date_value,) in trade_date_rows if not _is_iso_trade_date(trade_date_value))
+            conn.execute("commit")
+            tx_started = False
+        except Exception:
+            if tx_started:
+                conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
+
+    return {
+        "status": "completed",
+        "table": "fact_commodity_futures_daily",
+        "duplicate_compact_rows_deleted": duplicate_deleted,
+        "compact_rows_updated": updated,
+        "invalid_compact_dates": invalid_compact_dates,
+        "remaining_non_iso_dates": remaining,
+    }
 
 
 def run_commodity_daily_ingest(

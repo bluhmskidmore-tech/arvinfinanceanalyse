@@ -1,8 +1,9 @@
 import { screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 const AGENT_QUESTION_INPUT_LABEL = "向 Agent 提问";
@@ -41,6 +42,10 @@ function buildAgentPlaceholderClient(): ApiClient {
 }
 
 describe("/agent route", () => {
+  beforeAll(async () => {
+    await preloadWorkbenchRouteModules("agent");
+  }, 20_000);
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

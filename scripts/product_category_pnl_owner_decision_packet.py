@@ -18,6 +18,7 @@ from scripts.check_product_category_pnl_business_owner_approval import (  # noqa
 
 
 DEFAULT_OUTPUT = ROOT / "docs" / "pnl" / "product-category-pnl-owner-decision-packet.md"
+OWNER_REVIEW_QUEUE_HEADING = "Owner Review Queue"
 DECISION_CLASS_LABELS = {
     "1": "product_decision_required",
     "2": "backend_api_contract_required",
@@ -27,19 +28,7 @@ OWNER_BY_CLASS = {
     "2": "backend_api_contract_owner",
 }
 NEXT_REVIEW_QUEUE_DETAILS = {
-    "next_1_outward_as_of_date": {
-        "review_owner_type": "product_owner",
-        "evidence_path": "docs/pnl/product-category-page-truth-contract.md",
-        "blocker_reason": (
-            "The page currently preserves selected report_date and resolved report_date semantics, "
-            "but no owner-approved outward as_of_date field exists."
-        ),
-        "pre_signature_action": (
-            "Owner must either approve no standalone outward as_of_date or specify the exact API/UI "
-            "field before signature."
-        ),
-    },
-    "next_2_refresh_timeout_stale_copy": {
+    "next_1_refresh_timeout_stale_copy": {
         "review_owner_type": "product_owner",
         "evidence_path": "frontend/src/test/ProductCategoryPnlPage.test.tsx",
         "blocker_reason": (
@@ -50,7 +39,7 @@ NEXT_REVIEW_QUEUE_DETAILS = {
             "Owner must approve timeout and stale-state copy or defer it explicitly before signature."
         ),
     },
-    "next_3_unit_4_extended_validation_copy": {
+    "next_2_unit_4_extended_validation_copy": {
         "review_owner_type": "product_owner",
         "evidence_path": "docs/pnl/product-category-closure-checklist.md",
         "blocker_reason": (
@@ -62,7 +51,7 @@ NEXT_REVIEW_QUEUE_DETAILS = {
             "scope is sufficient."
         ),
     },
-    "next_4_dual_sort_rationale": {
+    "next_3_dual_sort_rationale": {
         "review_owner_type": "product_owner",
         "evidence_path": "docs/pnl/product-category-remaining-blockers.md",
         "blocker_reason": (
@@ -74,7 +63,7 @@ NEXT_REVIEW_QUEUE_DETAILS = {
             "before signature."
         ),
     },
-    "next_5_revoke_confirmation_policy": {
+    "next_4_revoke_confirmation_policy": {
         "review_owner_type": "product_owner",
         "evidence_path": "frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx",
         "blocker_reason": (
@@ -132,10 +121,23 @@ def build_packet(*, template_path: Path = DEFAULT_TEMPLATE) -> dict[str, Any]:
         "decision_intake_checklist": decision_intake_checklist,
         "next_review_queue": next_review_queue,
         "next_review_queue_scope": {
-            "source_section": "Next cursor-safe tasks",
+            "source_section": OWNER_REVIEW_QUEUE_HEADING,
             "item_count": len(next_review_queue),
+            "formal_decision_item_count": len(decision_items),
+            "formal_decision_class_count": (
+                int(triage["decision_required_count"]) + int(triage["api_contract_required_count"])
+            ),
+            "supplemental_review_topic_count": max(
+                0,
+                len(next_review_queue) - int(triage["decision_required_count"]),
+            ),
             "counts_as_owner_decision": False,
             "captures_product_or_api_decisions": False,
+            "boundary": (
+                "Owner Review Queue has 4 review topics. Three map to formal Class 1 product "
+                "decision blockers and one is supplemental revoke-policy review; the queue does "
+                "not change the 5 formal decision/API contract item count."
+            ),
         },
         "decision_items": decision_items,
         "evidence_scope": {
@@ -144,6 +146,9 @@ def build_packet(*, template_path: Path = DEFAULT_TEMPLATE) -> dict[str, Any]:
             "proves_page_execution": False,
             "captures_business_owner_approval": False,
             "captures_product_or_api_decisions": False,
+            "captures_golden_sample_approval": False,
+            "captures_closure_approval": False,
+            "certification_effect": "none",
         },
     }
 
@@ -154,7 +159,7 @@ def _next_review_queue(source_artifact: str) -> list[dict[str, str]]:
         return []
     text = source_path.read_text(encoding="utf-8")
     try:
-        section = text.split("## Next cursor-safe tasks", maxsplit=1)[1]
+        section = text.split(f"## {OWNER_REVIEW_QUEUE_HEADING}", maxsplit=1)[1]
     except IndexError:
         return []
 
@@ -308,8 +313,12 @@ This packet does not approve page closure, write governance records, prove page 
 
 - Source section: `{queue_scope['source_section']}`
 - `next_review_queue_item_count={queue_scope['item_count']}`
+- `formal_decision_item_count={queue_scope['formal_decision_item_count']}`
+- `formal_decision_class_count={queue_scope['formal_decision_class_count']}`
+- `supplemental_review_topic_count={queue_scope['supplemental_review_topic_count']}`
 - `counts_as_owner_decision={str(queue_scope['counts_as_owner_decision']).lower()}`
 - `captures_product_or_api_decisions={str(queue_scope['captures_product_or_api_decisions']).lower()}`
+- Boundary: {queue_scope['boundary']}
 
 | Review key | Rank | Topic | Required review | Review owner type | Evidence path | Blocker reason | Pre-signature action | Current status |
 | --- | ---: | --- | --- | --- | --- | --- | --- | --- |
@@ -328,6 +337,9 @@ This packet does not approve page closure, write governance records, prove page 
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
 - `captures_product_or_api_decisions=false`
+- `captures_golden_sample_approval=false`
+- `captures_closure_approval=false`
+- `certification_effect=none`
 """
 
 
@@ -347,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(render_markdown(packet), encoding="utf-8")
+    intake = packet["decision_intake_checklist"]
+    queue_scope = packet["next_review_queue_scope"]
     payload = {
         "packet_kind": packet["packet_kind"],
         "packet_path": str(output_path),
@@ -354,8 +368,24 @@ def main(argv: list[str] | None = None) -> int:
         "owner_decision_ready": packet["owner_decision_ready"],
         "decision_item_count": packet["decision_item_count"],
         "next_review_queue_item_count": packet["next_review_queue_scope"]["item_count"],
+        "formal_decision_item_count": packet["next_review_queue_scope"]["formal_decision_item_count"],
+        "formal_decision_class_count": packet["next_review_queue_scope"]["formal_decision_class_count"],
+        "supplemental_review_topic_count": packet["next_review_queue_scope"]["supplemental_review_topic_count"],
         "decision_required_count": packet["decision_required_count"],
         "api_contract_required_count": packet["api_contract_required_count"],
+        "decision_intake_checklist": {
+            "decision_intake_ready": intake["decision_intake_ready"],
+            "owner_decision_ready": intake["owner_decision_ready"],
+            "captures_product_or_api_decisions": intake["captures_product_or_api_decisions"],
+            "pending_decision_count": intake["pending_decision_count"],
+        },
+        "next_review_queue_scope": {
+            "counts_as_owner_decision": queue_scope["counts_as_owner_decision"],
+            "captures_product_or_api_decisions": queue_scope["captures_product_or_api_decisions"],
+            "formal_decision_item_count": queue_scope["formal_decision_item_count"],
+            "supplemental_review_topic_count": queue_scope["supplemental_review_topic_count"],
+        },
+        "certification_effect": "none",
         "evidence_scope": packet["evidence_scope"],
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

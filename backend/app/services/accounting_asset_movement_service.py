@@ -42,10 +42,10 @@ from backend.app.services.formal_result_runtime import (
 )
 from backend.app.tasks.accounting_asset_movement import (
     RULE_VERSION,
-    refresh_accounting_asset_movement_window,
+    refresh_accounting_asset_movement_window_sync,
 )
-from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline
-from backend.app.tasks.product_category_pnl import materialize_product_category_pnl
+from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline_sync
+from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 CONTROL_ACCOUNTS = ["141%", "142%", "143%", "1440101%"]
@@ -103,9 +103,20 @@ def accounting_asset_movement_dates_envelope(
     currency_basis: str = "CNX",
 ) -> dict[str, object]:
     repo = AccountingAssetMovementRepository(duckdb_path)
+    report_dates = repo.list_report_dates(currency_basis=currency_basis)
+    latest_read_model_report_date = report_dates[0] if report_dates else None
+    latest_upstream_control_report_date = repo.latest_control_report_date(
+        currency_basis=currency_basis
+    )
     payload = AccountingAssetMovementDatesPayload(
-        report_dates=repo.list_report_dates(currency_basis=currency_basis),
+        report_dates=report_dates,
         currency_basis=currency_basis,
+        latest_read_model_report_date=latest_read_model_report_date,
+        latest_upstream_control_report_date=latest_upstream_control_report_date,
+        freshness_status=_movement_dates_freshness_status(
+            latest_read_model_report_date,
+            latest_upstream_control_report_date,
+        ),
     )
     meta = build_formal_result_meta(
         trace_id="tr_balance_movement_dates",
@@ -114,12 +125,30 @@ def accounting_asset_movement_dates_envelope(
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         filters_applied={"currency_basis": currency_basis},
-        tables_used=["fact_accounting_asset_movement_monthly"],
+        tables_used=[
+            "fact_accounting_asset_movement_monthly",
+            "product_category_pnl_canonical_fact",
+        ],
     )
     return build_formal_result_envelope(
         result_meta=meta,
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def _movement_dates_freshness_status(
+    latest_read_model_report_date: str | None,
+    latest_upstream_control_report_date: str | None,
+) -> str:
+    if latest_upstream_control_report_date and not latest_read_model_report_date:
+        return "read_model_lagging"
+    if latest_read_model_report_date and not latest_upstream_control_report_date:
+        return "upstream_empty"
+    if not latest_read_model_report_date and not latest_upstream_control_report_date:
+        return "read_model_empty"
+    if latest_read_model_report_date < latest_upstream_control_report_date:
+        return "read_model_lagging"
+    return "fresh"
 
 
 def accounting_asset_movement_envelope(
@@ -316,7 +345,7 @@ def _materialize_accounting_asset_movement_window(
     product_category_refreshed_dates: list[str] | None = None,
     formal_balance_refreshed_dates: list[str] | None = None,
 ) -> dict[str, dict[str, object]]:
-    task_payload = refresh_accounting_asset_movement_window.fn(
+    task_payload = refresh_accounting_asset_movement_window_sync(
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
         report_dates=report_dates,
@@ -362,7 +391,7 @@ def _refresh_missing_product_category_dates(
             f"for {joined_dates}, and no matching product-category source files were found."
         )
 
-    materialize_product_category_pnl.fn(
+    materialize_product_category_pnl_sync(
         duckdb_path=str(settings.duckdb_path),
         source_dir=str(source_dir),
         governance_dir=str(settings.governance_path),
@@ -477,7 +506,7 @@ def _refresh_formal_zqtz_dates(
             f"source files were not found for {joined_dates}."
         )
     for current_report_date in report_dates:
-        run_formal_balance_pipeline.fn(
+        run_formal_balance_pipeline_sync(
             report_date=current_report_date,
             data_root=str(data_root),
             duckdb_path=str(settings.duckdb_path),

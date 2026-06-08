@@ -7,7 +7,6 @@ from openpyxl import Workbook, load_workbook
 
 from tests.helpers import ROOT, load_module
 
-
 B = 100_000_000
 
 

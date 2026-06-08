@@ -6,8 +6,8 @@ from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi.responses import PlainTextResponse
 from fastapi import HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import sessionmaker
 
 from tests.helpers import load_module
@@ -255,6 +255,43 @@ def test_kpi_fetch_and_recalc_scores_manual_metrics(monkeypatch, tmp_path):
     assert result["results"][0]["fetch_status"] == "SKIPPED"
     assert result["results"][0]["score_status"] == "SCORED"
     assert result["results"][0]["score_value"] == "8.000000"
+
+
+def test_kpi_fetch_and_recalc_requests_owner_scoped_write_permission(monkeypatch):
+    module = _load_kpi_route_module()
+    captured: dict[str, object] = {}
+    service_called = {"value": False}
+    monkeypatch.setattr(
+        module,
+        "get_settings",
+        lambda: SimpleNamespace(governance_sql_dsn="sqlite:///tmp/kpi.db", postgres_dsn="sqlite:///tmp/kpi.db"),
+    )
+
+    def fake_ensure_user_allowed(**kwargs):
+        captured.update(kwargs)
+        if kwargs.get("scope_key") != "owner_id" or kwargs.get("scope_value") != "42":
+            raise PermissionError("owner scope missing")
+
+    def fake_fetch_and_recalc(**_kwargs):
+        service_called["value"] = True
+        return {"total_metrics": 0, "results": []}
+
+    monkeypatch.setattr(module, "ensure_user_allowed", fake_ensure_user_allowed)
+    monkeypatch.setattr(module.kpi_workbench_service, "fetch_and_recalc", fake_fetch_and_recalc)
+
+    result = module.fetch_and_recalc_kpi(
+        body=module.KpiFetchAndRecalcRequest(metric_ids=[]),
+        owner_id=42,
+        as_of_date="2026-03-31",
+        auth=_auth(module),
+    )
+
+    assert result == {"total_metrics": 0, "results": []}
+    assert service_called["value"] is True
+    assert captured["resource"] == "kpi.value"
+    assert captured["action"] == "write"
+    assert captured["scope_key"] == "owner_id"
+    assert captured["scope_value"] == "42"
 
 
 def test_kpi_report_can_render_csv(monkeypatch, tmp_path):

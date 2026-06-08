@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from pathlib import Path
+
+import duckdb
+import pytest
+
 from backend.app.tasks.commodity_daily_ingest import (
     COMMODITY_PRODUCTS,
+    COMMODITY_DAILY_LOCK,
     CommodityProductSpec,
     _estimate_trading_days,
     _fetch_tushare_futures_rows,
@@ -9,6 +16,8 @@ from backend.app.tasks.commodity_daily_ingest import (
     _normalize_trade_date,
     _parse_products_arg,
     _records_from_frame,
+    ensure_commodity_futures_daily_schema,
+    normalize_existing_commodity_trade_dates,
     run_commodity_daily_ingest,
 )
 
@@ -94,6 +103,165 @@ def test_fetch_tushare_futures_rows_keeps_normalized_trade_date(monkeypatch) -> 
 
     assert rows[0]["trade_date"] == "2024-01-02"
     assert rows[0]["contract_code"] == "RB2405.SHF"
+
+
+def test_normalize_existing_commodity_trade_dates_updates_compact_dates_and_drops_duplicates(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange, close_value,
+              source_version, vendor_version, rule_version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("20240102", "RB", "RB0", "SHF", 3900, "sv_old", "vv_old", "rv_commodity_daily_v1"),
+                ("2024-01-02", "RB", "RB0", "SHF", 3901, "sv_new", "vv_new", "rv_commodity_daily_v1"),
+                ("20240103", "CU", "CU0", "SHF", 69000, "sv_old", "vv_old", "rv_commodity_daily_v1"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    payload = normalize_existing_commodity_trade_dates(str(duckdb_path))
+
+    assert payload == {
+        "status": "completed",
+        "table": "fact_commodity_futures_daily",
+        "duplicate_compact_rows_deleted": 1,
+        "compact_rows_updated": 1,
+        "invalid_compact_dates": 0,
+        "remaining_non_iso_dates": 0,
+    }
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, product_code, close_value, source_version
+            from fact_commodity_futures_daily
+            order by trade_date, product_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("2024-01-02", "RB", 3901.0, "sv_new"),
+        ("2024-01-03", "CU", 69000.0, "sv_old"),
+    ]
+
+
+def test_normalize_existing_commodity_trade_dates_reuses_ingest_lock(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    calls: list[tuple[str, Path]] = []
+
+    @contextmanager
+    def fake_acquire_lock(lock_definition, *, base_dir):
+        calls.append((lock_definition.key, Path(base_dir)))
+        yield
+
+    monkeypatch.setattr("backend.app.tasks.commodity_daily_ingest.acquire_lock", fake_acquire_lock)
+
+    payload = normalize_existing_commodity_trade_dates(str(duckdb_path))
+
+    assert payload["status"] == "completed"
+    assert calls == [(COMMODITY_DAILY_LOCK.key, duckdb_path.parent)]
+
+
+def test_normalize_existing_commodity_trade_dates_preserves_schema_error(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    def fail_schema(_conn) -> None:
+        raise RuntimeError("schema boom")
+
+    monkeypatch.setattr("backend.app.tasks.commodity_daily_ingest.ensure_commodity_futures_daily_schema", fail_schema)
+
+    with pytest.raises(RuntimeError, match="schema boom"):
+        normalize_existing_commodity_trade_dates(str(duckdb_path))
+
+
+def test_normalize_existing_commodity_trade_dates_leaves_invalid_compact_dates(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            create table fact_commodity_futures_daily (
+              trade_date varchar not null,
+              product_code varchar not null,
+              contract_code varchar,
+              exchange varchar,
+              open_value double,
+              high_value double,
+              low_value double,
+              close_value double,
+              settle_value double,
+              volume double,
+              open_interest double,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar default 'rv_commodity_daily_v1',
+              created_at timestamp default current_timestamp,
+              primary key (trade_date, product_code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange, close_value,
+              source_version, vendor_version, rule_version
+            ) values ('20241340', 'RB', 'RB0', 'SHF', 3900, 'sv_bad', 'vv_bad', 'rv_commodity_daily_v1')
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = normalize_existing_commodity_trade_dates(str(duckdb_path))
+
+    assert payload["duplicate_compact_rows_deleted"] == 0
+    assert payload["compact_rows_updated"] == 0
+    assert payload["invalid_compact_dates"] == 1
+    assert payload["remaining_non_iso_dates"] == 1
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, product_code
+            from fact_commodity_futures_daily
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("20241340", "RB")]
 
 
 def test_latest_product_observation_reports_latest_date_value_and_series() -> None:
@@ -202,6 +370,89 @@ def test_completed_ingest_reports_series_id_when_product_has_no_rows(tmp_path, m
     assert product["series_id"] == "COMMODITY.RB"
     assert "latest_date" not in product
     assert "latest_value" not in product
+
+
+def test_completed_ingest_preserves_unreturned_existing_trade_dates(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        ensure_commodity_futures_daily_schema(conn)
+        conn.executemany(
+            """
+            insert into fact_commodity_futures_daily (
+              trade_date, product_code, contract_code, exchange, close_value,
+              source_version, vendor_version, rule_version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2024-01-02", "RB", "RB0", "SHF", 3900, "sv_old", "vv_old", "rv_commodity_daily_v1"),
+                ("2024-01-03", "RB", "RB0", "SHF", 3901, "sv_old", "vv_old", "rv_commodity_daily_v1"),
+                ("2024-01-04", "RB", "RB0", "SHF", 3902, "sv_old", "vv_old", "rv_commodity_daily_v1"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    fetched_rows = [
+        {
+            "trade_date": "2024-01-02",
+            "product_code": "RB",
+            "contract_code": "RB0",
+            "exchange": "SHF",
+            "close_value": 3910.0,
+            "source_version": "sv_new",
+            "vendor_version": "vv_new",
+            "rule_version": "rv_commodity_daily_v1",
+        },
+        {
+            "trade_date": "2024-01-04",
+            "product_code": "RB",
+            "contract_code": "RB0",
+            "exchange": "SHF",
+            "close_value": 3912.0,
+            "source_version": "sv_new",
+            "vendor_version": "vv_new",
+            "rule_version": "rv_commodity_daily_v1",
+        },
+    ]
+
+    def fetch_sparse_rows(**kwargs: object) -> tuple[list[dict[str, object]], str]:
+        assert kwargs["start_date"] == "2024-01-02"
+        assert kwargs["end_date"] == "2024-01-04"
+        assert kwargs["spec"].product_code == "RB"
+        return fetched_rows, "test_vendor"
+
+    monkeypatch.setitem(run_commodity_daily_ingest.__globals__, "_fetch_product_rows", fetch_sparse_rows)
+
+    payload = run_commodity_daily_ingest(
+        start_date="2024-01-02",
+        end_date="2024-01-04",
+        products=("RB",),
+        dry_run=False,
+    )
+
+    assert payload["row_count"] == 2
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, product_code, close_value, source_version
+            from fact_commodity_futures_daily
+            where product_code = 'RB'
+            order by trade_date
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("2024-01-02", "RB", 3910.0, "sv_new"),
+        ("2024-01-03", "RB", 3901.0, "sv_old"),
+        ("2024-01-04", "RB", 3912.0, "sv_new"),
+    ]
 
 
 def test_dry_run_rejects_explicit_empty_products(tmp_path, monkeypatch) -> None:

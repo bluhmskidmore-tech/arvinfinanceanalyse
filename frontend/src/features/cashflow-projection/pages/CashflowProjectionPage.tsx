@@ -96,6 +96,19 @@ function tooltipYi(value: number): string {
   })} 亿`;
 }
 
+function formatRateSensitivityYi(value: Numeric | undefined): string {
+  const raw = value?.raw;
+  if (raw === null || raw === undefined || !Number.isFinite(raw)) return value?.display ?? "--";
+  if (value?.unit !== "yuan") return value?.display ?? "--";
+
+  const yi = toYi(raw);
+  const prefix = value.sign_aware && yi >= 0 ? "+" : "";
+  return `${prefix}${yi.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} \u4ebf`;
+}
+
 function buildProjectionRail(
   monthlySeries: ReturnType<typeof selectCashflowMonthlyProjectionSeries>,
 ): RailPoint[] {
@@ -156,6 +169,7 @@ export default function CashflowProjectionPage() {
   const monthlySeries = useMemo(() => selectCashflowMonthlyProjectionSeries(vm), [vm]);
   const riskReadout = useMemo(() => selectCashflowProjectionRiskReadout(vm), [vm]);
   const projectionRail = useMemo(() => buildProjectionRail(monthlySeries), [monthlySeries]);
+  const rateSensitivity1bpDisplay = formatRateSensitivityYi(vm?.kpis.rateSensitivity1bp);
   const kpis = useMemo<KpiSpec[]>(() => {
     if (!vm) return [];
     return [
@@ -177,7 +191,7 @@ export default function CashflowProjectionPage() {
         key: "dv01",
         testId: "cashflow-kpi-dv01",
         title: "1bp 敏感度",
-        value: vm.kpis.rateSensitivity1bp,
+        value: { ...vm.kpis.rateSensitivity1bp, display: rateSensitivity1bpDisplay },
         detail: "利率变动对估值的边际影响",
         priority: "primary",
       },
@@ -215,7 +229,7 @@ export default function CashflowProjectionPage() {
         tone: "warning",
       },
     ];
-  }, [vm]);
+  }, [rateSensitivity1bpDisplay, vm]);
 
   const chartOption = useMemo((): EChartsOption | null => {
     if (!monthlySeries) {
@@ -379,7 +393,7 @@ export default function CashflowProjectionPage() {
                 </div>
                 <div>
                   <span>1bp 敏感度</span>
-                  <strong>{vm.kpis.rateSensitivity1bp.display}</strong>
+                  <strong>{rateSensitivity1bpDisplay}</strong>
                 </div>
               </div>
               {projectionRail.length ? (

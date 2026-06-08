@@ -114,7 +114,7 @@ def _patch_formal_pnl_refresh(monkeypatch, calls: list[str]) -> str:
     class FakePnlService:
         PnlRefreshConflictError = type("PnlRefreshConflictError", (Exception,), {})
 
-        def refresh_pnl(self, _settings, *, report_date=None):
+        def refresh_pnl(self, _settings, *, report_date=None, **_kwargs):
             calls.append("called")
             return {"status": "queued", "run_id": "formal-pnl-refresh-test", "report_date": report_date}
 
@@ -125,7 +125,7 @@ def _patch_formal_pnl_refresh(monkeypatch, calls: list[str]) -> str:
 def _patch_bond_analytics_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.bond_analytics as route_module
 
-    def fake_refresh(_settings, *, report_date: str):
+    def fake_refresh(_settings, *, report_date: str, **_kwargs):
         calls.append("called")
         return {"status": "queued", "run_id": "bond-analytics-refresh-test", "report_date": report_date}
 
@@ -136,7 +136,7 @@ def _patch_bond_analytics_refresh(monkeypatch, calls: list[str]) -> str:
 def _patch_balance_analysis_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.balance_analysis as route_module
 
-    def fake_refresh(_settings, *, report_date: str):
+    def fake_refresh(_settings, *, report_date: str, **_kwargs):
         calls.append("called")
         return {"status": "queued", "run_id": "balance-analysis-refresh-test", "report_date": report_date}
 
@@ -165,7 +165,7 @@ def _patch_source_preview_refresh(monkeypatch, calls: list[str]) -> str:
 
     monkeypatch.setenv("MOSS_SOURCE_PREVIEW_HTTP_ENABLED", "1")
 
-    def fake_refresh(_settings):
+    def fake_refresh(_settings, **_kwargs):
         calls.append("called")
         return {"status": "queued", "run_id": "source-preview-refresh-test"}
 
@@ -229,7 +229,7 @@ def _patch_commodity_futures_refresh(monkeypatch, calls: list[str]) -> str:
 def _patch_product_category_refresh(monkeypatch, calls: list[str]) -> str:
     import backend.app.api.routes.product_category_pnl as route_module
 
-    def fake_refresh(_settings):
+    def fake_refresh(_settings, **_kwargs):
         calls.append("called")
         return {"status": "queued", "run_id": "product-category-refresh-test"}
 
@@ -325,6 +325,106 @@ def test_refresh_route_requires_explicit_scope_grant(path, body, resource, patch
     assert calls == ["called"]
 
 
+def _patch_qdb_adjustment_create(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.qdb_gl_monthly_analysis as route_module
+
+    def fake_create(**_kwargs):
+        calls.append("called")
+        return {"status": "created", "adjustment_id": "qdb-adjustment-test"}
+
+    monkeypatch.setattr(route_module, "create_qdb_gl_monthly_analysis_manual_adjustment", fake_create)
+    return "qdb_gl_monthly_analysis"
+
+
+def _patch_adb_backfill(monkeypatch, calls: list[str]) -> str:
+    import backend.app.api.routes.adb_analysis as route_module
+
+    def fake_backfill_candidate_dates(*_args, **_kwargs):
+        calls.append("called")
+        raise AssertionError("ADB backfill service should not be reached without backfill scope.")
+
+    monkeypatch.setattr(
+        route_module.adb_analysis_service,
+        "adb_backfill_candidate_dates",
+        fake_backfill_candidate_dates,
+    )
+    return "adb_analysis"
+
+
+def _patch_macro_script_run(monkeypatch, calls: list[str]) -> str:
+    from backend.app.services import macro_toolkit_service
+
+    def fake_run(**_kwargs):
+        calls.append("called")
+        return {"status": "completed", "exit_code": 0, "stdout": "", "stderr": "", "output_files": []}
+
+    monkeypatch.setattr(macro_toolkit_service, "run_macro_toolkit_script", fake_run)
+    return "macro_toolkit"
+
+
+@pytest.mark.parametrize(
+    "path,body,read_resource,patch_side_effect",
+    [
+        (
+            "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+            {
+                "report_month": "202601",
+                "adjustment_class": "mapping_adjustment",
+                "target": {"account_code": "123", "field": "account_name"},
+                "operator": "OVERRIDE",
+                "value": "manual",
+                "approval_status": "approved",
+            },
+            "qdb_gl_monthly_analysis",
+            _patch_qdb_adjustment_create,
+        ),
+        (
+            "/api/analysis/adb/backfill?start_date=1900-01-01&end_date=1900-01-02",
+            None,
+            "adb_analysis",
+            _patch_adb_backfill,
+        ),
+        (
+            "/ui/macro/toolkit/scripts/debug_wind/run",
+            {"timeout_seconds": 30},
+            "macro_toolkit",
+            _patch_macro_script_run,
+        ),
+    ],
+    ids=["qdb-adjustment", "adb-backfill", "macro-script-run"],
+)
+def test_admin_routes_reject_read_grants(
+    path,
+    body,
+    read_resource,
+    patch_side_effect,
+    tmp_path,
+    monkeypatch,
+):
+    sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
+
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    calls: list[str] = []
+    assert patch_side_effect(monkeypatch, calls) == read_resource
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="read-only-user",
+        role=None,
+        resource=read_resource,
+        action="read",
+    )
+    client = TestClient(_load_app(), raise_server_exceptions=False)
+
+    response = client.post(
+        path,
+        json=body,
+        headers={"X-User-Id": "read-only-user"},
+    )
+
+    assert response.status_code == 403, response.text
+    assert calls == []
+
+
 def test_product_category_refresh_returns_503_when_scope_store_unavailable(tmp_path, monkeypatch):
     _setup_scope_store(tmp_path, monkeypatch, grant=False)
 
@@ -360,8 +460,8 @@ def test_product_category_refresh_returns_503_when_scope_store_unavailable(tmp_p
 def test_macro_choice_series_refresh_requires_explicit_refresh_grant(tmp_path, monkeypatch):
     sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
 
-    from backend.app.repositories.user_scope_repo import UserScopeRepository
     import backend.app.api.routes.macro_vendor as route_module
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
 
     calls: list[int] = []
 
@@ -471,8 +571,8 @@ def test_macro_toolkit_script_run_rejects_argv_even_with_matching_scope_grant(tm
 def test_macro_toolkit_cffex_refresh_accepts_explicit_refresh_grant(tmp_path, monkeypatch):
     sqlite_path = _setup_scope_store(tmp_path, monkeypatch, grant=False)
 
-    from backend.app.repositories.user_scope_repo import UserScopeRepository
     import backend.app.api.routes.macro_toolkit as route_module
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
     from backend.app.services import macro_toolkit_service
 
     UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(

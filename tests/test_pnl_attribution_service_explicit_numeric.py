@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-
 NUMERIC_KEYS = {"raw", "unit", "display", "precision", "sign_aware"}
 
 
@@ -83,6 +82,16 @@ class _BusinessRepo:
             f"attribution must reuse pnl_by_business_envelope, not fetch_by_business_rows({report_date}) directly"
         )
 
+    def fetch_by_business_summary_rows(self, report_date: str) -> list[dict[str, Any]]:
+        return list(self.rows_by_date.get(report_date, []))
+
+    def fetch_tpl_pnl_summary(self, report_date: str) -> dict[str, Any]:
+        return {
+            "tpl_fair_value_change": 1.0,
+            "tpl_total_pnl": 2.0,
+            "row_count": 1 if report_date in self.rows_by_date else 0,
+        }
+
     def fetch_formal_fi_rows(self, *_args, **_kwargs) -> list[dict[str, Any]]:
         raise AssertionError("volume/composition attribution must use business balance rows")
 
@@ -101,6 +110,37 @@ class _SummaryRepo(_BusinessRepo):
                 "total_pnl": 2.0,
             }
         ]
+
+
+class _BatchSummaryRepo(_BusinessRepo):
+    def __init__(self) -> None:
+        super().__init__()
+        self.business_batch_calls: list[tuple[str, ...]] = []
+        self.tpl_batch_calls: list[tuple[str, ...]] = []
+
+    def fetch_by_business_summary_rows(self, report_date: str) -> list[dict[str, Any]]:
+        raise AssertionError(f"summary volume-rate path must batch business rows, got {report_date}")
+
+    def fetch_by_business_summary_rows_by_report_date(
+        self,
+        report_dates: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        self.business_batch_calls.append(tuple(report_dates))
+        return {report_date: list(self.rows_by_date.get(report_date, [])) for report_date in report_dates}
+
+    def fetch_tpl_pnl_summary(self, report_date: str) -> dict[str, Any]:
+        raise AssertionError(f"summary TPL market path must batch monthly reads, got {report_date}")
+
+    def fetch_tpl_pnl_summary_by_report_date(self, report_dates: list[str]) -> dict[str, dict[str, Any]]:
+        self.tpl_batch_calls.append(tuple(report_dates))
+        return {
+            report_date: {
+                "tpl_fair_value_change": 1.0,
+                "tpl_total_pnl": 2.0,
+                "row_count": 1,
+            }
+            for report_date in report_dates
+        }
 
 
 class _TplMarketPnlRepo:
@@ -146,6 +186,23 @@ class _TplMarketCurveRepo:
             "2026-04-30": {"10Y": 2.30},
         }
         return curves.get(trade_date, {})
+
+
+class _BatchSummaryCurveRepo:
+    path = "unused.duckdb"
+
+    def __init__(self) -> None:
+        self.batch_calls: list[tuple[str, str, tuple[str, ...]]] = []
+
+    def fetch_tenor_on_or_before_many(
+        self,
+        *,
+        curve_type: str,
+        tenor: str,
+        trade_dates: list[str],
+    ) -> dict[str, tuple[float | None, str | None]]:
+        self.batch_calls.append((curve_type, tenor, tuple(trade_dates)))
+        return {trade_date: (2.0, trade_date) for trade_date in trade_dates}
 
 
 class _CarryRollDownRepo:
@@ -400,6 +457,68 @@ def test_attribution_analysis_summary_envelope_carries_subsurface_meta(monkeypat
     assert "fact_formal_zqtz_balance_daily" in meta["tables_used"]
     assert "yield_curve_daily" in meta["tables_used"]
     assert meta["evidence_rows"] > 0
+
+
+def test_attribution_analysis_summary_envelope_uses_fast_summary_path(monkeypatch: pytest.MonkeyPatch):
+    mod = _pnl_svc()
+    monkeypatch.setattr(mod, "_pnl_repo", lambda: _SummaryRepo())
+    monkeypatch.setattr(mod, "_bond_repo", lambda: _EmptyRepo())
+    monkeypatch.setattr(mod, "_curve_repo", lambda: _EmptyRepo())
+
+    def fake_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, Any]:
+        return _by_business_envelope(report_date)
+
+    def fail_full_volume_rate(*_args, **_kwargs):
+        raise AssertionError("summary must not build the full volume-rate workbench payload")
+
+    def fail_full_tpl_market(*_args, **_kwargs):
+        raise AssertionError("summary must not build the full TPL-market workbench payload")
+
+    monkeypatch.setattr(mod.pnl_service, "pnl_by_business_envelope", fake_by_business_envelope)
+    monkeypatch.setattr(mod, "volume_rate_attribution_envelope", fail_full_volume_rate)
+    monkeypatch.setattr(mod, "tpl_market_correlation_envelope", fail_full_tpl_market)
+    monkeypatch.setattr(mod, "_treasury_10y_on_or_before", lambda _repo, _date: (None, None))
+    monkeypatch.setattr(mod, "_dr007_on_or_before", lambda _duckdb_path, _date: (None, None))
+
+    env = mod.attribution_analysis_summary_envelope(report_date="2026-04-30")
+    result = env["result"]
+    meta = env["result_meta"]
+
+    assert result["primary_driver"] == "volume"
+    assert result["primary_driver_pct"]["raw"] == pytest.approx(0.556, rel=1e-3)
+    assert result["primary_driver_pct"]["display"] == "+55.60%"
+    assert meta["result_kind"] == "pnl_attribution.summary"
+    assert meta["as_of_date"] == "2026-04-30"
+    assert meta["evidence_rows"] > 0
+
+
+def test_attribution_analysis_summary_envelope_batches_tpl_market_reads(monkeypatch: pytest.MonkeyPatch):
+    mod = _pnl_svc()
+    repo = _BatchSummaryRepo()
+    curve = _BatchSummaryCurveRepo()
+    monkeypatch.setattr(mod, "_pnl_repo", lambda: repo)
+    monkeypatch.setattr(mod, "_bond_repo", lambda: _EmptyRepo())
+    monkeypatch.setattr(mod, "_curve_repo", lambda: curve)
+
+    def fake_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, Any]:
+        return _by_business_envelope(report_date)
+
+    def fail_single_curve(*_args, **_kwargs):
+        raise AssertionError("summary TPL market path must batch treasury reads")
+
+    def fail_single_dr007(*_args, **_kwargs):
+        raise AssertionError("summary TPL market path must batch DR007 reads")
+
+    monkeypatch.setattr(mod.pnl_service, "pnl_by_business_envelope", fake_by_business_envelope)
+    monkeypatch.setattr(mod, "_treasury_10y_on_or_before", fail_single_curve)
+    monkeypatch.setattr(mod, "_dr007_on_or_before", fail_single_dr007)
+
+    env = mod.attribution_analysis_summary_envelope(report_date="2026-04-30")
+
+    assert env["result"]["primary_driver"] == "volume"
+    assert repo.business_batch_calls == [("2026-04-30", "2026-03-31")]
+    assert repo.tpl_batch_calls == [("2026-03-31", "2026-04-30")]
+    assert curve.batch_calls == [("treasury", "10Y", ("2026-03-31", "2026-04-30"))]
 
 
 def test_non_empty_business_warning_does_not_claim_empty_materialization(monkeypatch: pytest.MonkeyPatch):

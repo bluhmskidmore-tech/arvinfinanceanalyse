@@ -444,6 +444,99 @@ describe("AverageBalanceView", () => {
     );
   });
 
+  it("marks unmatched prior-year categories as missing instead of real zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            assets_breakdown: [],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          ...current,
+          assets_breakdown: [
+            {
+              category: "new-asset-book",
+              spot_balance: 120_000_000,
+              avg_balance: 100_000_000,
+              proportion: 100,
+              weighted_rate: 2.1,
+            },
+          ],
+          liabilities_breakdown: [],
+        };
+      },
+    });
+
+    const yoyCategory = await screen.findByTestId("adb-daily-yoy-category");
+    await waitFor(() => expect(yoyCategory).toHaveTextContent("new-asset-book"));
+    expect(yoyCategory).toHaveTextContent("缺去年同期");
+    expect(yoyCategory).not.toHaveTextContent("Infinity");
+  });
+
+  it("preserves missing comparison average balance as unavailable instead of zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+            assets_breakdown: [
+              {
+                category: "missing-adb",
+                spot_balance: 100_000_000,
+                avg_balance: 50_000_000,
+                proportion: 50,
+                weighted_rate: null,
+              },
+            ],
+            liabilities_breakdown: [],
+          };
+        }
+        return {
+          ...current,
+          assets_breakdown: [
+            {
+              category: "missing-adb",
+              spot_balance: 100_000_000,
+              avg_balance: null,
+              proportion: 50,
+              weighted_rate: null,
+            },
+            {
+              category: "true-zero-adb",
+              spot_balance: 0,
+              avg_balance: 0,
+              proportion: 0,
+              weighted_rate: null,
+            },
+          ],
+          liabilities_breakdown: [],
+        };
+      },
+    });
+
+    await waitFor(() => expect(screen.getAllByText("missing-adb").length).toBeGreaterThan(0));
+    const missingDetailRow = screen
+      .getAllByText("missing-adb")
+      .map((node) => node.closest("tr"))
+      .find((row): row is HTMLTableRowElement => Boolean(row?.textContent?.includes("50.00")));
+    expect(missingDetailRow?.querySelectorAll("td")[2]).toHaveTextContent("—");
+    expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("missing-adb");
+    expect(screen.getByTestId("adb-daily-yoy-category")).toHaveTextContent("—");
+    expect(screen.getByTestId("adb-daily-yoy-category")).not.toHaveTextContent("-0.50");
+    expect(screen.getByText("true-zero-adb").closest("tr")).toHaveTextContent("0.00");
+  });
+
   it("renders the monthly statistics tab with YTD summary, expandable table, and deep analysis panels", async () => {
     const user = userEvent.setup();
     renderView();

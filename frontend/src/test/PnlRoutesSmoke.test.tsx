@@ -1141,6 +1141,62 @@ describe("pnl routed pages smoke", () => {
     );
   });
 
+  it("shows true-zero ADB as present but zero-denominator limited in /pnl-by-business YTD", async () => {
+    const client = buildPnlClient();
+    client.getAdbComparison = vi.fn(async (_startDate: string, _endDate: string) => ({
+      report_date: _endDate,
+      start_date: _startDate,
+      end_date: _endDate,
+      calendar_days_inclusive: 31,
+      adb_denominator_basis: "snapshot_calendar" as const,
+      num_days: 31,
+      simulated: false,
+      total_spot_assets: 0,
+      total_avg_assets: 0,
+      total_spot_liabilities: 0,
+      total_avg_liabilities: 0,
+      total_avg_interbank_assets: 0,
+      total_avg_interbank_liabilities: 0,
+      asset_yield: null,
+      liability_cost: null,
+      net_interest_margin: null,
+      assets_breakdown: [
+        {
+          category: "政策性金融债",
+          spot_balance: 100_000_000,
+          avg_balance: 0,
+          proportion: 0,
+          weighted_rate: null,
+        },
+      ],
+      liabilities_breakdown: [],
+    }));
+
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
+
+    await waitFor(() => {
+      expect(client.getAdbComparison).toHaveBeenCalledWith(
+        "2025-12-01",
+        "2025-12-31",
+        expect.objectContaining({ topN: 200 }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).toHaveTextContent("日均为0");
+      expect(screen.getByTestId("pnl-by-business-insight-strip")).not.toHaveTextContent("1 项缺日均");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("政策性金融债");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("0.00");
+      expect(screen.getByTestId("pnl-by-business-table")).toHaveTextContent("—");
+      expect(screen.getByTestId("pnl-by-business-selected-drilldown")).toHaveTextContent(
+        "日均为0，收益率/FTP 暂不计算",
+      );
+      expect(screen.getByTestId("pnl-by-business-ftp-bridge")).toHaveTextContent("日均为0");
+    });
+  });
+
   it("surfaces Excel export failures on /pnl-by-business", async () => {
     downloadPnlByBusinessExcelMock.mockRejectedValueOnce(new Error("writer failed"));
     const user = userEvent.setup();

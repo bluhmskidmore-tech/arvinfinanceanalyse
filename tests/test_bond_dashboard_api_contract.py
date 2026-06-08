@@ -49,6 +49,13 @@ def _perf_records(caplog, endpoint: str):
         if record.name == "backend.app.api.perf" and getattr(record, "endpoint", None) == endpoint
     ]
 
+
+def _replace_bond_dashboard_rows(repo: Any, *, report_date: str, rows: list[Any]) -> None:
+    from backend.app.repositories.task_write_guard import repository_task_write_scope
+
+    with repository_task_write_scope("backend.app.tasks.bond_dashboard_api_contract_test"):
+        repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
+
 _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
     ("/api/bond-dashboard/dates", {}),
     ("/api/bond-dashboard/home-summary", {"report_date": REPORT_DATE}),
@@ -370,6 +377,158 @@ def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(mon
     assert FakeBondDashboardRepo.fetch_fact_calls == 1
 
 
+def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelopes(monkeypatch) -> None:
+    service_mod = load_module(
+        "tests._bond_dashboard_home_summary_payload_builders",
+        "backend/app/services/bond_dashboard_service.py",
+    )
+    service_mod.clear_bond_dashboard_runtime_cache()
+
+    class FakeBondDashboardRepo:
+        fetch_headline_calls = 0
+
+        def list_report_dates(self):
+            return [REPORT_DATE]
+
+        def fetch_bond_analytics_rows(self, *, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "source_version": "sv_home_summary",
+                    "rule_version": "rv_home_summary",
+                }
+            ]
+
+        def fetch_dashboard_headline_kpis(self, report_date, prev_report_date=None):
+            assert report_date == REPORT_DATE
+            assert prev_report_date is None
+            type(self).fetch_headline_calls += 1
+            row = {
+                "total_market_value": Decimal("1000"),
+                "unrealized_pnl": Decimal("10"),
+                "weighted_ytm": Decimal("0.03"),
+                "weighted_duration": Decimal("3"),
+                "weighted_coupon": Decimal("0.025"),
+                "credit_spread_median": Decimal("0.001"),
+                "total_dv01": Decimal("1"),
+                "bond_count": 1,
+            }
+            return {"current": row, "previous": None}
+
+        def fetch_dashboard_risk_indicators(self, report_date):
+            assert report_date == REPORT_DATE
+            return {
+                "total_market_value": Decimal("1000"),
+                "total_dv01": Decimal("1"),
+                "weighted_duration": Decimal("3"),
+                "credit_ratio": Decimal("0.2"),
+                "weighted_convexity": Decimal("0.1"),
+                "total_spread_dv01": Decimal("0.2"),
+                "reinvestment_ratio_1y": Decimal("0.1"),
+            }
+
+        def fetch_dashboard_asset_structure(self, report_date, group_by):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "category": group_by,
+                    "total_market_value": Decimal("1000"),
+                    "bond_count": 1,
+                }
+            ]
+
+        def fetch_dashboard_maturity_structure(self, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "maturity_bucket": "1-3Y",
+                    "total_market_value": Decimal("1000"),
+                    "bond_count": 1,
+                }
+            ]
+
+        def fetch_dashboard_industry_distribution(self, report_date, top_n=10):
+            assert report_date == REPORT_DATE
+            assert top_n == 10
+            return [
+                {
+                    "industry_name": "Industry",
+                    "total_market_value": Decimal("1000"),
+                    "bond_count": 1,
+                }
+            ]
+
+        def fetch_dashboard_yield_distribution(self, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "yield_bucket": "2.0%-2.5%",
+                    "total_market_value": Decimal("1000"),
+                    "bond_count": 1,
+                }
+            ]
+
+        def fetch_dashboard_portfolio_comparison(self, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "portfolio_name": "P1",
+                    "total_market_value": Decimal("1000"),
+                    "weighted_ytm": Decimal("0.03"),
+                    "weighted_duration": Decimal("3"),
+                    "total_dv01": Decimal("1"),
+                    "bond_count": 1,
+                }
+            ]
+
+        def fetch_dashboard_spread_by_bond_type(self, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "bond_type": "Bond",
+                    "median_yield": Decimal("0.03"),
+                    "bond_count": 1,
+                    "total_market_value": Decimal("1000"),
+                }
+            ]
+
+        def fetch_business_type_metrics(self, report_date):
+            assert report_date == REPORT_DATE
+            return [
+                {
+                    "name": "Bond",
+                    "market_value": Decimal("1000"),
+                    "weighted_avg_ytm": Decimal("0.03"),
+                    "weighted_avg_duration": Decimal("3"),
+                }
+            ]
+
+    def fail_child_envelope(*args, **kwargs):
+        raise AssertionError("home-summary should not build child envelopes")
+
+    monkeypatch.setattr(service_mod, "_repo", FakeBondDashboardRepo)
+    monkeypatch.setattr(
+        service_mod,
+        "_duckdb_cache_version_token",
+        lambda: ("fake.duckdb", 1),
+    )
+    monkeypatch.setattr(service_mod, "build_formal_result_envelope", fail_child_envelope)
+    monkeypatch.setattr(service_mod, "build_formal_result_meta_from_lineage", fail_child_envelope)
+
+    payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
+    cached_payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
+
+    assert payload["result_meta"]["result_kind"] == "bond_dashboard.home_summary"
+    result = payload["result"]
+    assert result["headline"]["kpis"]["total_market_value"]["raw"] == 1000.0
+    assert result["asset_type"]["group_by"] == "bond_type"
+    assert result["asset_rating"]["group_by"] == "rating"
+    assert result["business_type"]["items"][0]["name"] == "Bond"
+    assert FakeBondDashboardRepo.fetch_headline_calls == 1
+    assert cached_payload["result"] == payload["result"]
+    assert cached_payload["result_meta"]["trace_id"] != payload["result_meta"]["trace_id"]
+
+
 def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(tmp_path, monkeypatch) -> None:
     from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -380,7 +539,8 @@ def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(
     get_settings.cache_clear()
 
     repo = BondAnalyticsRepository(str(duckdb_path))
-    repo.replace_bond_analytics_rows(
+    _replace_bond_dashboard_rows(
+        repo,
         report_date=REPORT_DATE,
         rows=[
             BondAnalyticsRow(
@@ -566,7 +726,7 @@ def test_bond_dashboard_headline_kpis_shape_with_seeded_facts(tmp_path, monkeypa
             ingest_batch_id="ib",
             trace_id="tr",
         )
-        repo.replace_bond_analytics_rows(report_date=rd, rows=[row])
+        _replace_bond_dashboard_rows(repo, report_date=rd, rows=[row])
 
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     response = client.get("/api/bond-dashboard/headline-kpis", params={"report_date": d2})
@@ -628,7 +788,7 @@ def test_bond_dashboard_main_endpoints_return_numeric_payloads_with_seeded_facts
             bond_type_label="Other",
         ),
     ]
-    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+    _replace_bond_dashboard_rows(repo, report_date=REPORT_DATE, rows=rows)
 
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
@@ -752,7 +912,7 @@ def test_bond_dashboard_weighted_yield_and_duration_exclude_other_or_no_maturity
             maturity_date=None,
         ),
     ]
-    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+    _replace_bond_dashboard_rows(repo, report_date=REPORT_DATE, rows=rows)
 
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
 
@@ -810,7 +970,7 @@ def test_bond_dashboard_distribution_percentage_keeps_sub_one_percent_ratio(tmp_
             bond_type_label="Small",
         ),
     ]
-    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+    _replace_bond_dashboard_rows(repo, report_date=REPORT_DATE, rows=rows)
 
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     response = client.get(
@@ -857,7 +1017,7 @@ def test_business_type_metrics_returns_envelope(tmp_path, monkeypatch) -> None:
             bond_type_label="政金债",
         ),
     ]
-    repo.replace_bond_analytics_rows(report_date=REPORT_DATE, rows=rows)
+    _replace_bond_dashboard_rows(repo, report_date=REPORT_DATE, rows=rows)
 
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     rsp = client.get("/api/bond-dashboard/business-type-metrics", params={"report_date": REPORT_DATE})

@@ -14,6 +14,12 @@ import type {
   QdbGlMonthlyAnalysisWorkbookPayload,
 } from "./contracts";
 
+export type QdbGlMonthlyAnalysisComparisonMonthStatus = {
+  report_month?: string;
+  status?: string;
+  [key: string]: unknown;
+};
+
 export type QdbGlMonthlyAnalysisRefreshPayload = {
   status: string;
   run_id: string;
@@ -21,6 +27,18 @@ export type QdbGlMonthlyAnalysisRefreshPayload = {
   trigger_mode: string;
   cache_key?: string;
   report_month?: string;
+  report_date?: string;
+  resolved_report_date?: string;
+  source_version?: string;
+  sheet_count?: number;
+  tables_used?: string[];
+  evidence_rows?: number;
+  comparison_months?: Record<string, QdbGlMonthlyAnalysisComparisonMonthStatus>;
+  failure_category?: string;
+  failure_reason?: string;
+  error_message?: string;
+  idempotency_key?: string | null;
+  idempotency_replay?: boolean;
 };
 
 export type QdbGlMonthlyAnalysisClientMethods = {

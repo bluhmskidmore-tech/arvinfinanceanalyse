@@ -4,7 +4,9 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
-from backend.app.services.advanced_attribution_service import ADVANCED_ATTRIBUTION_RESULT_KIND
+from backend.app.services.advanced_attribution_service import (
+    ADVANCED_ATTRIBUTION_RESULT_KIND,
+)
 from tests.helpers import load_module
 
 
@@ -115,7 +117,9 @@ def test_advanced_attribution_endpoint_switches_to_scenario_contract_when_explic
 
 
 def test_advanced_attribution_meta_basis_is_never_formal():
-    from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
+    from backend.app.services.advanced_attribution_service import (
+        advanced_attribution_bundle_envelope,
+    )
 
     env = advanced_attribution_bundle_envelope(report_date="2025-06-30")
     assert env["result_meta"]["basis"] == "analytical"
@@ -123,7 +127,9 @@ def test_advanced_attribution_meta_basis_is_never_formal():
 
 
 def test_advanced_attribution_meta_can_be_scenario_but_never_formal():
-    from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
+    from backend.app.services.advanced_attribution_service import (
+        advanced_attribution_bundle_envelope,
+    )
 
     env = advanced_attribution_bundle_envelope(
         report_date="2025-06-30",
@@ -213,7 +219,9 @@ def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, 
     get_settings.cache_clear()
     _seed_balance_read_scope(tmp_path, monkeypatch)
 
-    from tests.test_balance_analysis_workbook_contract import _seed_workbook_snapshot_and_fx_tables
+    from tests.test_balance_analysis_workbook_contract import (
+        _seed_workbook_snapshot_and_fx_tables,
+    )
 
     _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
 

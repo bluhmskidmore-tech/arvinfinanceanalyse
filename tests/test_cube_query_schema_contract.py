@@ -3,7 +3,11 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
+from backend.app.schemas.cube_query import (
+    CubeQueryRequest,
+    CubeQueryResponse,
+    DrillPath,
+)
 from backend.app.schemas.result_meta import ResultMeta
 
 

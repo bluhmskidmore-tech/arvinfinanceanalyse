@@ -138,6 +138,32 @@ class AccountingAssetMovementRepository:
                 conn.close()
         return [str(row[0]) for row in rows]
 
+    def latest_control_report_date(self, *, currency_basis: str = "CNX") -> str | None:
+        try:
+            conn = self._connect()
+            row = conn.execute(
+                """
+                select max(cast(report_date as varchar))
+                from product_category_pnl_canonical_fact
+                where currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                  )
+                """,
+                [currency_basis],
+            ).fetchone()
+        except duckdb.Error:
+            return None
+        finally:
+            if "conn" in locals():
+                conn.close()
+        if row is None or row[0] is None:
+            return None
+        return str(row[0])
+
     def latest_source_version(self, *, currency_basis: str = "CNX") -> str:
         try:
             conn = self._connect()

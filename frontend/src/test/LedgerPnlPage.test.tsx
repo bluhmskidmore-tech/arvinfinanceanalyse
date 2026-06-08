@@ -1620,6 +1620,269 @@ describe("LedgerPnlPage", () => {
     );
   });
 
+  function renderMonthlyWorkbookAuditCase(options: {
+    workbookReportMonth?: string;
+    workbookMeta?: ResultMeta | null;
+    workbookSheets?: QdbGlMonthlyAnalysisWorkbookPayload["sheets"];
+    formalContract?: LedgerPnlFormalFinancialIndicatorContractPayload;
+  } = {}) {
+    const base = createApiClient({ mode: "mock" });
+    const workbookMeta = Object.prototype.hasOwnProperty.call(options, "workbookMeta")
+      ? options.workbookMeta
+      : buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook");
+    const formalContract = options.formalContract ?? buildMissingFormalIndicatorContractPayload();
+
+    renderLedgerPnlPage(
+      {
+        ...base,
+        getLedgerPnlDates: vi.fn(async () => ({
+          result_meta: buildLedgerMeta("ledger_pnl.dates"),
+          result: { dates: ["2026-05-31"] },
+        })),
+        getLedgerPnlSummary: vi.fn(async () => ({
+          result_meta: {
+            ...buildLedgerMeta("ledger_pnl.summary"),
+            requested_report_date: "2026-05-31",
+            resolved_report_date: "2026-05-31",
+            as_of_date: "2026-05-31",
+            evidence_rows: 665,
+            quality_flag: "ok" as const,
+          },
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            ledger_monthly_pnl_core: money("123456789.00"),
+            ledger_monthly_pnl_all: money("123456789.00"),
+            ledger_total_assets: money("814405000000.00"),
+            ledger_total_liabilities: money("700000000000.00"),
+            ledger_net_assets: money("114405000000.00"),
+            by_currency: [{ currency: "CNY", total_pnl: money("123456789.00") }],
+            by_account: [
+              {
+                account_code: "50101000001",
+                account_name: "短期信用贷款利息收入",
+                total_pnl: money("123456789.00"),
+                count: 665,
+              },
+            ],
+          },
+        })),
+        getLedgerPnlData: vi.fn(async () => ({
+          result_meta: {
+            ...buildLedgerMeta("ledger_pnl.data"),
+            requested_report_date: "2026-05-31",
+            resolved_report_date: "2026-05-31",
+            as_of_date: "2026-05-31",
+            evidence_rows: 7751,
+            quality_flag: "ok" as const,
+          },
+          result: {
+            report_date: "2026-05-31",
+            source_version: "sv_ledger_test",
+            summary: {
+              total_pnl_cnx: money("0.00"),
+              total_pnl_cny: money("123456789.00"),
+              total_pnl: money("123456789.00"),
+              count: 7751,
+            },
+            items: [
+              {
+                account_code: "50101000001",
+                account_name: "短期信用贷款利息收入",
+                currency: "CNY",
+                beginning_balance: money("0.00"),
+                ending_balance: money("123456789.00"),
+                monthly_pnl: money("123456789.00"),
+                daily_avg_balance: money("0.00"),
+                days_in_period: 31,
+              },
+            ],
+          },
+        })),
+        getQdbGlMonthlyAnalysisDates: vi.fn(async () => ({
+          result_meta: buildAnalyticalMeta("qdb-gl-monthly-analysis.dates"),
+          result: { report_months: ["202605"] },
+        })),
+        getQdbGlMonthlyAnalysisWorkbook: vi.fn(async () => ({
+          result_meta: workbookMeta,
+          result: {
+            report_month: options.workbookReportMonth ?? "202605",
+            sheets: options.workbookSheets ?? [],
+          },
+        }) as unknown as ApiEnvelope<QdbGlMonthlyAnalysisWorkbookPayload>),
+        getLedgerPnlFormalFinancialIndicators: vi.fn(async () => ({
+          result_meta: {
+            ...buildAnalyticalMeta("ledger_pnl.formal_financial_indicator_source_contract"),
+            basis: "ledger" as const,
+            formal_use_allowed: formalContract.formal_use_allowed,
+          },
+          result: formalContract,
+        })),
+      },
+      "/ledger-pnl?report_date=2026-05-31",
+    );
+  }
+
+  it("blocks monthly analysis use when the workbook resolves to a different report month", async () => {
+    renderMonthlyWorkbookAuditCase({ workbookReportMonth: "202604" });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账候选解释可用，月度分析工作簿不可信");
+      expect(strip).toHaveTextContent(
+        "月度工作簿请求 202605，返回 202604；本次不能复核 QDB 月度分析或正式指标落地状态。",
+      );
+      expect(strip).toHaveTextContent("月度工作簿202605/202604 不一致");
+    });
+
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("月度补证路径重新读取 202605 月度分析工作簿");
+  });
+
+  it("hides monthly analysis workbook sheets when the workbook report month is untrusted", async () => {
+    renderMonthlyWorkbookAuditCase({
+      workbookReportMonth: "202604",
+      workbookSheets: [
+        {
+          key: "overview",
+          title: "经营概览",
+          columns: ["指标", "当前值"],
+          rows: [{ 指标: "错月总资产", 当前值: "9999.99" }],
+        },
+        {
+          key: "summary_3d",
+          title: "3位科目总览",
+          columns: ["科目", "当前值"],
+          rows: [{ 科目: "错月科目", 当前值: "8888.88" }],
+        },
+      ],
+    });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账候选解释可用，月度分析工作簿不可信");
+    });
+
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-trust-warning")).toHaveTextContent(
+      "月度工作簿请求 202605，返回 202604",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).not.toHaveTextContent("错月总资产");
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-summary-3d")).not.toHaveTextContent("错月科目");
+  });
+
+  it("blocks monthly analysis use when workbook source evidence metadata is incomplete", async () => {
+    renderMonthlyWorkbookAuditCase({
+      workbookMeta: {
+        ...buildAnalyticalMeta("qdb-gl-monthly-analysis.workbook"),
+        rule_version: "",
+        tables_used: [],
+      },
+      workbookSheets: [
+        {
+          key: "overview",
+          title: "经营概览",
+          columns: ["指标", "当前值"],
+          rows: [{ 指标: "缺证总资产", 当前值: "7777.77" }],
+        },
+      ],
+    });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账候选解释可用，月度分析工作簿不可信");
+      expect(strip).toHaveTextContent(
+        "月度工作簿 rule_version 缺失；月度工作簿 tables_used 缺失；本次不能复核 QDB 月度分析或正式指标落地状态。",
+      );
+      expect(strip).toHaveTextContent("月度工作簿月度工作簿来源证据不完整");
+    });
+
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("月度补证路径补齐月度工作簿来源版本、规则版本、缓存版本和表清单");
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-trust-warning")).toHaveTextContent(
+      "月度工作簿 rule_version 缺失；月度工作簿 tables_used 缺失",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).not.toHaveTextContent("缺证总资产");
+  });
+
+  it("blocks monthly analysis use when workbook result metadata is missing", async () => {
+    renderMonthlyWorkbookAuditCase({
+      workbookMeta: null,
+      workbookSheets: [
+        {
+          key: "overview",
+          title: "经营概览",
+          columns: ["指标", "当前值"],
+          rows: [{ 指标: "缺元数据总资产", 当前值: "6666.66" }],
+        },
+      ],
+    });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("总账候选解释可用，月度分析工作簿不可信");
+      expect(strip).toHaveTextContent(
+        "月度工作簿 result_meta 缺失；本次不能复核 QDB 月度分析或正式指标落地状态。",
+      );
+      expect(strip).toHaveTextContent("月度工作簿月度工作簿 result_meta 缺失");
+    });
+
+    const decisionPath = within(strip).getByTestId("ledger-pnl-decision-path");
+    expect(decisionPath).toHaveTextContent("月度补证路径补齐月度工作簿来源版本、规则版本、缓存版本和表清单");
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-trust-warning")).toHaveTextContent(
+      "月度工作簿 result_meta 缺失",
+    );
+    expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).not.toHaveTextContent("缺元数据总资产");
+  });
+
+  it("renders monthly analysis workbook sheets when the workbook provenance is trusted", async () => {
+    renderMonthlyWorkbookAuditCase({
+      workbookSheets: [
+        {
+          key: "overview",
+          title: "经营概览",
+          columns: ["指标", "当前值"],
+          rows: [{ 指标: "可信总资产", 当前值: "5555.55" }],
+        },
+        {
+          key: "summary_3d",
+          title: "3位科目总览",
+          columns: ["科目", "当前值"],
+          rows: [{ 科目: "可信科目", 当前值: "4444.44" }],
+        },
+      ],
+    });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).not.toHaveTextContent("月度分析工作簿不可信");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("ledger-pnl-monthly-analysis-overview")).toHaveTextContent("可信总资产");
+      expect(screen.getByTestId("ledger-pnl-monthly-analysis-summary-3d")).toHaveTextContent("可信科目");
+    });
+    expect(screen.queryByTestId("ledger-pnl-monthly-analysis-trust-warning")).not.toBeInTheDocument();
+  });
+
+  it("does not let workbook trust warnings override released formal indicators", async () => {
+    renderMonthlyWorkbookAuditCase({
+      workbookReportMonth: "202604",
+      formalContract: {
+        ...buildReleasedFormalIndicatorContractPayload(),
+        report_month: "202605",
+        report_date: "2026-05-31",
+      },
+    });
+
+    const strip = await screen.findByTestId("ledger-pnl-functional-audit-strip");
+    await waitFor(() => {
+      expect(strip).toHaveTextContent("正式财务指标可用");
+      expect(strip).toHaveTextContent("月度工作簿202605/202604 不一致");
+      expect(strip).not.toHaveTextContent("月度分析工作簿不可信");
+      expect(strip).not.toHaveTextContent("本次不能复核 QDB 月度分析或正式指标落地状态");
+    });
+  });
+
   function renderLedgerSourceEvidenceCase(options: {
     summaryMeta?: ResultMeta | null;
     dataMeta?: ResultMeta | null;
@@ -2673,7 +2936,7 @@ describe("LedgerPnlPage", () => {
     });
 
     try {
-      const reportDateSelect = screen.getByLabelText("ledger-pnl-report-date");
+      const reportDateSelect = screen.getByTestId("ledger-pnl-report-date-control");
       const formalPathButton = within(decisionPath).getByRole("button", {
         name: "正式补证路径 先选择报告日生成 report_month",
       });
@@ -3202,13 +3465,13 @@ describe("LedgerPnlPage", () => {
       expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-05-31", undefined);
     });
     await screen.findByRole("option", { name: "2026-04-30" });
-    await user.selectOptions(screen.getByLabelText("ledger-pnl-report-date"), "2026-04-30");
+    await user.selectOptions(screen.getByTestId("ledger-pnl-report-date-control"), "2026-04-30");
 
     await waitFor(() => {
       expect(getLedgerPnlSummary).toHaveBeenCalledWith("2026-04-30", undefined);
       expect(getLedgerPnlData).toHaveBeenCalledWith("2026-04-30", undefined);
     });
-    expect(screen.getByLabelText("ledger-pnl-report-date")).toHaveValue("2026-04-30");
+    expect(screen.getByTestId("ledger-pnl-report-date-control")).toHaveValue("2026-04-30");
   });
 
   it("renders all ledger money fields in yi units", async () => {

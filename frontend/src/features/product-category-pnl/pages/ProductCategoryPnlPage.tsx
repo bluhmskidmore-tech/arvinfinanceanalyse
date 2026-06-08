@@ -6,9 +6,11 @@ import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
+  DecimalLike,
   ProductCategoryAttributionPayload,
   ProductCategoryAttributionRow,
   ProductCategoryManualAdjustmentRequest,
+  ProductCategoryPnlRow,
   ResultMeta,
 } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
@@ -37,6 +39,12 @@ import {
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
+  type ProductCategoryLiabilityCurrencyMatrix,
+  type ProductCategoryLiabilityCurrencyMatrixRow,
+  type ProductCategoryLiabilityDetailMatrix,
+  type ProductCategoryLiabilityDetailMatrixPeriod,
+  type ProductCategoryLiabilityDetailMatrixRow,
+  type ProductCategoryLiabilityDetailTrendRow,
   nextDefaultReportDateIfUnset,
   type ProductCategoryAttributionWaterfallSurface,
   selectProductCategoryAttributionWaterfallSurface,
@@ -61,7 +69,6 @@ import {
   selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportPoints,
-  toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
 import { designTokens } from "../../../theme/designSystem";
 
@@ -143,6 +150,238 @@ function SectionLead(props: {
   );
 }
 
+type ProductCategoryFormalReadinessBandProps = {
+  reportDate: string;
+  selectedView: string;
+  baselineRate: DecimalLike;
+  currentSceneRate: DecimalLike;
+  scenarioApplied: boolean;
+  assetTotal?: ProductCategoryPnlRow | null;
+  liabilityTotal?: ProductCategoryPnlRow | null;
+  grandTotal?: ProductCategoryPnlRow | null;
+  rows: ProductCategoryPnlRow[];
+  resultMeta?: ResultMeta;
+};
+
+function ProductCategoryFormalReadinessBand(props: ProductCategoryFormalReadinessBandProps) {
+  const topRows = props.rows.filter((row) => !row.is_total).slice(0, 4);
+  const basisLabel = props.resultMeta?.basis ?? "pending";
+  const qualityLabel = props.resultMeta?.quality_flag ?? "pending";
+  const vendorLabel = props.resultMeta?.vendor_status ?? "pending";
+  const fallbackLabel = props.resultMeta?.fallback_mode ?? "pending";
+  const generatedAtLabel = props.resultMeta?.generated_at ?? "pending";
+  const needsDataStateReview =
+    props.resultMeta !== undefined &&
+    (props.resultMeta.quality_flag !== "ok" ||
+      props.resultMeta.vendor_status === "vendor_stale" ||
+      props.resultMeta.vendor_status === "vendor_unavailable" ||
+      props.resultMeta.fallback_mode !== "none");
+  const scenarioStateLabel = props.scenarioApplied ? "已应用情景预览" : "正式基线";
+
+  return (
+    <section
+      data-testid="product-category-formal-readiness-band"
+      className="product-category-formal-readiness"
+      aria-label="产品分类损益正式主链首屏摘要"
+    >
+      <div className="product-category-formal-readiness__header">
+        <div className="product-category-formal-readiness__copy">
+          <span className="product-category-formal-readiness__eyebrow">Formal chain</span>
+          <h2 className="product-category-formal-readiness__title">正式主链首屏摘要</h2>
+          <p className="product-category-formal-readiness__description">
+            首屏先核对 report_date、view、情景状态、三项 headline truth 与分类贡献行；完整明细表仍保留在正式口径区。
+          </p>
+        </div>
+        <div
+          data-testid="product-category-formal-readiness-status"
+          className="product-category-formal-readiness__status-grid"
+        >
+          <span>report_date={props.reportDate || "pending"}</span>
+          <span>view={props.selectedView}</span>
+          <span>{scenarioStateLabel}</span>
+          <span>basis={basisLabel}</span>
+          <span>quality={qualityLabel}</span>
+          <span>vendor={vendorLabel}</span>
+          <span>fallback={fallbackLabel}</span>
+          <span>generated_at={generatedAtLabel}</span>
+          {needsDataStateReview ? <span>data-state-review-required</span> : null}
+        </div>
+      </div>
+
+      <div
+        data-testid="product-category-certification-blockers"
+        className="product-category-formal-readiness__certification-strip"
+        aria-label="产品分类损益认证阻断状态"
+      >
+        <span>Owner approval pending</span>
+        <span>Golden sample awaiting approval</span>
+        <span>Manual audit partial units=10</span>
+        <span>Fresh pre-signature rerun required</span>
+        <span>Unit=亿元</span>
+        <span>Date basis=report_date</span>
+        <span>Source=formal read model</span>
+      </div>
+
+      <div
+        data-testid="product-category-formal-headline-totals"
+        className="product-category-formal-readiness__totals"
+      >
+        <div className="product-category-formal-readiness__metric">
+          <span>资产端经营净收入</span>
+          <strong>{formatProductCategoryValue(props.assetTotal?.business_net_income)}</strong>
+          <small>MTR-PCP-001</small>
+        </div>
+        <div className="product-category-formal-readiness__metric">
+          <span>负债端经营净收入</span>
+          <strong>{formatProductCategoryValue(props.liabilityTotal?.business_net_income)}</strong>
+          <small>MTR-PCP-002</small>
+        </div>
+        <div className="product-category-formal-readiness__metric">
+          <span>合计经营净收入</span>
+          <strong>{formatProductCategoryValue(props.grandTotal?.business_net_income)}</strong>
+          <small>MTR-PCP-003</small>
+        </div>
+        <div className="product-category-formal-readiness__metric product-category-formal-readiness__metric--scenario">
+          <span>FTP 场景</span>
+          <strong>{props.currentSceneRate}%</strong>
+          <small>基准 {props.baselineRate}%</small>
+        </div>
+      </div>
+
+      <div className="product-category-formal-readiness__table-wrap">
+        <table
+          data-testid="product-category-first-screen-category-rows"
+          className="product-category-formal-readiness__table"
+        >
+          <thead>
+            <tr>
+              <th>分类行</th>
+              <th>端别</th>
+              <th>规模日均</th>
+              <th>经营净收入</th>
+              <th>收益率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topRows.map((row) => (
+              <tr key={row.category_id}>
+                <td>{row.category_name}</td>
+                <td>{row.side}</td>
+                <td>{formatProductCategoryRowDisplayValue(row, row.cnx_scale)}</td>
+                <td className="product-category-formal-readiness__table-cell--highlight">
+                  {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
+                </td>
+                <td>{formatProductCategoryYieldValue(row.weighted_yield)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ProductCategoryOwnerSignableStatus() {
+  return (
+    <div
+      data-testid="product-category-owner-signable-status"
+      className="product-category-owner-signable-status"
+      aria-label="产品分类损益签署状态"
+    >
+      <span>Owner-signable=false</span>
+      <span>Certified=false</span>
+      <span>Owner approval pending</span>
+      <span>Golden sample awaiting approval</span>
+      <span>Manual audit partial units=10</span>
+    </div>
+  );
+}
+
+type ProductCategoryFormalTableMobileReadoutProps = {
+  reportDate: string;
+  selectedView: string;
+  assetTotal?: ProductCategoryPnlRow | null;
+  liabilityTotal?: ProductCategoryPnlRow | null;
+  grandTotal?: ProductCategoryPnlRow | null;
+  rows: ProductCategoryPnlRow[];
+};
+
+function ProductCategoryFormalTableReadoutField(props: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className="product-category-formal-table-mobile-readout__field">
+      <span className="product-category-formal-table-mobile-readout__label">{props.label}</span>
+      <strong className="product-category-formal-table-mobile-readout__value">{props.value}</strong>
+      {props.detail ? (
+        <small className="product-category-formal-table-mobile-readout__detail">{props.detail}</small>
+      ) : null}
+    </div>
+  );
+}
+
+function ProductCategoryFormalTableMobileReadout(
+  props: ProductCategoryFormalTableMobileReadoutProps,
+) {
+  const firstBusinessRow = props.rows.find((row) => !row.is_total) ?? props.rows[0] ?? null;
+
+  return (
+    <section
+      data-testid="product-category-formal-table-mobile-readout"
+      className="product-category-formal-table-mobile-readout"
+      aria-label="产品分类正式表移动读数"
+    >
+      <div className="product-category-formal-table-mobile-readout__header">
+        <span className="product-category-formal-table-mobile-readout__eyebrow">Formal table</span>
+        <h3 className="product-category-formal-table-mobile-readout__title">移动正式表读数</h3>
+      </div>
+      <div className="product-category-formal-table-mobile-readout__meta">
+        <span>报告日：{props.reportDate || "待选"}</span>
+        <span>视图：{props.selectedView}</span>
+        <span>展示行数：{props.rows.length}</span>
+      </div>
+      <div className="product-category-formal-table-mobile-readout__fields">
+        <ProductCategoryFormalTableReadoutField
+          label="合计经营净收入"
+          value={formatProductCategoryValue(props.grandTotal?.business_net_income)}
+          detail="正式总表口径"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="资产端经营净收入"
+          value={formatProductCategoryValue(props.assetTotal?.business_net_income)}
+          detail="MTR-PCP-001"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="负债端经营净收入"
+          value={formatProductCategoryValue(props.liabilityTotal?.business_net_income)}
+          detail="MTR-PCP-002"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="首个业务行"
+          value={firstBusinessRow?.category_name ?? "无业务行"}
+          detail={firstBusinessRow ? firstBusinessRow.side : "raw table below"}
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="规模日均"
+          value={
+            firstBusinessRow
+              ? formatProductCategoryRowDisplayValue(firstBusinessRow, firstBusinessRow.cnx_scale)
+              : "-"
+          }
+          detail="首个业务行"
+        />
+        <ProductCategoryFormalTableReadoutField
+          label="加权收益率"
+          value={firstBusinessRow ? formatProductCategoryYieldValue(firstBusinessRow.weighted_yield) : "-"}
+          detail="首个业务行"
+        />
+      </div>
+    </section>
+  );
+}
+
 function reportDateYearMonth(reportDate: string): { year: number; month: number } | null {
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(reportDate);
   if (!match) {
@@ -175,6 +414,28 @@ function diagnosticsToneClassName(tone: "neutral" | "positive" | "negative"): st
     return "product-category-diagnostics__value--negative";
   }
   return "";
+}
+
+function formalValueToneClassName(value: DecimalLike | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "product-category-formal-table__cell--neutral";
+  }
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    return "product-category-formal-table__cell--neutral";
+  }
+  if (parsed > 0) {
+    return "product-category-formal-table__cell--positive";
+  }
+  if (parsed < 0) {
+    return "product-category-formal-table__cell--negative";
+  }
+  return "product-category-formal-table__cell--neutral";
+}
+
+function formalCategoryIndentClassName(level: number): string {
+  const clampedLevel = Math.min(Math.max(Math.trunc(level), 0), 8);
+  return `product-category-formal-table__category-indent product-category-formal-table__category-indent--level-${clampedLevel}`;
 }
 
 type DerivedChartPanelProps = {
@@ -2054,6 +2315,363 @@ function AttributionMetric(props: {
   );
 }
 
+function ProductCategoryAttributionMobileReadoutField(props: {
+  label: string;
+  value: string;
+  detail?: string;
+  testId?: string;
+}) {
+  return (
+    <div className="product-category-attribution-mobile-readout__field" data-testid={props.testId}>
+      <span className="product-category-attribution-mobile-readout__label">{props.label}</span>
+      <strong className="product-category-attribution-mobile-readout__value">{props.value}</strong>
+      {props.detail ? (
+        <small className="product-category-attribution-mobile-readout__detail">{props.detail}</small>
+      ) : null}
+    </div>
+  );
+}
+
+function ProductCategoryAttributionMobileReadout(props: {
+  testId: string;
+  eyebrow: string;
+  title: string;
+  meta: string[];
+  className?: string;
+  fields: Array<{
+    label: string;
+    value: string;
+    detail?: string;
+    testId?: string;
+  }>;
+}) {
+  const className = props.className
+    ? `product-category-attribution-mobile-readout ${props.className}`
+    : "product-category-attribution-mobile-readout";
+  return (
+    <section
+      className={className}
+      data-testid={props.testId}
+      aria-label={props.title}
+    >
+      <div className="product-category-attribution-mobile-readout__header">
+        <span className="product-category-attribution-mobile-readout__eyebrow">{props.eyebrow}</span>
+        <h4 className="product-category-attribution-mobile-readout__title">{props.title}</h4>
+      </div>
+      <div className="product-category-attribution-mobile-readout__meta">
+        {props.meta.map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
+      <div className="product-category-attribution-mobile-readout__fields">
+        {props.fields.map((field) => (
+          <ProductCategoryAttributionMobileReadoutField
+            detail={field.detail}
+            key={`${field.label}-${field.value}`}
+            label={field.label}
+            testId={field.testId}
+            value={field.value}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function pickProductCategoryLiabilityReadoutRow<
+  Row extends ProductCategoryLiabilityDetailMatrixRow | ProductCategoryLiabilityCurrencyMatrixRow,
+>(rows: Row[]): Row | null {
+  return rows.find((row) => row.isSummary) ?? rows[0] ?? null;
+}
+
+function latestProductCategoryLiabilityReadoutCell(
+  row: ProductCategoryLiabilityDetailMatrixRow | ProductCategoryLiabilityCurrencyMatrixRow,
+) {
+  return row.cells[row.cells.length - 1] ?? null;
+}
+
+function latestProductCategoryLiabilityReadoutPeriod(
+  periods: ProductCategoryLiabilityDetailMatrixPeriod[],
+) {
+  return periods[periods.length - 1] ?? null;
+}
+
+function ProductCategoryLiabilityDetailMatrixMobileReadout(props: {
+  matrix: ProductCategoryLiabilityDetailMatrix;
+}) {
+  const row = pickProductCategoryLiabilityReadoutRow(props.matrix.rows);
+  if (!row) {
+    return null;
+  }
+  const latestCell = latestProductCategoryLiabilityReadoutCell(row);
+  const latestPeriod = latestProductCategoryLiabilityReadoutPeriod(props.matrix.periods);
+  return (
+    <ProductCategoryAttributionMobileReadout
+      className="product-category-liability-mobile-readout"
+      testId="product-category-liability-side-detail-matrix-mobile-readout"
+      eyebrow="Liability matrix"
+      title={"\u79fb\u52a8\u8d1f\u503a\u8bfb\u6570"}
+      meta={[
+        row.categoryLabel,
+        latestPeriod?.label ?? "\u6700\u65b0\u671f\u95f4",
+        `${props.matrix.periods.length} \u4e2a\u671f\u95f4`,
+      ]}
+      fields={[
+        {
+          label: "\u6700\u65b0\u65e5\u5747\u989d",
+          value: latestCell?.amountLabel ?? "-",
+          testId: "product-category-liability-side-detail-matrix-mobile-readout-latest-amount",
+        },
+        {
+          label: "\u6700\u65b0\u6536\u76ca\u7387",
+          value: latestCell?.rateLabel ?? "-",
+          testId: "product-category-liability-side-detail-matrix-mobile-readout-latest-rate",
+        },
+        {
+          label: "\u65e5\u5747\u989d\u53d8\u52a8",
+          value: row.movement.amountLabel,
+          testId: "product-category-liability-side-detail-matrix-mobile-readout-amount-movement",
+        },
+        {
+          label: "\u6536\u76ca\u7387\u53d8\u52a8",
+          value: row.movement.rateLabel,
+          detail: props.matrix.movementGroupLabel,
+          testId: "product-category-liability-side-detail-matrix-mobile-readout-rate-movement",
+        },
+      ]}
+    />
+  );
+}
+
+function ProductCategoryLiabilityCurrencyMatrixMobileReadout(props: {
+  matrix: ProductCategoryLiabilityCurrencyMatrix;
+  periods: ProductCategoryLiabilityDetailMatrixPeriod[];
+}) {
+  const row = pickProductCategoryLiabilityReadoutRow(props.matrix.rows);
+  if (!row) {
+    return null;
+  }
+  const latestCell = latestProductCategoryLiabilityReadoutCell(row);
+  const latestPeriod = latestProductCategoryLiabilityReadoutPeriod(props.periods);
+  return (
+    <ProductCategoryAttributionMobileReadout
+      className="product-category-liability-mobile-readout"
+      testId={`product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout`}
+      eyebrow="Currency split"
+      title={"\u79fb\u52a8\u5e01\u79cd\u8bfb\u6570"}
+      meta={[
+        props.matrix.currencyLabel,
+        props.matrix.currencyKey,
+        latestPeriod?.label ?? "\u6700\u65b0\u671f\u95f4",
+      ]}
+      fields={[
+        {
+          label: "\u6700\u65b0\u65e5\u5747\u989d",
+          value: latestCell?.amountLabel ?? "-",
+          testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-latest-amount`,
+        },
+        {
+          label: "\u6700\u65b0\u6536\u76ca\u7387",
+          value: latestCell?.rateLabel ?? "-",
+          testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-latest-rate`,
+        },
+        {
+          label: "\u65e5\u5747\u989d\u53d8\u52a8",
+          value: row.movement.amountLabel,
+          testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-amount-movement`,
+        },
+        {
+          label: "\u6536\u76ca\u7387\u53d8\u52a8",
+          value: row.movement.rateLabel,
+          detail: props.matrix.movementGroupLabel,
+          testId: `product-category-liability-side-currency-matrix-${props.matrix.currencyKey}-mobile-readout-rate-movement`,
+        },
+      ]}
+    />
+  );
+}
+
+function ProductCategoryLiabilityFallbackMobileReadout(props: {
+  rows: ProductCategoryLiabilityDetailTrendRow[];
+}) {
+  const row =
+    props.rows.find((item) => item.categoryId === "liability_total") ?? props.rows[0] ?? null;
+  if (!row) {
+    return null;
+  }
+  return (
+    <ProductCategoryAttributionMobileReadout
+      className="product-category-liability-mobile-readout"
+      testId="product-category-liability-side-detail-table-mobile-readout"
+      eyebrow="Liability table"
+      title={"\u79fb\u52a8\u8d1f\u503a\u660e\u7ec6"}
+      meta={[row.categoryLabel, row.comparisonLabel, "\u539f\u8868\u4fdd\u7559"]}
+      fields={[
+        {
+          label: "\u6700\u65b0\u65e5\u5747\u989d",
+          value: row.latestAmountLabel,
+          testId: "product-category-liability-side-detail-table-mobile-readout-latest-amount",
+        },
+        {
+          label: "\u65e5\u5747\u989d\u53d8\u52a8",
+          value: row.amountDeltaLabel,
+          testId: "product-category-liability-side-detail-table-mobile-readout-amount-delta",
+        },
+        {
+          label: "\u6700\u65b0\u6536\u76ca\u7387",
+          value: row.latestRateLabel,
+          testId: "product-category-liability-side-detail-table-mobile-readout-latest-rate",
+        },
+        {
+          label: "\u6536\u76ca\u7387\u53d8\u52a8",
+          value: row.rateDeltaLabel,
+          detail: "\u539f\u59cb\u8868\u683c\u4fdd\u7559\u5728\u4e0b\u65b9",
+          testId: "product-category-liability-side-detail-table-mobile-readout-rate-delta",
+        },
+      ]}
+    />
+  );
+}
+
+function pickProductCategoryAttributionHeadlineRow(rows: ProductCategoryAttributionRow[]) {
+  return rows.find((row) => row.category_id === "grand_total") ?? rows[0] ?? null;
+}
+
+function pickProductCategoryAttributionDetailRow(rows: ProductCategoryAttributionRow[]) {
+  return (
+    rows.find((row) => !row.category_id.endsWith("_total") && row.category_id !== "grand_total") ??
+    rows[0] ??
+    null
+  );
+}
+
+function pickLargestProductCategoryAttributionEffect(row: ProductCategoryAttributionRow) {
+  return ATTRIBUTION_EFFECT_COLUMNS.filter(([key]) => key !== "unexplained_effect")
+    .map(([key, label]) => ({
+      label,
+      value: row.effects[key],
+      magnitude: Math.abs(Number(row.effects[key])),
+    }))
+    .filter((effect) => Number.isFinite(effect.magnitude))
+    .sort((left, right) => right.magnitude - left.magnitude)[0];
+}
+
+function ProductCategoryAttributionComparisonMobileReadout(props: {
+  compare: ProductCategoryAttributionCompare;
+  currentReportDate: string;
+  priorReportDate: string;
+  rows: ProductCategoryAttributionRow[];
+}) {
+  const row = pickProductCategoryAttributionHeadlineRow(props.rows);
+  if (!row) {
+    return null;
+  }
+  const largestEffect = pickLargestProductCategoryAttributionEffect(row);
+  return (
+    <ProductCategoryAttributionMobileReadout
+      testId="product-category-attribution-comparison-mobile-readout"
+      eyebrow="Attribution bridge"
+      title={"\u79fb\u52a8\u5f52\u56e0\u8bfb\u6570"}
+      meta={[
+        `${formatProductCategoryReportMonthLabel(props.currentReportDate)}`,
+        `${productCategoryAttributionPriorLabel(props.compare)} ${formatProductCategoryReportMonthLabel(
+          props.priorReportDate,
+        )}`,
+        row.category_name,
+      ]}
+      fields={[
+        {
+          label: "\u53d8\u52a8\u5408\u8ba1",
+          value: formatProductCategoryAttributionEffect(row.effects.delta_business_net_income),
+          testId: "product-category-attribution-comparison-mobile-readout-delta",
+        },
+        {
+          label: "\u6700\u5927\u62c6\u5206\u9879",
+          value: largestEffect
+            ? `${largestEffect.label} ${formatProductCategoryAttributionEffect(largestEffect.value)}`
+            : "-",
+          testId: "product-category-attribution-comparison-mobile-readout-largest-effect",
+        },
+        {
+          label: "\u672a\u89e3\u91ca",
+          value: formatProductCategoryAttributionEffect(row.effects.unexplained_effect),
+          testId: "product-category-attribution-comparison-mobile-readout-unexplained",
+        },
+        {
+          label: "\u95ed\u5408\u8bef\u5dee",
+          value: formatProductCategoryAttributionEffect(row.effects.closure_error),
+          testId: "product-category-attribution-comparison-mobile-readout-closure-error",
+        },
+        {
+          label: "\u884c\u72b6\u6001",
+          value: row.state,
+          detail: "\u539f\u59cb\u8868\u683c\u4fdd\u7559\u5728\u4e0b\u65b9",
+          testId: "product-category-attribution-comparison-mobile-readout-state",
+        },
+      ]}
+    />
+  );
+}
+
+function ProductCategoryAttributionDetailMobileReadout(props: {
+  compare: ProductCategoryAttributionCompare;
+  currentReportDate: string;
+  priorReportDate: string;
+  rows: ProductCategoryAttributionRow[];
+}) {
+  const row = pickProductCategoryAttributionDetailRow(props.rows);
+  if (!row) {
+    return null;
+  }
+  return (
+    <ProductCategoryAttributionMobileReadout
+      testId="product-category-attribution-detail-mobile-readout"
+      eyebrow="Point detail"
+      title={"\u79fb\u52a8\u660e\u7ec6\u8bfb\u6570"}
+      meta={[
+        row.category_name,
+        `${formatProductCategoryReportMonthLabel(props.currentReportDate)}`,
+        `${productCategoryAttributionPriorLabel(props.compare)} ${formatProductCategoryReportMonthLabel(
+          props.priorReportDate,
+        )}`,
+      ]}
+      fields={[
+        {
+          label: "\u672c\u671f\u7ecf\u8425\u51c0\u6536\u5165",
+          value: formatAttributionPointValue(row, row.current, "business_net_income"),
+          testId: "product-category-attribution-detail-mobile-readout-current-income",
+        },
+        {
+          label: "\u5bf9\u6bd4\u671f\u7ecf\u8425\u51c0\u6536\u5165",
+          value: formatAttributionPointValue(row, row.prior, "business_net_income"),
+          testId: "product-category-attribution-detail-mobile-readout-prior-income",
+        },
+        {
+          label: "\u672c\u671f\u89c4\u6a21",
+          value: formatAttributionPointValue(row, row.current, "scale"),
+          testId: "product-category-attribution-detail-mobile-readout-current-scale",
+        },
+        {
+          label: "\u5bf9\u6bd4\u671f\u89c4\u6a21",
+          value: formatAttributionPointValue(row, row.prior, "scale"),
+          testId: "product-category-attribution-detail-mobile-readout-prior-scale",
+        },
+        {
+          label: "\u672c\u671f\u6536\u76ca\u7387",
+          value: formatAttributionPointValue(row, row.current, "yield_pct"),
+          testId: "product-category-attribution-detail-mobile-readout-current-yield",
+        },
+        {
+          label: "\u5bf9\u6bd4\u671f\u6536\u76ca\u7387",
+          value: formatAttributionPointValue(row, row.prior, "yield_pct"),
+          detail: "\u539f\u59cb\u8868\u683c\u4fdd\u7559\u5728\u4e0b\u65b9",
+          testId: "product-category-attribution-detail-mobile-readout-prior-yield",
+        },
+      ]}
+    />
+  );
+}
+
 function AttributionComparisonTable(props: {
   compare: ProductCategoryAttributionCompare;
   currentReportDate: string;
@@ -2071,6 +2689,12 @@ function AttributionComparisonTable(props: {
           </p>
         </div>
       </div>
+      <ProductCategoryAttributionComparisonMobileReadout
+        compare={props.compare}
+        currentReportDate={props.currentReportDate}
+        priorReportDate={props.priorReportDate}
+        rows={props.rows}
+      />
       <div className="product-category-attribution__table-wrap">
         <table
           className="product-category-attribution__table product-category-attribution__table--breakdown"
@@ -2128,6 +2752,12 @@ function AttributionComparisonTable(props: {
           </p>
         </div>
       </div>
+      <ProductCategoryAttributionDetailMobileReadout
+        compare={props.compare}
+        currentReportDate={props.currentReportDate}
+        priorReportDate={props.priorReportDate}
+        rows={props.rows}
+      />
       <div className="product-category-attribution__table-wrap">
         <table
           className="product-category-attribution__table product-category-attribution__table--detail"
@@ -3030,6 +3660,9 @@ export default function ProductCategoryPnlPage() {
   }
 
   async function handleManualAdjustmentRevoke(adjustmentId: string) {
+    if (!window.confirm(`Confirm revoke product-category adjustment ${adjustmentId}?`)) {
+      return;
+    }
     setAdjustmentError(null);
     setIsSubmittingAdjustment(true);
     try {
@@ -3139,6 +3772,7 @@ export default function ProductCategoryPnlPage() {
 
   return (
     <section data-testid="product-category-page" className="product-category-page-shell">
+      <ProductCategoryOwnerSignableStatus />
       <FilterBar className="product-category-branch-switcher">
         <button
           type="button"
@@ -3252,22 +3886,106 @@ export default function ProductCategoryPnlPage() {
         />
       </DataStatusStrip>
 
-      <FormalResultMetaPanel
-        testId="product-category-result-meta"
-        title="产品分类结果元信息"
-        sections={[
-          {
-            key: "baseline",
-            title: "基线读模型",
-            meta: baselineQuery.data?.result_meta,
-          },
-          {
-            key: "scenario",
-            title: "场景覆盖",
-            meta: scenarioQuery.data?.result_meta,
-          },
-        ]}
+      <SectionLead
+        eyebrow="场景"
+        title="报告口径与场景预览"
+        description="报告月份和视图模式驱动正式基线；FTP 场景只有点击应用后才触发情景查询，不覆盖正式结果。"
+        testId="product-category-scenario-lead"
       />
+      <div className="product-category-scenario-controls">
+        <label className="product-category-scenario-controls__field">
+          选择报告月份
+          <select
+            aria-label="选择报告月份"
+            value={selectedDate}
+            onChange={(event) => handleReportDateChange(event.target.value)}
+            className="product-category-scenario-controls__select"
+          >
+            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
+              <option key={reportDate} value={reportDate}>
+                {formatProductCategoryReportMonthLabel(reportDate)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="product-category-scenario-controls__field">
+          视图模式
+          <div
+            role="group"
+            aria-label="视图模式"
+            className="product-category-scenario-controls__view-group"
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedView("monthly")}
+              className={
+                selectedView === "monthly"
+                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
+                  : "product-category-scenario-controls__view-button"
+              }
+            >
+              月度视图
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedView("ytd")}
+              className={
+                selectedView === "ytd"
+                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
+                  : "product-category-scenario-controls__view-button"
+              }
+            >
+              汇总视图
+            </button>
+          </div>
+        </label>
+
+        <label className="product-category-scenario-controls__field">
+          FTP 场景
+          <select
+            aria-label="FTP 场景"
+            value={scenarioRate}
+            onChange={(event) => {
+              setScenarioRateTouched(true);
+              setScenarioRate(event.target.value);
+            }}
+            className="product-category-scenario-controls__select"
+          >
+            {PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="product-category-scenario-controls__actions">
+        <button
+          type="button"
+          data-testid="product-category-apply-scenario-button"
+          onClick={() => setAppliedScenarioRate(scenarioRate.trim())}
+          className="product-category-scenario-controls__apply"
+        >
+          应用场景
+        </button>
+      </div>
+
+      {!baselineQuery.isError ? (
+        <ProductCategoryFormalReadinessBand
+          reportDate={selectedDate}
+          selectedView={selectedView}
+          baselineRate={baselineRate}
+          currentSceneRate={currentSceneRate}
+          scenarioApplied={Boolean(scenario)}
+          assetTotal={displayedAssetTotal}
+          liabilityTotal={displayedLiabilityTotal}
+          grandTotal={displayedGrandTotal}
+          rows={rowsToRender}
+          resultMeta={baselineQuery.data?.result_meta}
+        />
+      ) : null}
 
       {showManualForm ? (
         <div
@@ -3504,92 +4222,6 @@ export default function ProductCategoryPnlPage() {
         </div>
       </AsyncSection>
 
-      <SectionLead
-        eyebrow="场景"
-        title="报告口径与场景预览"
-        description="报告月份和视图模式驱动正式基线；FTP 场景只有点击应用后才触发情景查询，不覆盖正式结果。"
-        testId="product-category-scenario-lead"
-      />
-      <div className="product-category-scenario-controls">
-        <label className="product-category-scenario-controls__field">
-          选择报表月份
-          <select
-            aria-label="选择报表月份"
-            value={selectedDate}
-            onChange={(event) => handleReportDateChange(event.target.value)}
-            className="product-category-scenario-controls__select"
-          >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {formatProductCategoryReportMonthLabel(reportDate)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="product-category-scenario-controls__field">
-          视图模式
-          <div
-            role="group"
-            aria-label="视图模式"
-            className="product-category-scenario-controls__view-group"
-          >
-            <button
-              type="button"
-              onClick={() => setSelectedView("monthly")}
-              className={
-                selectedView === "monthly"
-                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
-                  : "product-category-scenario-controls__view-button"
-              }
-            >
-              月度视图
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedView("ytd")}
-              className={
-                selectedView === "ytd"
-                  ? "product-category-scenario-controls__view-button product-category-scenario-controls__view-button--active"
-                  : "product-category-scenario-controls__view-button"
-              }
-            >
-              汇总视图
-            </button>
-          </div>
-        </label>
-
-        <label className="product-category-scenario-controls__field">
-          FTP 场景
-          <select
-            aria-label="FTP 场景"
-            value={scenarioRate}
-            onChange={(event) => {
-              setScenarioRateTouched(true);
-              setScenarioRate(event.target.value);
-            }}
-            className="product-category-scenario-controls__select"
-          >
-            {PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="product-category-scenario-controls__actions">
-        <button
-          type="button"
-          data-testid="product-category-apply-scenario-button"
-          onClick={() => setAppliedScenarioRate(scenarioRate.trim())}
-          className="product-category-scenario-controls__apply"
-        >
-          应用场景
-        </button>
-      </div>
-
       <ProductCategoryAttributionPanel
         selectedView={selectedView}
         compare={attributionCompare}
@@ -3663,7 +4295,18 @@ export default function ProductCategoryPnlPage() {
         onRetry={() => void baselineQuery.refetch()}
         extra={reportExtra}
       >
-        <div className="product-category-formal-table-wrap">
+        <ProductCategoryFormalTableMobileReadout
+          reportDate={selectedDate}
+          selectedView={selectedView}
+          assetTotal={displayedAssetTotal}
+          liabilityTotal={displayedLiabilityTotal}
+          grandTotal={displayedGrandTotal}
+          rows={rowsToRender}
+        />
+        <div
+          data-testid="product-category-formal-table-raw-grid"
+          className="product-category-formal-table-wrap"
+        >
           <table data-testid="product-category-table" className="product-category-formal-table">
             <colgroup>
               <col className="product-category-formal-table__col--category" />
@@ -3730,7 +4373,7 @@ export default function ProductCategoryPnlPage() {
                   }`}
                 >
                   <td className="product-category-formal-table__cell product-category-formal-table__cell--category">
-                    <div style={{ paddingLeft: row.level * 18 }}>
+                    <div className={formalCategoryIndentClassName(row.level)}>
                       <div>{row.category_name}</div>
                     </div>
                   </td>
@@ -3753,8 +4396,10 @@ export default function ProductCategoryPnlPage() {
                     {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
                   </td>
                   <td
-                    className="product-category-formal-table__cell product-category-formal-table__cell--number"
-                    style={{ color: toneForProductCategoryValue(row.cny_net) }}
+                    className={[
+                      "product-category-formal-table__cell product-category-formal-table__cell--number",
+                      formalValueToneClassName(row.cny_net),
+                    ].join(" ")}
                   >
                     {formatProductCategoryRowDisplayValue(row, row.cny_net)}
                   </td>
@@ -3765,14 +4410,18 @@ export default function ProductCategoryPnlPage() {
                     {formatProductCategoryRowDisplayValue(row, row.foreign_ftp)}
                   </td>
                   <td
-                    className="product-category-formal-table__cell product-category-formal-table__cell--number"
-                    style={{ color: toneForProductCategoryValue(row.foreign_net) }}
+                    className={[
+                      "product-category-formal-table__cell product-category-formal-table__cell--number",
+                      formalValueToneClassName(row.foreign_net),
+                    ].join(" ")}
                   >
                     {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
                   </td>
                   <td
-                    className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--highlight"
-                    style={{ color: toneForProductCategoryValue(row.business_net_income) }}
+                    className={[
+                      "product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--highlight",
+                      formalValueToneClassName(row.business_net_income),
+                    ].join(" ")}
                   >
                     {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
                   </td>
@@ -3785,6 +4434,23 @@ export default function ProductCategoryPnlPage() {
           </table>
         </div>
       </AsyncSection>
+
+      <FormalResultMetaPanel
+        testId="product-category-result-meta"
+        title="产品分类结果元信息"
+        sections={[
+          {
+            key: "baseline",
+            title: "基线读模型",
+            meta: baselineQuery.data?.result_meta,
+          },
+          {
+            key: "scenario",
+            title: "场景覆盖",
+            meta: scenarioQuery.data?.result_meta,
+          },
+        ]}
+      />
 
       {displayedGrandTotal && !baselineQuery.isError ? (
         <div
@@ -4048,6 +4714,9 @@ export default function ProductCategoryPnlPage() {
             ) : null}
             {liabilitySideTrendSurface.detailMatrix.rows.length > 0 ? (
               <>
+                <ProductCategoryLiabilityDetailMatrixMobileReadout
+                  matrix={liabilitySideTrendSurface.detailMatrix}
+                />
                 <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
                   <table
                     className="product-category-diagnostics__table product-category-liability-matrix"
@@ -4141,6 +4810,10 @@ export default function ProductCategoryPnlPage() {
                       <h3 className="product-category-liability-matrix__currency-title">
                         {currencyMatrix.currencyLabel}
                       </h3>
+                      <ProductCategoryLiabilityCurrencyMatrixMobileReadout
+                        matrix={currencyMatrix}
+                        periods={liabilitySideTrendSurface.detailMatrix.periods}
+                      />
                       <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
                         <table
                           className="product-category-diagnostics__table product-category-liability-matrix product-category-liability-matrix--currency"
@@ -4229,38 +4902,43 @@ export default function ProductCategoryPnlPage() {
                 </div>
               </>
             ) : liabilitySideTrendSurface.detailRows.length > 0 ? (
-              <div className="product-category-diagnostics__table-wrap">
-                <table
-                  className="product-category-diagnostics__table"
-                  data-testid="product-category-liability-side-detail-table"
-                >
-                  <thead>
-                    <tr>
-                      <th className="product-category-diagnostics__table-head">负债明细</th>
-                      <th className="product-category-diagnostics__table-head">最新日均额</th>
-                      <th className="product-category-diagnostics__table-head">日均额变动</th>
-                      <th className="product-category-diagnostics__table-head">最新利率</th>
-                      <th className="product-category-diagnostics__table-head">利率变动</th>
-                      <th className="product-category-diagnostics__table-head">对比期</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {liabilitySideTrendSurface.detailRows.map((item) => (
-                      <tr
-                        key={item.categoryId}
-                        data-testid={`product-category-liability-side-detail-${item.categoryId}`}
-                      >
-                        <td className="product-category-diagnostics__table-cell">{item.categoryLabel}</td>
-                        <td className="product-category-diagnostics__table-cell">{item.latestAmountLabel}</td>
-                        <td className="product-category-diagnostics__table-cell">{item.amountDeltaLabel}</td>
-                        <td className="product-category-diagnostics__table-cell">{item.latestRateLabel}</td>
-                        <td className="product-category-diagnostics__table-cell">{item.rateDeltaLabel}</td>
-                        <td className="product-category-diagnostics__table-cell">{item.comparisonLabel}</td>
+              <>
+                <ProductCategoryLiabilityFallbackMobileReadout
+                  rows={liabilitySideTrendSurface.detailRows}
+                />
+                <div className="product-category-diagnostics__table-wrap">
+                  <table
+                    className="product-category-diagnostics__table"
+                    data-testid="product-category-liability-side-detail-table"
+                  >
+                    <thead>
+                      <tr>
+                        <th className="product-category-diagnostics__table-head">负债明细</th>
+                        <th className="product-category-diagnostics__table-head">最新日均额</th>
+                        <th className="product-category-diagnostics__table-head">日均额变动</th>
+                        <th className="product-category-diagnostics__table-head">最新利率</th>
+                        <th className="product-category-diagnostics__table-head">利率变动</th>
+                        <th className="product-category-diagnostics__table-head">对比期</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {liabilitySideTrendSurface.detailRows.map((item) => (
+                        <tr
+                          key={item.categoryId}
+                          data-testid={`product-category-liability-side-detail-${item.categoryId}`}
+                        >
+                          <td className="product-category-diagnostics__table-cell">{item.categoryLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.latestAmountLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.amountDeltaLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.latestRateLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.rateDeltaLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.comparisonLabel}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             ) : null}
           </article>
           <div

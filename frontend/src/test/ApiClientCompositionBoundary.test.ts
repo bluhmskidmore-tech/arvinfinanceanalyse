@@ -58,6 +58,7 @@ describe("ApiClient composition boundary", () => {
 
     expect(typeof client.getBondDashboardDates).toBe("function");
     expect(typeof client.getBondDashboardHeadlineKpis).toBe("function");
+    expect(typeof client.getBondDashboardHomeSummary).toBe("function");
     expect(typeof client.getBondDashboardAssetStructure).toBe("function");
     expect(typeof client.getBondDashboardYieldDistribution).toBe("function");
     expect(typeof client.getBondDashboardPortfolioComparison).toBe("function");
@@ -669,10 +670,10 @@ describe("ApiClient composition boundary", () => {
         },
         result: {
           report_date: "2026 03/31",
-          duration_gap: { raw: 0, display: "0", unit: "ratio" },
-          asset_duration: { raw: 0, display: "0", unit: "ratio" },
-          liability_duration: { raw: 0, display: "0", unit: "ratio" },
-          equity_duration: { raw: 0, display: "0", unit: "ratio" },
+          duration_gap: { raw: 0, display: "0", unit: "years" },
+          asset_duration: { raw: 0, display: "0", unit: "years" },
+          liability_duration: { raw: 0, display: "0", unit: "years" },
+          equity_duration: { raw: 0, display: "0", unit: "years" },
           rate_sensitivity_1bp: { raw: 0, display: "0", unit: "yuan" },
           reinvestment_risk_12m: { raw: 0, display: "0", unit: "pct" },
           monthly_buckets: [],
@@ -939,8 +940,8 @@ describe("ApiClient composition boundary", () => {
     await expect(client.getLedgerPnlData("2026-03-31", "CNX")).resolves.toMatchObject({
       result_meta: {
         result_kind: "ledger_pnl.data",
-        basis: "formal",
-        formal_use_allowed: true,
+        basis: "ledger",
+        formal_use_allowed: false,
       },
       result: {
         report_date: "2026-03-31",
@@ -949,8 +950,8 @@ describe("ApiClient composition boundary", () => {
     await expect(client.getLedgerPnlSummary("2026-03-31", "CNX")).resolves.toMatchObject({
       result_meta: {
         result_kind: "ledger_pnl.summary",
-        basis: "formal",
-        formal_use_allowed: true,
+        basis: "ledger",
+        formal_use_allowed: false,
       },
       result: {
         report_date: "2026-03-31",
@@ -1235,10 +1236,10 @@ describe("ApiClient composition boundary", () => {
       },
       result: {
         report_date: "2026-03-31",
-        duration_gap: { raw: 1.25, unit: "ratio", sign_aware: true },
-        asset_duration: { raw: 3.8, unit: "ratio", sign_aware: false },
-        liability_duration: { raw: 2.55, unit: "ratio", sign_aware: false },
-        equity_duration: { raw: 5.2, unit: "ratio", sign_aware: true },
+        duration_gap: { raw: 1.25, unit: "years", sign_aware: true },
+        asset_duration: { raw: 3.8, unit: "years", sign_aware: false },
+        liability_duration: { raw: 2.55, unit: "years", sign_aware: false },
+        equity_duration: { raw: 5.2, unit: "years", sign_aware: true },
         rate_sensitivity_1bp: { raw: 125_000, unit: "yuan", sign_aware: true },
         reinvestment_risk_12m: { raw: 0.185, unit: "pct", sign_aware: false },
         monthly_buckets: [],
@@ -1274,6 +1275,34 @@ describe("ApiClient composition boundary", () => {
       },
       result: {
         report_date: "2026-03-31",
+        credit_weight: { raw: 0.25, unit: "ratio", sign_aware: false },
+        rating_aa_and_below_weight: { raw: 0.08, unit: "ratio", sign_aware: false },
+        concentration_by_issuer: {
+          dimension: "issuer",
+          hhi: { raw: 0.12, unit: "ratio", sign_aware: false },
+          top5_concentration: { raw: 0.3, unit: "ratio", sign_aware: false },
+          top_items: [
+            {
+              name: "Issuer A",
+              weight: { raw: 0.08, unit: "ratio", sign_aware: false },
+            },
+          ],
+        },
+        concentration_by_industry: {
+          dimension: "industry",
+          hhi: { raw: 0.1, unit: "ratio", sign_aware: false },
+          top5_concentration: { raw: 0.25, unit: "ratio", sign_aware: false },
+        },
+        concentration_by_rating: {
+          dimension: "rating",
+          hhi: { raw: 0.2, unit: "ratio", sign_aware: false },
+          top5_concentration: { raw: 0.4, unit: "ratio", sign_aware: false },
+        },
+        concentration_by_tenor: {
+          dimension: "tenor",
+          hhi: { raw: 0.11, unit: "ratio", sign_aware: false },
+          top5_concentration: { raw: 0.28, unit: "ratio", sign_aware: false },
+        },
       },
     });
   });
@@ -1602,6 +1631,7 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("createRealBondDashboardClient");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/dates");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/headline-kpis");
+    expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/home-summary");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/asset-structure");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/yield-distribution");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/portfolio-comparison");
@@ -1610,9 +1640,11 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/industry-distribution");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/risk-indicators");
     expect(bondAnalyticsClientSource).toContain("bond_dashboard.headline_kpis");
+    expect(bondAnalyticsClientSource).toContain("bond_dashboard.home_summary");
     expect(bondAnalyticsClientSource).toContain("bond_dashboard.risk_indicators");
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardDates\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardHeadlineKpis\(/);
+    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardHomeSummary\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardAssetStructure\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardYieldDistribution\(/);
     expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardPortfolioComparison\(/);
@@ -1929,17 +1961,19 @@ describe("ApiClient composition boundary", () => {
   it("keeps first-screen providers and shell on the lightweight API context boundary", () => {
     expect(providersSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
     expect(providersSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
-    expect(shellSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
+    expect(shellSource).toMatch(/from\s+["']\.\.\/components\/DataModeRibbon["']/);
     expect(shellSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
     expect(dataModeRibbonSource).toMatch(/from\s+["']\.\.\/api\/clientContext["']/);
     expect(dataModeRibbonSource).not.toMatch(/from\s+["']\.\.\/api\/client["']/);
     expect(clientContextSource).toContain("createDeferredApiClient");
     expect(clientContextSource).toContain("MACRO_TOOLKIT_METHODS");
-    expect(clientContextSource).toContain("MARKET_TICKER_METHODS");
+    expect(clientContextSource).toContain("HOME_MARKET_TICKER_METHODS");
     expect(clientContextSource).toContain("createRealMacroToolkitClient");
     expect(clientContextSource).toContain("createMockMacroToolkitClient");
-    expect(clientContextSource).toContain("createRealMarketDataClient");
-    expect(clientContextSource).toContain("createMockMarketDataClient");
+    expect(clientContextSource).toContain("createRealHomeMarketTickerClient");
+    expect(clientContextSource).toContain("createMockHomeMarketTickerClient");
+    expect(clientContextSource).not.toContain("createRealMarketDataClient");
+    expect(clientContextSource).not.toContain("createMockMarketDataClient");
     expect(clientContextSource).not.toMatch(/import\s+\{[^}]*createApiClient/);
     expect(clientSource).toContain("from \"./clientContext\"");
   });
@@ -1971,7 +2005,7 @@ describe("ApiClient composition boundary", () => {
     );
   });
 
-  it("routes shell market ticker reads through the lightweight market-data domain client", async () => {
+  it("routes shell market ticker reads through the lightweight home market ticker client", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -1996,5 +2030,68 @@ describe("ApiClient composition boundary", () => {
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
+  });
+
+  it("routes home supplemental reads through the lightweight home supplemental client", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const result =
+        url.includes("/api/dashboard/core_metrics")
+          ? { report_date: "2026-04-30" }
+          : url.includes("/api/bond-analytics/credit-spread-migration")
+            ? {
+                report_date: "2026-04-30",
+                credit_market_value: "1500000000",
+                credit_weight: "0.25",
+                spread_dv01: "25000",
+                weighted_avg_spread: "80",
+                weighted_avg_spread_duration: "4.2",
+                spread_scenarios: [],
+                migration_scenarios: [],
+              }
+            : url.includes("/api/analysis/liabilities/cockpit-warnings")
+              ? { report_date: "2026-04-30", watch_items: [], alert_events: [] }
+              : {};
+      return new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getCoreMetrics({ reportDate: "2026-04-30" });
+    const creditSpread = await client.getBondAnalyticsCreditSpreadMigration("2026-04-30");
+    await client.getCockpitWarnings("2026-04-30");
+
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://backend.local/api/dashboard/core_metrics?report_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://backend.local/api/bond-analytics/credit-spread-migration?report_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      "http://backend.local/api/analysis/liabilities/cockpit-warnings?report_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(creditSpread.result.credit_market_value.display).toBe("15.00 亿");
   });
 });

@@ -11,6 +11,7 @@ from backend.app.core_finance.module_contracts import FormalComputeModuleDescrip
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
@@ -51,10 +52,11 @@ def _execute_bond_analytics_materialization(
             snapshot_rows,
             date.fromisoformat(report_date),
         )
-        repo.replace_bond_analytics_rows(
-            report_date=report_date,
-            rows=analytics_rows,
-        )
+        with repository_task_write_scope(__name__):
+            repo.replace_bond_analytics_rows(
+                report_date=report_date,
+                rows=analytics_rows,
+            )
     except Exception as exc:
         raise FormalComputeMaterializeFailure(
             source_version=combined_source_version,

@@ -1,8 +1,6 @@
 import type { Numeric } from "../../../api/contracts";
 import { formatRawAsNumeric } from "../../../utils/format";
 
-const ZERO_PCT = formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: false, precision: 2 });
-
 export function numericRaw(value: Numeric | null | undefined): number | null {
   if (!value || value.raw === null || !Number.isFinite(value.raw)) {
     return null;
@@ -10,10 +8,10 @@ export function numericRaw(value: Numeric | null | undefined): number | null {
   return value.raw;
 }
 
-export function numericYuanRaw(value: Numeric | null | undefined): number {
+export function numericYuanRaw(value: Numeric | null | undefined): number | null {
   const raw = numericRaw(value);
   if (raw === null) {
-    return 0;
+    return null;
   }
   if (value?.unit === "yuan") {
     return raw;
@@ -21,7 +19,7 @@ export function numericYuanRaw(value: Numeric | null | undefined): number {
   if (value?.unit === "yi") {
     return raw * 1e8;
   }
-  return 0;
+  return null;
 }
 
 export function numericPctRaw(value: Numeric | null | undefined): number | null {
@@ -54,24 +52,24 @@ export function ratioToPercentNumeric(raw: number | null | undefined, signAware 
   return formatRawAsNumeric({ raw, unit: "pct", sign_aware: signAware, precision: 2 });
 }
 
-export function shareOfTotalNumeric(value: Numeric | null | undefined, total: Numeric | null | undefined): Numeric {
+export function shareOfTotalNumeric(value: Numeric | null | undefined, total: Numeric | null | undefined): Numeric | null {
   const totalRaw = numericYuanRaw(total);
   const valueRaw = numericYuanRaw(value);
-  if (totalRaw <= 0) {
-    return ZERO_PCT;
+  if (totalRaw === null || valueRaw === null || totalRaw <= 0) {
+    return null;
   }
-  return ratioToPercentNumeric(valueRaw / totalRaw) ?? ZERO_PCT;
+  return ratioToPercentNumeric(valueRaw / totalRaw);
 }
 
-export function numericToYi(value: Numeric | null | undefined): number {
-  return numericToYiNumeric(value)?.raw ?? 0;
+export function numericToYi(value: Numeric | null | undefined): number | null {
+  return numericToYiNumeric(value)?.raw ?? null;
 }
 
 export function nameAmountToYi(item: {
   amount?: Numeric | null;
   amount_yi?: Numeric | null;
-}): number {
-  return nameAmountToYiNumeric(item)?.raw ?? 0;
+}): number | null {
+  return nameAmountToYiNumeric(item)?.raw ?? null;
 }
 
 export function nameAmountToYiNumeric(item: {
@@ -87,8 +85,8 @@ export function nameAmountToYiNumeric(item: {
 export function bucketAmountToYi(item: {
   amount?: Numeric | null;
   amount_yi?: Numeric | null;
-}): number {
-  return bucketAmountToYiNumeric(item)?.raw ?? 0;
+}): number | null {
+  return bucketAmountToYiNumeric(item)?.raw ?? null;
 }
 
 export function bucketAmountToYiNumeric(item: {

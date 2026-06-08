@@ -94,10 +94,10 @@ class CashflowProjectionResponse(BaseModel):
     computed_at: str
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
-        "duration_gap": ("ratio", True),
-        "asset_duration": ("ratio", False),
-        "liability_duration": ("ratio", False),
-        "equity_duration": ("ratio", True),
+        "duration_gap": ("years", True),
+        "asset_duration": ("years", False),
+        "liability_duration": ("years", False),
+        "equity_duration": ("years", True),
         "rate_sensitivity_1bp": ("yuan", True),
         "reinvestment_risk_12m": ("pct", False),
     }

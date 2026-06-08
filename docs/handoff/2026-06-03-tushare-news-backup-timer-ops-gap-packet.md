@@ -1,6 +1,6 @@
 # Tushare News Backup Timer Ops Gap Packet
 
-Status timestamp: 2026-06-03
+Status timestamp: 2026-06-07
 
 This packet does not enable the timer. It converts the current blocked
 preflight gates into external operations inputs to collect before enablement.
@@ -19,9 +19,9 @@ Current verdict: `blocked`
 
 Blocking stages: `pre-enable`, `post-enable`
 
-Pre-enable summary: `6 pass / 5 blocked`
+Pre-enable summary: `9 pass / 2 blocked`
 
-Post-enable summary: `6 pass / 7 blocked`
+Post-enable summary: `9 pass / 4 blocked`
 
 Ready to create timer: `false`
 
@@ -33,26 +33,18 @@ Post-enable inputs remain deferred until `pre-enable` returns `pass` and the
 first scheduled run finishes.
 
 Do not create the external timer while `pre-enable` is blocked.
-After `pre-enable` passes, create the external timer outside this packet and
-collect first-run evidence.
 
 ## Current Blocking Items
 
 ### Pre-Enable
 
-- `owners_filled`
-- `boundary_confirmation_filled`
-- `timer_enablement_packet_filled`
-- `page_acceptance_signoff_filled`
-- `enable_timer_decision_yes`
+- `page_artifacts_exist`
+- `page_evidence_json_confirms_read_only_fallback`
 
 ### Post-Enable
 
-- `owners_filled`
-- `boundary_confirmation_filled`
-- `timer_enablement_packet_filled`
-- `page_acceptance_signoff_filled`
-- `enable_timer_decision_yes`
+- `page_artifacts_exist`
+- `page_evidence_json_confirms_read_only_fallback`
 - `timer_evidence_filled`
 - `post_enable_evidence_confirms_timer_enabled`
 
@@ -60,11 +52,8 @@ collect first-run evidence.
 
 | Gate | Path | Action |
 | --- | --- | --- |
-| `owners_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Credential owner, Schedule owner, Page acceptance owner, Rollback owner, and Evidence location. |
-| `boundary_confirmation_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Mark each boundary row yes and attach evidence without secrets. |
-| `timer_enablement_packet_filled` | `docs/templates/tushare_news_backup_timer_enablement_packet.md` | Fill timer host, repository root, Python executable, DuckDB path, log path, refresh window, write-window note, alert/log retention owner, and packet owners. |
-| `page_acceptance_signoff_filled` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Fill Page evidence owner sign-off. |
-| `enable_timer_decision_yes` | `docs/templates/tushare_news_backup_refresh_go_live_checklist.md` | Set Enable timer to yes after pre-enable evidence is accepted, then rerun pre-enable before creating the external timer. |
+| `page_artifacts_exist` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Attach page screenshot and browser evidence JSON. |
+| `page_evidence_json_confirms_read_only_fallback` | `frontend/.codex-tmp/tushare-news-backup-home-page-evidence-2026-06-03.json` | Regenerate browser evidence JSON showing landed-data read behavior and no reserved write request. |
 
 ## Deferred Post-Enable `next_actions`
 

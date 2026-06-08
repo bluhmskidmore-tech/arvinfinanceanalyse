@@ -744,6 +744,38 @@ describe("DecisionItemsPage", () => {
     expect(screen.queryByTestId("decision-items-dismiss-0")).not.toBeInTheDocument();
   });
 
+  it("shows permission unknown state when current-user lookup fails", async () => {
+    const client = createApiClient({ mode: "mock" });
+    vi.spyOn(client, "getBalanceAnalysisDates").mockResolvedValue({
+      result_meta: testMeta,
+      result: { report_dates: ["2026-03-31"] },
+    });
+    vi.spyOn(client, "getBalanceAnalysisCurrentUser").mockRejectedValue(new Error("scope store unavailable"));
+    vi.spyOn(client, "getBalanceAnalysisDecisionItems").mockResolvedValue({
+      result_meta: testMeta,
+      result: decisionItemsPayload({
+        rows: [
+          decisionItemRow({
+            decision_key: "row-1",
+            title: "Unknown permission item",
+            severity: "high",
+          }),
+        ],
+      }),
+    });
+
+    renderPage(
+      client,
+      ["/decision-items?source=dashboard-home&report_date=2026-03-31&action_id=risk-review-queue"],
+    );
+
+    expect(await screen.findByTestId("decision-items-permission-unknown")).toHaveTextContent(
+      "权限状态暂不可用",
+    );
+    expect(screen.queryByTestId("decision-items-confirm-0")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("decision-items-dismiss-0")).not.toBeInTheDocument();
+  });
+
   it("surfaces update failures in the error region", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getBalanceAnalysisDates").mockResolvedValue({

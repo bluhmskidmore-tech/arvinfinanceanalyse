@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from backend.app.core_finance.curve_engine.curve_types import (
     CurvePoint,
     FittedCurve,
@@ -24,9 +22,7 @@ from backend.app.core_finance.curve_engine.interpolation import (
     build_cubic_spline,
     curve_from_tenor_map,
     interpolate,
-    _linear_interpolate,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

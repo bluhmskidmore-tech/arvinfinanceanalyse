@@ -3,15 +3,17 @@ from __future__ import annotations
 import duckdb
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.external_data_migrations_extra import ensure_std_external_macro_schema
+from backend.app.main import app
 from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
 )
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.repositories.external_data_migrations_extra import (
+    ensure_std_external_macro_schema,
+)
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
 

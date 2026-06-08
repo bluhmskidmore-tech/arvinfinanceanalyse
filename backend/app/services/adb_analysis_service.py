@@ -1685,3 +1685,131 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
         **envelope,
         "calibration": balance_calibration_meta_to_dict(calibration_meta),
     }
+
+
+def adb_coverage_diagnostics(start_date: str, end_date: str) -> dict[str, Any]:
+    settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
+    if not Path(duckdb_path).exists():
+        raise FileNotFoundError(f"DuckDB not found: {duckdb_path}")
+
+    parsed_start_date = _parse_date(start_date)
+    parsed_end_date = _parse_date(end_date)
+    conn = _conn_ro(duckdb_path)
+    try:
+        result: dict[str, Any] = {
+            "start_date": parsed_start_date.isoformat(),
+            "end_date": parsed_end_date.isoformat(),
+            "calendar_days": (parsed_end_date - parsed_start_date).days + 1,
+            "snapshot_tables": {},
+            "formal_tables": {},
+        }
+
+        for table, label in (
+            ("zqtz_bond_daily_snapshot", "zqtz_snapshot"),
+            ("tyw_interbank_daily_snapshot", "tyw_snapshot"),
+        ):
+            result["snapshot_tables"][label] = _date_coverage_for_table(
+                conn,
+                table=table,
+                start_date=parsed_start_date,
+                end_date=parsed_end_date,
+            )
+
+        for table, label in (
+            ("fact_formal_zqtz_balance_daily", "formal_zqtz"),
+            ("fact_formal_tyw_balance_daily", "formal_tyw"),
+        ):
+            result["formal_tables"][label] = _date_coverage_for_table(
+                conn,
+                table=table,
+                start_date=parsed_start_date,
+                end_date=parsed_end_date,
+                currency_basis="CNY",
+            )
+
+        snapshot_dates = _union_coverage_dates(result["snapshot_tables"].values())
+        formal_dates = _union_coverage_dates(result["formal_tables"].values())
+        missing = sorted(snapshot_dates - formal_dates)
+        result["snapshot_date_count"] = len(snapshot_dates)
+        result["formal_date_count"] = len(formal_dates)
+        result["missing_dates"] = missing
+        result["missing_count"] = len(missing)
+        result["coverage_pct"] = round(len(formal_dates) / max(len(snapshot_dates), 1) * 100, 1)
+        return result
+    finally:
+        conn.close()
+
+
+def adb_backfill_candidate_dates(start_date: str, end_date: str) -> dict[str, Any]:
+    settings = get_settings()
+    duckdb_path = str(settings.duckdb_path)
+    if not Path(duckdb_path).exists():
+        raise FileNotFoundError(f"DuckDB not found: {duckdb_path}")
+
+    parsed_start_date = _parse_date(start_date)
+    parsed_end_date = _parse_date(end_date)
+    conn = _conn_ro(duckdb_path)
+    try:
+        snapshot_dates: set[str] = set()
+        for table in ("zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot"):
+            snapshot_dates.update(
+                _date_coverage_for_table(
+                    conn,
+                    table=table,
+                    start_date=parsed_start_date,
+                    end_date=parsed_end_date,
+                ).get("dates", [])
+            )
+
+        formal_dates: set[str] = set()
+        for table in ("fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"):
+            formal_dates.update(
+                _date_coverage_for_table(
+                    conn,
+                    table=table,
+                    start_date=parsed_start_date,
+                    end_date=parsed_end_date,
+                    currency_basis="CNY",
+                ).get("dates", [])
+            )
+    finally:
+        conn.close()
+
+    return {
+        "snapshot_dates": sorted(snapshot_dates),
+        "formal_dates": sorted(formal_dates),
+        "missing_dates": sorted(snapshot_dates - formal_dates),
+    }
+
+
+def _date_coverage_for_table(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    table: str,
+    start_date: date,
+    end_date: date,
+    currency_basis: str | None = None,
+) -> dict[str, Any]:
+    try:
+        currency_clause = " AND currency_basis = ?" if currency_basis is not None else ""
+        params: list[Any] = [start_date, end_date]
+        if currency_basis is not None:
+            params.append(currency_basis)
+        rows = conn.execute(
+            f"SELECT DISTINCT cast(report_date as varchar) FROM {table} "
+            f"WHERE cast(report_date as date) BETWEEN ? AND ?{currency_clause} ORDER BY 1",
+            params,
+        ).fetchall()
+        dates = [row[0] for row in rows if row[0]]
+        return {"dates_count": len(dates), "dates": dates}
+    except duckdb.Error:
+        return {"dates_count": 0, "dates": [], "error": "table_not_found"}
+
+
+def _union_coverage_dates(items: Any) -> set[str]:
+    dates: set[str] = set()
+    for item in items:
+        if isinstance(item, dict):
+            dates.update(str(value) for value in item.get("dates", []) if value)
+    return dates

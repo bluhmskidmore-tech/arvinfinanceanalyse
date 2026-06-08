@@ -165,13 +165,28 @@ def _balance_analysis_metric_definitions() -> list[BalanceAnalysisMetricDefiniti
     ]
 
 
-def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[str, object]:
+def refresh_balance_analysis(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str | None = None,
+) -> dict[str, object]:
+    normalized_idempotency_key = _normalize_idempotency_key(idempotency_key)
     try:
         with acquire_lock(
             _refresh_trigger_lock(report_date=report_date),
             base_dir=settings.governance_path,
             timeout_seconds=0.1,
         ):
+            if normalized_idempotency_key is not None:
+                existing_idempotent_run = _latest_refresh_for_idempotency_key(
+                    settings,
+                    report_date=report_date,
+                    idempotency_key=normalized_idempotency_key,
+                )
+                if existing_idempotent_run is not None:
+                    return _idempotent_refresh_response(existing_idempotent_run)
+
             existing = _latest_inflight_refresh(settings, report_date=report_date)
             if existing is not None:
                 raise BalanceAnalysisRefreshConflictError(
@@ -195,6 +210,7 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                     ).model_dump(),
                     "report_date": report_date,
                     "queued_at": queued_at,
+                    "idempotency_key": normalized_idempotency_key,
                 },
             )
             try:
@@ -222,6 +238,8 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                 "trigger_mode": "async",
                 "cache_key": CACHE_KEY,
                 "report_date": report_date,
+                "idempotency_key": normalized_idempotency_key,
+                "idempotency_replay": False,
             }
     except TimeoutError as exc:
         raise BalanceAnalysisRefreshConflictError(
@@ -994,6 +1012,55 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         if str(record.get("cache_key")) == CACHE_KEY
         and str(record.get("job_name")) == BALANCE_ANALYSIS_JOB_NAME
     ]
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _latest_refresh_for_idempotency_key(
+    settings: Settings,
+    *,
+    report_date: str,
+    idempotency_key: str,
+) -> dict[str, object] | None:
+    for record in reversed(_load_refresh_run_records(settings)):
+        if str(record.get("report_date")) != report_date:
+            continue
+        if str(record.get("idempotency_key") or "").strip() != idempotency_key:
+            continue
+        if str(record.get("status")) in IN_FLIGHT_STATUSES and _is_stale_inflight_record(record):
+            _mark_stale_inflight_run(
+                settings=settings,
+                run_id=str(record.get("run_id")),
+                report_date=report_date,
+                error_message="Marked stale balance-analysis idempotent refresh run as failed.",
+            )
+            refreshed_records = _load_refresh_run_records(settings)
+            return next(
+                (
+                    refreshed
+                    for refreshed in reversed(refreshed_records)
+                    if str(refreshed.get("run_id")) == str(record.get("run_id"))
+                ),
+                record,
+            )
+        return record
+    return None
+
+
+def _idempotent_refresh_response(record: dict[str, object]) -> dict[str, object]:
+    status = str(record.get("status") or "queued")
+    return {
+        **record,
+        "status": status,
+        "run_id": str(record.get("run_id") or ""),
+        "job_name": BALANCE_ANALYSIS_JOB_NAME,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+        "cache_key": CACHE_KEY,
+        "idempotency_replay": True,
+    }
 
 
 def _latest_inflight_refresh(

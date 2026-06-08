@@ -34,6 +34,7 @@ Closure approved: `closure_approved=false`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 
 ## Required Business Decision
 
@@ -145,6 +146,7 @@ def test_stock_analysis_business_owner_approval_checker_reports_pending_template
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
     }
 
 
@@ -172,6 +174,34 @@ def test_stock_analysis_business_owner_approval_checker_require_captured_allows_
     assert payload["approval_action_items"] == []
     assert payload["evidence_scope"]["captures_business_owner_approval"] is True
     assert payload["evidence_scope"]["approves_metric_or_page"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
+
+
+def test_stock_analysis_business_owner_approval_checker_requires_no_certification_effect(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "stock-analysis-approval-template.md"
+    template.write_text(
+        _filled_template_text().replace("- `certification_effect=none`\n", ""),
+        encoding="utf-8",
+    )
+
+    completed = _run_checker("--template-path", str(template), check=False)
+    payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 0
+    assert payload["business_owner_approval_captured"] is False
+    assert payload["remaining_blockers"] == [
+        "business_owner_approval",
+        "certification_effect_boundary",
+    ]
+    assert payload["approval_field_status"]["certification_effect"] == "missing"
+    assert {
+        "blocker": "certification_effect_boundary",
+        "template_field": "- `certification_effect=none`",
+        "required_value": "none",
+        "current_status": "missing",
+    } in payload["approval_action_items"]
 
 
 def test_stock_analysis_business_owner_approval_checker_rejects_bad_approval_date(

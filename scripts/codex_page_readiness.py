@@ -14,6 +14,9 @@ if str(ROOT) not in sys.path:
 from scripts.check_pnl_attribution_business_owner_approval import (  # noqa: E402
     build_status as build_pnl_attribution_approval_status,
 )
+from scripts.check_balance_analysis_business_owner_approval import (  # noqa: E402
+    build_status as build_balance_analysis_approval_status,
+)
 from scripts.check_ledger_pnl_business_owner_approval import (  # noqa: E402
     build_status as build_ledger_pnl_approval_status,
 )
@@ -247,6 +250,12 @@ def _governance_record_commands(page_slug: str) -> list[str]:
 
 def _approval_status_commands(page_slug: str) -> list[str]:
     commands_by_page = {
+        "balance-analysis": [
+            "python scripts/check_balance_analysis_business_owner_approval.py",
+            "python scripts/check_balance_analysis_business_owner_approval.py --require-captured",
+            "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 "
+            "-PageSlug balance-analysis -RequireApprovalCaptured",
+        ],
         "ledger-pnl": [
             "python scripts/check_ledger_pnl_business_owner_approval.py",
             "python scripts/check_ledger_pnl_business_owner_approval.py --require-captured",
@@ -306,6 +315,10 @@ def _business_owner_approval_status(page_slug: str) -> dict[str, Any] | None:
         return build_product_category_pnl_approval_status(
             ROOT / "docs" / "pnl" / "product-category-pnl-business-owner-approval-template.md",
         )
+    if page_slug == "balance-analysis":
+        return build_balance_analysis_approval_status(
+            ROOT / "docs" / "pnl" / "balance-analysis-business-owner-approval-template.md",
+        )
     if page_slug == "ledger-pnl":
         return build_ledger_pnl_approval_status(
             ROOT / "docs" / "pnl" / "ledger-pnl-business-owner-approval-template.md",
@@ -323,6 +336,93 @@ def _business_owner_approval_status(page_slug: str) -> dict[str, Any] | None:
             ROOT / "docs" / "pnl" / "stock-analysis-business-owner-approval-template.md",
         )
     return None
+
+
+def _owner_action_status_count(
+    signoff_summary: dict[str, Any],
+    canonical_field: str,
+    legacy_field: str,
+) -> Any:
+    return signoff_summary.get(canonical_field, signoff_summary.get(legacy_field))
+
+
+def _optional_bool(mapping: dict[str, Any], field: str) -> bool | None:
+    if field not in mapping:
+        return None
+    return bool(mapping[field])
+
+
+def _approval_certification_effect(approval_status: dict[str, Any]) -> Any:
+    evidence_scope = approval_status.get("evidence_scope") or {}
+    owner_action_scope = approval_status.get("owner_action_status_scope") or {}
+    pre_signature_scope = approval_status.get("owner_pre_signature_blocker_scope") or {}
+    return evidence_scope.get(
+        "certification_effect",
+        owner_action_scope.get(
+            "certification_effect",
+            pre_signature_scope.get("certification_effect"),
+        ),
+    )
+
+
+def _captures_product_or_api_decisions(approval_status: dict[str, Any]) -> bool:
+    evidence_scope = approval_status.get("evidence_scope") or {}
+    owner_action_scope = approval_status.get("owner_action_status_scope") or {}
+    pre_signature_scope = approval_status.get("owner_pre_signature_blocker_scope") or {}
+    return bool(
+        evidence_scope.get(
+            "captures_product_or_api_decisions",
+            owner_action_scope.get(
+                "captures_product_or_api_decisions",
+                pre_signature_scope.get("captures_product_or_api_decisions", False),
+            ),
+        )
+    )
+
+
+def _owner_action_status_scope(approval_status: dict[str, Any]) -> dict[str, Any]:
+    scope = approval_status.get("owner_action_status_scope") or {}
+    return {
+        field: scope[field]
+        for field in (
+            "scope_kind",
+            "missing_or_invalid_item_count",
+            "pending_review_item_count",
+            "owner_signable",
+            "captures_business_owner_approval",
+            "captures_product_or_api_decisions",
+            "can_promote_certification",
+            "certification_effect",
+            "boundary",
+        )
+        if field in scope
+    }
+
+
+def _owner_pre_signature_blocker_scope(approval_status: dict[str, Any]) -> dict[str, Any]:
+    return dict(approval_status.get("owner_pre_signature_blocker_scope") or {})
+
+
+def _generated_artifact_freshness_scope(approval_status: dict[str, Any]) -> dict[str, Any]:
+    scope = approval_status.get("generated_artifact_freshness_scope") or {}
+    return {
+        field: scope[field]
+        for field in (
+            "scope_kind",
+            "artifact_count",
+            "valid_artifact_count",
+            "stale_or_missing_artifact_count",
+            "freshness_check_effect",
+            "captures_business_owner_approval",
+            "captures_product_or_api_decisions",
+            "captures_golden_sample_approval",
+            "captures_closure_approval",
+            "writes_governance_records",
+            "certification_effect",
+            "boundary",
+        )
+        if field in scope
+    }
 
 
 def _golden_sample_approval_artifacts(
@@ -354,6 +454,33 @@ def _golden_sample_approval_artifacts(
             }
         )
     return artifacts
+
+
+def _golden_sample_boundary_detail(
+    readiness_boundary_status: str,
+    approval_artifacts: list[dict[str, Any]],
+) -> str:
+    if readiness_boundary_status != "approved":
+        return readiness_boundary_status
+    if not approval_artifacts:
+        return readiness_boundary_status
+    approved = _artifacts_have_full_approval(approval_artifacts)
+    statuses = sorted({str(artifact["status"]) for artifact in approval_artifacts})
+    return (
+        f"{readiness_boundary_status}; "
+        f"artifact_status={','.join(statuses)}; "
+        f"artifact_approved={str(approved).lower()}"
+    )
+
+
+def _artifacts_have_full_approval(approval_artifacts: list[dict[str, Any]]) -> bool:
+    return all(
+        artifact.get("status") == "approved"
+        and artifact.get("owner") not in {None, "", "TBD", "unknown"}
+        and artifact.get("approver") not in {None, "", "TBD", "unknown"}
+        and artifact.get("approved_at") not in {None, "", "TBD", "unknown"}
+        for artifact in approval_artifacts
+    )
 
 
 def _markdown_code_value(text: str, label: str) -> str | None:
@@ -497,7 +624,7 @@ def build_page_readiness_report(page_slug: str) -> dict[str, Any]:
             _gate(
                 "golden_sample_boundary",
                 _golden_sample_boundary_passes(golden_status, formal_use_allowed),
-                golden_status,
+                _golden_sample_boundary_detail(golden_status, golden_sample_approval_artifacts),
             ),
             _gate(
                 "formal_promotion_boundary",
@@ -528,6 +655,11 @@ def build_page_readiness_report(page_slug: str) -> dict[str, Any]:
         "governance_record_validation": None,
         "audit_review": None,
     }
+    certification_packet_consistency = (
+        business_owner_approval_status.get("certification_packet_consistency")
+        if business_owner_approval_status is not None
+        else None
+    )
     return {
         "page_slug": readiness_page["page_slug"],
         "page_id": readiness_page["page_id"],
@@ -543,6 +675,7 @@ def build_page_readiness_report(page_slug: str) -> dict[str, Any]:
         "governance_record_validation": direct_fields["governance_record_validation"],
         "audit_review": direct_fields["audit_review"],
         "business_owner_approval_status": business_owner_approval_status,
+        "certification_packet_consistency": certification_packet_consistency,
         "golden_sample_approval_artifacts": golden_sample_approval_artifacts,
         "golden_sample_approval_artifact_status": (
             primary_golden_sample_artifact["status"]
@@ -641,6 +774,14 @@ def build_route_scope_classification_report(
     certified = [
         row["page_slug"] for row in route_rows if row["classification"] == "business-contract-certified"
     ]
+    business_owner_action_signoff_missing_or_invalid_item_count = sum(
+        int(row.get("business_owner_action_missing_or_invalid_item_count") or 0)
+        for row in route_rows
+    )
+    business_owner_action_signoff_pending_review_item_count = sum(
+        int(row.get("business_owner_action_pending_review_item_count") or 0)
+        for row in route_rows
+    )
 
     return {
         "scope": "route-scope-classification",
@@ -661,6 +802,12 @@ def build_route_scope_classification_report(
             "out_of_scope_count": counts["out-of-scope"],
             "unclassified_count": sum(
                 1 for row in route_rows if row["classification"] not in _route_scope_labels()
+            ),
+            "business_owner_action_signoff_missing_or_invalid_item_count": (
+                business_owner_action_signoff_missing_or_invalid_item_count
+            ),
+            "business_owner_action_signoff_pending_review_item_count": (
+                business_owner_action_signoff_pending_review_item_count
             ),
         },
         "classification_counts": counts,
@@ -748,11 +895,41 @@ def _route_scope_row_from_navigation(navigation_route: dict[str, str]) -> dict[s
         "has_metric_dictionary_evidence": False,
         "has_golden_samples": False,
         "golden_sample_approved": False,
+        "golden_sample_boundary_status": "missing",
+        "golden_sample_artifact_status": None,
+        "golden_sample_artifact_approved": False,
+        "golden_sample_artifact_mismatch": False,
         "has_direct_governance_evidence": False,
         "has_governance_record_command": False,
         "audit_review_closure_approved": False,
         "has_approval_checker": False,
         "business_owner_approval_captured": False,
+        "certification_packet_consistency_status": None,
+        "certification_packet_consistency_missing_marker_count": None,
+        "certification_packet_consistency_business_owner_action_signed_item_count": None,
+        "certification_packet_consistency_business_owner_action_pending_or_missing_item_count": None,
+        "certification_packet_consistency_approves_metric_or_page": False,
+        "certification_packet_consistency_owner_signable": False,
+        "certification_packet_consistency_can_promote": False,
+        "certification_packet_consistency_captures_business_owner_approval": False,
+        "certification_packet_consistency_captures_business_owner_signature": False,
+        "certification_packet_consistency_captures_product_or_api_decisions": False,
+        "certification_packet_consistency_captures_golden_sample_approval": False,
+        "certification_packet_consistency_captures_closure_approval": False,
+        "certification_packet_consistency_writes_governance_records": False,
+        "certification_packet_consistency_verification_commands_rerun_captured": False,
+        "certification_packet_consistency_certification_effect": None,
+        "business_owner_action_signoff_group_counts": {},
+        "business_owner_action_signed_group_counts": {},
+        "business_owner_action_pending_or_missing_group_counts": {},
+        "business_owner_action_missing_or_invalid_item_count": None,
+        "business_owner_action_pending_review_item_count": None,
+        "evidence_scope": {},
+        "certification_effect": None,
+        "captures_product_or_api_decisions": None,
+        "owner_action_status_scope": {},
+        "generated_artifact_freshness_scope": {},
+        "owner_pre_signature_blocker_scope": {},
         "required_commands": [],
         "approval_status_commands": [],
         "residual_gap_count": 1,
@@ -764,6 +941,8 @@ def _route_scope_row_from_page(page: dict[str, Any], visible_navigation_route: b
     audit_review_closure_approved = bool((page.get("audit_review") or {}).get("closure_approved"))
     approval_status = page.get("business_owner_approval_status") or {}
     business_owner_approval_captured = bool(approval_status.get("business_owner_approval_captured"))
+    consistency = page.get("certification_packet_consistency") or {}
+    signoff_summary = approval_status.get("business_owner_action_signoff_summary") or {}
     classification, blocking_reason = _classify_route_scope(
         page,
         golden_sample_approved=golden_sample_approved,
@@ -787,6 +966,10 @@ def _route_scope_row_from_page(page: dict[str, Any], visible_navigation_route: b
         "has_metric_dictionary_evidence": _has_metric_dictionary_evidence(page),
         "has_golden_samples": bool(page.get("golden_samples")),
         "golden_sample_approved": golden_sample_approved,
+        "golden_sample_boundary_status": _route_scope_golden_sample_boundary_status(page),
+        "golden_sample_artifact_status": page.get("golden_sample_approval_artifact_status"),
+        "golden_sample_artifact_approved": golden_sample_approved,
+        "golden_sample_artifact_mismatch": bool(page.get("golden_sample_approval_artifact_mismatch")),
         "has_direct_governance_evidence": (
             (page.get("governance_record_validation") or {}).get("status")
             == "direct_records_ready_for_audit_review"
@@ -795,10 +978,86 @@ def _route_scope_row_from_page(page: dict[str, Any], visible_navigation_route: b
         "audit_review_closure_approved": audit_review_closure_approved,
         "has_approval_checker": page.get("business_owner_approval_status") is not None,
         "business_owner_approval_captured": business_owner_approval_captured,
+        "certification_packet_consistency_status": consistency.get("status"),
+        "certification_packet_consistency_missing_marker_count": (
+            len(consistency.get("missing_markers") or [])
+            if consistency
+            else None
+        ),
+        "certification_packet_consistency_business_owner_action_signed_item_count": consistency.get(
+            "business_owner_action_signed_item_count"
+        ),
+        "certification_packet_consistency_business_owner_action_pending_or_missing_item_count": consistency.get(
+            "business_owner_action_pending_or_missing_item_count"
+        ),
+        "certification_packet_consistency_approves_metric_or_page": _optional_bool(
+            consistency,
+            "approves_metric_or_page",
+        ),
+        "certification_packet_consistency_owner_signable": _optional_bool(consistency, "owner_signable"),
+        "certification_packet_consistency_can_promote": _optional_bool(consistency, "can_promote_certification"),
+        "certification_packet_consistency_captures_business_owner_approval": _optional_bool(
+            consistency,
+            "captures_business_owner_approval",
+        ),
+        "certification_packet_consistency_captures_business_owner_signature": _optional_bool(
+            consistency,
+            "captures_business_owner_signature",
+        ),
+        "certification_packet_consistency_captures_product_or_api_decisions": _optional_bool(
+            consistency,
+            "captures_product_or_api_decisions",
+        ),
+        "certification_packet_consistency_captures_golden_sample_approval": _optional_bool(
+            consistency,
+            "captures_golden_sample_approval",
+        ),
+        "certification_packet_consistency_captures_closure_approval": _optional_bool(
+            consistency,
+            "captures_closure_approval",
+        ),
+        "certification_packet_consistency_writes_governance_records": _optional_bool(
+            consistency,
+            "writes_governance_records",
+        ),
+        "certification_packet_consistency_verification_commands_rerun_captured": _optional_bool(
+            consistency,
+            "verification_commands_rerun_captured",
+        ),
+        "certification_packet_consistency_certification_effect": consistency.get("certification_effect"),
+        "business_owner_action_signoff_group_counts": dict(signoff_summary.get("signoff_group_counts") or {}),
+        "business_owner_action_signed_group_counts": dict(signoff_summary.get("signed_group_counts") or {}),
+        "business_owner_action_pending_or_missing_group_counts": dict(
+            signoff_summary.get("unsigned_group_counts") or {}
+        ),
+        "business_owner_action_missing_or_invalid_item_count": _owner_action_status_count(
+            signoff_summary,
+            "missing_or_invalid_item_count",
+            "invalid_or_missing_item_count",
+        ),
+        "business_owner_action_pending_review_item_count": _owner_action_status_count(
+            signoff_summary,
+            "pending_review_item_count",
+            "pending_item_count",
+        ),
+        "evidence_scope": dict(approval_status.get("evidence_scope") or {}),
+        "certification_effect": _approval_certification_effect(approval_status),
+        "captures_product_or_api_decisions": _captures_product_or_api_decisions(approval_status),
+        "owner_action_status_scope": _owner_action_status_scope(approval_status),
+        "generated_artifact_freshness_scope": _generated_artifact_freshness_scope(approval_status),
+        "owner_pre_signature_blocker_scope": _owner_pre_signature_blocker_scope(approval_status),
         "required_commands": list(page.get("required_commands") or []),
         "approval_status_commands": list(page.get("approval_status_commands") or []),
         "residual_gap_count": len(page.get("residual_gaps") or []),
     }
+
+
+def _route_scope_golden_sample_boundary_status(page: dict[str, Any]) -> str:
+    for gate in page.get("static_gates") or []:
+        if gate.get("name") == "golden_sample_boundary":
+            detail = str(gate.get("detail") or "missing")
+            return detail.split(";", 1)[0].strip() or "missing"
+    return "missing"
 
 
 def _route_scope_golden_sample_approved(page: dict[str, Any]) -> bool:
@@ -913,6 +1172,14 @@ def build_all_page_readiness_report() -> dict[str, Any]:
         len(page["approval_action_items"])
         for page in business_owner_approval_pending_pages
     )
+    business_owner_action_signoff_missing_or_invalid_item_count = sum(
+        int(page.get("business_owner_action_missing_or_invalid_item_count") or 0)
+        for page in business_owner_approval_pending_pages
+    )
+    business_owner_action_signoff_pending_review_item_count = sum(
+        int(page.get("business_owner_action_pending_review_item_count") or 0)
+        for page in business_owner_approval_pending_pages
+    )
     return {
         "scope": "all-page-readiness",
         "pages": pages,
@@ -925,6 +1192,12 @@ def build_all_page_readiness_report() -> dict[str, Any]:
             "run_supported_count": sum(1 for page in pages if page["run_supported"]),
             "business_owner_approval_pending_count": len(business_owner_approval_pending_pages),
             "business_owner_approval_action_item_count": business_owner_approval_action_item_count,
+            "business_owner_action_signoff_missing_or_invalid_item_count": (
+                business_owner_action_signoff_missing_or_invalid_item_count
+            ),
+            "business_owner_action_signoff_pending_review_item_count": (
+                business_owner_action_signoff_pending_review_item_count
+            ),
             "route_scope_business_contract_certified_count": (
                 route_scope_classification["summary"]["business_contract_certified_count"]
             ),
@@ -954,6 +1227,7 @@ def build_all_page_readiness_report() -> dict[str, Any]:
 
 def _business_owner_approval_pending_page_summary(page: dict[str, Any]) -> dict[str, Any]:
     status = page["business_owner_approval_status"]
+    signoff_summary = status.get("business_owner_action_signoff_summary") or {}
     summary = {
         "page_slug": page["page_slug"],
         "page_id": page["page_id"],
@@ -964,6 +1238,32 @@ def _business_owner_approval_pending_page_summary(page: dict[str, Any]) -> dict[
         "approval_field_status": dict(status["approval_field_status"]),
         "evidence_scope": dict(status["evidence_scope"]),
         "approval_action_items": list(status["approval_action_items"]),
+        "certification_packet_consistency": page.get("certification_packet_consistency"),
+        "business_owner_action_signoff_summary": dict(signoff_summary),
+        "business_owner_action_signoff_group_counts": dict(signoff_summary.get("signoff_group_counts") or {}),
+        "business_owner_action_signed_group_counts": dict(signoff_summary.get("signed_group_counts") or {}),
+        "business_owner_action_pending_or_missing_group_counts": dict(
+            signoff_summary.get("unsigned_group_counts") or {}
+        ),
+        "business_owner_action_missing_or_invalid_item_count": _owner_action_status_count(
+            signoff_summary,
+            "missing_or_invalid_item_count",
+            "invalid_or_missing_item_count",
+        ),
+        "business_owner_action_pending_review_item_count": _owner_action_status_count(
+            signoff_summary,
+            "pending_review_item_count",
+            "pending_item_count",
+        ),
+        "certification_effect": _approval_certification_effect(status),
+        "captures_product_or_api_decisions": _captures_product_or_api_decisions(status),
+        "owner_action_status_scope": _owner_action_status_scope(status),
+        "generated_artifact_freshness_scope": _generated_artifact_freshness_scope(status),
+        "owner_pre_signature_blocker_scope": _owner_pre_signature_blocker_scope(status),
+        "golden_sample_boundary_status": _route_scope_golden_sample_boundary_status(page),
+        "golden_sample_artifact_status": page.get("golden_sample_approval_artifact_status"),
+        "golden_sample_artifact_approved": _route_scope_golden_sample_approved(page),
+        "golden_sample_artifact_mismatch": bool(page.get("golden_sample_approval_artifact_mismatch")),
     }
     if "golden_sample_approval_artifact" in status:
         summary["golden_sample_approval_artifact"] = dict(status["golden_sample_approval_artifact"])

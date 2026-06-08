@@ -124,7 +124,9 @@ export default function MarketHomeLayout({
           </div>
         </div>
         <div className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}>
-          <span className={statePillClass(stateTone)}>{view.stateLabel}</span>
+          <span className={statePillClass(stateTone)} data-tone={stateTone}>
+            {view.stateLabel}
+          </span>
           <span className={dhStyles.dhDateLabel}>最新行情日</span>
           <span className={`${dhStyles.dhNum} ${marketStyles.topbarDate}`}>{latestTradeDate || "—"}</span>
           <span className={dhStyles.dhDateLabel}>正式序列日</span>
@@ -133,8 +135,17 @@ export default function MarketHomeLayout({
       </header>
 
       <main className={`${dhStyles.dhMain} ${marketStyles.marketPageMain}`}>
-        <section className={marketStyles.decisionSection}>
-          <section data-testid="module-home-briefing" className={`${dhStyles.dhHero} ${marketStyles.marketHero}`}>
+        <section
+          data-testid="module-home-market-cockpit"
+          className={marketStyles.marketInstitutionalCockpit}
+        >
+          <section
+            data-testid="module-home-market-primary-grid"
+            className={marketStyles.marketPrimaryGrid}
+          >
+            <div className={marketStyles.marketPrimaryColumn}>
+              <section className={marketStyles.decisionSection}>
+                <section data-testid="module-home-briefing" className={`${dhStyles.dhHero} ${marketStyles.marketHero}`}>
           {primaryBriefing ? (
             <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement} ${marketStyles.judgementCard}`}>
               <span className={dhStyles.dhTerminalEyebrow}>本日市场判断</span>
@@ -174,40 +185,93 @@ export default function MarketHomeLayout({
               </div>
             ))}
           </article>
-        </section>
+                </section>
 
-        {secondaryBriefings.length > 0 ? (
-          <section className={marketStyles.insightRow}>
-            {secondaryBriefings.map((item) => (
-              <article className={marketStyles.insightCell} key={item.title}>
-                <span className={marketStyles.insightLabel}>{item.title}</span>
-                <p className={marketStyles.insightCopy}>{item.conclusion}</p>
-                <span className={marketStyles.insightEvidence}>{item.evidence}</span>
-              </article>
-            ))}
+                {secondaryBriefings.length > 0 ? (
+                  <section className={marketStyles.insightRow}>
+                    {secondaryBriefings.map((item) => (
+                      <article className={marketStyles.insightCell} key={item.title}>
+                        <span className={marketStyles.insightLabel}>{item.title}</span>
+                        <p className={marketStyles.insightCopy}>{item.conclusion}</p>
+                        <span className={marketStyles.insightEvidence}>{item.evidence}</span>
+                      </article>
+                    ))}
+                  </section>
+                ) : null}
+
+                <MarketDecisionMatrix
+                  view={view}
+                  latestTradeDate={latestTradeDate}
+                  formalTradeDate={formalTradeDate}
+                  keyRatePanel={keyRatePanel}
+                  yieldCurvePanel={yieldCurvePanel}
+                  macroPanel={macroPanel}
+                  formalPanel={formalPanel}
+                  catalogPanel={catalogPanel}
+                  macroOverviewPanel={macroOverviewPanel}
+                />
+
+                <MarketActionQueue
+                  view={view}
+                  keyRatePanel={keyRatePanel}
+                  yieldCurvePanel={yieldCurvePanel}
+                  macroPanel={macroPanel}
+                />
+
+              </section>
+            </div>
+
+            <aside
+              data-testid="module-home-market-ai-rail"
+              className={marketStyles.aiDecisionRail}
+            >
+              <div className={marketStyles.aiRailHeader}>
+                <span>AI 决策舱</span>
+                <strong data-tone={stateTone}>{view.stateLabel}</strong>
+              </div>
+              <p className={marketStyles.aiRailState}>{view.stateDetail}</p>
+
+              <div className={marketStyles.aiRailMetricGrid}>
+                {view.kpis.slice(0, 3).map((item) => (
+                  <div className={marketStyles.aiRailMetric} data-tone={item.tone} key={item.key}>
+                    <span>{item.label}</span>
+                    <strong className={dhStyles.dhNum}>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+
+              {primaryBriefing ? (
+                <section className={marketStyles.aiRailCard} data-tone={primaryBriefing.tone}>
+                  <span className={marketStyles.aiRailLabel}>{primaryBriefing.title}</span>
+                  <strong>{primaryBriefing.conclusion}</strong>
+                  <p>{primaryBriefing.evidence}</p>
+                </section>
+              ) : null}
+
+              <section className={marketStyles.aiRailCard}>
+                <span className={marketStyles.aiRailLabel}>Source Gate</span>
+                <div className={marketStyles.aiRailStatusList}>
+                  {view.statuses.slice(0, 4).map((item) => (
+                    <span data-tone={item.tone} key={item.key}>
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+              </section>
+
+              <nav className={marketStyles.aiRailActionList} aria-label="市场模块入口">
+                <Link to="/market-data" className={marketStyles.aiRailLink}>
+                  市场数据
+                </Link>
+                <Link to="/macro-toolkit" className={marketStyles.aiRailLink}>
+                  宏观工具
+                </Link>
+                <Link to="/cross-asset" className={marketStyles.aiRailLink}>
+                  跨资产
+                </Link>
+              </nav>
+            </aside>
           </section>
-        ) : null}
-
-        <MarketDecisionMatrix
-          view={view}
-          latestTradeDate={latestTradeDate}
-          formalTradeDate={formalTradeDate}
-          keyRatePanel={keyRatePanel}
-          yieldCurvePanel={yieldCurvePanel}
-          macroPanel={macroPanel}
-          formalPanel={formalPanel}
-          catalogPanel={catalogPanel}
-          macroOverviewPanel={macroOverviewPanel}
-        />
-
-        <MarketActionQueue
-          view={view}
-          keyRatePanel={keyRatePanel}
-          yieldCurvePanel={yieldCurvePanel}
-          macroPanel={macroPanel}
-        />
-
-        </section>
 
         <section className={marketStyles.marketWorkbenchSection}>
           <div className={dhStyles.dhSectionTitle}>
@@ -326,6 +390,7 @@ export default function MarketHomeLayout({
               {view.dataNote.lines.join(" ")}
             </p>
           ) : null}
+        </section>
         </section>
         </section>
       </main>

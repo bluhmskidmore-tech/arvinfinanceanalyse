@@ -1,0 +1,64 @@
+{
+  "packet_kind": "portfolio_home_krd_contract_decision_export",
+  "page_id": "PAGE-PORTFOLIO-HOME-001",
+  "page_slug": "portfolio",
+  "report_date": "2026-05-31",
+  "duckdb_path": "F:\\MOSS-V3\\data\\moss.duckdb",
+  "export_status": "decision_required",
+  "review_blockers": [
+    "krd_contract_decision_required"
+  ],
+  "decision_options": [
+    "approve_nearest_bucket",
+    "require_exact_bucket_schema",
+    "reject"
+  ],
+  "supported_krd_buckets": [
+    "1Y",
+    "3Y",
+    "5Y",
+    "7Y",
+    "10Y",
+    "30Y"
+  ],
+  "nearest_bucket_map": {
+    "6M": "krd_1y",
+    "2Y": "krd_3y",
+    "4Y": "krd_5y",
+    "6Y": "krd_7y",
+    "8Y": "krd_10y",
+    "9Y": "krd_10y",
+    "15Y": "krd_10y",
+    "20Y": "krd_30y",
+    "25Y": "krd_30y"
+  },
+  "export_summary": {
+    "remap_tenor_count": 3,
+    "mapped_tenor_count": 3,
+    "unsupported_tenor_count": 0,
+    "nonzero_dv01_rows": 500,
+    "dv01_sum": "33365026.29770696"
+  },
+  "acceptance_criteria": {
+    "strict_gate_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+    "risk_owner_decision_required": true,
+    "does_not_approve_nearest_bucket": true,
+    "generated_owner_fields_must_be_blank": true,
+    "valid_decisions": [
+      "approve_nearest_bucket",
+      "require_exact_bucket_schema",
+      "reject"
+    ],
+    "rerun_required": [
+      "metric contract update",
+      "risk tensor materialization",
+      "portfolio full-closure evidence"
+    ]
+  },
+  "export_files": {
+    "krd_remap_summary_csv": "docs\\portfolio\\krd-contract-decision\\2026-05-31\\krd_remap_summary.csv",
+    "krd_remap_detail_csv": "docs\\portfolio\\krd-contract-decision\\2026-05-31\\krd_remap_detail.csv",
+    "manifest_json": "docs\\portfolio\\krd-contract-decision\\2026-05-31\\manifest.json",
+    "owner_summary_md": "docs\\portfolio\\krd-contract-decision\\2026-05-31\\owner_summary.md"
+  }
+}

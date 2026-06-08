@@ -20,7 +20,7 @@ from backend.app.services.qdb_gl_monthly_analysis_service import (
     revoke_qdb_gl_monthly_analysis_manual_adjustment,
     update_qdb_gl_monthly_analysis_manual_adjustment,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 
 router = APIRouter(prefix="/ui/qdb-gl-monthly-analysis")
@@ -88,6 +88,7 @@ def export_workbook(
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_month: str = Query(...),
 ) -> dict[str, object]:
     settings = get_settings()
@@ -97,6 +98,7 @@ def refresh(
             source_dir=settings.product_category_source_dir,
             governance_dir=settings.governance_path,
             report_month=report_month,
+            idempotency_key=idempotency_key,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

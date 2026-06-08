@@ -8,6 +8,7 @@ import type {
 import AdbComparisonChart, {
   type AdbComparisonChartRow,
 } from "../../average-balance/components/AdbComparisonChart";
+import { computeComparisonDeviationPct } from "../../average-balance/components/adbComparisonMetrics";
 import AdbMonthlyBreakdownTable from "../../average-balance/components/AdbMonthlyBreakdownTable";
 import AdbMonthlyHorizontalChart from "../../average-balance/components/AdbMonthlyHorizontalChart";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
@@ -59,15 +60,13 @@ export default function AdbAnalyticalPreview({
 }: AdbAnalyticalPreviewProps) {
   const comparisonAssetRows: AdbComparisonChartRow[] = comparison.assets_breakdown.map((item) => ({
     avg: item.avg_balance,
-    deviationPct:
-      item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
+    deviationPct: computeComparisonDeviationPct(item.spot_balance, item.avg_balance),
     label: `资产 ${item.category}`,
     spot: item.spot_balance,
   }));
   const comparisonLiabilityRows: AdbComparisonChartRow[] = comparison.liabilities_breakdown.map((item) => ({
     avg: item.avg_balance,
-    deviationPct:
-      item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
+    deviationPct: computeComparisonDeviationPct(item.spot_balance, item.avg_balance),
     label: `负债 ${item.category}`,
     spot: item.spot_balance,
   }));

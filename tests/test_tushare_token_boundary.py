@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app.repositories.tushare_adapter import TUSHARE_TOKEN_ENV, resolve_tushare_token_with_settings_fallback
+from backend.app.repositories.tushare_adapter import (
+    TUSHARE_TOKEN_ENV,
+    resolve_tushare_token_with_settings_fallback,
+)
 
 
 def test_env_token_wins_over_settings_tushare_token(monkeypatch: pytest.MonkeyPatch) -> None:

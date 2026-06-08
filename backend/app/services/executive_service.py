@@ -19,6 +19,7 @@ from backend.app.repositories.dashboard_repo import DashboardRepository
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
     FormalZqtzBalanceMetricsRepository,
 )
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from backend.app.repositories.news_warehouse_repo import NewsWarehouseRepository
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -50,7 +51,7 @@ from backend.app.schemas.executive_dashboard import (
     VerdictSuggestion,
     VerdictTone,
 )
-from backend.app.services.bond_analytics_service import get_benchmark_excess
+from backend.app.services.bond_analytics_service import get_benchmark_excess, get_benchmark_excess_many
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.kpi_service import (
     resolve_executive_kpi_metrics,
@@ -61,6 +62,7 @@ from backend.app.services.product_category_pnl_service import (
     resolve_product_category_ytd_payload_for_home_snapshot,
 )
 from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
 from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
@@ -69,12 +71,15 @@ _HOME_INCOME_BENCHMARK_ID = "CDB_INDEX"
 _HOME_INCOME_BENCHMARK_PERIOD_TYPE = "MoM"
 _HOME_INCOME_CURVE_FALLBACK_PREFIX = "YIELD_CURVE_LATEST_FALLBACK"
 _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS = 7
+_HOME_SNAPSHOT_OVERVIEW_HISTORY_POINTS = 3
 _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
 _CACHE_VERSION = "cv_exec_dashboard_v1"
 logger = logging.getLogger(__name__)
 _logger = logging.getLogger(__name__)
+_DEFAULT_RESOLVE_COMPLETED_FORMAL_BUILD_LINEAGE = resolve_completed_formal_build_lineage
+_DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE = load_latest_bond_analytics_lineage
 
 # Yuan → 亿 conversion factor; a single named constant avoids magic-number scatter.
 _YUAN_PER_YI: float = 1e8
@@ -316,6 +321,94 @@ def _lineage_tokens_from_rows(rows: list[dict[str, object]], field_name: str) ->
 
 def _join_lineage_tokens(*values: object) -> str:
     return "__".join(_lineage_tokens(*values))
+
+
+def _read_cache_build_runs_for_executive_overview(governance_dir: str) -> list[dict[str, object]] | None:
+    if not governance_dir:
+        return None
+    if (
+        resolve_completed_formal_build_lineage is not _DEFAULT_RESOLVE_COMPLETED_FORMAL_BUILD_LINEAGE
+        and load_latest_bond_analytics_lineage is not _DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE
+    ):
+        return None
+    try:
+        return GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    except (RuntimeError, OSError, TypeError, ValueError):
+        return None
+
+
+def _latest_completed_cache_build_run(
+    rows: list[dict[str, object]],
+    *,
+    cache_key: str,
+    job_name: str,
+    report_date: str,
+    require_source_version: bool = False,
+) -> dict[str, object] | None:
+    for row in reversed(rows):
+        if str(row.get("cache_key") or "").strip() != cache_key:
+            continue
+        if str(row.get("status") or "").strip() != "completed":
+            continue
+        if str(row.get("job_name") or "").strip() != job_name:
+            continue
+        if str(row.get("report_date") or "").strip() != report_date:
+            continue
+        if require_source_version and not str(row.get("source_version") or "").strip():
+            continue
+        return row
+    return None
+
+
+def _completed_formal_build_lineage_from_rows(
+    rows: list[dict[str, object]] | None,
+    *,
+    governance_dir: str,
+    cache_key: str,
+    job_name: str,
+    report_date: str,
+) -> dict[str, object] | None:
+    if rows is None or resolve_completed_formal_build_lineage is not _DEFAULT_RESOLVE_COMPLETED_FORMAL_BUILD_LINEAGE:
+        return resolve_completed_formal_build_lineage(
+            governance_dir=governance_dir,
+            cache_key=cache_key,
+            job_name=job_name,
+            report_date=report_date,
+        )
+    return _latest_completed_cache_build_run(
+        rows,
+        cache_key=cache_key,
+        job_name=job_name,
+        report_date=report_date,
+        require_source_version=True,
+    )
+
+
+def _bond_analytics_lineage_from_rows(
+    rows: list[dict[str, object]] | None,
+    *,
+    governance_dir: str,
+    report_date: str,
+) -> dict[str, str] | None:
+    if rows is None or load_latest_bond_analytics_lineage is not _DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE:
+        return load_latest_bond_analytics_lineage(
+            governance_dir=governance_dir,
+            report_date=report_date,
+        )
+    latest = _latest_completed_cache_build_run(
+        rows,
+        cache_key=BOND_ANALYTICS_CACHE_KEY,
+        job_name="bond_analytics_materialize",
+        report_date=report_date,
+    )
+    if latest is None:
+        return None
+    return {
+        "source_version": str(latest.get("source_version") or "").strip(),
+        "rule_version": str(latest.get("rule_version") or "").strip(),
+        "cache_version": str(latest.get("cache_version") or "").strip(),
+        "vendor_version": str(latest.get("vendor_version") or "vv_none").strip() or "vv_none",
+    }
 
 
 def _format_percent_change(current: float | None, previous: float | None) -> Numeric:
@@ -1017,6 +1110,64 @@ def _fetch_nim_context(
     report_dates: list[str],
     current_report_date: str | None,
     n: int = 20,
+) -> _HomeNimContextValue:
+    if not isinstance(liability_repo, LiabilityAnalyticsRepository):
+        return _fetch_nim_context_uncached(
+            liability_repo,
+            report_dates=report_dates,
+            current_report_date=current_report_date,
+            n=n,
+        )
+    duckdb_path = str(getattr(liability_repo, "path", "") or _duckdb_version_token()[0])
+    try:
+        duckdb_mtime_ns = Path(duckdb_path).stat().st_mtime_ns
+    except OSError:
+        duckdb_mtime_ns = None
+    cache_key: _HomeNimContextCacheKey = (
+        tuple(str(d).strip() for d in report_dates if str(d or "").strip()),
+        current_report_date,
+        n,
+        duckdb_path,
+        duckdb_mtime_ns,
+    )
+    hit, cached = _HOME_NIM_CONTEXT_CACHE.get(cache_key)
+    if hit and cached is not None:
+        _log_home_snapshot_detail_perf(
+            "home_snapshot_nim",
+            "context_cache_lookup",
+            time.perf_counter(),
+            extra="cache=hit",
+            report_date=current_report_date,
+            elapsed_ms=0,
+        )
+        return deepcopy(cached)
+
+    def produce() -> _HomeNimContextValue:
+        _log_home_snapshot_detail_perf(
+            "home_snapshot_nim",
+            "context_cache_lookup",
+            time.perf_counter(),
+            extra="cache=miss",
+            report_date=current_report_date,
+            elapsed_ms=0,
+        )
+        return _fetch_nim_context_uncached(
+            liability_repo,
+            report_dates=report_dates,
+            current_report_date=current_report_date,
+            n=n,
+        )
+
+    value = _HOME_NIM_CONTEXT_CACHE.get_or_set(cache_key, produce)
+    return deepcopy(value)
+
+
+def _fetch_nim_context_uncached(
+    liability_repo: LiabilityAnalyticsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
 ) -> tuple[
     dict[str, dict[str, object]],
     dict[str, list[dict[str, object]]],
@@ -1036,7 +1187,19 @@ def _fetch_nim_context(
     fetch_yield_rows = getattr(liability_repo, "fetch_yield_rows_for_dates", None)
     if callable(fetch_yield_rows):
         try:
+            fetch_t0 = time.perf_counter()
             zqtz_rows_by_date, tyw_rows_by_date = fetch_yield_rows(fetch_dates)
+            _log_home_snapshot_detail_perf(
+                "home_snapshot_nim",
+                "fetch_yield_rows_for_dates",
+                fetch_t0,
+                extra=(
+                    f"dates={len(fetch_dates)} "
+                    f"zqtz_rows={sum(len(rows) for rows in zqtz_rows_by_date.values())} "
+                    f"tyw_rows={sum(len(rows) for rows in tyw_rows_by_date.values())}"
+                ),
+                report_date=current_report_date,
+            )
         except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
             zqtz_rows_by_date, tyw_rows_by_date = {}, {}
     else:
@@ -1057,6 +1220,7 @@ def _fetch_nim_context(
         )
 
     payloads_by_date: dict[str, dict[str, object]] = {}
+    compute_t0 = time.perf_counter()
     for d in fetch_dates:
         try:
             payloads_by_date[d] = compute_liability_yield_metrics(
@@ -1066,6 +1230,13 @@ def _fetch_nim_context(
             )
         except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
             continue
+    _log_home_snapshot_detail_perf(
+        "home_snapshot_nim",
+        "compute_liability_yield_metrics",
+        compute_t0,
+        extra=f"dates={len(fetch_dates)} payloads={len(payloads_by_date)}",
+        report_date=current_report_date,
+    )
 
     history_values: list[float] = []
     for d in slice_dates:
@@ -1183,9 +1354,12 @@ def executive_overview(
     report_date: str | None = None,
     *,
     date_context: dict[str, list[str]] | None = None,
+    history_points: int = 20,
 ) -> dict[str, object]:
+    overview_t0 = time.perf_counter()
     settings = get_settings()
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
+    cache_build_runs = _read_cache_build_runs_for_executive_overview(governance_dir)
     normalized_report_date = _normalize_report_date(report_date)
     current_balance_report_date: str | None = None
     current_pnl_report_date: str | None = None
@@ -1232,6 +1406,7 @@ def executive_overview(
                 balance_repo,
                 report_dates=balance_report_dates,
                 current_report_date=current_report_date,
+                n=history_points,
             )
             state["history"] = history
             current_row = aum_rows_by_date.get(current_report_date) if current_report_date else None
@@ -1294,6 +1469,7 @@ def executive_overview(
                 pnl_repo,
                 report_dates=pnl_report_dates,
                 current_report_date=current_report_date,
+                n=history_points,
             )
             state["history"] = history
             source_versions: list[object] = []
@@ -1304,7 +1480,8 @@ def executive_overview(
                     raw = float(ytd_values_by_date[current_report_date])
                     state["raw"] = raw
                 if governance_dir:
-                    current_lineage = resolve_completed_formal_build_lineage(
+                    current_lineage = _completed_formal_build_lineage_from_rows(
+                        cache_build_runs,
                         governance_dir=governance_dir,
                         cache_key=PNL_CACHE_KEY,
                         job_name=PNL_JOB_NAME,
@@ -1319,7 +1496,8 @@ def executive_overview(
             )
             if previous_report_date is not None:
                 if governance_dir:
-                    previous_lineage = resolve_completed_formal_build_lineage(
+                    previous_lineage = _completed_formal_build_lineage_from_rows(
+                        cache_build_runs,
                         governance_dir=governance_dir,
                         cache_key=PNL_CACHE_KEY,
                         job_name=PNL_JOB_NAME,
@@ -1366,6 +1544,7 @@ def executive_overview(
                     liability_repo,
                     report_dates=liability_report_dates,
                     current_report_date=current_report_date,
+                    n=history_points,
                 )
                 state["history"] = history
                 zqtz_rows = zqtz_rows_by_date.get(current_report_date, [])
@@ -1429,6 +1608,7 @@ def executive_overview(
                 bond_repo,
                 report_dates=bond_report_dates,
                 current_report_date=current_report_date,
+                n=history_points,
             )
             state["history"] = history
             snapshot = snapshots_by_date.get(current_report_date) if current_report_date else None
@@ -1438,7 +1618,8 @@ def executive_overview(
                 raw = float(snapshot["portfolio_dv01"])
                 state["raw"] = raw
                 if governance_dir:
-                    current_lineage = load_latest_bond_analytics_lineage(
+                    current_lineage = _bond_analytics_lineage_from_rows(
+                        cache_build_runs,
                         governance_dir=governance_dir,
                         report_date=current_report_date,
                     )
@@ -1453,7 +1634,8 @@ def executive_overview(
                     previous_snapshot = snapshots_by_date.get(previous_report_date)
                     if previous_snapshot is not None and previous_snapshot.get("portfolio_dv01") is not None:
                         if governance_dir:
-                            previous_lineage = load_latest_bond_analytics_lineage(
+                            previous_lineage = _bond_analytics_lineage_from_rows(
+                                cache_build_runs,
                                 governance_dir=governance_dir,
                                 report_date=previous_report_date,
                             )
@@ -1476,12 +1658,43 @@ def executive_overview(
         "nim": load_nim_state,
         "dv01": load_dv01_state,
     }
+
+    def timed_domain_load(name: str, loader) -> tuple[dict[str, object], int]:
+        domain_t0 = time.perf_counter()
+        state = loader()
+        return state, int((time.perf_counter() - domain_t0) * 1000)
+
     if date_context is None:
-        domain_states = {name: loader() for name, loader in domain_loaders.items()}
+        domain_states = {}
+        domain_timings_ms = {}
+        for name, loader in domain_loaders.items():
+            state, elapsed_ms = timed_domain_load(name, loader)
+            domain_states[name] = state
+            domain_timings_ms[name] = elapsed_ms
     else:
         with ThreadPoolExecutor(max_workers=len(domain_loaders)) as executor:
-            futures = {name: executor.submit(loader) for name, loader in domain_loaders.items()}
-            domain_states = {name: future.result() for name, future in futures.items()}
+            futures = {
+                name: executor.submit(timed_domain_load, name, loader)
+                for name, loader in domain_loaders.items()
+            }
+            domain_states = {}
+            domain_timings_ms = {}
+            for name, future in futures.items():
+                state, elapsed_ms = future.result()
+                domain_states[name] = state
+                domain_timings_ms[name] = elapsed_ms
+    for name in domain_loaders:
+        _log_executive_overview_perf_step(
+            f"domain_{name}",
+            overview_t0,
+            report_date=normalized_report_date,
+            elapsed_ms=domain_timings_ms.get(name),
+        )
+    _log_executive_overview_perf_step(
+        "domain_total",
+        overview_t0,
+        report_date=normalized_report_date,
+    )
 
     aum_state = domain_states["aum"]
     current_balance_report_date = aum_state.get("current_report_date")  # type: ignore[assignment]
@@ -2291,6 +2504,30 @@ def _build_product_category_monthly_headline(report_date: str) -> ProductCategor
     )
 
 
+def _build_product_category_headlines(
+    report_date: str,
+) -> tuple[
+    ProductCategoryYtdHeadlinePayload | None,
+    ProductCategoryMonthlyHeadlinePayload | None,
+    int,
+    int,
+]:
+    def timed_ytd() -> tuple[ProductCategoryYtdHeadlinePayload | None, int]:
+        started_at = time.perf_counter()
+        return _build_product_category_ytd_headline(report_date), int((time.perf_counter() - started_at) * 1000)
+
+    def timed_monthly() -> tuple[ProductCategoryMonthlyHeadlinePayload | None, int]:
+        started_at = time.perf_counter()
+        return _build_product_category_monthly_headline(report_date), int((time.perf_counter() - started_at) * 1000)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        ytd_future = executor.submit(timed_ytd)
+        monthly_future = executor.submit(timed_monthly)
+        ytd_headline, ytd_ms = ytd_future.result()
+        monthly_headline, monthly_ms = monthly_future.result()
+        return ytd_headline, monthly_headline, ytd_ms, monthly_ms
+
+
 def home_research_reports_envelope(
     *,
     report_date: str,
@@ -2440,10 +2677,73 @@ def _home_income_blocking_benchmark_reasons(
     return blocking_reasons
 
 
+_HomeIncomeBenchmarkFetch = dict[str, object] | RuntimeError | OSError | TypeError | ValueError | KeyError
+
+
+def _fetch_home_income_benchmark_envelopes(point_dates: list[str]) -> dict[str, _HomeIncomeBenchmarkFetch]:
+    requested_dates = []
+    for point_date in point_dates:
+        try:
+            requested_dates.append(date.fromisoformat(point_date))
+        except ValueError as exc:
+            return {point_date: exc for point_date in point_dates}
+    try:
+        return get_benchmark_excess_many(
+            requested_dates,
+            _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
+            _HOME_INCOME_BENCHMARK_ID,
+        )
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
+        pass
+
+    def load(point_date: str) -> _HomeIncomeBenchmarkFetch:
+        try:
+            return get_benchmark_excess(
+                date.fromisoformat(point_date),
+                _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
+                _HOME_INCOME_BENCHMARK_ID,
+            )
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError) as exc:
+            return exc
+
+    if len(point_dates) <= 1:
+        return {point_date: load(point_date) for point_date in point_dates}
+
+    max_workers = min(len(point_dates), 8)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {point_date: executor.submit(load, point_date) for point_date in point_dates}
+        return {point_date: future.result() for point_date, future in futures.items()}
+
+
 def home_income_trend_envelope(
     *,
     report_date: str,
     window: int = 7,
+) -> dict[str, object]:
+    normalized = _normalize_report_date(report_date)
+    assert normalized is not None
+    bounded_window = max(1, min(int(window), 30))
+    duckdb_path, duckdb_mtime_ns = _duckdb_version_token()
+    cache_key: _HomeIncomeTrendCacheKey = (
+        normalized,
+        bounded_window,
+        duckdb_path,
+        duckdb_mtime_ns,
+    )
+    envelope = _HOME_INCOME_TREND_CACHE.get_or_set(
+        cache_key,
+        lambda: _compute_home_income_trend_envelope(
+            report_date=normalized,
+            window=bounded_window,
+        ),
+    )
+    return deepcopy(envelope)
+
+
+def _compute_home_income_trend_envelope(
+    *,
+    report_date: str,
+    window: int,
 ) -> dict[str, object]:
     """Return recent monthly portfolio PnL points from the governed product-category read model.
 
@@ -2454,6 +2754,7 @@ def home_income_trend_envelope(
     """
 
     normalized = _normalize_report_date(report_date)
+    assert normalized is not None
     bounded_window = max(1, min(int(window), 30))
     settings = get_settings()
     repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
@@ -2488,7 +2789,11 @@ def home_income_trend_envelope(
         warnings.append("No monthly grand_total rows found on or before report_date.")
 
     points: list[HomeIncomeTrendPoint] = []
-    for row in sorted(rows, key=lambda item: str(item.get("report_date") or "")):
+    sorted_rows = sorted(rows, key=lambda item: str(item.get("report_date") or ""))
+    benchmark_envelopes = _fetch_home_income_benchmark_envelopes(
+        [str(row.get("report_date") or "") for row in sorted_rows]
+    )
+    for row in sorted_rows:
         point_date = str(row.get("report_date") or "")
         portfolio_pnl = _fmt_yi_amount(
             float(row["business_net_income"])
@@ -2501,11 +2806,9 @@ def home_income_trend_envelope(
         point_status: Literal["ready", "partial"] = "partial"
 
         try:
-            benchmark_envelope = get_benchmark_excess(
-                date.fromisoformat(point_date),
-                _HOME_INCOME_BENCHMARK_PERIOD_TYPE,
-                _HOME_INCOME_BENCHMARK_ID,
-            )
+            benchmark_envelope = benchmark_envelopes.get(point_date)
+            if isinstance(benchmark_envelope, (RuntimeError, OSError, TypeError, ValueError, KeyError)):
+                raise benchmark_envelope
             benchmark_result = benchmark_envelope.get("result") if isinstance(benchmark_envelope, dict) else None
             benchmark_meta = benchmark_envelope.get("result_meta") if isinstance(benchmark_envelope, dict) else None
             if isinstance(benchmark_meta, dict):
@@ -2616,6 +2919,50 @@ def home_income_trend_envelope(
     )
 
 
+def warm_home_income_trend_cache_if_configured(settings: object) -> bool:
+    if not bool(getattr(settings, "home_income_trend_prewarm_enabled", False)):
+        return False
+    thread = threading.Thread(
+        target=_warm_home_income_trend_cache_quietly,
+        kwargs={"report_date": None, "window": 7},
+        daemon=True,
+        name="moss-home-income-trend-warmup",
+    )
+    thread.start()
+    return True
+
+
+def _warm_home_income_trend_cache_quietly(
+    *,
+    report_date: str | None,
+    window: int,
+) -> None:
+    started_at = time.perf_counter()
+    try:
+        normalized_report_date = _normalize_report_date(report_date) if report_date else _latest_product_category_report_date()
+        if normalized_report_date is None:
+            logger.info("home_income_trend_prewarm_skip reason=no_report_date")
+            return
+        home_income_trend_envelope(report_date=normalized_report_date, window=window)
+        logger.info(
+            "home_income_trend_prewarm_done ms=%d report_date=%s window=%d",
+            int((time.perf_counter() - started_at) * 1000),
+            normalized_report_date,
+            int(window),
+        )
+    except Exception:
+        logger.exception("home_income_trend_prewarm_failed")
+
+
+def _latest_product_category_report_date() -> str | None:
+    try:
+        repo = ProductCategoryPnlRepository(str(get_settings().duckdb_path))
+        dates = repo.list_report_dates()
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
+        return None
+    return dates[0] if dates else None
+
+
 def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
     return HomeSnapshotPayload(
         report_date="",
@@ -2643,12 +2990,43 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
 #   - 多 worker 部署下每个 worker 独立缓存，可接受（TTL 短）。
 
 _HOME_SNAPSHOT_CACHE_TTL_SECONDS: float = 300.0
+_HOME_NIM_CONTEXT_CACHE_TTL_SECONDS: float = 300.0
+_HOME_INCOME_TREND_CACHE_TTL_SECONDS: float = 300.0
 _HomeSnapshotCacheKey = tuple[str | None, bool, str, int | None]
+_HomeIncomeTrendCacheKey = tuple[str, int, str, int | None]
+_HomeNimContextCacheKey = tuple[tuple[str, ...], str | None, int, str, int | None]
+_HomeNimContextValue = tuple[
+    dict[str, dict[str, object]],
+    dict[str, list[dict[str, object]]],
+    dict[str, list[dict[str, object]]],
+    list[float] | None,
+]
 _HOME_SNAPSHOT_CACHE: InMemoryTTLCache[_HomeSnapshotCacheKey, dict[str, object]] = get_runtime_cache(
     "executive.home_snapshot",
     ttl_seconds=_HOME_SNAPSHOT_CACHE_TTL_SECONDS,
     clock=lambda: time.monotonic(),
 )
+_HOME_NIM_CONTEXT_CACHE: InMemoryTTLCache[_HomeNimContextCacheKey, _HomeNimContextValue] = get_runtime_cache(
+    "executive.home_snapshot.nim_context",
+    ttl_seconds=_HOME_NIM_CONTEXT_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
+_HOME_INCOME_TREND_CACHE: InMemoryTTLCache[_HomeIncomeTrendCacheKey, dict[str, object]] = get_runtime_cache(
+    "executive.home_income_trend",
+    ttl_seconds=_HOME_INCOME_TREND_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
+_HOME_SNAPSHOT_PREWARM_LOCK = threading.Lock()
+_HOME_SNAPSHOT_PREWARM_STATUS: dict[str, object] = {
+    "ok": False,
+    "status": "disabled",
+    "report_date": None,
+    "allow_partial": False,
+    "last_duration_ms": None,
+    "last_step_durations_ms": {},
+    "error": None,
+}
+_HOME_SNAPSHOT_PROFILE_LOCAL = threading.local()
 
 
 def _duckdb_version_token() -> tuple[str, int | None]:
@@ -2668,6 +3046,80 @@ def _home_snapshot_cache_key(
     return (report_date, allow_partial, duckdb_path, duckdb_mtime_ns)
 
 
+def _log_home_snapshot_perf_step(
+    step: str,
+    started_at: float,
+    *,
+    extra: str,
+    report_date: str | None,
+    allow_partial: bool,
+    elapsed_ms: int | None = None,
+) -> None:
+    resolved_elapsed_ms = (
+        elapsed_ms if elapsed_ms is not None else int((time.perf_counter() - started_at) * 1000)
+    )
+    logger.info(
+        "home_snapshot perf: step=%s ms=%d extra=%s report_date=%s allow_partial=%s",
+        step,
+        resolved_elapsed_ms,
+        extra,
+        report_date,
+        allow_partial,
+    )
+    step_durations = getattr(_HOME_SNAPSHOT_PROFILE_LOCAL, "step_durations_ms", None)
+    if isinstance(step_durations, dict):
+        step_durations[step] = resolved_elapsed_ms
+
+
+def _start_home_snapshot_step_profile() -> None:
+    _HOME_SNAPSHOT_PROFILE_LOCAL.step_durations_ms = {}
+
+
+def _finish_home_snapshot_step_profile() -> dict[str, int]:
+    step_durations = getattr(_HOME_SNAPSHOT_PROFILE_LOCAL, "step_durations_ms", None)
+    if isinstance(step_durations, dict):
+        copied = {str(step): int(ms) for step, ms in step_durations.items()}
+    else:
+        copied = {}
+    if hasattr(_HOME_SNAPSHOT_PROFILE_LOCAL, "step_durations_ms"):
+        delattr(_HOME_SNAPSHOT_PROFILE_LOCAL, "step_durations_ms")
+    return copied
+
+
+def _log_executive_overview_perf_step(
+    step: str,
+    started_at: float,
+    *,
+    report_date: str | None,
+    elapsed_ms: int | None = None,
+) -> None:
+    logger.info(
+        "executive_overview perf: step=%s ms=%d report_date=%s",
+        step,
+        elapsed_ms if elapsed_ms is not None else int((time.perf_counter() - started_at) * 1000),
+        report_date,
+    )
+
+
+def _log_home_snapshot_detail_perf(
+    scope: str,
+    step: str,
+    started_at: float,
+    *,
+    extra: str,
+    report_date: str | None,
+    elapsed_ms: int | None = None,
+) -> None:
+    logger.info(
+        "%s perf: step=%s ms=%d extra=%s report_date=%s",
+        scope,
+        step,
+        elapsed_ms if elapsed_ms is not None else int((time.perf_counter() - started_at) * 1000),
+        extra,
+        report_date,
+    )
+
+
 def invalidate_home_snapshot_cache() -> None:
     """显式清空 home_snapshot 缓存。
 
@@ -2677,6 +3129,18 @@ def invalidate_home_snapshot_cache() -> None:
       - 测试隔离。
     """
     _HOME_SNAPSHOT_CACHE.clear()
+    _HOME_NIM_CONTEXT_CACHE.clear()
+    _HOME_INCOME_TREND_CACHE.clear()
+
+
+def _set_home_snapshot_prewarm_status(**updates: object) -> None:
+    with _HOME_SNAPSHOT_PREWARM_LOCK:
+        _HOME_SNAPSHOT_PREWARM_STATUS.update(updates)
+
+
+def home_snapshot_prewarm_status() -> dict[str, object]:
+    with _HOME_SNAPSHOT_PREWARM_LOCK:
+        return dict(_HOME_SNAPSHOT_PREWARM_STATUS)
 
 
 def home_snapshot_envelope(
@@ -2697,12 +3161,12 @@ def home_snapshot_envelope(
     )
     t0 = time.perf_counter()
     cache_state = "hit" if _HOME_SNAPSHOT_CACHE.get(cache_key)[0] else "miss"
-    logger.info(
-        "home_snapshot perf: step=cache_lookup ms=%d extra=cache=%s report_date=%s allow_partial=%s",
-        int((time.perf_counter() - t0) * 1000),
-        cache_state,
-        normalized_report_date,
-        allow_partial,
+    _log_home_snapshot_perf_step(
+        "cache_lookup",
+        t0,
+        extra=f"cache={cache_state}",
+        report_date=normalized_report_date,
+        allow_partial=allow_partial,
     )
 
     envelope = _HOME_SNAPSHOT_CACHE.get_or_set(
@@ -2713,19 +3177,37 @@ def home_snapshot_envelope(
         ),
     )
 
-    logger.info(
-        "home_snapshot perf: step=total ms=%d extra=cache=%s report_date=%s allow_partial=%s",
-        int((time.perf_counter() - total_t0) * 1000),
-        cache_state,
-        normalized_report_date,
-        allow_partial,
+    _log_home_snapshot_perf_step(
+        "total",
+        total_t0,
+        extra=f"cache={cache_state}",
+        report_date=normalized_report_date,
+        allow_partial=allow_partial,
     )
     return deepcopy(envelope)
 
 
 def warm_home_snapshot_cache_if_configured(settings: object) -> bool:
     if not bool(getattr(settings, "home_snapshot_prewarm_enabled", False)):
+        _set_home_snapshot_prewarm_status(
+            ok=False,
+            status="disabled",
+            report_date=None,
+            allow_partial=False,
+            last_duration_ms=None,
+            last_step_durations_ms={},
+            error=None,
+        )
         return False
+    _set_home_snapshot_prewarm_status(
+        ok=False,
+        status="warming",
+        report_date=None,
+        allow_partial=False,
+        last_duration_ms=None,
+        last_step_durations_ms={},
+        error=None,
+    )
     thread = threading.Thread(
         target=_warm_home_snapshot_cache_quietly,
         kwargs={"report_date": None, "allow_partial": False},
@@ -2741,10 +3223,81 @@ def _warm_home_snapshot_cache_quietly(
     report_date: str | None,
     allow_partial: bool,
 ) -> None:
+    t0 = time.perf_counter()
+    _set_home_snapshot_prewarm_status(
+        ok=False,
+        status="warming",
+        report_date=report_date,
+        allow_partial=allow_partial,
+        last_duration_ms=None,
+        last_step_durations_ms={},
+        error=None,
+    )
+    logger.info(
+        "home_snapshot_prewarm_start report_date=%s allow_partial=%s",
+        report_date,
+        allow_partial,
+    )
     try:
+        _start_home_snapshot_step_profile()
         home_snapshot_envelope(report_date=report_date, allow_partial=allow_partial)
-    except Exception:
+    except Exception as exc:
+        step_durations = _finish_home_snapshot_step_profile()
+        _set_home_snapshot_prewarm_status(
+            ok=False,
+            status="failed",
+            report_date=report_date,
+            allow_partial=allow_partial,
+            last_duration_ms=int((time.perf_counter() - t0) * 1000),
+            last_step_durations_ms=step_durations,
+            error=str(exc),
+        )
         _logger.exception("home_snapshot_prewarm_failed")
+        return
+    step_durations = _finish_home_snapshot_step_profile()
+    duration_ms = int((time.perf_counter() - t0) * 1000)
+    _set_home_snapshot_prewarm_status(
+        ok=True,
+        status="ready",
+        report_date=report_date,
+        allow_partial=allow_partial,
+        last_duration_ms=duration_ms,
+        last_step_durations_ms=step_durations,
+        error=None,
+    )
+    logger.info(
+        "home_snapshot_prewarm_done ms=%d report_date=%s allow_partial=%s",
+        duration_ms,
+        report_date,
+        allow_partial,
+    )
+
+
+def _build_home_snapshot_core_envelopes(
+    *,
+    target_date: str,
+    date_context: dict[str, list[str]],
+) -> tuple[dict[str, object], dict[str, object], int, int]:
+    def timed_overview() -> tuple[dict[str, object], int]:
+        started_at = time.perf_counter()
+        envelope = executive_overview(
+            report_date=target_date,
+            date_context=date_context,
+            history_points=_HOME_SNAPSHOT_OVERVIEW_HISTORY_POINTS,
+        )
+        return envelope, int((time.perf_counter() - started_at) * 1000)
+
+    def timed_attribution() -> tuple[dict[str, object], int]:
+        started_at = time.perf_counter()
+        envelope = executive_pnl_attribution(report_date=target_date)
+        return envelope, int((time.perf_counter() - started_at) * 1000)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        overview_future = executor.submit(timed_overview)
+        attribution_future = executor.submit(timed_attribution)
+        overview_env, overview_ms = overview_future.result()
+        attribution_env, attribution_ms = attribution_future.result()
+        return overview_env, attribution_env, overview_ms, attribution_ms
 
 
 def _compute_home_snapshot_envelope(
@@ -2756,8 +3309,20 @@ def _compute_home_snapshot_envelope(
 
     See ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md`` § 4.
     """
+    compute_t0 = time.perf_counter()
     normalized = _normalize_report_date(report_date)
+
+    step_t0 = time.perf_counter()
     date_context = _list_domain_date_context()
+    _log_home_snapshot_perf_step(
+        "date_context",
+        step_t0,
+        extra=f"domains={len(date_context)}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+    )
+
+    step_t0 = time.perf_counter()
     domain_dates = _domain_dates_from_context(date_context)
 
     target_date, domains_missing, effective = _compute_unified_report_date(
@@ -2765,9 +3330,17 @@ def _compute_home_snapshot_envelope(
         allow_partial=allow_partial,
         domain_dates=domain_dates,
     )
+    _log_home_snapshot_perf_step(
+        "resolve_report_date",
+        step_t0,
+        extra=f"target_date={target_date or 'none'} missing={len(domains_missing)}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+    )
 
     if target_date is None:
-        return _envelope(
+        step_t0 = time.perf_counter()
+        envelope = _envelope(
             "home.snapshot",
             _empty_home_snapshot_payload(),
             quality_flag="error",
@@ -2780,11 +3353,56 @@ def _compute_home_snapshot_envelope(
                 "domains_missing": list(_HOME_SNAPSHOT_CALIBERS),
             },
         )
+        _log_home_snapshot_perf_step(
+            "envelope_build",
+            step_t0,
+            extra="target_date=none quality=error",
+            report_date=normalized,
+            allow_partial=allow_partial,
+        )
+        _log_home_snapshot_perf_step(
+            "compute_total",
+            compute_t0,
+            extra="target_date=none",
+            report_date=normalized,
+            allow_partial=allow_partial,
+        )
+        return envelope
 
-    overview_env = executive_overview(report_date=target_date, date_context=date_context)
-    attribution_env = executive_pnl_attribution(report_date=target_date)
+    step_t0 = time.perf_counter()
+    overview_env, attribution_env, overview_ms, attribution_ms = _build_home_snapshot_core_envelopes(
+        target_date=target_date,
+        date_context=date_context,
+    )
+    _log_home_snapshot_perf_step(
+        "executive_overview",
+        step_t0,
+        extra=f"target_date={target_date}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+        elapsed_ms=overview_ms,
+    )
+
+    step_t0 = time.perf_counter()
+    _log_home_snapshot_perf_step(
+        "executive_pnl_attribution",
+        step_t0,
+        extra=f"target_date={target_date}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+        elapsed_ms=attribution_ms,
+    )
+
+    step_t0 = time.perf_counter()
     overview_result = OverviewPayload.model_validate(overview_env["result"])
     attribution_result = PnlAttributionPayload.model_validate(attribution_env["result"])
+    _log_home_snapshot_perf_step(
+        "payload_validation",
+        step_t0,
+        extra=f"target_date={target_date}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+    )
     attention_count = len(domains_missing)
     partial_note = (
         "部分业务域不可用: " + ", ".join(domains_missing) if domains_missing else None
@@ -2795,8 +3413,31 @@ def _compute_home_snapshot_envelope(
         partial_note=partial_note,
         client_mode="real",
     )
-    product_category_ytd = _build_product_category_ytd_headline(target_date)
-    product_category_monthly = _build_product_category_monthly_headline(target_date)
+    step_t0 = time.perf_counter()
+    (
+        product_category_ytd,
+        product_category_monthly,
+        product_category_ytd_ms,
+        product_category_monthly_ms,
+    ) = _build_product_category_headlines(target_date)
+    _log_home_snapshot_perf_step(
+        "product_category_ytd",
+        step_t0,
+        extra=f"target_date={target_date} present={product_category_ytd is not None}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+        elapsed_ms=product_category_ytd_ms,
+    )
+
+    step_t0 = time.perf_counter()
+    _log_home_snapshot_perf_step(
+        "product_category_monthly",
+        step_t0,
+        extra=f"target_date={target_date} present={product_category_monthly is not None}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+        elapsed_ms=product_category_monthly_ms,
+    )
     payload = HomeSnapshotPayload(
         report_date=target_date,
         mode="partial" if allow_partial else "strict",
@@ -2817,7 +3458,8 @@ def _compute_home_snapshot_envelope(
         "ok" if not domains_missing else "vendor_stale"
     )
 
-    return _envelope(
+    step_t0 = time.perf_counter()
+    envelope = _envelope(
         "home.snapshot",
         payload,
         quality_flag=quality_flag,
@@ -2832,3 +3474,18 @@ def _compute_home_snapshot_envelope(
             "domains_missing": domains_missing,
         },
     )
+    _log_home_snapshot_perf_step(
+        "envelope_build",
+        step_t0,
+        extra=f"target_date={target_date} quality={quality_flag}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+    )
+    _log_home_snapshot_perf_step(
+        "compute_total",
+        compute_t0,
+        extra=f"target_date={target_date}",
+        report_date=normalized,
+        allow_partial=allow_partial,
+    )
+    return envelope

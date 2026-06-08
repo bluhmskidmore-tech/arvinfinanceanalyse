@@ -230,6 +230,26 @@ def livermore_candidate_history_envelope(
     )
 
 
+def livermore_candidate_history_envelope_or_none(
+    *,
+    duckdb_path: str,
+    stock_code: str | None,
+    snapshot_from: str | None,
+    snapshot_to: str | None,
+    limit: int,
+) -> dict[str, object] | None:
+    try:
+        return livermore_candidate_history_envelope(
+            duckdb_path=duckdb_path,
+            stock_code=stock_code,
+            snapshot_from=snapshot_from,
+            snapshot_to=snapshot_to,
+            limit=limit,
+        )
+    except duckdb.Error:
+        return None
+
+
 def livermore_candidate_history_strategy_score_envelope(
     *,
     duckdb_path: str,

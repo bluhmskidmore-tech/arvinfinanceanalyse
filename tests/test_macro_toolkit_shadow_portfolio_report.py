@@ -16,7 +16,10 @@ from backend.app.core_finance.macro.equity_shadow_portfolio import (
     compute_equity_shadow_portfolio_report,
 )
 from backend.app.governance.settings import get_settings
-from tests.test_macro_toolkit_scripts import MACRO_TOOLKIT_READ_HEADERS, _seed_macro_toolkit_read_scope
+from tests.test_macro_toolkit_scripts import (
+    MACRO_TOOLKIT_READ_HEADERS,
+    _seed_macro_toolkit_read_scope,
+)
 
 
 def test_shadow_portfolio_report_marks_duckdb_busy_when_file_is_locked(

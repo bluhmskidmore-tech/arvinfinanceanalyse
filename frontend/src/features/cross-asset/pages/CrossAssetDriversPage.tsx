@@ -986,9 +986,9 @@ function CrossAssetEvidenceTape({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
   const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
 
   return (
-    <section className="cross-asset-evidence-tape" data-testid="cross-asset-evidence-tape" aria-label="终端证据带">
+    <section className="cross-asset-evidence-tape" data-testid="cross-asset-evidence-tape" aria-label="关键因子矩阵">
       <div className="cross-asset-evidence-tape__head">
-        <span>Evidence tape</span>
+        <span>证据矩阵</span>
         <strong>关键因子矩阵</strong>
       </div>
       <div className="cross-asset-evidence-tape__table-wrap">
@@ -1102,7 +1102,7 @@ function MiniKpiCard({ kpi, compact = false }: { kpi: ResolvedCrossAssetKpi; com
 function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
   return (
     <section data-testid="cross-asset-research-views" className="cross-asset-research-views">
-      <h2 className="cross-asset-cockpit__title">投资研究判断</h2>
+      <h2 className="cross-asset-workbench-title">投资研究判断</h2>
       <div className="cross-asset-research-views__grid">
         {rows.map((row) => (
           <article
@@ -1135,7 +1135,7 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
   );
 }
 
-function CrossAssetDecisionRail({
+function CrossAssetActionRail({
   envTags,
   researchViews,
   warningCount,
@@ -1157,20 +1157,20 @@ function CrossAssetDecisionRail({
 
   return (
     <aside
-      className="cross-asset-decision-rail"
-      data-testid="cross-asset-decision-rail"
-      aria-labelledby="cross-asset-decision-rail-title"
+      className="cross-asset-action-rail"
+      data-testid="cross-asset-action-rail"
+      aria-labelledby="cross-asset-action-rail-title"
     >
-      <div className="cross-asset-decision-rail__head">
-        <span className="cross-asset-decision-rail__eyebrow">AI 决策舱</span>
-        <h2 id="cross-asset-decision-rail-title">跨资产决策舱</h2>
+      <div className="cross-asset-action-rail__head">
+        <span className="cross-asset-action-rail__eyebrow">动作约束</span>
+        <h2 id="cross-asset-action-rail-title">组合动作</h2>
       </div>
-      <div className="cross-asset-decision-rail__summary">
+      <div className="cross-asset-action-rail__summary">
         <span>当前主导</span>
         <strong>{envTags.primary}</strong>
         <small>{primaryView ? `${primaryView.label}：${primaryView.stance}` : "等待四维判断"}</small>
       </div>
-      <dl className="cross-asset-decision-rail__metrics">
+      <dl className="cross-asset-action-rail__metrics">
         <div>
           <dt>四维判断</dt>
           <dd>{readyCount}/{researchViews.length || 4}</dd>
@@ -1184,12 +1184,12 @@ function CrossAssetDecisionRail({
           <dd>{envTags.style}</dd>
         </div>
       </dl>
-      <div className="cross-asset-decision-rail__action">
-        <span>下一步动作</span>
+      <div className="cross-asset-action-rail__action">
+        <span>下一步</span>
         <strong>{primaryAction}</strong>
       </div>
-      <div className="cross-asset-action-ledger" data-testid="cross-asset-action-ledger" aria-label="组合动作账本">
-        <div className="cross-asset-action-ledger__title">ACTION LEDGER</div>
+      <div className="cross-asset-action-ledger" data-testid="cross-asset-action-ledger" aria-label="组合动作清单">
+        <div className="cross-asset-action-ledger__title">动作清单</div>
         <dl>
           <div>
             <dt>组合动作</dt>
@@ -1280,7 +1280,7 @@ function compactStatusFlagDetail(flag: CrossAssetStatusFlag): string {
   return flag.detail;
 }
 
-function CrossAssetTerminalCommandStrip({
+function CrossAssetDecisionHeader({
   reportDate,
   conclusion,
   isLoading,
@@ -1296,18 +1296,18 @@ function CrossAssetTerminalCommandStrip({
     : conclusion ?? "当前暂无可用摘要；请确认数据日期与联动分析是否已就绪。";
 
   return (
-    <header className="cross-asset-terminal-command-strip" data-testid="cross-asset-terminal-command-strip">
-      <div className="cross-asset-terminal-command-strip__main">
-        <span className="cross-asset-terminal-command-strip__command">CA.DRIVERS &lt;GO&gt;</span>
+    <header className="cross-asset-decision-header" data-testid="cross-asset-decision-header">
+      <div className="cross-asset-decision-header__main">
+        <span className="cross-asset-decision-header__command">传导报告</span>
         <section
-          className="cross-asset-decision-hero cross-asset-terminal-command-strip__decision"
+          className="cross-asset-decision-hero cross-asset-decision-header__decision"
           data-testid="cross-asset-decision-hero"
           aria-label="今日传导结论"
         >
           <span className="moss-page-v2-decision-hero__eyebrow">跨资产驱动</span>
-          <span className="cross-asset-terminal-command-strip__identity">跨资产传导工作台</span>
+          <span className="cross-asset-decision-header__identity">跨资产传导工作台</span>
           <h1 className="moss-page-v2-decision-hero__title">今日传导结论</h1>
-          <p className="moss-page-v2-decision-hero__question">外部变量今天怎样传导到债券？首屏只看体制、四维判断与关键指标。</p>
+          <p className="moss-page-v2-decision-hero__question">外部变量今天怎样影响债券组合？首屏只看市场体制、四维判断与关键指标。</p>
           <div className="moss-page-v2-decision-hero__report">
             <span>
               数据日期 <strong className="cross-asset-drivers-page__report-date">{reportDate || "—"}</strong>
@@ -1318,7 +1318,7 @@ function CrossAssetTerminalCommandStrip({
           </div>
         </section>
       </div>
-      <div className="cross-asset-terminal-command-strip__meta">
+      <div className="cross-asset-decision-header__meta">
         <span>
           数据日期 <strong className="cross-asset-drivers-page__report-date">{reportDate || "—"}</strong>
         </span>
@@ -1329,7 +1329,7 @@ function CrossAssetTerminalCommandStrip({
   );
 }
 
-function CrossAssetMarketRadar({
+function CrossAssetMarketStateStrip({
   kpis,
   envTags,
 }: {
@@ -1345,20 +1345,22 @@ function CrossAssetMarketRadar({
   ];
 
   return (
-    <section className="cross-asset-market-radar" data-testid="cross-asset-market-radar" aria-labelledby="cross-asset-market-radar-title">
-      <h2 id="cross-asset-market-radar-title" className="cross-asset-cockpit__title">市场状态雷达</h2>
-      <MarketRegimePanel kpis={kpis} />
-      <div className="cross-asset-market-radar__tags">
+    <section className="cross-asset-market-state-strip" data-testid="cross-asset-market-state-strip" aria-labelledby="cross-asset-market-state-strip-title">
+      <div className="cross-asset-market-state-strip__regime">
+        <h2 id="cross-asset-market-state-strip-title" className="cross-asset-workbench-title">市场状态</h2>
+        <MarketRegimePanel kpis={kpis} />
+      </div>
+      <div className="cross-asset-market-state-strip__tags">
         <StatusPill status="normal" label={`主导 · ${envTags.primary}`} />
         <StatusPill status="caution" label={`次要 · ${envTags.secondary}`} />
         <StatusPill status="warning" label={`风格 · ${envTags.style}`} />
       </div>
-      <dl className="cross-asset-market-radar__metrics" data-testid="cross-asset-market-radar-metrics">
-        <div className="cross-asset-market-radar__metrics-title">雷达报价</div>
+      <CrossAssetMarketTape kpis={kpis} />
+      <dl className="cross-asset-market-state-strip__metrics" data-testid="cross-asset-market-state-metrics">
         {radarMetrics.map((metric) => {
           const kpi = kpisByKey.get(metric.key);
           return (
-            <div key={metric.key} className="cross-asset-market-radar__metric">
+            <div key={metric.key} className="cross-asset-market-state-strip__metric">
               <dt>{metric.label}</dt>
               <dd>{kpi?.valueLabel ?? "待定"}</dd>
               <small>{kpi?.changeLabel ?? "待确认"}</small>
@@ -1385,8 +1387,8 @@ function CrossAssetTransmissionMap({ rows }: { rows: CrossAssetTransmissionAxisR
   return (
     <section className="cross-asset-transmission-map" data-testid="cross-asset-transmission-map" aria-label="跨资产传导链">
       <div className="cross-asset-transmission-map__head">
-        <span>Transmission path</span>
-        <strong>从外部变量到债券动作</strong>
+        <span>传导路径</span>
+        <strong>外部变量到债券组合动作</strong>
       </div>
       <ol className="cross-asset-transmission-map__steps">
         {TRANSMISSION_PATH_STEPS.map((step, index) => {
@@ -1404,7 +1406,7 @@ function CrossAssetTransmissionMap({ rows }: { rows: CrossAssetTransmissionAxisR
   );
 }
 
-function CrossAssetTransmissionWorkbench({
+function CrossAssetTransmissionCanvas({
   rows,
   researchViewCards,
 }: {
@@ -1413,11 +1415,11 @@ function CrossAssetTransmissionWorkbench({
 }) {
   return (
     <section
-      className="cross-asset-desktop-transmission-workbench"
-      data-testid="cross-asset-desktop-transmission-workbench"
-      aria-labelledby="cross-asset-desktop-transmission-workbench-title"
+      className="cross-asset-transmission-canvas"
+      data-testid="cross-asset-transmission-canvas"
+      aria-labelledby="cross-asset-transmission-canvas-title"
     >
-      <h2 id="cross-asset-desktop-transmission-workbench-title" className="cross-asset-cockpit__title">传导工作台</h2>
+      <h2 id="cross-asset-transmission-canvas-title" className="cross-asset-workbench-title">传导链路</h2>
       <CrossAssetTransmissionMap rows={rows} />
       <ResearchViewsPanel rows={researchViewCards} />
     </section>
@@ -2721,8 +2723,8 @@ export default function CrossAssetDriversPage() {
     >
       <div data-testid="cross-asset-page" className="cross-asset-drivers-page__shell">
         <section className="cross-asset-first-screen" data-testid="cross-asset-first-screen">
-          <div className="cross-asset-first-screen__intro">
-            <CrossAssetTerminalCommandStrip
+          <div className="cross-asset-first-screen__intro" data-testid="cross-asset-first-screen-intro">
+            <CrossAssetDecisionHeader
               reportDate={crossAssetDataDate || linkageReportDate}
               conclusion={env.signal_description ?? null}
               isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
@@ -2759,15 +2761,14 @@ export default function CrossAssetDriversPage() {
             </CrossAssetTrustPanel>
           </div>
 
-          <CrossAssetMarketTape kpis={kpis} />
+          <CrossAssetMarketStateStrip kpis={kpis} envTags={envTags} />
 
           <section
-            className="cross-asset-cockpit cross-asset-first-screen-grid cross-asset-trading-desk"
+            className="cross-asset-command-center cross-asset-first-screen-grid"
             data-testid="cross-asset-first-screen-grid"
           >
-            <CrossAssetMarketRadar kpis={kpis} envTags={envTags} />
-            <CrossAssetTransmissionWorkbench rows={transmissionAxisRows} researchViewCards={researchViewCards} />
-            <CrossAssetDecisionRail
+            <CrossAssetTransmissionCanvas rows={transmissionAxisRows} researchViewCards={researchViewCards} />
+            <CrossAssetActionRail
               envTags={envTags}
               researchViews={researchViewCards}
               warningCount={statusFlags.length}

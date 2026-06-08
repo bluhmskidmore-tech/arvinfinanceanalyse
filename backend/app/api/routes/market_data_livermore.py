@@ -5,15 +5,14 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated
 
-import duckdb
 from backend.app.api.perf_logging import timed_api_call
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.choice_stock_adapter import load_choice_stock_readiness
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_cycle_proxy_backtest_envelope,
     livermore_candidate_history_envelope,
+    livermore_candidate_history_envelope_or_none,
     livermore_candidate_history_portfolio_backtest_envelope,
     livermore_candidate_history_strategy_optimization_envelope,
     livermore_candidate_history_strategy_score_envelope,
@@ -29,9 +28,9 @@ from backend.app.services.livermore_stock_detail_service import livermore_stock_
 from backend.app.services.macro_bond_linkage_service import get_macro_environment_context
 from backend.app.services.market_data_livermore_service import (
     _risk_exit_input_block_reason,
-    livermore_strategy_envelope,
+    livermore_strategy_envelope_from_catalog,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/ui/market-data", tags=["market-data"])
@@ -82,15 +81,14 @@ def livermore_candidate_history_backtest_window_summary(
 ) -> dict[str, object]:
     if not snapshot_from and not snapshot_to:
         return _unsupported_replay_summary()
-    try:
-        envelope = livermore_candidate_history_envelope(
-            duckdb_path=duckdb_path,
-            stock_code=stock_code,
-            snapshot_from=snapshot_from,
-            snapshot_to=snapshot_to,
-            limit=500,
-        )
-    except duckdb.Error:
+    envelope = livermore_candidate_history_envelope_or_none(
+        duckdb_path=duckdb_path,
+        stock_code=stock_code,
+        snapshot_from=snapshot_from,
+        snapshot_to=snapshot_to,
+        limit=500,
+    )
+    if envelope is None:
         return _unsupported_replay_summary()
     result = _mapping(envelope.get("result"))
     summary = _mapping(result.get("backtest_window_summary"))
@@ -115,15 +113,14 @@ def _candidate_history_replay_evidence(
     row_count = _replay_window_candidate_row_count(replay_summary)
     if row_count <= 0:
         return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
-    try:
-        envelope = livermore_candidate_history_envelope(
-            duckdb_path=duckdb_path,
-            stock_code=None,
-            snapshot_from=snapshot_as_of_date,
-            snapshot_to=snapshot_as_of_date,
-            limit=max(row_count, 5),
-        )
-    except duckdb.Error:
+    envelope = livermore_candidate_history_envelope_or_none(
+        duckdb_path=duckdb_path,
+        stock_code=None,
+        snapshot_from=snapshot_as_of_date,
+        snapshot_to=snapshot_as_of_date,
+        limit=max(row_count, 5),
+    )
+    if envelope is None:
         return _empty_replay_evidence(snapshot_as_of_date=snapshot_as_of_date)
 
     result = _mapping(envelope.get("result"))
@@ -223,9 +220,20 @@ def _ensure_livermore_read_allowed(*, settings: object, auth: AuthContext) -> No
             action="read",
         )
     except PermissionError as exc:
+        if _allows_development_fallback_read(auth=auth, environment=getattr(settings, "environment", "")):
+            return
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
+    return (
+        str(environment).strip().lower() == "development"
+        and auth.identity_source == "fallback"
+        and auth.user_id == "anonymous"
+        and auth.role == "viewer"
+    )
 
 
 def _ensure_livermore_gate_supplement_refresh_allowed(*, settings: object, auth: AuthContext) -> None:
@@ -267,11 +275,10 @@ def livermore_strategy(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    stock_readiness = load_choice_stock_readiness(settings.choice_stock_catalog_file)
-    return livermore_strategy_envelope(
+    return livermore_strategy_envelope_from_catalog(
         duckdb_path=str(settings.duckdb_path),
         as_of_date=as_of_date,
-        stock_readiness=stock_readiness,
+        choice_stock_catalog_file=settings.choice_stock_catalog_file,
     )
 
 
@@ -288,11 +295,10 @@ def livermore_signal_confluence(
 
     settings = get_settings()
     _ensure_livermore_read_allowed(settings=settings, auth=auth)
-    stock_readiness = load_choice_stock_readiness(settings.choice_stock_catalog_file)
-    livermore_envelope = livermore_strategy_envelope(
+    livermore_envelope = livermore_strategy_envelope_from_catalog(
         duckdb_path=str(settings.duckdb_path),
         as_of_date=as_of_date,
-        stock_readiness=stock_readiness,
+        choice_stock_catalog_file=settings.choice_stock_catalog_file,
     )
     livermore_meta = _mapping(livermore_envelope.get("result_meta"))
     livermore_payload = _dict_payload(livermore_envelope.get("result"))
@@ -481,6 +487,7 @@ def materialize_manual_position_snapshot(
 @router.post("/livermore/refresh-gate-supplement")
 def refresh_gate_supplement(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     as_of_date: str | None = Query(None),
     lookback_days: int = Query(default=30, ge=7, le=365),
 ) -> dict[str, object]:
@@ -499,6 +506,7 @@ def refresh_gate_supplement(
             duckdb_path=str(settings.duckdb_path),
             as_of_date=parsed_date,
             lookback_days=lookback_days,
+            idempotency_key=idempotency_key,
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

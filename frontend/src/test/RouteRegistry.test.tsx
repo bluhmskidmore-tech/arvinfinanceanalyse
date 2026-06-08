@@ -287,7 +287,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(await screen.findByRole("navigation")).toBeInTheDocument();
     expect(
-      within(screen.getByRole("navigation")).getByRole("link", { name: /经营驾驶舱/ }),
+      within(screen.getByRole("navigation")).getByRole("link", { name: /经营日报/ }),
     ).toBeInTheDocument();
   });
 
@@ -351,7 +351,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
     expect(
       within(await screen.findByTestId("workbench-group-nav")).getByRole("link", {
-        name: /经营驾驶舱/,
+        name: /经营日报/,
       }),
     ).toBeInTheDocument();
   });

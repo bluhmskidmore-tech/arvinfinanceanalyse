@@ -90,6 +90,7 @@ def test_pnl_attribution_business_owner_approval_checker_reports_pending_templat
             "decision_notes": "not_required",
             "formal_use_allowed": "valid",
             "closure_approved": "valid",
+            "certification_effect": "valid",
         },
         "approval_action_items": [
             {
@@ -166,6 +167,7 @@ def test_pnl_attribution_business_owner_approval_checker_reports_pending_templat
             "writes_governance_records": False,
             "proves_page_execution": False,
             "captures_business_owner_approval": False,
+            "certification_effect": "none",
         },
     }
 
@@ -276,6 +278,37 @@ def test_pnl_attribution_business_owner_approval_checker_captures_complete_appro
     assert payload["approval_action_item_count"] == 0
     assert payload["evidence_scope"]["captures_business_owner_approval"] is True
     assert payload["evidence_scope"]["proves_page_execution"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
+
+
+def test_pnl_attribution_business_owner_approval_checker_requires_no_certification_effect(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "approval-template.md"
+    template.write_text(
+        _filled_template_text().replace("- `certification_effect=none`\n", ""),
+        encoding="utf-8",
+    )
+
+    payload = build_status(template)
+
+    assert payload["approval_status"] == "approved"
+    assert payload["business_owner_approval_captured"] is False
+    assert payload["remaining_blockers"] == [
+        "business_owner_approval",
+        "certification_effect_boundary",
+    ]
+    assert payload["approval_field_status"]["certification_effect"] == "missing"
+    assert payload["approval_action_items"] == [
+        {
+            "blocker": "certification_effect_boundary",
+            "template_field": "- `certification_effect=none`",
+            "required_value": "none",
+            "current_status": "missing",
+        },
+    ]
+    assert payload["evidence_scope"]["captures_business_owner_approval"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
 
 
 def test_pnl_attribution_business_owner_approval_checker_rejects_missing_signature(

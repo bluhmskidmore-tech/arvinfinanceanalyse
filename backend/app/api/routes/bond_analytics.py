@@ -32,7 +32,7 @@ from backend.app.services.yield_curve_term_structure_service import (
     get_yield_curve_term_structure,
     parse_curve_types_param,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
 
@@ -145,10 +145,10 @@ def dv01_action_plan(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
     top_n: int = Query(20, ge=1, le=100, description="Number of action rows"),
-    limit_dv01: str | None = Query(None, description="Page warning limit in DV01 units"),
-    warning_dv01: str | None = Query(None, description="Page warning threshold in DV01 units"),
-    hedge_instrument_dv01: str | None = Query(None, description="DV01 per hedge unit"),
-    hedge_target_dv01: str | None = Query(None, description="Target DV01 after hedge/reduction"),
+    limit_dv01: str | None = Query(None, description="Page warning limit in CNY DV01 per 1bp"),
+    warning_dv01: str | None = Query(None, description="Page warning threshold in CNY DV01 per 1bp"),
+    hedge_instrument_dv01: str | None = Query(None, description="CNY DV01 per hedge unit per 1bp"),
+    hedge_target_dv01: str | None = Query(None, description="Target CNY DV01 after hedge/reduction per 1bp"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
     try:
@@ -255,6 +255,7 @@ def accounting_class_audit(
 @router.post("/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_date: str = Query(...),
 ):
     settings = get_settings()
@@ -265,7 +266,11 @@ def refresh(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return refresh_bond_analytics(settings, report_date=report_date)
+        return refresh_bond_analytics(
+            settings,
+            report_date=report_date,
+            idempotency_key=idempotency_key,
+        )
     except BondAnalyticsRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BondAnalyticsRefreshServiceError as exc:

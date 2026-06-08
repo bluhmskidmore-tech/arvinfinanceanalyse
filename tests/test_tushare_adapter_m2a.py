@@ -9,6 +9,7 @@ import types
 
 import pandas as pd
 import pytest
+
 from backend.app.repositories.tushare_adapter import VendorAdapter
 
 _TOKEN_ENV = "MOSS_TUSHARE_TOKEN"

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Contract source:
 - `frontend/src/mocks/navigation.ts` `workbenchNavigation`
@@ -17,6 +15,8 @@ Follow-up plan:
   coverage.
 - Remove whitelist entries as soon as the corresponding `PAGE-*` section lands.
 """
+
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass
@@ -75,6 +75,12 @@ TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
 
 PAGE_HEADING_RE = re.compile(r"^##\s+[\d.]+\s+(PAGE-[A-Z0-9-]+)\b", re.MULTILINE)
 FULL_PAGE_ID_RE = re.compile(r"PAGE-[A-Z0-9-]+")
+TEMP_EXCEPTION_SIGNOFF_RE = re.compile(
+    r"^- `(?P<route>/[^`]+)`: signoff_owner=`(?P<owner>[^`]+)`, "
+    r"signoff_status=`(?P<status>[^`]+)`, "
+    r"exposure_class=`(?P<exposure_class>[^`]+)`, "
+    r"signoff_scope=`(?P<scope>[^`]+)`$"
+)
 
 
 @dataclass(frozen=True)
@@ -279,6 +285,42 @@ def _parse_route_maturity_registry() -> dict[str, RouteMaturity]:
     return registry
 
 
+def _parse_temporary_exception_signoffs() -> dict[str, dict[str, str]]:
+    text = ROUTE_MATURITY_PATH.read_text(encoding="utf-8")
+    heading = "## Temporary Exception Signoff List"
+    assert heading in text, (
+        "`docs/live_route_maturity.md` must include a temporary-exception signoff list."
+    )
+    section = text.split(heading, maxsplit=1)[1]
+    if "\n## " in section:
+        section = section.split("\n## ", maxsplit=1)[0]
+
+    signoffs: dict[str, dict[str, str]] = {}
+    duplicates: list[str] = []
+    for line in section.splitlines():
+        match = TEMP_EXCEPTION_SIGNOFF_RE.match(line.strip())
+        if match is None:
+            continue
+        route = _normalize_route_path(match.group("route"))
+        if route in signoffs:
+            duplicates.append(route)
+            continue
+        signoffs[route] = {
+            "owner": match.group("owner").strip(),
+            "status": match.group("status").strip(),
+            "exposure_class": match.group("exposure_class").strip(),
+            "scope": match.group("scope").strip(),
+        }
+
+    if duplicates:
+        pytest.fail(
+            "`docs/live_route_maturity.md` has duplicate temporary-exception signoff rows:\n"
+            + "\n".join(f"- {route}" for route in sorted(duplicates))
+        )
+
+    return signoffs
+
+
 def test_live_routes_have_page_contracts_or_explicit_temporary_exception_whitelist():
     live_routes = _parse_live_routes()
     live_by_path = {route.path: route for route in live_routes}
@@ -406,3 +448,136 @@ def test_temporary_exception_routes_have_burn_down_metadata():
             "Route maturity burn-down metadata gaps:\n"
             + "\n".join(f"- {item}" for item in missing)
         )
+
+
+def test_temporary_exception_signoff_validation_rejects_owner_mismatch():
+    registry = {
+        "/temporary-page": RouteMaturity(
+            route="/temporary-page",
+            nav_state="temporary-exception",
+            maturity_tier="temporary-exception",
+            page_contract="GAP-TEMPORARY-PAGE",
+            owner="Expected owner",
+            risk="Temporary route can be overread as approved truth.",
+            exit_condition="Add a dedicated page contract with visible boundaries.",
+            review_date="2026-06-14",
+            verification="python -m pytest tests/test_live_route_page_contract_completeness.py -q",
+        )
+    }
+    signoffs = {
+        "/temporary-page": {
+            "owner": "Different owner",
+            "status": "pending-owner-review",
+            "exposure_class": "pending-confirmation",
+            "scope": "Temporary route remains visible only while burn-down row is active.",
+        }
+    }
+
+    gaps = _temporary_exception_signoff_gaps(
+        registry=registry,
+        signoffs=signoffs,
+    )
+
+    assert gaps == [
+        "/temporary-page: signoff_owner='Different owner' must match registry owner "
+        "'Expected owner'."
+    ]
+
+
+def _temporary_exception_signoff_gaps(
+    *,
+    registry: dict[str, RouteMaturity],
+    signoffs: dict[str, dict[str, str]],
+) -> list[str]:
+    allowed_statuses = {
+        "pending-owner-review",
+        "owner-accepted-temporary",
+        "ready-for-contract",
+    }
+    allowed_exposure_classes = {
+        "demo-visible",
+        "production-governed",
+        "pending-confirmation",
+        "debug-only",
+    }
+    gaps: list[str] = []
+
+    for route, signoff in sorted(signoffs.items()):
+        if signoff["status"] not in allowed_statuses:
+            gaps.append(
+                f"{route}: signoff_status={signoff['status']!r} is not one of {sorted(allowed_statuses)}."
+            )
+        if signoff["exposure_class"] not in allowed_exposure_classes:
+            gaps.append(
+                f"{route}: exposure_class={signoff['exposure_class']!r} is not one of "
+                f"{sorted(allowed_exposure_classes)}."
+            )
+        registry_owner = registry.get(route).owner if route in registry else None
+        if registry_owner is not None and signoff["owner"] != registry_owner:
+            gaps.append(
+                f"{route}: signoff_owner={signoff['owner']!r} must match registry owner "
+                f"{registry_owner!r}."
+            )
+        for field_name in ("owner", "scope"):
+            value = signoff[field_name]
+            if value.strip() in {"", "-", "TBD", "none"} or len(value.strip()) < 8:
+                gaps.append(f"{route}: signoff_{field_name} must be explicit.")
+
+    return gaps
+
+
+def test_temporary_exception_routes_have_explicit_signoff_list():
+    live_routes = _parse_live_routes()
+    temporary_routes = {
+        route.path
+        for route in live_routes
+        if route.governance_status == "temporary-exception"
+    }
+    registry = _parse_route_maturity_registry()
+    signoffs = _parse_temporary_exception_signoffs()
+
+    missing = sorted(temporary_routes - set(signoffs))
+    stale = sorted(set(signoffs) - temporary_routes)
+    invalid = _temporary_exception_signoff_gaps(
+        registry=registry,
+        signoffs=signoffs,
+    )
+
+    if missing or stale or invalid:
+        lines = ["Temporary-exception signoff list gaps:"]
+        if missing:
+            lines.append(f"missing={len(missing)}")
+            lines.extend(f"- {route}: missing signoff list entry." for route in missing)
+        if stale:
+            lines.append(f"stale={len(stale)}")
+            lines.extend(f"- {route}: no longer a temporary-exception live route." for route in stale)
+        lines.extend(f"- {item}" for item in invalid)
+        pytest.fail("\n".join(lines))
+
+
+def test_temporary_exception_exposure_classes_are_defined_for_owner_signoff():
+    text = ROUTE_MATURITY_PATH.read_text(encoding="utf-8")
+    required_heading = "## Temporary Exception Exposure Class Definitions"
+    assert required_heading in text, (
+        "`docs/live_route_maturity.md` must define the temporary-exception "
+        "exposure classes used by owner signoff rows."
+    )
+    section = text.split(required_heading, maxsplit=1)[1]
+    if "\n## " in section:
+        section = section.split("\n## ", maxsplit=1)[0]
+
+    definitions = {
+        "demo-visible": "can be shown for demonstration",
+        "production-governed": "can be used in production",
+        "pending-confirmation": "requires owner confirmation",
+        "debug-only": "diagnostics or operator debugging only",
+    }
+    missing = [
+        f"{exposure_class}: expected definition to include {meaning!r}"
+        for exposure_class, meaning in definitions.items()
+        if f"- `{exposure_class}`:" not in section or meaning not in section
+    ]
+    assert not missing, (
+        "Temporary-exception exposure class definition gaps:\n"
+        + "\n".join(f"- {item}" for item in missing)
+    )

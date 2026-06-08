@@ -213,6 +213,51 @@ describe("BondAnalyticsView", () => {
       expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-currency-basis-banner")).toHaveTextContent(
+        "人民币/CNY口径",
+      );
+    },
+    20_000,
+  );
+
+  it(
+    "places mobile table readouts before the raw bond grids",
+    async () => {
+      renderBondAnalyticsView();
+
+      const topCockpit = await screen.findByTestId(
+        "bond-analysis-top-cockpit",
+        {},
+        { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+      );
+
+      const accountingSummary = within(topCockpit).getByTestId("bond-analysis-accounting-dv01-summary");
+      const accountingReadout = within(accountingSummary).getByTestId(
+        "bond-analysis-accounting-dv01-mobile-readout",
+      );
+      const accountingRawGrid = within(accountingSummary).getByTestId(
+        "bond-analysis-accounting-dv01-raw-grid",
+      );
+      expect(accountingReadout.compareDocumentPosition(accountingRawGrid) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .toBeTruthy();
+      expect(accountingReadout).toHaveTextContent("会计分类 DV01");
+      expect(accountingReadout).toHaveTextContent("最高 DV01 分类");
+      expect(accountingReadout).toHaveTextContent("面值加权久期");
+      expect(accountingReadout).toHaveTextContent("面值");
+      expect(accountingReadout).toHaveTextContent("持仓数");
+
+      const holdingsTable = within(topCockpit).getByTestId("bond-analysis-holdings-table");
+      const holdingsReadout = within(holdingsTable).getByTestId("bond-analysis-holdings-mobile-readout");
+      const holdingsRawGrid = within(holdingsTable).getByTestId("bond-analysis-holdings-raw-grid");
+      expect(holdingsReadout.compareDocumentPosition(holdingsRawGrid) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .toBeTruthy();
+      expect(holdingsReadout).toHaveTextContent("前十大持仓");
+      expect(holdingsReadout).toHaveTextContent("最大持仓");
+      expect(holdingsReadout).toHaveTextContent("评级");
+      expect(holdingsReadout).toHaveTextContent("市值");
+      expect(holdingsReadout).toHaveTextContent("收益率");
+      expect(holdingsReadout).toHaveTextContent("久期");
+      expect(holdingsReadout).toHaveTextContent("权重");
     },
     20_000,
   );

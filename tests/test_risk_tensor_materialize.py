@@ -6,7 +6,10 @@ from decimal import Decimal
 import pytest
 
 from tests.helpers import load_module
-from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    REPORT_DATE,
+    _seed_bond_snapshot_rows,
+)
 
 
 def _read_jsonl(path):

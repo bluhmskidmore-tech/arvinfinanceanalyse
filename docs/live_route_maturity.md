@@ -54,3 +54,35 @@ It does not authorize new metric definitions, source lineage, or formal page tru
 | `/pnl-by-business` | temporary-exception | candidate | PAGE-PNL-BY-BUSINESS-001 | Business PnL owner | Business-line PnL can still be confused with product-category PnL or ledger PnL if the YTD/monthly/formal boundaries regress. | Keep PAGE-PNL-BY-BUSINESS-001 visible, preserve formal-as-reconciliation copy, and close formal untraced `A/T/H` data-governance follow-up before formal promotion. | 2026-06-15 | `npm run test -- pnlByBusinessPageModel PnlRoutesSmoke && python -m pytest tests/test_live_route_page_contract_completeness.py -q` |
 | `/reports` | live | candidate | PAGE-REPORTS-HOME-001 | Reports and data owner | Reports/data module home mixes health, source preview, cube capability, and report planning and can be mistaken for data-quality approval. | Keep planned report capabilities marked as pending and scope formal claims to downstream query/result metadata. | 2026-06-15 | `npm run test -- ModuleWorkbenchHomeModel RouteRegistry && python -m pytest tests/test_live_route_page_contract_completeness.py -q` |
 | `/agent` | live | governed-mixed-source | PAGE-AGENT-001 | Agent workbench owner | Agent answers can cite governed data but must not replace formal metrics or source lineage. | Keep Agent contract explicit about read-only, analytical, and formal-use boundaries. | 2026-06-15 | `python -m pytest tests/test_agent_api_contract.py tests/test_agent_intent_routing.py -q` |
+
+## Temporary Exception Exposure Class Definitions
+
+These classes describe temporary route exposure only. They do not promote a route to formal metric truth, retire a `temporary-exception`, or approve new `MTR-*` definitions.
+
+- `demo-visible`: can be shown for demonstration while analytical, candidate, stale, fallback, no-data, or non-formal boundaries remain visible.
+- `production-governed`: can be used in production only for the bounded governed sections named by the row; this class still requires page contracts, metric dictionary entries, and source lineage for formal claims.
+- `pending-confirmation`: requires owner confirmation before the route or section can be treated as production-ready or formally promoted.
+- `debug-only`: diagnostics or operator debugging only; do not use as business data-quality approval or metric evidence.
+
+## Temporary Exception Signoff List
+
+These rows do not approve formal metric or page truth. They name the owner who must accept the temporary route exposure, the current review status, the exposure class, and the exact bounded scope that remains live while the burn-down row above is open.
+
+- `/operations-analysis`: signoff_owner=`Operations analysis owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary mixed-source operations route remains visible only while PAGE-OPS-001 burn-down is active.`
+- `/bond-analysis`: signoff_owner=`Bond analytics owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary bond cockpit route remains visible without standalone PAGE contract certification.`
+- `/cross-asset`: signoff_owner=`Market analytics owner`, signoff_status=`pending-owner-review`, exposure_class=`demo-visible`, signoff_scope=`Temporary analytical cross-asset route remains visible as non-formal linkage evidence.`
+- `/team-performance`: signoff_owner=`Performance owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary team contribution route remains visible as candidate performance evidence only.`
+- `/decision-items`: signoff_owner=`Balance governance owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary decision item route remains visible pending standalone read-write page contract.`
+- `/stock-analysis`: signoff_owner=`Stock analysis owner`, signoff_status=`pending-owner-review`, exposure_class=`demo-visible`, signoff_scope=`Temporary stock observation route remains visible with no trading-instruction authority.`
+- `/platform-config`: signoff_owner=`Platform config owner`, signoff_status=`pending-owner-review`, exposure_class=`debug-only`, signoff_scope=`Temporary diagnostics route remains visible and must not imply data-quality approval.`
+- `/bond-dashboard`: signoff_owner=`Bond dashboard owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary candidate bond dashboard route remains visible without MTR dictionary promotion.`
+- `/positions`: signoff_owner=`Positions owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary positions route remains visible with candidate list and total boundaries.`
+- `/average-balance`: signoff_owner=`Average balance owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary analytical balance route remains visible while formal truth stays on balance-analysis.`
+- `/ledger-pnl`: signoff_owner=`Ledger PnL owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary candidate ledger PnL route remains visible without formal PnL promotion.`
+- `/bank-ledger-dashboard`: signoff_owner=`Ledger dashboard owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary ledger dashboard route remains visible pending standalone ledger PAGE contract.`
+- `/concentration-monitor`: signoff_owner=`Risk analytics owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary concentration route remains visible as candidate risk analytics evidence.`
+- `/cashflow-projection`: signoff_owner=`Cashflow owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary cashflow route remains visible pending liquidity PAGE contract semantics.`
+- `/kpi`: signoff_owner=`KPI governance owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary KPI route remains visible pending scoring ownership and audit-trail contract.`
+- `/news-events`: signoff_owner=`Market news owner`, signoff_status=`pending-owner-review`, exposure_class=`demo-visible`, signoff_scope=`Temporary news events route remains visible as analytical event context only.`
+- `/product-category-pnl`: signoff_owner=`Product category PnL owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary governed-mixed product-category route remains visible while detail gaps stay bounded.`
+- `/pnl-by-business`: signoff_owner=`Business PnL owner`, signoff_status=`pending-owner-review`, exposure_class=`pending-confirmation`, signoff_scope=`Temporary business PnL route remains visible without product-category or ledger equivalence.`

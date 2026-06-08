@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
-import { vi } from "vitest";
+import { beforeAll, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
   default: ({
@@ -34,6 +34,7 @@ import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ResultMeta, RiskTensorPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
 import { displayTokens } from "../theme/displayTokens";
+import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 
 const WAN_YUAN_UNIT = "\u4e07\u5143";
@@ -42,6 +43,10 @@ const RISK_TENSOR_CSS_PATH = resolve(
   process.cwd(),
   "src/features/risk-tensor/RiskTensorPage.css",
 );
+
+beforeAll(async () => {
+  await preloadWorkbenchRouteModules("risk-tensor");
+}, 20_000);
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {

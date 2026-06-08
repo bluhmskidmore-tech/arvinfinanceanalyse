@@ -282,6 +282,29 @@ run_formal_balance_pipeline = register_actor_once(
 )
 
 
+def run_formal_balance_pipeline_sync(
+    *,
+    report_date: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    data_root: str | None = None,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+    archive_dir: str | None = None,
+    fx_source_path: str | None = None,
+) -> dict[str, object]:
+    return _run_formal_balance_pipeline(
+        report_date=report_date,
+        start_date=start_date,
+        end_date=end_date,
+        data_root=data_root,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        archive_dir=archive_dir,
+        fx_source_path=fx_source_path,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the formal balance pipeline.")
     parser.add_argument("--report-date")

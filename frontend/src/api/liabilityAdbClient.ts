@@ -161,13 +161,16 @@ function normalizeAdbComparisonResponse(
   raw: Record<string, unknown>,
   resultMeta?: ResultMeta,
 ): AdbComparisonResponse {
+  const normalizeNullableNumber = (value: unknown): number | null =>
+    value === null || value === undefined ? null : Number(value);
+
   const mapBreakdown = (items: unknown[]) =>
     items.map((item) => {
       const row = item as Record<string, unknown>;
       return {
         category: String(row.category ?? ""),
         spot_balance: Number(row.spot_balance ?? 0),
-        avg_balance: Number(row.avg_balance ?? 0),
+        avg_balance: normalizeNullableNumber(row.avg_balance),
         proportion: Number(row.proportion ?? 0),
         weighted_rate:
           row.weighted_rate === null || row.weighted_rate === undefined

@@ -34,6 +34,7 @@ Closure approved: `closure_approved=false`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 
 ## Required Business Decision
 
@@ -45,11 +46,13 @@ Business owner signature: `<required>`
 Reviewed sign-off packet: `docs/pnl/bond-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/bond-analysis-owner-evidence-packet.md`
+Reviewed fixed-income convention decision draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
 
 ## Evidence Review
 
 - Governance record reviewed: `<yes | no>`
 - Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed: `<yes | no>`
+- Fixed-income convention decision draft reviewed: `<yes | no>`
 - Fixed-income units/sign/date rules reviewed: `<yes | no>`
 - UI/API payload evidence reviewed: `<yes | no>`
 - Live smoke evidence reviewed: `<yes | no>`
@@ -81,6 +84,10 @@ def _filled_template_text(
         .replace(
             "- Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed: `<yes | no>`",
             "- Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed: `yes`",
+        )
+        .replace(
+            "- Fixed-income convention decision draft reviewed: `<yes | no>`",
+            "- Fixed-income convention decision draft reviewed: `yes`",
         )
         .replace(
             "- Fixed-income units/sign/date rules reviewed: `<yes | no>`",
@@ -129,25 +136,28 @@ def test_bond_analysis_business_owner_approval_checker_reports_pending_template(
         "business_owner_signature",
         "governance_record_review",
         "golden_sample_review",
+        "fixed_income_convention_review",
         "fixed_income_rule_review",
         "ui_api_payload_review",
         "live_smoke_evidence_review",
         "verification_commands_rerun",
         "candidate_boundary_acceptance",
     ]
-    assert payload["approval_action_item_count"] == 11
+    assert payload["approval_action_item_count"] == 12
     assert {
         "blocker": "golden_sample_review",
         "template_field": "- Golden sample `GS-BOND-ANALYSIS-ACTION-ATTR-A` reviewed",
         "required_value": "yes",
         "current_status": "pending",
     } in payload["approval_action_items"]
+    assert payload["approval_field_status"]["fixed_income_convention_review"] == "pending"
     assert payload["approval_field_status"]["fixed_income_rule_review"] == "pending"
     assert payload["evidence_scope"] == {
         "approves_metric_or_page": False,
         "writes_governance_records": False,
         "proves_page_execution": False,
         "captures_business_owner_approval": False,
+        "certification_effect": "none",
     }
 
 
@@ -175,6 +185,65 @@ def test_bond_analysis_business_owner_approval_checker_require_captured_allows_c
     assert payload["approval_action_items"] == []
     assert payload["evidence_scope"]["captures_business_owner_approval"] is True
     assert payload["evidence_scope"]["approves_metric_or_page"] is False
+    assert payload["evidence_scope"]["certification_effect"] == "none"
+
+
+def test_bond_analysis_business_owner_approval_checker_requires_no_certification_effect(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "bond-analysis-approval-template.md"
+    template.write_text(
+        _filled_template_text().replace("- `certification_effect=none`\n", ""),
+        encoding="utf-8",
+    )
+
+    completed = _run_checker("--template-path", str(template), check=False)
+    payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 0
+    assert payload["business_owner_approval_captured"] is False
+    assert payload["remaining_blockers"] == [
+        "business_owner_approval",
+        "certification_effect_boundary",
+    ]
+    assert payload["approval_field_status"]["certification_effect"] == "missing"
+    assert {
+        "blocker": "certification_effect_boundary",
+        "template_field": "- `certification_effect=none`",
+        "required_value": "none",
+        "current_status": "missing",
+    } in payload["approval_action_items"]
+
+
+def test_bond_analysis_business_owner_approval_checker_requires_fixed_income_decision_draft(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "bond-analysis-approval-template.md"
+    template.write_text(
+        _filled_template_text().replace(
+            "Reviewed fixed-income convention decision draft: "
+            "`docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`",
+            "Reviewed fixed-income convention decision draft: `docs/pnl/other-decision-draft.md`",
+        ),
+        encoding="utf-8",
+    )
+
+    completed = _run_checker("--template-path", str(template), check=False)
+    payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 0
+    assert payload["business_owner_approval_captured"] is False
+    assert payload["remaining_blockers"] == [
+        "business_owner_approval",
+        "reviewed_fixed_income_decision_draft",
+    ]
+    assert payload["approval_field_status"]["reviewed_fixed_income_decision_draft"] == "invalid"
+    assert {
+        "blocker": "reviewed_fixed_income_decision_draft",
+        "template_field": "Reviewed fixed-income convention decision draft",
+        "required_value": "docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md",
+        "current_status": "invalid",
+    } in payload["approval_action_items"]
 
 
 def test_bond_analysis_business_owner_approval_checker_rejects_bad_approval_date(

@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
-
-import json
 
 import duckdb
 import pytest
 
+import backend.app.tasks.accounting_asset_movement as movement_task
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
-
-import backend.app.tasks.accounting_asset_movement as movement_task
 from backend.app.tasks.accounting_asset_movement import (
     AccountingAssetMovementSourceMissingError,
     materialize_accounting_asset_movement_on_connection,

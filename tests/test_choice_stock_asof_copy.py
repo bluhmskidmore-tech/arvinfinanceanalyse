@@ -7,7 +7,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from backend.app.tasks.choice_stock_materialize import choice_stock_history_start_date, ensure_choice_stock_schema
+from backend.app.tasks.choice_stock_materialize import (
+    choice_stock_history_start_date,
+    ensure_choice_stock_schema,
+)
 from tests.helpers import load_module
 
 

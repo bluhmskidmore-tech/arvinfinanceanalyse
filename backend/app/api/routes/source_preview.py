@@ -16,7 +16,7 @@ from backend.app.services.source_preview_service import (
     source_preview_envelope,
     source_preview_history_envelope,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 router = APIRouter(prefix="/ui/preview")
 
@@ -99,6 +99,7 @@ def source_foundation_history(
 @router.post("/source-foundation/refresh")
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, object]:
     _require_source_preview_http_enabled()
     settings = get_settings()
@@ -114,7 +115,7 @@ def refresh(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return refresh_source_preview(settings)
+        return refresh_source_preview(settings, idempotency_key=idempotency_key)
     except SourcePreviewRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except SourcePreviewRefreshServiceError as exc:

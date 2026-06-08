@@ -1,0 +1,124 @@
+{
+  "page_slug": "ledger-pnl",
+  "page_id": "PAGE-LEDGER-PNL-001",
+  "generated_at": "2026-06-05T20:01:14.993184+08:00",
+  "generated_by": "local service envelope inspection plus moss-lineage-evidence.preflight_page_governance_record",
+  "purpose": "Capture the current auditable direct-record candidate fields available from the /api/ledger-pnl/summary result_meta and the field-complete preflight result. This remains preflight-only evidence, not a written governance record or certification.",
+  "evidence_scope": {
+    "writes_governance_records": false,
+    "checks_record_existence": false,
+    "validates_required_fields": true,
+    "proves_page_execution": false,
+    "approves_metric_or_page": false,
+    "approves_formal_use": false,
+    "captures_business_owner_approval": false
+  },
+  "source_call": {
+    "service_function": "backend.app.services.ledger_pnl_service.ledger_pnl_summary_envelope",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary",
+    "selected_report_date": "2026-05-31",
+    "source_dir": "F:\\MOSS-V3\\data_input\\pnl_总账对账-日均"
+  },
+  "summary_result_meta_used": {
+    "trace_id": "tr_ledger_pnl_summary",
+    "basis": "ledger",
+    "result_kind": "ledger_pnl.summary",
+    "formal_use_allowed": false,
+    "source_version": "sv_product_category_3353b116b9a6",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_ledger_pnl_v1",
+    "cache_version": "cv_ledger_pnl_v1",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "requested_report_date": "2026-05-31",
+    "resolved_report_date": "2026-05-31",
+    "scenario_flag": false,
+    "as_of_date": "2026-05-31",
+    "date_basis": "ledger_report_date",
+    "fallback_date": null,
+    "generated_at": "2026-06-05T12:01:14.993184Z",
+    "filters_applied": {
+      "report_date": "2026-05-31",
+      "currency": "ALL"
+    },
+    "tables_used": [
+      "qdb_general_ledger_workbook"
+    ],
+    "evidence_rows": 665,
+    "next_drill": [],
+    "source_surface": null
+  },
+  "candidate_record_submitted_to_preflight": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "page_slug": "ledger-pnl",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary",
+    "report_date": "2026-05-31",
+    "basis": "ledger",
+    "source_surface": "ledger_pnl.summary",
+    "tables_used": [
+      "qdb_general_ledger_workbook"
+    ],
+    "source_version": "sv_product_category_3353b116b9a6",
+    "rule_version": "rv_ledger_pnl_v1",
+    "created_at": "2026-06-05T12:01:14.993184Z",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
+    "formal_use_allowed": false
+  },
+  "preflight_result": {
+    "tool": "moss-lineage-evidence.preflight_page_governance_record",
+    "validation_status": "ready_for_audit_review",
+    "missing_required_fields": [],
+    "failed_required_field_groups": [],
+    "direct_anchor_match": {
+      "anchor_type": "page_id",
+      "matched_query": "PAGE-LEDGER-PNL-001",
+      "proves_primary_page_anchor": true
+    },
+    "record_formal_use_allowed": false,
+    "residual_gaps": [
+      "Required checklist fields are present, but this does not prove page execution completeness and still needs audit review against page contract, lineage, date/catalog, and current UI/API payloads."
+    ]
+  },
+  "field_status": {
+    "now_evidence_backed": [
+      "page_id",
+      "page_slug",
+      "frontend_route",
+      "primary_api",
+      "report_date",
+      "basis",
+      "source_surface",
+      "tables_used",
+      "source_version",
+      "rule_version",
+      "created_at",
+      "cache_key=ledger_pnl.summary:2026-05-31:ALL",
+      "formal_use_allowed=false"
+    ],
+    "still_missing": [],
+    "not_substituted": [
+      {
+        "field": "execution_identifier",
+        "available_and_accepted": "cache_key=ledger_pnl.summary:2026-05-31:ALL",
+        "reason": "Current MCP requirements accept cache_key or run_id for execution_identifier; trace_id remains supporting trace context only."
+      }
+    ]
+  },
+  "next_actions": [
+    "Route the field-complete candidate through the approved governance workflow if a direct record is to be written; this artifact itself does not write the record.",
+    "Create or locate supporting lineage for the configured ledger anchors where evidence exists.",
+    "After a written direct record exists, rerun validate_page_governance_records and then the manual audit review/evidence-packet flow.",
+    "Keep formal_use_allowed=false and /ledger-pnl Gate I status as evidence-pending until manual audit review, business-owner approval, and closure evidence pass."
+  ],
+  "non_approvals": [
+    "This artifact does not write a governance record.",
+    "This artifact does not certify PAGE-LEDGER-PNL-001.",
+    "This artifact does not approve MTR-LPN-001 through MTR-LPN-003 for formal use.",
+    "This artifact does not prove live page/API execution completeness.",
+    "This artifact does not capture business-owner approval."
+  ]
+}

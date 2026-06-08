@@ -149,6 +149,18 @@ describe("formatRawAsNumeric", () => {
     expect(n.sign_aware).toBe(false);
   });
 
+  it("builds years Numeric for duration values", () => {
+    const n = formatRawAsNumeric({
+      raw: 1.25,
+      unit: "years",
+      sign_aware: true,
+    });
+    expect(isNumeric(n)).toBe(true);
+    expect(n.unit).toBe("years");
+    expect(n.display).toBe("+1.25");
+    expect(n.precision).toBe(2);
+  });
+
   it("allows precision override", () => {
     const n = formatRawAsNumeric({
       raw: 0.00123456,

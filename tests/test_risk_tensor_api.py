@@ -19,7 +19,6 @@ from tests.test_risk_tensor_service import (
     _configure_and_materialize_risk_tensor_with_tyw_liability,
 )
 
-
 RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
 
 
@@ -126,6 +125,9 @@ def test_risk_tensor_api_returns_available_report_dates(tmp_path, monkeypatch):
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "risk.tensor.dates"
     assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result_meta"]["requested_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["resolved_report_date"] == REPORT_DATE
+    assert payload["result_meta"]["as_of_date"] == REPORT_DATE
     assert payload["result"]["report_dates"] == [REPORT_DATE]
 
     get_settings.cache_clear()

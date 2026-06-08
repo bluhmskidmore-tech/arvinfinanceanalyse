@@ -2,8 +2,6 @@
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from backend.app.core_finance.bond_duration import (
     estimate_duration,
     infer_accounting_class,

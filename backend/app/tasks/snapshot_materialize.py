@@ -23,6 +23,7 @@ from backend.app.repositories.snapshot_repo import (
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.snapshot_row_parse import (
     parse_tyw_snapshot_rows_from_bytes,
     parse_zqtz_snapshot_rows_from_bytes,
@@ -302,13 +303,14 @@ def _materialize_standard_snapshots(
                         )
                         ordered_rows.extend(parsed)
                     merged_z = merge_zqtz_rows_by_grain(ordered_rows)
-                    zqtz_total = replace_zqtz_snapshot_rows(
-                        conn,
-                        merged_z,
-                        ingest_batch_ids=z_batches,
-                        report_dates=z_report_dates,
-                        replace_all_for_report_dates=bool(report_date),
-                    )
+                    with repository_task_write_scope(__name__):
+                        zqtz_total = replace_zqtz_snapshot_rows(
+                            conn,
+                            merged_z,
+                            ingest_batch_ids=z_batches,
+                            report_dates=z_report_dates,
+                            replace_all_for_report_dates=bool(report_date),
+                        )
                     if zqtz_total <= 0:
                         raise ValueError(
                             "Fail closed: zqtz manifest rows matched this materialization run but standardized "
@@ -365,13 +367,14 @@ def _materialize_standard_snapshots(
                         )
                         ordered_tyw.extend(parsed)
                     merged_t = merge_tyw_rows_by_grain(ordered_tyw)
-                    tyw_total = replace_tyw_snapshot_rows(
-                        conn,
-                        merged_t,
-                        ingest_batch_ids=t_batches,
-                        report_dates=t_report_dates,
-                        replace_all_for_report_dates=bool(report_date),
-                    )
+                    with repository_task_write_scope(__name__):
+                        tyw_total = replace_tyw_snapshot_rows(
+                            conn,
+                            merged_t,
+                            ingest_batch_ids=t_batches,
+                            report_dates=t_report_dates,
+                            replace_all_for_report_dates=bool(report_date),
+                        )
                     if tyw_total <= 0:
                         raise ValueError(
                             "Fail closed: tyw manifest rows matched this materialization run but standardized "

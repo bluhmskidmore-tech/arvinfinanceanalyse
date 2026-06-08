@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from backend.app.core_finance.bond_analytics.common import build_full_curve, tenor_to_years
+from backend.app.core_finance.bond_analytics.common import (
+    build_full_curve,
+    tenor_to_years,
+)
 from backend.app.core_finance.pnl_bridge import build_pnl_bridge_rows
 
 

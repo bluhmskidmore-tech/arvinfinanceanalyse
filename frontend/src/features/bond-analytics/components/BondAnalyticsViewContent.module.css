@@ -43,7 +43,244 @@
   border-color: #0b4e9e;
 }
 
+.decisionCockpit {
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  gap: var(--moss-space-3);
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-left: 4px solid var(--moss-color-primary-700);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, 0.04);
+}
+
+.decisionHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: var(--moss-space-3);
+  min-width: 0;
+}
+
+.decisionCopy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.decisionEyebrow {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.decisionPrimary {
+  margin: 0;
+  color: var(--moss-color-neutral-900);
+  font-size: 16px;
+  font-weight: 760;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.decisionSource,
+.decisionWarning {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.decisionTrust {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 999px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-700);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.decisionTrust[data-state="ok"] {
+  border-color: var(--moss-color-success-200);
+  background: var(--moss-color-success-50);
+  color: var(--moss-color-success-800);
+}
+
+.decisionTrust[data-state="warning"] {
+  border-color: var(--moss-color-warning-200);
+  background: var(--moss-color-warning-50);
+  color: var(--moss-color-warning-800);
+}
+
+.decisionTrust[data-state="blocked"] {
+  border-color: var(--moss-color-danger-200);
+  background: var(--moss-color-danger-50);
+  color: var(--moss-color-danger-800);
+}
+
+.decisionBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.36fr);
+  gap: var(--moss-space-3);
+  min-width: 0;
+  padding-top: var(--moss-space-3);
+  border-top: 1px solid var(--moss-color-neutral-200);
+}
+
+.decisionMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.decisionMetric {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding: 0 12px;
+  border-left: 1px solid var(--moss-color-neutral-200);
+}
+
+.decisionMetric:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.decisionMetricLabel {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.decisionMetricValue {
+  overflow: hidden;
+  color: var(--moss-color-neutral-900);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decisionAction {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  align-content: start;
+}
+
+.decisionBasisNote {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--moss-color-info-200);
+  border-radius: 6px;
+  background: var(--moss-color-info-50);
+  color: var(--moss-color-info-900);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.decisionNextButton {
+  min-height: 40px;
+  border: 1px solid var(--moss-color-primary-700);
+  border-radius: 6px;
+  background: var(--moss-color-primary-800);
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.decisionNextButton:hover {
+  background: var(--moss-color-primary-900);
+}
+
+.decisionNextButton:focus-visible {
+  outline: 3px solid var(--moss-color-info-200);
+  outline-offset: 2px;
+}
+
 .detailFallback {
   color: var(--moss-color-neutral-600);
   font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .decisionBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .decisionCockpit {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .decisionHeader {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .decisionPrimary {
+    font-size: 15px;
+    line-height: 1.35;
+  }
+
+  .decisionSource,
+  .decisionWarning {
+    white-space: normal;
+  }
+
+  .decisionTrust {
+    width: fit-content;
+    min-height: 30px;
+  }
+
+  .decisionBody {
+    gap: 10px;
+    padding-top: 10px;
+  }
+
+  .decisionMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 0;
+  }
+
+  .decisionMetric {
+    padding: 0 8px;
+  }
+
+  .decisionMetric:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .decisionMetricValue {
+    font-size: 14px;
+  }
+
+  .decisionNextButton {
+    width: 100%;
+    min-height: 44px;
+  }
 }

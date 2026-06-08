@@ -4,6 +4,7 @@ import styles from "./portfolioHome.module.css";
 
 type PortfolioStructureChartProps = {
   chart: ModuleHomeDetailChart;
+  height?: number;
 };
 
 const CHART_COLORS = ["#35679b", "#2f68b8", "#1850a1", "#6f96c3", "#3f8a6a", "#5a6d86"];
@@ -12,7 +13,7 @@ function formatTooltipValue(value: number, unit: string) {
   return `${value.toFixed(2)} ${unit}`;
 }
 
-export function PortfolioStructureChart({ chart }: PortfolioStructureChartProps) {
+export function PortfolioStructureChart({ chart, height }: PortfolioStructureChartProps) {
   if (chart.categories.length === 0 || chart.values.length === 0) {
     return (
       <div className={styles.structureChartEmpty} data-testid="module-home-structure-chart">
@@ -87,7 +88,7 @@ export function PortfolioStructureChart({ chart }: PortfolioStructureChartProps)
   return (
     <div className={styles.structureChartWrap} data-testid="module-home-structure-chart">
       <div className={styles.structureChartTitle}>{chart.title}</div>
-      <ReactECharts option={option} style={{ height: horizontal ? 280 : 260, width: "100%" }} notMerge lazyUpdate />
+      <ReactECharts option={option} style={{ height: height ?? (horizontal ? 280 : 260), width: "100%" }} notMerge lazyUpdate />
     </div>
   );
 }

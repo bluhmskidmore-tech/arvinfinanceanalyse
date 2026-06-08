@@ -66,6 +66,18 @@ import {
 } from "../../market-data/lib/marketDataTerminalModel";
 import { formatRatioPct } from "../../pnl/pnlByBusinessPageModel";
 import { moduleWorkbenchHomeConfigs, type ModuleWorkbenchHomeKind } from "./moduleHomeConfig";
+import {
+  buildPortfolioDecision,
+  guardMockPortfolioHomeView,
+  pnlDriverLabel,
+  type PortfolioEvidenceState,
+  type PortfolioPnlState,
+  type PortfolioReadPathState,
+} from "./portfolioDecisionModel";
+import {
+  buildPortfolioReadinessGate,
+  type PortfolioEvidenceSource,
+} from "./portfolioReadinessGate";
 
 export type ModuleHomeTone = "ok" | "watch" | "error" | "muted";
 
@@ -107,6 +119,13 @@ export type ModuleHomeDecision = {
     label: string;
     value: string;
     tone: ModuleHomeTone;
+  }>;
+  actions?: Array<{
+    title: string;
+    evidence: string;
+    path: string;
+    tone: ModuleHomeTone;
+    label?: string;
   }>;
 };
 
@@ -178,6 +197,8 @@ export type ModuleHomeView = {
   detailPanels?: ModuleHomeDetailPanel[];
   dataNote: ModuleHomeDataNote;
 };
+
+export type ModuleHomeViewBody = Omit<ModuleHomeView, "kind" | "title" | "question" | "summary" | "sourceScope">;
 
 export type ModuleHomeSourceQueries = {
   balanceDates?: UseQueryResult<ApiEnvelope<BalanceAnalysisDatesPayload>>;
@@ -255,6 +276,10 @@ function queryIsInitialLoading(query: UseQueryResult<unknown> | undefined) {
   return Boolean(query?.isLoading);
 }
 
+function queryHasData(query: UseQueryResult<unknown> | undefined) {
+  return Boolean(query?.data);
+}
+
 function queryStatus(
   key: string,
   label: string,
@@ -312,6 +337,20 @@ function hasError(queries: ModuleHomeSourceQueries) {
 
 function hasLoading(queries: ModuleHomeSourceQueries) {
   return Object.values(queries).some((query) => queryIsInitialLoading(query));
+}
+
+function hasData(queries: ModuleHomeSourceQueries) {
+  return Object.values(queries).some((query) => queryHasData(query));
+}
+
+function portfolioCoreReadQueries(queries: ModuleHomeSourceQueries): ModuleHomeSourceQueries {
+  return {
+    balanceDates: queries.balanceDates,
+    balanceOverview: queries.balanceOverview,
+    bondDates: queries.bondDates,
+    bondHeadline: queries.bondHeadline,
+    bondRisk: queries.bondRisk,
+  };
 }
 
 function marketHomePrimaryQueries(queries: ModuleHomeSourceQueries): ModuleHomeSourceQueries {
@@ -688,7 +727,8 @@ function formatBondHeadlineKpi(
     return "-";
   }
   if (key === "bond_count") {
-    return `${value} 只`;
+    const count = typeof value === "number" ? value : nativeToNumber(value);
+    return `${count.toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 只`;
   }
   if (typeof value !== "object" || !("raw" in value)) {
     return "-";
@@ -776,21 +816,44 @@ function baseDataNote(
   };
 }
 
-function balanceSourceMeta(reportDate: string) {
-  return `来源 balance-analysis · ${reportDate || "-"}`;
+function metaEvidenceLine(label: string, meta: ResultMeta | undefined): string | null {
+  if (!meta) {
+    return null;
+  }
+  const reportDate =
+    meta.resolved_report_date ??
+    meta.as_of_date ??
+    meta.requested_report_date ??
+    meta.fallback_date ??
+    "-";
+  const table = meta.tables_used?.length ? meta.tables_used.join(" / ") : "未披露";
+  const rows =
+    typeof meta.evidence_rows === "number" ? `${meta.evidence_rows} 行` : "未披露";
+  const fallback =
+    meta.fallback_mode === "none" && !meta.fallback_date
+      ? "none"
+      : `${meta.fallback_mode}${meta.fallback_date ? `/${meta.fallback_date}` : ""}`;
+  return `${label}证据：report_date=${reportDate}；basis=${meta.basis}；formal_use_allowed=${String(
+    meta.formal_use_allowed,
+  )}；quality=${meta.quality_flag}；result_kind=${meta.result_kind}；tables=${table}；evidence_rows=${rows}；fallback=${fallback}。`;
 }
 
-function pnlDriverLabel(driver: PnlAttributionAnalysisSummary["primary_driver"]) {
-  if (driver === "volume") {
-    return "规模";
-  }
-  if (driver === "rate") {
-    return "利率";
-  }
-  if (driver === "market") {
-    return "市场";
-  }
-  return "待确认";
+function portfolioDataNote(queries: ModuleHomeSourceQueries): ModuleHomeDataNote {
+  const base = baseDataNote("portfolio", queries);
+  const evidenceLines = [
+    metaEvidenceLine("债券总览", queries.bondHeadline?.data?.result_meta),
+    metaEvidenceLine("资产负债", queries.balanceOverview?.data?.result_meta),
+    metaEvidenceLine("损益归因", queries.pnlSummary?.data?.result_meta),
+  ].filter((line): line is string => Boolean(line));
+
+  return {
+    ...base,
+    lines: [...base.lines, ...evidenceLines],
+  };
+}
+
+function balanceSourceMeta(reportDate: string) {
+  return `来源 balance-analysis · ${reportDate || "-"}`;
 }
 
 function buildRiskIndicatorDetailRows(risk: RiskIndicatorsPayload): ModuleHomeDetailRow[] {
@@ -1504,9 +1567,121 @@ function buildPnlSummaryRows(summary: PnlAttributionAnalysisSummary): ModuleHome
   return rows;
 }
 
+function portfolioReadPathState(queries: ModuleHomeSourceQueries): PortfolioReadPathState {
+  const coreQueries = portfolioCoreReadQueries(queries);
+  if (hasError(coreQueries)) {
+    return { label: "读取失败", tone: "error" };
+  }
+  if (hasLoading(coreQueries)) {
+    if (hasData(coreQueries)) {
+      return { label: "部分接入", tone: "watch" };
+    }
+    return { label: "读取中", tone: "muted" };
+  }
+  return { label: "已接入", tone: "ok" };
+}
+
+function portfolioPnlState(
+  queries: ModuleHomeSourceQueries,
+  summary: PnlAttributionAnalysisSummary | undefined,
+): PortfolioPnlState {
+  if (queries.pnlSummary?.isError) {
+    return { label: "读取失败", tone: "error" };
+  }
+  if (queryIsInitialLoading(queries.pnlSummary)) {
+    return { label: "读取中", tone: "muted" };
+  }
+  if (summary) {
+    return { label: "已返回", tone: "ok" };
+  }
+  return { label: "待读", tone: "watch" };
+}
+
+function portfolioEvidenceState(queries: ModuleHomeSourceQueries): PortfolioEvidenceState {
+  const meta =
+    queries.bondHeadline?.data?.result_meta ??
+    queries.bondRisk?.data?.result_meta ??
+    queries.bondPortfolioComparison?.data?.result_meta;
+  if (!meta) {
+    return {
+      factValue: "待返回",
+      detail: "证据元数据待返回",
+      tone: "muted",
+    };
+  }
+
+  const rows =
+    typeof meta.evidence_rows === "number" ? `${meta.evidence_rows} 行` : "行数未披露";
+  const table = meta.tables_used?.[0] ?? "来源表未披露";
+  const fallback =
+    meta.fallback_mode === "none" && !meta.fallback_date
+      ? "无回退"
+      : `${meta.fallback_mode}${meta.fallback_date ? ` / ${meta.fallback_date}` : ""}`;
+  return {
+    factValue: rows,
+    detail: `${meta.result_kind} / ${rows} / ${table} / ${fallback}`,
+    tone: meta.quality_flag === "ok" ? "ok" : "watch",
+  };
+}
+
+function portfolioDecisionAnchorDate(queries: ModuleHomeSourceQueries) {
+  return (
+    queries.bondHeadline?.data?.result.report_date ??
+    queries.bondDates?.data?.result.report_dates[0] ??
+    ""
+  );
+}
+
+function portfolioEvidenceSources(queries: ModuleHomeSourceQueries): PortfolioEvidenceSource[] {
+  return [
+    {
+      label: "债券总览",
+      hasData: Boolean(queries.bondHeadline?.data),
+      isError: queries.bondHeadline?.isError,
+      isLoading: queryIsInitialLoading(queries.bondHeadline),
+      meta: queries.bondHeadline?.data?.result_meta,
+      reportDate: queries.bondHeadline?.data?.result.report_date ?? "",
+    },
+    {
+      label: "风险指标",
+      hasData: Boolean(queries.bondRisk?.data),
+      isError: queries.bondRisk?.isError,
+      isLoading: queryIsInitialLoading(queries.bondRisk),
+      meta: queries.bondRisk?.data?.result_meta,
+      reportDate: queries.bondRisk?.data?.result.report_date ?? "",
+    },
+    {
+      label: "资产负债",
+      hasData: Boolean(queries.balanceOverview?.data),
+      isError: queries.balanceOverview?.isError,
+      isLoading: queryIsInitialLoading(queries.balanceOverview),
+      meta: queries.balanceOverview?.data?.result_meta,
+      reportDate: queries.balanceOverview?.data?.result.report_date ?? "",
+    },
+    {
+      label: "损益归因",
+      hasData: Boolean(queries.pnlSummary?.data),
+      isError: queries.pnlSummary?.isError,
+      isLoading: queryIsInitialLoading(queries.pnlSummary),
+      meta: queries.pnlSummary?.data?.result_meta,
+      reportDate: queries.pnlSummary?.data?.result.report_date ?? "",
+    },
+  ];
+}
+
+function portfolioRiskDatesEvidence(queries: ModuleHomeSourceQueries) {
+  return {
+    hasData: Boolean(queries.riskDates?.data),
+    isError: queries.riskDates?.isError,
+    isLoading: queryIsInitialLoading(queries.riskDates),
+    dates: queries.riskDates?.data?.result.report_dates ?? [],
+    meta: queries.riskDates?.data?.result_meta,
+  };
+}
+
 function portfolioView(
   queries: ModuleHomeSourceQueries,
-): Omit<ModuleHomeView, "kind" | "title" | "question" | "summary" | "sourceScope"> {
+): ModuleHomeViewBody {
   const balance = queries.balanceOverview?.data?.result;
   const bond = queries.bondHeadline?.data?.result;
   const risk = queries.bondRisk?.data?.result;
@@ -1731,6 +1906,27 @@ function portfolioView(
   );
 
   const portfolioRows = portfolioComparison ? buildPortfolioComparisonRows(portfolioComparison) : [];
+  const readPath = portfolioReadPathState(queries);
+  const pnlState = portfolioPnlState(queries, pnlSummary);
+  const evidenceState = portfolioEvidenceState(queries);
+  const readiness = buildPortfolioReadinessGate({
+    decisionAnchorDate: portfolioDecisionAnchorDate(queries),
+    readPathTone: readPath.tone,
+    hasCoreReads: Boolean(bondKpis || risk),
+    evidenceSources: portfolioEvidenceSources(queries),
+    riskDatesEvidence: portfolioRiskDatesEvidence(queries),
+  });
+  const decision = buildPortfolioDecision({
+    bondKpis,
+    risk,
+    pnlSummary,
+    bondDate,
+    portfolioRows,
+    readPath,
+    pnlState,
+    evidenceState,
+    readiness,
+  });
   const portfolioStatus = queryStatus(
     "portfolio-comparison",
     "子组合对比",
@@ -1838,9 +2034,11 @@ function portfolioView(
     }),
   ];
 
+  const hasCoreReadError = hasError(portfolioCoreReadQueries(queries));
+
   return {
-    stateLabel: hasError(queries) ? "读取失败" : hasLoading(queries) ? "读取中" : "已接入",
-    stateDetail: hasError(queries)
+    stateLabel: readPath.label,
+    stateDetail: hasCoreReadError
       ? "部分组合读链路失败，不使用前端补数。"
       : `资产负债 ${balanceDate}，债券总览 ${bondDate}，子组合 ${portfolioRows.length} 个，归因摘要 ${pnlSummary ? "已返回" : "待读"}。`,
     kpis,
@@ -1870,6 +2068,7 @@ function portfolioView(
         tone: "muted",
       },
     ],
+    decision,
     briefings: [
       {
         title: "规模与错配",
@@ -1922,7 +2121,7 @@ function portfolioView(
     ],
     distributionPanels,
     detailPanels,
-    dataNote: baseDataNote("portfolio", queries),
+    dataNote: portfolioDataNote(queries),
   };
 }
 
@@ -3276,7 +3475,9 @@ export function buildModuleHomeView(
   const config = moduleWorkbenchHomeConfigs[kind];
   const view =
     kind === "portfolio"
-      ? portfolioView(queries)
+      ? client.mode === "mock"
+        ? guardMockPortfolioHomeView(portfolioView(queries))
+        : portfolioView(queries)
       : kind === "market"
         ? marketView(queries)
         : kind === "risk"

@@ -109,4 +109,5 @@ Sampled table count: `5`
 - `writes_governance_records=false`
 - `proves_page_execution=false`
 - `captures_business_owner_approval=false`
+- `certification_effect=none`
 - `validates_required_fields=true`

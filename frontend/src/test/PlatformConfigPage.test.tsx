@@ -127,6 +127,15 @@ describe("PlatformConfigPage", () => {
     expect(screen.getByTestId("platform-config-source-count")).toHaveTextContent("2");
     expect(screen.getByTestId("platform-config-abnormal-sources")).toHaveTextContent("1");
     expect(screen.getByTestId("platform-config-manual-review-rows")).toHaveTextContent("3");
+
+    const boundary = screen.getByTestId("platform-config-diagnostic-boundary");
+    expect(boundary).toHaveTextContent("PAGE-CONTRACT-PENDING:/platform-config");
+    expect(boundary).toHaveTextContent("MTR-PLT-001");
+    expect(boundary).toHaveTextContent("MTR-PLT-002");
+    expect(boundary).toHaveTextContent("MTR-PLT-003");
+    expect(boundary).toHaveTextContent("candidate diagnostics only");
+    expect(boundary).toHaveTextContent("not data-quality approval");
+
     expect(screen.getByText("Redis 状态")).toBeInTheDocument();
     expect(screen.getByText("PostgreSQL 状态")).toBeInTheDocument();
 
