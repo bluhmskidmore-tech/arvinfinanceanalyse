@@ -784,6 +784,70 @@ def test_team_performance_readiness_exposes_candidate_direct_evidence_without_fo
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
+def test_news_events_readiness_exposes_analytical_direct_evidence_without_formal_promotion() -> None:
+    report = build_page_readiness_report("news-events")
+
+    assert report["page_slug"] == "news-events"
+    assert report["page_id"] == "GAP-NEWS-EVENTS-PAGE"
+    assert report["route"] == "/news-events"
+    assert report["primary_api"] == "/ui/news/choice-events/latest"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "static-pass"
+    assert "codex-page-smoke.ps1 -PageSlug news-events" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug news-events -Run" in report["required_commands"][1]
+    assert report["run_supported"] is True
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == ["choice_news_event"]
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_news_events_governance_record.py",
+        "python scripts/emit_news_events_governance_record.py --write",
+    ]
+    assert report["business_owner_approval_status"] is None
+    assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert any("analytical event context" in item for item in report["guardrails"])
+    assert any("ChoiceNewsEventsPayload" in item for item in report["verification_focus"])
+    assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
+    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+
+
+def test_news_events_readiness_exposes_analytical_record_path_without_formal_promotion() -> None:
+    report = build_page_readiness_report("news-events")
+
+    assert report["page_slug"] == "news-events"
+    assert report["page_id"] == "GAP-NEWS-EVENTS-PAGE"
+    assert report["route"] == "/news-events"
+    assert report["primary_api"] == "/ui/news/choice-events/latest"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "static-pass"
+    assert "codex-page-smoke.ps1 -PageSlug news-events" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug news-events -Run" in report["required_commands"][1]
+    assert report["run_supported"] is True
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["catalog_date_evidence"]["table_evidence"][0]["date_column"] == "received_at"
+    assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
+    assert report["governance_record_validation"]["direct_record_count"] == 1
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_news_events_governance_record.py",
+        "python scripts/emit_news_events_governance_record.py --write",
+    ]
+    assert report["business_owner_approval_status"] is None
+    assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert any("choice_news_event" in item for item in report["truth_chain"])
+    assert any("analytical event context" in item for item in report["guardrails"])
+    assert any("ChoiceNewsEventsPayload" in item for item in report["verification_focus"])
+    assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
+    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert any("Business owner approval is still required" in gap for gap in report["residual_gaps"])
+
+
 def test_macro_toolkit_readiness_exposes_run_commands_without_formal_promotion() -> None:
     report = build_page_readiness_report("macro-toolkit")
 

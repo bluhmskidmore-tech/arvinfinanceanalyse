@@ -31,7 +31,6 @@ DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
     "GAP-BANK-LEDGER-DASHBOARD-PAGE",
     "GAP-CASHFLOW-PROJECTION-PAGE",
     "GAP-CONCENTRATION-MONITOR-PAGE",
-    "GAP-NEWS-EVENTS-PAGE",
     "GAP-PLATFORM-CONFIG-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
@@ -298,10 +297,6 @@ PAGE_CATALOG_DATE_DEFERRED_REASONS = {
         "ADB analytical route; direct page closure depends on PAGE contract approval, ADB denominator semantics, "
         "bound golden sample, lineage records, and owner review before any formal-use claim."
     ),
-    "GAP-NEWS-EVENTS-PAGE": (
-        "Analytical news event context; direct table sampling from choice_news_event is not metric approval, "
-        "formal business truth, or source data-quality certification."
-    ),
     "PAGE-EXEC-SUMMARY-001": "Narrative-only summary endpoint; table/date review belongs to upstream overview and snapshot evidence.",
     "PAGE-EXEC-PNL-ATTR-001": "Executive attribution overlay has no direct table contract; sample upstream attribution and formal-source pages instead.",
     "PAGE-MACRO-TOOLKIT-001": "Tooling/workflow surface; no direct business metric table contract is approved for page-level sampling.",
@@ -313,6 +308,7 @@ DATE_COLUMN_PRIORITY = (
     "as_of_date",
     "snapshot_as_of_date",
     "trade_date",
+    "received_at",
     "natural_date",
     "business_date",
     "date",

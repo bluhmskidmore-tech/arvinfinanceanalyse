@@ -14131,3 +14131,48 @@ def test_data_catalog_page_catalog_date_evidence_samples_snapshot_as_of_date(
         assert by_table["livermore_candidate_history"]["available_dates"] == ["2026-05-29"]
     finally:
         server.close()
+
+
+def test_data_catalog_page_catalog_date_evidence_samples_received_at(
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            create table choice_news_event (
+                event_key varchar,
+                received_at varchar,
+                payload_text varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into choice_news_event values ('news-1', '2026-06-03T20:19:24+00:00', 'headline')"
+        )
+    finally:
+        conn.close()
+
+    server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(duckdb_path)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        result = server.request(
+            "tools/call",
+            {
+                "name": "get_page_catalog_date_evidence",
+                "arguments": {"page_slugs": ["news-events"]},
+            },
+        )
+        payload = json.loads(result["content"][0]["text"])
+        page = payload["pages"][0]
+        by_table = {row["table_name"]: row for row in page["table_evidence"]}
+
+        assert by_table["choice_news_event"]["status"] == "present"
+        assert by_table["choice_news_event"]["date_column"] == "received_at"
+        assert by_table["choice_news_event"]["available_dates"] == ["2026-06-03T20:19:24+00:00"]
+    finally:
+        server.close()
