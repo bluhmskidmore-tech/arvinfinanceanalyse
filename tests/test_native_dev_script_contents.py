@@ -458,6 +458,7 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "test:a11y-smoke" in script
     assert "@product-category-pnl" in script
     assert "Balance-analysis backend API and surface tests" in script
+
     assert "tests/test_balance_analysis_api.py" in script
     assert "tests/test_balance_analysis_consumer_surface.py" in script
     assert "Balance-analysis frontend tests" in script
@@ -625,6 +626,22 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "typecheck" in script
     assert "Frontend production build" in script
     assert "build" in script
+
+
+def test_codex_dev_flow_adapts_development_loop_to_existing_page_harnesses():
+    script = (ROOT / "scripts" / "codex-dev-flow.ps1").read_text(encoding="utf-8")
+
+    assert "codex-page-readiness.ps1" in script
+    assert "codex-verify-page.ps1" in script
+    assert "Mode: $Mode" in script
+    assert 'ValidateSet("plan", "preflight", "verify", "readiness", "approval", "all")' in script
+    assert "Development flow plan complete. Pass -Run with -Mode verify/readiness/approval/all to execute." in script
+    assert "Invoke-Preflight" in script
+    assert "Invoke-Verify" in script
+    assert "Invoke-Readiness" in script
+    assert "Invoke-Approval" in script
+    assert "-RequireApprovalCaptured" in script
+    assert "Development flow adapter finished." in script
 
 
 def test_codex_page_smoke_script_emits_product_category_checklist():

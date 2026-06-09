@@ -25,6 +25,7 @@ def test_native_development_scripts_exist():
         ROOT / "scripts" / "codex-verify-page.ps1",
         ROOT / "scripts" / "codex-page-smoke.ps1",
         ROOT / "scripts" / "codex-page-readiness.ps1",
+        ROOT / "scripts" / "codex-dev-flow.ps1",
     ]
 
     missing = [str(path) for path in expected if not path.exists()]
@@ -196,6 +197,32 @@ def test_codex_verify_page_can_plan_non_browser_product_category_checks():
     assert "Frontend debt audit" in output
     assert "Frontend production build" in output
     assert "npm.cmd run build" in output
+
+
+def test_codex_dev_flow_defaults_to_planning_the_system_development_loop():
+    output = run_powershell_script("codex-dev-flow.ps1", "-PageSlug", "pnl-attribution")
+
+    assert "MOSS development flow adapter: pnl-attribution" in output
+    assert "Mode: plan" in output
+    assert "1. Preflight readiness" in output
+    assert "2. Page verification" in output
+    assert "3. Page readiness gate" in output
+    assert "4. Approval capture check" in output
+    assert "scripts\\codex-page-readiness.ps1 -PageSlug pnl-attribution" in output
+    assert "scripts\\codex-verify-page.ps1 -PageSlug pnl-attribution -Run" in output
+    assert "scripts\\codex-page-readiness.ps1 -PageSlug pnl-attribution -Run" in output
+    assert "scripts\\codex-page-readiness.ps1 -PageSlug pnl-attribution -RequireApprovalCaptured" in output
+    assert "Development flow plan complete. Pass -Run with -Mode verify/readiness/approval/all to execute." in output
+
+
+def test_codex_dev_flow_can_run_preflight_readiness_only():
+    output = run_powershell_script("codex-dev-flow.ps1", "-PageSlug", "pnl-attribution", "-Mode", "preflight", "-Run")
+
+    assert "MOSS development flow adapter: pnl-attribution" in output
+    assert "Mode: preflight" in output
+    assert "Running preflight readiness" in output
+    assert "MOSS page readiness gate: pnl-attribution" in output
+    assert "Development flow adapter finished." in output
 
 
 def test_codex_verify_page_supports_dashboard_home_dry_run():
