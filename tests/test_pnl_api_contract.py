@@ -3724,6 +3724,93 @@ def test_pnl_bridge_reads_fx_rates_from_duckdb_and_populates_fx_translation(tmp_
     get_settings.cache_clear()
 
 
+def test_pnl_bridge_rejects_prior_day_fx_locs_for_report_date(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge_fx",
+        vendor_version="vv_bridge_fx",
+        rule_version="rv_bridge_fx",
+    )
+    _seed_usd_pnl_bridge_balance_rows(duckdb_path)
+    _seed_pnl_bridge_snapshot_face_values(duckdb_path)
+    _seed_pnl_bridge_fx_rates(
+        duckdb_path,
+        rows=[
+            ("2025-12-30", "USD", "CNY", "7.08270000", True, False, "sv_fx_prior_day", "2025-12-30"),
+            ("2025-10-31", "USD", "CNY", "7.04135000", True, False, "sv_fx_prior_exact", "2025-10-31"),
+        ],
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "Missing formal fx rate" in detail
+    assert "base_currency=USD" in detail
+    assert "report_date=2025-12-31" in detail
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_accepts_same_date_non_business_day_fx_carry_forward(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge_fx",
+        vendor_version="vv_bridge_fx",
+        rule_version="rv_bridge_fx",
+    )
+    _seed_usd_pnl_bridge_balance_rows(duckdb_path)
+    _seed_pnl_bridge_snapshot_face_values(duckdb_path)
+    _seed_pnl_bridge_fx_rates(
+        duckdb_path,
+        rows=[
+            ("2025-12-31", "USD", "CNY", "7.08270000", False, True, "sv_fx_current_carry", "2025-12-30"),
+            ("2025-10-31", "USD", "CNY", "7.04135000", True, False, "sv_fx_prior_exact", "2025-10-31"),
+        ],
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    row = payload["result"]["rows"][0]
+    assert row["fx_translation"]["raw"] == 41.35
+    assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 41.35
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_rejects_contradictory_fx_carry_forward_metadata(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge_fx",
+        vendor_version="vv_bridge_fx",
+        rule_version="rv_bridge_fx",
+    )
+    _seed_usd_pnl_bridge_balance_rows(duckdb_path)
+    _seed_pnl_bridge_snapshot_face_values(duckdb_path)
+    _seed_pnl_bridge_fx_rates(
+        duckdb_path,
+        rows=[
+            ("2025-12-31", "USD", "CNY", "7.08270000", False, True, "sv_fx_current_bad", "2025-12-31"),
+            ("2025-10-31", "USD", "CNY", "7.04135000", True, False, "sv_fx_prior_exact", "2025-10-31"),
+        ],
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 404
+    assert "Invalid formal fx carry-forward metadata" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
 def test_pnl_overview_returns_404_for_absent_union_date(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
@@ -5296,7 +5383,11 @@ def _seed_pnl_bridge_snapshot_face_values(duckdb_path: Path) -> None:
         conn.close()
 
 
-def _seed_pnl_bridge_fx_rates(duckdb_path: Path) -> None:
+def _seed_pnl_bridge_fx_rates(
+    duckdb_path: Path,
+    *,
+    rows: list[tuple[str, str, str, str, bool, bool, str, str]] | None = None,
+) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -5306,19 +5397,33 @@ def _seed_pnl_bridge_fx_rates(duckdb_path: Path) -> None:
               base_currency varchar,
               quote_currency varchar,
               mid_rate decimal(18, 8),
-              source_version varchar
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
             )
             """
         )
         conn.execute("delete from fx_daily_mid")
         conn.executemany(
             """
-            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate, source_version)
-            values (?, ?, ?, ?, ?)
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate,
+              source_name, is_business_day, is_carry_forward, source_version,
+              observed_trade_date
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("2025-12-31", "USD", "CNY", "7.08270000", "sv_fx_daily_mid_test"),
-                ("2025-10-31", "USD", "CNY", "7.04135000", "sv_fx_daily_mid_test"),
+                (trade_date, base_currency, quote_currency, mid_rate, "CFETS", is_business_day, is_carry_forward, source_version, observed_trade_date)
+                for trade_date, base_currency, quote_currency, mid_rate, is_business_day, is_carry_forward, source_version, observed_trade_date in (
+                    rows
+                    or [
+                        ("2025-12-31", "USD", "CNY", "7.08270000", True, False, "sv_fx_daily_mid_test", "2025-12-31"),
+                        ("2025-10-31", "USD", "CNY", "7.04135000", True, False, "sv_fx_daily_mid_test", "2025-10-31"),
+                    ]
+                )
             ],
         )
     finally:

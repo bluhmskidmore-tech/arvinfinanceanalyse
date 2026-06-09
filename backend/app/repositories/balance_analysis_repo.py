@@ -292,6 +292,24 @@ class BalanceAnalysisRepository(DuckDBRepository):
         lookup = self.lookup_formal_fx_rate(report_date=report_date, base_currency=base_currency)
         return lookup.rate, lookup.source_version
 
+    def resolve_formal_fx_mid_rates_map(
+        self,
+        *,
+        report_date: str,
+        base_currencies: set[str],
+    ) -> dict[str, Decimal] | None:
+        """Map required foreign currencies to formal same-date CNY mid rates."""
+        resolved: dict[str, Decimal] = {}
+        for base_currency in sorted(base_currencies):
+            base = normalize_currency_code(base_currency)
+            if not base or base in {"CNY", "CNX", "RMB"}:
+                continue
+            resolved[base] = self.lookup_formal_fx_rate(
+                report_date=report_date,
+                base_currency=base,
+            ).rate
+        return resolved or None
+
     def fetch_zqtz_snapshot_native_face_values(
         self,
         *,
