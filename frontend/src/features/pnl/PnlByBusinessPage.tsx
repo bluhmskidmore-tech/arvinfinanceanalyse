@@ -1303,12 +1303,13 @@ function BondBucketAnalysisPanel({
   isLoading: boolean;
   isError: boolean;
 }) {
+  const ftpRateDisplay = formatFtpRatePct(rows[0]?.ftp_rate_pct);
   return (
     <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-bond-bucket-analysis">
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>债券四类统计</h2>
-          <p>按利率债、信用债、金融债、其它债券归一次类，FTP 年化利率固定为 1.6%。</p>
+          <p>按利率债、信用债、金融债、其它债券归一次类，FTP 年化利率为 {ftpRateDisplay}。</p>
         </div>
       </div>
       {isLoading ? (
@@ -1416,12 +1417,13 @@ function NegativeFtpListPanel({
     .filter((row) => (numeric(row.ftp_net_pnl) ?? 0) < 0)
     .sort((left, right) => (numeric(left.ftp_net_pnl) ?? 0) - (numeric(right.ftp_net_pnl) ?? 0))
     .slice(0, 10);
+  const ftpRateDisplay = formatFtpRatePct(negativeRows[0]?.ftp_rate_pct ?? rows[0]?.ftp_rate_pct);
   return (
     <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-negative-ftp-list">
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>负FTP后收益清单</h2>
-          <p>筛出扣除 1.6% FTP 后为负的资产明细，优先看拖累最大的项目。</p>
+          <p>筛出扣除 {ftpRateDisplay} FTP 后为负的资产明细，优先看拖累最大的项目。</p>
         </div>
       </div>
       {isLoading ? (

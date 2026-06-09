@@ -21,6 +21,7 @@ def get_usd_cny_rate(
     target_date: date,
     *,
     allow_stale_fallback: bool = False,
+    target_is_business_day: bool | None = None,
 ) -> tuple[Decimal, date | None, list[str]]:
     warnings: list[str] = []
 
@@ -41,7 +42,12 @@ def get_usd_cny_rate(
             return r, d, warnings
 
     if not allow_stale_fallback:
-        if target_date.weekday() >= 5:
+        is_non_business_day = (
+            not target_is_business_day
+            if target_is_business_day is not None
+            else target_date.weekday() >= 5
+        )
+        if is_non_business_day:
             start = target_date - timedelta(days=3)
             before = [(d, r) for d, r in valid if start <= d < target_date]
             if before:

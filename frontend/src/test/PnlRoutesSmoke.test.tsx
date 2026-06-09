@@ -1255,6 +1255,26 @@ describe("pnl routed pages smoke", () => {
         ),
       },
     }));
+    client.getPnlByBusinessAnalysis = vi.fn(
+      async (options: {
+        year: number;
+        asOfDate?: string;
+        businessKey?: string;
+        dimension: PnlByBusinessAnalysisDimension;
+      }) => {
+        const payload = await buildPnlClient().getPnlByBusinessAnalysis(options);
+        return {
+          ...payload,
+          result: {
+            ...payload.result,
+            rows: payload.result.rows.map((row) => ({
+              ...row,
+              ftp_rate_pct: "2.500000",
+            })),
+          },
+        };
+      },
+    );
 
     renderWorkbenchApp(["/pnl-by-business"], { client });
 
@@ -1265,6 +1285,8 @@ describe("pnl routed pages smoke", () => {
       const bridge = screen.getByTestId("pnl-by-business-ftp-bridge");
       expect(bridge).toHaveTextContent("2.50%");
       expect(bridge).not.toHaveTextContent("1.6%");
+      expect(screen.getByTestId("pnl-by-business-bond-bucket-analysis")).toHaveTextContent("2.50%");
+      expect(screen.getByTestId("pnl-by-business-negative-ftp-list")).toHaveTextContent("2.50%");
     });
   });
 
