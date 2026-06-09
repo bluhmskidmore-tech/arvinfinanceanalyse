@@ -46,7 +46,7 @@ function yuan(yi: number): string {
 }
 
 function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
-  return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+  return String(scaleYi * 1000 + ratePct * 100 + days);
 }
 
 function readChartOption(panelTestId: string) {
@@ -1003,7 +1003,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
     expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
     expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
@@ -1041,7 +1041,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(6);
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(5);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -1154,20 +1154,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(interestOption.series?.[0]?.data).toEqual([2800, 2898.5]);
     expect(interestOption.series?.[1]?.data).toEqual([1.2, 1.45]);
 
-    const spreadOption = readChartOption("product-category-derived-chart-interest-spread");
-    expect(spreadOption.legend?.data).toEqual([
-      "生息资产收益率（%）",
-      "负债端加权收益率（%）",
-      "生息资产利差（%）",
-    ]);
-    expect(spreadOption.series?.map((series) => series.name)).toEqual([
-      "生息资产收益率（%）",
-      "负债端加权收益率（%）",
-      "生息资产利差（%）",
-    ]);
-    expect(spreadOption.series?.[0]?.data).toEqual([2.35, 2.4]);
-    expect(spreadOption.series?.[1]?.data).toEqual([1.58, 1.63]);
-    expect(spreadOption.series?.[2]?.data).toEqual([null, null]);
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
 
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.legend?.data).toEqual([
@@ -1632,7 +1619,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(panel).toHaveTextContent("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
   });
 
-  it("makes the interest spread trend visually prominent without clipping out-of-band values", async () => {
+  it("does not render an interest spread trend chart from asset and liability yields alone", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     renderWorkbenchAppWithClient({
       ...baseClient,
@@ -1675,19 +1662,9 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     await loadTrendDiagnostics();
-    await screen.findByTestId("product-category-derived-chart-interest-spread");
-
-    const spreadOption = readChartOption("product-category-derived-chart-interest-spread");
-    expect(spreadOption.yAxis).toMatchObject({ scale: true });
-    const yAxis = Array.isArray(spreadOption.yAxis) ? spreadOption.yAxis[0] : spreadOption.yAxis;
-    const plottedValues = (spreadOption.series ?? []).flatMap((series) =>
-      Array.isArray(series.data) ? series.data.filter((value): value is number => typeof value === "number") : [],
-    );
-    expect(yAxis?.min).toBeLessThanOrEqual(Math.min(...plottedValues));
-    expect(yAxis?.max).toBeGreaterThanOrEqual(Math.max(...plottedValues));
-    expect(spreadOption.series?.map((series) => series.lineStyle?.width)).toEqual([4, 3.4, 4]);
-    expect(spreadOption.series?.map((series) => series.symbolSize)).toEqual([8, 7, 8]);
-    expect(spreadOption.series?.every((series) => series.endLabel?.show)).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
+    });
   });
 
   it("builds derived charts on 2025 quarter-end points, 2025 Nov-Dec, and 2026 Jan-Mar with one view basis", async () => {

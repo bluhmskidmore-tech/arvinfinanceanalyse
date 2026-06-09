@@ -3476,10 +3476,6 @@ function liabilityDetailRowsFromSnapshot(snapshot: ProductCategoryTrendSnapshot)
     });
 }
 
-function spreadBp(_snapshot: ProductCategoryTrendSnapshot): number | null {
-  return null;
-}
-
 function productCategorySideLabel(side: string): string {
   if (side === "asset") {
     return "\u8d44\u4ea7";
@@ -3650,10 +3646,10 @@ function buildProductCategorySpreadMovementAttribution(input: {
   const priorLabel = priorSnapshot?.label ?? formatProductCategoryReportMonthLabel(priorSnapshot?.reportDate ?? "");
   const currentAssetYield = decimalNumber(currentSnapshot?.assetTotal?.weighted_yield);
   const currentLiabilityYield = decimalNumber(currentSnapshot?.liabilityTotal?.weighted_yield);
-  const currentSpread = currentSnapshot ? spreadBp(currentSnapshot) : null;
+  const currentSpread = null;
   const priorAssetYield = decimalNumber(priorSnapshot?.assetTotal?.weighted_yield);
   const priorLiabilityYield = decimalNumber(priorSnapshot?.liabilityTotal?.weighted_yield);
-  const priorSpread = priorSnapshot ? spreadBp(priorSnapshot) : null;
+  const priorSpread = null;
   const assetYieldDelta =
     currentAssetYield === null || priorAssetYield === null ? null : (currentAssetYield - priorAssetYield) * 100;
   const liabilityYieldDelta =
@@ -3992,41 +3988,10 @@ export function selectProductCategoryInterestSpreadChart(
 }
 
 export function selectProductCategoryInterestSpreadYearComparisonChart(
-  snapshots: ProductCategoryTrendSnapshot[],
-  basis: ProductCategoryInterestSpreadBasis = "weighted",
+  _snapshots: ProductCategoryTrendSnapshot[],
+  _basis: ProductCategoryInterestSpreadBasis = "weighted",
 ): ProductCategoryInterestSpreadYearComparisonChart | null {
-  const yearMonthSpread = new Map<number, Map<number, number | null>>();
-  const months = new Set<number>();
-  chronologicalProductCategorySnapshots(snapshots).forEach((snapshot) => {
-    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
-    const assetRow = findProductCategoryRow(snapshot.rows, "interest_earning_assets");
-    const liabilityRow = snapshot.liabilityTotal;
-    if (!parsed || !assetRow || !liabilityRow) {
-      return;
-    }
-    const spread = productCategoryInterestSpreadForBasis(snapshot, assetRow, liabilityRow, basis);
-    if (spread === null) {
-      return;
-    }
-    const existing = yearMonthSpread.get(parsed.year) ?? new Map<number, number | null>();
-    existing.set(parsed.month, spread);
-    yearMonthSpread.set(parsed.year, existing);
-    months.add(parsed.month);
-  });
-  if (yearMonthSpread.size === 0 || months.size === 0) {
-    return null;
-  }
-
-  const sortedMonths = Array.from(months).sort((left, right) => left - right);
-  const sortedYears = Array.from(yearMonthSpread.keys()).sort((left, right) => left - right);
-  return {
-    labels: sortedMonths.map((month) => formatProductCategoryShortMonthLabel(month)),
-    monthKeys: sortedMonths,
-    series: sortedYears.map((year) => ({
-      year: `${year}\u5e74`,
-      spread: sortedMonths.map((month) => yearMonthSpread.get(year)?.get(month) ?? null),
-    })),
-  };
+  return null;
 }
 
 export function selectProductCategoryIntermediateBusinessIncomeYearComparisonChart(
@@ -4119,7 +4084,7 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
         priorLabel: interestSpreadPercentLabel(priorMetrics.assetYield),
         currentLabel: interestSpreadPercentLabel(currentMetrics.assetYield),
         contributionLabel: signedBpLabelWithOneDecimal(assetContributionBp),
-        explanation: "\u8d44\u4ea7\u6536\u76ca\u7387\u4e0a\u884c\u6269\u5927\u5229\u5dee\uff0c\u4e0b\u884c\u538b\u7f29\u5229\u5dee",
+        explanation: "仅展示后端返回的资产端收益率字段，不推导利差贡献",
       },
       {
         key: "liability_cost",
@@ -4130,7 +4095,7 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
         priorLabel: interestSpreadPercentLabel(priorMetrics.liabilityYield),
         currentLabel: interestSpreadPercentLabel(currentMetrics.liabilityYield),
         contributionLabel: signedBpLabelWithOneDecimal(liabilityContributionBp),
-        explanation: "\u8d1f\u503a\u6210\u672c\u4e0a\u884c\u538b\u7f29\u5229\u5dee\uff0c\u4e0b\u884c\u6269\u5927\u5229\u5dee",
+        explanation: "仅展示后端返回的负债端收益率字段，不推导利差贡献",
       },
       {
         key: "spread",
@@ -4141,7 +4106,7 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
         priorLabel: interestSpreadPercentLabel(priorMetrics.spread),
         currentLabel: interestSpreadPercentLabel(currentMetrics.spread),
         contributionLabel: signedBpLabelWithOneDecimal(spreadDelta),
-        explanation: "\u5229\u5dee\u53d8\u5316=\u8d44\u4ea7\u6536\u76ca\u7387\u8d21\u732e+\u8d1f\u503a\u6210\u672c\u8d21\u732e",
+        explanation: "后端未返回正式利差字段，利差变动不在前端计算",
       },
     ],
     details: [
@@ -4292,15 +4257,6 @@ function interestSpreadAttributionDetailPoint(
     cashLabel: row ? `${formatProductCategoryRowDisplayValue(row, row[cashField])}\u4ebf\u5143` : "-",
     yieldLabel: yieldValue === null ? "-" : `${formatProductCategoryYieldValue(yieldValue)}%`,
   };
-}
-
-function productCategoryInterestSpreadForBasis(
-  _snapshot: ProductCategoryTrendSnapshot,
-  _assetRow: ProductCategoryPnlRow,
-  _liabilityRow: ProductCategoryPnlRow,
-  _basis: ProductCategoryInterestSpreadBasis,
-): number | null {
-  return null;
 }
 
 export function selectProductCategoryLiabilitySideTrendChart(

@@ -867,7 +867,7 @@ function ProductCategoryInterestSpreadAttributionPanel(props: {
         <div>
           <h3 className="product-category-interest-spread-attribution__title">利差同比归因</h3>
           <p className="product-category-interest-spread-attribution__description">
-            {basisLabel} · {props.surface.selected.month}月 · 生息资产收益率 - 负债端成本率
+            {basisLabel} · {props.surface.selected.month}月 · 后端未返回正式利差字段时仅展示缺口态
           </p>
         </div>
         <span className="product-category-interest-spread-attribution__badge">
@@ -4626,7 +4626,7 @@ export default function ProductCategoryPnlPage() {
               <div className="product-category-diagnostics__intro">
                 <h3 className="product-category-diagnostics__title">利差变动归因</h3>
                 <p className="product-category-diagnostics__description">
-                  使用当前期与可比上期趋势快照，展示资产收益率、负债收益率、利差和变动方向。
+                  后端未返回正式利差字段时，保留资产收益率、负债收益率和利差缺口提示。
                 </p>
               </div>
               <div className="product-category-diagnostics__spread-grid">
@@ -4965,14 +4965,14 @@ export default function ProductCategoryPnlPage() {
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread"
-              title="生息资产利差分析图"
-              description="按生息资产收益率减负债端付息率展示利差变化。"
+              title="生息资产利差缺口图"
+              description="后端未返回正式利差字段时不展示前端派生利差，仅保留缺口态。"
               option={interestSpreadOption}
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread-yoy"
-              title="2年生息资产利差变化对比图"
-              description="按同月口径对比上年与当年生息资产利差，当前年仅展示已发生月份。"
+              title="2年生息资产利差缺口对比图"
+              description="后端未返回正式利差字段时不展示同比利差曲线。"
               option={interestSpreadYearComparisonOption}
               onEvents={{
                 click: (params: unknown) =>
@@ -4985,8 +4985,8 @@ export default function ProductCategoryPnlPage() {
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread-yoy-cny"
-              title="人民币口径2年生息资产利差变化对比图"
-              description="按人民币生息资产收益率减人民币负债端成本，对比上年全年与当年已发生月份。"
+              title="人民币口径2年生息资产利差缺口对比图"
+              description="后端未返回人民币正式利差字段时不展示人民币口径利差曲线。"
               option={cnyInterestSpreadYearComparisonOption}
               onEvents={{
                 click: (params: unknown) =>

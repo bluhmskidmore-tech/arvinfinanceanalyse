@@ -107,7 +107,7 @@ function yi(value: number): string {
 }
 
 function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
-  return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+  return String(scaleYi * 1000 + ratePct * 100 + days);
 }
 
 function attributionPayload(overrides: Partial<ProductCategoryAttributionPayload>): ProductCategoryAttributionPayload {
@@ -1972,6 +1972,23 @@ describe("productCategoryPnlPageModel", () => {
         snapshot("2026-02-28", "2.48", "1.68"),
       ]),
     ).toBeNull();
+  });
+
+  it("does not describe product-category spread as a frontend-derived yield difference", () => {
+    const pageSource = [
+      "src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+      "src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+    ]
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
+
+    expect(pageSource).not.toContain("生息资产收益率 - 负债端成本率");
+    expect(pageSource).not.toContain("按生息资产收益率减负债端付息率展示利差变化。");
+    expect(pageSource).not.toContain("按人民币生息资产收益率减人民币负债端成本");
+    expect(pageSource).not.toContain("资产收益率上行扩大利差");
+    expect(pageSource).not.toContain("负债成本上行压缩利差");
+    expect(pageSource).not.toContain("利差变化=资产收益率贡献+负债成本贡献");
+    expect(pageSource).toContain("后端未返回正式利差字段");
   });
 
   it("groups intermediate business income by governed row without total fallback", () => {
