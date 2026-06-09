@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import duckdb
+from backend.app.core_finance.liability_analytics_compat import to_float
 
 FORMAL_ZQTZ_YIELD_COLUMNS = {
     "report_date",
@@ -31,6 +33,11 @@ IB_ASSET_PREDICATE = (
     "(instr(lower(coalesce(position_side, '')), 'asset') > 0 "
     "or instr(coalesce(position_side, ''), '资产') > 0)"
 )
+
+
+NCD_TEXT = "\u540c\u4e1a\u5b58\u5355"
+TRADING_TEXT = "\u4ea4\u6613"
+RECEIVABLE_INVESTMENT_TEXT = "\u5e94\u6536\u6295\u8d44"
 
 
 @dataclass
@@ -377,6 +384,326 @@ class LiabilityAnalyticsRepository:
             return zqtz_rows_by_date, self._group_rows_by_report_date(tyw_rows)
         finally:
             conn.close()
+
+    @staticmethod
+    def _build_yield_kpi_payloads(
+        *,
+        zqtz_rows: list[object],
+        tyw_rows: list[object],
+    ) -> dict[str, dict[str, Any]]:
+        sums: dict[str, dict[str, Decimal]] = {}
+        lineage: dict[str, dict[str, set[str]]] = {}
+
+        def ensure(report_date: object) -> dict[str, Decimal]:
+            key = str(report_date)
+            lineage.setdefault(key, {"source_version": set(), "rule_version": set()})
+            return sums.setdefault(
+                key,
+                {
+                    "asset_num": Decimal("0"),
+                    "asset_den": Decimal("0"),
+                    "liability_num": Decimal("0"),
+                    "liability_den": Decimal("0"),
+                    "market_liability_num": Decimal("0"),
+                    "market_liability_den": Decimal("0"),
+                },
+            )
+
+        def add_lineage(report_date: object, source_version: object, rule_version: object) -> None:
+            bucket = lineage.setdefault(str(report_date), {"source_version": set(), "rule_version": set()})
+            for raw, field in ((source_version, "source_version"), (rule_version, "rule_version")):
+                for token in str(raw or "").split("|"):
+                    token = token.strip()
+                    if token:
+                        bucket[field].add(token)
+
+        for row in zqtz_rows:
+            bucket = ensure(row[0])
+            bucket["asset_num"] += Decimal(str(row[1] or "0"))
+            bucket["asset_den"] += Decimal(str(row[2] or "0"))
+            bucket["liability_num"] += Decimal(str(row[3] or "0"))
+            bucket["liability_den"] += Decimal(str(row[4] or "0"))
+            bucket["market_liability_num"] += Decimal(str(row[5] or "0"))
+            bucket["market_liability_den"] += Decimal(str(row[6] or "0"))
+            add_lineage(row[0], row[7], row[8])
+
+        for row in tyw_rows:
+            bucket = ensure(row[0])
+            bucket["asset_num"] += Decimal(str(row[1] or "0"))
+            bucket["asset_den"] += Decimal(str(row[2] or "0"))
+            bucket["liability_num"] += Decimal(str(row[3] or "0"))
+            bucket["liability_den"] += Decimal(str(row[4] or "0"))
+            bucket["market_liability_num"] += Decimal(str(row[3] or "0"))
+            bucket["market_liability_den"] += Decimal(str(row[4] or "0"))
+            add_lineage(row[0], row[5], row[6])
+
+        payloads: dict[str, dict[str, Any]] = {}
+        for report_date, values in sums.items():
+            asset_yield = (
+                values["asset_num"] / values["asset_den"]
+                if values["asset_den"] > 0
+                else None
+            )
+            liability_cost = (
+                values["liability_num"] / values["liability_den"]
+                if values["liability_den"] > 0
+                else None
+            )
+            market_liability_cost = (
+                values["market_liability_num"] / values["market_liability_den"]
+                if values["market_liability_den"] > 0
+                else liability_cost
+            )
+            nim = (
+                asset_yield - market_liability_cost
+                if asset_yield is not None and market_liability_cost is not None
+                else None
+            )
+            payloads[report_date] = {
+                "report_date": report_date,
+                "kpi": {
+                    "asset_yield": to_float(asset_yield),
+                    "liability_cost": to_float(liability_cost),
+                    "market_liability_cost": to_float(market_liability_cost),
+                    "nim": to_float(nim),
+                },
+                "source_version": "|".join(sorted(lineage.get(report_date, {}).get("source_version", set()))),
+                "rule_version": "|".join(sorted(lineage.get(report_date, {}).get("rule_version", set()))),
+            }
+        return payloads
+
+    def fetch_yield_kpis_for_dates(self, report_dates: list[str]) -> dict[str, dict[str, Any]]:
+        dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
+        if not dates:
+            return {}
+        try:
+            conn = self._connect()
+        except duckdb.Error:
+            return {}
+        if conn is None:
+            return {}
+        try:
+            placeholders = ", ".join(["?::date"] * len(dates))
+            rows = conn.execute(
+                f"""
+                with zqtz_prepared as (
+                  select
+                    cast(report_date as varchar) as report_date,
+                    position_scope,
+                    invest_type_std,
+                    asset_class,
+                    bond_type,
+                    instrument_name,
+                    maturity_date,
+                    case
+                      when position_scope = 'liability' then
+                        coalesce(amortized_cost_amount, market_value_amount, face_value_amount, 0)
+                      when invest_type_std = 'H' then
+                        coalesce(amortized_cost_amount, market_value_amount, face_value_amount, 0)
+                      else
+                        coalesce(market_value_amount, face_value_amount, 0)
+                    end as amount,
+                    case
+                      when position_scope = 'liability'
+                           and (instr(coalesce(bond_type, ''), ?) > 0
+                                or instr(coalesce(instrument_name, ''), ?) > 0)
+                        then coalesce(face_value_amount, market_value_amount, 0)
+                      else 0
+                    end as ncd_amount,
+                    case
+                      when ytm_value is not null and ytm_value <> 0 then ytm_value
+                      when coupon_rate is not null and coupon_rate <> 0 then coupon_rate
+                      else null
+                    end as asset_rate,
+                    coupon_rate as liability_rate,
+                    source_version,
+                    rule_version
+                  from fact_formal_zqtz_balance_daily
+                  where report_date in ({placeholders})
+                    and currency_basis = 'CNY'
+                    and position_scope in ('asset', 'liability')
+                ),
+                zqtz_agg as (
+                select
+                  report_date,
+                  sum(
+                    case
+                      when position_scope = 'asset'
+                           and maturity_date is not null
+                           and coalesce(amount, 0) > 0
+                           and asset_rate is not null
+                           and instr(coalesce(asset_class, ''), ?) = 0
+                           and (
+                             invest_type_std in ('H', 'A')
+                             or instr(coalesce(asset_class, ''), ?) > 0
+                           )
+                        then amount * case
+                          when asset_rate > 0.5 and asset_rate <= 100 then asset_rate / 100
+                          else asset_rate
+                        end
+                      else 0
+                    end
+                  ) as asset_num,
+                  sum(
+                    case
+                      when position_scope = 'asset'
+                           and maturity_date is not null
+                           and coalesce(amount, 0) > 0
+                           and asset_rate is not null
+                           and instr(coalesce(asset_class, ''), ?) = 0
+                           and (
+                             invest_type_std in ('H', 'A')
+                             or instr(coalesce(asset_class, ''), ?) > 0
+                           )
+                        then amount
+                      else 0
+                    end
+                  ) as asset_den,
+                  sum(
+                    case
+                      when position_scope = 'liability'
+                           and coalesce(amount, 0) > 0
+                           and liability_rate is not null
+                        then amount * case
+                          when liability_rate > 0.5 and liability_rate <= 100 then liability_rate / 100
+                          else liability_rate
+                        end
+                      else 0
+                    end
+                  ) as liability_num,
+                  sum(
+                    case
+                      when position_scope = 'liability'
+                           and coalesce(amount, 0) > 0
+                           and liability_rate is not null
+                        then amount
+                      else 0
+                    end
+                  ) as liability_den,
+                  sum(
+                    case
+                      when position_scope = 'liability'
+                           and coalesce(ncd_amount, 0) > 0
+                           and liability_rate is not null
+                        then ncd_amount * case
+                          when liability_rate > 0.5 and liability_rate <= 100 then liability_rate / 100
+                          else liability_rate
+                        end
+                      else 0
+                    end
+                  ) as market_liability_num,
+                  sum(
+                    case
+                      when position_scope = 'liability'
+                           and coalesce(ncd_amount, 0) > 0
+                           and liability_rate is not null
+                        then ncd_amount
+                      else 0
+                    end
+                  ) as market_liability_den,
+                  string_agg(distinct source_version, '|') as source_version,
+                  string_agg(distinct rule_version, '|') as rule_version
+                from zqtz_prepared
+                group by report_date
+                ),
+                tyw_agg as (
+                  select
+                    cast(report_date as varchar) as report_date,
+                    sum(
+                      case
+                        when coalesce(principal_native, 0) > 0
+                             and funding_cost_rate is not null
+                             and ({IB_ASSET_PREDICATE})
+                          then principal_native * (funding_cost_rate / 100)
+                        else 0
+                      end
+                    ) as asset_num,
+                    sum(
+                      case
+                        when coalesce(principal_native, 0) > 0
+                             and funding_cost_rate is not null
+                             and ({IB_ASSET_PREDICATE})
+                          then principal_native
+                        else 0
+                      end
+                    ) as asset_den,
+                    sum(
+                      case
+                        when coalesce(principal_native, 0) > 0
+                             and funding_cost_rate is not null
+                             and not ({IB_ASSET_PREDICATE})
+                          then principal_native * (funding_cost_rate / 100)
+                        else 0
+                      end
+                    ) as liability_num,
+                    sum(
+                      case
+                        when coalesce(principal_native, 0) > 0
+                             and funding_cost_rate is not null
+                             and not ({IB_ASSET_PREDICATE})
+                          then principal_native
+                        else 0
+                      end
+                    ) as liability_den,
+                    sum(
+                      case
+                        when coalesce(principal_native, 0) > 0
+                             and funding_cost_rate is not null
+                             and not ({IB_ASSET_PREDICATE})
+                          then principal_native * (funding_cost_rate / 100)
+                        else 0
+                      end
+                    ) as market_liability_num,
+                    sum(
+                      case
+                        when coalesce(principal_native, 0) > 0
+                             and funding_cost_rate is not null
+                             and not ({IB_ASSET_PREDICATE})
+                          then principal_native
+                        else 0
+                      end
+                    ) as market_liability_den,
+                    string_agg(distinct source_version, '|') as source_version,
+                    string_agg(distinct rule_version, '|') as rule_version
+                  from tyw_interbank_daily_snapshot
+                  where report_date in ({placeholders})
+                  group by report_date
+                ),
+                combined as (
+                  select * from zqtz_agg
+                  union all
+                  select * from tyw_agg
+                )
+                select
+                  report_date,
+                  sum(asset_num) as asset_num,
+                  sum(asset_den) as asset_den,
+                  sum(liability_num) as liability_num,
+                  sum(liability_den) as liability_den,
+                  sum(market_liability_num) as market_liability_num,
+                  sum(market_liability_den) as market_liability_den,
+                  string_agg(source_version, '|') as source_version,
+                  string_agg(rule_version, '|') as rule_version
+                from combined
+                group by report_date
+                """,
+                [
+                    NCD_TEXT,
+                    NCD_TEXT,
+                    *dates,
+                    TRADING_TEXT,
+                    RECEIVABLE_INVESTMENT_TEXT,
+                    TRADING_TEXT,
+                    RECEIVABLE_INVESTMENT_TEXT,
+                    *dates,
+                ],
+            ).fetchall()
+        except duckdb.Error:
+            return {}
+        finally:
+            conn.close()
+
+        return self._build_yield_kpi_payloads(zqtz_rows=rows, tyw_rows=[])
 
     def fetch_zqtz_liability_rows_for_year(self, year: int) -> list[dict[str, Any]]:
         conn = self._connect()

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+import hashlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -72,6 +74,9 @@ _HOME_INCOME_BENCHMARK_PERIOD_TYPE = "MoM"
 _HOME_INCOME_CURVE_FALLBACK_PREFIX = "YIELD_CURVE_LATEST_FALLBACK"
 _HOME_INCOME_MAX_CURVE_FALLBACK_DAYS = 7
 _HOME_SNAPSHOT_OVERVIEW_HISTORY_POINTS = 3
+_HOME_CACHE_GOVERNANCE_FILES = ("cache_manifest.jsonl", "cache_build_run.jsonl")
+_HOME_CACHE_GOVERNANCE_TAIL_BYTES = 8192
+_HOME_CACHE_BUILD_RUN_TAIL_BYTES = 256 * 1024
 _MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
 _DEFAULT_SOURCE = "sv_exec_dashboard_v1"
 _DEFAULT_RULE = "rv_exec_dashboard_v1"
@@ -319,8 +324,115 @@ def _lineage_tokens_from_rows(rows: list[dict[str, object]], field_name: str) ->
     return _lineage_tokens(*(row.get(field_name) for row in rows))
 
 
+def _lineage_tokens_from_payload(payload: dict[str, object], field_name: str) -> list[str]:
+    return _lineage_tokens(payload.get(field_name))
+
+
+def _lineage_tokens_from_state(state: dict[str, object], field_name: str) -> list[str]:
+    value = state.get(field_name, [])
+    if isinstance(value, (list, tuple, set)):
+        return _lineage_tokens(*value)
+    return _lineage_tokens(value)
+
+
+def _state_has_lineage_tokens(state: dict[str, object]) -> bool:
+    return bool(_lineage_tokens_from_state(state, "source_versions")) and bool(
+        _lineage_tokens_from_state(state, "rule_versions")
+    )
+
+
+def _state_missing_required_lineage(state: dict[str, object]) -> bool:
+    return bool(state.get("missing_lineage")) or not _state_has_lineage_tokens(state)
+
+
 def _join_lineage_tokens(*values: object) -> str:
     return "__".join(_lineage_tokens(*values))
+
+
+class _HomeCacheBuildRunRows(list[dict[str, object]]):
+    def __init__(self, rows: list[dict[str, object]], *, is_partial: bool) -> None:
+        super().__init__(rows)
+        self.is_partial = is_partial
+        self.full_rows: list[dict[str, object]] | None = None
+        self._full_rows_lock = threading.Lock()
+
+
+class _HomeCacheBuildRunFallbackState:
+    def __init__(self) -> None:
+        self.full_rows_failed = False
+
+
+def _read_all_cache_build_runs_for_executive_overview(
+    governance_dir: str,
+) -> _HomeCacheBuildRunRows | None:
+    try:
+        rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    except (RuntimeError, OSError, TypeError, ValueError):
+        return None
+    return _HomeCacheBuildRunRows(rows, is_partial=False)
+
+
+def _read_recent_cache_build_runs_for_executive_overview(
+    governance_dir: str,
+) -> _HomeCacheBuildRunRows | None:
+    target = Path(governance_dir) / f"{CACHE_BUILD_RUN_STREAM}.jsonl"
+    try:
+        stat = target.stat()
+    except OSError:
+        return None
+    try:
+        with target.open("rb") as handle:
+            if stat.st_size > _HOME_CACHE_BUILD_RUN_TAIL_BYTES:
+                handle.seek(-_HOME_CACHE_BUILD_RUN_TAIL_BYTES, 2)
+                handle.readline()
+            data = handle.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    is_partial = stat.st_size > _HOME_CACHE_BUILD_RUN_TAIL_BYTES
+    rows: list[dict[str, object]] = []
+    for line in data.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            row = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return _HomeCacheBuildRunRows(rows, is_partial=is_partial)
+
+
+def _full_cache_build_runs_for_partial_rows(
+    rows: list[dict[str, object]],
+    *,
+    governance_dir: str,
+    fallback_state: _HomeCacheBuildRunFallbackState | None = None,
+) -> list[dict[str, object]] | None:
+    if not isinstance(rows, _HomeCacheBuildRunRows) or not rows.is_partial:
+        return None
+    if rows.full_rows is not None:
+        return rows.full_rows
+    if fallback_state is not None and fallback_state.full_rows_failed:
+        return None
+    with rows._full_rows_lock:
+        if rows.full_rows is not None:
+            return rows.full_rows
+        if fallback_state is not None and fallback_state.full_rows_failed:
+            return None
+        full_rows = _read_all_cache_build_runs_for_executive_overview(governance_dir)
+        if full_rows is None:
+            if fallback_state is not None:
+                fallback_state.full_rows_failed = True
+            return None
+        rows.full_rows = full_rows
+    return rows.full_rows
+
+
+def _cache_build_runs_full_fallback_failed(
+    fallback_state: _HomeCacheBuildRunFallbackState,
+) -> bool:
+    return fallback_state.full_rows_failed
 
 
 def _read_cache_build_runs_for_executive_overview(governance_dir: str) -> list[dict[str, object]] | None:
@@ -331,10 +443,45 @@ def _read_cache_build_runs_for_executive_overview(governance_dir: str) -> list[d
         and load_latest_bond_analytics_lineage is not _DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE
     ):
         return None
-    try:
-        return GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
-    except (RuntimeError, OSError, TypeError, ValueError):
-        return None
+    fingerprint = _governance_file_fingerprint(governance_dir, CACHE_BUILD_RUN_STREAM)
+    if fingerprint is None:
+        return _read_all_cache_build_runs_for_executive_overview(governance_dir)
+
+    cache_key: _HomeCacheBuildRunsKey = (governance_dir, fingerprint)
+
+    def produce() -> list[dict[str, object]] | None:
+        recent_rows = _read_recent_cache_build_runs_for_executive_overview(governance_dir)
+        if recent_rows is not None:
+            return recent_rows
+        return _read_all_cache_build_runs_for_executive_overview(governance_dir)
+
+    return _HOME_CACHE_BUILD_RUNS_CACHE.get_or_set(cache_key, produce)
+
+
+def _resolve_kpi_authority_gate_for_overview(
+    *,
+    dsn: str,
+    year: int | None,
+) -> dict[str, object]:
+    cache_key: _HomeKpiGateCacheKey = (dsn, year, id(resolve_kpi_authority_gate))
+
+    def produce() -> dict[str, object]:
+        return resolve_kpi_authority_gate(dsn=dsn, year=year)
+
+    return dict(_HOME_KPI_GATE_CACHE.get_or_set(cache_key, produce))
+
+
+def _resolve_executive_kpi_metrics_for_overview(
+    *,
+    dsn: str,
+    report_date: str | None,
+) -> list[dict[str, object]]:
+    cache_key: _HomeKpiMetricsCacheKey = (dsn, report_date, id(resolve_executive_kpi_metrics))
+
+    def produce() -> list[dict[str, object]]:
+        return resolve_executive_kpi_metrics(dsn=dsn, report_date=report_date)
+
+    return [dict(item) for item in _HOME_KPI_METRICS_CACHE.get_or_set(cache_key, produce)]
 
 
 def _latest_completed_cache_build_run(
@@ -367,6 +514,7 @@ def _completed_formal_build_lineage_from_rows(
     cache_key: str,
     job_name: str,
     report_date: str,
+    fallback_state: _HomeCacheBuildRunFallbackState | None = None,
 ) -> dict[str, object] | None:
     if rows is None or resolve_completed_formal_build_lineage is not _DEFAULT_RESOLVE_COMPLETED_FORMAL_BUILD_LINEAGE:
         return resolve_completed_formal_build_lineage(
@@ -375,8 +523,24 @@ def _completed_formal_build_lineage_from_rows(
             job_name=job_name,
             report_date=report_date,
         )
-    return _latest_completed_cache_build_run(
+    latest = _latest_completed_cache_build_run(
         rows,
+        cache_key=cache_key,
+        job_name=job_name,
+        report_date=report_date,
+        require_source_version=True,
+    )
+    if latest is not None:
+        return latest
+    full_rows = _full_cache_build_runs_for_partial_rows(
+        rows,
+        governance_dir=governance_dir,
+        fallback_state=fallback_state,
+    )
+    if full_rows is None:
+        return None
+    return _latest_completed_cache_build_run(
+        full_rows,
         cache_key=cache_key,
         job_name=job_name,
         report_date=report_date,
@@ -389,6 +553,7 @@ def _bond_analytics_lineage_from_rows(
     *,
     governance_dir: str,
     report_date: str,
+    fallback_state: _HomeCacheBuildRunFallbackState | None = None,
 ) -> dict[str, str] | None:
     if rows is None or load_latest_bond_analytics_lineage is not _DEFAULT_LOAD_LATEST_BOND_ANALYTICS_LINEAGE:
         return load_latest_bond_analytics_lineage(
@@ -400,7 +565,22 @@ def _bond_analytics_lineage_from_rows(
         cache_key=BOND_ANALYTICS_CACHE_KEY,
         job_name="bond_analytics_materialize",
         report_date=report_date,
+        require_source_version=True,
     )
+    if latest is None:
+        full_rows = _full_cache_build_runs_for_partial_rows(
+            rows,
+            governance_dir=governance_dir,
+            fallback_state=fallback_state,
+        )
+        if full_rows is not None:
+            latest = _latest_completed_cache_build_run(
+                full_rows,
+                cache_key=BOND_ANALYTICS_CACHE_KEY,
+                job_name="bond_analytics_materialize",
+                report_date=report_date,
+                require_source_version=True,
+            )
     if latest is None:
         return None
     return {
@@ -499,14 +679,12 @@ def _level1_monthly_rows(
     repo: ProductCategoryPnlRepository,
     report_date: str | None = None,
 ) -> tuple[str, list[dict[str, object]]] | None:
-    dates = repo.list_report_dates()
     target_report_date = _normalize_report_date(report_date)
     if target_report_date is None:
+        dates = repo.list_report_dates()
         if not dates:
             return None
         target_report_date = dates[0]
-    elif dates and target_report_date not in dates:
-        return None
     rows = repo.fetch_rows(target_report_date, "monthly")
     level1 = [
         r
@@ -1119,16 +1297,11 @@ def _fetch_nim_context(
             n=n,
         )
     duckdb_path = str(getattr(liability_repo, "path", "") or _duckdb_version_token()[0])
-    try:
-        duckdb_mtime_ns = Path(duckdb_path).stat().st_mtime_ns
-    except OSError:
-        duckdb_mtime_ns = None
     cache_key: _HomeNimContextCacheKey = (
         tuple(str(d).strip() for d in report_dates if str(d or "").strip()),
         current_report_date,
         n,
-        duckdb_path,
-        duckdb_mtime_ns,
+        _home_data_version_token(duckdb_path=duckdb_path),
     )
     hit, cached = _HOME_NIM_CONTEXT_CACHE.get(cache_key)
     if hit and cached is not None:
@@ -1183,6 +1356,33 @@ def _fetch_nim_context_uncached(
         fetch_dates.append(previous_report_date)
     if not fetch_dates:
         return {}, {}, {}, None
+
+    fetch_yield_kpis = getattr(liability_repo, "fetch_yield_kpis_for_dates", None)
+    if callable(fetch_yield_kpis):
+        try:
+            fetch_t0 = time.perf_counter()
+            payloads_by_date = fetch_yield_kpis(fetch_dates)
+            if payloads_by_date and all(d in payloads_by_date for d in fetch_dates):
+                _log_home_snapshot_detail_perf(
+                    "home_snapshot_nim",
+                    "fetch_yield_kpis_for_dates",
+                    fetch_t0,
+                    extra=f"dates={len(fetch_dates)} payloads={len(payloads_by_date)}",
+                    report_date=current_report_date,
+                )
+                history_values: list[float] = []
+                for d in slice_dates:
+                    payload = payloads_by_date.get(d)
+                    kpi = payload.get("kpi") if isinstance(payload, dict) else None
+                    v = kpi.get("nim") if isinstance(kpi, dict) else None
+                    if v is not None:
+                        history_values.append(float(v))
+                history = history_values if history_values else None
+                if history is not None:
+                    history.reverse()
+                return payloads_by_date, {}, {}, history
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+            pass
 
     fetch_yield_rows = getattr(liability_repo, "fetch_yield_rows_for_dates", None)
     if callable(fetch_yield_rows):
@@ -1360,6 +1560,7 @@ def executive_overview(
     settings = get_settings()
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     cache_build_runs = _read_cache_build_runs_for_executive_overview(governance_dir)
+    cache_build_run_fallback_state = _HomeCacheBuildRunFallbackState()
     normalized_report_date = _normalize_report_date(report_date)
     current_balance_report_date: str | None = None
     current_pnl_report_date: str | None = None
@@ -1486,10 +1687,13 @@ def executive_overview(
                         cache_key=PNL_CACHE_KEY,
                         job_name=PNL_JOB_NAME,
                         report_date=current_report_date,
+                        fallback_state=cache_build_run_fallback_state,
                     )
                     if current_lineage is not None:
                         source_versions.append(current_lineage.get("source_version"))
                         rule_versions.append(current_lineage.get("rule_version"))
+                    elif raw is not None:
+                        state["missing_lineage"] = True
             previous_report_date = _previous_report_date(
                 pnl_report_dates,
                 current_report_date,
@@ -1502,10 +1706,13 @@ def executive_overview(
                         cache_key=PNL_CACHE_KEY,
                         job_name=PNL_JOB_NAME,
                         report_date=previous_report_date,
+                        fallback_state=cache_build_run_fallback_state,
                     )
                     if previous_lineage is not None:
                         source_versions.append(previous_lineage.get("source_version"))
                         rule_versions.append(previous_lineage.get("rule_version"))
+                    elif previous_report_date in ytd_values_by_date:
+                        state["missing_lineage"] = True
                 if previous_report_date in ytd_values_by_date:
                     state["delta"] = _format_percent_change(
                         raw,
@@ -1549,15 +1756,17 @@ def executive_overview(
                 state["history"] = history
                 zqtz_rows = zqtz_rows_by_date.get(current_report_date, [])
                 tyw_rows = tyw_rows_by_date.get(current_report_date, [])
+                payload = nim_payloads_by_date.get(current_report_date, {})
                 source_versions: list[object] = [
+                    *_lineage_tokens_from_payload(payload, "source_version"),
                     *_lineage_tokens_from_rows(zqtz_rows, "source_version"),
                     *_lineage_tokens_from_rows(tyw_rows, "source_version"),
                 ]
                 rule_versions: list[object] = [
+                    *_lineage_tokens_from_payload(payload, "rule_version"),
                     *_lineage_tokens_from_rows(zqtz_rows, "rule_version"),
                     *_lineage_tokens_from_rows(tyw_rows, "rule_version"),
                 ]
-                payload = nim_payloads_by_date.get(current_report_date, {})
                 nim_value = payload.get("kpi", {}).get("nim")
                 if nim_value is not None:
                     raw = float(nim_value)
@@ -1567,13 +1776,15 @@ def executive_overview(
                         current_report_date,
                     )
                     if previous_report_date is not None:
+                        previous_payload = nim_payloads_by_date.get(previous_report_date, {})
                         previous_zqtz_rows = zqtz_rows_by_date.get(previous_report_date, [])
                         previous_tyw_rows = tyw_rows_by_date.get(previous_report_date, [])
+                        source_versions.extend(_lineage_tokens_from_payload(previous_payload, "source_version"))
                         source_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "source_version"))
                         source_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "source_version"))
+                        rule_versions.extend(_lineage_tokens_from_payload(previous_payload, "rule_version"))
                         rule_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "rule_version"))
                         rule_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "rule_version"))
-                        previous_payload = nim_payloads_by_date.get(previous_report_date, {})
                         state["delta"] = _format_ratio_point_change(
                             raw,
                             previous_payload.get("kpi", {}).get("nim"),
@@ -1592,6 +1803,7 @@ def executive_overview(
             "history": None,
             "source_versions": [],
             "rule_versions": [],
+            "missing_lineage": False,
         }
         try:
             bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
@@ -1622,10 +1834,13 @@ def executive_overview(
                         cache_build_runs,
                         governance_dir=governance_dir,
                         report_date=current_report_date,
+                        fallback_state=cache_build_run_fallback_state,
                     )
                     if current_lineage is not None:
                         source_versions.append(current_lineage.get("source_version"))
                         rule_versions.append(current_lineage.get("rule_version"))
+                    else:
+                        state["missing_lineage"] = True
                 previous_report_date = _previous_report_date(
                     bond_report_dates,
                     current_report_date,
@@ -1638,10 +1853,13 @@ def executive_overview(
                                 cache_build_runs,
                                 governance_dir=governance_dir,
                                 report_date=previous_report_date,
+                                fallback_state=cache_build_run_fallback_state,
                             )
                             if previous_lineage is not None:
                                 source_versions.append(previous_lineage.get("source_version"))
                                 rule_versions.append(previous_lineage.get("rule_version"))
+                            else:
+                                state["missing_lineage"] = True
                         state["delta"] = _format_percent_change(
                             raw,
                             float(previous_snapshot["portfolio_dv01"]),
@@ -1822,7 +2040,7 @@ def executive_overview(
         getattr(settings, "governance_sql_dsn", "")
         or getattr(settings, "postgres_dsn", "")
     )
-    kpi_gate = resolve_kpi_authority_gate(
+    kpi_gate = _resolve_kpi_authority_gate_for_overview(
         dsn=kpi_dsn,
         year=(
             _safe_report_year(current_pnl_report_date)
@@ -1838,7 +2056,7 @@ def executive_overview(
         try:
             metrics.extend(
                 ExecutiveMetric.model_validate(item)
-                for item in resolve_executive_kpi_metrics(
+                for item in _resolve_executive_kpi_metrics_for_overview(
                     dsn=kpi_dsn,
                     report_date=current_pnl_report_date or normalized_report_date,
                 )
@@ -1858,6 +2076,12 @@ def executive_overview(
         or nim_raw is None
         or dv01_raw is None
     )
+    lineage_fallback_failed = _cache_build_runs_full_fallback_failed(cache_build_run_fallback_state)
+    has_missing_lineage = (
+        (ytd_raw is not None and _state_missing_required_lineage(ytd_state))
+        or (dv01_raw is not None and _state_missing_required_lineage(dv01_state))
+    )
+    has_overview_warning = has_missing_governed_metrics or has_missing_lineage
     effective_balance_report_date = current_balance_report_date if aum_raw is not None else None
     effective_pnl_report_date = current_pnl_report_date if ytd_raw is not None else None
     effective_liability_report_date = liability_report_date if nim_raw is not None else None
@@ -1871,16 +2095,16 @@ def executive_overview(
     return _envelope(
         "executive.overview",
         payload,
-        quality_flag="warning" if has_missing_governed_metrics else "ok",
-        vendor_status="vendor_unavailable" if has_missing_governed_metrics else "ok",
+        quality_flag="warning" if has_overview_warning else "ok",
+        vendor_status="vendor_unavailable" if has_overview_warning else "ok",
         source_version=(
             _MISS_SOURCE
-            if has_missing_governed_metrics
+            if has_overview_warning
             else _join_lineage_tokens(*overview_source_versions)
         ),
         rule_version=(
             _DEFAULT_RULE
-            if has_missing_governed_metrics
+            if has_overview_warning
             else _join_lineage_tokens(*overview_rule_versions)
         ),
         filters_applied={
@@ -1892,6 +2116,7 @@ def executive_overview(
                 "risk": effective_risk_report_date,
             },
             "kpi_gate": kpi_gate,
+            "lineage_fallback_failed": lineage_fallback_failed,
         },
         requested_report_date=normalized_report_date,
         resolved_report_date=overview_report_date,
@@ -2413,12 +2638,84 @@ def executive_verdict(
     )
 
 
+def _product_category_ytd_headline_from_values(
+    report_date: str,
+    values: dict[str, object],
+) -> ProductCategoryYtdHeadlinePayload | None:
+    if values.get("grand_total") is None:
+        return None
+    summary_pnl = _fmt_yi_amount(float(values["grand_total"]), signed=True)
+    summary_detail = (
+        "Aligned with product-category view=ytd "
+        f"grand_total.business_net_income; report_date={report_date}."
+    )
+    intermediate = values.get("intermediate_business_income")
+    if intermediate is None:
+        int_numeric = _fmt_yi_amount(None, signed=True)
+        int_detail = (
+            "intermediate_business_income row was not found for product-category "
+            f"view=ytd; report_date={report_date}."
+        )
+    else:
+        int_numeric = _fmt_yi_amount(float(intermediate), signed=True)
+        int_detail = (
+            "Aligned with product-category view=ytd "
+            f"intermediate_business_income; report_date={report_date}."
+        )
+    return ProductCategoryYtdHeadlinePayload(
+        view="ytd",
+        summary_pnl=summary_pnl,
+        summary_pnl_detail=summary_detail,
+        operating_income=summary_pnl,
+        operating_income_detail=summary_detail,
+        intermediate_business_income=int_numeric,
+        intermediate_business_income_detail=int_detail,
+    )
+
+
+def _product_category_monthly_headline_from_values(
+    report_date: str,
+    values: dict[str, object],
+) -> ProductCategoryMonthlyHeadlinePayload | None:
+    if values.get("grand_total") is None:
+        return None
+    monthly_detail = (
+        "Aligned with product-category view=monthly "
+        f"grand_total.business_net_income; report_date={report_date}."
+    )
+    return ProductCategoryMonthlyHeadlinePayload(
+        view="monthly",
+        monthly_income=_fmt_yi_amount(float(values["grand_total"]), signed=True),
+        monthly_income_detail=monthly_detail,
+    )
+
+
+def _fetch_product_category_home_headline_values(
+    duck_path: str,
+    report_date: str,
+    views: list[str],
+) -> dict[str, dict[str, object]]:
+    try:
+        return ProductCategoryPnlRepository(duck_path).fetch_home_headline_values(
+            report_date=report_date,
+            views=views,
+        )
+    except Exception:
+        return {}
+
+
 def _build_product_category_ytd_headline(report_date: str) -> ProductCategoryYtdHeadlinePayload | None:
     """与 /product-category-pnl「汇总视图」（ytd）一致：grand_total + intermediate_business_income。"""
     settings = get_settings()
     duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
     if not duck_path:
         return None
+    fast_headline = _product_category_ytd_headline_from_values(
+        report_date,
+        _fetch_product_category_home_headline_values(duck_path, report_date, ["ytd"]).get("ytd", {}),
+    )
+    if fast_headline is not None:
+        return fast_headline
     try:
         pc_payload = resolve_product_category_ytd_payload_for_home_snapshot(
             duck_path,
@@ -2477,6 +2774,12 @@ def _build_product_category_monthly_headline(report_date: str) -> ProductCategor
     duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
     if not duck_path:
         return None
+    fast_headline = _product_category_monthly_headline_from_values(
+        report_date,
+        _fetch_product_category_home_headline_values(duck_path, report_date, ["monthly"]).get("monthly", {}),
+    )
+    if fast_headline is not None:
+        return fast_headline
     try:
         envelope = product_category_pnl_envelope(
             duck_path,
@@ -2512,6 +2815,27 @@ def _build_product_category_headlines(
     int,
     int,
 ]:
+    settings = get_settings()
+    duck_path = str(getattr(settings, "duckdb_path", "") or "").strip()
+    if duck_path:
+        started_at = time.perf_counter()
+        fast_values = _fetch_product_category_home_headline_values(
+            duck_path,
+            report_date,
+            ["ytd", "monthly"],
+        )
+        ytd_headline = _product_category_ytd_headline_from_values(
+            report_date,
+            fast_values.get("ytd", {}),
+        )
+        monthly_headline = _product_category_monthly_headline_from_values(
+            report_date,
+            fast_values.get("monthly", {}),
+        )
+        if ytd_headline is not None and monthly_headline is not None:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            return ytd_headline, monthly_headline, elapsed_ms, elapsed_ms
+
     def timed_ytd() -> tuple[ProductCategoryYtdHeadlinePayload | None, int]:
         started_at = time.perf_counter()
         return _build_product_category_ytd_headline(report_date), int((time.perf_counter() - started_at) * 1000)
@@ -2723,12 +3047,10 @@ def home_income_trend_envelope(
     normalized = _normalize_report_date(report_date)
     assert normalized is not None
     bounded_window = max(1, min(int(window), 30))
-    duckdb_path, duckdb_mtime_ns = _duckdb_version_token()
     cache_key: _HomeIncomeTrendCacheKey = (
         normalized,
         bounded_window,
-        duckdb_path,
-        duckdb_mtime_ns,
+        _home_data_version_token(),
     )
     envelope = _HOME_INCOME_TREND_CACHE.get_or_set(
         cache_key,
@@ -2987,14 +3309,23 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
 #   - 驾驶舱用户量小（管理层），日常 TTL 5 分钟足够；
 #   - 不引入 Redis/外部存储，零依赖增加；
 #   - 写场景（治理刷库、补数任务）应显式调用 invalidate_home_snapshot_cache();
-#   - 多 worker 部署下每个 worker 独立缓存，可接受（TTL 短）。
+#   - 多 worker 部署下每个 worker 独立缓存，可接受；DuckDB mtime 仍会隔离数据变更。
 
-_HOME_SNAPSHOT_CACHE_TTL_SECONDS: float = 300.0
+_HOME_SNAPSHOT_CACHE_TTL_SECONDS: float = 3600.0
 _HOME_NIM_CONTEXT_CACHE_TTL_SECONDS: float = 300.0
 _HOME_INCOME_TREND_CACHE_TTL_SECONDS: float = 300.0
-_HomeSnapshotCacheKey = tuple[str | None, bool, str, int | None]
-_HomeIncomeTrendCacheKey = tuple[str, int, str, int | None]
-_HomeNimContextCacheKey = tuple[tuple[str, ...], str | None, int, str, int | None]
+_HOME_SUPPORT_CACHE_TTL_SECONDS: float = 300.0
+_HomeDataVersionToken = tuple[object, ...]
+_HomeSnapshotCacheKey = tuple[str | None, bool, _HomeDataVersionToken]
+_HomeIncomeTrendCacheKey = tuple[str, int, _HomeDataVersionToken]
+_HomeNimContextCacheKey = tuple[tuple[str, ...], str | None, int, _HomeDataVersionToken]
+_HomeGovernanceFileFingerprint = tuple[str, int, int, str]
+_HomeCacheBuildRunsKey = tuple[str, _HomeGovernanceFileFingerprint]
+_HomeKpiGateCacheKey = tuple[str, int | None, int]
+_HomeKpiMetricsCacheKey = tuple[str, str | None, int]
+_HomeFileStatSignature = tuple[tuple[str, int, int], ...]
+_HomeDuckdbStorageFingerprint = tuple[tuple[str, int, str], ...] | None
+_HomeSelectedGovernanceFingerprint = tuple[tuple[str, int, int, str], ...] | None
 _HomeNimContextValue = tuple[
     dict[str, dict[str, object]],
     dict[str, list[dict[str, object]]],
@@ -3016,6 +3347,24 @@ _HOME_INCOME_TREND_CACHE: InMemoryTTLCache[_HomeIncomeTrendCacheKey, dict[str, o
     ttl_seconds=_HOME_INCOME_TREND_CACHE_TTL_SECONDS,
     clock=lambda: time.monotonic(),
 )
+_HOME_CACHE_BUILD_RUNS_CACHE: InMemoryTTLCache[
+    _HomeCacheBuildRunsKey,
+    list[dict[str, object]] | None,
+] = get_runtime_cache(
+    "executive.home_snapshot.cache_build_runs",
+    ttl_seconds=_HOME_SUPPORT_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
+_HOME_KPI_GATE_CACHE: InMemoryTTLCache[_HomeKpiGateCacheKey, dict[str, object]] = get_runtime_cache(
+    "executive.home_snapshot.kpi_gate",
+    ttl_seconds=_HOME_SUPPORT_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
+_HOME_KPI_METRICS_CACHE: InMemoryTTLCache[_HomeKpiMetricsCacheKey, list[dict[str, object]]] = get_runtime_cache(
+    "executive.home_snapshot.kpi_metrics",
+    ttl_seconds=_HOME_SUPPORT_CACHE_TTL_SECONDS,
+    clock=lambda: time.monotonic(),
+)
 _HOME_SNAPSHOT_PREWARM_LOCK = threading.Lock()
 _HOME_SNAPSHOT_PREWARM_STATUS: dict[str, object] = {
     "ok": False,
@@ -3027,6 +3376,11 @@ _HOME_SNAPSHOT_PREWARM_STATUS: dict[str, object] = {
     "error": None,
 }
 _HOME_SNAPSHOT_PROFILE_LOCAL = threading.local()
+_HOME_FINGERPRINT_CACHE_LOCK = threading.Lock()
+_HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE: dict[
+    _HomeFileStatSignature,
+    _HomeDuckdbStorageFingerprint,
+] = {}
 
 
 def _duckdb_version_token() -> tuple[str, int | None]:
@@ -3037,13 +3391,134 @@ def _duckdb_version_token() -> tuple[str, int | None]:
         return duckdb_path, None
 
 
+def _duckdb_file_edge_hash(path: Path, *, stat_size: int) -> str | None:
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(_HOME_CACHE_GOVERNANCE_TAIL_BYTES)
+            if stat_size > _HOME_CACHE_GOVERNANCE_TAIL_BYTES:
+                handle.seek(-_HOME_CACHE_GOVERNANCE_TAIL_BYTES, 2)
+                tail = handle.read(_HOME_CACHE_GOVERNANCE_TAIL_BYTES)
+            else:
+                tail = b""
+    except OSError:
+        return None
+    digest = hashlib.sha256()
+    digest.update(head)
+    digest.update(tail)
+    return digest.hexdigest()
+
+
+def _duckdb_storage_content_fingerprint(duckdb_path: object) -> tuple[tuple[str, int, str], ...] | None:
+    path = Path(str(duckdb_path))
+    try:
+        path.stat()
+    except OSError:
+        return None
+    stat_signature: list[tuple[str, int, int]] = []
+    candidates = sorted(path.parent.glob(f"{path.name}*"))
+    for candidate in candidates:
+        try:
+            stat = candidate.stat()
+        except OSError:
+            continue
+        if candidate.is_file():
+            stat_signature.append((str(candidate), stat.st_size, stat.st_mtime_ns))
+    signature = tuple(stat_signature)
+    if not signature:
+        return None
+    with _HOME_FINGERPRINT_CACHE_LOCK:
+        if signature in _HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE:
+            return _HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE[signature]
+    fingerprint: list[tuple[str, int, str]] = []
+    for candidate in candidates:
+        try:
+            stat = candidate.stat()
+        except OSError:
+            continue
+        if not candidate.is_file():
+            continue
+        edge_hash = _duckdb_file_edge_hash(candidate, stat_size=stat.st_size)
+        if edge_hash is None:
+            return None
+        fingerprint.append((candidate.name, stat.st_size, edge_hash))
+    value = tuple(fingerprint) or None
+    with _HOME_FINGERPRINT_CACHE_LOCK:
+        _HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE[signature] = value
+    return value
+
+
+def _governance_file_fingerprint(
+    base_dir: object,
+    stream: str,
+) -> _HomeGovernanceFileFingerprint | None:
+    base_path = Path(str(base_dir))
+    path = base_path / f"{stream}.jsonl"
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    if not path.is_file():
+        return None
+    try:
+        with path.open("rb") as handle:
+            if stat.st_size > _HOME_CACHE_GOVERNANCE_TAIL_BYTES:
+                handle.seek(-_HOME_CACHE_GOVERNANCE_TAIL_BYTES, 2)
+            content = handle.read()
+    except OSError:
+        return None
+    return (stream, stat.st_size, stat.st_mtime_ns, hashlib.sha256(content).hexdigest())
+
+
+def _selected_governance_files_fingerprint(
+    base_dir: object,
+) -> tuple[tuple[str, int, int, str], ...] | None:
+    base_path = Path(str(base_dir))
+    if not str(base_dir or "").strip():
+        return None
+    fingerprint: list[tuple[str, int, int, str]] = []
+    for filename in _HOME_CACHE_GOVERNANCE_FILES:
+        path = base_path / filename
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        if not path.is_file():
+            return None
+        try:
+            with path.open("rb") as handle:
+                if stat.st_size > _HOME_CACHE_GOVERNANCE_TAIL_BYTES:
+                    handle.seek(-_HOME_CACHE_GOVERNANCE_TAIL_BYTES, 2)
+                content = handle.read()
+        except OSError:
+            return None
+        fingerprint.append((filename, stat.st_size, stat.st_mtime_ns, hashlib.sha256(content).hexdigest()))
+    return tuple(fingerprint)
+
+
+def _home_data_version_token(
+    *,
+    duckdb_path: object | None = None,
+    governance_path: object | None = None,
+) -> _HomeDataVersionToken:
+    settings = get_settings()
+    resolved_duckdb_path = str(settings.duckdb_path if duckdb_path is None else duckdb_path)
+    resolved_governance_path = str(
+        getattr(settings, "governance_path", "") if governance_path is None else governance_path
+    )
+    return (
+        resolved_duckdb_path,
+        _duckdb_storage_content_fingerprint(resolved_duckdb_path),
+        resolved_governance_path,
+        _selected_governance_files_fingerprint(resolved_governance_path),
+    )
+
+
 def _home_snapshot_cache_key(
     *,
     report_date: str | None,
     allow_partial: bool,
 ) -> _HomeSnapshotCacheKey:
-    duckdb_path, duckdb_mtime_ns = _duckdb_version_token()
-    return (report_date, allow_partial, duckdb_path, duckdb_mtime_ns)
+    return (report_date, allow_partial, _home_data_version_token())
 
 
 def _log_home_snapshot_perf_step(
@@ -3131,6 +3606,11 @@ def invalidate_home_snapshot_cache() -> None:
     _HOME_SNAPSHOT_CACHE.clear()
     _HOME_NIM_CONTEXT_CACHE.clear()
     _HOME_INCOME_TREND_CACHE.clear()
+    _HOME_CACHE_BUILD_RUNS_CACHE.clear()
+    _HOME_KPI_GATE_CACHE.clear()
+    _HOME_KPI_METRICS_CACHE.clear()
+    with _HOME_FINGERPRINT_CACHE_LOCK:
+        _HOME_DUCKDB_STORAGE_FINGERPRINT_CACHE.clear()
 
 
 def _set_home_snapshot_prewarm_status(**updates: object) -> None:
@@ -3216,6 +3696,22 @@ def warm_home_snapshot_cache_if_configured(settings: object) -> bool:
     )
     thread.start()
     return True
+
+
+def warm_home_snapshot_cache_blocking_if_configured(settings: object) -> bool:
+    if not bool(getattr(settings, "home_snapshot_prewarm_enabled", False)):
+        _set_home_snapshot_prewarm_status(
+            ok=False,
+            status="disabled",
+            report_date=None,
+            allow_partial=False,
+            last_duration_ms=None,
+            last_step_durations_ms={},
+            error=None,
+        )
+        return False
+    _warm_home_snapshot_cache_quietly(report_date=None, allow_partial=False)
+    return home_snapshot_prewarm_status().get("status") == "ready"
 
 
 def _warm_home_snapshot_cache_quietly(

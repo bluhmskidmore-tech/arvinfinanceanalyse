@@ -67,6 +67,25 @@ def _table_exists_conn(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool
     return row is not None
 
 
+def _existing_tables_conn(
+    conn: duckdb.DuckDBPyConnection,
+    table_names: list[str],
+) -> set[str]:
+    names = [str(name).strip() for name in table_names if str(name or "").strip()]
+    if not names:
+        return set()
+    placeholders = ", ".join(["?"] * len(names))
+    rows = conn.execute(
+        f"""
+        select table_name
+        from information_schema.tables
+        where table_name in ({placeholders})
+        """,
+        names,
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
 @dataclass
 class DashboardRepository(DuckDBRepository):
     guard_path_exists: bool = True
@@ -84,71 +103,79 @@ class DashboardRepository(DuckDBRepository):
         conn = duckdb.connect(self.path, read_only=True)
         try:
             context = {key: list(value) for key, value in empty_context.items()}
-            if _table_exists_conn(conn, ZQTZ_FACT):
-                balance_parts = [
+            existing_tables = _existing_tables_conn(
+                conn,
+                [
+                    ZQTZ_FACT,
+                    TYW_FACT,
+                    "fact_formal_pnl_fi",
+                    "zqtz_bond_daily_snapshot",
+                    "tyw_interbank_daily_snapshot",
+                    FACT_TABLE,
+                ],
+            )
+            parts: list[str] = []
+            if ZQTZ_FACT in existing_tables:
+                parts.append(
                     f"""
-                    select distinct cast(report_date as varchar) as d
+                    select 'balance' as domain, cast(report_date as varchar) as d
                     from {ZQTZ_FACT}
                     where position_scope = 'asset'
                       and currency_basis = 'CNY'
                     """
-                ]
-                if _table_exists_conn(conn, TYW_FACT):
-                    balance_parts.append(
-                        f"""
-                        select distinct cast(report_date as varchar) as d
-                        from {TYW_FACT}
-                        where position_scope = 'asset'
-                          and currency_basis = 'CNY'
-                        """
-                    )
-                rows = conn.execute(
+                )
+            if TYW_FACT in existing_tables:
+                parts.append(
                     f"""
-                    select distinct d
-                    from ({" union ".join(balance_parts)}) t
-                    order by d desc
+                    select 'balance' as domain, cast(report_date as varchar) as d
+                    from {TYW_FACT}
+                    where position_scope = 'asset'
+                      and currency_basis = 'CNY'
                     """
-                ).fetchall()
-                context["balance"] = [str(row[0]) for row in rows if row[0] is not None]
-
-            if _table_exists_conn(conn, "fact_formal_pnl_fi"):
-                rows = conn.execute(
+                )
+            if "fact_formal_pnl_fi" in existing_tables:
+                parts.append(
                     """
-                    select distinct cast(report_date as varchar) as d
+                    select 'pnl' as domain, cast(report_date as varchar) as d
                     from fact_formal_pnl_fi
-                    order by d desc
                     """
-                ).fetchall()
-                context["pnl"] = [str(row[0]) for row in rows if row[0] is not None]
-
-            liability_parts: list[str] = []
-            if _table_exists_conn(conn, "zqtz_bond_daily_snapshot"):
-                liability_parts.append(
-                    "select distinct cast(report_date as varchar) as d from zqtz_bond_daily_snapshot"
                 )
-            if _table_exists_conn(conn, "tyw_interbank_daily_snapshot"):
-                liability_parts.append(
-                    "select distinct cast(report_date as varchar) as d from tyw_interbank_daily_snapshot"
-                )
-            if liability_parts:
-                rows = conn.execute(
-                    f"""
-                    select distinct d
-                    from ({" union ".join(liability_parts)}) t
-                    order by d desc
+            if "zqtz_bond_daily_snapshot" in existing_tables:
+                parts.append(
                     """
-                ).fetchall()
-                context["liability"] = [str(row[0]) for row in rows if row[0] is not None]
-
-            if _table_exists_conn(conn, FACT_TABLE):
-                rows = conn.execute(
+                    select 'liability' as domain, cast(report_date as varchar) as d
+                    from zqtz_bond_daily_snapshot
+                    """
+                )
+            if "tyw_interbank_daily_snapshot" in existing_tables:
+                parts.append(
+                    """
+                    select 'liability' as domain, cast(report_date as varchar) as d
+                    from tyw_interbank_daily_snapshot
+                    """
+                )
+            if FACT_TABLE in existing_tables:
+                parts.append(
                     f"""
-                    select distinct cast(report_date as varchar) as d
+                    select 'bond' as domain, cast(report_date as varchar) as d
                     from {FACT_TABLE}
-                    order by d desc
                     """
-                ).fetchall()
-                context["bond"] = [str(row[0]) for row in rows if row[0] is not None]
+                )
+            if not parts:
+                return context
+            rows = conn.execute(
+                f"""
+                select domain, d
+                from ({" union all ".join(parts)}) t
+                where d is not null
+                group by domain, d
+                order by domain, d desc
+                """
+            ).fetchall()
+            for domain, report_date in rows:
+                key = str(domain)
+                if key in context and report_date is not None:
+                    context[key].append(str(report_date))
             return context
         finally:
             conn.close()

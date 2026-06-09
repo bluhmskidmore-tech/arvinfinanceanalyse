@@ -54,7 +54,6 @@ describe("workbench navigation mocks", () => {
   it("marks the wave-1 temporary-exception routes explicitly in navigation metadata", () => {
     const temporaryExceptionKeys = [
       "operations-analysis",
-      "bond-analysis",
       "cross-asset",
       "decision-items",
       "team-performance",
@@ -77,6 +76,14 @@ describe("workbench navigation mocks", () => {
       expect(section?.readinessLabel).toBe("临时开放");
       expect(section?.governanceStatus).toBe("temporary-exception");
     }
+  });
+
+  it("marks bond-analysis as a fully open live page without temporary exception chrome", () => {
+    const section = workbenchNavigation.find((item) => item.key === "bond-analysis");
+
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("已开放");
+    expect(section?.governanceStatus).toBeUndefined();
   });
 
   it("promotes risk-overview into the live primary navigation", () => {

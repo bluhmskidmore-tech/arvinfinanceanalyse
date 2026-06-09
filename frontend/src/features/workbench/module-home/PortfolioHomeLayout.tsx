@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Tabs } from "antd";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { LightIcon } from "../../../components/LightIcon";
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
@@ -144,6 +144,70 @@ function DistributionPanelCard({ panel }: { panel: ModuleHomeDistributionPanel }
   return <PortfolioDistributionPanel panel={panel} />;
 }
 
+function snapshotRows(panel: ModuleHomeDistributionPanel) {
+  return [...panel.rows].sort((left, right) => right.barPct - left.barPct).slice(0, 3);
+}
+
+function PortfolioChartSnapshot({ panels }: { panels: ModuleHomeDistributionPanel[] | undefined }) {
+  const visiblePanels = panels?.slice(0, 3) ?? [];
+
+  if (visiblePanels.length === 0) {
+    return null;
+  }
+
+  return (
+    <section data-testid="module-home-portfolio-chart-snapshot" className={styles.chartSnapshot}>
+      <div className={styles.chartSnapshotHead}>
+        <span>Chart Tape</span>
+        <strong>结构快照</strong>
+      </div>
+      <div className={styles.chartSnapshotGrid}>
+        {visiblePanels.map((panel) => {
+          const rows = snapshotRows(panel);
+          return (
+            <article className={styles.chartSnapshotCard} data-tone={panel.tone} key={panel.key}>
+              <div className={styles.chartSnapshotCardHead}>
+                <span title={panel.title}>{panel.title}</span>
+                <strong>{panel.totalDisplay ?? panel.stateLabel}</strong>
+              </div>
+              {rows.length > 0 ? (
+                <div className={styles.chartMiniBars}>
+                  {rows.map((row, index) => {
+                    const width = `${Math.max(5, Math.min(row.barPct, 100))}%`;
+                    return (
+                      <div className={styles.chartMiniRow} key={row.key}>
+                        <span className={styles.chartMiniLabel} title={row.label}>
+                          {row.label}
+                        </span>
+                        <span className={styles.chartMiniMetric}>
+                          {row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`}
+                        </span>
+                        <span className={styles.chartMiniTrack} aria-hidden="true">
+                          <span
+                            className={styles.chartMiniFill}
+                            data-color-index={index}
+                            style={{ "--chart-mini-width": width } as CSSProperties}
+                          />
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={styles.chartMiniSkeleton} aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function PortfolioAiDecisionRail({ view }: { view: ModuleHomeView }) {
   const decision = view.decision;
   const actions = decision?.actions ?? [];
@@ -265,6 +329,20 @@ function compactActionEvidence(evidence: string) {
     .replace(/bond-dashboard 的 result_meta、正式使用许可、质量标记和报告日/g, "债券总览的来源版本、使用许可、质量标记和报告日")
     .replace(/pnl-attribution 的正式口径、质量标记和报告日/g, "收益归因的正式口径、质量标记和报告日")
     .replace(/result_meta/g, "来源元数据");
+}
+
+function splitKpiValue(value: string) {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([+-]?\d[\d,]*(?:\.\d+)?)(.*)$/);
+
+  if (!match) {
+    return { number: trimmed, unit: "" };
+  }
+
+  return {
+    number: match[1],
+    unit: match[2].trim(),
+  };
 }
 
 function DecisionPanel({ view }: { view: ModuleHomeView }) {
@@ -422,6 +500,8 @@ export default function PortfolioHomeLayout({
             <div className={styles.portfolioPrimaryColumn}>
               <DecisionPanel view={view} />
 
+              <PortfolioChartSnapshot panels={view.distributionPanels} />
+
               <section data-testid="module-home-briefing" className={styles.sectionBlock}>
                 <SectionHead label="组合" title="组合摘要" />
                 <div className={styles.briefGrid}>
@@ -443,15 +523,30 @@ export default function PortfolioHomeLayout({
               <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
                 <SectionHead label="指标" title="核心指标" />
                 <div className={styles.kpiGrid}>
-                  {view.kpis.map((item) => (
-                    <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi}`} key={item.key}>
-                      <div className={dhStyles.dhTerminalKpiTop}>
-                        <span className={styles.kpiLabel}>{item.label}</span>
-                      </div>
-                      <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>{item.value}</div>
-                      <div className={styles.kpiDetail}>{item.detail}</div>
-                    </article>
-                  ))}
+                  {view.kpis.map((item) => {
+                    const value = splitKpiValue(item.value);
+                    return (
+                      <article
+                        className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard}`}
+                        data-tone={item.tone}
+                        key={item.key}
+                      >
+                        <div className={dhStyles.dhTerminalKpiTop}>
+                          <span className={styles.kpiLabel}>{item.label}</span>
+                        </div>
+                        <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>
+                          <span>{value.number}</span>
+                          {value.unit ? (
+                            <>
+                              {" "}
+                              <small>{value.unit}</small>
+                            </>
+                          ) : null}
+                        </div>
+                        <div className={styles.kpiDetail}>{item.detail}</div>
+                      </article>
+                    );
+                  })}
                 </div>
               </section>
             </div>
@@ -480,7 +575,7 @@ export default function PortfolioHomeLayout({
           </section>
 
         {view.distributionPanels && view.distributionPanels.length > 0 ? (
-          <section data-testid="module-home-holdings-structure" className={styles.sectionBlock}>
+          <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
             <div className={styles.sectionHead}>
               <span>持仓</span>
               <strong>持仓结构</strong>
@@ -495,7 +590,7 @@ export default function PortfolioHomeLayout({
             </div>
           </section>
         ) : (
-          <section data-testid="module-home-holdings-structure" className={styles.sectionBlock}>
+          <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
             <div className={styles.sectionHead}>
               <span>持仓</span>
               <strong>持仓结构</strong>
@@ -514,7 +609,7 @@ export default function PortfolioHomeLayout({
           <Tabs items={tabItems} />
         </section>
 
-        <section className={styles.sectionBlock}>
+        <section className={`${styles.sectionBlock} ${styles.riskAttributionBlock}`}>
           <SectionHead label="归因" title="风险与归因" />
           <div className={styles.detailGrid}>
             {riskPanel ? (
@@ -529,7 +624,7 @@ export default function PortfolioHomeLayout({
           </div>
         </section>
 
-        <section data-testid="module-home-drilldowns" className={styles.sectionBlock}>
+        <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
           <SectionHead label="明细" title="下钻入口" />
           <div className={styles.drillGrid}>
             {config.drilldowns.map((item) => {

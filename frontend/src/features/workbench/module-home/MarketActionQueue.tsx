@@ -59,7 +59,7 @@ function renderFieldSegments(parts: string[]) {
 
 function renderBlockTextSeparator(key: string) {
   return (
-    <span aria-hidden="true" className={marketStyles.blockTextSeparator} key={key}>
+    <span aria-hidden="true" className={marketStyles.blockTextSeparator} hidden key={key}>
       {" / "}
     </span>
   );
@@ -81,7 +81,7 @@ function evidencePackParts(item: MarketActionItem) {
 function firstRowEvidence(panel?: ModuleHomeDetailPanel) {
   const row = panel?.rows[0];
   if (!row) return compactParts([panel?.stateDetail]);
-  return compactParts([row.label, row.value, row.detail, row.tradeDate, row.source]);
+  return compactParts([row.label, row.value, row.detail, row.tradeDate]);
 }
 
 function firstRowEvidencePack(panel: ModuleHomeDetailPanel | undefined, fallbackLabel: string, sourceScope: string) {
@@ -206,7 +206,7 @@ function buildActionQueue({
     evidence: crossAssetEvidence.length > 0 ? crossAssetEvidence : compactParts([crossAssetStatus?.detail, "跨资产传导解释以 /cross-asset 为准。"]),
     evidencePack:
       crossAssetEvidence.length > 0
-        ? compactParts([crossAssetEvidence[0], ...crossAssetEvidence.slice(1), "cross-asset"])
+        ? firstRowEvidencePack(macroPanel, "跨资产传导", "cross-asset")
         : compactParts(["跨资产传导", crossAssetStatus?.detail, "cross-asset"]),
     task: {
       owner: "跨资产研究岗",
@@ -237,9 +237,9 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
   return (
     <section className={marketStyles.actionQueue} data-testid="module-home-market-actions">
       <div className={marketStyles.actionQueueHeader}>
-        <span>Action Queue</span>
-        <strong>异常 / 机会闭环</strong>
-        <em>只保留风险、曲线和跨资产三条处置线。</em>
+        <span>交易预案</span>
+        <strong>待复核动作</strong>
+        <em>报价 / 曲线 / 跨资产复核</em>
       </div>
       <div className={marketStyles.actionQueueList}>
         {items.map((item) => {
@@ -257,7 +257,10 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
               <span className={`${marketStyles.actionQueueRank} ${toneClass(item.tone)}`}>{item.rank}</span>
               {renderBlockTextSeparator(`${item.key}-rank-main`)}
               <div className={marketStyles.actionQueueMain}>
-                <strong>{item.title}</strong>
+                <div className={marketStyles.actionQueueTitleRow}>
+                  <strong>{item.title}</strong>
+                  <b data-testid={`module-home-market-action-${item.key}-target`}>{item.label}</b>
+                </div>
                 {renderBlockTextSeparator(`${item.key}-title-evidence`)}
                 <em
                   aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
@@ -266,37 +269,42 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
                   {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
                 </em>
                 {renderBlockTextSeparator(`${item.key}-evidence-task`)}
-                <span
-                  aria-label={taskParts.join(" / ")}
-                  className={marketStyles.actionQueueTaskMeta}
-                  data-testid={`module-home-market-action-${item.key}-task-meta`}
-                >
-                  {renderFieldSegments(taskParts)}
-                </span>
-                {renderBlockTextSeparator(`${item.key}-task-gate`)}
-                <span
-                  aria-label={gateParts.join(" / ")}
-                  className={marketStyles.actionQueueGate}
-                  data-testid={`module-home-market-action-${item.key}-gate`}
-                >
-                  {renderFieldSegments(gateParts)}
-                </span>
-                {renderBlockTextSeparator(`${item.key}-gate-pack`)}
-                <span
-                  aria-label={packParts.join(" / ")}
-                  className={marketStyles.actionQueueEvidencePack}
-                  data-testid={`module-home-market-action-${item.key}-evidence-pack`}
-                >
-                  {renderFieldSegments(packParts)}
-                </span>
+                <div className={marketStyles.actionQueueMetaGrid}>
+                  <span
+                    aria-label={taskParts.join(" / ")}
+                    className={marketStyles.actionQueueTaskMeta}
+                    data-testid={`module-home-market-action-${item.key}-task-meta`}
+                  >
+                    {renderFieldSegments(taskParts)}
+                  </span>
+                  {renderBlockTextSeparator(`${item.key}-task-gate`)}
+                  <span
+                    aria-label={gateParts.join(" / ")}
+                    className={marketStyles.actionQueueGate}
+                    data-testid={`module-home-market-action-${item.key}-gate`}
+                  >
+                    {renderFieldSegments(gateParts)}
+                  </span>
+                  {renderBlockTextSeparator(`${item.key}-gate-pack`)}
+                  <span
+                    aria-label={packParts.join(" / ")}
+                    className={marketStyles.actionQueueEvidencePack}
+                    data-testid={`module-home-market-action-${item.key}-evidence-pack`}
+                  >
+                    {renderFieldSegments(packParts)}
+                    {renderBlockTextSeparator(`${item.key}-pack-end`)}
+                  </span>
+                </div>
               </div>
-              {renderBlockTextSeparator(`${item.key}-main-target`)}
-              <b data-testid={`module-home-market-action-${item.key}-target`}>{item.label}</b>
             </Link>
           );
         })}
       </div>
-      <div className={marketStyles.actionQueueSourceGate} data-testid="module-home-status-strip">
+      <div
+        className={`${marketStyles.actionQueueSourceGate} ${marketStyles.marketAuditOnly}`}
+        data-testid="module-home-status-strip"
+        hidden
+      >
         <span>Source Gate</span>
         <strong>{view.stateLabel}</strong>
         <em>{view.sourceScope}</em>

@@ -18,9 +18,11 @@ type MatrixItem = {
   key: string;
   label: string;
   headline: string;
+  summary: string[];
   meta: string[];
   evidence: string[];
   tone: ModuleHomeTone;
+  auditOnly?: boolean;
 };
 
 function toneClass(tone: ModuleHomeTone) {
@@ -72,7 +74,7 @@ function rowHeadline(row?: ModuleHomeDetailRow, fallback = "待返回") {
 
 function renderBlockTextSeparator(key: string) {
   return (
-    <span aria-hidden="true" className={marketStyles.blockTextSeparator} key={key}>
+    <span aria-hidden="true" className={marketStyles.blockTextSeparator} hidden key={key}>
       {" / "}
     </span>
   );
@@ -81,6 +83,11 @@ function renderBlockTextSeparator(key: string) {
 function rowMeta(row?: ModuleHomeDetailRow) {
   if (!row) return [];
   return compactParts([validDate(row.tradeDate) ? row.tradeDate : null, row.detail, row.source]);
+}
+
+function rowSummary(row?: ModuleHomeDetailRow) {
+  if (!row) return [];
+  return compactParts([row.detail, validDate(row.tradeDate) ? row.tradeDate : null]);
 }
 
 function findRow(panel: ModuleHomeDetailPanel | undefined, patterns: string[]) {
@@ -125,6 +132,7 @@ export function MarketDecisionMatrix({
       key: "rates",
       label: "利率曲线",
       headline: rowHeadline(rateRow, "待曲线核验"),
+      summary: rateRow ? rowSummary(rateRow) : compactParts([yieldCurvePanel?.stateDetail ?? keyRatePanel?.stateDetail]),
       meta: panelCoverage(ratePanel, formalTradeDate),
       evidence: rateRow ? rowMeta(rateRow) : compactParts([yieldCurvePanel?.stateDetail ?? keyRatePanel?.stateDetail]),
       tone: yieldCurvePanel?.tone ?? keyRatePanel?.tone ?? "muted",
@@ -133,6 +141,7 @@ export function MarketDecisionMatrix({
       key: "liquidity",
       label: "流动性",
       headline: rowHeadline(liquidity),
+      summary: rowSummary(liquidity),
       meta: liquidity ? rowMeta(liquidity) : panelCoverage(keyRatePanel, latestTradeDate),
       evidence: compactParts([keyRatePanel?.stateDetail]),
       tone: liquidity?.tone ?? keyRatePanel?.tone ?? "muted",
@@ -141,6 +150,7 @@ export function MarketDecisionMatrix({
       key: "cross-asset",
       label: "跨资产",
       headline: rowHeadline(crossAsset),
+      summary: rowSummary(crossAsset),
       meta: panelCoverage(macroPanel, latestTradeDate),
       evidence: compactParts([macroPanel?.meta]),
       tone: macroPanel?.tone ?? "muted",
@@ -149,6 +159,7 @@ export function MarketDecisionMatrix({
       key: "macro",
       label: "宏观归因",
       headline: rowHeadline(macroStance),
+      summary: rowSummary(macroStance),
       meta: panelCoverage(macroOverviewPanel, latestTradeDate),
       evidence: compactParts([macroOverviewPanel?.stateDetail]),
       tone: macroStance?.tone ?? macroOverviewPanel?.tone ?? "muted",
@@ -157,16 +168,21 @@ export function MarketDecisionMatrix({
       key: "data",
       label: "数据闸门",
       headline: view.stateLabel,
+      summary: [],
       meta: compactParts([formalPanel?.stateLabel, `最新 ${latestTradeDate || "-"}`, `正式 ${formalTradeDate || "-"}`]),
       evidence: catalogPanel ? panelCoverage(catalogPanel, formalTradeDate) : compactParts([view.sourceScope]),
       tone: errorCount > 0 ? "error" : watchCount > 0 ? "watch" : "ok",
+      auditOnly: true,
     },
   ];
   return (
     <section className={marketStyles.decisionMatrix} data-testid="module-home-market-matrix">
       <div className={marketStyles.decisionMatrixHeader}>
-        <span>Market Decision Tape</span>
-        <em>利率 / 流动性 / 跨资产 / 宏观 / 数据</em>
+        <span>交易建议与约束检查</span>
+        <em>报价 / 约束 / 风险 / 规模</em>
+        <i className={marketStyles.marketAuditOnly} hidden>
+          Market Decision Tape
+        </i>
       </div>
       <div className={marketStyles.decisionMatrixGrid}>
         {items.map((item) => (
@@ -183,6 +199,9 @@ export function MarketDecisionMatrix({
             >
               {item.headline}
             </strong>
+            {item.summary.length > 0 ? (
+              <small className={marketStyles.decisionMatrixSummary}>{renderFieldSegments(item.summary)}</small>
+            ) : null}
             {renderBlockTextSeparator(`${item.key}-headline-meta`)}
             <em
               aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
@@ -193,6 +212,7 @@ export function MarketDecisionMatrix({
             </em>
             {renderBlockTextSeparator(`${item.key}-meta-evidence`)}
             <p
+              className={marketStyles.decisionMatrixEvidence}
               aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
               data-testid={`module-home-market-matrix-cell-${item.key}-evidence`}
             >

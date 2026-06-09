@@ -418,6 +418,7 @@ describe("WorkbenchShell", () => {
     renderShellAt("/bond-analysis");
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-governance-banner")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();

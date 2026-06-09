@@ -42,7 +42,7 @@ function EmptyRiskSurface() {
   return (
     <div className={styles.dhRiskEmptyRow}>
       <span>关键风险</span>
-      <b>主快照未返回风险条目</b>
+      <b>风险数据未返回可核验条目</b>
       <small>入口保留</small>
     </div>
   );
@@ -59,8 +59,11 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
     <section data-testid="dashboard-home-hero" className={styles.dhTerminalHero}>
       <div className={styles.dhReportHead}>
         <div>
-          <span className={styles.dhReportKicker}>主快照</span>
-          <h2>经营读数</h2>
+          <span className={styles.dhReportKicker}>今日经营判断</span>
+          <h2>{view.decisionRail.conclusion}</h2>
+          <p className={styles.dhReportLead}>
+            先看结论，再核对指标；异常、沿用和待接数据在表内直接标出。
+          </p>
         </div>
         <dl className={styles.dhReportMeta}>
           <div>
@@ -68,7 +71,7 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
             <dd className={styles.dhNum}>{view.reportDate}</dd>
           </div>
           <div>
-            <dt>条目</dt>
+            <dt>关键指标</dt>
             <dd className={styles.dhNum}>{view.terminalKpis.length}</dd>
           </div>
         </dl>
@@ -79,8 +82,8 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
           <thead>
             <tr>
               <th>序</th>
-              <th>指标</th>
-              <th>当前值</th>
+              <th>关键指标</th>
+              <th>报告值</th>
               <th>较前日</th>
               <th>状态</th>
               <th>近日报告</th>
@@ -92,10 +95,10 @@ function TerminalKpiStrip({ view }: { view: DashboardHomeFirstScreenView }) {
                 <td data-label="序" className={`${styles.dhMetricSeq} ${styles.dhNum}`}>
                   {String(index + 1).padStart(2, "0")}
                 </td>
-                <td data-label="指标" className={styles.dhMetricName}>
+                <td data-label="关键指标" className={styles.dhMetricName}>
                   {kpi.label}
                 </td>
-                <td data-label="当前值" className={`${styles.dhMetricValueCell} ${styles.dhNum}`}>
+                <td data-label="报告值" className={`${styles.dhMetricValueCell} ${styles.dhNum}`}>
                   <span>{kpi.value}</span>
                   {kpi.unit ? <small>{kpi.unit}</small> : null}
                 </td>

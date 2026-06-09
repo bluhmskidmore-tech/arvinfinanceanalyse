@@ -176,9 +176,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "bond",
     description: "债券工作台入口",
     readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "已接治理后的债券分析驾驶舱，页面内按模块就绪度展示已落地与待晋升能力。",
+    readinessLabel: "已开放",
+    readinessNote: "已接债券分析交易台首屏、组合读面、风险监控和下钻复核入口。",
   },
   {
     key: "cross-asset",

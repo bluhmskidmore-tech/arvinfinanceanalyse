@@ -146,19 +146,19 @@ export function DecisionRailSection({
     <aside data-testid="dashboard-home-decision-rail" className={styles.dhRail}>
       <article className={styles.dhReviewRail}>
         <div className={styles.dhReviewRailHead}>
-          <span>复核记录</span>
+          <span>判断依据</span>
           <b className={styles.dhNum}>{reportDate}</b>
         </div>
 
         <dl className={styles.dhReviewList}>
           <div className={styles.dhReviewListPrimary}>
-            <dt>摘录</dt>
+            <dt>结论</dt>
             <dd>{decisionRail.conclusion}</dd>
           </div>
 
           <div>
             <dt>依据</dt>
-            <dd>{hasKeyRisk ? decisionRail.keyRisk : "主快照未返回可摘录依据"}</dd>
+            <dd>{hasKeyRisk ? decisionRail.keyRisk : "当前快照未返回可摘录依据"}</dd>
           </div>
 
           {hasDrag || hasContribution ? (
@@ -184,7 +184,7 @@ export function DecisionRailSection({
           ) : null}
 
           <div>
-            <dt>入口</dt>
+            <dt>下一步</dt>
             <dd>
               {decisionRail.actions.length > 0 ? (
                 <div className={styles.dhReviewActionList}>
@@ -210,7 +210,7 @@ export function DecisionRailSection({
       </article>
 
       <article className={styles.dhDataNote}>
-        <h3>来源台账</h3>
+        <h3>数据口径</h3>
         <p>来源：{formatSourceSurfaceLabel(snapshotMeta?.source_surface)}</p>
         <p>口径：{formatBasisLabel(snapshotMeta)}</p>
         <p>质量：{formatQualityLabel(snapshotMeta)}</p>
@@ -225,7 +225,7 @@ export function DecisionRailSection({
           data-status-kind={dataStatusKind}
           className={dataStatusKind === "ok" ? styles.dhDataNoteOk : styles.dhDataNoteWarning}
         >
-          {dataSyncPrefix} · 主快照读数
+          {dataSyncPrefix} · 经营读数
         </p>
       </article>
     </aside>

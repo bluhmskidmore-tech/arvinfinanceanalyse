@@ -1097,27 +1097,40 @@ describe("MarketHomePage", () => {
     expect(within(page).queryByTestId("dashboard-home-hero")).not.toBeInTheDocument();
   });
 
-  it("renders the market overview as an institutional cockpit with an AI decision rail", async () => {
+  it("renders the market overview as an institutional cockpit with an evidence rail", async () => {
     renderAt("/market-overview");
 
     const page = await screen.findByTestId("module-workbench-home");
     const cockpit = within(page).getByTestId("module-home-market-cockpit");
     const primaryGrid = within(page).getByTestId("module-home-market-primary-grid");
-    const aiRail = within(page).getByTestId("module-home-market-ai-rail");
+    const evidenceRail = within(page).getByTestId("module-home-market-evidence-rail");
 
     expect(cockpit.className).toEqual(expect.stringContaining("marketInstitutionalCockpit"));
+    expect(within(page).getByTestId("module-home-toolbar")).toHaveTextContent("搜索利率 / 曲线 / 跨资产");
+    expect(within(page).getByTestId("module-home-market-instrument-strip")).toHaveTextContent("市场概览");
+    expect(within(page).getByTestId("module-home-market-instrument-strip")).toHaveTextContent("利率 / 流动性 / 跨资产");
     expect(primaryGrid).toContainElement(within(page).getByTestId("module-home-briefing"));
-    expect(primaryGrid).toContainElement(aiRail);
-    expect(aiRail).toHaveTextContent("AI 决策舱");
-    expect(within(page).getByTestId("module-home-toolbar")).toHaveTextContent("读取中");
-    expect(within(within(page).getByTestId("module-home-toolbar")).getByText("读取中")).toHaveAttribute(
-      "data-tone",
-      "muted",
-    );
-    expect(within(aiRail).getByText("读取中")).toHaveAttribute("data-tone", "muted");
-    expect(within(aiRail).getByRole("link", { name: "市场数据" })).toHaveAttribute("href", "/market-data");
-    expect(within(aiRail).getByRole("link", { name: "宏观工具" })).toHaveAttribute("href", "/macro-toolkit");
-    expect(within(aiRail).getByRole("link", { name: "跨资产" })).toHaveAttribute("href", "/cross-asset");
+    expect(primaryGrid).toContainElement(evidenceRail);
+    expect(within(evidenceRail).getByText("交易检查清单")).toBeVisible();
+    const evidenceRailMetrics = within(evidenceRail).getByTestId("module-home-market-evidence-rail-metrics");
+    expect(within(evidenceRailMetrics).getByText("最新行情")).toBeVisible();
+    expect(within(evidenceRailMetrics).getByText("10年利率")).toBeVisible();
+    expect(within(evidenceRailMetrics).getByText("正式利率")).toBeVisible();
+    expect(within(evidenceRailMetrics).getByText("目录序列")).toBeVisible();
+    const kpiStrip = within(page).getByTestId("module-home-kpi-strip");
+    expect(kpiStrip).toHaveTextContent("最新行情");
+    expect(kpiStrip).toHaveTextContent("10年利率");
+    expect(kpiStrip).toHaveTextContent("正式利率");
+    expect(kpiStrip).toHaveTextContent("目录序列");
+    expect(within(evidenceRail).getByTestId("module-home-market-evidence-rail-state")).toBeVisible();
+    expect(within(evidenceRail).getByTestId("module-home-market-audit-status")).toBeVisible();
+    expect(within(evidenceRail).getByTestId("module-home-market-audit-status")).toHaveTextContent("约束检查结果");
+    expect(evidenceRail).not.toHaveTextContent("AI 决策舱");
+    expect(within(page).queryByTestId("module-home-market-topbar-audit-meta")).not.toBeInTheDocument();
+    expect(within(evidenceRail).queryByText("Source Gate")).not.toBeInTheDocument();
+    expect(within(evidenceRail).getByRole("link", { name: "市场数据" })).toHaveAttribute("href", "/market-data");
+    expect(within(evidenceRail).getByRole("link", { name: "宏观工具" })).toHaveAttribute("href", "/macro-toolkit");
+    expect(within(evidenceRail).getByRole("link", { name: "跨资产" })).toHaveAttribute("href", "/cross-asset");
   });
 
   it("renders market key rate snapshot and terminal tabs from market-data reads", async () => {
@@ -1128,16 +1141,17 @@ describe("MarketHomePage", () => {
     expect(within(page).getByTestId("module-home-rate-snapshot")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-market-terminal")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-market-matrix")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("Market Decision Tape");
+    expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("交易建议与约束检查");
     expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("待曲线核验");
     expect(within(page).queryByTestId("module-home-market-command")).not.toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-status-strip")).toHaveTextContent("Source Gate");
-    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("Action Queue");
-    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("异常 / 机会闭环");
+    expect(within(page).getByTestId("module-home-status-strip")).toHaveAttribute("hidden");
+    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("交易预案");
+    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("待复核动作");
     expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("补齐国债/国开曲线核验");
     expect(within(page).getByTestId("module-home-market-hero-evidence")).toBeInTheDocument();
     const heroMeta = within(page).getByTestId("module-home-market-hero-meta");
     expect(heroMeta).toBeInTheDocument();
+    expect(heroMeta).toHaveAttribute("hidden");
     expect(heroMeta).toHaveTextContent("Choice/Tushare 市场数据 / 跨资产");
     expect(heroMeta).not.toHaveTextContent("ChoiceTushare");
     const matrixRateCell = within(page).getByTestId("module-home-market-matrix-cell-rates");
@@ -1145,27 +1159,32 @@ describe("MarketHomePage", () => {
     const matrixRateMeta = within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-meta");
     const matrixRateEvidence = within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence");
     expect(matrixRateMeta).toBeInTheDocument();
+    expect(matrixRateMeta).toBeVisible();
     expect(matrixRateMeta.textContent).toContain(" / ");
-    expect(matrixRateMeta).toHaveAccessibleName(/ \/ /);
     expect(matrixRateEvidence).toBeInTheDocument();
+    expect(matrixRateEvidence).toBeVisible();
+    expect(within(page).getByTestId("module-home-market-matrix-cell-data")).toBeVisible();
     const actionQueue = within(page).getByTestId("module-home-market-actions");
     const marketDataAction = within(actionQueue).getByTestId("module-home-market-action-curve-check");
     const curveCheckEvidence = within(marketDataAction).getByTestId("module-home-market-action-curve-check-evidence");
     expect(curveCheckEvidence).toBeInTheDocument();
-    expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-task-meta")).toHaveTextContent(
+    const curveCheckTaskMeta = within(marketDataAction).getByTestId("module-home-market-action-curve-check-task-meta");
+    const curveCheckGate = within(marketDataAction).getByTestId("module-home-market-action-curve-check-gate");
+    const curveCheckEvidencePack = within(marketDataAction).getByTestId(
+      "module-home-market-action-curve-check-evidence-pack",
+    );
+    expect(curveCheckTaskMeta).toHaveTextContent(
       "Owner 市场数据岗 / SLA T+0 收盘前 / 状态 待核验",
     );
-    expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-gate")).toHaveTextContent(
+    expect(curveCheckGate).toHaveTextContent(
       "触发 曲线缺口 / 核验 国债/国开曲线 / 下一步 市场数据",
     );
-    expect(
-      within(marketDataAction).getByTestId("module-home-market-action-curve-check-evidence-pack"),
-    ).toHaveTextContent("Evidence Pack 曲线报价缺口 / 等待既有 API 返回。 / market-data");
-    expect(marketDataAction.textContent).toContain(" / Owner 市场数据岗 / SLA T+0 收盘前 / 状态 待核验 / ");
-    expect(marketDataAction.textContent).toContain(" / 触发 曲线缺口 / 核验 国债/国开曲线 / 下一步 市场数据 / ");
-    expect(marketDataAction.textContent).toContain(
-      " / Evidence Pack 曲线报价缺口 / 等待既有 API 返回。 / market-data / ",
+    expect(curveCheckEvidencePack).toHaveTextContent(
+      "Evidence Pack 曲线报价缺口 / 等待既有 API 返回。 / market-data",
     );
+    expect(curveCheckTaskMeta).toBeVisible();
+    expect(curveCheckGate).toBeVisible();
+    expect(curveCheckEvidencePack).toBeVisible();
     expect(within(marketDataAction).getByTestId("module-home-market-action-curve-check-target")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-yield-curve")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-snapshot")).toBeInTheDocument();
@@ -1287,23 +1306,15 @@ describe("MarketHomePage", () => {
     expect(matrixRateCell.textContent).not.toContain("2026-05-292026-05-29");
     const keyRateAction = within(page).getByTestId("module-home-market-action-key-rate-check");
     expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence")).toHaveTextContent(
-      "10Y 国债 / 1.71% / -1bp / 2026-05-29 / CA.CN_GOV_10Y",
+      "10Y 国债 / 1.71% / -1bp / 2026-05-29",
     );
-    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta")).toHaveTextContent(
-      "Owner 市场数据岗 / SLA T+1 早盘 / 状态 监控",
-    );
-    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-gate")).toHaveTextContent(
-      "触发 利率变动 / 核验 10Y 国债 / 下一步 利率序列",
-    );
+    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta")).toBeVisible();
+    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-gate")).toBeVisible();
     expect(
       within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence-pack"),
-    ).toHaveTextContent("Evidence Pack 10Y 国债 / CA.CN_GOV_10Y / 2026-05-29 / -1bp / market-data");
+    ).toBeVisible();
     expect(keyRateAction.textContent).toContain(" / 10Y 国债 / 1.71%");
-    expect(keyRateAction.textContent).toContain(" / Owner 市场数据岗 / SLA T+1 早盘 / 状态 监控 / ");
-    expect(keyRateAction.textContent).toContain(" / 触发 利率变动 / 核验 10Y 国债 / 下一步 利率序列 / ");
-    expect(keyRateAction.textContent).toContain(
-      " / Evidence Pack 10Y 国债 / CA.CN_GOV_10Y / 2026-05-29 / -1bp / market-data / ",
-    );
+    expect(keyRateAction.textContent).toContain("CA.CN_GOV_10Y");
     expect(keyRateAction.textContent).not.toContain("变动10Y 国债");
   });
 

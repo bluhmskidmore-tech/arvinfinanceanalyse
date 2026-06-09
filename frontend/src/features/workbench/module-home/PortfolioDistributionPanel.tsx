@@ -6,7 +6,8 @@ import dhStyles from "../dashboard-home/dashboardHome.module.css";
 import type { ModuleHomeDistributionPanel, ModuleHomeDistributionRow, ModuleHomeTone } from "./moduleHomeModel";
 import styles from "./portfolioHome.module.css";
 
-const CHART_COLORS = ["#35679b", "#6f96c3", "#a8bfd8", "#3f8a6a", "#c76b66", "#b6c1cf"];
+const CHART_COLORS = ["#1850a1", "#2563eb", "#2d8a5e", "#d97706", "#ef4444"];
+const EMPTY_BAR_COUNT = 5;
 
 function toneClass(tone: ModuleHomeTone) {
   if (tone === "ok") return styles.toneOk;
@@ -35,8 +36,18 @@ function formatMetric(row: ModuleHomeDistributionRow) {
 function buildPieOption(rows: ModuleHomeDistributionRow[]): EChartsOption {
   return {
     color: CHART_COLORS,
+    animationDuration: 420,
     tooltip: {
       trigger: "item",
+      backgroundColor: "rgba(8, 25, 47, 0.94)",
+      borderColor: "rgba(96, 165, 250, 0.42)",
+      borderWidth: 1,
+      padding: [8, 10],
+      textStyle: {
+        color: "#f8fafc",
+        fontSize: 11,
+        fontWeight: 650,
+      },
       formatter: (params: unknown) => {
         const item = params as { name: string; percent: number };
         const row = rows.find((entry) => entry.label === item.name);
@@ -46,22 +57,33 @@ function buildPieOption(rows: ModuleHomeDistributionRow[]): EChartsOption {
     series: [
       {
         type: "pie",
-        radius: ["52%", "78%"],
+        radius: ["50%", "82%"],
         center: ["50%", "50%"],
+        startAngle: 104,
         minAngle: 4,
         avoidLabelOverlap: true,
         label: { show: false },
         labelLine: { show: false },
         itemStyle: {
-          borderColor: "#fff",
-          borderWidth: 2,
+          borderColor: "#f8fafc",
+          borderWidth: 3,
+          shadowBlur: 8,
+          shadowColor: "rgba(15, 23, 42, 0.12)",
         },
         emphasis: {
-          scaleSize: 4,
+          scale: true,
+          scaleSize: 6,
+          itemStyle: {
+            shadowBlur: 14,
+            shadowColor: "rgba(15, 23, 42, 0.22)",
+          },
         },
-        data: rows.map((row) => ({
+        data: rows.map((row, index) => ({
           name: row.label,
           value: Math.max(row.barPct, 0),
+          itemStyle: {
+            color: CHART_COLORS[index % CHART_COLORS.length],
+          },
         })),
       },
     ],
@@ -82,7 +104,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
       className={`${dhStyles.dhCard} ${dhStyles.dhTerminalPanel} ${styles.distPanel}`}
       data-testid={`module-home-distribution-${panel.key}`}
     >
-      <div className={dhStyles.dhTerminalPanelHead}>
+      <div className={`${dhStyles.dhTerminalPanelHead} ${styles.distPanelHead}`}>
         <h3>{panel.title}</h3>
         <div className={styles.distHeadActions}>
           {panel.viewAllPath ? (
@@ -116,7 +138,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
               opts={{ renderer: "canvas" }}
               notMerge
               lazyUpdate
-              style={{ height: 156, width: "100%" }}
+              style={{ height: "var(--dist-chart-height, 188px)", width: "100%" }}
             />
             <div className={styles.distChartCenter} aria-hidden="true">
               <span>{panel.totalDisplay ? "合计" : "Top1"}</span>
@@ -128,7 +150,7 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
             {rows.map((row, index) => {
               const width = `${Math.max(4, Math.min(row.barPct, 100))}%`;
               return (
-                <li className={styles.distItem} key={row.key}>
+                <li className={styles.distItem} key={row.key} title={`${row.label} ${formatMetric(row)}`}>
                   <div className={styles.distItemHead}>
                     <span
                       className={styles.distDot}
@@ -138,7 +160,8 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
                     <span className={styles.distLabel} title={row.label}>
                       {row.label}
                     </span>
-                    <span className={styles.distMetric}>{formatMetric(row)}</span>
+                    <span className={styles.distMetric}>{row.share !== "-" ? row.share : `${row.barPct.toFixed(2)}%`}</span>
+                    <span className={styles.distMarketValue}>{row.marketValue}</span>
                   </div>
                   <div className={styles.distBarTrack} aria-hidden="true">
                     <span
@@ -153,7 +176,23 @@ export function PortfolioDistributionPanel({ panel }: PortfolioDistributionPanel
           </ul>
         </div>
       ) : (
-        <p className={`${styles.distMeta} ${toneClass(panel.tone)}`}>{panel.stateDetail}</p>
+        <div
+          className={styles.distEmptyState}
+          data-tone={panel.tone}
+          data-testid={`module-home-distribution-empty-${panel.key}`}
+        >
+          <div className={styles.distEmptyChart} aria-hidden="true">
+            {Array.from({ length: EMPTY_BAR_COUNT }, (_, index) => (
+              <span data-color-index={index % CHART_COLORS.length} key={index} />
+            ))}
+          </div>
+          <div className={styles.distEmptyBars} aria-hidden="true">
+            {Array.from({ length: EMPTY_BAR_COUNT }, (_, index) => (
+              <span data-color-index={index % CHART_COLORS.length} key={index} />
+            ))}
+          </div>
+          <p className={`${styles.distMeta} ${toneClass(panel.tone)}`}>{panel.stateDetail}</p>
+        </div>
       )}
     </article>
   );

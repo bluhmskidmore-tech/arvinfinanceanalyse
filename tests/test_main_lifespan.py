@@ -19,10 +19,17 @@ def test_lifespan_warms_hermes_bridge_after_storage_startup(monkeypatch):
         "warm_hermes_bridge_if_configured",
         lambda value: calls.append(("warm-hermes", value)),
     )
+    async_calls = []
+
+    async def fake_to_thread(fn, *args, **kwargs):
+        async_calls.append((fn, args, kwargs))
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(
         module,
-        "warm_home_snapshot_cache_if_configured",
-        lambda value: calls.append(("warm-home", value)),
+        "warm_home_snapshot_cache_blocking_if_configured",
+        lambda value: calls.append(("warm-home-blocking", value)),
     )
     monkeypatch.setattr(
         module,
@@ -39,10 +46,11 @@ def test_lifespan_warms_hermes_bridge_after_storage_startup(monkeypatch):
     assert calls == [
         "storage",
         ("warm-hermes", settings),
-        ("warm-home", settings),
+        ("warm-home-blocking", settings),
         ("warm-income-trend", settings),
         "inside",
     ]
+    assert async_calls[1][0] is module.warm_home_snapshot_cache_blocking_if_configured
 
 
 def test_main_app_sets_disabled_otel_status_by_default() -> None:

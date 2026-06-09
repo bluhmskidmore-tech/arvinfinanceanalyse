@@ -14,8 +14,8 @@ validate_auth_startup_guardrails(_settings)
 from backend.app.api import router as api_router  # noqa: E402
 from backend.app.observability import setup_opentelemetry  # noqa: E402
 from backend.app.services.executive_service import (  # noqa: E402
+    warm_home_snapshot_cache_blocking_if_configured,
     warm_home_income_trend_cache_if_configured,
-    warm_home_snapshot_cache_if_configured,
 )
 from backend.app.services.hermes_agent_service import warm_hermes_bridge_if_configured  # noqa: E402
 from backend.app.services.market_home_warmup_service import warm_market_home_cache_if_configured  # noqa: E402
@@ -36,7 +36,7 @@ async def lifespan(_app: FastAPI):
     await asyncio.to_thread(run_startup_storage_migrations)
     settings = get_settings()
     warm_hermes_bridge_if_configured(settings)
-    warm_home_snapshot_cache_if_configured(settings)
+    await asyncio.to_thread(warm_home_snapshot_cache_blocking_if_configured, settings)
     warm_home_income_trend_cache_if_configured(settings)
     warm_market_home_cache_if_configured(settings)
     yield

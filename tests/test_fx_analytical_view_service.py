@@ -252,8 +252,8 @@ def test_fx_analytical_usd_middle_rate_consumes_fx_rates_helper(tmp_path, monkey
     )
     calls = []
 
-    def fake_get_usd_cny_rate(rows, target_date):
-        calls.append((rows, target_date))
+    def fake_get_usd_cny_rate(rows, target_date, *, allow_stale_fallback=False):
+        calls.append((rows, target_date, allow_stale_fallback))
         return 7.77, target_date, ["synthetic analytical fallback"]
 
     monkeypatch.setattr(module, "get_usd_cny_rate", fake_get_usd_cny_rate)
@@ -264,6 +264,7 @@ def test_fx_analytical_usd_middle_rate_consumes_fx_rates_helper(tmp_path, monkey
     assert middle_rate.series_id == "EMM00058124"
     assert middle_rate.value_numeric == 7.77
     assert calls
+    assert calls[0][2] is True
     get_settings.cache_clear()
 
 

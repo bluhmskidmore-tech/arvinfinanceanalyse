@@ -445,6 +445,68 @@ describe("dashboard home first-screen actions", () => {
     );
   });
 
+  it("renders generated next steps without snapshot transport copy", () => {
+    const view = mapToHomeFirstScreenView({
+      reportDate: "2026-04-30",
+      useMockFallback: false,
+      verdict,
+      metrics: [],
+      attribution: null,
+      bondHeadline: null,
+      portfolio: null,
+      snapshotMeta: null,
+      alertCount: 0,
+      snapshotUnavailable: false,
+      snapshotStale: false,
+      snapshotLoading: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <DecisionRailSection
+          decisionRail={view.decisionRail}
+          reportDate={view.reportDate}
+          dataSyncPrefix={view.headerStatus.dataSyncPrefix}
+          dataStatusKind={view.headerStatus.dataStatusKind}
+        />
+      </MemoryRouter>,
+    );
+
+    const rail = screen.getByTestId("dashboard-home-decision-rail");
+    expect(rail).toHaveTextContent("进入对应页面核对明细");
+    expect(rail).not.toHaveTextContent("主快照回传入口");
+  });
+
+  it("anchors the first screen on business judgment instead of snapshot containers", () => {
+    const view = firstScreenView();
+
+    render(
+      <MemoryRouter>
+        <TerminalHomeFirstScreen view={view} />
+        <DecisionRailSection
+          decisionRail={view.decisionRail}
+          reportDate={view.reportDate}
+          dataSyncPrefix={view.headerStatus.dataSyncPrefix}
+          dataStatusKind={view.headerStatus.dataStatusKind}
+        />
+      </MemoryRouter>,
+    );
+
+    const hero = screen.getByTestId("dashboard-home-hero");
+    expect(hero).toHaveTextContent("今日经营判断");
+    expect(hero).toHaveTextContent("关键指标");
+    expect(hero).toHaveTextContent("review portfolio duration");
+    expect(hero).not.toHaveTextContent("主快照");
+
+    const rail = screen.getByTestId("dashboard-home-decision-rail");
+    expect(rail).toHaveTextContent("判断依据");
+    expect(rail).toHaveTextContent("下一步");
+    expect(rail).toHaveTextContent("数据口径");
+    expect(rail).not.toHaveTextContent("复核记录");
+    expect(rail).not.toHaveTextContent("来源台账");
+    expect(rail).not.toHaveTextContent("主快照回传入口");
+  });
+
   it("routes the first-screen risk strip to the real risk overview page", () => {
     render(
       <MemoryRouter>

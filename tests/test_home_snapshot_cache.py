@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 import threading
 import time
 from unittest.mock import patch
@@ -22,6 +23,12 @@ def _fake_envelope(tag: str) -> dict[str, object]:
         "result_meta": {"trace_id": tag},
         "result": {"report_date": "2026-04-08", "tag": tag},
     }
+
+
+def _write_home_cache_governance_files(governance_dir) -> None:
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    (governance_dir / "cache_manifest.jsonl").write_text('{"run":"manifest-a"}\n', encoding="utf-8")
+    (governance_dir / "cache_build_run.jsonl").write_text('{"run":"build-a"}\n', encoding="utf-8")
 
 
 def test_second_call_with_same_key_hits_cache_and_skips_computation() -> None:
@@ -100,6 +107,24 @@ def test_within_ttl_window_keeps_cache(monkeypatch: pytest.MonkeyPatch) -> None:
 
         env1 = es.home_snapshot_envelope(report_date=None, allow_partial=False)
         clock["t"] += es._HOME_SNAPSHOT_CACHE_TTL_SECONDS - 0.1
+        env2 = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+        assert mock_compute.call_count == 1
+        assert env1 == env2
+        assert env1 is not env2
+
+
+def test_home_snapshot_cache_covers_normal_dashboard_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with patch.object(es, "_compute_home_snapshot_envelope") as mock_compute:
+        mock_compute.return_value = _fake_envelope("v1")
+
+        clock = {"t": 1000.0}
+        monkeypatch.setattr(es.time, "monotonic", lambda: clock["t"])
+
+        env1 = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+        clock["t"] += 30 * 60
         env2 = es.home_snapshot_envelope(report_date=None, allow_partial=False)
 
         assert mock_compute.call_count == 1
@@ -207,6 +232,121 @@ def test_home_snapshot_prewarm_populates_cache(caplog: pytest.LogCaptureFixture)
     messages = "\n".join(record.getMessage() for record in caplog.records)
     assert "home_snapshot_prewarm_start" in messages
     assert "home_snapshot_prewarm_done" in messages
+
+
+def test_home_snapshot_prewarm_survives_duckdb_mtime_touch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    duckdb_path.write_bytes(b"stable-home-cache-data")
+    _write_home_cache_governance_files(governance_dir)
+
+    settings = SimpleNamespace(
+        home_snapshot_prewarm_enabled=True,
+        duckdb_path=str(duckdb_path),
+        governance_path=str(governance_dir),
+    )
+    monkeypatch.setattr(es, "get_settings", lambda: settings)
+
+    with patch.object(es, "_compute_home_snapshot_envelope") as mock_compute:
+        mock_compute.return_value = _fake_envelope("warm")
+
+        es._warm_home_snapshot_cache_quietly(report_date=None, allow_partial=False)
+        duckdb_path.touch()
+        warmed = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+    assert mock_compute.call_count == 1
+    assert warmed["result"]["tag"] == "warm"
+
+
+def test_home_snapshot_version_token_reuses_file_fingerprint_when_stat_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    duckdb_path.write_bytes(b"stable-home-cache-data")
+    _write_home_cache_governance_files(governance_dir)
+
+    settings = SimpleNamespace(
+        duckdb_path=str(duckdb_path),
+        governance_path=str(governance_dir),
+    )
+    monkeypatch.setattr(es, "get_settings", lambda: settings)
+
+    open_calls: list[object] = []
+    original_open = es.Path.open
+
+    def counting_open(self, *args, **kwargs):
+        if str(self) == str(duckdb_path):
+            open_calls.append(self)
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(es.Path, "open", counting_open)
+
+    first = es._home_data_version_token()
+    second = es._home_data_version_token()
+
+    assert first == second
+    assert len(open_calls) == 1
+
+
+def test_home_snapshot_cache_invalidates_when_duckdb_content_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    duckdb_path.write_bytes(b"stable-home-cache-data")
+    _write_home_cache_governance_files(governance_dir)
+
+    settings = SimpleNamespace(
+        home_snapshot_prewarm_enabled=True,
+        duckdb_path=str(duckdb_path),
+        governance_path=str(governance_dir),
+    )
+    monkeypatch.setattr(es, "get_settings", lambda: settings)
+
+    with patch.object(es, "_compute_home_snapshot_envelope") as mock_compute:
+        mock_compute.side_effect = [_fake_envelope("v1"), _fake_envelope("v2")]
+
+        first = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+        duckdb_path.write_bytes(b"changed-home-cache-data")
+        second = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+    assert mock_compute.call_count == 2
+    assert first["result"]["tag"] == "v1"
+    assert second["result"]["tag"] == "v2"
+
+
+def test_home_snapshot_cache_invalidates_when_governance_manifest_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    duckdb_path.write_bytes(b"stable-home-cache-data")
+    _write_home_cache_governance_files(governance_dir)
+
+    settings = SimpleNamespace(
+        home_snapshot_prewarm_enabled=True,
+        duckdb_path=str(duckdb_path),
+        governance_path=str(governance_dir),
+    )
+    monkeypatch.setattr(es, "get_settings", lambda: settings)
+
+    with patch.object(es, "_compute_home_snapshot_envelope") as mock_compute:
+        mock_compute.side_effect = [_fake_envelope("v1"), _fake_envelope("v2")]
+
+        first = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+        (governance_dir / "cache_build_run.jsonl").write_text('{"run":"build-b"}\n', encoding="utf-8")
+        second = es.home_snapshot_envelope(report_date=None, allow_partial=False)
+
+    assert mock_compute.call_count == 2
+    assert first["result"]["tag"] == "v1"
+    assert second["result"]["tag"] == "v2"
 
 
 def test_home_snapshot_prewarm_can_be_disabled() -> None:
@@ -590,6 +730,77 @@ def test_home_snapshot_nim_context_cache_reuses_batch_payload_until_invalidated(
 
     assert calls == [("yield-batch", tuple(dates)), ("yield-batch", tuple(dates))]
     assert third == first
+
+
+def test_home_snapshot_support_cache_reuses_kpi_gate_until_invalidated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int | None]] = []
+
+    def gate(**kwargs):
+        calls.append((kwargs["dsn"], kwargs["year"]))
+        return {
+            "status": "blocked",
+            "reason": f"call-{len(calls)}",
+            "owner_count": 0,
+            "year": kwargs["year"],
+        }
+
+    monkeypatch.setattr(es, "resolve_kpi_authority_gate", gate)
+
+    first = es._resolve_kpi_authority_gate_for_overview(dsn="postgresql://example", year=2026)
+    second = es._resolve_kpi_authority_gate_for_overview(dsn="postgresql://example", year=2026)
+
+    assert calls == [("postgresql://example", 2026)]
+    assert first == second
+    assert first is not second
+
+    es.invalidate_home_snapshot_cache()
+    third = es._resolve_kpi_authority_gate_for_overview(dsn="postgresql://example", year=2026)
+
+    assert calls == [("postgresql://example", 2026), ("postgresql://example", 2026)]
+    assert third["reason"] == "call-2"
+
+
+def test_home_snapshot_nim_context_uses_kpi_fast_path_before_row_fetch(
+    tmp_path,
+) -> None:
+    dates = ["2026-04-08", "2026-03-31", "2026-02-28"]
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_text("stub", encoding="utf-8")
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    class Repo(es.LiabilityAnalyticsRepository):
+        def __init__(self) -> None:
+            super().__init__(str(duckdb_path))
+
+        def fetch_yield_kpis_for_dates(self, requested_dates):
+            calls.append(("kpi-batch", tuple(requested_dates)))
+            return {
+                d: {
+                    "report_date": d,
+                    "kpi": {"nim": {"2026-04-08": 0.003, "2026-03-31": 0.0025, "2026-02-28": 0.002}[d]},
+                    "source_version": f"sv-kpi-{d}",
+                    "rule_version": "rv-kpi",
+                }
+                for d in requested_dates
+            }
+
+        def fetch_yield_rows_for_dates(self, _requested_dates):
+            raise AssertionError("NIM fast path should not fetch liability detail rows")
+
+    payloads, zqtz_rows, tyw_rows, history = es._fetch_nim_context(
+        Repo(),
+        report_dates=dates,
+        current_report_date="2026-04-08",
+        n=3,
+    )
+
+    assert calls == [("kpi-batch", tuple(dates))]
+    assert payloads["2026-04-08"]["kpi"]["nim"] == 0.003
+    assert zqtz_rows == {}
+    assert tyw_rows == {}
+    assert history == [0.002, 0.0025, 0.003]
 
 
 def test_home_snapshot_nim_context_cache_coalesces_concurrent_cold_requests(

@@ -344,7 +344,7 @@ function buildDecisionActions(args: {
       title,
       priority: args.alertCount > 0 ? "medium" : "high",
       sourceLabel: sourceLabelForPath(to),
-      reason: "主快照回传入口",
+      reason: "进入对应页面核对明细",
       to,
       statusKind: "ready",
     });

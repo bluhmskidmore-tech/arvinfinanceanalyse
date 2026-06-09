@@ -621,6 +621,7 @@ def _resolve_fx_analytical_latest_row(rows: list[dict[str, object]]) -> dict[str
             for row in rows
         ],
         target_date,
+        allow_stale_fallback=True,
     )
     quality_flag = "warning" if warnings else str(latest["quality_flag"])
     return {

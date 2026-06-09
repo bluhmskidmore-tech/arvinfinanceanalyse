@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 # Windows / Py3.14: SQLAlchemy's import path calls ``platform.machine()`` which may block
 # on WMI; executive_service pulls models that import SQLAlchemy. Stub before backend imports.
@@ -49,6 +50,68 @@ def exec_mod(monkeypatch, tmp_path):
     mod = _exec_service_module()
     monkeypatch.setattr(mod, "get_settings", lambda: _fake_settings(tmp_path))
     return mod
+
+
+def _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir):
+    dates = ["2026-04-30", "2026-04-29"]
+    monkeypatch.setattr(
+        exec_mod,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=str(tmp_path / "x.duckdb"),
+            governance_path=str(governance_dir),
+            governance_sql_dsn="",
+            postgres_dsn="",
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_ytd_context",
+        lambda *_a, **_k: ({"2026-04-30": 20.0, "2026-04-29": 18.0}, [18.0, 20.0]),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_nim_context",
+        lambda *_a, **_k: (
+            {"2026-04-30": {"kpi": {"nim": 0.002}}, "2026-04-29": {"kpi": {"nim": 0.001}}},
+            {"2026-04-30": [{"source_version": "sv_liab_z", "rule_version": "rv_liab_z"}], "2026-04-29": []},
+            {"2026-04-30": [{"source_version": "sv_liab_t", "rule_version": "rv_liab_t"}], "2026-04-29": []},
+            [0.001, 0.002],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_dv01_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
+                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+            },
+            [20.0, 30.0],
+        ),
+    )
+    return dates
 
 
 def _assert_analytical_meta(meta: dict) -> None:
@@ -932,6 +995,12 @@ def test_executive_overview_reuses_cache_build_run_snapshot_for_lineage(monkeypa
         governance_sql_dsn = ""
         postgres_dsn = ""
 
+    Settings.governance_path.mkdir(parents=True, exist_ok=True)
+    (Settings.governance_path / "cache_build_run.jsonl").write_text(
+        '{"run":"a"}\n',
+        encoding="utf-8",
+    )
+
     class GovernanceRepo:
         def __init__(self, *, base_dir):
             assert str(base_dir).endswith("governance")
@@ -1001,6 +1070,11 @@ def test_executive_overview_reuses_cache_build_run_snapshot_for_lineage(monkeypa
     monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
     monkeypatch.setattr(
         exec_mod,
+        "_read_recent_cache_build_runs_for_executive_overview",
+        lambda _governance_dir: None,
+    )
+    monkeypatch.setattr(
+        exec_mod,
         "_fetch_aum_context",
         lambda *_a, **_k: (
             {
@@ -1061,6 +1135,304 @@ def test_executive_overview_reuses_cache_build_run_snapshot_for_lineage(monkeypa
             "bond": dates,
         },
     )
+    cached_out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    assert read_calls == [exec_mod.CACHE_BUILD_RUN_STREAM]
+    meta = out["result_meta"]
+    assert cached_out["result_meta"]["source_version"] == meta["source_version"]
+    assert "sv_pnl_current" in meta["source_version"]
+    assert "sv_pnl_prior" in meta["source_version"]
+    assert "sv_bond_current" in meta["source_version"]
+    assert "sv_bond_prior" in meta["source_version"]
+
+
+def test_executive_overview_reads_recent_cache_build_runs_without_full_scan(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    dates = ["2026-04-30", "2026-04-29"]
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    with stream_path.open("w", encoding="utf-8") as handle:
+        for idx in range(300):
+            handle.write(
+                json.dumps(
+                    {
+                        "cache_key": "noise",
+                        "job_name": "noise",
+                        "status": "completed",
+                        "report_date": f"2026-01-{(idx % 28) + 1:02d}",
+                        "source_version": f"sv_noise_{idx}",
+                        "rule_version": f"rv_noise_{idx}",
+                    }
+                )
+                + "\n"
+            )
+        for record in [
+            {
+                "cache_key": exec_mod.PNL_CACHE_KEY,
+                "job_name": exec_mod.PNL_JOB_NAME,
+                "status": "completed",
+                "report_date": "2026-04-29",
+                "source_version": "sv_pnl_prior",
+                "rule_version": "rv_pnl_prior",
+            },
+            {
+                "cache_key": exec_mod.PNL_CACHE_KEY,
+                "job_name": exec_mod.PNL_JOB_NAME,
+                "status": "completed",
+                "report_date": "2026-04-30",
+                "source_version": "sv_pnl_current",
+                "rule_version": "rv_pnl_current",
+            },
+            {
+                "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+                "job_name": "bond_analytics_materialize",
+                "status": "completed",
+                "report_date": "2026-04-29",
+                "source_version": "sv_bond_prior",
+                "rule_version": "rv_bond_prior",
+            },
+            {
+                "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+                "job_name": "bond_analytics_materialize",
+                "status": "completed",
+                "report_date": "2026-04-30",
+                "source_version": "sv_bond_current",
+                "rule_version": "rv_bond_current",
+            },
+        ]:
+            handle.write(json.dumps(record) + "\n")
+
+    monkeypatch.setattr(
+        exec_mod,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=str(tmp_path / "x.duckdb"),
+            governance_path=str(governance_dir),
+            governance_sql_dsn="",
+            postgres_dsn="",
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod.GovernanceRepository,
+        "read_all",
+        lambda *_a, **_k: pytest.fail("home overview should not full-scan cache_build_run.jsonl"),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_ytd_context",
+        lambda *_a, **_k: ({"2026-04-30": 20.0, "2026-04-29": 18.0}, [18.0, 20.0]),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_nim_context",
+        lambda *_a, **_k: (
+            {"2026-04-30": {"kpi": {"nim": 0.002}}, "2026-04-29": {"kpi": {"nim": 0.001}}},
+            {"2026-04-30": [{"source_version": "sv_liab_z", "rule_version": "rv_liab_z"}], "2026-04-29": []},
+            {"2026-04-30": [{"source_version": "sv_liab_t", "rule_version": "rv_liab_t"}], "2026-04-29": []},
+            [0.001, 0.002],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_dv01_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
+                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+            },
+            [20.0, 30.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert "sv_pnl_current" in meta["source_version"]
+    assert "sv_pnl_prior" in meta["source_version"]
+    assert "sv_bond_current" in meta["source_version"]
+    assert "sv_bond_prior" in meta["source_version"]
+
+
+def test_executive_overview_falls_back_when_recent_cache_build_runs_miss_lineage(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    dates = ["2026-04-30", "2026-04-29"]
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    target_records = [
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_pnl_prior",
+            "rule_version": "rv_pnl_prior",
+        },
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_pnl_current",
+            "rule_version": "rv_pnl_current",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_bond_prior",
+            "rule_version": "rv_bond_prior",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_bond_current",
+            "rule_version": "rv_bond_current",
+        },
+    ]
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    with stream_path.open("w", encoding="utf-8") as handle:
+        for record in target_records:
+            handle.write(json.dumps(record) + "\n")
+        for idx in range(200):
+            handle.write(
+                json.dumps(
+                    {
+                        "cache_key": "noise",
+                        "job_name": "noise",
+                        "status": "completed",
+                        "report_date": f"2026-02-{(idx % 28) + 1:02d}",
+                        "source_version": f"sv_noise_{idx}",
+                        "rule_version": f"rv_noise_{idx}",
+                    }
+                )
+                + "\n"
+            )
+    monkeypatch.setattr(exec_mod, "_HOME_CACHE_BUILD_RUN_TAIL_BYTES", 1024)
+    read_calls: list[str] = []
+
+    class GovernanceRepo:
+        def __init__(self, *, base_dir):
+            assert Path(base_dir) == governance_dir
+
+        def read_all(self, stream):
+            read_calls.append(stream)
+            return list(target_records)
+
+    monkeypatch.setattr(exec_mod, "GovernanceRepository", GovernanceRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=str(tmp_path / "x.duckdb"),
+            governance_path=str(governance_dir),
+            governance_sql_dsn="",
+            postgres_dsn="",
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_ytd_context",
+        lambda *_a, **_k: ({"2026-04-30": 20.0, "2026-04-29": 18.0}, [18.0, 20.0]),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_nim_context",
+        lambda *_a, **_k: (
+            {"2026-04-30": {"kpi": {"nim": 0.002}}, "2026-04-29": {"kpi": {"nim": 0.001}}},
+            {"2026-04-30": [{"source_version": "sv_liab_z", "rule_version": "rv_liab_z"}], "2026-04-29": []},
+            {"2026-04-30": [{"source_version": "sv_liab_t", "rule_version": "rv_liab_t"}], "2026-04-29": []},
+            [0.001, 0.002],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_dv01_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
+                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+            },
+            [20.0, 30.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
 
     assert read_calls == [exec_mod.CACHE_BUILD_RUN_STREAM]
     meta = out["result_meta"]
@@ -1068,6 +1440,374 @@ def test_executive_overview_reuses_cache_build_run_snapshot_for_lineage(monkeypa
     assert "sv_pnl_prior" in meta["source_version"]
     assert "sv_bond_current" in meta["source_version"]
     assert "sv_bond_prior" in meta["source_version"]
+
+
+def test_executive_overview_partial_cache_build_rows_full_scan_is_single_flight(
+    monkeypatch,
+    exec_mod,
+):
+    rows = exec_mod._HomeCacheBuildRunRows([], is_partial=True)
+    started = threading.Event()
+    release = threading.Event()
+    read_calls = 0
+    results: list[list[dict[str, object]] | None] = []
+    results_lock = threading.Lock()
+    full_rows = [
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_pnl_current",
+        }
+    ]
+
+    def read_all(_governance_dir):
+        nonlocal read_calls
+        read_calls += 1
+        started.set()
+        release.wait(timeout=1)
+        return list(full_rows)
+
+    def worker():
+        result = exec_mod._full_cache_build_runs_for_partial_rows(
+            rows,
+            governance_dir="unused",
+        )
+        with results_lock:
+            results.append(result)
+
+    monkeypatch.setattr(exec_mod, "_read_all_cache_build_runs_for_executive_overview", read_all)
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    assert started.wait(timeout=1)
+    release.set()
+    for thread in threads:
+        thread.join(timeout=1)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert read_calls == 1
+    assert results == [full_rows, full_rows]
+
+
+def test_executive_overview_warns_when_partial_cache_build_rows_cannot_fallback(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    dates = ["2026-04-30", "2026-04-29"]
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    with stream_path.open("w", encoding="utf-8") as handle:
+        for idx in range(200):
+            handle.write(
+                json.dumps(
+                    {
+                        "cache_key": "noise",
+                        "job_name": "noise",
+                        "status": "completed",
+                        "report_date": f"2026-02-{(idx % 28) + 1:02d}",
+                        "source_version": f"sv_noise_{idx}",
+                        "rule_version": f"rv_noise_{idx}",
+                    }
+                )
+                + "\n"
+            )
+    monkeypatch.setattr(exec_mod, "_HOME_CACHE_BUILD_RUN_TAIL_BYTES", 1024)
+    read_calls: list[str] = []
+
+    class GovernanceRepo:
+        def __init__(self, *, base_dir):
+            assert Path(base_dir) == governance_dir
+
+        def read_all(self, stream):
+            read_calls.append(stream)
+            raise RuntimeError(f"{stream} unavailable")
+
+    monkeypatch.setattr(exec_mod, "GovernanceRepository", GovernanceRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=str(tmp_path / "x.duckdb"),
+            governance_path=str(governance_dir),
+            governance_sql_dsn="",
+            postgres_dsn="",
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_aum_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {
+                    "report_date": "2026-04-30",
+                    "total_market_value_amount": 100.0,
+                    "source_version": "sv_balance_current",
+                    "rule_version": "rv_balance_current",
+                },
+                "2026-04-29": {
+                    "report_date": "2026-04-29",
+                    "total_market_value_amount": 90.0,
+                    "source_version": "sv_balance_prior",
+                    "rule_version": "rv_balance_prior",
+                },
+            },
+            [90.0, 100.0],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_ytd_context",
+        lambda *_a, **_k: ({"2026-04-30": 20.0, "2026-04-29": 18.0}, [18.0, 20.0]),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_nim_context",
+        lambda *_a, **_k: (
+            {"2026-04-30": {"kpi": {"nim": 0.002}}, "2026-04-29": {"kpi": {"nim": 0.001}}},
+            {"2026-04-30": [{"source_version": "sv_liab_z", "rule_version": "rv_liab_z"}], "2026-04-29": []},
+            {"2026-04-30": [{"source_version": "sv_liab_t", "rule_version": "rv_liab_t"}], "2026-04-29": []},
+            [0.001, 0.002],
+        ),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "_fetch_dv01_context",
+        lambda *_a, **_k: (
+            {
+                "2026-04-30": {"report_date": "2026-04-30", "portfolio_dv01": 30.0},
+                "2026-04-29": {"report_date": "2026-04-29", "portfolio_dv01": 20.0},
+            },
+            [20.0, 30.0],
+        ),
+    )
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert meta["source_version"] == exec_mod._MISS_SOURCE
+    assert meta["filters_applied"]["lineage_fallback_failed"] is True
+    assert read_calls == [exec_mod.CACHE_BUILD_RUN_STREAM]
+
+
+def test_executive_overview_warns_when_full_scan_has_no_matching_lineage(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    (governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl").write_text(
+        json.dumps(
+            {
+                "cache_key": "noise",
+                "job_name": "noise",
+                "status": "completed",
+                "report_date": "2026-04-30",
+                "source_version": "sv_noise",
+                "rule_version": "rv_noise",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert meta["source_version"] == exec_mod._MISS_SOURCE
+
+
+def test_executive_overview_warns_when_bond_lineage_source_version_is_empty(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    records = [
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_pnl_prior",
+            "rule_version": "rv_pnl_prior",
+        },
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_pnl_current",
+            "rule_version": "rv_pnl_current",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_bond_prior",
+            "rule_version": "rv_bond_prior",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "",
+            "rule_version": "rv_bond_current",
+        },
+    ]
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    stream_path.write_text(
+        "".join(json.dumps(record) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+
+    out = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    meta = out["result_meta"]
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert meta["source_version"] == exec_mod._MISS_SOURCE
+
+
+def test_executive_overview_retries_full_scan_after_partial_fallback_failure(
+    monkeypatch,
+    exec_mod,
+    tmp_path,
+):
+    dates = ["2026-04-30", "2026-04-29"]
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True)
+    stream_path = governance_dir / f"{exec_mod.CACHE_BUILD_RUN_STREAM}.jsonl"
+    with stream_path.open("w", encoding="utf-8") as handle:
+        for idx in range(200):
+            handle.write(
+                json.dumps(
+                    {
+                        "cache_key": "noise",
+                        "job_name": "noise",
+                        "status": "completed",
+                        "report_date": f"2026-02-{(idx % 28) + 1:02d}",
+                        "source_version": f"sv_noise_{idx}",
+                        "rule_version": f"rv_noise_{idx}",
+                    }
+                )
+                + "\n"
+            )
+    monkeypatch.setattr(exec_mod, "_HOME_CACHE_BUILD_RUN_TAIL_BYTES", 1024)
+    target_records = [
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_pnl_prior",
+            "rule_version": "rv_pnl_prior",
+        },
+        {
+            "cache_key": exec_mod.PNL_CACHE_KEY,
+            "job_name": exec_mod.PNL_JOB_NAME,
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_pnl_current",
+            "rule_version": "rv_pnl_current",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-29",
+            "source_version": "sv_bond_prior",
+            "rule_version": "rv_bond_prior",
+        },
+        {
+            "cache_key": exec_mod.BOND_ANALYTICS_CACHE_KEY,
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "report_date": "2026-04-30",
+            "source_version": "sv_bond_current",
+            "rule_version": "rv_bond_current",
+        },
+    ]
+    read_calls = 0
+
+    class GovernanceRepo:
+        def __init__(self, *, base_dir):
+            assert Path(base_dir) == governance_dir
+
+        def read_all(self, stream):
+            nonlocal read_calls
+            assert stream == exec_mod.CACHE_BUILD_RUN_STREAM
+            read_calls += 1
+            if read_calls == 1:
+                raise RuntimeError("temporary governance read failure")
+            return list(target_records)
+
+    monkeypatch.setattr(exec_mod, "GovernanceRepository", GovernanceRepo)
+    dates = _patch_executive_overview_metric_contexts(monkeypatch, exec_mod, tmp_path, governance_dir)
+
+    first = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+    second = exec_mod.executive_overview(
+        report_date="2026-04-30",
+        date_context={
+            "balance": dates,
+            "pnl": dates,
+            "liability": dates,
+            "bond": dates,
+        },
+    )
+
+    assert first["result_meta"]["quality_flag"] == "warning"
+    assert first["result_meta"]["filters_applied"]["lineage_fallback_failed"] is True
+    assert second["result_meta"]["quality_flag"] == "ok"
+    assert second["result_meta"]["filters_applied"]["lineage_fallback_failed"] is False
+    assert "sv_pnl_current" in second["result_meta"]["source_version"]
+    assert "sv_bond_current" in second["result_meta"]["source_version"]
+    assert read_calls == 2
 
 
 def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):
@@ -1202,12 +1942,15 @@ def test_executive_pnl_attribution_repo_aggregation_contract(monkeypatch, exec_m
 
 def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_mod):
     calls: list[tuple[str, str]] = []
+    list_report_dates_calls = 0
 
     class Repo:
         def __init__(self, *_a, **_k):
             pass
 
         def list_report_dates(self):
+            nonlocal list_report_dates_calls
+            list_report_dates_calls += 1
             return ["2026-02-28", "2025-11-20"]
 
         def fetch_rows(self, rd, grain):
@@ -1226,6 +1969,7 @@ def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_
     monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", Repo)
     out = exec_mod.executive_pnl_attribution(report_date="2025-11-20")
 
+    assert list_report_dates_calls == 0
     assert calls == [("2025-11-20", "monthly")]
     total = _assert_numeric_json_shape(out["result"]["total"])
     assert total["display"] == "+2.00 亿"

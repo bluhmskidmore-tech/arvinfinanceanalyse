@@ -52,6 +52,16 @@ function sourceSegments(value: string | undefined) {
   return value?.split(/\s+\/\s+/).map((part) => part.trim()).filter(Boolean) ?? [];
 }
 
+function compactMarketParts(parts: Array<string | undefined | null>) {
+  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== "-"));
+}
+
+type MarketDetailPanel = NonNullable<ModuleHomeView["detailPanels"]>[number];
+
+function findMarketRow(panel: MarketDetailPanel | undefined, patterns: string[]) {
+  return panel?.rows.find((row) => patterns.some((pattern) => `${row.key} ${row.label} ${row.source}`.includes(pattern)));
+}
+
 type MarketHomeLayoutProps = {
   view: ModuleHomeView;
   config: ModuleWorkbenchHomeConfig;
@@ -88,8 +98,51 @@ export default function MarketHomeLayout({
     ? formalPanel.rows.length === 0 &&
       (!formalPanel.chart || formalPanel.chart.categories.length === 0)
     : false;
+  const tenYearRow = findMarketRow(keyRatePanel, ["10Y", "10年", "十年"]);
+  const liquidityRow = findMarketRow(keyRatePanel, ["DR007", "SHIBOR", "shibor"]);
+  const crossAssetRow = macroPanel?.rows[0];
+  const macroStanceRow =
+    macroOverviewPanel?.rows.find((row) => row.key.includes("stance") || row.label.includes("结论")) ??
+    macroOverviewPanel?.rows[0];
+  const marketPulse = [
+    {
+      key: "ten-year",
+      label: "10Y国债",
+      value: tenYearRow?.value ?? "待返回",
+      detail: compactMarketParts([tenYearRow?.detail, tenYearRow?.tradeDate]).join(" / "),
+      tone: tenYearRow?.tone ?? keyRatePanel?.tone ?? "muted",
+    },
+    {
+      key: "liquidity",
+      label: liquidityRow?.label ?? "流动性",
+      value: liquidityRow?.value ?? "待返回",
+      detail: compactMarketParts([liquidityRow?.detail, liquidityRow?.tradeDate]).join(" / "),
+      tone: liquidityRow?.tone ?? keyRatePanel?.tone ?? "muted",
+    },
+    {
+      key: "cross-asset",
+      label: crossAssetRow?.label ?? "跨资产",
+      value: crossAssetRow?.value ?? "待返回",
+      detail: compactMarketParts([crossAssetRow?.detail, crossAssetRow?.tradeDate]).join(" / "),
+      tone: crossAssetRow?.tone ?? macroPanel?.tone ?? "muted",
+    },
+    {
+      key: "macro",
+      label: "宏观信号",
+      value: macroStanceRow?.value ?? macroStanceRow?.label ?? "观察",
+      detail: compactMarketParts([macroStanceRow?.detail, macroStanceRow?.tradeDate]).join(" / "),
+      tone: macroStanceRow?.tone ?? macroOverviewPanel?.tone ?? "muted",
+    },
+  ];
   const primaryEvidenceSegments = evidenceSegments(primaryBriefing?.evidence);
   const sourceScopeSegments = sourceSegments(view.sourceScope);
+  const marketKpis = view.kpis.length > 0 ? view.kpis : marketPulse;
+  const instrumentFacts = [
+    { label: "最新行情", value: `${latestTradeDate || "—"}` },
+    { label: "正式序列", value: `${formalTradeDate || "—"}` },
+    { label: "来源口径", value: view.sourceScope || "—" },
+    { label: "当前状态", value: view.stateLabel },
+  ];
 
   const tabItems = useMemo(() => {
     const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
@@ -113,9 +166,6 @@ export default function MarketHomeLayout({
         <div className={`${dhStyles.dhTopbarLeft} ${marketStyles.marketTopbarLeft}`}>
           <div className={dhStyles.dhTitleBrand}>
             <span className={dhStyles.dhTitleBar} aria-hidden="true" />
-            <span className={dhStyles.dhTitleMark} aria-hidden="true">
-              M
-            </span>
             <h1 className={dhStyles.dhTitle}>{view.title}</h1>
           </div>
           <div className={marketStyles.topbarCopy}>
@@ -124,6 +174,7 @@ export default function MarketHomeLayout({
           </div>
         </div>
         <div className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}>
+          <span className={marketStyles.marketSearchBox}>搜索利率 / 曲线 / 跨资产</span>
           <span className={statePillClass(stateTone)} data-tone={stateTone}>
             {view.stateLabel}
           </span>
@@ -139,6 +190,20 @@ export default function MarketHomeLayout({
           data-testid="module-home-market-cockpit"
           className={marketStyles.marketInstitutionalCockpit}
         >
+          <section className={marketStyles.marketInstrumentStrip} data-testid="module-home-market-instrument-strip">
+            <div className={marketStyles.marketInstrumentTitle}>
+              <strong>市场概览</strong>
+              <span>利率 / 流动性 / 跨资产</span>
+            </div>
+            <div className={marketStyles.marketInstrumentFacts}>
+              {instrumentFacts.map((item) => (
+                <span key={item.label}>
+                  <em>{item.label}</em>
+                  <b>{item.value}</b>
+                </span>
+              ))}
+            </div>
+          </section>
           <section
             data-testid="module-home-market-primary-grid"
             className={marketStyles.marketPrimaryGrid}
@@ -155,7 +220,7 @@ export default function MarketHomeLayout({
                   <span key={part}>{part}</span>
                 ))}
               </p>
-              <div className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`} data-testid="module-home-market-hero-meta">
+              <div className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`} data-testid="module-home-market-hero-meta" hidden>
                 <span>{view.stateDetail}</span>
                 <span className={marketStyles.marketHeroSources}>
                   {sourceScopeSegments.length > 0
@@ -169,8 +234,8 @@ export default function MarketHomeLayout({
             data-testid="module-home-kpi-strip"
             className={`${dhStyles.dhCard} ${marketStyles.marketKpiBox}`}
           >
-            {view.kpis.map((item) => (
-              <div className={`${dhStyles.dhMetricTile} ${marketStyles.marketKpiTile}`} key={item.key}>
+            {marketKpis.map((item) => (
+              <div className={`${dhStyles.dhMetricTile} ${marketStyles.marketKpiTile}`} data-tone={item.tone} key={item.key}>
                 <div className={dhStyles.dhMetricLabel}>{item.label}</div>
                 <div className={`${dhStyles.dhMetricValue} ${dhStyles.dhNum} ${toneClass(item.tone)}`}>
                   {item.value}
@@ -222,18 +287,20 @@ export default function MarketHomeLayout({
             </div>
 
             <aside
-              data-testid="module-home-market-ai-rail"
-              className={marketStyles.aiDecisionRail}
+              data-testid="module-home-market-evidence-rail"
+              className={marketStyles.evidenceRail}
             >
-              <div className={marketStyles.aiRailHeader}>
-                <span>AI 决策舱</span>
+              <div className={marketStyles.evidenceRailHeader}>
+                <span>交易检查清单</span>
                 <strong data-tone={stateTone}>{view.stateLabel}</strong>
               </div>
-              <p className={marketStyles.aiRailState}>{view.stateDetail}</p>
+              <p className={marketStyles.evidenceRailState} data-testid="module-home-market-evidence-rail-state">
+                行情 {latestTradeDate || "—"}，正式序列 {formalTradeDate || "—"}；{view.stateLabel}。
+              </p>
 
-              <div className={marketStyles.aiRailMetricGrid}>
-                {view.kpis.slice(0, 3).map((item) => (
-                  <div className={marketStyles.aiRailMetric} data-tone={item.tone} key={item.key}>
+              <div className={marketStyles.evidenceRailMetricGrid} data-testid="module-home-market-evidence-rail-metrics">
+                {marketKpis.slice(0, 5).map((item) => (
+                  <div className={marketStyles.evidenceRailMetric} data-tone={item.tone} key={item.key}>
                     <span>{item.label}</span>
                     <strong className={dhStyles.dhNum}>{item.value}</strong>
                   </div>
@@ -241,32 +308,33 @@ export default function MarketHomeLayout({
               </div>
 
               {primaryBriefing ? (
-                <section className={marketStyles.aiRailCard} data-tone={primaryBriefing.tone}>
-                  <span className={marketStyles.aiRailLabel}>{primaryBriefing.title}</span>
+                <section className={marketStyles.evidenceRailCard} data-tone={primaryBriefing.tone}>
+                  <span className={marketStyles.evidenceRailLabel}>交易结论</span>
                   <strong>{primaryBriefing.conclusion}</strong>
                   <p>{primaryBriefing.evidence}</p>
                 </section>
               ) : null}
 
-              <section className={marketStyles.aiRailCard}>
-                <span className={marketStyles.aiRailLabel}>Source Gate</span>
-                <div className={marketStyles.aiRailStatusList}>
-                  {view.statuses.slice(0, 4).map((item) => (
+              <section className={marketStyles.evidenceRailCard} data-testid="module-home-market-audit-status">
+                <span className={marketStyles.evidenceRailLabel}>约束检查结果</span>
+                <div className={marketStyles.evidenceRailStatusList}>
+                  {view.statuses.slice(0, 5).map((item) => (
                     <span data-tone={item.tone} key={item.key}>
-                      {item.label}
+                      <b>{item.label}</b>
+                      <em>{compactMarketParts([item.value, item.detail]).join(" / ") || "待返回"}</em>
                     </span>
                   ))}
                 </div>
               </section>
 
-              <nav className={marketStyles.aiRailActionList} aria-label="市场模块入口">
-                <Link to="/market-data" className={marketStyles.aiRailLink}>
+              <nav className={marketStyles.evidenceRailActionList} aria-label="市场模块入口">
+                <Link to="/market-data" className={marketStyles.evidenceRailLink}>
                   市场数据
                 </Link>
-                <Link to="/macro-toolkit" className={marketStyles.aiRailLink}>
+                <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>
                   宏观工具
                 </Link>
-                <Link to="/cross-asset" className={marketStyles.aiRailLink}>
+                <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>
                   跨资产
                 </Link>
               </nav>
