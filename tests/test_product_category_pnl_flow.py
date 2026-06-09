@@ -484,6 +484,9 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     scenario_asset_total = scenario_payload["result"]["asset_total"]
     baseline_asset_total = feb_monthly_payload["result"]["asset_total"]
     assert Decimal(str(scenario_asset_total["cny_ftp"])) != Decimal(str(baseline_asset_total["cny_ftp"]))
+    scenario_spread = scenario_payload["result"]["interest_spread"]
+    assert scenario_spread["all_currency_spread_pct"] == feb_spread["all_currency_spread_pct"]
+    assert scenario_spread["cny_spread_pct"] == feb_spread["cny_spread_pct"]
     get_settings.cache_clear()
 
 
@@ -2598,6 +2601,7 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
     anchor = "2026-02-28"
     env = pcs.product_category_pnl_envelope(str(duckdb_path), anchor, "ytd")
     ref_grand = float(env["result"]["grand_total"]["business_net_income"])
+    ref_interest_spread = env["result"]["interest_spread"]
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -2618,5 +2622,17 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
     )
     assert resolved is not None
     assert float(resolved.grand_total.business_net_income) == pytest.approx(ref_grand, rel=1e-9, abs=1e-6)
+    assert resolved.interest_spread.all_currency_spread_pct is not None
+    assert (
+        resolved.interest_spread.all_currency_spread_pct.raw
+        == Decimal(ref_interest_spread["all_currency_spread_pct"]["raw"])
+    )
+    assert (
+        resolved.interest_spread.all_currency_spread_pct.display
+        == ref_interest_spread["all_currency_spread_pct"]["display"]
+    )
+    assert resolved.interest_spread.cny_spread_pct is not None
+    assert resolved.interest_spread.cny_spread_pct.raw == Decimal(ref_interest_spread["cny_spread_pct"]["raw"])
+    assert resolved.interest_spread.cny_spread_pct.display == ref_interest_spread["cny_spread_pct"]["display"]
 
     get_settings.cache_clear()
