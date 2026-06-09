@@ -1680,23 +1680,48 @@ export function BondAnalyticsInstitutionalCockpit({
       detail: "信用利差敏感度",
     },
   ];
+  const topbarReportDate = dashboardReportDate || reportDate || "—";
+  const topbarReportStatus = isDashboardDateFallback
+    ? `快照回退 ${dashboardReportDate || "—"}`
+    : dashboardReportDate
+      ? "报告日匹配"
+      : "报告日待确认";
+  const topbarReadoutStatus = headlineQ.isPending ? "加载中" : headline ? "已返回" : "待返回";
+  const topbarReadoutDetail = headlineQ.isPending
+    ? "首屏 KPI 加载中"
+    : headline
+      ? "首屏 KPI 已返回"
+      : "首屏 KPI 待返回";
+
   return (
     <section data-testid="bond-analysis-phase3-cockpit" className={styles.phaseSection}>
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
 
       <section data-testid="bond-analysis-reference-dashboard" className={styles.referenceDashboard}>
-        <div className={styles.referenceTopbar}>
-          <div>
+        <div data-testid="bond-analysis-reference-topbar" className={styles.referenceTopbar}>
+          <div className={styles.referenceTopbarIdentity}>
             <div className={styles.holdingsKicker}>债券分析</div>
             <h2 className={styles.referenceTitle}>固定收益交易台</h2>
             <p className={styles.referenceSubtitle}>
-              报告日 {dashboardReportDate || reportDate || "—"} · 首屏只展示后端读面与已确认下钻入口。
+              报告日 {topbarReportDate} · 首屏只展示后端读面与已确认下钻入口。
             </p>
           </div>
-          <div className={styles.referenceStatusPills}>
-            <span>数据更新时间 {headline?.report_date ?? dashboardReportDate ?? "—"}</span>
-            <span>{isDashboardDateFallback ? `快照回退 ${dashboardReportDate}` : "报告日匹配"}</span>
-            <span>估值状态 {headlineQ.isPending ? "加载中" : headline ? "已完成" : "待确认"}</span>
+          <div className={styles.referenceTopbarReadout}>
+            <span>核心读面</span>
+            <strong>{conclusion.body}</strong>
+            <small>{conclusion.detail}</small>
+          </div>
+          <div className={styles.referenceTopbarStatus}>
+            <div data-testid="bond-analysis-topbar-status-item">
+              <span>报告日</span>
+              <strong>{topbarReportStatus}</strong>
+              <small>{topbarReportDate}</small>
+            </div>
+            <div data-testid="bond-analysis-topbar-status-item">
+              <span>首屏 KPI</span>
+              <strong>{topbarReadoutStatus}</strong>
+              <small>{topbarReadoutDetail}</small>
+            </div>
           </div>
         </div>
 

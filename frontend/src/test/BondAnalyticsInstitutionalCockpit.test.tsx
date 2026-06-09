@@ -349,12 +349,21 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     const dashboard = await screen.findByTestId("bond-analysis-reference-dashboard");
     const marketTicker = within(dashboard).getByTestId("bond-analysis-market-ticker");
+    const topbar = within(dashboard).getByTestId("bond-analysis-reference-topbar");
     const dailyJudgment = within(dashboard).getByTestId("bond-analysis-daily-judgment");
     expect(
       dailyJudgment.compareDocumentPosition(marketTicker) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
     expect(within(dashboard).getByText("固定收益交易台")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(topbar).toHaveTextContent("核心读面");
+      expect(topbar).toHaveTextContent("久期、信用利差与信用占比读面已返回");
+      expect(topbar).toHaveTextContent("报告日");
+      expect(topbar).toHaveTextContent("首屏 KPI");
+      expect(topbar).not.toHaveTextContent("数据更新时间");
+      expect(within(topbar).getAllByTestId("bond-analysis-topbar-status-item")).toHaveLength(2);
+    });
     expect(within(dashboard).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("10年国债");
     expect(within(dashboard).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("DR007");
     await waitFor(() => {
@@ -986,8 +995,13 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(signalMetricRule).toContain("font-family: var(--moss-font-mono)");
     expect(topbarRule).not.toMatch(/display:\s*none/);
     expect(topbarRule).toContain("border-radius: 6px");
-    expect(topbarRule).toContain("padding: 5px 10px");
+    expect(topbarRule).toContain("border-left: 4px solid var(--moss-color-primary-900)");
+    expect(topbarRule).toContain("grid-template-columns: minmax(160px, 0.72fr) minmax(420px, 1.6fr) minmax(240px, 0.78fr)");
+    expect(topbarRule).toContain("padding: 8px 10px");
     expect(titleRule).toContain("font-size: 16px");
+    expect(cssRuleBody(".referenceTopbarReadout")).toContain("align-content: center");
+    expect(cssRuleBody(".referenceTopbarReadout strong")).toContain("font-size: 18px");
+    expect(cssRuleBody(".referenceTopbarStatus")).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(marketRule).not.toMatch(/box-shadow:/);
     expect(kpiTileRule).toContain("min-height: 70px");
     expect(kpiTileRule).toContain("background: #ffffff");
