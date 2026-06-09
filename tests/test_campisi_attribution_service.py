@@ -91,6 +91,7 @@ def _install_full_service_fakes(
     rows_by_date: dict[str, list[dict[str, object]]],
     curves: dict[tuple[str, str], dict[str, object]],
     closure_status: str = "closed",
+    duckdb_path: str = "unused.duckdb",
 ) -> None:
     monkeypatch.setattr(
         campisi_svc,
@@ -105,7 +106,7 @@ def _install_full_service_fakes(
     monkeypatch.setattr(
         campisi_svc,
         "get_settings",
-        lambda: SimpleNamespace(duckdb_path="unused.duckdb", governance_path="unused-governance"),
+        lambda: SimpleNamespace(duckdb_path=duckdb_path, governance_path="unused-governance"),
     )
 
     def fake_formal_closure(*, report_date: str, campisi_total_return: Decimal, **_kwargs: Any) -> dict[str, object]:
@@ -129,6 +130,10 @@ def _install_full_service_fakes(
         }
 
     monkeypatch.setattr(campisi_svc, "_fetch_formal_closure", fake_formal_closure)
+
+
+def _clear_four_effects_cache() -> None:
+    campisi_svc.clear_campisi_four_effects_runtime_cache()
 
 
 def _flat_treasury(rate: Decimal) -> dict[str, object]:
@@ -384,6 +389,329 @@ def test_four_effects_envelope_anchors_dates_aggregates_and_surfaces_warnings(
     assert result["totals"]["selection_effect"] == pytest.approx(
         sum(row["selection_effect"] for row in result["by_asset_class"])
     )
+
+
+def test_four_effects_envelope_caches_by_report_dates_and_returns_defensive_copy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_four_effects_cache()
+    duckdb_path = tmp_path / "campisi-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="CACHE_BOND",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        )
+    ]
+    end_rows = [{**start_rows[0], "market_value": Decimal("990")}]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2.10")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 30.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 30.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+    calls = {"count": 0}
+    real_campisi_attribution = campisi_svc.campisi_attribution
+
+    def counting_campisi_attribution(**kwargs: Any) -> Any:
+        calls["count"] += 1
+        return real_campisi_attribution(**kwargs)
+
+    monkeypatch.setattr(campisi_svc, "campisi_attribution", counting_campisi_attribution)
+
+    first = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+    first["result"]["totals"]["total_return"] = 999999.0
+    second = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    assert calls["count"] == 1
+    assert second["result"]["totals"]["total_return"] != 999999.0
+    assert second["result_meta"]["filters_applied"]["resolved_end_date"] == "2026-01-31"
+
+
+def test_four_effects_envelope_cache_isolated_by_report_date_and_duckdb_storage_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_four_effects_cache()
+    duckdb_path = tmp_path / "campisi-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="CACHE_BOND",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        )
+    ]
+    end_jan_rows = [{**start_rows[0], "market_value": Decimal("990")}]
+    end_feb_rows = [{**start_rows[0], "market_value": Decimal("980")}]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-02-28", "2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_jan_rows,
+            "2026-02-28": end_feb_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2.10")),
+            ("2026-02-28", "treasury"): _flat_treasury(Decimal("2.20")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 30.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 30.0},
+            ("2026-02-28", "credit_spread_aaa"): {"3Y": 30.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+    calls = {"count": 0}
+    real_campisi_attribution = campisi_svc.campisi_attribution
+
+    def counting_campisi_attribution(**kwargs: Any) -> Any:
+        calls["count"] += 1
+        return real_campisi_attribution(**kwargs)
+
+    monkeypatch.setattr(campisi_svc, "campisi_attribution", counting_campisi_attribution)
+
+    campisi_svc.campisi_four_effects_envelope(start_date="2026-01-01", end_date="2026-01-31")
+    campisi_svc.campisi_four_effects_envelope(start_date="2026-01-01", end_date="2026-02-28")
+    assert calls["count"] == 2
+
+    campisi_svc.campisi_four_effects_envelope(start_date="2026-01-01", end_date="2026-01-31")
+    assert calls["count"] == 2
+
+    original_mtime = duckdb_path.stat().st_mtime_ns
+    duckdb_path.touch()
+    if duckdb_path.stat().st_mtime_ns == original_mtime:
+        duckdb_path.write_text("changed", encoding="utf-8")
+    campisi_svc.campisi_four_effects_envelope(start_date="2026-01-01", end_date="2026-01-31")
+
+    assert calls["count"] == 3
+
+    campisi_svc.campisi_four_effects_envelope(start_date="2026-01-01", end_date="2026-01-31")
+    assert calls["count"] == 3
+
+    sidecar_path = duckdb_path.with_name(f"{duckdb_path.name}.wal")
+    sidecar_path.write_text("sidecar", encoding="utf-8")
+    campisi_svc.campisi_four_effects_envelope(start_date="2026-01-01", end_date="2026-01-31")
+
+    assert calls["count"] == 4
+
+
+def test_four_effects_cache_does_not_hide_formal_bridge_changes_after_duckdb_fingerprint_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_four_effects_cache()
+    duckdb_path = tmp_path / "campisi-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="BRIDGE_BOND",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        )
+    ]
+    end_rows = [{**start_rows[0], "market_value": Decimal("1100")}]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 30.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 30.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+    bridge_actual_pnl = {"value": 35.0}
+
+    def bridge_envelope(**_kwargs: Any) -> dict[str, Any]:
+        actual = bridge_actual_pnl["value"]
+        return {
+            "result_meta": {
+                "quality_flag": "ok",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+            "result": {
+                "summary": {
+                    "total_actual_pnl": {"raw": actual},
+                },
+                "rows": [
+                    {
+                        "instrument_code": "BRIDGE_BOND",
+                        "portfolio_name": "FIOA",
+                        "cost_center": "5010",
+                        "accounting_basis": "FVTPL",
+                        "beginning_dirty_mv": {"raw": 1000.0},
+                        "ending_dirty_mv": {"raw": 1100.0},
+                        "carry": {"raw": 5.0},
+                        "roll_down": {"raw": 1.0},
+                        "treasury_curve": {"raw": 2.0},
+                        "credit_spread": {"raw": 3.0},
+                        "fx_translation": {"raw": 0.0},
+                        "realized_trading": {"raw": 0.0},
+                        "unrealized_fv": {"raw": actual - 11.0},
+                        "manual_adjustment": {"raw": 0.0},
+                        "actual_pnl": {"raw": actual},
+                        "residual": {"raw": 0.0},
+                        "quality_flag": "ok",
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(campisi_svc, "_fetch_formal_bridge", bridge_envelope, raising=False)
+
+    first = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]
+    bridge_actual_pnl["value"] = 45.0
+    duckdb_path.write_text("bridge changed", encoding="utf-8")
+    second = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]
+
+    assert first["formal_closure"]["formal_actual_pnl"] == 35.0
+    assert second["formal_closure"]["formal_actual_pnl"] == 45.0
+    assert second["totals"]["total_return"] == 45.0
+
+
+def test_four_effects_cache_does_not_hide_formal_bridge_changes_after_governance_fingerprint_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_four_effects_cache()
+    duckdb_path = tmp_path / "campisi-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    governance_path = tmp_path / "governance"
+    governance_path.mkdir()
+    (governance_path / "cache_manifest.jsonl").write_text("manifest v1", encoding="utf-8")
+    (governance_path / "cache_build_run.jsonl").write_text("build v1", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="BRIDGE_BOND",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        )
+    ]
+    end_rows = [{**start_rows[0], "market_value": Decimal("1100")}]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 30.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 30.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+    monkeypatch.setattr(
+        campisi_svc,
+        "get_settings",
+        lambda: SimpleNamespace(duckdb_path=str(duckdb_path), governance_path=governance_path),
+    )
+    bridge_actual_pnl = {"value": 35.0}
+
+    def bridge_envelope(**_kwargs: Any) -> dict[str, Any]:
+        actual = bridge_actual_pnl["value"]
+        return {
+            "result_meta": {
+                "quality_flag": "ok",
+                "vendor_status": "ok",
+                "fallback_mode": "none",
+            },
+            "result": {
+                "summary": {
+                    "total_actual_pnl": {"raw": actual},
+                },
+                "rows": [
+                    {
+                        "instrument_code": "BRIDGE_BOND",
+                        "portfolio_name": "FIOA",
+                        "cost_center": "5010",
+                        "accounting_basis": "FVTPL",
+                        "beginning_dirty_mv": {"raw": 1000.0},
+                        "ending_dirty_mv": {"raw": 1100.0},
+                        "carry": {"raw": 5.0},
+                        "roll_down": {"raw": 1.0},
+                        "treasury_curve": {"raw": 2.0},
+                        "credit_spread": {"raw": 3.0},
+                        "fx_translation": {"raw": 0.0},
+                        "realized_trading": {"raw": 0.0},
+                        "unrealized_fv": {"raw": actual - 11.0},
+                        "manual_adjustment": {"raw": 0.0},
+                        "actual_pnl": {"raw": actual},
+                        "residual": {"raw": 0.0},
+                        "quality_flag": "ok",
+                    }
+                ],
+            },
+        }
+
+    monkeypatch.setattr(campisi_svc, "_fetch_formal_bridge", bridge_envelope, raising=False)
+
+    first = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]
+    bridge_actual_pnl["value"] = 45.0
+    (governance_path / "cache_build_run.jsonl").write_text("build v2 changed", encoding="utf-8")
+    second = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]
+
+    assert first["formal_closure"]["formal_actual_pnl"] == 35.0
+    assert second["formal_closure"]["formal_actual_pnl"] == 45.0
+    assert second["totals"]["total_return"] == 45.0
 
 
 def test_enhanced_and_maturity_bucket_envelopes_close_to_same_four_effect_totals(

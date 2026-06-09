@@ -28,9 +28,7 @@ from backend.app.schemas.bond_dashboard import (
     BondDashboardYieldDistributionPayload,
 )
 from backend.app.services.formal_result_runtime import (
-    build_formal_result_envelope,
     build_formal_result_envelope_from_lineage,
-    build_formal_result_meta_from_lineage,
     build_result_envelope,
 )
 from pydantic import BaseModel
@@ -159,15 +157,32 @@ def _facts_lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str,
     )
 
 
-def _meta(*, result_kind: str, report_date: str) -> object:
+def _analytical_envelope(
+    *,
+    result_kind: str,
+    report_date: str,
+    result_payload: dict[str, object],
+) -> dict[str, object]:
     rows = _fact_rows(report_date)
     lineage = _facts_lineage(report_date, rows)
-    return build_formal_result_meta_from_lineage(
+    return build_result_envelope(
+        basis="analytical",
         trace_id=_trace_id(),
         result_kind=result_kind,
-        lineage=lineage,
-        default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+        cache_version=str(lineage["cache_version"]),
+        source_version=str(lineage["source_version"]),
+        rule_version=str(lineage["rule_version"]),
+        vendor_version=str(lineage.get("vendor_version") or "vv_none"),
+        quality_flag="warning",
         source_surface="bond_analytics",
+        requested_report_date=report_date,
+        resolved_report_date=report_date,
+        as_of_date=report_date,
+        date_basis="bond_dashboard_report_date",
+        filters_applied={"report_date": report_date},
+        tables_used=["fact_formal_bond_analytics_daily"],
+        evidence_rows=len(rows),
+        result_payload=result_payload,
     )
 
 
@@ -289,11 +304,9 @@ def _bond_dashboard_headline_payload(
 
 
 def get_bond_dashboard_business_type_metrics(report_date: date) -> dict[str, object]:
-    """Formal envelope: weighted metrics by bond_type / business bucket."""
+    """Analytical envelope: weighted metrics by bond_type / business bucket."""
     rd = report_date.isoformat()
     rows = _repo().fetch_business_type_metrics(rd)
-    fact_rows = _fact_rows(rd)
-    lineage = _facts_lineage(rd, fact_rows)
     items: list[dict[str, object]] = []
     for r in rows:
         mv = r.get("market_value")
@@ -315,12 +328,9 @@ def get_bond_dashboard_business_type_metrics(report_date: date) -> dict[str, obj
         )
     payload: dict[str, object] = {"report_date": rd, "items": items}
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope_from_lineage(
-            trace_id=_trace_id(),
+        _analytical_envelope(
             result_kind="bond_dashboard.business_type_metrics",
-            lineage=lineage,
-            default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
-            source_surface="bond_analytics",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -433,8 +443,9 @@ def get_bond_dashboard_asset_structure(
     rd = report_date.isoformat()
     payload = _bond_dashboard_asset_structure_payload(rd, group_by)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.asset_structure", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.asset_structure",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -470,8 +481,9 @@ def get_bond_dashboard_yield_distribution(report_date: date) -> dict[str, object
     rd = report_date.isoformat()
     payload = _bond_dashboard_yield_distribution_payload(rd)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.yield_distribution", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.yield_distribution",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -502,8 +514,9 @@ def get_bond_dashboard_portfolio_comparison(report_date: date) -> dict[str, obje
     rd = report_date.isoformat()
     payload = _bond_dashboard_portfolio_payload(rd)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.portfolio_comparison", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.portfolio_comparison",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -532,8 +545,9 @@ def get_bond_dashboard_spread_analysis(report_date: date) -> dict[str, object]:
     rd = report_date.isoformat()
     payload = _bond_dashboard_spread_payload(rd)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.spread_analysis", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.spread_analysis",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -560,8 +574,9 @@ def get_bond_dashboard_maturity_structure(report_date: date) -> dict[str, object
     rd = report_date.isoformat()
     payload = _bond_dashboard_maturity_payload(rd)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.maturity_structure", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.maturity_structure",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -591,8 +606,9 @@ def get_bond_dashboard_industry_distribution(report_date: date, top_n: int) -> d
     rd = report_date.isoformat()
     payload = _bond_dashboard_industry_payload(rd, top_n)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.industry_distribution", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.industry_distribution",
+            report_date=rd,
             result_payload=payload,
         )
     )
@@ -622,8 +638,9 @@ def get_bond_dashboard_risk_indicators(report_date: date) -> dict[str, object]:
     rd = report_date.isoformat()
     payload = _bond_dashboard_risk_payload(rd)
     return _with_bond_dashboard_data_source(
-        build_formal_result_envelope(
-            result_meta=_meta(result_kind="bond_dashboard.risk_indicators", report_date=rd),
+        _analytical_envelope(
+            result_kind="bond_dashboard.risk_indicators",
+            report_date=rd,
             result_payload=payload,
         )
     )

@@ -267,6 +267,16 @@ def test_action_attribution_success_response_uses_core_payload_builder(tmp_path,
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["source_surface"] == "bond_analytics"
+    assert payload["result_meta"]["requested_report_date"] == "2026-03-31"
+    assert payload["result_meta"]["resolved_report_date"] == "2026-03-31"
+    assert payload["result_meta"]["as_of_date"] == "2026-03-31"
+    assert payload["result_meta"]["date_basis"] == "bond_analytics_report_date"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2026-03-31",
+        "period_type": "MoM",
+    }
+    assert payload["result_meta"]["tables_used"] == ["fact_formal_bond_analytics_daily"]
     assert payload["result"]["status"] == "ready"
     assert payload["result"]["warnings"] == ["CORE_WARNING"]
     get_settings.cache_clear()

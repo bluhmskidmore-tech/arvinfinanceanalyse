@@ -770,10 +770,25 @@ export function createDemoBondAnalyticsClient(
           duration_change_from_actions: zr(true),
           period_start_dv01: zd(false),
           period_end_dv01: zd(false),
-          warnings: [],
+          warnings: ["formal_pending: bond-analysis action attribution must not be used as a formal metric."],
           computed_at: "2026-04-13T00:00:00Z",
         },
-        { basis: "formal", formal_use_allowed: true },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          source_surface: "bond_analytics",
+          requested_report_date: reportDate,
+          resolved_report_date: reportDate,
+          as_of_date: reportDate,
+          date_basis: "bond_analytics_report_date",
+          filters_applied: {
+            report_date: reportDate,
+            period_type: periodType,
+          },
+          tables_used: ["fact_formal_bond_analytics_daily"],
+          evidence_rows: 0,
+        },
       );
     },
     async getBondAnalyticsAccountingClassAudit(reportDate: string) {

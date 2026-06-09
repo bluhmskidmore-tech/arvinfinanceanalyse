@@ -2613,8 +2613,14 @@ export type PnlByBusinessYtdItem = {
   capital_gain: string;
   manual_adjustment: string;
   total_pnl: string;
+  avg_balance: string;
   current_balance: string;
   balance_yield_pct: string | null;
+  annualized_yield_pct: string | null;
+  ftp_rate_pct: string;
+  ftp_cost: string | null;
+  ftp_net_pnl: string | null;
+  ftp_net_annualized_yield_pct: string | null;
   source_kind?: string | null;
   source_note?: string | null;
   proportion: string | null;

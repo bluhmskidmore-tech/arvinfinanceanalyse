@@ -20,6 +20,30 @@ const resultMeta: ResultMeta = {
 };
 
 describe("BondAnalyticsClient", () => {
+  it("keeps mock action attribution in analytical formal-pending provenance", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const envelope = await client.getBondAnalyticsActionAttribution("2026-04-30", "MoM");
+
+    expect(envelope.result_meta.basis).toBe("analytical");
+    expect(envelope.result_meta.formal_use_allowed).toBe(false);
+    expect(envelope.result_meta.quality_flag).toBe("warning");
+    expect(envelope.result_meta.source_surface).toBe("bond_analytics");
+    expect(envelope.result_meta.requested_report_date).toBe("2026-04-30");
+    expect(envelope.result_meta.resolved_report_date).toBe("2026-04-30");
+    expect(envelope.result_meta.as_of_date).toBe("2026-04-30");
+    expect(envelope.result_meta.date_basis).toBe("bond_analytics_report_date");
+    expect(envelope.result_meta.tables_used).toEqual(["fact_formal_bond_analytics_daily"]);
+    expect(envelope.result_meta.filters_applied).toEqual({
+      report_date: "2026-04-30",
+      period_type: "MoM",
+    });
+    expect(envelope.result_meta.evidence_rows).toBe(0);
+    expect(envelope.result.warnings).toContain(
+      "formal_pending: bond-analysis action attribution must not be used as a formal metric.",
+    );
+  });
+
   it("normalizes flat credit spread migration numbers into governed Numeric fields", async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(

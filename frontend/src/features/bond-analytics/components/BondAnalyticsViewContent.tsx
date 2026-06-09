@@ -2,10 +2,9 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 
-import type { ApiEnvelope, Numeric, ResultMeta } from "../../../api/contracts";
+import type { ApiEnvelope } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
-import { DataQualityBanner } from "../../../components/page/DataQualityBanner";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 import type {
   ActionAttributionResponse,
@@ -16,7 +15,6 @@ import type {
 } from "../types";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { buildBondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
-import { classifyWarningSignals } from "../lib/bondAnalyticsModuleReadiness";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { PERIOD_OPTIONS } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsViewContent.module.css";
@@ -33,226 +31,70 @@ const BondAnalyticsDetailSection = lazy(() =>
   })),
 );
 
-type BondDecisionTrustState = "loading" | "ok" | "warning" | "blocked";
+type BondAnalyticsDateFallbackKind = "error" | "empty";
 
-interface BondAnalyticsDecisionCockpitProps {
-  reportDate: string;
-  periodType: PeriodType;
-  clientMode: "mock" | "real";
-  result: ActionAttributionResponse | null;
-  resultMeta: ResultMeta | null | undefined;
-  errorMessage: string | null;
-  isFetching: boolean;
-  topAnomalies: string[];
-  onOpenActionAttribution: () => void;
-}
-
-const BOND_ANALYTICS_CURRENCY_BASIS_TEXT =
-  "金额指标按人民币/CNY口径展示，外币债券金额已折算为人民币。";
-
-function formatDecisionNumeric(value: Numeric | null | undefined): string {
-  return value?.display ?? "—";
-}
-
-function formatDecisionBasis(meta: ResultMeta | null | undefined): string {
-  if (!meta) return "证据加载中";
-  if (meta.basis === "formal" && meta.formal_use_allowed) return "正式口径";
-  if (meta.basis === "formal") return "正式口径待放行";
-  if (meta.basis === "analytical") return "分析口径";
-  if (meta.basis === "scenario") return "情景口径";
-  if (meta.basis === "mock") return "演示口径";
-  return "非正式口径";
-}
-
-function deriveDecisionTrustState({
-  clientMode,
-  errorMessage,
-  isFetching,
-  resultMeta,
-  warningCount,
+function BondAnalyticsDateFallbackWorkbench({
+  kind,
+  onRetry,
 }: {
-  clientMode: "mock" | "real";
-  errorMessage: string | null;
-  isFetching: boolean;
-  resultMeta: ResultMeta | null | undefined;
-  warningCount: number;
-}): BondDecisionTrustState {
-  if (errorMessage || resultMeta?.quality_flag === "error" || resultMeta?.quality_flag === "missing") {
-    return "blocked";
-  }
-  if (isFetching && !resultMeta) {
-    return "loading";
-  }
-  if (
-    clientMode !== "real" ||
-    resultMeta?.formal_use_allowed === false ||
-    resultMeta?.basis !== "formal" ||
-    resultMeta?.quality_flag === "warning" ||
-    resultMeta?.quality_flag === "stale" ||
-    resultMeta?.fallback_mode !== "none" ||
-    resultMeta?.vendor_status !== "ok" ||
-    warningCount > 0
-  ) {
-    return "warning";
-  }
-  return "ok";
-}
-
-function labelDecisionTrustState(state: BondDecisionTrustState): string {
-  if (state === "ok") return "可用于复核";
-  if (state === "warning") return "需带条件复核";
-  if (state === "blocked") return "归因证据受阻";
-  return "证据加载中";
-}
-
-function BondAnalyticsDecisionCockpit({
-  reportDate,
-  periodType,
-  clientMode,
-  result,
-  resultMeta,
-  errorMessage,
-  isFetching,
-  topAnomalies,
-  onOpenActionAttribution,
-}: BondAnalyticsDecisionCockpitProps) {
-  if (!reportDate) {
-    return null;
-  }
-
-  const warningCount = result?.warnings.length ?? (errorMessage ? 1 : 0);
-  const trustState = deriveDecisionTrustState({
-    clientMode,
-    errorMessage,
-    isFetching,
-    resultMeta,
-    warningCount,
-  });
-  const pnlDisplay = formatDecisionNumeric(result?.total_pnl_from_actions);
-  const durationDisplay = formatDecisionNumeric(result?.duration_change_from_actions);
-  const startDv01Display = formatDecisionNumeric(result?.period_start_dv01);
-  const endDv01Display = formatDecisionNumeric(result?.period_end_dv01);
-  const hasMetricEvidence = [
-    result?.total_pnl_from_actions,
-    result?.duration_change_from_actions,
-    result?.period_start_dv01,
-    result?.period_end_dv01,
-  ].some((value) => value?.raw !== null && value?.raw !== undefined);
-  const dv01Display =
-    result?.period_start_dv01 || result?.period_end_dv01
-      ? `${startDv01Display} -> ${endDv01Display}`
-      : "—";
-  const warningDetail =
-    errorMessage ?? result?.warnings[0] ?? topAnomalies[0] ?? "未发现需要提前阻断的动作归因告警";
-  const primaryConclusion = errorMessage
-    ? `动作归因证据不可用：${errorMessage}`
-    : isFetching && !result
-      ? "正在装载动作归因、久期与 DV01 证据。"
-      : result && !hasMetricEvidence
-        ? `动作归因已返回，但 PnL、久期与 DV01 当前为空；需先复核 ${warningDetail}。`
-      : `动作归因贡献 ${pnlDisplay}，久期变动 ${durationDisplay}，DV01 ${dv01Display}。`;
-  const sourceDetail = [
-    `报告日 ${result?.report_date ?? reportDate}`,
-    periodType,
-    clientMode === "real" ? "管理视角" : "演示视角",
-    formatDecisionBasis(resultMeta),
-  ].join(" / ");
-  const nextActionLabel =
-    trustState === "blocked"
-      ? "打开归因错误复核"
-      : trustState === "ok"
-        ? "进入动作归因明细"
-        : "打开动作归因复核";
+  kind: BondAnalyticsDateFallbackKind;
+  onRetry: () => void;
+}) {
+  const title = kind === "error" ? "债券分析日期载入失败" : "债券分析暂无可用报告日";
+  const body =
+    kind === "error"
+      ? "无法确定可用报告日，当前不启动债券分析默认查询。请重试或通过地址栏 report_date 参数显式传入。"
+      : "后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。";
 
   return (
     <section
-      data-testid="bond-analysis-decision-cockpit"
-      className={styles.decisionCockpit}
-      aria-label="债券持仓首屏决策"
+      data-testid="bond-analysis-date-fallback-workbench"
+      className={styles.fallbackWorkbench}
+      aria-label={title}
     >
-      <div className={styles.decisionHeader}>
-        <div className={styles.decisionCopy}>
-          <span className={styles.decisionEyebrow}>FI RISK DECISION</span>
-          <p
-            data-testid="bond-analysis-decision-primary"
-            className={styles.decisionPrimary}
-          >
-            {primaryConclusion}
-          </p>
-          <span
-            data-testid="bond-analysis-decision-source"
-            className={styles.decisionSource}
-          >
-            {sourceDetail}
-          </span>
+      <div className={styles.fallbackNotice}>
+        <div>
+          <div className={styles.stateTitle}>{title}</div>
+          <div className={styles.stateBody}>{body}</div>
         </div>
-        <span
-          data-testid="bond-analysis-decision-trust"
-          className={styles.decisionTrust}
-          data-state={trustState}
+        <button
+          type="button"
+          onClick={onRetry}
+          className="dashboard-home-action-button dashboard-home-action-button--secondary"
         >
-          {labelDecisionTrustState(trustState)}
-        </span>
+          重试日期载入
+        </button>
       </div>
 
-      <div className={styles.decisionBody}>
-        <div className={styles.decisionMetrics}>
-          <div className={styles.decisionMetric}>
-            <span className={styles.decisionMetricLabel}>动作 PnL（人民币/CNY）</span>
-            <strong
-              data-testid="bond-analysis-decision-pnl"
-              className={styles.decisionMetricValue}
-            >
-              {pnlDisplay}
-            </strong>
-          </div>
-          <div className={styles.decisionMetric}>
-            <span className={styles.decisionMetricLabel}>久期动作</span>
-            <strong
-              data-testid="bond-analysis-decision-duration"
-              className={styles.decisionMetricValue}
-            >
-              {durationDisplay}
-            </strong>
-          </div>
-          <div className={styles.decisionMetric}>
-            <span className={styles.decisionMetricLabel}>DV01 起止</span>
-            <strong
-              data-testid="bond-analysis-decision-dv01"
-              className={styles.decisionMetricValue}
-            >
-              {dv01Display}
-            </strong>
-          </div>
-          <div className={styles.decisionMetric}>
-            <span className={styles.decisionMetricLabel}>告警</span>
-            <strong
-              data-testid="bond-analysis-decision-warning"
-              className={styles.decisionMetricValue}
-            >
-              {warningCount}
-            </strong>
-          </div>
-        </div>
+      <div className={styles.fallbackMarketStrip} data-testid="bond-analysis-market-ticker">
+        {["10年国债", "10年国开", "中美10年利差", "DR007", "美元/人民币", "原油", "沪深300"].map(
+          (label) => (
+            <div key={label} className={styles.fallbackTickerCell}>
+              <span>{label}</span>
+              <strong>—</strong>
+              <small>待读取</small>
+            </div>
+          ),
+        )}
+      </div>
 
-        <div className={styles.decisionAction}>
-          <div
-            data-testid="bond-analysis-currency-basis-note"
-            className={styles.decisionBasisNote}
-          >
-            {BOND_ANALYTICS_CURRENCY_BASIS_TEXT}
-          </div>
-          <span className={styles.decisionWarning} title={warningDetail}>
-            {warningDetail}
-          </span>
-          <button
-            type="button"
-            data-testid="bond-analysis-decision-next-action"
-            className={styles.decisionNextButton}
-            onClick={onOpenActionAttribution}
-          >
-            {nextActionLabel}
-          </button>
+      <div className={styles.fallbackJudgment} data-testid="bond-analysis-daily-judgment">
+        <div className={styles.fallbackSectionTitle}>核心读面</div>
+        <p>报告日未解析前，仅保留利率、曲线、信用和资金读面状态，不展示方向性结论。</p>
+      </div>
+
+      <div className={styles.fallbackGrid}>
+        <div className={styles.fallbackPanel} data-testid="bond-analysis-yield-curve-panel">
+          <span>收益率曲线与日变动</span>
+          <strong>待报告日确认</strong>
+        </div>
+        <div className={styles.fallbackPanel} data-testid="bond-analysis-return-attribution-panel">
+          <span>收益归因</span>
+          <strong>待动作归因读链路返回</strong>
+        </div>
+        <div className={styles.fallbackPanel} data-testid="bond-analysis-risk-monitor">
+          <span>风险监控</span>
+          <strong>待 DV01 / 久期读面返回</strong>
         </div>
       </div>
     </section>
@@ -395,14 +237,6 @@ export function BondAnalyticsViewContent() {
     actionAttributionError: actionAttributionErrorMessage,
   });
 
-  const actionAttributionResult = actionAttributionQuery.data?.result ?? null;
-  const actionAttributionResultMeta: ResultMeta | null | undefined =
-    actionAttributionQuery.data?.result_meta;
-  const dataQualityWarningSignals = useMemo(
-    () => classifyWarningSignals(actionAttributionResult?.warnings ?? []),
-    [actionAttributionResult],
-  );
-
   const calendarItems = useMemo(
     () =>
       (researchCalendarQuery.data ?? [])
@@ -418,49 +252,20 @@ export function BondAnalyticsViewContent() {
 
   const toolbarModeLabel = client.mode === "real" ? "管理视角" : "演示视角";
 
-  if (showDatesErrorState) {
-    return (
-      <section className={styles.stateCard}>
-        <div className={styles.stateTitle}>债券分析日期载入失败。</div>
-        <div className={styles.stateBody}>
-          无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过地址栏报告日参数显式传入。
-        </div>
-        <button
-          type="button"
-          onClick={() => void datesQuery.refetch()}
-          className="dashboard-home-action-button dashboard-home-action-button--secondary"
-        >
-          重试日期载入
-        </button>
-      </section>
-    );
-  }
-
-  if (datesEmpty && !effectiveReportDate) {
-    return (
-      <section className={styles.stateCard}>
-        <div className={styles.stateTitle}>债券分析暂无可用报告日。</div>
-        <div className={styles.stateBody}>
-          后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
-        </div>
-        <button
-          type="button"
-          onClick={() => void datesQuery.refetch()}
-          className="dashboard-home-action-button dashboard-home-action-button--secondary"
-        >
-          重试日期载入
-        </button>
-      </section>
-    );
-  }
+  const dateFallbackKind: BondAnalyticsDateFallbackKind | null = showDatesErrorState
+    ? "error"
+    : datesEmpty && !effectiveReportDate
+      ? "empty"
+      : null;
+  const canRenderAnalytics = Boolean(effectiveReportDate) && !dateFallbackKind;
 
   return (
     <section data-testid="bond-analysis-overview" className="dashboard-home-shell">
       <header data-testid="bond-analysis-toolbar" className="dashboard-home-toolbar">
         <div className="dashboard-home-toolbar__identity">
-          <h1 className="dashboard-home-toolbar__title">债券持仓</h1>
+          <h1 className="dashboard-home-toolbar__title">债券分析</h1>
           <span className="dashboard-home-toolbar__eyebrow">
-            报告日 {effectiveReportDate || "最新可用"}
+            报告日 {effectiveReportDate || "待确认"}
           </span>
         </div>
         <div className="dashboard-home-actions">
@@ -480,12 +285,17 @@ export function BondAnalyticsViewContent() {
               className={`${styles.toolbarSelect} ${styles.toolbarSelectWide}`}
               value={effectiveReportDate}
               onChange={(event) => setReportDate(event.target.value)}
+              disabled={dateOptions.length === 0}
             >
-              {dateOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {dateOptions.length > 0 ? (
+                dateOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))
+              ) : (
+                <option value="">待确认</option>
+              )}
             </select>
           </label>
           <label className="dashboard-home-control">
@@ -519,9 +329,9 @@ export function BondAnalyticsViewContent() {
           <button
             type="button"
             onClick={() => void handleBondAnalyticsRefresh()}
-            disabled={isBondAnalyticsRefreshing || !effectiveReportDate}
+            disabled={isBondAnalyticsRefreshing || !canRenderAnalytics}
             className={
-              isBondAnalyticsRefreshing || !effectiveReportDate
+              isBondAnalyticsRefreshing || !canRenderAnalytics
                 ? `dashboard-home-action-button dashboard-home-action-button--disabled ${styles.refreshButton}`
                 : `dashboard-home-action-button dashboard-home-action-button--primary ${styles.refreshButton}`
             }
@@ -531,60 +341,46 @@ export function BondAnalyticsViewContent() {
         </div>
       </header>
 
-      <BondAnalyticsDecisionCockpit
-        reportDate={effectiveReportDate}
-        periodType={periodType}
-        clientMode={client.mode}
-        result={actionAttributionResult}
-        resultMeta={actionAttributionResultMeta}
-        errorMessage={actionAttributionErrorMessage}
-        isFetching={actionAttributionQuery.isFetching}
-        topAnomalies={overviewModel.topAnomalies}
-        onOpenActionAttribution={() => openModuleDetail("action-attribution")}
-      />
-
-      <DataQualityBanner
-        resultMeta={actionAttributionResultMeta}
-        warnings={
-          dataQualityWarningSignals.hasPlaceholderSignals
-            ? ["部分模块数据为占位值，尚未填充真实计算结果"]
-            : dataQualityWarningSignals.hasPartialSignals
-              ? ["部分指标因输入不可用暂设为零"]
-              : []
-        }
-      />
-
-      <Suspense
-        fallback={
-          <div className={styles.detailFallback} data-testid="bond-analysis-overview-loading">
-            正在加载总览...
-          </div>
-        }
-      >
-        <BondAnalyticsOverviewPanels
-          dateOptions={dateOptions}
-          reportDate={effectiveReportDate}
-          onReportDateChange={setReportDate}
-          periodType={periodType}
-          onPeriodTypeChange={setPeriodType}
-          assetClass={assetClass}
-          onAssetClassChange={setAssetClass}
-          accountingClass={accountingClass}
-          onAccountingClassChange={setAccountingClass}
-          scenarioSet={scenarioSet}
-          onScenarioSetChange={setScenarioSet}
-          spreadScenarios={spreadScenarios}
-          onSpreadScenariosChange={setSpreadScenarios}
-          actionAttributionResult={actionAttributionQuery.data?.result ?? null}
-          overviewModel={overviewModel}
-          onOpenModuleDetail={openModuleDetail}
-          onRefreshAnalytics={() => void handleBondAnalyticsRefresh()}
-          isAnalyticsRefreshing={isBondAnalyticsRefreshing}
-          analyticsRefreshError={bondAnalyticsRefreshError}
-          lastAnalyticsRefreshRunId={lastBondAnalyticsRefreshRunId}
-          calendarItems={calendarItems}
+      {dateFallbackKind ? (
+        <BondAnalyticsDateFallbackWorkbench
+          kind={dateFallbackKind}
+          onRetry={() => void datesQuery.refetch()}
         />
-      </Suspense>
+      ) : (
+        <>
+          <Suspense
+            fallback={
+              <div className={styles.detailFallback} data-testid="bond-analysis-overview-loading">
+                正在加载总览...
+              </div>
+            }
+          >
+            <BondAnalyticsOverviewPanels
+              dateOptions={dateOptions}
+              reportDate={effectiveReportDate}
+              onReportDateChange={setReportDate}
+              periodType={periodType}
+              onPeriodTypeChange={setPeriodType}
+              assetClass={assetClass}
+              onAssetClassChange={setAssetClass}
+              accountingClass={accountingClass}
+              onAccountingClassChange={setAccountingClass}
+              scenarioSet={scenarioSet}
+              onScenarioSetChange={setScenarioSet}
+              spreadScenarios={spreadScenarios}
+              onSpreadScenariosChange={setSpreadScenarios}
+              actionAttributionResult={actionAttributionQuery.data?.result ?? null}
+              overviewModel={overviewModel}
+              onOpenModuleDetail={openModuleDetail}
+              onRefreshAnalytics={() => void handleBondAnalyticsRefresh()}
+              isAnalyticsRefreshing={isBondAnalyticsRefreshing}
+              analyticsRefreshError={bondAnalyticsRefreshError}
+              lastAnalyticsRefreshRunId={lastBondAnalyticsRefreshRunId}
+              calendarItems={calendarItems}
+            />
+          </Suspense>
+        </>
+      )}
 
       <details
         data-testid="bond-analysis-detail-drilldown"
@@ -603,29 +399,36 @@ export function BondAnalyticsViewContent() {
           <span className="dashboard-progressive-disclosure__cue">展开</span>
         </summary>
 
-        <Suspense
-          fallback={
-            <div className={styles.detailFallback} data-testid="bond-analysis-detail-loading">
-              正在加载明细模块...
+        {canRenderAnalytics ? (
+          <Suspense
+            fallback={
+              <div className={styles.detailFallback} data-testid="bond-analysis-detail-loading">
+                正在加载明细模块...
+              </div>
+            }
+          >
+            <div key={detailRemountKey}>
+              <BondAnalyticsDetailSection
+                activeTab={activeTab}
+                onActiveTabChange={setActiveTab}
+                reportDate={effectiveReportDate}
+                periodType={periodType}
+                assetClass={assetClass}
+                accountingClass={accountingClass}
+                scenarioSet={scenarioSet}
+                spreadScenarios={spreadScenarios}
+              />
             </div>
-          }
-        >
-          <div key={detailRemountKey}>
-            <BondAnalyticsDetailSection
-              activeTab={activeTab}
-              onActiveTabChange={setActiveTab}
-              reportDate={effectiveReportDate}
-              periodType={periodType}
-              assetClass={assetClass}
-              accountingClass={accountingClass}
-              scenarioSet={scenarioSet}
-              spreadScenarios={spreadScenarios}
-            />
+          </Suspense>
+        ) : (
+          <div className={styles.detailFallback} data-testid="bond-analysis-detail-loading">
+            报告日确认后加载明细模块。
           </div>
-        </Suspense>
+        )}
       </details>
     </section>
   );
+
 }
 
 export default BondAnalyticsViewContent;

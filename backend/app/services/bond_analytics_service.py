@@ -689,7 +689,13 @@ def _build_numeric_fact_envelope(
     )
 
 
-def _action_attribution_candidate_meta(*, formal_meta, report_date: date, quality_flag: str | None = None):
+def _action_attribution_candidate_meta(
+    *,
+    formal_meta,
+    report_date: date,
+    period_type: str,
+    quality_flag: str | None = None,
+):
     report_date_text = report_date.isoformat()
     return build_analytical_result_meta(
         trace_id=formal_meta.trace_id,
@@ -705,7 +711,7 @@ def _action_attribution_candidate_meta(*, formal_meta, report_date: date, qualit
         resolved_report_date=report_date_text,
         as_of_date=report_date_text,
         date_basis=BOND_ANALYTICS_DATE_BASIS,
-        filters_applied={"report_date": report_date_text},
+        filters_applied={"report_date": report_date_text, "period_type": period_type},
         tables_used=[BOND_ANALYTICS_FACT_TABLE],
         evidence_rows=formal_meta.evidence_rows,
         source_surface="bond_analytics",
@@ -3512,6 +3518,7 @@ def _build_action_attribution_placeholder_response(
     candidate_meta = _action_attribution_candidate_meta(
         formal_meta=formal_meta,
         report_date=report_date,
+        period_type=period_type,
         quality_flag="warning",
     )
     return _with_bond_amount_disclosure(
@@ -3566,6 +3573,7 @@ def _build_action_attribution_success_response(
     candidate_meta = _action_attribution_candidate_meta(
         formal_meta=meta_adj,
         report_date=report_date,
+        period_type=period_type,
         quality_flag=meta_adj.quality_flag,
     )
     return _with_bond_amount_disclosure(

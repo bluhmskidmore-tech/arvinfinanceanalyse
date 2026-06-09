@@ -12,10 +12,15 @@ Campisi 完整归因桥接层 — 将 V3 的 DuckDB 数据转换为 campisi.py �
 """
 from __future__ import annotations
 
+import hashlib
+import time
 import uuid
 from collections import defaultdict
+from copy import deepcopy
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import duckdb
@@ -118,9 +123,180 @@ _QUALITY_MISSING_FIELDS = (
     "cost_center",
 )
 
+_CAMPISI_FOUR_EFFECTS_CACHE_TTL_SECONDS = 300.0
+_CAMPISI_FOUR_EFFECTS_CACHE_MAX_ENTRIES = 32
+_CAMPISI_FOUR_EFFECTS_CACHE_LOCK = Lock()
+_CAMPISI_FOUR_EFFECTS_CACHE: dict[tuple[object, ...], tuple[float, dict[str, Any]]] = {}
+_CAMPISI_BRIDGE_CACHE_TTL_SECONDS = 300.0
+_CAMPISI_BRIDGE_CACHE_MAX_ENTRIES = 16
+_CAMPISI_BRIDGE_CACHE_LOCK = Lock()
+_CAMPISI_BRIDGE_CACHE: dict[tuple[object, ...], tuple[float, dict[str, Any]]] = {}
+_GOVERNANCE_BRIDGE_DEPENDENCY_FILES = (
+    "cache_manifest.jsonl",
+    "cache_build_run.jsonl",
+)
+_GOVERNANCE_FINGERPRINT_TAIL_BYTES = 8192
+
 
 def _trace_id() -> str:
     return f"tr_campisi_{uuid.uuid4().hex[:12]}"
+
+
+def _duckdb_storage_fingerprint(duckdb_path: object) -> tuple[tuple[str, int, int], ...] | None:
+    path = Path(str(duckdb_path))
+    try:
+        path.stat()
+    except OSError:
+        return None
+    fingerprint: list[tuple[str, int, int]] = []
+    for candidate in sorted(path.parent.glob(f"{path.name}*")):
+        try:
+            stat = candidate.stat()
+        except OSError:
+            continue
+        if not candidate.is_file():
+            continue
+        fingerprint.append((candidate.name, stat.st_size, stat.st_mtime_ns))
+    return tuple(fingerprint) or None
+
+
+def _selected_files_fingerprint(
+    base_dir: object,
+    filenames: tuple[str, ...],
+) -> tuple[tuple[str, int, int, str], ...] | None:
+    base_path = Path(str(base_dir))
+    fingerprint: list[tuple[str, int, int, str]] = []
+    for filename in filenames:
+        path = base_path / filename
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        if not path.is_file():
+            return None
+        try:
+            with path.open("rb") as handle:
+                if stat.st_size > _GOVERNANCE_FINGERPRINT_TAIL_BYTES:
+                    handle.seek(-_GOVERNANCE_FINGERPRINT_TAIL_BYTES, 2)
+                content = handle.read()
+        except OSError:
+            return None
+        fingerprint.append((filename, stat.st_size, stat.st_mtime_ns, hashlib.sha256(content).hexdigest()))
+    return tuple(fingerprint)
+
+
+def _campisi_four_effects_cache_key(
+    *,
+    duckdb_path: object,
+    duckdb_fingerprint: tuple[tuple[str, int, int], ...] | None,
+    requested_start_date: str | None,
+    requested_end_date: str | None,
+    resolved_start_date: str,
+    resolved_end_date: str,
+    lookback_days: int,
+) -> tuple[object, ...] | None:
+    if duckdb_fingerprint is None:
+        return None
+    return (
+        "campisi.four_effects",
+        CACHE_VERSION,
+        SOURCE_VERSION,
+        RULE_VERSION,
+        str(duckdb_path),
+        duckdb_fingerprint,
+        requested_start_date,
+        requested_end_date,
+        resolved_start_date,
+        resolved_end_date,
+        lookback_days,
+    )
+
+
+def _campisi_bridge_cache_key(
+    *,
+    duckdb_path: object,
+    governance_path: object,
+    duckdb_fingerprint: tuple[tuple[str, int, int], ...] | None,
+    governance_fingerprint: tuple[tuple[str, int, int, str], ...] | None,
+    report_date: str,
+) -> tuple[object, ...] | None:
+    if duckdb_fingerprint is None or governance_fingerprint is None:
+        return None
+    return (
+        "campisi.formal_bridge",
+        CACHE_VERSION,
+        SOURCE_VERSION,
+        RULE_VERSION,
+        str(duckdb_path),
+        duckdb_fingerprint,
+        str(governance_path),
+        governance_fingerprint,
+        report_date,
+    )
+
+
+def _get_cached_campisi_four_effects_state(key: tuple[object, ...] | None) -> dict[str, Any] | None:
+    if key is None:
+        return None
+    now = time.monotonic()
+    with _CAMPISI_FOUR_EFFECTS_CACHE_LOCK:
+        entry = _CAMPISI_FOUR_EFFECTS_CACHE.get(key)
+        if entry is None:
+            return None
+        cached_at, state = entry
+        if now - cached_at >= _CAMPISI_FOUR_EFFECTS_CACHE_TTL_SECONDS:
+            _CAMPISI_FOUR_EFFECTS_CACHE.pop(key, None)
+            return None
+        return deepcopy(state)
+
+
+def _get_cached_campisi_bridge(key: tuple[object, ...] | None) -> dict[str, Any] | None:
+    if key is None:
+        return None
+    now = time.monotonic()
+    with _CAMPISI_BRIDGE_CACHE_LOCK:
+        entry = _CAMPISI_BRIDGE_CACHE.get(key)
+        if entry is None:
+            return None
+        cached_at, bridge = entry
+        if now - cached_at >= _CAMPISI_BRIDGE_CACHE_TTL_SECONDS:
+            _CAMPISI_BRIDGE_CACHE.pop(key, None)
+            return None
+        return deepcopy(bridge)
+
+
+def _set_cached_campisi_four_effects_state(
+    key: tuple[object, ...] | None,
+    state: dict[str, Any],
+) -> None:
+    if key is None:
+        return
+    with _CAMPISI_FOUR_EFFECTS_CACHE_LOCK:
+        if len(_CAMPISI_FOUR_EFFECTS_CACHE) >= _CAMPISI_FOUR_EFFECTS_CACHE_MAX_ENTRIES:
+            oldest_key = min(_CAMPISI_FOUR_EFFECTS_CACHE, key=lambda item: _CAMPISI_FOUR_EFFECTS_CACHE[item][0])
+            _CAMPISI_FOUR_EFFECTS_CACHE.pop(oldest_key, None)
+        _CAMPISI_FOUR_EFFECTS_CACHE[key] = (time.monotonic(), deepcopy(state))
+
+
+def _set_cached_campisi_bridge(
+    key: tuple[object, ...] | None,
+    bridge: dict[str, Any],
+) -> dict[str, Any]:
+    if key is None:
+        return bridge
+    with _CAMPISI_BRIDGE_CACHE_LOCK:
+        if len(_CAMPISI_BRIDGE_CACHE) >= _CAMPISI_BRIDGE_CACHE_MAX_ENTRIES:
+            oldest_key = min(_CAMPISI_BRIDGE_CACHE, key=lambda item: _CAMPISI_BRIDGE_CACHE[item][0])
+            _CAMPISI_BRIDGE_CACHE.pop(oldest_key, None)
+        _CAMPISI_BRIDGE_CACHE[key] = (time.monotonic(), deepcopy(bridge))
+    return deepcopy(bridge)
+
+
+def clear_campisi_four_effects_runtime_cache() -> None:
+    with _CAMPISI_FOUR_EFFECTS_CACHE_LOCK:
+        _CAMPISI_FOUR_EFFECTS_CACHE.clear()
+    with _CAMPISI_BRIDGE_CACHE_LOCK:
+        _CAMPISI_BRIDGE_CACHE.clear()
 
 
 def _meta_ok(
@@ -724,6 +900,32 @@ def _try_fetch_formal_bridge(*, settings: Any, report_date: str) -> dict[str, An
         return None
 
 
+def _try_fetch_cached_formal_bridge(
+    *,
+    settings: Any,
+    report_date: str,
+    duckdb_fingerprint: tuple[tuple[str, int, int], ...] | None,
+) -> dict[str, Any] | None:
+    cache_key = _campisi_bridge_cache_key(
+        duckdb_path=settings.duckdb_path,
+        governance_path=settings.governance_path,
+        duckdb_fingerprint=duckdb_fingerprint,
+        governance_fingerprint=_selected_files_fingerprint(
+            settings.governance_path,
+            _GOVERNANCE_BRIDGE_DEPENDENCY_FILES,
+        ),
+        report_date=report_date,
+    )
+    cached = _get_cached_campisi_bridge(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        bridge = _fetch_formal_bridge(settings=settings, report_date=report_date)
+    except Exception:
+        return None
+    return _set_cached_campisi_bridge(cache_key, bridge)
+
+
 def _formal_bridge_rows(bridge_envelope: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not bridge_envelope:
         return []
@@ -1051,6 +1253,58 @@ def _fetch_formal_closure(
         report_date=report_date,
         campisi_total_return=campisi_total_return,
         bridge_envelope=bridge,
+    )
+
+
+def _resolve_formal_closure(
+    *,
+    settings: Any,
+    report_date: str,
+    campisi_total_return: Decimal,
+    bridge_envelope: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if bridge_envelope is not None:
+        return _build_formal_closure(
+            report_date=report_date,
+            campisi_total_return=campisi_total_return,
+            bridge_envelope=bridge_envelope,
+        )
+    return _fetch_formal_closure(
+        settings=settings,
+        report_date=report_date,
+        campisi_total_return=campisi_total_return,
+    )
+
+
+def _campisi_four_effects_envelope_from_state(
+    *,
+    state: dict[str, Any],
+    settings: Any,
+    formal_bridge: dict[str, Any] | None = None,
+) -> dict[str, object]:
+    result = deepcopy(state["result"])
+    input_quality = deepcopy(state["input_quality"])
+    filters = deepcopy(state["filters"])
+    anchor_start = str(state["anchor_start"])
+    anchor_end = str(state["anchor_end"])
+    formal_closure = _resolve_formal_closure(
+        settings=settings,
+        report_date=anchor_end,
+        campisi_total_return=Decimal(str(result.totals.get("total_return") or 0)),
+        bridge_envelope=formal_bridge,
+    )
+    payload = _result_to_payload(result, anchor_start, anchor_end, input_quality, formal_closure)
+    return build_formal_result_envelope(
+        result_meta=_meta_with_quality(
+            "campisi.four_effects",
+            input_quality,
+            formal_closure,
+            filters_applied=filters,
+            tables_used=TABLES_CAMPISI,
+            evidence_rows=int(state["evidence_rows"]),
+            as_of_date=anchor_end,
+        ),
+        result_payload=payload,
     )
 
 
@@ -1940,6 +2194,17 @@ def campisi_four_effects_envelope(
             result_payload=payload,
         )
 
+    duckdb_fingerprint = _duckdb_storage_fingerprint(settings.duckdb_path)
+    cache_key = _campisi_four_effects_cache_key(
+        duckdb_path=settings.duckdb_path,
+        duckdb_fingerprint=duckdb_fingerprint,
+        requested_start_date=start_date,
+        requested_end_date=end_date,
+        resolved_start_date=anchor_start,
+        resolved_end_date=anchor_end,
+        lookback_days=lookback_days,
+    )
+
     rows_start = bond_repo.fetch_bond_analytics_rows(report_date=anchor_start)
     rows_end = bond_repo.fetch_bond_analytics_rows(report_date=anchor_end)
     positions = _merge_positions(rows_start, rows_end)
@@ -1955,7 +2220,7 @@ def campisi_four_effects_envelope(
 
     if not positions:
         payload = _empty_campisi_payload(anchor_start, anchor_end)
-        return build_formal_result_envelope(
+        envelope = build_formal_result_envelope(
             result_meta=_meta_warn(
                 "campisi.four_effects",
                 source_version=SOURCE_VERSION if evidence_rows else SOURCE_EMPTY,
@@ -1966,8 +2231,13 @@ def campisi_four_effects_envelope(
             ),
             result_payload=payload,
         )
+        return envelope
 
-    formal_bridge = _try_fetch_formal_bridge(settings=settings, report_date=anchor_end)
+    formal_bridge = _try_fetch_cached_formal_bridge(
+        settings=settings,
+        report_date=anchor_end,
+        duckdb_fingerprint=duckdb_fingerprint,
+    )
     if _formal_bridge_has_position_overlap(formal_bridge, positions):
         result = _formal_bridge_to_campisi_result(
             bridge_envelope=formal_bridge,
@@ -1988,7 +2258,7 @@ def campisi_four_effects_envelope(
             formal_closure,
             basis=FORMAL_REPORT_BASIS,
         )
-        return build_formal_result_envelope(
+        envelope = build_formal_result_envelope(
             result_meta=_meta_with_quality(
                 "campisi.four_effects",
                 input_quality,
@@ -1999,6 +2269,15 @@ def campisi_four_effects_envelope(
                 as_of_date=anchor_end,
             ),
             result_payload=payload,
+        )
+        return envelope
+
+    cached_state = _get_cached_campisi_four_effects_state(cache_key)
+    if cached_state is not None:
+        return _campisi_four_effects_envelope_from_state(
+            state=cached_state,
+            settings=settings,
+            formal_bridge=formal_bridge,
         )
 
     treasury_start = _curve_to_market_dict(curve_repo.fetch_curve(anchor_start, "treasury"))
@@ -2024,23 +2303,28 @@ def campisi_four_effects_envelope(
     if result.diagnostics:
         input_quality["warnings"] = [*input_quality["warnings"], *result.diagnostics]
 
-    formal_closure = _fetch_formal_closure(
-        settings=settings,
-        report_date=anchor_end,
-        campisi_total_return=Decimal(str(result.totals.get("total_return") or 0)),
+    _set_cached_campisi_four_effects_state(
+        cache_key,
+        {
+            "result": result,
+            "input_quality": input_quality,
+            "filters": filters,
+            "anchor_start": anchor_start,
+            "anchor_end": anchor_end,
+            "evidence_rows": evidence_rows,
+        },
     )
-    payload = _result_to_payload(result, anchor_start, anchor_end, input_quality, formal_closure)
-    return build_formal_result_envelope(
-        result_meta=_meta_with_quality(
-            "campisi.four_effects",
-            input_quality,
-            formal_closure,
-            filters_applied=filters,
-            tables_used=TABLES_CAMPISI,
-            evidence_rows=evidence_rows,
-            as_of_date=anchor_end,
-        ),
-        result_payload=payload,
+    return _campisi_four_effects_envelope_from_state(
+        state={
+            "result": result,
+            "input_quality": input_quality,
+            "filters": filters,
+            "anchor_start": anchor_start,
+            "anchor_end": anchor_end,
+            "evidence_rows": evidence_rows,
+        },
+        settings=settings,
+        formal_bridge=formal_bridge,
     )
 
 

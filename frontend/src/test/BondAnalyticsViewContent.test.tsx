@@ -1,6 +1,6 @@
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -233,8 +233,7 @@ describe("BondAnalyticsViewContent", () => {
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
   });
 
-  it("renders a compact decision cockpit before data-quality and lazy overview evidence", async () => {
-    const user = userEvent.setup();
+  it("puts the workstation overview directly after the toolbar", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsDates: vi.fn(async () => ({
@@ -261,43 +260,25 @@ describe("BondAnalyticsViewContent", () => {
     renderViewContent(client);
 
     const toolbar = await screen.findByTestId("bond-analysis-toolbar");
-    const cockpit = await screen.findByTestId("bond-analysis-decision-cockpit");
-    const banner = await screen.findByRole("alert");
     const overview = await screen.findByTestId("mock-bond-analytics-overview-panels");
     const detail = screen.getByTestId("bond-analysis-detail-drilldown");
 
-    expect(toolbar.compareDocumentPosition(cockpit)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(cockpit.compareDocumentPosition(banner)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(banner.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(cockpit.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-
-    expect(within(cockpit).getByTestId("bond-analysis-decision-trust")).toHaveAttribute(
-      "data-state",
-      "warning",
-    );
-    expect(within(cockpit).getByTestId("bond-analysis-decision-source")).toHaveTextContent(
-      "2026-03-31",
-    );
-    expect(within(cockpit).getByTestId("bond-analysis-decision-source")).toHaveTextContent(
-      "MoM",
-    );
-    expect(within(cockpit).getByTestId("bond-analysis-currency-basis-note")).toHaveTextContent(
-      "金额指标按人民币/CNY口径展示，外币债券金额已折算为人民币。",
-    );
-    expect(within(cockpit).getByTestId("bond-analysis-decision-pnl")).toHaveTextContent("2.50");
-    expect(within(cockpit).getByText("动作 PnL（人民币/CNY）")).toBeInTheDocument();
-    expect(within(cockpit).getByTestId("bond-analysis-decision-duration")).toHaveTextContent("-0.12");
-    expect(within(cockpit).getByTestId("bond-analysis-decision-dv01")).toHaveTextContent("120,000");
-    expect(within(cockpit).getByTestId("bond-analysis-decision-dv01")).toHaveTextContent("132,000");
-    expect(within(cockpit).getByTestId("bond-analysis-decision-warning")).toHaveTextContent("1");
-
+    expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(toolbar.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(overview.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    await waitFor(() => {
+      expect(latestOverviewProps?.actionAttributionResult).toEqual(
+        expect.objectContaining({
+          total_actions: 4,
+        }),
+      );
+    });
     expect(detail).not.toHaveAttribute("open");
-    await user.click(within(cockpit).getByTestId("bond-analysis-decision-next-action"));
-    expect(detail).toHaveAttribute("open");
     expect(latestDetailProps?.activeTab).toBe("action-attribution");
   });
 
-  it("keeps the decision cockpit explicit when action-attribution evidence fails", async () => {
+  it("keeps the workstation visible when action-attribution evidence fails", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsDates: vi.fn(async () => ({
@@ -311,19 +292,13 @@ describe("BondAnalyticsViewContent", () => {
 
     renderViewContent(client);
 
-    const cockpit = await screen.findByTestId("bond-analysis-decision-cockpit");
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
 
     await waitFor(() => {
-      expect(within(cockpit).getByTestId("bond-analysis-decision-trust")).toHaveAttribute(
-        "data-state",
-        "blocked",
-      );
-      expect(within(cockpit).getByTestId("bond-analysis-decision-primary")).toHaveTextContent(
-        "backend 503 for action attribution",
-      );
-      expect(within(cockpit).getByTestId("bond-analysis-decision-pnl")).toHaveTextContent("—");
-      expect(within(cockpit).getByTestId("bond-analysis-decision-warning")).toHaveTextContent("1");
+      expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM");
     });
+    expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+    expect(latestOverviewProps?.actionAttributionResult).toBeNull();
   });
 
   it("does not render a decision cockpit when no report date can be resolved", async () => {

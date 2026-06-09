@@ -42,11 +42,34 @@ Out of scope:
 ## Governance Dry-Run
 
 Governance record write status: `not_requested`
-Governance validation status: `missing_direct_records`
+Governance validation status: `direct_records_ready_for_audit_review`
+Governance post-write validation target: `direct_records_ready_for_audit_review`
+
+Commands:
+
+- Dry run: `python scripts/emit_bond_analysis_governance_record.py`
+- Write: `python scripts/emit_bond_analysis_governance_record.py --write`
+- Validate: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
 
 ## Configured Table Anchors
 
 - `fact_formal_bond_analytics_daily`
+
+## Latest Verification Evidence
+
+- Static readiness: `static-pass`
+- Direct governance record: `ready_for_audit_review`
+- UI/API payload evidence: `GS-BOND-ANALYSIS-ACTION-ATTR-A response.json`
+- Live smoke evidence: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
+- Live smoke command: `scripts/codex-page-smoke.ps1 -PageSlug bond-analysis`
+- Readiness command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
+- Boundary: Direct governance record and static readiness are ready for audit review. UI/API payload and live smoke evidence remain reviewer-confirmation inputs only; owner approval remains pending.
+
+## Manual Review Evidence References
+
+- UI/API payload review: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`
+- Live smoke evidence review: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
+- Live smoke command reference: `scripts/codex-page-smoke.ps1 -PageSlug bond-analysis`
 
 ## Evidence Anchors
 
@@ -55,6 +78,7 @@ Governance validation status: `missing_direct_records`
 - governance_audit_packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 - approval_template: `docs/pnl/bond-analysis-business-owner-approval-template.md`
 - fixed_income_convention_decision_draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
+- live_smoke_evidence: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
 - golden_sample: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A`
 - readiness_command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
 
@@ -83,7 +107,7 @@ Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, moss-da
 - Confirm GS-BOND-ANALYSIS-ACTION-ATTR-A remains scoped to GET /api/bond-analytics/action-attribution DTO evidence.
 - Review fixed-income units and signs for action-attribution PnL, duration, DV01, KRD, yield/YTM, bp movement, credit-spread, holdings, and accounting-class fields.
 - Review catalog/date evidence for fact_formal_bond_analytics_daily before signature.
-- Review direct page/API governance records before signature; current packet does not write them.
+- Run or review the direct page/API governance record generator before signature; current packet does not write it.
 - Complete and sign docs/pnl/bond-analysis-business-owner-approval-template.md before any closure claim.
 
 ## Business Owner Approval Action Items

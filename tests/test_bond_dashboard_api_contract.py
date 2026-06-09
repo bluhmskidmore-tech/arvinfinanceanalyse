@@ -70,6 +70,17 @@ _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
     ("/api/bond-dashboard/business-type-metrics", {"report_date": REPORT_DATE}),
 ]
 
+_BOND_DASHBOARD_CHILD_RESULT_KINDS = {
+    "/api/bond-dashboard/asset-structure": "bond_dashboard.asset_structure",
+    "/api/bond-dashboard/yield-distribution": "bond_dashboard.yield_distribution",
+    "/api/bond-dashboard/portfolio-comparison": "bond_dashboard.portfolio_comparison",
+    "/api/bond-dashboard/spread-analysis": "bond_dashboard.spread_analysis",
+    "/api/bond-dashboard/maturity-structure": "bond_dashboard.maturity_structure",
+    "/api/bond-dashboard/industry-distribution": "bond_dashboard.industry_distribution",
+    "/api/bond-dashboard/risk-indicators": "bond_dashboard.risk_indicators",
+    "/api/bond-dashboard/business-type-metrics": "bond_dashboard.business_type_metrics",
+}
+
 
 def _make_bond_analytics_row(
     *,
@@ -197,6 +208,27 @@ def _assert_bond_dashboard_home_summary_candidate_envelope(payload: dict[str, An
     assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
 
 
+def _assert_bond_dashboard_candidate_envelope(
+    payload: dict[str, Any],
+    *,
+    result_kind: str,
+    evidence_rows: int,
+) -> None:
+    _assert_result_envelope(payload, basis="analytical", formal_use_allowed=False)
+    meta = payload["result_meta"]
+    assert meta["result_kind"] == result_kind
+    assert meta["source_surface"] == "bond_analytics"
+    assert meta["quality_flag"] == "warning"
+    assert meta["scenario_flag"] is False
+    assert meta["requested_report_date"] == REPORT_DATE
+    assert meta["resolved_report_date"] == REPORT_DATE
+    assert meta["as_of_date"] == REPORT_DATE
+    assert meta["date_basis"] == "bond_dashboard_report_date"
+    assert meta["filters_applied"] == {"report_date": REPORT_DATE}
+    assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
+    assert meta["evidence_rows"] == evidence_rows
+
+
 def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
     client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
     for path, params in _BOND_DASHBOARD_CASES:
@@ -209,6 +241,12 @@ def _check_all_on_empty_db(tmp_path, monkeypatch) -> None:
             _assert_bond_dashboard_headline_candidate_envelope(payload)
         elif path.endswith("/home-summary"):
             _assert_bond_dashboard_home_summary_candidate_envelope(payload)
+        elif path in _BOND_DASHBOARD_CHILD_RESULT_KINDS:
+            _assert_bond_dashboard_candidate_envelope(
+                payload,
+                result_kind=_BOND_DASHBOARD_CHILD_RESULT_KINDS[path],
+                evidence_rows=0,
+            )
         else:
             _assert_formal_envelope(payload)
         result = payload["result"]
@@ -296,8 +334,9 @@ def test_bond_dashboard_service_uses_shared_lineage_and_meta_helpers() -> None:
     src = path.read_text(encoding="utf-8")
 
     assert "resolve_formal_facts_lineage" in src
-    assert "build_formal_result_meta_from_lineage" in src
+    assert "build_result_envelope" in src
     assert "build_formal_result_envelope_from_lineage" in src
+    assert "_analytical_envelope" in src
 
 
 def test_bond_dashboard_service_reuses_formal_fact_rows_for_same_report_date(monkeypatch) -> None:
@@ -512,8 +551,7 @@ def test_bond_dashboard_home_summary_builds_child_payloads_without_child_envelop
         "_duckdb_cache_version_token",
         lambda: ("fake.duckdb", 1),
     )
-    monkeypatch.setattr(service_mod, "build_formal_result_envelope", fail_child_envelope)
-    monkeypatch.setattr(service_mod, "build_formal_result_meta_from_lineage", fail_child_envelope)
+    monkeypatch.setattr(service_mod, "_analytical_envelope", fail_child_envelope)
 
     payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
     cached_payload = service_mod.get_bond_dashboard_home_summary(date.fromisoformat(REPORT_DATE))
@@ -665,6 +703,68 @@ def test_bond_dashboard_headline_kpis_metadata_preserves_candidate_boundary(tmp_
     assert meta["filters_applied"] == {"report_date": REPORT_DATE}
     assert meta["tables_used"] == ["fact_formal_bond_analytics_daily"]
     assert meta["evidence_rows"] == 0
+    get_settings.cache_clear()
+
+
+def test_bond_dashboard_child_metadata_preserves_candidate_boundary(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "children-candidate.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+    client = _bond_dashboard_client_with_read_scope(tmp_path, monkeypatch)
+
+    cases = [
+        (
+            "/api/bond-dashboard/asset-structure",
+            {"report_date": REPORT_DATE, "group_by": "bond_type"},
+            "bond_dashboard.asset_structure",
+        ),
+        (
+            "/api/bond-dashboard/yield-distribution",
+            {"report_date": REPORT_DATE},
+            "bond_dashboard.yield_distribution",
+        ),
+        (
+            "/api/bond-dashboard/portfolio-comparison",
+            {"report_date": REPORT_DATE},
+            "bond_dashboard.portfolio_comparison",
+        ),
+        (
+            "/api/bond-dashboard/spread-analysis",
+            {"report_date": REPORT_DATE},
+            "bond_dashboard.spread_analysis",
+        ),
+        (
+            "/api/bond-dashboard/maturity-structure",
+            {"report_date": REPORT_DATE},
+            "bond_dashboard.maturity_structure",
+        ),
+        (
+            "/api/bond-dashboard/industry-distribution",
+            {"report_date": REPORT_DATE, "top_n": 10},
+            "bond_dashboard.industry_distribution",
+        ),
+        (
+            "/api/bond-dashboard/risk-indicators",
+            {"report_date": REPORT_DATE},
+            "bond_dashboard.risk_indicators",
+        ),
+        (
+            "/api/bond-dashboard/business-type-metrics",
+            {"report_date": REPORT_DATE},
+            "bond_dashboard.business_type_metrics",
+        ),
+    ]
+
+    for path, params, result_kind in cases:
+        response = client.get(path, params=params)
+        assert response.status_code == 200, response.text
+        _assert_bond_dashboard_candidate_envelope(
+            response.json(),
+            result_kind=result_kind,
+            evidence_rows=0,
+        )
+
     get_settings.cache_clear()
 
 
@@ -1023,7 +1123,11 @@ def test_business_type_metrics_returns_envelope(tmp_path, monkeypatch) -> None:
     rsp = client.get("/api/bond-dashboard/business-type-metrics", params={"report_date": REPORT_DATE})
     assert rsp.status_code == 200, rsp.text
     payload = rsp.json()
-    _assert_formal_envelope(payload)
+    _assert_bond_dashboard_candidate_envelope(
+        payload,
+        result_kind="bond_dashboard.business_type_metrics",
+        evidence_rows=2,
+    )
     items = payload["result"]["items"]
     assert len(items) >= 2
     names = {it["name"] for it in items}

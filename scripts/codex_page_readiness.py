@@ -76,6 +76,7 @@ DIRECT_EVIDENCE_PAGE_SLUGS = (
     "balance-analysis",
     "risk-tensor",
     "bond-dashboard",
+    "bond-analysis",
     "balance-movement-analysis",
 )
 OPTIONAL_DIRECT_EVIDENCE_PAGE_SLUGS = (
@@ -243,6 +244,10 @@ def _governance_record_commands(page_slug: str) -> list[str]:
         "pnl-attribution": [
             "python scripts/emit_pnl_attribution_governance_record.py",
             "python scripts/emit_pnl_attribution_governance_record.py --write",
+        ],
+        "bond-analysis": [
+            "python scripts/emit_bond_analysis_governance_record.py",
+            "python scripts/emit_bond_analysis_governance_record.py --write",
         ],
     }
     return commands_by_page.get(page_slug, [])

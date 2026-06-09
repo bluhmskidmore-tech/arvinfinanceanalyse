@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-from scripts.bond_analysis_owner_evidence_packet import build_packet, render_markdown
+from scripts.bond_analysis_owner_evidence_packet import (
+    build_packet,
+    render_audit_markdown,
+    render_markdown,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +18,10 @@ SCRIPT = ROOT / "scripts" / "bond_analysis_owner_evidence_packet.py"
 SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "bond-analysis-sign-off-packet.md"
 GOVERNANCE_AUDIT_PACKET = ROOT / "docs" / "pnl" / "bond-analysis-governance-audit-packet.md"
 OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "bond-analysis-owner-evidence-packet.md"
+LIVE_SMOKE_EVIDENCE_ARTIFACT = (
+    "docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md"
+)
+LIVE_SMOKE_COMMAND = "scripts/codex-page-smoke.ps1 -PageSlug bond-analysis"
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -55,7 +64,31 @@ def test_bond_analysis_owner_evidence_packet_preserves_candidate_boundary() -> N
         "MTR-BOND-001 through MTR-BOND-004",
     ]
     assert packet["governance_record_write_status"] == "not_requested"
-    assert packet["governance_validation_status"] == "missing_direct_records"
+    assert packet["governance_validation_status"] == "direct_records_ready_for_audit_review"
+    assert packet["governance_record_commands"] == {
+        "dry_run": "python scripts/emit_bond_analysis_governance_record.py",
+        "write": "python scripts/emit_bond_analysis_governance_record.py --write",
+        "validate": "python scripts/codex_page_readiness.py --page-slug bond-analysis",
+    }
+    assert packet["governance_record_post_write_validation_status"] == "direct_records_ready_for_audit_review"
+    assert packet["latest_verification_evidence"] == {
+        "static_readiness": "static-pass",
+        "direct_governance_record": "ready_for_audit_review",
+        "ui_api_payload_evidence": "GS-BOND-ANALYSIS-ACTION-ATTR-A response.json",
+        "live_smoke_evidence": LIVE_SMOKE_EVIDENCE_ARTIFACT,
+        "live_smoke_command": LIVE_SMOKE_COMMAND,
+        "readiness_command": "python scripts/codex_page_readiness.py --page-slug bond-analysis",
+        "boundary": (
+            "Direct governance record and static readiness are ready for audit review. "
+            "UI/API payload and live smoke evidence remain reviewer-confirmation inputs only; "
+            "owner approval remains pending."
+        ),
+    }
+    assert packet["manual_review_evidence"] == {
+        "ui_api_payload_review": "tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json",
+        "live_smoke_evidence_review": LIVE_SMOKE_EVIDENCE_ARTIFACT,
+        "live_smoke_command_reference": LIVE_SMOKE_COMMAND,
+    }
     assert packet["configured_table_names"] == ["fact_formal_bond_analytics_daily"]
     assert packet["evidence_scope"] == {
         "approves_metric_or_page": False,
@@ -69,13 +102,35 @@ def test_bond_analysis_owner_evidence_packet_preserves_candidate_boundary() -> N
     assert "fixed_income_rule_review" in packet["remaining_blockers"]
 
 
+def test_bond_analysis_owner_evidence_packet_reports_missing_records_when_governance_is_empty(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
+
+    packet = build_packet()
+
+    assert packet["governance_record_write_status"] == "not_requested"
+    assert packet["governance_validation_status"] == "missing_direct_records"
+    assert packet["governance_record_post_write_validation_status"] == "direct_records_ready_for_audit_review"
+    assert packet["formal_use_allowed"] is False
+    assert packet["closure_approved"] is False
+
+
 def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path) -> None:
     output_path = tmp_path / "packet.md"
+    audit_output_path = tmp_path / "audit.md"
 
-    returncode, payload = _run_packet("--output", str(output_path))
+    returncode, payload = _run_packet(
+        "--output",
+        str(output_path),
+        "--audit-output",
+        str(audit_output_path),
+    )
 
     assert returncode == 0
     assert payload["packet_path"] == str(output_path)
+    assert payload["audit_packet_path"] == str(audit_output_path)
     assert payload["handoff_status"] == "owner_actions_required"
     assert payload["business_contract_certified"] is False
     assert payload["approval_action_item_count"] == 12
@@ -97,10 +152,74 @@ def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path)
     ) in text
     assert "PAGE-BOND-001, /bond-dashboard, GS-BOND-HEADLINE-A, and MTR-BOND-001 through MTR-BOND-004 are non-reusable for /bond-analysis certification." in text
     assert "Governance record write status: `not_requested`" in text
-    assert "Governance validation status: `missing_direct_records`" in text
+    assert (
+        "Governance validation status: `direct_records_ready_for_audit_review`"
+        in text
+    )
+    assert (
+        "Governance post-write validation target: "
+        "`direct_records_ready_for_audit_review`"
+    ) in text
+    assert (
+        "- Dry run: `python scripts/emit_bond_analysis_governance_record.py`"
+        in text
+    )
+    assert (
+        "- Write: `python scripts/emit_bond_analysis_governance_record.py --write`"
+        in text
+    )
+    assert (
+        "- Validate: `python scripts/codex_page_readiness.py --page-slug bond-analysis`"
+        in text
+    )
+    assert "## Latest Verification Evidence" in text
+    assert "- Static readiness: `static-pass`" in text
+    assert "- Direct governance record: `ready_for_audit_review`" in text
+    assert "- UI/API payload evidence: `GS-BOND-ANALYSIS-ACTION-ATTR-A response.json`" in text
+    assert f"- Live smoke evidence: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in text
+    assert f"- Live smoke command: `{LIVE_SMOKE_COMMAND}`" in text
+    assert "## Manual Review Evidence References" in text
+    assert (
+        "- UI/API payload review: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`"
+        in text
+    )
+    assert f"- Live smoke evidence review: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in text
+    assert f"- Live smoke command reference: `{LIVE_SMOKE_COMMAND}`" in text
     assert "This packet does not approve page closure" in text
     assert "- `certification_effect=none`" in text
     assert "Fixed-income units/sign/date rules reviewed: `yes` (`pending`)" in text
+
+
+def test_bond_analysis_owner_evidence_packet_cli_can_report_missing_records_with_empty_governance(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "packet.md"
+    env = {
+        **os.environ,
+        "MOSS_GOVERNANCE_PATH": str(tmp_path / "empty-governance"),
+    }
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--output",
+            str(output_path),
+            "--audit-output",
+            str(tmp_path / "audit.md"),
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+    payload = json.loads(completed.stdout)
+
+    assert payload["governance_validation_status"] == "missing_direct_records"
+    assert "Governance validation status: `missing_direct_records`" in output_path.read_text(
+        encoding="utf-8",
+    )
 
 
 def test_bond_analysis_owner_evidence_packet_matches_generator_output() -> None:
@@ -108,6 +227,19 @@ def test_bond_analysis_owner_evidence_packet_matches_generator_output() -> None:
     actual = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
 
     assert actual == expected
+
+
+def test_bond_analysis_governance_audit_packet_matches_generator_output() -> None:
+    expected = render_audit_markdown(build_packet())
+    actual = GOVERNANCE_AUDIT_PACKET.read_text(encoding="utf-8")
+
+    assert actual == expected
+    assert "Governance validation status: `direct_records_ready_for_audit_review`" in actual
+    assert "Direct page/API governance record status: `ready_for_audit_review`" in actual
+    assert "UI/API payload review evidence: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/response.json`" in actual
+    assert f"Live smoke evidence review: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in actual
+    assert f"Live smoke command reference: `{LIVE_SMOKE_COMMAND}`" in actual
+    assert "Closure approved: `closure_approved=false`" in actual
 
 
 def test_bond_analysis_signoff_and_audit_packets_surface_no_certification_scope() -> None:
@@ -121,3 +253,5 @@ def test_bond_analysis_signoff_and_audit_packets_surface_no_certification_scope(
         assert "- `proves_page_execution=false`" in text
         assert "- `captures_business_owner_approval=false`" in text
         assert "- `certification_effect=none`" in text
+    assert "python scripts/emit_bond_analysis_governance_record.py" in audit_packet
+    assert "python scripts/emit_bond_analysis_governance_record.py --write" in audit_packet

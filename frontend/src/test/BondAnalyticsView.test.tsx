@@ -154,7 +154,7 @@ describe("BondAnalyticsView", () => {
     expect(
       await screen.findByTestId("bond-analysis-toolbar", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toHaveClass("dashboard-home-toolbar");
-    expect(screen.getByRole("heading", { name: "债券持仓", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "债券分析", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toHaveTextContent("刷新");
     expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
 
@@ -167,16 +167,23 @@ describe("BondAnalyticsView", () => {
       {},
       { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
     );
-    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion").textContent?.length).toBeGreaterThan(0);
-    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("当前结论");
-    expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("10年国债");
+    expect(within(topCockpit).getByTestId("bond-analysis-daily-judgment")).toHaveTextContent("核心读面");
+    expect(within(topCockpit).getByTestId("bond-analysis-yield-curve-panel")).toHaveTextContent(
+      "曲线 / KRD 观察",
+    );
+    expect(within(topCockpit).getByTestId("bond-analysis-evidence-boundary-panel")).toHaveTextContent("证据边界");
+    expect(within(topCockpit).getByTestId("bond-analysis-judgment-matrix")).toHaveTextContent("利率证据");
+    expect(within(topCockpit).getByTestId("bond-analysis-return-attribution-panel")).toHaveTextContent("收益归因 / DV01 变动证据");
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
-    expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();
     expect(within(topCockpit).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
+    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("久期");
+    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("组合到期收益率");
+    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("信用利差");
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
-    expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-risk-monitor")).toBeInTheDocument();
     expect(within(topCockpit).getByText("尚未捕获刷新运行。")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-action-attribution")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-return-decomposition")).toBeInTheDocument();
@@ -199,7 +206,7 @@ describe("BondAnalyticsView", () => {
   );
 
   it(
-    "renders the bond holdings workbench cockpit sections from the reference",
+    "renders the bond analysis workstation sections from the reference",
     async () => {
       renderBondAnalyticsView();
 
@@ -212,6 +219,12 @@ describe("BondAnalyticsView", () => {
       expect(within(topCockpit).getAllByTestId("bond-analysis-kpi-ribbon")).toHaveLength(1);
       expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("DR007");
+      expect(within(topCockpit).getByTestId("bond-analysis-daily-judgment")).toHaveTextContent("核心读面");
+      expect(within(topCockpit).getByTestId("bond-analysis-yield-curve-panel")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-judgment-matrix")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-return-attribution-panel")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-risk-monitor")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
       expect(within(topCockpit).getByTestId("bond-analysis-currency-basis-banner")).toHaveTextContent(
         "人民币/CNY口径",
@@ -556,7 +569,7 @@ describe("BondAnalyticsView", () => {
     });
   });
 
-  it("shows an explicit error state when bond-analysis dates fail to load and no report_date is provided", async () => {
+  it("keeps a workstation frame when bond-analysis dates fail to load and no report_date is provided", async () => {
     const fetchSequence: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -577,11 +590,33 @@ describe("BondAnalyticsView", () => {
           };
         }
 
+        if (url.includes("/ui/macro/choice-series/latest")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta({
+                result_kind: "macro.choice.latest",
+              }),
+              result: {
+                read_target: "duckdb",
+                series: [],
+              },
+            }),
+          };
+        }
+
         throw new Error(`Unhandled fetch request: ${url}`);
       }),
     );
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
+    expect(await screen.findByTestId("bond-analysis-toolbar")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "债券分析", level: 1 })).toBeInTheDocument();
+    const fallback = await screen.findByTestId("bond-analysis-date-fallback-workbench");
+    expect(fallback).toHaveTextContent("债券分析日期载入失败");
+    expect(fallback).toHaveTextContent("核心读面");
+    expect(fallback).toHaveTextContent("收益率曲线与日变动");
+    expect(fallback).toHaveTextContent("风险监控");
     await waitFor(() => {
       expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
       expect(
@@ -644,6 +679,7 @@ describe("BondAnalyticsView", () => {
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
     expect(await screen.findByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
+    expect(screen.getByTestId("bond-analysis-date-fallback-workbench")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试日期载入" }));
     expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
     expect(datesAttempts).toBe(2);
@@ -682,6 +718,7 @@ describe("BondAnalyticsView", () => {
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
     expect(await screen.findByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
+    expect(screen.getByTestId("bond-analysis-date-fallback-workbench")).toHaveTextContent("暂无可用报告日");
     expect(screen.queryByTestId("bond-analysis-top-cockpit")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);

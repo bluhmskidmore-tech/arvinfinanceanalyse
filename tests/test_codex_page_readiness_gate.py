@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,11 @@ from scripts.emit_balance_analysis_governance_record import (
     TARGET_STREAM as BALANCE_GOVERNANCE_STREAM,
     build_record as build_balance_governance_record,
     emit_record as emit_balance_governance_record,
+)
+from scripts.emit_bond_analysis_governance_record import (
+    TARGET_STREAM as BOND_ANALYSIS_GOVERNANCE_STREAM,
+    build_record as build_bond_analysis_governance_record,
+    emit_record as emit_bond_analysis_governance_record,
 )
 from scripts.mcp.moss_project_mcp import product_page_trace_bundles
 
@@ -394,20 +400,33 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
     }
     assert "codex-page-smoke.ps1 -PageSlug bond-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug bond-analysis -Run" in report["required_commands"][1]
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_bond_analysis_governance_record.py",
+        "python scripts/emit_bond_analysis_governance_record.py --write",
+    ]
     assert "check_bond_analysis_business_owner_approval.py --require-captured" in report["approval_status_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["present_table_count"] == 1
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
+    assert report["governance_record_validation"]["ready_record_count"] >= 1
+    assert report["governance_record_validation"]["direct_record_count"] >= 1
+    assert report["audit_review"]["status"] == "ready_for_audit_review"
+    assert report["audit_review"]["closure_approved"] is False
     assert "docs/audits/2026-06-06-bond-analysis-gate-i-lane.md" in report["contract_docs"]
 
     gates = {gate["name"]: gate for gate in report["static_gates"]}
+    assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"
+    assert gates["catalog_date_evidence_sampled"]["detail"] == "1/1 table date samples"
+    assert gates["direct_governance_record_ready"]["outcome"] == "pass"
     assert gates["golden_sample_boundary"]["outcome"] == "pass"
     assert gates["golden_sample_boundary"]["detail"] == "page_dto_only"
     assert gates["formal_promotion_boundary"]["outcome"] == "pass"
     assert gates["formal_promotion_boundary"]["detail"] == "candidate_or_pending; formal_use_allowed=false"
     assert gates["business_owner_approval_status"]["outcome"] == "pass"
 
-    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
+    assert not any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
     assert not any("bond-analysis route contract" in gap for gap in report["residual_gaps"])
     assert any("GS-BOND-HEADLINE-A" in gap for gap in report["residual_gaps"])
@@ -415,6 +434,61 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
     assert not any("PAGE-STOCK" in gap for gap in report["residual_gaps"])
     assert any("PAGE-BOND-001" in guardrail for guardrail in report["guardrails"])
     assert any("/bond-dashboard" in guardrail for guardrail in report["guardrails"])
+
+
+def test_bond_analysis_readiness_blocks_when_direct_governance_record_is_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
+
+    report = build_page_readiness_report("bond-analysis")
+
+    assert report["page_slug"] == "bond-analysis"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "blocked"
+    assert report["governance_record_validation"]["status"] == "missing_direct_records"
+    assert report["governance_record_validation"]["ready_record_count"] == 0
+    assert report["governance_record_validation"]["direct_record_count"] == 0
+    assert report["audit_review"]["status"] == "blocked_by_record_gaps"
+
+    gates = {gate["name"]: gate for gate in report["static_gates"]}
+    assert gates["direct_governance_record_ready"]["outcome"] == "block"
+    assert gates["direct_governance_record_ready"]["detail"] == "0 ready direct record(s)"
+    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
+
+
+def test_bond_analysis_readiness_accepts_own_direct_record_without_formal_promotion(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    governance_dir = tmp_path / "governance"
+    emit_bond_analysis_governance_record(
+        governance_dir / f"{BOND_ANALYSIS_GOVERNANCE_STREAM}.jsonl",
+        build_bond_analysis_governance_record("2026-06-06T00:00:00Z"),
+    )
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+
+    report = build_page_readiness_report("bond-analysis")
+
+    assert report["page_slug"] == "bond-analysis"
+    assert report["page_id"] == "PAGE-BOND-ANALYSIS-001"
+    assert report["route"] == "/bond-analysis"
+    assert report["primary_api"] == "/api/bond-analytics/action-attribution"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
+    assert report["governance_record_validation"]["ready_record_count"] == 1
+    assert report["governance_record_validation"]["direct_record_count"] == 1
+    assert report["audit_review"]["status"] == "ready_for_audit_review"
+    assert report["audit_review"]["closure_approved"] is False
+
+    gates = {gate["name"]: gate for gate in report["static_gates"]}
+    assert gates["direct_governance_record_ready"]["outcome"] == "pass"
+    assert gates["formal_promotion_boundary"]["outcome"] == "pass"
+    assert gates["formal_promotion_boundary"]["detail"] == "candidate_or_pending; formal_use_allowed=false"
+    assert not any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
+    assert any("Business owner approval is still required" in gap for gap in report["residual_gaps"])
 
 
 def test_balance_movement_readiness_surfaces_direct_candidate_evidence_without_promotion() -> None:
@@ -878,7 +952,12 @@ def test_page_readiness_cli_emits_json_report() -> None:
     assert payload["blocking_gates"] == []
 
 
-def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
+def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "empty-governance"))
+
     payload = build_all_page_readiness_report()
     expected_page_slugs = {
         bundle["page_slug"]
@@ -890,7 +969,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     assert actual_page_slugs == expected_page_slugs
     assert payload["summary"]["page_count"] == len(expected_page_slugs)
     assert payload["summary"]["formal_or_governed_count"] == 5
-    assert payload["summary"]["blocked_count"] == 0
+    assert payload["summary"]["blocked_count"] == 6
     assert payload["summary"]["mixed_or_candidate_count"] == len(expected_page_slugs) - 5
     assert payload["summary"]["run_supported_count"] == sum(
         1 for page in payload["pages"] if page["run_supported"]
@@ -899,7 +978,14 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle() -> None:
     assert payload["summary"]["business_owner_approval_action_item_count"] == 71
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
-    assert payload["blocking_pages"] == []
+    assert payload["blocking_pages"] == [
+        "product-category-pnl",
+        "balance-analysis",
+        "balance-movement-analysis",
+        "risk-tensor",
+        "bond-dashboard",
+        "bond-analysis",
+    ]
     pending_by_slug = {
         page["page_slug"]: page
         for page in payload["business_owner_approval_pending_pages"]
@@ -1328,6 +1414,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["bond-analysis"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["bond-analysis"]["page_id"] == "PAGE-BOND-ANALYSIS-001"
     assert rows_by_slug["bond-analysis"]["has_approval_checker"] is True
+    assert rows_by_slug["bond-analysis"]["has_governance_record_command"] is True
     assert rows_by_slug["bond-analysis"]["business_owner_approval_captured"] is False
     assert rows_by_slug["bond-analysis"]["evidence_scope"] == {
         "approves_metric_or_page": False,
@@ -1471,7 +1558,11 @@ def test_all_page_readiness_embeds_route_scope_classification_summary() -> None:
     assert payload["summary"]["route_scope_unclassified_count"] == 0
 
 
-def test_page_readiness_cli_all_mode_emits_batch_report() -> None:
+def test_page_readiness_cli_all_mode_emits_batch_report(tmp_path: Path) -> None:
+    env = {
+        **os.environ,
+        "MOSS_GOVERNANCE_PATH": str(tmp_path / "empty-governance"),
+    }
     completed = subprocess.run(
         [
             sys.executable,
@@ -1481,6 +1572,7 @@ def test_page_readiness_cli_all_mode_emits_batch_report() -> None:
         cwd=ROOT,
         check=True,
         capture_output=True,
+        env=env,
         stdin=subprocess.DEVNULL,
         text=True,
     )
@@ -1488,13 +1580,20 @@ def test_page_readiness_cli_all_mode_emits_batch_report() -> None:
     payload = json.loads(completed.stdout)
     assert payload["scope"] == "all-page-readiness"
     assert payload["summary"]["page_count"] == 39
-    assert payload["summary"]["blocked_count"] == 0
+    assert payload["summary"]["blocked_count"] == 6
     assert payload["summary"]["run_supported_count"] == 27
     assert payload["summary"]["business_owner_approval_pending_count"] == 6
     assert payload["summary"]["business_owner_approval_action_item_count"] == 71
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
-    assert payload["blocking_pages"] == []
+    assert payload["blocking_pages"] == [
+        "product-category-pnl",
+        "balance-analysis",
+        "balance-movement-analysis",
+        "risk-tensor",
+        "bond-dashboard",
+        "bond-analysis",
+    ]
     assert {
         page["page_slug"]
         for page in payload["business_owner_approval_pending_pages"]
