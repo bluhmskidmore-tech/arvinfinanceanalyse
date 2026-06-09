@@ -1678,10 +1678,14 @@
 }
 
 .tableEmpty {
-  min-height: 92px;
-  padding: 14px 12px;
+  min-height: 64px;
+  margin: 8px 12px;
+  padding: 12px 12px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .pendingReadModelPanel {

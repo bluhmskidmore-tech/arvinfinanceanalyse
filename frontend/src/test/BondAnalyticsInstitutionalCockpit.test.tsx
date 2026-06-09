@@ -1211,6 +1211,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const holdingsTableHeaderRule = cssRuleBody(".holdingsTableHeader");
     const holdingsTableHeaderFirstCellRule = cssRuleBody(".holdingsTableHeader span:first-child");
     const holdingNameCellRule = cssRuleBody(".holdingNameCell");
+    const tableEmptyRule = cssRuleBody(".tableEmpty");
     const riskEvidenceListRule = cssRuleBody(".riskEvidenceList");
     const riskEvidenceRowRule = cssRuleBody(".riskEvidenceRow");
     const sideHeaderRule = cssRuleBody(".sideStackHeader");
@@ -1240,6 +1241,9 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(COCKPIT_CSS).toContain(".holdingsTableRow {\n  padding: 6px 12px");
     expect(holdingNameCellRule).toContain("position: sticky");
     expect(holdingNameCellRule).toContain("border-right: 1px solid var(--moss-color-neutral-100)");
+    expect(tableEmptyRule).toContain("min-height: 64px");
+    expect(tableEmptyRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    expect(tableEmptyRule).toContain("background: var(--moss-color-neutral-50)");
     expect(riskEvidenceListRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
     expect(riskEvidenceRowRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(sideStackRule).toContain("gap: 1px");
