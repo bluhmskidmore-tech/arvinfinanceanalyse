@@ -4260,6 +4260,7 @@ export type PnlCompositionItem = {
   fair_value_pct: Numeric;
   capital_gain_pct: Numeric;
   other_pct: Numeric;
+  unexplained_residual: Numeric | null;
 };
 
 export type PnlCompositionTrendItem = {
@@ -4284,6 +4285,7 @@ export type PnlCompositionPayload = {
   fair_value_pct: Numeric;
   capital_gain_pct: Numeric;
   other_pct: Numeric;
+  unexplained_residual: Numeric | null;
   items: PnlCompositionItem[];
   trend_data: PnlCompositionTrendItem[];
 };

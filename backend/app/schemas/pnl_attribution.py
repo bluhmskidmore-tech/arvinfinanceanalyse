@@ -199,6 +199,7 @@ class PnlCompositionItem(BaseModel):
     fair_value_pct: Numeric
     capital_gain_pct: Numeric
     other_pct: Numeric
+    unexplained_residual: Numeric | None = None
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_pnl": ("yuan", True),
@@ -210,6 +211,7 @@ class PnlCompositionItem(BaseModel):
         "fair_value_pct": ("pct", True),
         "capital_gain_pct": ("pct", True),
         "other_pct": ("pct", True),
+        "unexplained_residual": ("yuan", True),
     }
 
     @model_validator(mode="before")
@@ -253,6 +255,7 @@ class PnlCompositionPayload(BaseModel):
     fair_value_pct: Numeric
     capital_gain_pct: Numeric
     other_pct: Numeric
+    unexplained_residual: Numeric | None = None
     items: list[PnlCompositionItem]
     trend_data: list[PnlCompositionTrendItem]
 
@@ -266,6 +269,7 @@ class PnlCompositionPayload(BaseModel):
         "fair_value_pct": ("pct", True),
         "capital_gain_pct": ("pct", True),
         "other_pct": ("pct", True),
+        "unexplained_residual": ("yuan", True),
     }
 
     @model_validator(mode="before")

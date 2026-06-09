@@ -115,6 +115,68 @@
   line-height: 1.5;
 }
 
+.pnl-attribution-advanced-table-wrap {
+  margin-top: 12px;
+  overflow: auto;
+}
+
+.pnl-attribution-advanced-table-wrap--bounded {
+  max-height: 220px;
+}
+
+.pnl-attribution-advanced-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pnl-attribution-advanced-table thead {
+  background: #f3f4f6;
+}
+
+.pnl-attribution-advanced-table--sticky thead {
+  position: sticky;
+  top: 0;
+}
+
+.pnl-attribution-advanced-table tr {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.pnl-attribution-advanced-table th,
+.pnl-attribution-advanced-table td {
+  padding: 8px;
+}
+
+.pnl-attribution-advanced-table__left {
+  text-align: left;
+}
+
+.pnl-attribution-advanced-table__num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pnl-attribution-advanced-table__profit {
+  color: #b91c1c;
+}
+
+.pnl-attribution-advanced-table__loss {
+  color: #166534;
+}
+
+.pnl-attribution-advanced-table__info {
+  color: #2563eb;
+}
+
+.pnl-attribution-advanced-table__warning {
+  color: #d97706;
+}
+
+.pnl-attribution-advanced-table__neutral {
+  color: #111827;
+}
+
 .pnl-attribution-product-category-workbench {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

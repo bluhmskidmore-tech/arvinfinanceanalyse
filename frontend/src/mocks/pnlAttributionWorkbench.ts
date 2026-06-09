@@ -238,6 +238,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
   fair_value_pct: rp(30.4),
   capital_gain_pct: rp(9.6),
   other_pct: rp(2.4),
+  unexplained_residual: y(0),
   items: [
     {
       category: "利率债",
@@ -252,6 +253,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
       fair_value_pct: rp(26.7),
       capital_gain_pct: rp(8.9),
       other_pct: rp(2.2),
+      unexplained_residual: y(0),
     },
     {
       category: "信用债",
@@ -266,6 +268,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
       fair_value_pct: rp(34.6),
       capital_gain_pct: rp(6.7),
       other_pct: rp(1.0),
+      unexplained_residual: y(0),
     },
   ],
   trend_data: [

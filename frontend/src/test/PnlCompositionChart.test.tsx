@@ -47,6 +47,7 @@ describe("PnLCompositionChart", () => {
       fair_value_pct: num(30.4, "pct"),
       capital_gain_pct: num(9.6, "pct"),
       other_pct: num(2.4, "pct"),
+      unexplained_residual: num(0),
       items: [
         {
           category: "利率债",
@@ -61,6 +62,7 @@ describe("PnLCompositionChart", () => {
           fair_value_pct: num(26.7, "pct"),
           capital_gain_pct: num(8.9, "pct"),
           other_pct: num(2.2, "pct"),
+          unexplained_residual: num(0),
         },
       ],
       trend_data: [
@@ -102,6 +104,7 @@ describe("PnLCompositionChart", () => {
       fair_value_pct: numDisplay(0.1840714304113674, "pct", "+18.41%"),
       capital_gain_pct: numDisplay(0.18768258302325463, "pct", "+18.77%"),
       other_pct: numDisplay(0, "pct", "+0.00%"),
+      unexplained_residual: num(0),
       items: [],
       trend_data: [],
     };

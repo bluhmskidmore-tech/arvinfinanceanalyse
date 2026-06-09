@@ -4,6 +4,8 @@ import pytest
 
 from backend.app.core_finance.pnl_attribution.workbench import (
     build_advanced_attribution_summary,
+    build_krd_attribution,
+    build_pnl_composition,
     build_tpl_market_correlation,
     build_volume_rate_attribution,
     build_volume_rate_attribution_from_grouped_rows,
@@ -211,3 +213,102 @@ def test_build_advanced_attribution_summary_keeps_single_annualization() -> None
     )
 
     assert payload["static_return_annualized"] == pytest.approx(2.27)
+
+
+def test_build_pnl_composition_exposes_unexplained_residual_at_top_and_item_level() -> None:
+    payload = build_pnl_composition(
+        report_period="2026-03",
+        report_date="2026-03-31",
+        pnl_rows=[
+            {
+                "invest_type_std": "利率债",
+                "interest_income_514": 100.0,
+                "fair_value_change_516": 50.0,
+                "capital_gain_517": 20.0,
+                "manual_adjustment": 10.0,
+                "total_pnl": 200.0,
+            },
+            {
+                "invest_type_std": "信用债",
+                "interest_income_514": 30.0,
+                "fair_value_change_516": 10.0,
+                "capital_gain_517": 5.0,
+                "manual_adjustment": 0.0,
+                "total_pnl": 60.0,
+            },
+        ],
+        trend_rows=[],
+    )
+
+    assert payload["total_pnl"] == pytest.approx(260.0)
+    assert payload["total_interest_income"] == pytest.approx(130.0)
+    assert payload["total_fair_value_change"] == pytest.approx(60.0)
+    assert payload["total_capital_gain"] == pytest.approx(25.0)
+    assert payload["total_other_income"] == pytest.approx(10.0)
+    assert payload["unexplained_residual"] == pytest.approx(35.0)
+
+    by_cat = {item["category"]: item for item in payload["items"]}
+    assert by_cat["利率债"]["unexplained_residual"] == pytest.approx(20.0)
+    assert by_cat["信用债"]["unexplained_residual"] == pytest.approx(15.0)
+
+
+def _krd_bond_row(*, market_value: float, modified_duration: float) -> dict[str, float | str]:
+    return {
+        "tenor_bucket": "5Y",
+        "market_value": market_value,
+        "modified_duration": modified_duration,
+        "macaulay_duration": modified_duration,
+        "convexity": 0.0,
+        "years_to_maturity": 5.0,
+        "ytm": 0.03,
+        "dv01": market_value * modified_duration / 10000.0,
+    }
+
+
+def test_build_krd_attribution_keeps_parallel_when_only_aggregate_rates_rise_and_long_duration() -> None:
+    payload = build_krd_attribution(
+        report_date="2026-03-31",
+        start_date="2026-02-28",
+        end_date="2026-03-31",
+        bond_rows_end=[_krd_bond_row(market_value=1_000_000.0, modified_duration=5.0)],
+        bond_rows_start=[_krd_bond_row(market_value=1_000_000.0, modified_duration=5.0)],
+        treasury_shift_bp=10.0,
+    )
+
+    assert payload["portfolio_duration"] == pytest.approx(5.0)
+    assert payload["curve_shift_type"] == "parallel"
+
+
+def test_build_krd_attribution_keeps_parallel_when_only_aggregate_rates_rise_and_short_duration() -> None:
+    payload = build_krd_attribution(
+        report_date="2026-03-31",
+        start_date="2026-02-28",
+        end_date="2026-03-31",
+        bond_rows_end=[_krd_bond_row(market_value=1_000_000.0, modified_duration=3.0)],
+        bond_rows_start=[_krd_bond_row(market_value=1_000_000.0, modified_duration=3.0)],
+        treasury_shift_bp=8.0,
+    )
+
+    assert payload["curve_shift_type"] == "parallel"
+
+
+def test_build_krd_attribution_keeps_parallel_for_aggregate_rate_shift_regression() -> None:
+    bull = build_krd_attribution(
+        report_date="2026-03-31",
+        start_date="2026-02-28",
+        end_date="2026-03-31",
+        bond_rows_end=[_krd_bond_row(market_value=1_000_000.0, modified_duration=5.0)],
+        bond_rows_start=[_krd_bond_row(market_value=1_000_000.0, modified_duration=5.0)],
+        treasury_shift_bp=-10.0,
+    )
+    parallel = build_krd_attribution(
+        report_date="2026-03-31",
+        start_date="2026-02-28",
+        end_date="2026-03-31",
+        bond_rows_end=[_krd_bond_row(market_value=1_000_000.0, modified_duration=5.0)],
+        bond_rows_start=[_krd_bond_row(market_value=1_000_000.0, modified_duration=3.0)],
+        treasury_shift_bp=3.0,
+    )
+
+    assert bull["curve_shift_type"] == "parallel"
+    assert parallel["curve_shift_type"] == "parallel"

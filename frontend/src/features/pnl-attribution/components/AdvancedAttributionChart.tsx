@@ -9,6 +9,7 @@ import type {
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import "./PnlAttributionView.css";
 
 const cardStyle = {
   padding: designTokens.space[5],
@@ -17,6 +18,28 @@ const cardStyle = {
   background: "#ffffff",
   boxShadow: "0 1px 2px rgba(31, 41, 55, 0.04)",
 } as const;
+
+const caliberNoteStyle = {
+  margin: 0,
+  fontSize: designTokens.fontSize[11],
+  color: designTokens.color.neutral[600],
+  lineHeight: designTokens.lineHeight.normal,
+} as const;
+
+const CONTRIBUTION_PCT_CALIBER_NOTE =
+  "占比按各效应绝对值计算，方向相反时合计可能超过 100%";
+
+function AttributionPctCaliberNote(props: { testId: string }) {
+  return (
+    <p
+      data-testid={props.testId}
+      style={{ ...caliberNoteStyle, marginTop: designTokens.space[2] }}
+      title={CONTRIBUTION_PCT_CALIBER_NOTE}
+    >
+      {CONTRIBUTION_PCT_CALIBER_NOTE}
+    </p>
+  );
+}
 
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined) {
@@ -311,7 +334,7 @@ export function AdvancedAttributionChart({
                     color: designTokens.color.semantic.profit,
                   }}
                 >
-                  组合 Carry
+                  组合 Carry（年化）
                 </div>
                 <div
                   style={{
@@ -349,7 +372,7 @@ export function AdvancedAttributionChart({
                     color: designTokens.color.info[600],
                   }}
                 >
-                  组合 Roll-down
+                  组合 Roll-down（年化）
                 </div>
                 <div
                   style={{
@@ -387,7 +410,7 @@ export function AdvancedAttributionChart({
                     color: designTokens.color.neutral[900],
                   }}
                 >
-                  静态收益（年化近似）
+                  静态收益（年化）
                 </div>
                 <div
                   style={{
@@ -408,6 +431,93 @@ export function AdvancedAttributionChart({
                   }}
                 >
                   Carry + Roll-down
+                </div>
+              </div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.success[50],
+                  borderColor: designTokens.color.success[200],
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.semantic.profit,
+                  }}
+                >
+                  Carry 合计（月度估算）
+                </div>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[18],
+                    fontWeight: 700,
+                    color:
+                      (carryData.total_carry_pnl.raw ?? 0) >= 0
+                        ? designTokens.color.semantic.profit
+                        : designTokens.color.semantic.loss,
+                    ...tabularNumsStyle,
+                  }}
+                >
+                  {formatYi(carryData.total_carry_pnl.raw ?? undefined)}
+                </div>
+              </div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.info[50],
+                  borderColor: designTokens.color.info[200],
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.info[600],
+                  }}
+                >
+                  Roll-down 合计（月度估算）
+                </div>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[18],
+                    fontWeight: 700,
+                    color:
+                      (carryData.total_rolldown_pnl.raw ?? 0) >= 0
+                        ? designTokens.color.info[600]
+                        : designTokens.color.warning[600],
+                    ...tabularNumsStyle,
+                  }}
+                >
+                  {formatYi(carryData.total_rolldown_pnl.raw ?? undefined)}
+                </div>
+              </div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.neutral[50],
+                  borderColor: designTokens.color.neutral[200],
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: designTokens.color.neutral[900],
+                  }}
+                >
+                  Static 合计（月度估算）
+                </div>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[18],
+                    fontWeight: 700,
+                    color: designTokens.color.neutral[900],
+                    ...tabularNumsStyle,
+                  }}
+                >
+                  {formatYi(carryData.total_static_pnl.raw ?? undefined)}
                 </div>
               </div>
             </>
@@ -535,164 +645,74 @@ export function AdvancedAttributionChart({
               notMerge
               lazyUpdate
             />
-            <div
-              style={{
-                marginTop: designTokens.space[3],
-                overflow: "auto",
-                maxHeight: 220,
-              }}
-            >
-              <table
-                style={{
-                  width: "100%",
-                  fontSize: designTokens.fontSize[12],
-                  borderCollapse: "collapse",
-                }}
-              >
-                <thead
-                  style={{
-                    background: designTokens.color.neutral[100],
-                    position: "sticky",
-                    top: 0,
-                  }}
-                >
+            <div className="pnl-attribution-advanced-table-wrap pnl-attribution-advanced-table-wrap--bounded">
+              <table className="pnl-attribution-advanced-table pnl-attribution-advanced-table--sticky">
+                <thead>
                   <tr>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: designTokens.space[2],
-                      }}
-                    >
+                    <th className="pnl-attribution-advanced-table__left">
                       类别
                     </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[2],
-                        ...tabularNumsStyle,
-                      }}
-                    >
+                    <th className="pnl-attribution-advanced-table__num">
                       市值(亿)
                     </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[2],
-                        ...tabularNumsStyle,
-                      }}
-                    >
+                    <th className="pnl-attribution-advanced-table__num">
                       票息%
                     </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[2],
-                        ...tabularNumsStyle,
-                      }}
-                    >
+                    <th className="pnl-attribution-advanced-table__num">
                       FTP%
                     </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[2],
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      Carry%
+                    <th className="pnl-attribution-advanced-table__num">
+                      Carry%（年化）
                     </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[2],
-                        ...tabularNumsStyle,
-                      }}
-                    >
+                    <th className="pnl-attribution-advanced-table__num">
+                      Carry（月度估算）
+                    </th>
+                    <th className="pnl-attribution-advanced-table__num">
                       久期
                     </th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        padding: designTokens.space[2],
-                        ...tabularNumsStyle,
-                      }}
-                    >
-                      Roll%
+                    <th className="pnl-attribution-advanced-table__num">
+                      Roll%（年化）
+                    </th>
+                    <th className="pnl-attribution-advanced-table__num">
+                      Roll（月度估算）
+                    </th>
+                    <th className="pnl-attribution-advanced-table__num">
+                      Static（月度估算）
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {carryData.items.slice(0, 8).map((item, idx) => (
-                    <tr
-                      key={idx}
-                      style={{
-                        borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
-                      }}
-                    >
-                      <td style={{ padding: designTokens.space[2] }}>
+                    <tr key={idx}>
+                      <td>
                         {item.category}
                       </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <td className="pnl-attribution-advanced-table__num">
                         {((item.market_value.raw ?? 0) / 1e8).toFixed(1)}
                       </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <td className="pnl-attribution-advanced-table__num">
                         {pctDisplay(item.coupon_rate)}
                       </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <td className="pnl-attribution-advanced-table__num">
                         {pctDisplay(item.funding_cost)}
                       </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          color:
-                            (item.carry.raw ?? 0) >= 0
-                              ? designTokens.color.semantic.profit
-                              : designTokens.color.semantic.loss,
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <td className={`pnl-attribution-advanced-table__num ${(item.carry.raw ?? 0) >= 0 ? "pnl-attribution-advanced-table__profit" : "pnl-attribution-advanced-table__loss"}`}>
                         {pctDisplay(item.carry)}
                       </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <td className={`pnl-attribution-advanced-table__num ${(item.carry_pnl.raw ?? 0) >= 0 ? "pnl-attribution-advanced-table__profit" : "pnl-attribution-advanced-table__loss"}`}>
+                        {formatYi(item.carry_pnl.raw ?? undefined)}
+                      </td>
+                      <td className="pnl-attribution-advanced-table__num">
                         {(item.duration.raw ?? 0).toFixed(2)}
                       </td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          padding: designTokens.space[2],
-                          color:
-                            (item.rolldown.raw ?? 0) >= 0
-                              ? designTokens.color.info[600]
-                              : designTokens.color.warning[600],
-                          ...tabularNumsStyle,
-                        }}
-                      >
+                      <td className={`pnl-attribution-advanced-table__num ${(item.rolldown.raw ?? 0) >= 0 ? "pnl-attribution-advanced-table__info" : "pnl-attribution-advanced-table__warning"}`}>
                         {pctDisplay(item.rolldown)}
+                      </td>
+                      <td className={`pnl-attribution-advanced-table__num ${(item.rolldown_pnl.raw ?? 0) >= 0 ? "pnl-attribution-advanced-table__info" : "pnl-attribution-advanced-table__warning"}`}>
+                        {formatYi(item.rolldown_pnl.raw ?? undefined)}
+                      </td>
+                      <td className="pnl-attribution-advanced-table__num pnl-attribution-advanced-table__neutral">
+                        {formatYi(item.static_pnl.raw ?? undefined)}
                       </td>
                     </tr>
                   ))}
@@ -733,6 +753,41 @@ export function AdvancedAttributionChart({
             >
               区间 {spreadData.start_date} ~ {spreadData.end_date}
             </p>
+            {(spreadData.items?.length ?? 0) > 0 ? (
+              <div className="pnl-attribution-advanced-table-wrap">
+                <table className="pnl-attribution-advanced-table">
+                  <thead>
+                    <tr>
+                      <th className="pnl-attribution-advanced-table__left">
+                        类别
+                      </th>
+                      <th className="pnl-attribution-advanced-table__num">
+                        国债贡献占比%
+                      </th>
+                      <th className="pnl-attribution-advanced-table__num">
+                        利差贡献占比%
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {spreadData.items.slice(0, 8).map((item, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          {item.category}
+                        </td>
+                        <td className="pnl-attribution-advanced-table__num">
+                          {pctDisplay(item.treasury_contribution_pct)}
+                        </td>
+                        <td className="pnl-attribution-advanced-table__num">
+                          {pctDisplay(item.spread_contribution_pct)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <AttributionPctCaliberNote testId="spread-contribution-pct-caliber-note" />
           </div>
         )}
 
@@ -974,6 +1029,7 @@ export function AdvancedAttributionChart({
                   ))}
                 </tbody>
               </table>
+              <AttributionPctCaliberNote testId="krd-contribution-pct-caliber-note" />
             </div>
           </div>
         )}

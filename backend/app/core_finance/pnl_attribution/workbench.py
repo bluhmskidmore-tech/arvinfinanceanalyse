@@ -427,6 +427,7 @@ def build_pnl_composition(
 
     for cat, v in sorted(by_cat.items()):
         t = v["total"]
+        explained = v["interest"] + v["fv"] + v["cg"] + v["oth"]
         items.append(
             {
                 "category": cat,
@@ -441,6 +442,7 @@ def build_pnl_composition(
                 "fair_value_pct": _pct(v["fv"], t),
                 "capital_gain_pct": _pct(v["cg"], t),
                 "other_pct": _pct(v["oth"], t),
+                "unexplained_residual": t - explained,
             }
         )
 
@@ -456,6 +458,7 @@ def build_pnl_composition(
         "fair_value_pct": _pct(tot_f, tot_p),
         "capital_gain_pct": _pct(tot_c, tot_p),
         "other_pct": _pct(tot_o, tot_p),
+        "unexplained_residual": tot_p - (tot_i + tot_f + tot_c + tot_o),
         "items": items,
         "trend_data": trend_rows,
     }
@@ -791,8 +794,6 @@ def build_krd_attribution(
             max_val = b["duration_contribution"]
             max_tenor = str(b["tenor"])
     curve_type = "parallel"
-    if shift_bp is not None and shift_bp < -5:
-        curve_type = "bull_steepener" if port_dur > 4 else "bull_flattener"
     interp = "组合 KRD 桶贡献基于关键久期近似与国债平移假设。"
     return {
         "report_date": report_date,
