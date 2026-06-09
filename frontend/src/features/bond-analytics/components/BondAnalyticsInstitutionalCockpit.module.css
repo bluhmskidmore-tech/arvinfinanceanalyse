@@ -1040,7 +1040,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 3px 8px;
   align-items: center;
-  padding: 7px 8px;
+  padding: 5px 7px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: 6px;
   background: var(--moss-color-neutral-50);
@@ -1055,7 +1055,7 @@
 .attributionLead strong {
   color: var(--moss-color-primary-900);
   font-family: var(--moss-font-mono);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
@@ -1097,7 +1097,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 7px 9px;
+  padding: 5px 7px;
   background: #ffffff;
 }
 
@@ -1131,7 +1131,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 6px 7px;
+  padding: 5px 6px;
   background: #ffffff;
 }
 

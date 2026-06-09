@@ -1042,6 +1042,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const attributionLeadStrongRule = cssRuleBody(".attributionLead strong");
     const attributionBoundaryNoteRule = cssRuleBody(".attributionBoundaryNote");
     const attributionGridRule = cssRuleBody(".attributionEvidenceGrid");
+    const attributionGridCellRule = cssRuleBody(".attributionEvidenceGrid div");
+    const attributionLedgerRowRule = cssRuleBody(".attributionLedger div");
 
     const sideStackRule = cssRuleBody(".referenceAnalysisSideStack");
 
@@ -1071,8 +1073,10 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(judgmentRowRule).toContain("min-height: 26px");
     expect(strategyGridRule).toContain("display: none");
     expect(attributionLeadRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
-    expect(attributionLeadRule).toContain("padding: 7px 8px");
-    expect(attributionLeadStrongRule).toContain("font-size: 18px");
+    expect(attributionLeadRule).toContain("padding: 5px 7px");
+    expect(attributionLeadStrongRule).toContain("font-size: 17px");
+    expect(attributionLedgerRowRule).toContain("padding: 5px 7px");
+    expect(attributionGridCellRule).toContain("padding: 5px 6px");
     expect(attributionBoundaryNoteRule).toContain("white-space: nowrap");
     expect(attributionGridRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
   });
