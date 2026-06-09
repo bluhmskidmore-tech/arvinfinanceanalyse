@@ -45,7 +45,7 @@ function yuan(yi: number): string {
   return String(yi * 100_000_000);
 }
 
-function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
+function fixtureCashAmount(scaleYi: number, ratePct: number, days: number): string {
   return String(scaleYi * 1000 + ratePct * 100 + days);
 }
 
@@ -1341,7 +1341,7 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    cny_cash: fixtureCashAmount(100, rates.assetCny, rates.days),
                     weighted_yield: "9.99",
                   }
                 : row,
@@ -1349,7 +1349,7 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              cny_cash: fixtureCashAmount(80, rates.liabilityCny, rates.days),
               weighted_yield: "1.00",
             },
           },
@@ -1507,7 +1507,7 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    cny_cash: fixtureCashAmount(100, rates.assetCny, rates.days),
                     weighted_yield: rates.asset,
                   }
                 : row,
@@ -1515,7 +1515,7 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              cny_cash: fixtureCashAmount(80, rates.liabilityCny, rates.days),
               weighted_yield: rates.liability,
             },
           },
@@ -1565,7 +1565,7 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    cny_cash: fixtureCashAmount(100, rates.assetCny, rates.days),
                     weighted_yield: rates.asset,
                   }
                 : row,
@@ -1573,7 +1573,7 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              cny_cash: fixtureCashAmount(80, rates.liabilityCny, rates.days),
               weighted_yield: rates.liability,
             },
           },
