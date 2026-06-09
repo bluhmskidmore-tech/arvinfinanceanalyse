@@ -2141,7 +2141,7 @@ describe("productCategoryPnlPageModel", () => {
     expect(chart).toBeNull();
   });
 
-  it("computes weighted interest spread attribution and reconciles bp movement", () => {
+  it("keeps weighted interest spread attribution incomplete without backend spread fields", () => {
     const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,

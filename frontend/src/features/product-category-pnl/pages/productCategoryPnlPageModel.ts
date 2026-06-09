@@ -3644,8 +3644,7 @@ function buildProductCategorySpreadMovementAttribution(input: {
           liabilityTotal: input.liabilityTotal,
         }
       : null);
-  const priorSnapshot =
-    input.trendSnapshots?.slice(1).find((snapshot) => spreadBp(snapshot) !== null) ?? null;
+  const priorSnapshot = input.trendSnapshots?.slice(1)[0] ?? null;
 
   const currentLabel = currentSnapshot?.label ?? formatProductCategoryReportMonthLabel(currentSnapshot?.reportDate ?? "");
   const priorLabel = priorSnapshot?.label ?? formatProductCategoryReportMonthLabel(priorSnapshot?.reportDate ?? "");
@@ -3684,7 +3683,7 @@ function buildProductCategorySpreadMovementAttribution(input: {
       ...base,
     };
   }
-  if (currentAssetYield === null || currentLiabilityYield === null || currentSpread === null) {
+  if (currentAssetYield === null || currentLiabilityYield === null) {
     return {
       state: "incomplete",
       reason:
@@ -4634,10 +4633,10 @@ export function selectProductCategoryLiabilityDetailMatrix(
       const latestRow = refs?.latest;
       const firstRow = refs?.first;
       return buildLiabilityCurrencyMatrixRow({
-          categoryId,
-          categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
-          amountField: currency.amountField as ProductCategoryLiabilityAmountField,
-          periods,
+        categoryId,
+        categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
+        amountField: currency.amountField as ProductCategoryLiabilityAmountField,
+        periods,
         latestIndex,
         previousIndex,
         rowAt: (index) => rowMaps[index]?.get(categoryId),

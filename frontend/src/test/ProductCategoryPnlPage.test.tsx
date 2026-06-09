@@ -834,7 +834,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
   });
 
-  it("renders spread movement attribution from current and prior trend snapshots", async () => {
+  it("keeps spread movement attribution incomplete without backend spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     renderWorkbenchAppWithClient({
       ...baseClient,
@@ -897,13 +897,11 @@ describe("ProductCategoryPnlPage", () => {
     await loadTrendDiagnostics();
     const spread = await screen.findByTestId("product-category-diagnostics-spread");
     await waitFor(() => {
-      expect(spread).toHaveTextContent("105bp");
+      expect(spread).toHaveTextContent("缺少完整收益率对比");
     });
     expect(spread).toHaveTextContent("2026年02月");
     expect(spread).toHaveTextContent("2026年01月");
-    expect(spread).toHaveTextContent("+13bp");
-    expect(spread).toHaveTextContent("+3bp");
-    expect(spread).toHaveTextContent("+10bp");
+    expect(spread).toHaveTextContent("后端未返回利差指标");
   });
 
   it("shows explicit diagnostics fallback copy when rows or spread inputs are incomplete", async () => {
@@ -1006,8 +1004,8 @@ describe("ProductCategoryPnlPage", () => {
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
@@ -1043,7 +1041,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(6);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -1169,7 +1167,7 @@ describe("ProductCategoryPnlPage", () => {
     ]);
     expect(spreadOption.series?.[0]?.data).toEqual([2.35, 2.4]);
     expect(spreadOption.series?.[1]?.data).toEqual([1.58, 1.63]);
-    expect(spreadOption.series?.[2]?.data).toEqual([0.77, 0.77]);
+    expect(spreadOption.series?.[2]?.data).toEqual([null, null]);
 
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.legend?.data).toEqual([
@@ -1235,7 +1233,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(foreignReadout).toHaveTextContent("0.97");
   });
 
-  it("renders a same-month two-year comparison chart for interest-earning asset spread", async () => {
+  it("does not render all-currency spread comparison without backend spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const ratesByDate: Record<string, { asset: string; liability: string }> = {
       "2025-01-31": { asset: "2.20", liability: "1.60" },
@@ -1299,35 +1297,10 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     await loadTrendDiagnostics();
-    await screen.findByTestId("product-category-derived-chart-interest-spread-yoy");
-    const comparisonOption = readChartOption("product-category-derived-chart-interest-spread-yoy");
-
-    expect(comparisonOption.xAxis).toMatchObject({
-      data: [
-        "\u0031\u6708",
-        "\u0032\u6708",
-        "\u0033\u6708",
-        "\u0034\u6708",
-        "\u0035\u6708",
-        "\u0036\u6708",
-        "\u0037\u6708",
-        "\u0038\u6708",
-        "\u0039\u6708",
-        "\u0031\u0030\u6708",
-        "\u0031\u0031\u6708",
-        "\u0031\u0032\u6708",
-      ],
-    });
-    expect(comparisonOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
-    expect(comparisonOption.series?.map((series) => series.data)).toEqual([
-      [0.6, 0.65, 0.7, 0.68, 0.69, 0.72, 0.71, 0.73, 0.74, 0.76, 0.78, 0.8],
-      [0.75, 0.8, 0.85, null, null, null, null, null, null, null, null, null],
-    ]);
-    expect(comparisonOption.series?.every((series) => series.label?.show)).toBe(true);
-    expect(comparisonOption.series?.map((series) => series.endLabel?.show)).toEqual([false, false]);
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
   });
 
-  it("renders a CNY-basis two-year comparison chart for interest-earning asset spread", async () => {
+  it("does not render CNY spread comparison without backend RMB spread fields", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<string, { days: number; assetCny: number; liabilityCny: number }> = {
       "2025-01-31": { days: 31, assetCny: 2.2, liabilityCny: 1.5 },
@@ -1398,30 +1371,7 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     await loadTrendDiagnostics();
-    await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny");
-    const cnyOption = readChartOption("product-category-derived-chart-interest-spread-yoy-cny");
-
-    expect(cnyOption.xAxis).toMatchObject({
-      data: [
-        "\u0031\u6708",
-        "\u0032\u6708",
-        "\u0033\u6708",
-        "\u0034\u6708",
-        "\u0035\u6708",
-        "\u0036\u6708",
-        "\u0037\u6708",
-        "\u0038\u6708",
-        "\u0039\u6708",
-        "\u0031\u0030\u6708",
-        "\u0031\u0031\u6708",
-        "\u0031\u0032\u6708",
-      ],
-    });
-    expect(cnyOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
-    expect(cnyOption.series?.map((series) => series.data)).toEqual([
-      [0.7, 0.7, 0.7, 0.68, 0.69, 0.72, 0.71, 0.73, 0.74, 0.76, 0.78, 0.8],
-      [0.85, 0.85, 0.85, null, null, null, null, null, null, null, null, null],
-    ]);
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
   });
 
   it("renders a two-year comparison chart for intermediate business income from the governed row only", async () => {
@@ -1522,7 +1472,7 @@ describe("ProductCategoryPnlPage", () => {
     ]);
   });
 
-  it("links interest-spread attribution details to all-currency and RMB chart clicks", async () => {
+  it("keeps interest-spread attribution incomplete when backend spread fields are absent", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<
@@ -1591,34 +1541,13 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(attribution).toHaveTextContent("\u5168\u53e3\u5f84");
       expect(attribution).toHaveTextContent("\u0033\u6708");
-      expect(attribution).toHaveTextContent("+15.0bp");
+      expect(attribution).toHaveTextContent("\u90e8\u5206\u6570\u636e\u4f7f\u7528\u56de\u9000\u503c");
     });
-
-    const allCurrencyChart = screen.getByTestId("product-category-derived-chart-interest-spread-yoy");
-    await user.click(within(allCurrencyChart).getByTestId("product-category-echarts-click-index-1"));
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u5168\u53e3\u5f84",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u0032\u6708",
-      );
-    });
-
-    const cnyChart = screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny");
-    await user.click(within(cnyChart).getByTestId("product-category-echarts-click-index-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u4eba\u6c11\u5e01\u53e3\u5f84",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u0033\u6708",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent("+15.0bp");
-    });
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
   });
 
-  it("re-anchors the linked attribution month when the selected report date changes", async () => {
+  it("does not offer CNY linked attribution when backend RMB spread fields are absent", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<
@@ -1667,16 +1596,7 @@ describe("ProductCategoryPnlPage", () => {
 
     await loadTrendDiagnostics(user);
     await screen.findByTestId("product-category-interest-spread-attribution");
-    const cnyChart = await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny");
-    await user.click(within(cnyChart).getByTestId("product-category-echarts-click-index-1"));
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u4eba\u6c11\u5e01\u53e3\u5f84",
-      );
-      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u0033\u6708",
-      );
-    });
+    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
 
     const monthSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
     await user.selectOptions(monthSelect, "2026-02-28");
@@ -1684,10 +1604,13 @@ describe("ProductCategoryPnlPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
-        "\u4eba\u6c11\u5e01\u53e3\u5f84",
+        "\u5168\u53e3\u5f84",
       );
       expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
         "\u0032\u6708",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u90e8\u5206\u6570\u636e\u4f7f\u7528\u56de\u9000\u503c",
       );
     });
   });
