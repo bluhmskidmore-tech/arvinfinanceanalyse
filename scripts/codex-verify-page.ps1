@@ -112,6 +112,18 @@ if (-not $SkipMcpContracts) {
       "tests/test_project_mcp_servers.py::test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages",
       "-q"
     )
+  } elseif ($PageSlug -eq "bond-analysis") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_codex_page_readiness_gate.py::test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowing_dashboard_evidence",
+      "tests/test_bond_analysis_governance_record.py",
+      "tests/test_bond_analysis_owner_evidence_packet.py",
+      "tests/test_bond_analysis_live_smoke_evidence.py",
+      "tests/test_bond_analysis_business_owner_approval_status.py",
+      "tests/test_bond_analysis_fixed_income_conventions_docs.py",
+      "-q"
+    )
   } elseif ($PageSlug -eq "product-category-pnl") {
     $mcpContractArgs = @(
       "-m",
@@ -555,7 +567,8 @@ if ($PageSlug -eq "dashboard-home") {
         "test",
         "--",
         "src/test/BondAnalyticsViewContent.test.tsx",
-        "src/test/BondAnalyticsView.test.tsx"
+        "src/test/BondAnalyticsView.test.tsx",
+        "src/test/BondAnalyticsInstitutionalCockpit.test.tsx"
       )
     },
     @{

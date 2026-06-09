@@ -244,7 +244,7 @@ def test_api_returns_real_data(tmp_path, monkeypatch):
     _seed_curve_rows(str(duckdb_path))
 
     task_mod = load_module(
-        f"tests._credit_spread_analysis.task_{uuid.uuid4().hex}",
+        "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
     )
     task_mod.materialize_bond_analytics_facts.fn(
