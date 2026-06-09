@@ -237,9 +237,9 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
   return (
     <section className={marketStyles.actionQueue} data-testid="module-home-market-actions">
       <div className={marketStyles.actionQueueHeader}>
-        <span>交易预案</span>
-        <strong>待复核动作 / 报价 / 曲线 / 跨资产复核</strong>
-        <em>Action Queue · Owner / SLA / Gate / Evidence Pack</em>
+        <span>下一步动作</span>
+        <strong>只保留今天需要看的事</strong>
+        <em hidden>Action Queue · Owner / SLA / Gate / Evidence Pack</em>
       </div>
       <div className={marketStyles.actionQueueList}>
         {items.map((item) => {
@@ -269,7 +269,7 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
                   {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
                 </em>
                 {renderBlockTextSeparator(`${item.key}-evidence-task`)}
-                <div className={marketStyles.actionQueueMetaGrid}>
+                <div className={marketStyles.actionQueueMetaGrid} hidden>
                   <span
                     aria-label={taskParts.join(" / ")}
                     className={marketStyles.actionQueueTaskMeta}
@@ -303,6 +303,7 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
       <div
         className={marketStyles.actionQueueSourceGate}
         data-testid="module-home-status-strip"
+        hidden
       >
         <span>来源闸门</span>
         <strong>{view.stateLabel}</strong>
