@@ -272,6 +272,7 @@ export default function KpiPerformancePage() {
               <div className="kpi-performance-page__field">
                 <div className="kpi-performance-page__field-label">考核年度</div>
                 <Select
+                  aria-label="KPI assessment year"
                   className="kpi-performance-page__select kpi-performance-page__select--year"
                   value={year}
                   options={yearOptions.map((y) => ({ label: `${y} 年`, value: y }))}
@@ -281,6 +282,7 @@ export default function KpiPerformancePage() {
               <div className="kpi-performance-page__field">
                 <div className="kpi-performance-page__field-label">时间维度</div>
                 <Select
+                  aria-label="KPI period type"
                   className="kpi-performance-page__select kpi-performance-page__select--period-type"
                   value={periodType}
                   options={[
@@ -303,6 +305,7 @@ export default function KpiPerformancePage() {
                 <div className="kpi-performance-page__field">
                   <div className="kpi-performance-page__field-label">月份</div>
                   <Select
+                    aria-label="KPI month"
                     className="kpi-performance-page__select kpi-performance-page__select--month"
                     value={periodValue}
                     options={monthOptions}
@@ -314,6 +317,7 @@ export default function KpiPerformancePage() {
                 <div className="kpi-performance-page__field">
                   <div className="kpi-performance-page__field-label">季度</div>
                   <Select
+                    aria-label="KPI quarter"
                     className="kpi-performance-page__select kpi-performance-page__select--quarter"
                     value={periodValue}
                     options={quarterOptions}
@@ -325,6 +329,7 @@ export default function KpiPerformancePage() {
                 <div className="kpi-performance-page__field">
                   <div className="kpi-performance-page__field-label">截止日期</div>
                   <input
+                    aria-label="KPI as-of date"
                     type="date"
                     value={formatDate(asOfDate)}
                     onChange={(e) => {

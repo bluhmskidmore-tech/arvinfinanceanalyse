@@ -1977,7 +1977,6 @@ def test_decision_items_trace_bundle_preserves_read_write_governance_boundaries(
         for alias in (
             "decision-items",
             "/decision-items",
-            "GAP-DECISION-ITEMS-PAGE",
             "/ui/balance-analysis/decision-items/status",
         ):
             result = server.request(
@@ -10420,6 +10419,46 @@ def test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_
         server.close()
 
 
+def test_data_catalog_page_catalog_date_coverage_keeps_cashflow_projection_candidate_boundary_when_requested() -> None:
+    server = McpProcess("data-catalog")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        result = server.request(
+            "tools/call",
+            {
+                "name": "get_page_catalog_date_coverage",
+                "arguments": {"page_slugs": ["cashflow-projection"]},
+            },
+        )
+        payload = json.loads(result["content"][0]["text"])
+
+        assert payload["scope"] == "page-catalog-date-coverage"
+        page = payload["pages"][0]
+        assert page["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+        assert page["page_slug"] == "cashflow-projection"
+        assert page["approval_status"] == "candidate_or_pending"
+        assert page["coverage_status"] == "configured_direct_tables"
+        assert page["configured_table_names"] == [
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+        ]
+        assert page["evidence_scope"]["samples_duckdb_tables"] is False
+        assert page["evidence_scope"]["approves_metric_or_page"] is False
+        assert payload["missing_config_queue"] == []
+        assert payload["deferred_config_queue"] == []
+        assert payload["summary"] == {
+            "page_count": 1,
+            "configured_page_count": 1,
+            "deferred_no_direct_table_config_count": 0,
+            "missing_explicit_config_count": 0,
+            "formal_missing_explicit_config_count": 0,
+        }
+    finally:
+        server.close()
+
+
 def test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages() -> None:
     server = McpProcess("data-catalog")
     try:
@@ -10462,8 +10501,10 @@ def test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages(
                 "PAGE-RISK-001",
             )
         )
+        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "GAP-DECISION-ITEMS-PAGE" not in pages
         assert payload["summary"]["configured_page_count"] == 29
-        assert payload["summary"]["deferred_no_direct_table_config_count"] == 7
+        assert payload["summary"]["deferred_no_direct_table_config_count"] == 6
         assert payload["summary"]["missing_explicit_config_count"] == 0
         assert payload["summary"]["formal_missing_explicit_config_count"] == 0
     finally:
@@ -10591,15 +10632,16 @@ def test_data_catalog_page_catalog_date_coverage_configures_seeded_pages_with_cl
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["candidate_table_names"]
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["configured_table_names"]
 
+        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "GAP-DECISION-ITEMS-PAGE" not in pages
         assert payload["summary"]["configured_page_count"] == 29
-        assert payload["summary"]["deferred_no_direct_table_config_count"] == 7
+        assert payload["summary"]["deferred_no_direct_table_config_count"] == 6
         assert payload["summary"]["missing_explicit_config_count"] == 0
         assert payload["summary"]["formal_missing_explicit_config_count"] == 0
         assert payload["missing_config_queue"] == []
         remaining_deferred = [item["page_id"] for item in payload["deferred_config_queue"]]
         assert remaining_deferred == [
             "PAGE-EXEC-SUMMARY-001",
-            "GAP-DECISION-ITEMS-PAGE",
             "PAGE-EXEC-PNL-ATTR-001",
             "PAGE-MACRO-TOOLKIT-001",
             "PAGE-MACRO-OBS-001",

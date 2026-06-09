@@ -25,6 +25,9 @@ describe("KpiPerformancePage", () => {
     expect(within(page).getByTestId("kpi-performance-action-row")).toBeInTheDocument();
     expect(within(page).getByTestId("kpi-performance-main-grid")).toBeInTheDocument();
     expect(within(page).getByTestId("kpi-performance-empty-state")).toBeInTheDocument();
+    expect(within(page).getByRole("combobox", { name: "KPI assessment year" })).toBeInTheDocument();
+    expect(within(page).getByRole("combobox", { name: "KPI period type" })).toBeInTheDocument();
+    expect(within(page).getByLabelText("KPI as-of date")).toBeInTheDocument();
   });
 
   it("keeps populated detail and fetch-result layout surfaces local to /kpi", async () => {

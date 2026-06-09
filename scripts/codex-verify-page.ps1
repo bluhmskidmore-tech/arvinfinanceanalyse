@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events")]
+  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
   [string]$PageSlug = "product-category-pnl",
 
   [switch]$Run,
@@ -121,6 +121,51 @@ if (-not $SkipMcpContracts) {
       "tests/test_cashflow_projection_governance_record.py",
       "-q"
     )
+  } elseif ($PageSlug -eq "concentration-monitor") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_concentration_monitor_trace_bundle_preserves_candidate_concentration_boundary",
+      "tests/test_codex_page_readiness_gate.py::test_concentration_monitor_readiness_exposes_candidate_record_path_without_formal_promotion",
+      "tests/test_concentration_monitor_governance_record.py",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "decision-items") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_decision_items_trace_bundle_preserves_read_write_governance_boundaries",
+      "tests/test_codex_page_readiness_gate.py::test_decision_items_readiness_exposes_read_write_boundary_without_formal_promotion",
+      "tests/test_decision_items_governance_record.py",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "kpi-performance") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_kpi_performance_trace_bundle_preserves_scoring_write_boundaries",
+      "tests/test_codex_page_readiness_gate.py::test_kpi_performance_readiness_exposes_scoring_write_boundary_without_formal_promotion",
+      "tests/test_kpi_performance_governance_record.py",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "news-events") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_news_events_trace_bundle_preserves_analytical_event_boundary",
+      "tests/test_codex_page_readiness_gate.py::test_news_events_readiness_exposes_analytical_record_path_without_formal_promotion",
+      "tests/test_news_events_governance_record.py",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "platform-config") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_platform_config_trace_bundle_preserves_diagnostic_boundary",
+      "tests/test_codex_page_readiness_gate.py::test_platform_config_readiness_exposes_diagnostics_record_path_without_formal_promotion",
+      "tests/test_platform_config_governance_record.py",
+      "-q"
+    )
   }
   $checks += @(
     @{
@@ -234,6 +279,51 @@ if ($PageSlug -eq "dashboard-home") {
       Env = @{
         "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
         "MOSS_PLAYWRIGHT_PORT" = "5892"
+      }
+    }
+  )
+} elseif ($PageSlug -eq "decision-items") {
+  $checks += @(
+    @{
+      Label = "Decision Items backend API and write-route auth tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @(
+        "-m",
+        "pytest",
+        "tests/test_balance_analysis_api.py",
+        "tests/test_balance_analysis_service.py",
+        "tests/test_write_route_auth_contract.py",
+        "-q"
+      )
+    },
+    @{
+      Label = "Decision Items frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/DecisionItemsPage.test.tsx",
+        "src/test/DecisionItemsRoute.test.tsx",
+        "src/test/decisionItemsPageModel.test.ts"
+      )
+    },
+    @{
+      Label = "Decision Items browser a11y smoke"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test:a11y-smoke",
+        "--",
+        "--grep",
+        "@decision-items"
+      )
+      Env = @{
+        "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
+        "MOSS_PLAYWRIGHT_PORT" = "5911"
       }
     }
   )
@@ -601,6 +691,50 @@ if ($PageSlug -eq "dashboard-home") {
       }
     }
   )
+} elseif ($PageSlug -eq "kpi-performance") {
+  $checks += @(
+    @{
+      Label = "KPI Performance backend API, service, and write-route auth tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @(
+        "-m",
+        "pytest",
+        "tests/test_kpi_api.py",
+        "tests/test_kpi_service.py",
+        "tests/test_write_route_auth_contract.py",
+        "-q"
+      )
+    },
+    @{
+      Label = "KPI Performance frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/KpiPerformancePage.test.tsx",
+        "src/test/LiveRouteRealPageSmoke.test.tsx"
+      )
+    },
+    @{
+      Label = "KPI Performance browser a11y smoke"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test:a11y-smoke",
+        "--",
+        "--grep",
+        "@kpi-performance"
+      )
+      Env = @{
+        "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
+        "MOSS_PLAYWRIGHT_PORT" = "5912"
+      }
+    }
+  )
 } elseif ($PageSlug -eq "platform-config") {
   $checks += @(
     @{
@@ -625,8 +759,20 @@ if ($PageSlug -eq "dashboard-home") {
         "test",
         "--",
         "src/test/PlatformConfigPage.test.tsx",
-        "src/test/RouteRegistry.test.tsx",
         "src/test/LiveRouteRealPageSmoke.test.tsx"
+      )
+    },
+    @{
+      Label = "Platform Config route registry test"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/RouteRegistry.test.tsx",
+        "-t",
+        "renders the platform-config route"
       )
     },
     @{
@@ -669,8 +815,20 @@ if ($PageSlug -eq "dashboard-home") {
         "test",
         "--",
         "src/test/NewsEventsPage.test.tsx",
-        "src/test/RouteRegistry.test.tsx",
         "src/test/LiveRouteRealPageSmoke.test.tsx"
+      )
+    },
+    @{
+      Label = "News Events route registry test"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/RouteRegistry.test.tsx",
+        "-t",
+        "renders the news-events route"
       )
     },
     @{

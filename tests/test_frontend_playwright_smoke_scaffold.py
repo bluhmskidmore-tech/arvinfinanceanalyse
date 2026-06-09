@@ -71,6 +71,10 @@ def test_frontend_playwright_smoke_covers_high_risk_business_display_routes():
         "/cashflow-projection": '[data-testid="cashflow-projection-page"]',
         "/concentration-monitor": '[data-testid="concentration-monitor-kpi-grid"]',
         "/team-performance": '[data-testid="team-performance-page"]',
+        "/decision-items": '[data-testid="decision-items-page"]',
+        "/kpi": '[data-testid="kpi-performance-page"]',
+        "/news-events": '[data-testid="news-events-page-title"]',
+        "/platform-config": '[data-testid="platform-config-page-title"]',
     }
     for route, ready_selector in expected_ready_selectors.items():
         route_block_match = re.search(

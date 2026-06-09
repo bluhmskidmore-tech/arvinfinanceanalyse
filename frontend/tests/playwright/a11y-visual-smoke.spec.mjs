@@ -145,6 +145,30 @@ const smokePages = [
     readySelector: '[data-testid="team-performance-page"]',
     screenshotFullPage: false,
   },
+  {
+    slug: "decision-items",
+    path: "/decision-items",
+    readySelector: '[data-testid="decision-items-page"]',
+    screenshotFullPage: false,
+  },
+  {
+    slug: "kpi-performance",
+    path: "/kpi",
+    readySelector: '[data-testid="kpi-performance-page"]',
+    screenshotFullPage: false,
+  },
+  {
+    slug: "news-events",
+    path: "/news-events",
+    readySelector: '[data-testid="news-events-page-title"]',
+    screenshotFullPage: false,
+  },
+  {
+    slug: "platform-config",
+    path: "/platform-config",
+    readySelector: '[data-testid="platform-config-page-title"]',
+    screenshotFullPage: false,
+  },
 ];
 
 const flagshipKeyboardPages = [

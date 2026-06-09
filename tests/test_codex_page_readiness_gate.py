@@ -717,14 +717,24 @@ def test_decision_items_readiness_exposes_read_write_boundary_without_formal_pro
     assert "codex-page-smoke.ps1 -PageSlug decision-items" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug decision-items -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 2
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_decision_items_governance_record.py",
+        "python scripts/emit_decision_items_governance_record.py --write",
+    ]
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert any("/ui/balance-analysis/decision-items/status" in item for item in report["supporting_apis"])
     assert any("read/write" in item for item in report["guardrails"])
     assert any("permissions" in item for item in report["verification_focus"])
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
-    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
@@ -741,14 +751,22 @@ def test_kpi_performance_readiness_exposes_scoring_write_boundary_without_formal
     assert "codex-page-smoke.ps1 -PageSlug kpi-performance" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug kpi-performance -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert report["catalog_date_evidence"]["status"] == "incomplete"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == []
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 0
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_kpi_performance_governance_record.py",
+        "python scripts/emit_kpi_performance_governance_record.py --write",
+    ]
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert any("/api/kpi/fetch_and_recalc" in item for item in report["supporting_apis"])
     assert any("write" in item and "scoring" in item for item in report["guardrails"])
     assert any("permissions" in item for item in report["verification_focus"])
     assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
-    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 

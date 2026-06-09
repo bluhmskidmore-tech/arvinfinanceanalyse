@@ -29,6 +29,8 @@ DEFAULT_EVIDENCE_READINESS_PAGES = [
 DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
     "GAP-AVERAGE-BALANCE-PAGE",
     "GAP-BANK-LEDGER-DASHBOARD-PAGE",
+    "GAP-CASHFLOW-PROJECTION-PAGE",
+    "GAP-DECISION-ITEMS-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
     "GAP-BANK-LEDGER-DASHBOARD-PAGE": "candidate_or_pending",
@@ -132,6 +134,10 @@ PAGE_CATALOG_DATE_TABLES = {
         "position_snapshot_agg",
     ],
     "GAP-CASHFLOW-PROJECTION-PAGE": [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ],
+    "GAP-DECISION-ITEMS-PAGE": [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
     ],

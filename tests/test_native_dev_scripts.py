@@ -463,6 +463,9 @@ def test_codex_verify_page_supports_concentration_monitor_dry_run():
 
     assert "Codex verify page: concentration-monitor" in output
     assert "tests/test_project_mcp_servers.py" in output
+    assert "test_concentration_monitor_trace_bundle_preserves_candidate_concentration_boundary" in output
+    assert "test_concentration_monitor_readiness_exposes_candidate_record_path_without_formal_promotion" in output
+    assert "tests/test_concentration_monitor_governance_record.py" in output
     assert "tests/test_bond_analytics_api.py" in output
     assert "tests/test_bond_analytics_service.py" in output
     assert "ConcentrationMonitorPage.test.tsx" in output

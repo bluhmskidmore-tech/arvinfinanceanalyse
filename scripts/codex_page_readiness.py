@@ -80,6 +80,8 @@ DIRECT_EVIDENCE_PAGE_SLUGS = (
     "balance-movement-analysis",
 )
 OPTIONAL_DIRECT_EVIDENCE_PAGE_SLUGS = (
+    "decision-items",
+    "kpi-performance",
     "pnl-attribution",
     "stock-analysis",
     "cashflow-projection",
@@ -262,6 +264,14 @@ def _governance_record_commands(page_slug: str) -> list[str]:
         "cashflow-projection": [
             "python scripts/emit_cashflow_projection_governance_record.py",
             "python scripts/emit_cashflow_projection_governance_record.py --write",
+        ],
+        "decision-items": [
+            "python scripts/emit_decision_items_governance_record.py",
+            "python scripts/emit_decision_items_governance_record.py --write",
+        ],
+        "kpi-performance": [
+            "python scripts/emit_kpi_performance_governance_record.py",
+            "python scripts/emit_kpi_performance_governance_record.py --write",
         ],
         "concentration-monitor": [
             "python scripts/emit_concentration_monitor_governance_record.py",
@@ -627,26 +637,27 @@ def build_page_readiness_report(page_slug: str) -> dict[str, Any]:
     else:
         include_direct_gates = False
     if direct_evidence is not None and include_direct_gates:
-        static_gates.extend(
-            [
+        if int(direct_evidence["catalog_date_evidence"]["table_count"]) > 0:
+            static_gates.append(
                 _gate(
-                    "catalog_date_evidence_sampled",
-                    direct_evidence["catalog_date_evidence"]["status"] == "sampled",
-                    (
-                        f"{direct_evidence['catalog_date_evidence']['date_sampled_table_count']}/"
-                        f"{direct_evidence['catalog_date_evidence']['table_count']} table date samples"
-                    ),
+                        "catalog_date_evidence_sampled",
+                        direct_evidence["catalog_date_evidence"]["status"] == "sampled",
+                        (
+                            f"{direct_evidence['catalog_date_evidence']['date_sampled_table_count']}/"
+                            f"{direct_evidence['catalog_date_evidence']['table_count']} table date samples"
+                        ),
+                    )
+            )
+        static_gates.append(
+            _gate(
+                "direct_governance_record_ready",
+                direct_evidence["governance_record_validation"]["status"]
+                == "direct_records_ready_for_audit_review",
+                (
+                    f"{direct_evidence['governance_record_validation']['ready_record_count']} ready direct "
+                    "record(s)"
                 ),
-                _gate(
-                    "direct_governance_record_ready",
-                    direct_evidence["governance_record_validation"]["status"]
-                    == "direct_records_ready_for_audit_review",
-                    (
-                        f"{direct_evidence['governance_record_validation']['ready_record_count']} ready direct "
-                        "record(s)"
-                    ),
-                ),
-            ]
+            )
         )
     if page_slug == "balance-movement-analysis":
         static_gates.append(

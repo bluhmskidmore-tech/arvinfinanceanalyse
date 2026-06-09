@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events")]
+  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
   [string]$PageSlug = "product-category-pnl",
 
   [string]$FrontendBaseUrl = "http://127.0.0.1:5888",
@@ -156,6 +156,23 @@ if ($PageSlug -eq "dashboard-home") {
     "Confirm overview totals stay tied to fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily.",
     "Do not use balance movement explanation, positions totals, or product-category PnL logic to replace PAGE-BALANCE-001 formal balance truth."
   )
+} elseif ($PageSlug -eq "decision-items") {
+  $route = "/decision-items"
+  $routeAliases = @("/decision-items")
+  $primaryApi = "/ui/balance-analysis/decision-items"
+  $supportingApis = @(
+    "/ui/balance-analysis/dates",
+    "/ui/balance-analysis/current-user",
+    "/ui/balance-analysis/decision-items/status"
+  )
+  $checklist = @(
+    "Open the route with Playwright MCP and confirm the first screen answers the candidate decision queue question.",
+    "Confirm report date selector, position scope, currency basis, pending/high summaries, permission banner, action buttons, latest status overlay, and result_meta are visible.",
+    "Confirm GAP-DECISION-ITEMS-PAGE stays a candidate read/write governance queue and does not claim standalone formal page truth.",
+    "Confirm no data, stale data, fallback, permission-unknown, read-only, write failure, and loading failure states are explicit when triggered.",
+    "Confirm write actions require balance_analysis.decision_status/write and status writes do not imply owner approval, metric approval, or page closure.",
+    "Do not treat decision item counts, status changes, or action labels as approval of PAGE-BALANCE-001 metrics, balance-analysis outputs, or the /decision-items page itself."
+  )
 } elseif ($PageSlug -eq "pnl") {
   $route = "/pnl"
   $routeAliases = @("/pnl")
@@ -307,6 +324,26 @@ if ($PageSlug -eq "dashboard-home") {
     "Confirm no data, stale data, fallback, pending split references, workbook-local source warnings, and loading failure states are explicit when triggered.",
     "Confirm result_meta remains inspectable for by-business/product-category context: basis, formal_use_allowed, quality_flag, fallback_mode, trace_id, source_surface, source_version, rule_version, cache_version, generated_at.",
     "Do not treat workbook score, mapped PnL, Q1 split references, or team mapping as formal KPI truth, formal PnL truth, or owner-approved performance allocation."
+  )
+} elseif ($PageSlug -eq "kpi-performance") {
+  $route = "/kpi"
+  $routeAliases = @("/kpi")
+  $primaryApi = "/api/kpi/values/summary"
+  $supportingApis = @(
+    "/api/kpi/owners",
+    "/api/kpi/metrics",
+    "/api/kpi/values",
+    "/api/kpi/values/batch",
+    "/api/kpi/fetch_and_recalc",
+    "/api/kpi/report"
+  )
+  $checklist = @(
+    "Open the route with Playwright MCP and confirm the first screen answers the candidate KPI scoring workbench question.",
+    "Confirm owner/year/period selectors, total score, metric table, trace panel, write controls, batch paste, export action, and permission-sensitive states are visible.",
+    "Confirm PAGE-CONTRACT-PENDING:/kpi and MTR-KPI-001 candidate boundaries remain visible.",
+    "Confirm no data, stale data, fallback, authority-blocked, permission-denied, write failure, and loading failure states are explicit when triggered.",
+    "Confirm Decimal string semantics remain intact for score_weight, total_score, progress_pct, completion_ratio, and score_value.",
+    "Do not treat KPI writes, fetch_and_recalc, CSV export, total_score, score labels, or scoring recomputation as formal KPI truth, metric dictionary approval, or business-owner signoff."
   )
 } elseif ($PageSlug -eq "platform-config") {
   $route = "/platform-config"
