@@ -1079,20 +1079,27 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
   it("locks the curve readout as a dense tenor matrix instead of a decorative chart card", () => {
     const readoutBlockRule = cssRuleBody(".curveReadoutBlock");
+    const readoutHeaderRule = cssRuleBody(".curveReadoutHeader");
     const matrixRule = cssRuleBody(".curveTenorMatrix");
     const rowRule = cssRuleBody(".curveMatrixRow");
+    const pointCountRule = cssRuleBody(".curvePointCount");
     const valueRule = cssRuleBody(".curveMatrixValue");
     const evidenceTagRule = cssRuleBody(".curveEvidenceTag");
     const curveLayoutRule = cssRuleBody(".referenceCurveLayout");
 
     expect(readoutBlockRule).toContain("border-radius: 6px");
     expect(readoutBlockRule).toContain("background: #ffffff");
+    expect(readoutBlockRule).toContain("gap: 5px");
+    expect(readoutBlockRule).toContain("padding: 6px 8px");
+    expect(readoutHeaderRule).toContain("gap: 5px");
     expect(readoutBlockRule).not.toContain("linear-gradient");
     expect(readoutBlockRule).not.toMatch(/box-shadow:/);
     expect(matrixRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(matrixRule).toContain("border-radius: 4px");
     expect(rowRule).toContain("grid-template-columns: 88px repeat(8, minmax(0, 1fr))");
-    expect(rowRule).toContain("min-height: 28px");
+    expect(rowRule).toContain("min-height: 24px");
+    expect(pointCountRule).toContain("display: flex");
+    expect(pointCountRule).toContain("line-height: 1.1");
     expect(valueRule).toContain("font-family: var(--moss-font-mono)");
     expect(valueRule).toContain("text-align: right");
     expect(evidenceTagRule).toContain("border-left: 3px solid var(--moss-color-primary-600)");

@@ -667,8 +667,8 @@
 
 .curveReadoutBlock {
   display: grid;
-  gap: 7px;
-  padding: 9px 10px;
+  gap: 5px;
+  padding: 6px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
   background: #ffffff;
@@ -677,7 +677,7 @@
 .curveReadoutHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(170px, 0.4fr);
-  gap: 8px;
+  gap: 5px;
   align-items: stretch;
 }
 
@@ -764,7 +764,7 @@
 .curveMatrixRow {
   display: grid;
   grid-template-columns: 88px repeat(8, minmax(0, 1fr));
-  min-height: 28px;
+  min-height: 24px;
   border-top: 1px solid var(--moss-color-neutral-100);
 }
 
@@ -843,7 +843,7 @@
   min-width: 0;
   color: var(--moss-color-neutral-500);
   font-size: 10px;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .curvePointCount strong {
