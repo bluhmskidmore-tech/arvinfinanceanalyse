@@ -16,7 +16,7 @@
     "distribution distribution"
     "bottom side"
     "footer footer";
-  gap: 10px;
+  gap: 12px;
 }
 
 .holdingsKpiRail {
@@ -24,12 +24,13 @@
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .currencyBasisBanner {
-  padding: 10px 16px 12px;
+  padding: 8px 16px 12px;
   border-top: 1px solid var(--moss-color-info-100);
+  /* decorative gradient: info wash, no single token */
   background: linear-gradient(180deg, rgba(233, 244, 255, 0.78) 0%, rgba(248, 252, 255, 0.98) 100%);
   color: var(--moss-color-info-900);
   font-size: 12px;
@@ -62,13 +63,13 @@
     minmax(118px, 0.9fr)
     minmax(118px, 0.9fr)
     minmax(84px, 0.7fr);
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   min-width: 620px;
 }
 
 .accountingDv01Header {
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
@@ -80,14 +81,14 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  margin: -7px 0 -7px -12px;
-  padding: 7px 10px 7px 12px;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 12px 8px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .accountingDv01Row {
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
@@ -101,10 +102,10 @@
   position: sticky;
   left: 0;
   z-index: 1;
-  margin: -7px 0 -7px -12px;
-  padding: 7px 10px 7px 12px;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 12px 8px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-primary-900);
   font-size: 13px;
 }
@@ -124,7 +125,7 @@
 .mobileTableReadout {
   display: none;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
@@ -133,7 +134,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mobileReadoutHeader span {
@@ -155,17 +156,17 @@
 .mobileReadoutGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .mobileReadoutField {
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 7px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .mobileReadoutField span {
@@ -220,9 +221,9 @@
 .moduleNote {
   display: grid;
   align-content: center;
-  min-height: 34px;
+  min-height: 32px;
   margin-top: 8px;
-  padding: 7px 8px;
+  padding: 8px 8px;
   border: 1px dashed var(--moss-color-neutral-200);
   border-radius: 6px;
   background: var(--moss-color-neutral-50);
@@ -245,22 +246,22 @@
 }
 
 .conclusionKicker {
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 
 .referenceKpiTile {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   min-height: 52px;
-  padding: 6px 9px;
+  padding: 8px 8px;
   background: var(--moss-color-neutral-50);
 }
 
 .referenceKpiHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
 }
@@ -276,10 +277,10 @@
 }
 
 .referenceKpiHeader span {
-  padding: 1px 5px;
+  padding: 1px 4px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 4px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   color: var(--moss-color-neutral-600);
   font-size: 10px;
   font-weight: 800;
@@ -316,13 +317,13 @@
   display: grid;
   grid-area: topbar;
   grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr) minmax(230px, 0.44fr);
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--moss-color-neutral-200);
   border-left: 4px solid var(--moss-color-primary-900);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .referenceTopbarIdentity {
@@ -338,7 +339,7 @@
 .referenceTopbarReadout {
   display: grid;
   align-content: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   padding: 0 16px;
   border-right: 1px solid var(--moss-color-neutral-100);
@@ -388,14 +389,14 @@
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .referenceTickerCell {
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 6px 9px;
+  padding: 8px 8px;
   border-right: 1px solid var(--moss-color-neutral-100);
 }
 
@@ -457,7 +458,7 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-200);
 }
 
@@ -465,7 +466,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 6px 7px;
+  padding: 8px 8px;
   background: var(--moss-color-neutral-50);
 }
 
@@ -507,9 +508,9 @@
   grid-area: signal;
   grid-template-columns: minmax(560px, 1.08fr) minmax(0, 0.92fr);
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
-  padding: 10px 12px 10px 16px;
+  padding: 8px 12px 8px 16px;
   border: 1px solid var(--moss-color-neutral-300);
   border-left: 4px solid var(--moss-color-primary-800);
   border-radius: 6px;
@@ -522,16 +523,16 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-primary-100);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-primary-100);
 }
 
 .deskVerdictField {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 8px 9px;
-  background: rgba(255, 255, 255, 0.98);
+  padding: 8px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .deskVerdictField span {
@@ -569,7 +570,7 @@
 }
 
 .referenceAnalysisGrid :global(.ant-card-head) {
-  min-height: 34px;
+  min-height: 32px;
   padding: 0 12px;
 }
 
@@ -580,7 +581,7 @@
 .referencePanelCard {
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035);
 }
 
@@ -613,13 +614,13 @@
 .referenceCurveLayout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-items: stretch;
 }
 
 .referenceCurveHero {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -628,10 +629,10 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: stretch;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--moss-color-neutral-300);
   border-left: 4px solid var(--moss-color-primary-700);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-50);
 }
 
@@ -668,16 +669,16 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-200);
 }
 
 .referenceCurveBannerStats div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 5px 7px;
-  background: #ffffff;
+  padding: 4px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .referenceCurveBannerStats span {
@@ -699,22 +700,22 @@
 
 .curveReadoutStack {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .curveReadoutBlock {
   display: grid;
-  gap: 5px;
-  padding: 6px 8px;
+  gap: 4px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .curveReadoutHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(170px, 0.4fr);
-  gap: 5px;
+  gap: 4px;
   align-items: stretch;
 }
 
@@ -746,7 +747,7 @@
   display: grid;
   gap: 1px;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-left: 3px solid var(--moss-color-primary-600);
   border-radius: 4px;
@@ -795,7 +796,7 @@
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 4px;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .curveMatrixRow {
@@ -818,7 +819,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   border-left: 1px solid var(--moss-color-neutral-100);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -847,7 +848,7 @@
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 8px;
   border-left: 1px solid var(--moss-color-neutral-100);
   overflow: hidden;
   color: var(--moss-color-primary-900);
@@ -876,7 +877,7 @@
 .curvePointCount {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   color: var(--moss-color-neutral-500);
   font-size: 10px;
@@ -897,13 +898,14 @@
 
 .curvePendingPanel {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   min-height: 188px;
   align-content: center;
-  padding: 18px 16px;
+  padding: 16px 16px;
   border: 1px dashed var(--moss-color-warning-300);
-  border-radius: 10px;
+  border-radius: 12px;
   background:
+    /* decorative gradient: warning pending panel */
     linear-gradient(180deg, rgba(255, 248, 234, 0.94) 0%, rgba(255, 252, 245, 1) 100%);
 }
 
@@ -921,9 +923,9 @@
 .curveFallbackBlock {
   display: grid;
   grid-template-columns: minmax(160px, 0.36fr) minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-content: start;
-  padding: 9px 10px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-radius: 6px;
   background: var(--moss-color-neutral-50);
@@ -931,7 +933,7 @@
 
 .curveFallbackHeader {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 
 .curveFallbackHeader strong {
@@ -947,13 +949,13 @@
 
 .referenceJudgmentPanel {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .referenceEvidenceNotice {
   display: grid;
   gap: 2px;
-  padding: 7px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-200);
   border-left: 3px solid var(--moss-color-primary-600);
   border-radius: 6px;
@@ -986,15 +988,15 @@
 .referenceJudgmentRow {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
-  gap: 2px 6px;
+  gap: 2px 8px;
   align-items: center;
   min-height: 24px;
-  padding: 5px 7px;
-  background: #ffffff;
+  padding: 4px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .referenceJudgmentRow:last-child {
-  padding-bottom: 6px;
+  padding-bottom: 8px;
 }
 
 .referenceJudgmentRow span {
@@ -1047,8 +1049,8 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 6px 7px;
-  background: #ffffff;
+  padding: 8px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .strategyTagGrid div:last-child {
@@ -1080,7 +1082,7 @@
 .referenceAttributionPanel {
   display: grid;
   grid-template-columns: minmax(210px, 0.75fr) minmax(180px, 0.62fr) minmax(280px, 1fr) minmax(180px, 0.65fr);
-  gap: 6px;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -1091,9 +1093,9 @@
 .attributionLead {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 3px 8px;
+  gap: 4px 8px;
   align-items: center;
-  padding: 5px 7px;
+  padding: 4px 8px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: 6px;
   background: var(--moss-color-neutral-50);
@@ -1139,7 +1141,7 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-100);
 }
 
@@ -1148,8 +1150,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 5px 7px;
-  background: #ffffff;
+  padding: 4px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .attributionLedger span {
@@ -1174,7 +1176,7 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-100);
 }
 
@@ -1182,8 +1184,8 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 5px 6px;
-  background: #ffffff;
+  padding: 4px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .attributionEvidenceGrid span {
@@ -1208,7 +1210,7 @@
 .attributionBoundaryNote {
   grid-column: 1 / 4;
   align-self: stretch;
-  padding: 6px 7px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: 6px;
   background: var(--moss-color-neutral-50);
@@ -1227,7 +1229,7 @@
 .referenceSignalConclusion {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
-  gap: 10px;
+  gap: 12px;
   align-items: stretch;
   min-width: 0;
   padding: 2px 0;
@@ -1235,7 +1237,7 @@
 
 .referenceSignalLead {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   align-content: center;
   min-width: 0;
 }
@@ -1265,10 +1267,10 @@
 
 .referenceSignalSummary div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 8px 9px;
-  background: #ffffff;
+  padding: 8px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .referenceSignalSummary span {
@@ -1296,7 +1298,7 @@
   grid-area: distribution;
   display: grid;
   grid-template-columns: minmax(440px, 1.4fr) minmax(300px, 0.88fr) minmax(300px, 0.88fr);
-  gap: 10px;
+  gap: 12px;
   align-items: stretch;
 }
 
@@ -1304,7 +1306,7 @@
 .referenceBottomGrid :global(.ant-card-head),
 .referenceSideStack :global(.ant-card-head),
 .referenceFooterGrid :global(.ant-card-head) {
-  min-height: 34px;
+  min-height: 32px;
   padding: 0 12px;
 }
 
@@ -1337,7 +1339,7 @@
 
 .referenceDonutLegend {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .referenceDonutLegendRow {
@@ -1386,7 +1388,7 @@
   width: 64%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
   box-shadow: inset 0 0 0 1px var(--moss-color-neutral-100);
 }
 
@@ -1435,7 +1437,7 @@
 
 .progressList {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   margin-top: 8px;
 }
 
@@ -1445,7 +1447,7 @@
 }
 
 .referenceProgressTrack {
-  height: 5px;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
   background: var(--moss-color-neutral-100);
@@ -1477,7 +1479,7 @@
   grid-template-rows: 24px minmax(10px, 86px) 24px;
   justify-items: center;
   align-items: end;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -1490,7 +1492,7 @@
 
 .maturityColumn div {
   width: min(34px, 70%);
-  border-radius: 5px 5px 0 0;
+  border-radius: 6px 6px 0 0;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
@@ -1507,7 +1509,7 @@
 
 .regionList {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .regionRow {
@@ -1539,7 +1541,7 @@
 }
 
 .regionTrack {
-  height: 5px;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
   background: var(--moss-color-neutral-100);
@@ -1571,7 +1573,7 @@
 
 .holdingsEvidenceStrip div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   padding: 8px 12px;
   background: var(--moss-color-neutral-50);
@@ -1621,13 +1623,13 @@
     minmax(72px, 0.6fr)
     minmax(64px, 0.52fr)
     minmax(64px, 0.52fr);
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   min-width: 700px;
 }
 
 .holdingsTableHeader {
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
@@ -1639,14 +1641,14 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  margin: -7px 0 -7px -12px;
-  padding: 7px 10px 7px 12px;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 12px 8px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .holdingsTableRow {
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
@@ -1668,10 +1670,10 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  margin: -6px 0 -6px -12px;
-  padding: 6px 10px 6px 12px;
+  margin: -8px 0 -8px -12px;
+  padding: 8px 12px 8px 12px;
   border-right: 1px solid var(--moss-color-neutral-100);
-  background: #ffffff;
+  background: var(--moss-color-card-bg);
 }
 
 .holdingNameCell strong {
@@ -1702,7 +1704,7 @@
   display: grid;
   align-content: center;
   min-height: 56px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px dashed var(--moss-color-neutral-200);
   border-radius: 6px;
   background: var(--moss-color-neutral-50);
@@ -1713,10 +1715,10 @@
 
 .pendingReadModelPanel {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   min-height: 56px;
   align-content: center;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px dashed var(--moss-color-neutral-200);
   border-radius: 8px;
   background: var(--moss-color-neutral-50);
@@ -1735,7 +1737,7 @@
 
 .riskGuardrailList {
   display: grid;
-  gap: 9px;
+  gap: 8px;
 }
 
 .riskEvidenceList {
@@ -1743,18 +1745,18 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-100);
 }
 
 .riskEvidenceRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 3px 10px;
+  gap: 4px 8px;
   align-items: start;
   min-width: 0;
-  padding: 8px 10px;
-  background: #ffffff;
+  padding: 8px 8px;
+  background: var(--moss-color-card-bg);
 }
 
 .riskEvidenceRow span {
@@ -1780,7 +1782,7 @@
 }
 
 .riskEvidenceBoundary {
-  padding: 8px 10px;
+  padding: 8px 8px;
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
   font-size: 11px;
@@ -1828,17 +1830,17 @@
   align-content: start;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-200);
 }
 
 .sideStackHeader {
   display: grid;
-  gap: 3px;
-  padding: 9px 12px;
+  gap: 4px;
+  padding: 8px 12px;
   border: 1px solid var(--moss-color-neutral-300);
   border-left: 4px solid var(--moss-color-primary-700);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-50);
 }
 
@@ -1869,18 +1871,18 @@
 }
 
 .referenceSideStack :global(.ant-card-head) {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 32px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .referenceSideStack :global(.ant-card-head-title) {
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 .referenceSideStack :global(.ant-card-body) {
-  padding: 9px 10px !important;
+  padding: 8px 8px !important;
 }
 
 .referenceFooterGrid {
@@ -1890,7 +1892,7 @@
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--moss-color-neutral-200);
 }
 
@@ -1901,23 +1903,23 @@
 }
 
 .referenceFooterGrid :global(.ant-card-head) {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 32px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
 }
 
 .referenceFooterGrid :global(.ant-card-head-title) {
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 .referenceFooterGrid :global(.ant-card-body) {
-  padding: 9px 10px !important;
+  padding: 8px 8px !important;
 }
 
 .footerMetricPanel {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .footerMetricPanel strong {
@@ -1934,7 +1936,7 @@
 }
 
 .footerEvidenceNote {
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: 4px;
   background: var(--moss-color-neutral-50);
@@ -1945,13 +1947,13 @@
 
 .footerRiskList {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .footerRiskList div {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .footerRiskList strong {
@@ -1963,11 +1965,11 @@
 .footerChangeSplit {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .footerChangeSplit span {
-  padding: 5px 7px;
+  padding: 4px 8px;
   border: 1px solid var(--moss-color-neutral-100);
   border-radius: 4px;
   background: var(--moss-color-neutral-50);
@@ -2103,7 +2105,7 @@
 
   .referenceJudgmentRow {
     grid-template-columns: minmax(0, 1fr);
-    gap: 3px;
+    gap: 4px;
   }
 
   .referenceKpiValue {
