@@ -1728,8 +1728,8 @@ export function BondAnalyticsInstitutionalCockpit({
         <div data-testid="bond-analysis-daily-judgment" className={styles.referenceSignalStrip}>
           <div data-testid="bond-analysis-cockpit-conclusion" className={styles.referenceSignalConclusion}>
             <div className={styles.referenceSignalLead}>
-              <div className={styles.conclusionKicker}>首屏总括 · 固定收益读面</div>
-              <strong>{conclusion.body}</strong>
+              <div className={styles.conclusionKicker}>证据展开 · 固定收益读面</div>
+              <strong>首屏读面拆解</strong>
               <span>{conclusion.detail}</span>
             </div>
             <div className={styles.referenceSignalSummary}>

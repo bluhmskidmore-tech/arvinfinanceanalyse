@@ -368,8 +368,9 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(within(dashboard).getByTestId("bond-analysis-market-ticker")).toHaveTextContent("DR007");
     await waitFor(() => {
       expect(dailyJudgment).toHaveTextContent("固定收益读面");
-      expect(dailyJudgment).toHaveTextContent("核心读面");
-      expect(dailyJudgment).toHaveTextContent("久期、信用利差与信用占比读面已返回");
+      expect(dailyJudgment).toHaveTextContent("证据展开");
+      expect(dailyJudgment).toHaveTextContent("首屏读面拆解");
+      expect(dailyJudgment).not.toHaveTextContent("久期、信用利差与信用占比读面已返回。");
       expect(dailyJudgment).toHaveTextContent("久期 3.45 年");
       expect(dailyJudgment).toHaveTextContent("信用利差 85.0 bp");
       expect(dailyJudgment).toHaveTextContent("信用占比 42.0%");
@@ -381,6 +382,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       expect(dailyJudgment).toHaveTextContent("正式下钻待返回");
     });
     expect(dailyJudgment).not.toHaveTextContent("核心读面 · 核心读面");
+    expect(dashboard.textContent?.match(/久期、信用利差与信用占比读面已返回。/g) ?? []).toHaveLength(1);
     expect(dailyJudgment).not.toHaveTextContent("今日先把久期放在交易台第一盯盘位");
     expect(dailyJudgment).not.toHaveTextContent("信用仓位先按利差与集中度开盘复核");
     expect(dailyJudgment).not.toHaveTextContent("看期限/KRD");
@@ -432,15 +434,17 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     renderCockpit(createApiClient({ mode: "mock" }));
 
     const dashboard = await screen.findByTestId("bond-analysis-reference-dashboard");
+    const topbar = within(dashboard).getByTestId("bond-analysis-reference-topbar");
     const dailyJudgment = within(dashboard).getByTestId("bond-analysis-daily-judgment");
     const matrix = within(dashboard).getByTestId("bond-analysis-judgment-matrix");
 
     await waitFor(() => {
-      expect(dailyJudgment).toHaveTextContent("久期、信用利差与信用占比读面已返回");
+      expect(topbar).toHaveTextContent("久期、信用利差与信用占比读面已返回");
+      expect(dailyJudgment).toHaveTextContent("首屏读面拆解");
       expect(matrix).toHaveTextContent("正式曲线待返回");
     });
 
-    expect(dailyJudgment).toHaveTextContent("首屏总括");
+    expect(dailyJudgment).toHaveTextContent("证据展开");
     expect(dailyJudgment).toHaveTextContent("久期");
     expect(dailyJudgment).toHaveTextContent("信用利差");
     expect(dailyJudgment).toHaveTextContent("信用占比");
@@ -524,7 +528,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     await waitFor(() => {
       expect(dailyJudgment).toHaveTextContent("固定收益读面");
-      expect(dailyJudgment).toHaveTextContent("部分核心债券读面已返回");
+      expect(dailyJudgment).toHaveTextContent("首屏读面拆解");
       expect(dailyJudgment).toHaveTextContent("久期 3.45 年");
       expect(dailyJudgment).toHaveTextContent("待返回 信用利差 / 信用占比");
     });
