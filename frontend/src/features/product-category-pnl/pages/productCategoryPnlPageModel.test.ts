@@ -585,7 +585,7 @@ describe("productCategoryPnlPageModel", () => {
     expect(surface.spreadAttribution.state).toBe("incomplete");
     if (surface.spreadAttribution.state === "incomplete") {
       expect(surface.spreadAttribution.reason).toBe(
-        "\u5f53\u524d\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u7f3a\u5931\uff0c\u65e0\u6cd5\u8ba1\u7b97\u5f53\u671f\u5229\u5dee\u3002",
+        "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
       );
       expect(surface.spreadAttribution.currentSpreadLabel).toBe("-");
       expect(surface.spreadAttribution.priorSpreadLabel).toBe("-");
@@ -844,6 +844,49 @@ describe("productCategoryPnlPageModel", () => {
       liabilityYield: [1.65, 1.68],
       spread: [0.75, 0.8],
     });
+  });
+
+  it("does not backfill spread diagnostics from row weighted yields when backend spread yield fields are missing", () => {
+    const snapshot = (reportDate: string, assetYield: string, liabilityYield: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          weighted_yield: assetYield,
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: liabilityYield,
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allSpread: spread,
+        }),
+      });
+
+    const surface = buildProductCategoryDiagnosticsSurface({
+      rows: [],
+      trendSnapshots: [
+        snapshot("2026-02-28", "9.99", "1.00", "0.85"),
+        snapshot("2026-01-31", "8.88", "0.90", "0.70"),
+      ],
+    });
+
+    expect(surface.spreadAttribution.state).toBe("incomplete");
+    expect(surface.spreadAttribution.currentAssetYieldLabel).toBe("缺失");
+    expect(surface.spreadAttribution.currentLiabilityYieldLabel).toBe("缺失");
+    expect(surface.spreadAttribution.assetYieldDeltaLabel).toBe("-");
+    expect(surface.spreadAttribution.liabilityYieldDeltaLabel).toBe("-");
+    expect(surface.spreadAttribution.reason).toBe("后端未返回资产端或负债端收益率字段，无法展示利差归因。");
   });
 
   it("does not describe product-category spread as a frontend-derived yield difference", () => {

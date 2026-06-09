@@ -588,9 +588,9 @@ describe("ProductCategoryPnlPage", () => {
     });
     expect(spread).toHaveTextContent("2026年02月");
     expect(spread).toHaveTextContent("2026年01月");
-    expect(spread).toHaveTextContent("+13bp");
-    expect(spread).toHaveTextContent("+3bp");
-    expect(spread).toHaveTextContent("+10bp");
+    expect(spread).toHaveTextContent(
+      "\u540e\u7aef\u672a\u8fd4\u56de\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u5b57\u6bb5\uff0c\u65e0\u6cd5\u5c55\u793a\u5229\u5dee\u5f52\u56e0\u3002",
+    );
   });
 
   it("shows explicit diagnostics fallback copy when rows or spread inputs are incomplete", async () => {
@@ -630,7 +630,7 @@ describe("ProductCategoryPnlPage", () => {
       "当前 payload 未返回可诊断的产品行。",
     );
     expect(screen.getByTestId("product-category-diagnostics-spread-incomplete")).toHaveTextContent(
-      "当前资产端或负债端收益率缺失，无法计算当期利差。",
+      "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
     );
     await loadTrendDiagnostics();
     const liabilityOption = readChartOption("product-category-liability-side-trend");
