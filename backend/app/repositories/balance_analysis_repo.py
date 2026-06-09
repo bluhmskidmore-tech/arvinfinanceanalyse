@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 import duckdb
@@ -74,6 +75,15 @@ def _tyw_snapshot_row_from_tuple(row: tuple) -> TywSnapshotRow:
         ingest_batch_id=row[15] or "",
         trace_id=row[16] or "",
     )
+
+
+@dataclass(frozen=True)
+class FormalFxRateLookup:
+    rate: Decimal
+    source_version: str
+    is_business_day: bool
+    is_carry_forward: bool
+    observed_trade_date: str | None
 
 
 @dataclass
@@ -208,13 +218,23 @@ class BalanceAnalysisRepository(DuckDBRepository):
         )
         return int(rows[0][0])
 
-    def lookup_fx_rate(self, *, report_date: str, base_currency: str) -> tuple[Decimal, str]:
+    def lookup_formal_fx_rate(self, *, report_date: str, base_currency: str) -> FormalFxRateLookup:
         base_currency_normalized = normalize_currency_code(base_currency)
         if base_currency_normalized in {"CNY", "CNX"}:
-            return Decimal("1"), "sv_fx_identity"
+            return FormalFxRateLookup(
+                rate=Decimal("1"),
+                source_version="sv_fx_identity",
+                is_business_day=True,
+                is_carry_forward=False,
+                observed_trade_date=report_date,
+            )
         rows = self._fetch_rows(
             """
-            select mid_rate, source_version
+            select mid_rate,
+                   source_version,
+                   is_business_day,
+                   is_carry_forward,
+                   cast(observed_trade_date as varchar)
             from fx_daily_mid
             where trade_date = ?
               and upper(base_currency) = upper(?)
@@ -225,9 +245,52 @@ class BalanceAnalysisRepository(DuckDBRepository):
         )
         if not rows:
             raise ValueError(
-                f"Missing fx rate for base_currency={base_currency_normalized} report_date={report_date}"
+                f"Missing formal fx rate for base_currency={base_currency_normalized} report_date={report_date}"
             )
-        return rows[0][0], rows[0][1] or ""
+        mid_rate, source_version, is_business_day, is_carry_forward, observed_trade_date = rows[0]
+        if mid_rate is None:
+            raise ValueError(
+                f"Missing formal fx rate for base_currency={base_currency_normalized} report_date={report_date}"
+            )
+
+        business_day = bool(is_business_day)
+        carry_forward = bool(is_carry_forward)
+        observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
+        if business_day:
+            if carry_forward:
+                raise ValueError(
+                    f"Invalid formal fx metadata for base_currency={base_currency_normalized} report_date={report_date}: "
+                    "business-day row cannot be carry-forward."
+                )
+            return FormalFxRateLookup(
+                rate=Decimal(str(mid_rate)),
+                source_version=str(source_version or ""),
+                is_business_day=True,
+                is_carry_forward=False,
+                observed_trade_date=observed_trade_date_str,
+            )
+
+        if not carry_forward or observed_trade_date_str is None:
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
+                "non-business-day row must carry forward an observed prior trade date."
+            )
+        if date.fromisoformat(observed_trade_date_str) >= date.fromisoformat(report_date):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base_currency_normalized} report_date={report_date}: "
+                f"observed_trade_date={observed_trade_date_str} must be before report_date."
+            )
+        return FormalFxRateLookup(
+            rate=Decimal(str(mid_rate)),
+            source_version=str(source_version or ""),
+            is_business_day=False,
+            is_carry_forward=True,
+            observed_trade_date=observed_trade_date_str,
+        )
+
+    def lookup_fx_rate(self, *, report_date: str, base_currency: str) -> tuple[Decimal, str]:
+        lookup = self.lookup_formal_fx_rate(report_date=report_date, base_currency=base_currency)
+        return lookup.rate, lookup.source_version
 
     def fetch_zqtz_snapshot_native_face_values(
         self,
