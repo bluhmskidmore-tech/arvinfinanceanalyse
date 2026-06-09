@@ -112,6 +112,16 @@ if (-not $SkipMcpContracts) {
       "tests/test_project_mcp_servers.py::test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages",
       "-q"
     )
+  } elseif ($PageSlug -eq "product-category-pnl") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_metric_contracts_mcp_exposes_seeded_page_trace_bundles[product-category-pnl-/product-category-pnl-/ui/pnl/product-category-product_category_pnl_formal_read_model-backend/app/services/product_category_source_service.py-frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx-tests/test_product_category_pnl_flow.py-tests/golden_samples/GS-PROD-CAT-PNL-A-zqtz holdings-side logic-/product-category-pnl]",
+      "tests/test_project_mcp_servers.py::test_lineage_evidence_mcp_maps_product_category_page_aliases_to_formal_model_records",
+      "tests/test_codex_page_readiness_gate.py::test_product_category_readiness_static_gates_surface_contract_evidence",
+      "tests/test_product_category_governance_doc_contract.py",
+      "-q"
+    )
   } elseif ($PageSlug -eq "cashflow-projection") {
     $mcpContractArgs = @(
       "-m",
@@ -216,7 +226,7 @@ if ($PageSlug -eq "dashboard-home") {
       Label = "Product-category backend flow and mapping tests"
       WorkingDirectory = $root
       Command = "python"
-      Args = @("-m", "pytest", "tests/test_product_category_pnl_flow.py", "tests/test_product_category_mapping_contract.py", "-q")
+      Args = @("-m", "pytest", "tests/test_product_category_pnl_flow.py", "tests/test_product_category_mapping_contract.py", "tests/test_product_category_formula_boundaries.py", "-q")
     },
     @{
       Label = "Product-category frontend tests"
