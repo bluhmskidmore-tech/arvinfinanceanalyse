@@ -38,7 +38,7 @@
 
 ## 3. 第一批范围
 
-本批覆盖 `tests/golden_samples/` 下 **19** 个目录所对应的主链与治理边界（其中 18 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
+本批覆盖 `tests/golden_samples/` 下 **20** 个目录所对应的主链与治理边界（其中 19 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
@@ -53,6 +53,7 @@
 - `/api/ledger-pnl/summary`
 - `/api/cashflow-projection` (`GS-CASHFLOW-PROJECTION-A`)
 - `/api/bond-analytics/action-attribution`
+- `/api/bond-analytics/credit-spread-migration` (`GS-CONCENTRATION-MONITOR-A`)
 - `/ui/market-data/livermore`（`GS-STOCK-ANALYSIS-OBS-A`）
 
 不纳入本批：
@@ -83,6 +84,7 @@ tests/golden_samples/
   GS-PNL-ATTR-WB-A/
   GS-BOND-HEADLINE-A/
   GS-BOND-ANALYSIS-ACTION-ATTR-A/
+  GS-CONCENTRATION-MONITOR-A/
   GS-STOCK-ANALYSIS-OBS-A/
   GS-PROD-CAT-PNL-A/
   GS-BRIDGE-A/
@@ -106,7 +108,7 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
-与 `tests/test_golden_samples_capture_ready.py` 中注册的 18 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 19 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
 
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -117,6 +119,7 @@ tests/golden_samples/
 | `GS-PNL-ATTR-WB-A` | `GET /api/pnl-attribution/volume-rate` | `capture-ready` | `2026-04-30` | `tests/test_pnl_attribution_workbench_contract.py` + `tests/test_golden_samples_capture_ready.py` | workbench primary API 样本 |
 | `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | `capture-ready` | `2026-03-31` | `tests/test_bond_dashboard_api_contract.py`、`tests/test_golden_samples_capture_ready.py` | bond-dashboard headline 页面样本 |
 | `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GET /api/bond-analytics/action-attribution` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py`、`tests/test_bond_analysis_business_owner_approval_status.py` | bond-analysis action-attribution 页面 DTO 样本 |
+| `GS-CONCENTRATION-MONITOR-A` | `GET /api/bond-analytics/credit-spread-migration` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py` | concentration-monitor candidate concentration DTO sample; not formal risk truth or certified concentration-limit approval |
 | `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | `capture-ready` | `2026-04-03` | `tests/test_golden_samples_capture_ready.py`、`tests/test_stock_analysis_business_owner_approval_status.py` | stock-analysis Livermore observational 页面 DTO 样本；非交易指令 |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | `capture-ready` | `2026-04-30` | `tests/test_ledger_pnl_service.py`、`tests/test_golden_samples_capture_ready.py` | ledger-pnl 页面级 summary DTO 样本 |
 | `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | `capture-ready` | `2026-04-30` | `tests/test_cashflow_projection.py`, `tests/test_golden_samples_capture_ready.py` | cashflow-projection candidate liquidity projection DTO sample; not formal liquidity/risk/balance/PnL truth |
@@ -493,6 +496,7 @@ tests/golden_samples/
 | `GS-PNL-ATTR-WB-A` | `GS-PNL-OVERVIEW-A` / `GS-BRIDGE-A` | workbench volume-rate 只能解释归因主 API DTO，不替代 formal PnL truth 或 bridge truth |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GS-PNL-OVERVIEW-A` / `GS-PROD-CAT-PNL-A` / `GS-BRIDGE-A` | ledger summary DTO 只冻结 `/ledger-pnl` 候选展示口径；不得替代 formal PnL、product-category PnL 或 PnL bridge truth |
 | `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GS-BOND-HEADLINE-A` | bond-analysis action-attribution DTO 只冻结 `/bond-analysis` 候选展示口径；不得替代 `/bond-dashboard` headline truth、固定收益公式批准或 owner approval |
+| `GS-CONCENTRATION-MONITOR-A` | `GS-RISK-A` / `GS-BOND-HEADLINE-A` | concentration-monitor credit-spread-migration DTO 只冻结 `/concentration-monitor` 候选集中度展示口径；不得替代 formal risk truth、债券 headline truth、集中度限额突破批准或 owner approval |
 | `GS-STOCK-ANALYSIS-OBS-A` | — | stock-analysis Livermore observation DTO 只冻结 `/stock-analysis` 观察口径；不得替代交易指令、执行批准、allocation advice、position-change command、formal stock-analysis truth 或 owner approval |
 | `GS-RISK-A` | `GS-EXEC-OVERVIEW-A` | 管理层 DV01 与专业页 DV01 不自相矛盾 |
 | `GS-EXEC-PNL-ATTR-A` | `GS-PNL-OVERVIEW-A` / `GS-BRIDGE-A` | analytical overlay 不得脱离 formal 主链解释范围 |
@@ -518,7 +522,7 @@ This sample must not be used to approve standalone `MTR-*` metrics, live page ex
 
 ## 9. 当前结论
 
-仓库中已有 **18** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类、PnL attribution workbench、ledger summary、cashflow projection、bond-analysis action-attribution、stock-analysis observation 与两类 warning profile），另有 **1** 个 supporting-only 治理边界样本目录；治理重点转为：**契约/字典/冻结 JSON 一致性**。
+仓库中已有 **19** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类、PnL attribution workbench、ledger summary、cashflow projection、bond-analysis action-attribution、concentration-monitor credit-spread-migration、stock-analysis observation 与两类 warning profile），另有 **1** 个 supporting-only 治理边界样本目录；治理重点转为：**契约/字典/冻结 JSON 一致性**。
 
 因此下一步是维护与对账，而不是再扩张“计划-only”文档：
 

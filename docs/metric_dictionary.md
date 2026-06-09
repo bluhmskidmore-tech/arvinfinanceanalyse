@@ -387,7 +387,7 @@ MTR-RSK-001 fixed-income convention note:
 
 当前状态：
 
-- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 18 个 capture-ready 样本包。
+- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 19 个 capture-ready 样本包。
 - 该矩阵只使用本文件已有 `metric_id`，不新增或猜测产品分类指标。
 - 仍有部分样本是结构 / warning / narrative freeze，不等同于完整指标字典冻结。
 
@@ -434,6 +434,7 @@ Guardrails:
 | `GS-PNL-ATTR-WB-A` | `PAGE-PNL-ATTR-WB-001` / `/api/pnl-attribution/volume-rate` | `MTR-PAT-001`, `MTR-PAT-002`, `MTR-PAT-003`, `MTR-PAT-004`, `MTR-PAT-005`, `MTR-PAT-006` | volume-rate workbench DTO、`result_meta`、current/previous period 与 Numeric shape 为样本真值；不冻结 advanced/Campisi 全页 | `tests/test_pnl_attribution_workbench_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-BOND-HEADLINE-A` | `PAGE-BOND-001` / `GET /api/bond-dashboard/headline-kpis` | 无；capture-ready 页面样本不自动批准 bond headline / risk 字段的字典级 `metric_id` 绑定 | headline DTO、环比字段、空态行为与 `result_meta` evidence 为页面 / 样本真值 | `tests/test_bond_dashboard_api_contract.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/BondDashboardPage.test.tsx` |
 | `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `PAGE-BOND-ANALYSIS-001` / `GET /api/bond-analytics/action-attribution` | `MTR-BOND-ACT-001`, `MTR-BOND-ACT-002`, `MTR-BOND-ACT-003`, `MTR-BOND-ACT-004`, `MTR-BOND-ACT-005`, `MTR-BOND-ACT-006` | action-attribution page DTO, analytical `result_meta`, warning state, report-date/period binding, and `formal_use_allowed=false` are sample truth; it does not approve fixed-income formulas, governance closure, manual audit, or owner approval | `tests/test_golden_samples_capture_ready.py`; `tests/test_bond_analysis_business_owner_approval_status.py`; `frontend/src/test/BondAnalyticsView.test.tsx` |
+| `GS-CONCENTRATION-MONITOR-A` | `GAP-CONCENTRATION-MONITOR-PAGE` / `GET /api/bond-analytics/credit-spread-migration` | `MTR-CON-001`, `MTR-CON-002`, `MTR-CON-003`, `MTR-CON-004` | Concentration monitor candidate DTO, issuer HHI/top5 concentration, credit weight, rating AA-and-below weight, warning/result_meta boundary, report-date binding, and `formal_use_allowed=false` are sample truth; it does not approve formal risk truth, concentration-limit breaches, governance closure, manual audit, or owner approval | `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/ConcentrationMonitorPage.test.tsx` |
 | `GS-STOCK-ANALYSIS-OBS-A` | `GAP-STOCK-ANALYSIS-PAGE` / `GET /ui/market-data/livermore` | 无；observational page DTO sample 不创建 `PAGE-STOCK-*` 或 `MTR-STOCK-*` 绑定 | Livermore observation DTO, supported/unsupported output boundary, report-date binding, warning/data-gap state, and `formal_use_allowed=false` are sample truth; it does not approve trading instructions, execution approval, allocation advice, position changes, formal stock-analysis truth, governance closure, manual audit, or owner approval | `tests/test_golden_samples_capture_ready.py`; `tests/test_stock_analysis_business_owner_approval_status.py`; `frontend/src/test/StockAnalysisPage.test.tsx` |
 | `GS-LEDGER-PNL-SUMMARY-A` | `PAGE-LEDGER-PNL-001` / `GET /api/ledger-pnl/summary` | `MTR-LPN-001`, `MTR-LPN-002`, `MTR-LPN-003` | Ledger PnL summary DTO、candidate display values, `result_meta`, report-date/currency binding, and `formal_use_allowed=false` are sample truth; it does not approve formal use or replace formal/product-category/bridge PnL truth | `tests/test_ledger_pnl_service.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/LedgerPnlPage.test.tsx` |
 | `GS-CASHFLOW-PROJECTION-A` | `GAP-CASHFLOW-PROJECTION-PAGE` / `GET /api/cashflow-projection` | `MTR-CFP-001`, `MTR-CFP-002`, `MTR-CFP-003`, `MTR-CFP-004` | Cashflow projection candidate DTO, result_meta, report-date binding, CNY basis, monthly buckets, maturity table, and `formal_use_allowed=false` are sample truth; it does not approve formal liquidity, risk, balance, PnL truth, governance closure, manual audit, or owner approval | `tests/test_cashflow_projection.py`; `tests/test_golden_samples_capture_ready.py`; `frontend/src/test/CashflowProjectionPage.test.tsx` |
@@ -492,7 +493,7 @@ Guardrails:
 - 本次会话未提供 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog` MCP；以下条目仅依据仓库内可读证据：`docs/page_contracts.md`、`docs/calc_rules.md`、`docs/data_contracts.md`、页面 `pages/*.tsx` / adapter / client、`backend/app/schemas/*.py`、相关 route。
 - `status=candidate` 表示页面首屏已显示、字段可追溯到 live endpoint，但 page contract / golden sample / 业务审批闭环仍未完成；因此统一保留 `pending_confirmation=true`。
 - `status=excluded` 表示当前页面虽展示该卡片，但它是过滤上下文、文本状态、workbook-local 汇总、或 analytical-only / mixed-source 说明面，不在本次补录中升格为正式 `MTR-*`。
-- 本节不会改写 §12.4 capture-ready 绑定；除 `GS-BOND-HEADLINE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与已存在的 `GS-PROD-CAT-PNL-A` 外，不新增任何 `bound_sample_id`。
+- 本节不会把 capture-ready 样本误写成正式审批；除 `GS-BOND-HEADLINE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A`、`GS-CONCENTRATION-MONITOR-A` 与已存在的 `GS-PROD-CAT-PNL-A` 外，不新增任何 `bound_sample_id`。
 
 ### 15.1 页面覆盖矩阵
 
@@ -505,7 +506,7 @@ Guardrails:
 | `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
 | `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | `PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence；macro/FX/news 仍由 `GAP-OPS-MACRO-FX` 限定 |
 | `cashflow-projection` | 新增 4 条 `candidate`：`MTR-CFP-001`~`MTR-CFP-004` | `PAGE-CONTRACT-PENDING:/cashflow-projection` | `GS-CASHFLOW-PROJECTION-A` | dedicated candidate DTO 已 capture-ready 但未审批；live 只读链路已接通，字段与 schema 可追溯 |
-| `concentration-monitor` | 新增 4 条 `candidate`：`MTR-CON-001`~`MTR-CON-004` | `PAGE-CONTRACT-PENDING:/concentration-monitor` | `none` | 首屏 4 张卡片均来自 `credit-spread-migration` 结果 |
+| `concentration-monitor` | 新增 4 条 `candidate`：`MTR-CON-001`~`MTR-CON-004` | `PAGE-CONTRACT-PENDING:/concentration-monitor` | `GS-CONCENTRATION-MONITOR-A` | dedicated candidate DTO 已 capture-ready 但未审批；首屏 4 张卡片均来自 `credit-spread-migration` 结果，不能替代 formal risk truth 或集中度限额批准 |
 | `product-category-pnl` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-PROD-CAT-PNL-001` | `GS-PROD-CAT-PNL-A` | 三条 headline metric 仍是当前唯一 active rows；detail 扩展按 decision 3C 进入矩阵/编号/测试后再落字典 |
 | `kpi-performance` | 新增 1 条 `candidate`：`MTR-KPI-001` | `PAGE-CONTRACT-PENDING:/kpi` | `none` | summary endpoint 已存在，但页面尚未冻结独立 headline strip |
 | `team-performance` | 新增 1 条 `candidate`：`MTR-TEAM-001` | `PAGE-CONTRACT-PENDING:/team-performance` | `none` | 仅登记“已映射部室”；其余 workbook-local / text-state 卡片显式排除 |
@@ -550,10 +551,10 @@ Guardrails:
 
 #### 15.2.7 `concentration-monitor`
 
-- `MTR-CON-001` 发行人 HHI 指数: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-CON-002` 发行人前五集中度: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-CON-003` 信用债占比: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-CON-004` 评级 AA 及以下占比: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-CON-001` 发行人 HHI 指数: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=GS-CONCENTRATION-MONITOR-A`; `pending_confirmation=true`.
+- `MTR-CON-002` 发行人前五集中度: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=GS-CONCENTRATION-MONITOR-A`; `pending_confirmation=true`.
+- `MTR-CON-003` 信用债占比: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=GS-CONCENTRATION-MONITOR-A`; `pending_confirmation=true`.
+- `MTR-CON-004` 评级 AA 及以下占比: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=unsigned percent`; `null_rule=null -> --`; `source_endpoint=GET /api/bond-analytics/credit-spread-migration`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor`; `bound_sample_id=GS-CONCENTRATION-MONITOR-A`; `pending_confirmation=true`.
 
 #### 15.2.8 `kpi-performance`
 

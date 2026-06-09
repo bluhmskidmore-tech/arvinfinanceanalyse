@@ -18,7 +18,7 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 **19** 个样本包（其中 18 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
+- `tests/golden_samples/` 已经存在 **20** 个样本包（其中 19 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
@@ -26,6 +26,7 @@
   - `GS-PNL-ATTR-WB-A`
   - `GS-BOND-HEADLINE-A`
   - `GS-BOND-ANALYSIS-ACTION-ATTR-A`
+  - `GS-CONCENTRATION-MONITOR-A`
   - `GS-STOCK-ANALYSIS-OBS-A`
   - `GS-PROD-CAT-PNL-A`
   - `GS-BRIDGE-A`
@@ -49,6 +50,7 @@
 - 当前样本集中没有首页 `/` 的聚合样本。
 - `GS-BOND-HEADLINE-A` 已落地为 **capture-ready 页面样本**：`tests/golden_samples/GS-BOND-HEADLINE-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 **metric 字典同源** caveat：Headline / 风险卡字段尚未因为该样本而自动升级为字典级 `MTR-*` 绑定。
 - `GS-BOND-ANALYSIS-ACTION-ATTR-A` 已落地为 **capture-ready 页面 DTO 样本**：`tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 `formal_use_allowed=false`，只冻结 `/bond-analysis` action-attribution DTO 边界，不批准固定收益公式、人工审计闭环或业务 owner 签核。
+- `GS-CONCENTRATION-MONITOR-A` 已落地为 **capture-ready 页面 DTO 样本**：`tests/golden_samples/GS-CONCENTRATION-MONITOR-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 `formal_use_allowed=false`，只冻结 `/concentration-monitor` credit-spread-migration 候选集中度 DTO 边界，不批准 formal risk truth、集中度限额突破、人工审计闭环或业务 owner 签核。
 - `GS-STOCK-ANALYSIS-OBS-A` 已落地为 **capture-ready observational 页面 DTO 样本**：`tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/` 已存在，且已纳入 `tests/test_golden_samples_capture_ready.py`。当前仍保留 `formal_use_allowed=false`，只冻结 `/stock-analysis` Livermore observation DTO 边界，不批准 PAGE-STOCK contract、MTR-STOCK metrics、交易指令、人工审计闭环或业务 owner 签核。
 - Wave 1 四条工作台路由已在本文件 §7.4 与 `docs/metric_dictionary.md` §12.5 做 **文档层** `page_id → metric_id → sample_id → test file` 绑定；全量强约束（含 CI 校验矩阵）仍待后续。
 
@@ -80,6 +82,7 @@
 | `GS-PNL-ATTR-WB-A` | `GET /api/pnl-attribution/volume-rate` | 已有样本包 | `tests/test_pnl_attribution_workbench_contract.py` + `tests/golden_samples/GS-PNL-ATTR-WB-A/` + capture-ready | 冻结 workbench primary API DTO；不替代 formal PnL truth 或 bridge truth |
 | `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | 已有样本包 | `tests/test_bond_dashboard_api_contract.py` + `tests/golden_samples/GS-BOND-HEADLINE-A/` + capture-ready | 冻结 bond-dashboard headline 页面真值，保留字典级 metric caveat |
 | `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GET /api/bond-analytics/action-attribution` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/` + capture-ready | 冻结 `/bond-analysis` action-attribution DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
+| `GS-CONCENTRATION-MONITOR-A` | `GET /api/bond-analytics/credit-spread-migration` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-CONCENTRATION-MONITOR-A/` + capture-ready | 冻结 `/concentration-monitor` candidate concentration DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
 | `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/` + capture-ready | 冻结 `/stock-analysis` Livermore observation DTO；保留 observational-only / no-trading-instruction / `formal_use_allowed=false` 边界 |
 | `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | 已有样本包 | `tests/test_cashflow_projection.py` + `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-CASHFLOW-PROJECTION-A/` + capture-ready | 冻结 `/cashflow-projection` candidate liquidity projection DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
 | `GS-PROD-CAT-PNL-A` | `/ui/pnl/product-category` | 已有样本包 | `tests/test_product_category_pnl_flow.py` + `tests/golden_samples/GS-PROD-CAT-PNL-A/` + capture-ready | 与 `docs/pnl/product-category-page-truth-contract.md` / `PAGE-PROD-CAT-PNL-001` 绑定 |
@@ -172,7 +175,7 @@ tests/golden_samples/
 ### 8.1 本周必须完成
 
 1. 把 `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md`、`tests/golden_samples/` 纳入版本控制。
-2. 复核 18 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
+2. 复核 19 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
 3. 在 catalog 中补充每个样本对应的 `page_id`、`metric_id`、`tests/...`。
 
 ### 8.2 下周必须完成

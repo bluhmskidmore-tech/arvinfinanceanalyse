@@ -836,8 +836,11 @@ def test_concentration_monitor_readiness_exposes_candidate_record_path_without_f
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert any("candidate concentration-monitor evidence" in item for item in report["guardrails"])
     assert any("fact_formal_bond_analytics_daily" in item for item in report["truth_chain"])
+    assert report["golden_samples"] == ["tests/golden_samples/GS-CONCENTRATION-MONITOR-A"]
+    assert report["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
     assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
-    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert any("Existing golden sample is supporting or page DTO evidence only" in gap for gap in report["residual_gaps"])
 
 
 def test_team_performance_readiness_exposes_candidate_direct_evidence_without_formal_promotion() -> None:
@@ -1710,7 +1713,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["concentration-monitor"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["concentration-monitor"]["run_supported"] is True
     assert rows_by_slug["concentration-monitor"]["formal_use_allowed"] is False
-    assert rows_by_slug["concentration-monitor"]["has_golden_samples"] is False
+    assert rows_by_slug["concentration-monitor"]["has_golden_samples"] is True
     assert rows_by_slug["concentration-monitor"]["golden_sample_approved"] is False
     assert rows_by_slug["team-performance"]["classification"] == "evidence-pending"
     assert rows_by_slug["team-performance"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"

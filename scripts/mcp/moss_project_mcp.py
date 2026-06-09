@@ -88,7 +88,7 @@ CANDIDATE_METRIC_WATCHLIST = [
         "page": "/concentration-monitor",
         "status": "candidate page-contract-pending",
         "formal_use_allowed": False,
-        "residual_gap": "Needs approved page contract, bound sample, lineage records, and date/catalog review.",
+        "residual_gap": "Needs approved page contract, golden approval, lineage records, and date/catalog review.",
     }
     for index in range(1, 5)
 ] + [
@@ -3190,7 +3190,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "truth_chain": [
             "docs/metric_dictionary.md registers MTR-CON-001 through MTR-CON-004 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor and bound_sample_id=none for the concentration candidate metrics.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/concentration-monitor and bound_sample_id=GS-CONCENTRATION-MONITOR-A for the concentration candidate metrics.",
+            "tests/golden_samples/GS-CONCENTRATION-MONITOR-A freezes the capture-ready candidate DTO for GET /api/bond-analytics/credit-spread-migration and remains captured-awaiting-approval.",
             "GET /api/bond-analytics/credit-spread-migration returns bond_analytics.credit_spread_migration with issuer, industry, rating, and tenor concentration breakdowns.",
             "CreditSpreadMigrationResponse exposes concentration_by_issuer.hhi, concentration_by_issuer.top5_concentration, concentration_by_industry, concentration_by_rating, concentration_by_tenor, credit_weight, and rating_aa_and_below_weight.",
             "backend/app/services/bond_analytics_service.py reads fact_formal_bond_analytics_daily and returns analytical/candidate result_meta for credit-spread migration.",
@@ -3217,12 +3218,13 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "tests/test_bond_analytics_service.py",
             "tests/test_bond_analytics_materialize_flow.py",
             "tests/test_result_meta_on_all_ui_endpoints.py",
+            "tests/test_golden_samples_capture_ready.py",
             "frontend/src/test/ConcentrationMonitorPage.test.tsx",
             "frontend/src/test/BondAnalyticsClient.test.ts",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-CONCENTRATION-MONITOR-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for GAP-CONCENTRATION-MONITOR-PAGE; verify through live-route maturity, bond analytics API/service tests, result_meta checks, and ConcentrationMonitorPage tests.",
+            "Dedicated golden sample GS-CONCENTRATION-MONITOR-A is capture-ready pending approval and freezes candidate bond_analytics.credit_spread_migration DTO evidence; it does not approve formal risk truth, concentration-limit breaches, or owner approval.",
             "Trace /api/bond-analytics/credit-spread-migration through bondAnalyticsClient, apiQueryKeys.bondAnalyticsCreditSpreadMigration, limit rows, KPI cards, contract status, and concentration tables before changing display logic.",
             "Check report_date selection, requested/resolved/as_of dates, bond_analytics_report_date basis, ratio/percent precision, null-vs-zero behavior, no-data, fallback/stale banners, tables_used, evidence_rows, and warnings.",
             "Verify issuer HHI, top5_concentration, credit_weight, AA-and-below ratio, and dimension top_items are displayed from the API payload without frontend portfolio-level recalculation.",

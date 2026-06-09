@@ -3323,14 +3323,16 @@ def test_concentration_monitor_trace_bundle_preserves_candidate_concentration_bo
         assert payload["frontend_route"] == "/concentration-monitor"
         assert payload["primary_api"] == "/api/bond-analytics/credit-spread-migration"
         assert payload["supporting_apis"] == ["/api/bond-analytics/dates"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == ["tests/golden_samples/GS-CONCENTRATION-MONITOR-A"]
         assert any("MTR-CON-001" in item for item in payload["truth_chain"])
         assert any("PAGE-CONTRACT-PENDING:/concentration-monitor" in item for item in payload["truth_chain"])
+        assert any("GS-CONCENTRATION-MONITOR-A" in item for item in payload["truth_chain"])
         assert any("concentration_by_issuer" in item for item in payload["truth_chain"])
         assert any("top5_concentration" in item for item in payload["truth_chain"])
         assert any("fact_formal_bond_analytics_daily" in item for item in payload["truth_chain"])
         assert any("formal risk truth" in item for item in payload["guardrails"])
-        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("GS-CONCENTRATION-MONITOR-A" in item for item in payload["verification_focus"])
+        assert not any("No dedicated golden sample" in item for item in payload["verification_focus"])
         assert not any("formal_use_allowed=true" in item for item in payload["truth_chain"])
     finally:
         server.close()
