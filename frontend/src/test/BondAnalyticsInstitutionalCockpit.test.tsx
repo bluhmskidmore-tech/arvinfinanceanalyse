@@ -566,7 +566,9 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     });
     expect(dailyJudgment).not.toHaveTextContent("久期、信用利差与信用占比读面已返回");
     expect(screen.getByTestId("bond-analysis-reference-dashboard")).not.toHaveTextContent("NaN 年");
-    expect(screen.getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("最重期限桶 1-3年");
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-analysis-kpi-ribbon")).toHaveTextContent("最重期限桶 1-3年");
+    });
     expect(screen.getByTestId("bond-analysis-kpi-ribbon")).not.toHaveTextContent("最重期限桶 空值期限桶");
   });
 
@@ -1001,12 +1003,18 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const signalConclusionRule = cssRuleBody(".referenceSignalConclusion");
     const signalSummaryRule = cssRuleBody(".referenceSignalSummary");
     const signalMetricRule = cssRuleBody(".referenceSignalMetric");
+    const signalLeadSpanRule = cssRuleBody(".referenceSignalLead span");
     const marketRule = cssRuleBody(".referenceMarketTicker");
     const kpiRailRule = cssRuleBody(".holdingsKpiRail");
     const kpiGridRule = cssRuleBody(".holdingsKpiGrid");
     const kpiTileRule = cssRuleBody(".referenceKpiTile");
     const kpiValueRule = cssRuleBody(".referenceKpiValue");
     const titleRule = cssRuleBody(".referenceTitle");
+    const topbarReadoutStrongRule = cssRuleBody(".referenceTopbarReadout strong");
+    const topbarReadoutSmallRule = cssRuleBody(".referenceTopbarReadout small");
+    const topbarStatusStrongRule = cssRuleBody(".referenceTopbarStatus strong");
+    const topbarStatusSmallRule = cssRuleBody(".referenceTopbarStatus small");
+    const deskVerdictSmallRule = cssRuleBody(".deskVerdictField small");
     const responsiveBlock = /@media \(max-width: 1180px\)\s*\{[\s\S]*?\.referenceDashboard\s*\{([\s\S]*?)\n  \}/.exec(
       COCKPIT_CSS,
     )?.[1] ?? "";
@@ -1031,17 +1039,25 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(signalConclusionRule).toContain("grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr)");
     expect(signalSummaryRule).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(signalMetricRule).toContain("font-family: var(--moss-font-mono)");
+    expect(signalLeadSpanRule).toContain("overflow-wrap: anywhere");
+    expect(signalLeadSpanRule).not.toContain("white-space: nowrap");
     expect(topbarRule).not.toMatch(/display:\s*none/);
     expect(topbarRule).toContain("border-radius: 6px");
     expect(topbarRule).toContain("border-left: 4px solid var(--moss-color-primary-900)");
-    expect(topbarRule).toContain("grid-template-columns: minmax(140px, 0.48fr) minmax(560px, 1.95fr) minmax(210px, 0.56fr)");
+    expect(topbarRule).toContain("grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr) minmax(230px, 0.44fr)");
     expect(topbarRule).toContain("padding: 8px 10px");
     expect(titleRule).toContain("font-size: 16px");
     expect(cssRuleBody(".referenceTopbarReadout")).toContain("align-content: center");
     expect(cssRuleBody(".referenceTopbarReadout")).toContain("padding: 0 16px");
-    expect(cssRuleBody(".referenceTopbarReadout strong")).toContain("font-size: 20px");
+    expect(topbarReadoutStrongRule).toContain("font-size: 20px");
+    expect(topbarReadoutStrongRule).toContain("-webkit-line-clamp: 2");
+    expect(topbarReadoutStrongRule).toContain("white-space: normal");
+    expect(topbarReadoutSmallRule).toContain("-webkit-line-clamp: 2");
+    expect(topbarStatusStrongRule).toContain("overflow-wrap: anywhere");
+    expect(topbarStatusSmallRule).toContain("overflow-wrap: anywhere");
+    expect(deskVerdictSmallRule).toContain("overflow-wrap: anywhere");
     expect(cssRuleBody(".referenceTopbarStatus")).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
-    expect(cssRuleBody(".referenceTopbarStatus strong")).toContain("font-size: 11px");
+    expect(topbarStatusStrongRule).toContain("font-size: 11px");
     expect(marketRule).not.toMatch(/box-shadow:/);
     expect(kpiRailRule).toContain("border-radius: 6px");
     expect(kpiRailRule).not.toContain("background: var(--moss-color-primary-900)");
@@ -1071,6 +1087,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const judgmentRowRule = cssRuleBody(".referenceJudgmentRow");
     const strategyGridRule = cssRuleBody(".strategyTagGrid");
     const attributionLeadRule = cssRuleBody(".attributionLead");
+    const attributionLeadSmallRule = cssRuleBody(".attributionLead small");
     const attributionLeadStrongRule = cssRuleBody(".attributionLead strong");
     const attributionBoundaryNoteRule = cssRuleBody(".attributionBoundaryNote");
     const attributionGridRule = cssRuleBody(".attributionEvidenceGrid");
@@ -1082,7 +1099,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const attributionPanelRule = cssRuleBody(".referenceAttributionPanel");
     const attributionButtonRule = cssRuleBody(".referenceAttributionPanel :global(.ant-btn)");
 
-    expect(analysisRule).toContain("grid-template-columns: minmax(0, 1fr) 302px");
+    expect(analysisRule).toContain("grid-template-columns: minmax(0, 1fr) 350px");
     expect(analysisRule).toContain('"curve evidence"');
     expect(analysisRule).toContain('"attribution attribution"');
     expect(analysisRule).toContain("gap: 8px");
@@ -1117,10 +1134,14 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(strategyGridRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
     expect(attributionLeadRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(attributionLeadRule).toContain("padding: 5px 7px");
+    expect(attributionLeadSmallRule).toContain("overflow-wrap: anywhere");
+    expect(attributionLeadSmallRule).not.toContain("white-space: nowrap");
     expect(attributionLeadStrongRule).toContain("font-size: 17px");
     expect(attributionLedgerRowRule).toContain("padding: 5px 7px");
     expect(attributionGridCellRule).toContain("padding: 5px 6px");
     expect(attributionBoundaryNoteRule).toContain("grid-column: 1 / 4");
+    expect(attributionBoundaryNoteRule).toContain("overflow-wrap: anywhere");
+    expect(attributionBoundaryNoteRule).not.toContain("white-space: nowrap");
     expect(attributionButtonRule).toContain("grid-column: 4 / 5");
     expect(attributionGridRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(COCKPIT_CSS).toContain(".accountingDv01Header {\n  padding: 7px 12px");
@@ -1207,11 +1228,15 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const footerCardRule = cssRuleBody(".referenceFooterGrid :global(.ant-card)");
     const footerMetricStrongRule = cssRuleBody(".footerMetricPanel strong");
     const holdingsStripRule = cssRuleBody(".holdingsEvidenceStrip");
+    const holdingsTableRule = cssRuleBody(".holdingsTable");
     const holdingsTableRowsRule = cssRuleBody(".holdingsTableRows");
     const holdingsTableHeaderRule = cssRuleBody(".holdingsTableHeader");
     const holdingsTableHeaderFirstCellRule = cssRuleBody(".holdingsTableHeader span:first-child");
     const holdingNameCellRule = cssRuleBody(".holdingNameCell");
     const tableEmptyRule = cssRuleBody(".tableEmpty");
+    const emptyEvidencePanelRule = cssRuleBody(".emptyEvidencePanel");
+    const moduleNoteRule = cssRuleBody(".moduleNote");
+    const pendingReadModelPanelRule = cssRuleBody(".pendingReadModelPanel");
     const riskEvidenceListRule = cssRuleBody(".riskEvidenceList");
     const riskEvidenceRowRule = cssRuleBody(".riskEvidenceRow");
     const sideHeaderRule = cssRuleBody(".sideStackHeader");
@@ -1226,6 +1251,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(donutPanelRule).toContain("grid-template-columns: minmax(0, 1fr) 150px");
     expect(donutPanelRule).toContain("min-height: 132px");
     expect(donutRule).toContain("width: 116px");
+    expect(footerGridRule).toContain("grid-template-columns: minmax(360px, 1.18fr) minmax(300px, 0.94fr) minmax(300px, 0.88fr)");
     expect(footerGridRule).toContain("gap: 1px");
     expect(footerGridRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(footerCardRule).toContain("box-shadow: none !important");
@@ -1234,6 +1260,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(footerMetricStrongRule).toContain("font-size: 16px");
     expect(holdingsStripRule).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(holdingsStripRule).toContain("border-bottom: 1px solid var(--moss-color-neutral-200)");
+    expect(holdingsTableRule).toContain("overflow-x: auto");
+    expect(holdingsTableRule).toContain("box-shadow: inset -18px 0 18px -22px rgba(31, 41, 55, 0.48)");
     expect(holdingsTableRowsRule).toContain("min-height: 88px");
     expect(holdingsTableHeaderRule).toContain("padding: 7px 12px");
     expect(holdingsTableHeaderFirstCellRule).toContain("position: sticky");
@@ -1244,6 +1272,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(tableEmptyRule).toContain("min-height: 64px");
     expect(tableEmptyRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
     expect(tableEmptyRule).toContain("background: var(--moss-color-neutral-50)");
+    expect(emptyEvidencePanelRule).toContain("min-height: 56px");
+    expect(emptyEvidencePanelRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    expect(moduleNoteRule).toContain("min-height: 34px");
+    expect(moduleNoteRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
+    expect(pendingReadModelPanelRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
     expect(riskEvidenceListRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
     expect(riskEvidenceRowRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(sideStackRule).toContain("gap: 1px");

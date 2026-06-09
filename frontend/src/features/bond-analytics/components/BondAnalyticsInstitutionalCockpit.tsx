@@ -1,6 +1,6 @@
 ﻿import { useMemo, type CSSProperties } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Alert, Button, Card, Typography } from "antd";
+import { Alert, Button, Card } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
@@ -31,8 +31,6 @@ import {
 import { formatBp, formatPct, formatWan, formatYi } from "../utils/formatters";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
-
-const { Text } = Typography;
 
 const dt = designTokens;
 const infoAccent = dt.color.info[500];
@@ -1098,7 +1096,7 @@ function ProgressStack({
   const maxValue = Math.max(...items.map((item) => Math.abs(item.value)), 1);
 
   if (items.length === 0) {
-    return <Text type="secondary">{emptyText}</Text>;
+    return <EmptyEvidencePanel text={emptyText} />;
   }
 
   return (
@@ -1123,6 +1121,10 @@ function ProgressStack({
       ))}
     </div>
   );
+}
+
+function EmptyEvidencePanel({ text }: { text: string }) {
+  return <div className={styles.emptyEvidencePanel}>{text}</div>;
 }
 
 function PendingReadModelPanel({
@@ -1156,7 +1158,7 @@ function MaturityColumnChart({
   const maxValue = Math.max(...items.map((item) => Math.abs(item.value)), 1);
 
   if (items.length === 0) {
-    return <Text type="secondary">{emptyText}</Text>;
+    return <EmptyEvidencePanel text={emptyText} />;
   }
 
   return (
@@ -1212,7 +1214,7 @@ function DistributionDonut({
 }) {
   const total = items.reduce((sum, item) => sum + Math.max(item.value, 0), 0);
   if (items.length === 0 || total <= 0) {
-    return <Text type="secondary">{emptyText}</Text>;
+    return <EmptyEvidencePanel text={emptyText} />;
   }
 
   return (
@@ -1290,7 +1292,7 @@ function RegionDistributionPanel({
   if (topItems.length === 0) {
     return (
       <div className={styles.regionConcentrationPanel}>
-        <Text type="secondary">{emptyText}</Text>
+        <EmptyEvidencePanel text={emptyText} />
       </div>
     );
   }

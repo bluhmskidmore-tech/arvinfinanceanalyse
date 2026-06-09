@@ -218,9 +218,17 @@
 }
 
 .moduleNote {
+  display: grid;
+  align-content: center;
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .holdingsKicker,
@@ -307,7 +315,7 @@
 .referenceTopbar {
   display: grid;
   grid-area: topbar;
-  grid-template-columns: minmax(140px, 0.48fr) minmax(560px, 1.95fr) minmax(210px, 0.56fr);
+  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr) minmax(230px, 0.44fr);
   gap: 10px;
   align-items: stretch;
   padding: 8px 10px;
@@ -348,23 +356,29 @@
 }
 
 .referenceTopbarReadout strong {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--moss-color-primary-900);
   font-size: 20px;
   font-weight: 800;
   line-height: 1.15;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .referenceTopbarReadout small {
+  display: -webkit-box;
   overflow: hidden;
   color: var(--moss-color-neutral-600);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.25;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .referenceMarketTicker {
@@ -472,7 +486,8 @@
   font-weight: 800;
   line-height: 1.2;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .referenceTopbarStatus small {
@@ -482,7 +497,8 @@
   font-weight: 700;
   line-height: 1.2;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .referenceSignalStrip {
@@ -535,18 +551,16 @@
 }
 
 .deskVerdictField small {
-  overflow: hidden;
   color: var(--moss-color-neutral-600);
   font-size: 11px;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .referenceAnalysisGrid {
   grid-area: analysis;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 302px;
+  grid-template-columns: minmax(0, 1fr) 350px;
   grid-template-areas:
     "curve evidence"
     "attribution attribution";
@@ -1116,10 +1130,8 @@
 
 .attributionLead small {
   grid-column: 1 / -1;
-  overflow: hidden;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .attributionLedger {
@@ -1195,7 +1207,6 @@
 
 .attributionBoundaryNote {
   grid-column: 1 / 4;
-  overflow: hidden;
   align-self: stretch;
   padding: 6px 7px;
   border: 1px solid var(--moss-color-neutral-100);
@@ -1204,8 +1215,7 @@
   color: var(--moss-color-neutral-600);
   font-size: 10px;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .referenceAttributionPanel :global(.ant-btn) {
@@ -1237,12 +1247,10 @@
 }
 
 .referenceSignalLead span {
-  overflow: hidden;
   color: var(--moss-color-neutral-700);
   font-size: 12px;
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .referenceSignalSummary {
@@ -1593,7 +1601,9 @@
 }
 
 .holdingsTable {
+  position: relative;
   overflow-x: auto;
+  box-shadow: inset -18px 0 18px -22px rgba(31, 41, 55, 0.48);
 }
 
 .holdingsTableRows {
@@ -1686,6 +1696,19 @@
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
   font-size: 12px;
+}
+
+.emptyEvidencePanel {
+  display: grid;
+  align-content: center;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .pendingReadModelPanel {
@@ -1863,7 +1886,7 @@
 .referenceFooterGrid {
   grid-area: footer;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(360px, 1.18fr) minmax(300px, 0.94fr) minmax(300px, 0.88fr);
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
