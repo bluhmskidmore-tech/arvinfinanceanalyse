@@ -23,6 +23,8 @@ BOND_DASHBOARD_SAMPLE_PATHS = {"/api/bond-dashboard/headline-kpis"}
 BOND_DASHBOARD_READ_HEADERS = {"X-User-Id": "bond-dashboard-read-user", "X-User-Role": "viewer"}
 BOND_ANALYSIS_SAMPLE_PATHS = {"/api/bond-analytics/action-attribution"}
 BOND_ANALYSIS_READ_HEADERS = {"X-User-Id": "bond-analysis-read-user", "X-User-Role": "viewer"}
+CONCENTRATION_MONITOR_SAMPLE_PATHS = {"/api/bond-analytics/credit-spread-migration"}
+CONCENTRATION_MONITOR_READ_HEADERS = {"X-User-Id": "concentration-monitor-read-user", "X-User-Role": "viewer"}
 STOCK_ANALYSIS_SAMPLE_PATHS = {"/ui/market-data/livermore"}
 STOCK_ANALYSIS_READ_HEADERS = {"X-User-Id": "stock-analysis-read-user", "X-User-Role": "viewer"}
 PNL_ATTRIBUTION_SAMPLE_PATHS = {"/api/pnl-attribution/volume-rate"}
@@ -328,6 +330,101 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(service_mod, "PnlRepository", PnlRepo)
 
 
+def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "duckdb_path": str(tmp_path / "concentration-monitor.duckdb"),
+                "governance_path": tmp_path / "governance",
+                "governance_sql_dsn": "",
+                "postgres_dsn": "",
+            },
+        )(),
+    )
+
+    rows = [
+        {
+            "instrument_code": "CON-CREDIT-AAA",
+            "issuer_name": "Issuer A",
+            "industry_name": "Industry 1",
+            "rating": "AAA",
+            "tenor_bucket": "3Y",
+            "asset_class_std": "credit",
+            "accounting_class": "OCI",
+            "market_value": Decimal("100"),
+            "modified_duration": Decimal("4.00"),
+            "years_to_maturity": Decimal("3"),
+            "spread_dv01": Decimal("4"),
+            "source_version": "sv_concentration_monitor_gs_a",
+            "rule_version": "rv_concentration_monitor_gs_a",
+        },
+        {
+            "instrument_code": "CON-CREDIT-AA",
+            "issuer_name": "Issuer B",
+            "industry_name": "Industry 1",
+            "rating": "AA",
+            "tenor_bucket": "5Y",
+            "asset_class_std": "credit",
+            "accounting_class": "TPL",
+            "market_value": Decimal("60"),
+            "modified_duration": Decimal("5.00"),
+            "years_to_maturity": Decimal("5"),
+            "spread_dv01": Decimal("3"),
+            "source_version": "sv_concentration_monitor_gs_a",
+            "rule_version": "rv_concentration_monitor_gs_a",
+        },
+        {
+            "instrument_code": "CON-RATE-001",
+            "issuer_name": "Treasury",
+            "industry_name": "Rates",
+            "rating": "AAA",
+            "tenor_bucket": "1Y",
+            "asset_class_std": "rate",
+            "accounting_class": "AC",
+            "market_value": Decimal("40"),
+            "modified_duration": Decimal("1.00"),
+            "years_to_maturity": Decimal("1"),
+            "spread_dv01": Decimal("0"),
+            "source_version": "sv_concentration_monitor_gs_a",
+            "rule_version": "rv_concentration_monitor_gs_a",
+        },
+    ]
+
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def fetch_bond_analytics_rows(self, *, report_date, asset_class="all", **_kwargs):
+            assert report_date == "2026-03-31"
+            if asset_class == "credit":
+                return [row for row in rows if row["asset_class_std"] == "credit"]
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: Repo())
+    monkeypatch.setattr(
+        service_mod,
+        "_fetch_credit_curves",
+        lambda *, curve_repo, trade_date: {
+            "treasury_current": None,
+            "treasury_warning": "No treasury curve available for 2026-03-31.",
+            "aaa_current": None,
+            "aaa_warning": "No aaa_credit curve available for 2026-03-31.",
+            "curve_snapshots": [],
+            "curve_latest_fallback": False,
+            "curve_unavailable": True,
+        },
+    )
+
+
 def _setup_stock_analysis_observation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import duckdb
 
@@ -379,6 +476,38 @@ def _setup_exec_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         "backend.app.services.executive_service",
         "backend/app/services/executive_service.py",
     )
+    governance_path = tmp_path / "governance"
+    governance_path.mkdir(parents=True, exist_ok=True)
+    cache_build_run_rows = []
+    for report_date in ("2026-02-27", "2026-02-28"):
+        cache_build_run_rows.extend(
+            [
+                {
+                    "cache_key": service_mod.PNL_CACHE_KEY,
+                    "job_name": service_mod.PNL_JOB_NAME,
+                    "status": "completed",
+                    "report_date": report_date,
+                    "source_version": service_mod._DEFAULT_SOURCE,
+                    "rule_version": service_mod._DEFAULT_RULE,
+                    "cache_version": service_mod._CACHE_VERSION,
+                    "vendor_version": "vv_none",
+                },
+                {
+                    "cache_key": service_mod.BOND_ANALYTICS_CACHE_KEY,
+                    "job_name": "bond_analytics_materialize",
+                    "status": "completed",
+                    "report_date": report_date,
+                    "source_version": service_mod._DEFAULT_SOURCE,
+                    "rule_version": service_mod._DEFAULT_RULE,
+                    "cache_version": service_mod._CACHE_VERSION,
+                    "vendor_version": "vv_none",
+                },
+            ]
+        )
+    (governance_path / f"{service_mod.CACHE_BUILD_RUN_STREAM}.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in cache_build_run_rows),
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(
         service_mod,
@@ -388,7 +517,7 @@ def _setup_exec_overview(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
             (),
             {
                 "duckdb_path": str(tmp_path / "exec-overview.duckdb"),
-                "governance_path": tmp_path / "governance",
+                "governance_path": governance_path,
                 "governance_sql_dsn": "",
                 "postgres_dsn": "",
             },
@@ -834,6 +963,8 @@ def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.Monk
     request = _load_json(sample_id, "request.json")
     if sample_id == "GS-BOND-ANALYSIS-ACTION-ATTR-A":
         return _run_bond_analysis_action_attribution_payload(request)
+    if sample_id == "GS-CONCENTRATION-MONITOR-A":
+        return _run_concentration_monitor_payload(request)
     if sample_id == "GS-STOCK-ANALYSIS-OBS-A":
         return _run_stock_analysis_observation_payload(request, tmp_path)
     if sample_id == "GS-CASHFLOW-PROJECTION-A":
@@ -850,6 +981,21 @@ def _run_bond_analysis_action_attribution_payload(request: dict[str, Any]) -> di
         date.fromisoformat(str(params["report_date"])),
         str(params.get("period_type") or "MoM"),
     )
+
+
+def _run_concentration_monitor_payload(request: dict[str, Any]) -> dict[str, Any]:
+    service_mod = sys.modules.get("backend.app.services.bond_analytics_service")
+    if service_mod is None:
+        pytest.fail("Concentration-monitor golden-sample service fixture was not initialized.")
+    params = dict(request.get("params") or {})
+    payload = service_mod.get_credit_spread_migration(
+        date.fromisoformat(str(params["report_date"])),
+        str(params.get("spread_scenarios") or "10,25,50"),
+    )
+    payload["result_meta"]["trace_id"] = "tr_concentration_monitor_gs_a"
+    payload["result_meta"]["generated_at"] = "2026-06-09T00:00:00Z"
+    payload["result"]["computed_at"] = "2026-06-09T00:00:00Z"
+    return payload
 
 
 def _run_stock_analysis_observation_payload(request: dict[str, Any], tmp_path: Path) -> dict[str, Any]:
@@ -910,6 +1056,14 @@ def _run_request_payload(
             resource="bond_analytics",
         )
         headers = BOND_ANALYSIS_READ_HEADERS
+    elif request["path"] in CONCENTRATION_MONITOR_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="concentration-monitor-read-scope.db",
+            resource="bond_analytics",
+        )
+        headers = CONCENTRATION_MONITOR_READ_HEADERS
     elif request["path"] in STOCK_ANALYSIS_SAMPLE_PATHS:
         _grant_sample_read_scope(
             tmp_path,
@@ -1351,6 +1505,55 @@ def _validate_bond_analysis_action_attribution(actual: dict[str, Any], expected:
     )
 
 
+def _validate_concentration_monitor(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    actual["result"]["computed_at"] = expected["result"]["computed_at"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result_meta", "source_surface"),
+            ("result", "report_date"),
+            ("result", "credit_bond_count"),
+            ("result", "credit_market_value"),
+            ("result", "credit_weight"),
+            ("result", "rating_aa_and_below_weight"),
+            ("result", "spread_dv01"),
+            ("result", "weighted_avg_spread"),
+            ("result", "weighted_avg_spread_duration"),
+            ("result", "spread_scenarios"),
+            ("result", "migration_scenarios"),
+            ("result", "concentration_by_issuer"),
+            ("result", "concentration_by_industry"),
+            ("result", "concentration_by_rating"),
+            ("result", "concentration_by_tenor"),
+            ("result", "oci_credit_exposure"),
+            ("result", "oci_spread_dv01"),
+            ("result", "oci_sensitivity_25bp"),
+            ("result", "warnings"),
+        ],
+    )
+
+
 def _validate_exec_overview(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -1601,6 +1804,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-BOND-ANALYSIS-ACTION-ATTR-A": CaptureReadyCase(
         setup=_setup_bond_analysis_action_attribution,
         validator=_validate_bond_analysis_action_attribution,
+    ),
+    "GS-CONCENTRATION-MONITOR-A": CaptureReadyCase(
+        setup=_setup_concentration_monitor,
+        validator=_validate_concentration_monitor,
     ),
     "GS-STOCK-ANALYSIS-OBS-A": CaptureReadyCase(
         setup=_setup_stock_analysis_observation,
