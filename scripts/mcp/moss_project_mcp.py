@@ -33,7 +33,6 @@ DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
     "GAP-CONCENTRATION-MONITOR-PAGE",
     "GAP-NEWS-EVENTS-PAGE",
     "GAP-PLATFORM-CONFIG-PAGE",
-    "GAP-TEAM-PERFORMANCE-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
     "GAP-BANK-LEDGER-DASHBOARD-PAGE": "candidate_or_pending",
@@ -275,6 +274,12 @@ PAGE_CATALOG_DATE_TABLES = {
         "fact_formal_pnl_fi",
         "fact_nonstd_pnl_bridge",
     ],
+    "GAP-TEAM-PERFORMANCE-PAGE": [
+        "fact_formal_pnl_fi",
+        "fact_nonstd_pnl_bridge",
+        "product_category_pnl_formal_read_model",
+        "product_category_pnl_canonical_fact",
+    ],
     "PAGE-REPORTS-HOME-001": [
         "fact_formal_bond_analytics_daily",
         "source_foundation",
@@ -306,6 +311,7 @@ PAGE_CATALOG_DATE_DEFERRED_REASONS = {
 DATE_COLUMN_PRIORITY = (
     "report_date",
     "as_of_date",
+    "snapshot_as_of_date",
     "trade_date",
     "natural_date",
     "business_date",

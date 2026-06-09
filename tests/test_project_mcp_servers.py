@@ -14087,3 +14087,47 @@ def test_data_catalog_page_catalog_date_evidence_distinguishes_no_date_and_unkno
         assert "formal_use_allowed" not in page
     finally:
         server.close()
+
+
+def test_data_catalog_page_catalog_date_evidence_samples_snapshot_as_of_date(
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            """
+            create table livermore_candidate_history (
+                snapshot_as_of_date varchar,
+                stock_code varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into livermore_candidate_history values ('2026-05-29', '000001.SZ')"
+        )
+    finally:
+        conn.close()
+
+    server = McpProcess("data-catalog", env={"MOSS_DUCKDB_PATH": str(duckdb_path)})
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        result = server.request(
+            "tools/call",
+            {
+                "name": "get_page_catalog_date_evidence",
+                "arguments": {"page_slugs": ["stock-analysis"]},
+            },
+        )
+        payload = json.loads(result["content"][0]["text"])
+        page = payload["pages"][0]
+        by_table = {row["table_name"]: row for row in page["table_evidence"]}
+
+        assert by_table["livermore_candidate_history"]["status"] == "present"
+        assert by_table["livermore_candidate_history"]["date_column"] == "snapshot_as_of_date"
+        assert by_table["livermore_candidate_history"]["available_dates"] == ["2026-05-29"]
+    finally:
+        server.close()
