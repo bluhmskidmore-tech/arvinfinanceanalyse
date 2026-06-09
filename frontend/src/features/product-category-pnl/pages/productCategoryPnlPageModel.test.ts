@@ -1737,12 +1737,12 @@ describe("productCategoryPnlPageModel", () => {
       yieldLabel: "\u6536\u76ca\u7387\u7f3a\u5931",
     });
     expect(surface.spreadAttribution).toMatchObject({
-      state: "ready",
+      state: "incomplete",
       currentAssetYieldLabel: "2.68%",
       currentLiabilityYieldLabel: "1.63%",
-      currentSpreadLabel: "105bp",
-      priorSpreadLabel: "95bp",
-      spreadDeltaLabel: "+10bp",
+      currentSpreadLabel: "-",
+      priorSpreadLabel: "-",
+      spreadDeltaLabel: "-",
     });
   });
 
@@ -1902,7 +1902,7 @@ describe("productCategoryPnlPageModel", () => {
     ]);
   });
 
-  it("groups interest-earning spread by year for same-month comparison", () => {
+  it("keeps interest-earning spread comparison unavailable without backend spread fields", () => {
     const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -1937,12 +1937,7 @@ describe("productCategoryPnlPageModel", () => {
       snapshot("2025-02-28", "2.28", "1.63"),
     ]);
 
-    expect(chart?.labels).toEqual(["\u0031\u6708", "\u0032\u6708", "\u0033\u6708", "\u0031\u0032\u6708"]);
-    expect(chart?.monthKeys).toEqual([1, 2, 3, 12]);
-    expect(chart?.series).toEqual([
-      { year: "\u0032\u0030\u0032\u0035\u5e74", spread: [0.6, 0.65, 0.7, 0.8] },
-      { year: "\u0032\u0030\u0032\u0036\u5e74", spread: [0.75, 0.8, 0.85, null] },
-    ]);
+    expect(chart).toBeNull();
   });
 
   it("groups intermediate business income by governed row without total fallback", () => {
@@ -2048,13 +2043,8 @@ describe("productCategoryPnlPageModel", () => {
     ).toBeNull();
   });
 
-  it("computes RMB interest-earning asset spread from interest_earning_assets CNY cash and scale", () => {
-    const snapshot = (
-      reportDate: string,
-      days: number,
-      assetCnyRate: number,
-      liabilityCnyRate: number,
-    ) =>
+  it("does not derive RMB spread from CNY cash and scale without backend yield fields", () => {
+    const snapshot = (reportDate: string, days: number) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
         view: "monthly",
@@ -2065,8 +2055,8 @@ describe("productCategoryPnlPageModel", () => {
             category_id: "interest_earning_assets",
             report_date: reportDate,
             cny_scale: yi(100),
-            cny_cash: annualizedCash(100, assetCnyRate, days),
-            weighted_yield: "9.99",
+            cny_cash: annualizedCash(100, 2.4, days),
+            weighted_yield: null,
           }),
         ],
         asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
@@ -2075,28 +2065,24 @@ describe("productCategoryPnlPageModel", () => {
           side: "liability",
           report_date: reportDate,
           cny_scale: yi(80),
-          cny_cash: annualizedCash(80, liabilityCnyRate, days),
-          weighted_yield: "1.00",
+          cny_cash: annualizedCash(80, 1.55, days),
+          weighted_yield: null,
           is_total: true,
         }),
         grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
       });
 
     const chart = selectProductCategoryInterestSpreadYearComparisonChart([
-      snapshot("2025-01-31", 31, 2.2, 1.5),
-      snapshot("2025-02-28", 28, 2.3, 1.6),
-      snapshot("2026-01-31", 31, 2.4, 1.55),
-      snapshot("2026-02-28", 28, 2.5, 1.65),
+      snapshot("2025-01-31", 31),
+      snapshot("2025-02-28", 28),
+      snapshot("2026-01-31", 31),
+      snapshot("2026-02-28", 28),
     ], "cny");
 
-    expect(chart?.labels).toEqual(["\u0031\u6708", "\u0032\u6708"]);
-    expect(chart?.series).toEqual([
-      { year: "\u0032\u0030\u0032\u0035\u5e74", spread: [0.7, 0.7] },
-      { year: "\u0032\u0030\u0032\u0036\u5e74", spread: [0.85, 0.85] },
-    ]);
+    expect(chart).toBeNull();
   });
 
-  it("keeps RMB spread months as null when CNY scale is unavailable", () => {
+  it("does not reuse backend weighted yield for RMB spread without backend RMB yield fields", () => {
     const chart = selectProductCategoryInterestSpreadYearComparisonChart([
       buildProductCategoryTrendSnapshot({
         report_date: "2025-01-31",
@@ -2152,10 +2138,7 @@ describe("productCategoryPnlPageModel", () => {
       }),
     ], "cny");
 
-    expect(chart?.series).toEqual([
-      { year: "\u0032\u0030\u0032\u0035\u5e74", spread: [null] },
-      { year: "\u0032\u0030\u0032\u0036\u5e74", spread: [0.85] },
-    ]);
+    expect(chart).toBeNull();
   });
 
   it("computes weighted interest spread attribution and reconciles bp movement", () => {
@@ -2196,32 +2179,24 @@ describe("productCategoryPnlPageModel", () => {
       2026,
     );
 
-    expect(surface.complete).toBe(true);
-    expect(surface.incompleteReasons).toEqual([]);
+    expect(surface.complete).toBe(false);
     expect(surface.summary).toMatchObject({
       assetYieldCurrent: 2.55,
       assetYieldPrior: 2.35,
       liabilityYieldCurrent: 1.7,
       liabilityYieldPrior: 1.65,
-      spreadCurrent: 0.85,
-      spreadPrior: 0.7,
+      spreadCurrent: null,
+      spreadPrior: null,
       assetContributionBp: 20,
       liabilityContributionBp: -5,
-      spreadDeltaBp: 15,
+      spreadDeltaBp: null,
     });
-    expect(surface.summary.spreadDeltaBp).toBe(
-      Number(
-        (
-          (surface.summary.assetContributionBp ?? 0) +
-          (surface.summary.liabilityContributionBp ?? 0)
-        ).toFixed(1),
-      ),
-    );
+    expect(surface.incompleteReasons).toEqual(["全口径利差指标未由后端返回"]);
     expect(surface.rows.map((item) => item.key)).toEqual(["asset_yield", "liability_cost", "spread"]);
     expect(surface.details.map((item) => item.key)).toEqual(["interest_earning_assets", "liability_total"]);
   });
 
-  it("computes RMB attribution from CNY cash and scale while ignoring weighted yields", () => {
+  it("keeps RMB attribution incomplete instead of deriving yields from CNY cash and scale", () => {
     const snapshot = (reportDate: string, days: number, assetCnyRate: number, liabilityCnyRate: number) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -2234,7 +2209,7 @@ describe("productCategoryPnlPageModel", () => {
             report_date: reportDate,
             cny_scale: yi(100),
             cny_cash: annualizedCash(100, assetCnyRate, days),
-            weighted_yield: "9.99",
+            weighted_yield: null,
           }),
         ],
         asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
@@ -2244,7 +2219,7 @@ describe("productCategoryPnlPageModel", () => {
           report_date: reportDate,
           cny_scale: yi(80),
           cny_cash: annualizedCash(80, liabilityCnyRate, days),
-          weighted_yield: "1.00",
+          weighted_yield: null,
           is_total: true,
         }),
         grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
@@ -2259,21 +2234,27 @@ describe("productCategoryPnlPageModel", () => {
       2026,
     );
 
-    expect(surface.complete).toBe(true);
+    expect(surface.complete).toBe(false);
     expect(surface.summary).toMatchObject({
-      assetYieldCurrent: 2.55,
-      assetYieldPrior: 2.3,
-      liabilityYieldCurrent: 1.7,
-      liabilityYieldPrior: 1.6,
-      spreadCurrent: 0.85,
-      spreadPrior: 0.7,
-      assetContributionBp: 25,
-      liabilityContributionBp: -10,
-      spreadDeltaBp: 15,
+      assetYieldCurrent: null,
+      assetYieldPrior: null,
+      liabilityYieldCurrent: null,
+      liabilityYieldPrior: null,
+      spreadCurrent: null,
+      spreadPrior: null,
+      assetContributionBp: null,
+      liabilityContributionBp: null,
+      spreadDeltaBp: null,
     });
+    expect(surface.incompleteReasons).toEqual([
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+    ]);
   });
 
-  it("returns incomplete reasons and null RMB contribution when prior CNY scale is unavailable", () => {
+  it("does not reuse backend weighted yield for RMB attribution without backend RMB yield fields", () => {
     const surface = selectProductCategoryInterestSpreadAttributionSurface(
       [
         buildProductCategoryTrendSnapshot({
@@ -2334,11 +2315,23 @@ describe("productCategoryPnlPageModel", () => {
     );
 
     expect(surface.complete).toBe(false);
-    expect(surface.summary.assetYieldPrior).toBeNull();
-    expect(surface.summary.assetContributionBp).toBeNull();
-    expect(surface.summary.spreadDeltaBp).toBeNull();
-    expect(surface.incompleteReasons.join(" ")).toContain("\u4eba\u6c11\u5e01");
-    expect(surface.incompleteReasons.join(" ")).toContain("\u751f\u606f\u8d44\u4ea7");
+    expect(surface.summary).toMatchObject({
+      assetYieldCurrent: null,
+      assetYieldPrior: null,
+      liabilityYieldCurrent: null,
+      liabilityYieldPrior: null,
+      spreadCurrent: null,
+      spreadPrior: null,
+      assetContributionBp: null,
+      liabilityContributionBp: null,
+      spreadDeltaBp: null,
+    });
+    expect(surface.incompleteReasons).toEqual([
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+    ]);
   });
 
   it("sorts trend chart snapshots by report date instead of async query arrival order", () => {
@@ -2764,14 +2757,14 @@ describe("productCategoryPnlPageModel", () => {
       categoryId: "liability_total",
       categoryLabel: "负债合计",
       cells: [
-        { amountLabel: "170.00", rateLabel: "1.68" },
-        { amountLabel: "174.00", rateLabel: "2.00" },
+        { amountLabel: "170.00", rateLabel: "-" },
+        { amountLabel: "174.00", rateLabel: "-" },
       ],
-      movement: { amountLabel: "+4.00", rateLabel: "+32bp" },
+      movement: { amountLabel: "+4.00", rateLabel: "-" },
     });
     expect(cnyMatrix?.rows.find((item) => item.categoryId === "interbank_cds")).toMatchObject({
       cells: [
-        { amountLabel: "110.00", rateLabel: "1.50" },
+        { amountLabel: "110.00", rateLabel: "-" },
         { amountLabel: "-", rateLabel: "-" },
       ],
       movement: { amountLabel: "-", rateLabel: "-" },
@@ -2782,10 +2775,10 @@ describe("productCategoryPnlPageModel", () => {
     expect(foreignMatrix?.rows[0]).toMatchObject({
       categoryId: "liability_total",
       cells: [
-        { amountLabel: "25.00", rateLabel: "1.60" },
-        { amountLabel: "24.00", rateLabel: "1.75" },
+        { amountLabel: "25.00", rateLabel: "-" },
+        { amountLabel: "24.00", rateLabel: "-" },
       ],
-      movement: { amountLabel: "-1.00", rateLabel: "+15bp" },
+      movement: { amountLabel: "-1.00", rateLabel: "-" },
     });
   });
 

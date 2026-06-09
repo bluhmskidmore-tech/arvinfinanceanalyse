@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 import re
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
+
+from backend.app.core_finance.product_category_pnl import (
+    CanonicalFactRow,
+    calculate_read_model,
+)
+from backend.app.core_finance.config.product_category_mapping import (
+    build_default_product_category_config,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_APP = ROOT / "backend" / "app"
@@ -116,3 +126,45 @@ def test_product_category_adapter_documents_overlay_without_second_storage_path(
     text = ANALYSIS_ADAPTERS_FILE.read_text(encoding="utf-8")
     assert "apply_scenario_to_rows" in text
     assert "Single storage path" in text or "formal read model" in text
+
+
+def test_product_category_weighted_yield_is_decimal_core_finance_output():
+    report_date = date(2026, 1, 31)
+    facts = [
+        CanonicalFactRow(
+            report_date=report_date,
+            account_code="120",
+            currency="CNX",
+            account_name="asset scale",
+            beginning_balance=Decimal("0"),
+            ending_balance=Decimal("100000000"),
+            monthly_pnl=Decimal("0"),
+            daily_avg_balance=Decimal("100000000"),
+            annual_avg_balance=Decimal("100000000"),
+            days_in_period=31,
+        ),
+        CanonicalFactRow(
+            report_date=report_date,
+            account_code="50204000001",
+            currency="CNX",
+            account_name="asset pnl",
+            beginning_balance=Decimal("0"),
+            ending_balance=Decimal("0"),
+            monthly_pnl=Decimal("849315.0684931506849315068493"),
+            daily_avg_balance=Decimal("0"),
+            annual_avg_balance=Decimal("0"),
+            days_in_period=31,
+        ),
+    ]
+
+    result = calculate_read_model(
+        {report_date: facts},
+        report_date,
+        "monthly",
+        build_default_product_category_config(),
+    )
+    lending = next(
+        row for row in result["rows"] if row["category_id"] == "interbank_lending_assets"
+    )
+
+    assert lending["weighted_yield"] == Decimal("10.00000000000000000000000000")

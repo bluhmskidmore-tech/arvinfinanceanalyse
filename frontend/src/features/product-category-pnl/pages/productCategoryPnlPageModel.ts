@@ -142,7 +142,6 @@ export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
 } as const;
 
 const YUAN_PER_YI = 100_000_000;
-const DAYS_IN_YEAR = 365;
 
 export type ProductCategoryTrendSnapshot = {
   reportDate: string;
@@ -744,7 +743,7 @@ export type ProductCategoryInterestSpreadChart = {
   labels: string[];
   assetYield: number[];
   liabilityYield: number[];
-  spread: number[];
+  spread: Array<number | null>;
 };
 
 export type ProductCategoryInterestSpreadYearComparisonChart = {
@@ -3477,20 +3476,8 @@ function liabilityDetailRowsFromSnapshot(snapshot: ProductCategoryTrendSnapshot)
     });
 }
 
-function spreadBp(snapshot: ProductCategoryTrendSnapshot): number | null {
-  const assetYield = decimalNumber(snapshot.assetTotal?.weighted_yield);
-  const liabilityYield = decimalNumber(snapshot.liabilityTotal?.weighted_yield);
-  if (assetYield === null || liabilityYield === null) {
-    return null;
-  }
-  return (assetYield - liabilityYield) * 100;
-}
-
-function spreadDeltaBp(current: number | null, previous: number | null): number | null {
-  if (current === null || previous === null) {
-    return null;
-  }
-  return current - previous;
+function spreadBp(_snapshot: ProductCategoryTrendSnapshot): number | null {
+  return null;
 }
 
 function productCategorySideLabel(side: string): string {
@@ -3674,7 +3661,7 @@ function buildProductCategorySpreadMovementAttribution(input: {
     currentLiabilityYield === null || priorLiabilityYield === null
       ? null
       : (currentLiabilityYield - priorLiabilityYield) * 100;
-  const spreadDelta = spreadDeltaBp(currentSpread, priorSpread);
+  const spreadDelta = null;
 
   const base: ProductCategorySpreadMovementAttributionBase = {
     currentLabel: currentLabel || "\u5f53\u524d\u671f",
@@ -3702,6 +3689,13 @@ function buildProductCategorySpreadMovementAttribution(input: {
       state: "incomplete",
       reason:
         "\u5f53\u524d\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u7f3a\u5931\uff0c\u65e0\u6cd5\u8ba1\u7b97\u5f53\u671f\u5229\u5dee\u3002",
+      ...base,
+    };
+  }
+  if (currentSpread === null) {
+    return {
+      state: "incomplete",
+      reason: "后端未返回利差指标，无法展示当期利差。",
       ...base,
     };
   }
@@ -4009,7 +4003,7 @@ export function selectProductCategoryInterestSpreadChart(
     return {
       assetYield,
       liabilityYield,
-      spread: Number((assetYield - liabilityYield).toFixed(2)),
+      spread: null,
     };
   });
   if (chart.labels.length === 0) {
@@ -4037,7 +4031,7 @@ export function selectProductCategoryInterestSpreadYearComparisonChart(
       return;
     }
     const spread = productCategoryInterestSpreadForBasis(snapshot, assetRow, liabilityRow, basis);
-    if (spread === null && basis === "weighted") {
+    if (spread === null) {
       return;
     }
     const existing = yearMonthSpread.get(parsed.year) ?? new Map<number, number | null>();
@@ -4110,10 +4104,7 @@ export function selectProductCategoryInterestSpreadAttributionSurface(
   const priorMetrics = interestSpreadAttributionMetrics(prior, options.basis);
   const assetContributionBp = basisPointDelta(currentMetrics.assetYield, priorMetrics.assetYield);
   const liabilityContributionBp = basisPointDelta(priorMetrics.liabilityYield, currentMetrics.liabilityYield);
-  const spreadDelta =
-    assetContributionBp === null || liabilityContributionBp === null
-      ? null
-      : Number((assetContributionBp + liabilityContributionBp).toFixed(1));
+  const spreadDelta = null;
   const incompleteReasons = interestSpreadAttributionIncompleteReasons({
     current,
     prior,
@@ -4242,23 +4233,12 @@ function interestSpreadAttributionMetrics(
   if (!assetRow || !liabilityRow) {
     return { assetYield: null, liabilityYield: null, spread: null, assetRow, liabilityRow };
   }
-  const assetYield =
-    basis === "cny"
-      ? annualizedProductCategoryYield(assetRow.cny_cash, assetRow.cny_scale, snapshot.reportDate, snapshot.view)
-      : percentNumber(assetRow.weighted_yield);
-  const liabilityYield =
-    basis === "cny"
-      ? annualizedProductCategoryYield(
-          liabilityRow.cny_cash,
-          liabilityRow.cny_scale,
-          snapshot.reportDate,
-          snapshot.view,
-        )
-      : percentNumber(liabilityRow.weighted_yield);
+  const assetYield = basis === "weighted" ? percentNumber(assetRow.weighted_yield) : null;
+  const liabilityYield = basis === "weighted" ? percentNumber(liabilityRow.weighted_yield) : null;
   return {
     assetYield,
     liabilityYield,
-    spread: assetYield === null || liabilityYield === null ? null : Number((assetYield - liabilityYield).toFixed(2)),
+    spread: null,
     assetRow,
     liabilityRow,
   };
@@ -4286,8 +4266,8 @@ function signedBpLabelWithOneDecimal(value: number | null): string {
 function interestSpreadAttributionIncompleteReasons(input: {
   current: ProductCategoryTrendSnapshot | null;
   prior: ProductCategoryTrendSnapshot | null;
-  currentMetrics: { assetYield: number | null; liabilityYield: number | null };
-  priorMetrics: { assetYield: number | null; liabilityYield: number | null };
+  currentMetrics: { assetYield: number | null; liabilityYield: number | null; spread: number | null };
+  priorMetrics: { assetYield: number | null; liabilityYield: number | null; spread: number | null };
   basis: ProductCategoryInterestSpreadBasis;
 }): string[] {
   const prefix = input.basis === "cny" ? "\u4eba\u6c11\u5e01" : "\u5168\u53e3\u5f84";
@@ -4310,6 +4290,17 @@ function interestSpreadAttributionIncompleteReasons(input: {
   if (input.priorMetrics.liabilityYield === null) {
     reasons.push(`${prefix}\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`);
   }
+  if (
+    input.current &&
+    input.prior &&
+    input.currentMetrics.assetYield !== null &&
+    input.priorMetrics.assetYield !== null &&
+    input.currentMetrics.liabilityYield !== null &&
+    input.priorMetrics.liabilityYield !== null &&
+    (input.currentMetrics.spread === null || input.priorMetrics.spread === null)
+  ) {
+    reasons.push(`${prefix}\u5229\u5dee\u6307\u6807\u672a\u7531\u540e\u7aef\u8fd4\u56de`);
+  }
   return reasons;
 }
 
@@ -4330,28 +4321,12 @@ function interestSpreadAttributionDetailPoint(
 }
 
 function productCategoryInterestSpreadForBasis(
-  snapshot: ProductCategoryTrendSnapshot,
-  assetRow: ProductCategoryPnlRow,
-  liabilityRow: ProductCategoryPnlRow,
-  basis: ProductCategoryInterestSpreadBasis,
+  _snapshot: ProductCategoryTrendSnapshot,
+  _assetRow: ProductCategoryPnlRow,
+  _liabilityRow: ProductCategoryPnlRow,
+  _basis: ProductCategoryInterestSpreadBasis,
 ): number | null {
-  const assetYield =
-    basis === "cny"
-      ? annualizedProductCategoryYield(assetRow.cny_cash, assetRow.cny_scale, snapshot.reportDate, snapshot.view)
-      : percentNumber(assetRow.weighted_yield);
-  const liabilityYield =
-    basis === "cny"
-      ? annualizedProductCategoryYield(
-          liabilityRow.cny_cash,
-          liabilityRow.cny_scale,
-          snapshot.reportDate,
-          snapshot.view,
-        )
-      : percentNumber(liabilityRow.weighted_yield);
-  if (assetYield === null || liabilityYield === null) {
-    return null;
-  }
-  return Number((assetYield - liabilityYield).toFixed(2));
+  return null;
 }
 
 export function selectProductCategoryLiabilitySideTrendChart(
@@ -4446,49 +4421,6 @@ function adjacentProductCategoryMonths(
 }
 
 type ProductCategoryLiabilityAmountField = "cnx_scale" | "cny_scale" | "foreign_scale";
-type ProductCategoryLiabilityCashField = "cnx_cash" | "cny_cash" | "foreign_cash";
-
-function daysForProductCategoryView(reportDate: string | undefined, view: string | undefined): number | null {
-  if (!reportDate) {
-    return null;
-  }
-  const parsed = parseProductCategoryReportDate(reportDate);
-  if (!parsed) {
-    return null;
-  }
-  const monthDays = new Date(parsed.year, parsed.month, 0).getDate();
-  if (view === "monthly") {
-    return monthDays;
-  }
-  if (view === "qtd") {
-    const quarterStartMonth = Math.floor((parsed.month - 1) / 3) * 3 + 1;
-    let days = 0;
-    for (let month = quarterStartMonth; month <= parsed.month; month += 1) {
-      days += new Date(parsed.year, month, 0).getDate();
-    }
-    return days;
-  }
-  let days = 0;
-  for (let month = 1; month <= parsed.month; month += 1) {
-    days += new Date(parsed.year, month, 0).getDate();
-  }
-  return days;
-}
-
-function annualizedProductCategoryYield(
-  cash: DecimalLike | null | undefined,
-  scale: DecimalLike | null | undefined,
-  reportDate: string | undefined,
-  view: string | undefined,
-): number | null {
-  const cashValue = decimalNumber(cash);
-  const scaleValue = decimalNumber(scale);
-  const days = daysForProductCategoryView(reportDate, view);
-  if (cashValue === null || scaleValue === null || scaleValue === 0 || days === null || days <= 0) {
-    return null;
-  }
-  return Number(((cashValue / days) * DAYS_IN_YEAR / scaleValue * 100).toFixed(2));
-}
 
 function liabilityDetailMetricLabels(
   row: ProductCategoryPnlRow | undefined,
@@ -4512,7 +4444,6 @@ function liabilityDetailMetricLabels(
 function liabilityCurrencyMetricLabels(
   row: ProductCategoryPnlRow | undefined,
   amountField: ProductCategoryLiabilityAmountField,
-  cashField: ProductCategoryLiabilityCashField,
 ): {
   amountLabel: string;
   amountValue: number | null;
@@ -4520,12 +4451,7 @@ function liabilityCurrencyMetricLabels(
   rateValue: number | null;
 } {
   const amountValue = yiNumber(row?.[amountField]);
-  const rateValue = annualizedProductCategoryYield(
-    row?.[cashField],
-    row?.[amountField],
-    row?.report_date,
-    row?.view,
-  );
+  const rateValue = null;
   return {
     amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
     amountValue,
@@ -4578,7 +4504,6 @@ function buildLiabilityCurrencyMatrixRow(input: {
   categoryLabel: string;
   isSummary?: boolean;
   amountField: ProductCategoryLiabilityAmountField;
-  cashField: ProductCategoryLiabilityCashField;
   periods: ProductCategoryLiabilityDetailMatrixPeriod[];
   latestIndex: number;
   previousIndex: number;
@@ -4587,12 +4512,10 @@ function buildLiabilityCurrencyMatrixRow(input: {
   const latestMetrics = liabilityCurrencyMetricLabels(
     input.rowAt(input.latestIndex),
     input.amountField,
-    input.cashField,
   );
   const previousMetrics = liabilityCurrencyMetricLabels(
     input.rowAt(input.previousIndex),
     input.amountField,
-    input.cashField,
   );
   const amountDelta =
     latestMetrics.amountValue !== null && previousMetrics.amountValue !== null
@@ -4608,7 +4531,7 @@ function buildLiabilityCurrencyMatrixRow(input: {
     categoryLabel: input.categoryLabel,
     isSummary: input.isSummary,
     cells: input.periods.map((period, index) => {
-      const labels = liabilityCurrencyMetricLabels(input.rowAt(index), input.amountField, input.cashField);
+      const labels = liabilityCurrencyMetricLabels(input.rowAt(index), input.amountField);
       return {
         periodKey: period.key,
         amountLabel: labels.amountLabel,
@@ -4686,12 +4609,11 @@ export function selectProductCategoryLiabilityDetailMatrix(
     ? "环比月度变动情况"
     : "较上期变动";
   const currencyMatrices: ProductCategoryLiabilityCurrencyMatrix[] = [
-    { currencyKey: "cny", currencyLabel: "人民币结构", amountField: "cny_scale", cashField: "cny_cash" },
+    { currencyKey: "cny", currencyLabel: "人民币结构", amountField: "cny_scale" },
     {
       currencyKey: "foreign",
       currencyLabel: "外币结构",
       amountField: "foreign_scale",
-      cashField: "foreign_cash",
     },
   ].map((currency) => {
     const totalCurrencyRow =
@@ -4701,7 +4623,6 @@ export function selectProductCategoryLiabilityDetailMatrix(
             categoryLabel: latestTotal?.category_name || firstTotal?.category_name || "负债合计",
             isSummary: true,
             amountField: currency.amountField as ProductCategoryLiabilityAmountField,
-            cashField: currency.cashField as ProductCategoryLiabilityCashField,
             periods,
             latestIndex,
             previousIndex,
@@ -4713,11 +4634,10 @@ export function selectProductCategoryLiabilityDetailMatrix(
       const latestRow = refs?.latest;
       const firstRow = refs?.first;
       return buildLiabilityCurrencyMatrixRow({
-        categoryId,
-        categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
-        amountField: currency.amountField as ProductCategoryLiabilityAmountField,
-        cashField: currency.cashField as ProductCategoryLiabilityCashField,
-        periods,
+          categoryId,
+          categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
+          amountField: currency.amountField as ProductCategoryLiabilityAmountField,
+          periods,
         latestIndex,
         previousIndex,
         rowAt: (index) => rowMaps[index]?.get(categoryId),
