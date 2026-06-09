@@ -319,42 +319,67 @@ def _load_pnl_fx_rates(
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
+        _ensure_tables(conn)
         if not _table_exists(conn, "fx_daily_mid"):
             raise ValueError("Missing fx_daily_mid table required for FI FX conversion.")
-        placeholders = ", ".join(["?"] * len(required))
+        rates: dict[str, tuple[Decimal, str]] = {
+            code: (Decimal("1"), "")
+            for code in required
+            if code in {"CNY", "CNX"}
+        }
+        required_fx = [code for code in required if code not in rates]
+        if not required_fx:
+            return rates
+        placeholders = ", ".join(["?"] * len(required_fx))
         rows = conn.execute(
             f"""
-            with ranked as (
-              select
-                upper(base_currency) as base_currency,
-                cast(mid_rate as decimal(24, 8)) as mid_rate,
-                coalesce(source_version, '') as source_version,
-                row_number() over (
-                  partition by upper(base_currency)
-                  order by try_cast(trade_date as date) desc nulls last, cast(trade_date as varchar) desc
-                ) as rn
-              from fx_daily_mid
-              where try_cast(trade_date as date) <= ?::date
-                and upper(quote_currency) = 'CNY'
-                and upper(base_currency) in ({placeholders})
-            )
-            select base_currency, mid_rate, source_version
-            from ranked
-            where rn = 1
+            select
+              upper(base_currency) as base_currency,
+              cast(mid_rate as decimal(24, 8)) as mid_rate,
+              coalesce(source_version, '') as source_version,
+              is_business_day,
+              is_carry_forward,
+              cast(observed_trade_date as varchar) as observed_trade_date
+            from fx_daily_mid
+            where try_cast(trade_date as date) = ?::date
+              and upper(quote_currency) = 'CNY'
+              and upper(base_currency) in ({placeholders})
             """,
-            [report_date, *required],
+            [report_date, *required_fx],
         ).fetchall()
     finally:
         conn.close()
 
-    rates = {
-        str(base_currency): (Decimal(str(mid_rate)), str(source_version or ""))
-        for base_currency, mid_rate, source_version in rows
-        if base_currency is not None and mid_rate is not None
-    }
-    missing = [code for code in required if code not in rates]
+    for base_currency, mid_rate, source_version, is_business_day, is_carry_forward, observed_trade_date in rows:
+        if base_currency is None or mid_rate is None:
+            continue
+        base = str(base_currency)
+        business_day = bool(is_business_day)
+        carry_forward = bool(is_carry_forward)
+        observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
+        if business_day:
+            if carry_forward:
+                raise ValueError(
+                    f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
+                    "business-day row cannot be carry-forward."
+                )
+            rates[base] = (Decimal(str(mid_rate)), str(source_version or ""))
+            continue
+        if not carry_forward or observed_trade_date_str is None:
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
+                "non-business-day row must carry forward an observed prior trade date."
+            )
+        if date.fromisoformat(observed_trade_date_str) >= date.fromisoformat(report_date):
+            raise ValueError(
+                f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
+                f"observed_trade_date={observed_trade_date_str} must be before report_date."
+            )
+        rates[base] = (Decimal(str(mid_rate)), str(source_version or ""))
+
+    missing = [code for code in required_fx if code not in rates]
     if missing:
-        raise ValueError(f"Missing fx rates for report_date={report_date}: {missing}")
+        raise ValueError(f"Missing formal fx rate for report_date={report_date}: {missing}")
     return rates
 
 
