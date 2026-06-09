@@ -1197,7 +1197,6 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const donutRule = cssRuleBody(".referenceDonut");
     const footerGridRule = cssRuleBody(".referenceFooterGrid");
     const footerCardRule = cssRuleBody(".referenceFooterGrid :global(.ant-card)");
-    const footerHeadRule = cssRuleBody(".referenceFooterGrid :global(.ant-card-head)");
     const footerMetricStrongRule = cssRuleBody(".footerMetricPanel strong");
     const holdingsStripRule = cssRuleBody(".holdingsEvidenceStrip");
     const riskEvidenceListRule = cssRuleBody(".riskEvidenceList");
