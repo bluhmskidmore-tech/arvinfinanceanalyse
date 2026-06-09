@@ -68,7 +68,7 @@
 }
 
 .accountingDv01Header {
-  padding: 8px 12px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
@@ -76,8 +76,18 @@
   font-weight: 800;
 }
 
+.accountingDv01Header span:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  margin: -7px 0 -7px -12px;
+  padding: 7px 10px 7px 12px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+  background: var(--moss-color-neutral-50);
+}
+
 .accountingDv01Row {
-  padding: 9px 12px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
@@ -88,12 +98,20 @@
 }
 
 .accountingDv01Row strong {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  margin: -7px 0 -7px -12px;
+  padding: 7px 10px 7px 12px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+  background: #ffffff;
   color: var(--moss-color-primary-900);
   font-size: 13px;
 }
 
 .accountingDv01Number {
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .accountingDv01Note {
@@ -1579,7 +1597,7 @@
 }
 
 .holdingsTableRows {
-  min-height: 92px;
+  min-height: 88px;
 }
 
 .holdingsTableHeader,
@@ -1599,7 +1617,7 @@
 }
 
 .holdingsTableHeader {
-  padding: 8px 12px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   background: var(--moss-color-neutral-50);
   color: var(--moss-color-neutral-600);
@@ -1607,8 +1625,18 @@
   font-weight: 800;
 }
 
+.holdingsTableHeader span:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  margin: -7px 0 -7px -12px;
+  padding: 7px 10px 7px 12px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+  background: var(--moss-color-neutral-50);
+}
+
 .holdingsTableRow {
-  padding: 7px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--moss-color-neutral-100);
   color: var(--moss-color-neutral-700);
   font-size: 12px;
@@ -1624,9 +1652,16 @@
 }
 
 .holdingNameCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   display: grid;
   gap: 2px;
   min-width: 0;
+  margin: -6px 0 -6px -12px;
+  padding: 6px 10px 6px 12px;
+  border-right: 1px solid var(--moss-color-neutral-100);
+  background: #ffffff;
 }
 
 .holdingNameCell strong {
@@ -1762,7 +1797,12 @@
 .referenceSideStack {
   grid-area: side;
   display: grid;
-  gap: 10px;
+  gap: 1px;
+  align-content: start;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 7px;
+  background: var(--moss-color-neutral-200);
 }
 
 .sideStackHeader {
@@ -1793,6 +1833,27 @@
   color: var(--moss-color-neutral-600);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.referenceSideStack :global(.ant-card) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.referenceSideStack :global(.ant-card-head) {
+  min-height: 30px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--moss-color-neutral-100);
+  background: var(--moss-color-neutral-50);
+}
+
+.referenceSideStack :global(.ant-card-head-title) {
+  padding: 6px 0;
+}
+
+.referenceSideStack :global(.ant-card-body) {
+  padding: 9px 10px !important;
 }
 
 .referenceFooterGrid {

@@ -1055,6 +1055,9 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
   });
 
   it("keeps the desktop work area as a restrained evidence desk, not decorative hero cards", () => {
+    const accountingDv01HeaderFirstCellRule = cssRuleBody(".accountingDv01Header span:first-child");
+    const accountingDv01LabelRule = cssRuleBody(".accountingDv01Row strong");
+    const accountingDv01NumberRule = cssRuleBody(".accountingDv01Number");
     const analysisRule = cssRuleBody(".referenceAnalysisGrid");
     const panelRule = cssRuleBody(".referencePanelCard");
     const analysisPanelRule = cssRuleBody(".referenceAnalysisGrid .referencePanelCard");
@@ -1120,6 +1123,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(attributionBoundaryNoteRule).toContain("grid-column: 1 / 4");
     expect(attributionButtonRule).toContain("grid-column: 4 / 5");
     expect(attributionGridRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(COCKPIT_CSS).toContain(".accountingDv01Header {\n  padding: 7px 12px");
+    expect(accountingDv01HeaderFirstCellRule).toContain("position: sticky");
+    expect(COCKPIT_CSS).toContain(".accountingDv01Row {\n  padding: 7px 12px");
+    expect(accountingDv01LabelRule).toContain("position: sticky");
+    expect(accountingDv01NumberRule).toContain("text-align: right");
   });
 
   it("locks the curve readout as a dense tenor matrix instead of a decorative chart card", () => {
@@ -1199,9 +1207,15 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const footerCardRule = cssRuleBody(".referenceFooterGrid :global(.ant-card)");
     const footerMetricStrongRule = cssRuleBody(".footerMetricPanel strong");
     const holdingsStripRule = cssRuleBody(".holdingsEvidenceStrip");
+    const holdingsTableRowsRule = cssRuleBody(".holdingsTableRows");
+    const holdingsTableHeaderRule = cssRuleBody(".holdingsTableHeader");
+    const holdingsTableHeaderFirstCellRule = cssRuleBody(".holdingsTableHeader span:first-child");
+    const holdingNameCellRule = cssRuleBody(".holdingNameCell");
     const riskEvidenceListRule = cssRuleBody(".riskEvidenceList");
     const riskEvidenceRowRule = cssRuleBody(".riskEvidenceRow");
     const sideHeaderRule = cssRuleBody(".sideStackHeader");
+    const sideStackRule = cssRuleBody(".referenceSideStack");
+    const sideStackCardRule = cssRuleBody(".referenceSideStack :global(.ant-card)");
     const numericCellRule = cssRuleBody(".holdingNumericCell");
     const footerEvidenceNoteRule = cssRuleBody(".footerEvidenceNote");
 
@@ -1219,8 +1233,18 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(footerMetricStrongRule).toContain("font-size: 16px");
     expect(holdingsStripRule).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(holdingsStripRule).toContain("border-bottom: 1px solid var(--moss-color-neutral-200)");
+    expect(holdingsTableRowsRule).toContain("min-height: 88px");
+    expect(holdingsTableHeaderRule).toContain("padding: 7px 12px");
+    expect(holdingsTableHeaderFirstCellRule).toContain("position: sticky");
+    expect(holdingsTableHeaderFirstCellRule).toContain("left: 0");
+    expect(COCKPIT_CSS).toContain(".holdingsTableRow {\n  padding: 6px 12px");
+    expect(holdingNameCellRule).toContain("position: sticky");
+    expect(holdingNameCellRule).toContain("border-right: 1px solid var(--moss-color-neutral-100)");
     expect(riskEvidenceListRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
     expect(riskEvidenceRowRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(sideStackRule).toContain("gap: 1px");
+    expect(sideStackRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
+    expect(sideStackCardRule).toContain("box-shadow: none !important");
     expect(sideHeaderRule).toContain("border-left: 4px solid var(--moss-color-primary-700)");
     expect(numericCellRule).toContain("text-align: right");
     expect(footerEvidenceNoteRule).toContain("background: var(--moss-color-neutral-50)");
