@@ -31,7 +31,6 @@ DEFAULT_CATALOG_DATE_EXCLUDED_PAGE_IDS = {
     "GAP-BANK-LEDGER-DASHBOARD-PAGE",
     "GAP-CASHFLOW-PROJECTION-PAGE",
     "GAP-CONCENTRATION-MONITOR-PAGE",
-    "GAP-PLATFORM-CONFIG-PAGE",
 }
 EVIDENCE_READINESS_STATUS_BY_PAGE_ID = {
     "GAP-BANK-LEDGER-DASHBOARD-PAGE": "candidate_or_pending",
@@ -256,6 +255,9 @@ PAGE_CATALOG_DATE_TABLES = {
     ],
     "GAP-NEWS-EVENTS-PAGE": [
         "choice_news_event",
+    ],
+    "GAP-PLATFORM-CONFIG-PAGE": [
+        "phase1_source_preview_summary",
     ],
     "PAGE-MARKET-HOME-001": [
         "fact_choice_macro_daily",

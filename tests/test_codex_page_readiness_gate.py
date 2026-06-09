@@ -784,34 +784,34 @@ def test_team_performance_readiness_exposes_candidate_direct_evidence_without_fo
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
-def test_news_events_readiness_exposes_analytical_direct_evidence_without_formal_promotion() -> None:
-    report = build_page_readiness_report("news-events")
+def test_platform_config_readiness_exposes_diagnostics_record_path_without_formal_promotion() -> None:
+    report = build_page_readiness_report("platform-config")
 
-    assert report["page_slug"] == "news-events"
-    assert report["page_id"] == "GAP-NEWS-EVENTS-PAGE"
-    assert report["route"] == "/news-events"
-    assert report["primary_api"] == "/ui/news/choice-events/latest"
+    assert report["page_slug"] == "platform-config"
+    assert report["page_id"] == "GAP-PLATFORM-CONFIG-PAGE"
+    assert report["route"] == "/platform-config"
+    assert report["primary_api"] == "/ui/preview/source-foundation"
     assert report["approval_status"] == "candidate_or_pending"
     assert report["formal_use_allowed"] is False
     assert report["overall_status"] == "static-pass"
-    assert "codex-page-smoke.ps1 -PageSlug news-events" in report["required_commands"][0]
-    assert "codex-verify-page.ps1 -PageSlug news-events -Run" in report["required_commands"][1]
+    assert "codex-page-smoke.ps1 -PageSlug platform-config" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug platform-config -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
     assert report["catalog_date_evidence"]["status"] == "sampled"
-    assert report["catalog_date_evidence"]["sampled_table_names"] == ["choice_news_event"]
     assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["catalog_date_evidence"]["table_evidence"][0]["date_column"] == "report_date"
     assert report["governance_record_validation"]["status"] in {
         "direct_records_ready_for_audit_review",
         "missing_direct_records",
     }
     assert report["governance_record_commands"] == [
-        "python scripts/emit_news_events_governance_record.py",
-        "python scripts/emit_news_events_governance_record.py --write",
+        "python scripts/emit_platform_config_governance_record.py",
+        "python scripts/emit_platform_config_governance_record.py --write",
     ]
     assert report["business_owner_approval_status"] is None
     assert "docs/live_route_maturity.md" in report["contract_docs"]
-    assert any("analytical event context" in item for item in report["guardrails"])
-    assert any("ChoiceNewsEventsPayload" in item for item in report["verification_focus"])
+    assert any("candidate diagnostics" in item for item in report["guardrails"])
+    assert any("source-foundation payload" in item for item in report["verification_focus"])
     assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
@@ -846,6 +846,39 @@ def test_news_events_readiness_exposes_analytical_record_path_without_formal_pro
     assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
     assert any("Business owner approval is still required" in gap for gap in report["residual_gaps"])
+
+
+def test_platform_config_readiness_exposes_diagnostic_record_path_without_formal_promotion() -> None:
+    report = build_page_readiness_report("platform-config")
+
+    assert report["page_slug"] == "platform-config"
+    assert report["page_id"] == "GAP-PLATFORM-CONFIG-PAGE"
+    assert report["route"] == "/platform-config"
+    assert report["primary_api"] == "/ui/preview/source-foundation"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "static-pass"
+    assert "codex-page-smoke.ps1 -PageSlug platform-config" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug platform-config -Run" in report["required_commands"][1]
+    assert report["run_supported"] is True
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == ["phase1_source_preview_summary"]
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_platform_config_governance_record.py",
+        "python scripts/emit_platform_config_governance_record.py --write",
+    ]
+    assert report["business_owner_approval_status"] is None
+    assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert any("/health/ready" in item for item in report["supporting_apis"])
+    assert any("candidate diagnostics surface" in item for item in report["guardrails"])
+    assert any("source data-quality approval" in item for item in report["verification_focus"])
+    assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
+    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
 def test_macro_toolkit_readiness_exposes_run_commands_without_formal_promotion() -> None:

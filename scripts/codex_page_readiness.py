@@ -84,6 +84,7 @@ OPTIONAL_DIRECT_EVIDENCE_PAGE_SLUGS = (
     "stock-analysis",
     "team-performance",
     "news-events",
+    "platform-config",
 )
 GOVERNANCE_STREAM_NAMES = (
     "agent_audit",
@@ -263,6 +264,10 @@ def _governance_record_commands(page_slug: str) -> list[str]:
         "news-events": [
             "python scripts/emit_news_events_governance_record.py",
             "python scripts/emit_news_events_governance_record.py --write",
+        ],
+        "platform-config": [
+            "python scripts/emit_platform_config_governance_record.py",
+            "python scripts/emit_platform_config_governance_record.py --write",
         ],
     }
     return commands_by_page.get(page_slug, [])
