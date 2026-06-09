@@ -81,6 +81,8 @@ DIRECT_EVIDENCE_PAGE_SLUGS = (
 )
 OPTIONAL_DIRECT_EVIDENCE_PAGE_SLUGS = (
     "pnl-attribution",
+    "stock-analysis",
+    "team-performance",
 )
 GOVERNANCE_STREAM_NAMES = (
     "agent_audit",
@@ -248,6 +250,14 @@ def _governance_record_commands(page_slug: str) -> list[str]:
         "bond-analysis": [
             "python scripts/emit_bond_analysis_governance_record.py",
             "python scripts/emit_bond_analysis_governance_record.py --write",
+        ],
+        "stock-analysis": [
+            "python scripts/emit_stock_analysis_governance_record.py",
+            "python scripts/emit_stock_analysis_governance_record.py --write",
+        ],
+        "team-performance": [
+            "python scripts/emit_team_performance_governance_record.py",
+            "python scripts/emit_team_performance_governance_record.py --write",
         ],
     }
     return commands_by_page.get(page_slug, [])

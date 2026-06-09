@@ -52,7 +52,7 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
     assert packet["formal_stock_metric_promotion_allowed"] is False
     assert packet["observational_boundary_status"] == "no_trading_instruction_boundary_pending_owner_acceptance"
     assert packet["governance_record_write_status"] == "not_requested"
-    assert packet["governance_validation_status"] == "missing_direct_records"
+    assert packet["governance_validation_status"] == "direct_records_ready_for_audit_review"
     assert packet["configured_table_names"] == [
         "livermore_position_snapshot",
         "livermore_candidate_history",
@@ -102,7 +102,7 @@ def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path
         "`no_trading_instruction_boundary_pending_owner_acceptance`"
     ) in text
     assert "Governance record write status: `not_requested`" in text
-    assert "Governance validation status: `missing_direct_records`" in text
+    assert "Governance validation status: `direct_records_ready_for_audit_review`" in text
     assert "This packet does not approve page closure" in text
     assert "- `certification_effect=none`" in text
     assert "No-trading-instruction boundary accepted: `yes` (`pending`)" in text

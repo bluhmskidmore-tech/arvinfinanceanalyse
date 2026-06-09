@@ -1115,12 +1115,13 @@ def test_codex_page_readiness_supports_stock_analysis_dry_run():
     assert "missing" in output
     assert "codex-page-smoke.ps1 -PageSlug stock-analysis" in output
     assert "codex-verify-page.ps1 -PageSlug stock-analysis -Run" in output
-    assert "full data-catalog/date review required" in output
-    assert "direct page-keyed governance records" in output
+    assert "catalog_date_evidence_sampled: pass (4/4 table date samples)" in output
+    assert "direct_governance_record_ready: pass (1 ready direct record(s))" in output
     assert "GAP/observational route lacks standalone formal page contract closure" in output
     assert "PAGE-STOCK contracts" in output
     assert "Dedicated sample GS-STOCK-ANALYSIS-OBS-A is page DTO evidence only" in output
     assert "Trading instructions" in output
+    assert "Business owner approval is still required before closure" in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 

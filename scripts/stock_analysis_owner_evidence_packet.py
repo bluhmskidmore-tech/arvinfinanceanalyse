@@ -86,7 +86,10 @@ def build_packet(
             "fact_livermore_gate_supplement_daily",
         ],
         "governance_record_write_status": "not_requested",
-        "governance_validation_status": "missing_direct_records",
+        "governance_validation_status": (
+            (readiness.get("governance_record_validation") or {}).get("status")
+            or "missing_direct_records"
+        ),
         "reviewer_checklist": list(REVIEWER_CHECKLIST),
         "mcp_evidence_gap": (
             "Deferred MCP app tools for moss-metric-contracts, moss-lineage-evidence, "

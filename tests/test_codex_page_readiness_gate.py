@@ -812,8 +812,10 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
         "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 -PageSlug stock-analysis -RequireApprovalCaptured",
     ]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 4
+    assert report["governance_record_validation"]["status"] == "direct_records_ready_for_audit_review"
+    assert report["governance_record_validation"]["direct_record_count"] == 1
     assert report["business_owner_approval_status"]["approval_status"] == "pending"
     assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
     assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
@@ -833,10 +835,13 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
     assert gates["formal_promotion_boundary"]["outcome"] == "pass"
     assert gates["formal_promotion_boundary"]["detail"] == "gap_or_observational; formal_use_allowed=false"
     assert gates["business_owner_approval_status"]["outcome"] == "pass"
+    assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"
+    assert gates["catalog_date_evidence_sampled"]["detail"] == "4/4 table date samples"
+    assert gates["direct_governance_record_ready"]["outcome"] == "pass"
+    assert gates["direct_governance_record_ready"]["detail"] == "1 ready direct record(s)"
 
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
-    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("GAP/observational route lacks standalone formal page contract closure." in gap for gap in report["residual_gaps"])
+    assert any("owner approval" in gap for gap in report["residual_gaps"])
     assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
     assert any("Trading instructions" in gap for gap in report["residual_gaps"])
     assert any("formal stock-analysis truth" in gap for gap in report["residual_gaps"])
