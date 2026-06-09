@@ -166,6 +166,15 @@ if (-not $SkipMcpContracts) {
       "tests/test_platform_config_governance_record.py",
       "-q"
     )
+  } elseif ($PageSlug -eq "team-performance") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_team_performance_trace_bundle_preserves_candidate_performance_boundary",
+      "tests/test_codex_page_readiness_gate.py::test_team_performance_readiness_exposes_candidate_direct_evidence_without_formal_promotion",
+      "tests/test_team_performance_governance_record.py",
+      "-q"
+    )
   }
   $checks += @(
     @{
@@ -669,9 +678,22 @@ if ($PageSlug -eq "dashboard-home") {
         "run",
         "test",
         "--",
+        "src/features/team-performance/teamPerformancePageModel.test.ts",
         "src/test/TeamPerformancePage.test.tsx",
-        "src/test/RouteRegistry.test.tsx",
         "src/test/LiveRouteRealPageSmoke.test.tsx"
+      )
+    },
+    @{
+      Label = "Team Performance route registry test"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/RouteRegistry.test.tsx",
+        "-t",
+        "renders the team-performance route"
       )
     },
     @{
