@@ -279,7 +279,7 @@ Fresh average-balance evidence from this pass:
 
 - Static readiness reports `static-pass`, route class `evidence-pending`, `formal_use_allowed=false`, and `GAP-AVERAGE-BALANCE-PAGE`.
 - The route is now seeded as a candidate ADB analytical lane for `GET /api/analysis/adb` with comparison, monthly, coverage, and balance-analysis dates support.
-- `MTR-ADB-001` through `MTR-ADB-003` remain candidate-only with `PAGE-CONTRACT-PENDING:/average-balance` and no dedicated golden sample.
+- `MTR-ADB-001` and `MTR-ADB-002` remain candidate-only with `PAGE-CONTRACT-PENDING:/average-balance` and a dedicated daily DTO sample (`GS-AVERAGE-BALANCE-A`, captured-awaiting-approval); `MTR-ADB-003` remains candidate-only with no dedicated monthly/NIM sample.
 - `/average-balance` must not replace `PAGE-BALANCE-001` or `/balance-analysis` formal balance truth.
 
 Fresh bank-ledger-dashboard evidence from this pass:

@@ -501,7 +501,7 @@ Guardrails:
 | --- | --- | --- | --- | --- |
 | `bond-dashboard` | 新增 4 条 `candidate`：`MTR-BOND-001`~`MTR-BOND-004` | `PAGE-BOND-001` | `GS-BOND-HEADLINE-A` | 页面 headline DTO 已 freeze，但 §12.5 仍将字典级批准视为 gap，因此保留 `pending_confirmation=true` |
 | `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `none` | 首屏当前是筛选上下文；本次只登记两个列表总数指标 |
-| `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `GS-AVERAGE-BALANCE-A` | dedicated daily DTO 已 capture-ready 但未审批；页面文案已明确为分析口径子视图，不提升为正式口径；monthly NIM 仍 pending |
+| `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `MTR-ADB-001`/`MTR-ADB-002` -> `GS-AVERAGE-BALANCE-A`; `MTR-ADB-003` -> `none` | dedicated daily DTO 已 capture-ready 但未审批；仅日度 ADB 两条绑定样本；monthly NIM 仍 pending 且不提升为正式口径 |
 | `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-LEDGER-PNL-001` | `GS-LEDGER-PNL-SUMMARY-A` | dedicated summary DTO 已 capture-ready 但未审批；三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |
 | `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
 | `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | `PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence；macro/FX/news 仍由 `GAP-OPS-MACRO-FX` 限定 |
