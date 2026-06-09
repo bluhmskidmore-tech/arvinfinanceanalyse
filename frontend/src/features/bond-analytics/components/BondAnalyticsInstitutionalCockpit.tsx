@@ -29,6 +29,8 @@ import {
   coalesceMacroSeriesDelta,
 } from "../lib/bondAnalyticsMacroSeries";
 import { formatBp, formatPct, formatWan, formatYi } from "../utils/formatters";
+import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
+import ReactECharts from "../../../lib/echarts";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
@@ -748,24 +750,28 @@ function ReferenceJudgmentMatrix({
       value: Number.isFinite(duration) ? "已返回" : "待返回",
       detail: Number.isFinite(duration) ? `返回字段：组合久期 ${duration.toFixed(2)} 年` : "返回字段：—",
       missing: Number.isFinite(duration) ? "缺失项：—" : "缺失项：久期",
+      isReturned: Number.isFinite(duration),
     },
     {
       label: "曲线证据",
       value: hasCurveReadout ? "正式曲线可读" : "正式曲线待返回",
       detail: hasCurveReadout ? "返回字段：期限点收益率与日变动" : "返回字段：期限桶仅作暴露观察",
       missing: hasCurveReadout ? "缺失项：正式 KRD" : "缺失项：正式曲线 / 正式 KRD",
+      isReturned: hasCurveReadout,
     },
     {
       label: "信用证据",
       value: Number.isFinite(spreadMedianBp) || Number.isFinite(creditWeight) ? "已返回" : "待返回",
       detail: `返回字段：${buildReadoutFacts({ duration: Number.NaN, creditWeight, spreadMedianBp }).join(" · ") || "—"}`,
       missing: `缺失项：${creditMissing.length > 0 ? creditMissing.join(" / ") : "—"}`,
+      isReturned: Number.isFinite(spreadMedianBp) || Number.isFinite(creditWeight),
     },
     {
       label: "资金证据",
       value: hasDv01Readout ? "DV01已返回" : "DV01待返回",
       detail: `返回字段：组合 DV01 ${dv01Display}`,
       missing: hasDv01Readout ? "缺失项：—" : "缺失项：DV01",
+      isReturned: hasDv01Readout,
     },
   ];
 
@@ -777,7 +783,11 @@ function ReferenceJudgmentMatrix({
       </div>
       <div className={styles.referenceJudgmentMatrix}>
         {rows.map((row) => (
-          <div key={row.label} className={styles.referenceJudgmentRow}>
+          <div
+            key={row.label}
+            className={styles.referenceJudgmentCard}
+            data-readout-status={row.isReturned ? "returned" : "pending"}
+          >
             <span>{row.label}</span>
             <strong>{row.value}</strong>
             <small>{row.detail}</small>
@@ -807,6 +817,64 @@ function ReferenceJudgmentMatrix({
           <strong>只展示返回事实</strong>
         </div>
       </div>
+    </div>
+  );
+}
+
+function buildCompactYieldCurveChartOption(curves: YieldCurveTermStructureCurvePayload[]) {
+  const base = buildYieldCurveTermStructureChartOption(curves);
+  if (!base || !Array.isArray(base.series)) {
+    return null;
+  }
+
+  const lineSeries = base.series.filter(
+    (series) =>
+      series &&
+      typeof series === "object" &&
+      "type" in series &&
+      series.type === "line",
+  );
+  if (!lineSeries.length) {
+    return null;
+  }
+
+  const yieldAxis = Array.isArray(base.yAxis) ? base.yAxis[0] : base.yAxis;
+
+  return {
+    ...base,
+    animation: false,
+    legend: {
+      top: 2,
+      right: 4,
+      type: "plain" as const,
+      itemWidth: 10,
+      itemHeight: 8,
+      textStyle: { fontSize: 10, color: dt.color.neutral[600] },
+    },
+    grid: { left: 44, right: 12, top: 26, bottom: 22 },
+    yAxis: yieldAxis ? [yieldAxis] : base.yAxis,
+    series: lineSeries,
+  };
+}
+
+function ReferenceCurveCompactChart({
+  curves,
+}: {
+  curves: YieldCurveTermStructureCurvePayload[];
+}) {
+  const option = useMemo(() => buildCompactYieldCurveChartOption(curves), [curves]);
+
+  if (!option) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid="bond-analysis-yield-curve-chart"
+      className={styles.curveCompactChart}
+      aria-label="正式收益率曲线折线图"
+    >
+      <ReactECharts option={option} opts={{ renderer: "canvas" }} />
     </div>
   );
 }
@@ -867,6 +935,7 @@ function ReferenceCurveReadout({
             </small>
           </div>
         </div>
+        <ReferenceCurveCompactChart curves={readableCurves} />
         <div data-testid="bond-analysis-curve-tenor-matrix" className={styles.curveTenorMatrix}>
           <div className={`${styles.curveMatrixRow} ${styles.curveMatrixHead}`}>
             <span className={styles.curveMatrixLabel}>曲线 / 期限</span>

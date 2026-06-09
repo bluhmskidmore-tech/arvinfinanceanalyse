@@ -1084,7 +1084,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const curveBannerStatsStrongRule = cssRuleBody(".referenceCurveBannerStats strong");
     const curveCardRule = cssRuleBody(".referenceCurveCard");
     const evidenceNoticeRule = cssRuleBody(".referenceEvidenceNotice");
-    const judgmentRowRule = cssRuleBody(".referenceJudgmentRow");
+    const judgmentMatrixRule = cssRuleBody(".referenceJudgmentMatrix");
+    const judgmentCardRule = cssRuleBody(".referenceJudgmentCard");
     const strategyGridRule = cssRuleBody(".strategyTagGrid");
     const attributionLeadRule = cssRuleBody(".attributionLead");
     const attributionLeadSmallRule = cssRuleBody(".attributionLead small");
@@ -1127,8 +1128,11 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(curveBannerRule).not.toContain("linear-gradient");
     expect(curveBannerRule).not.toMatch(/box-shadow:/);
     expect(evidenceNoticeRule).toContain("border-left: 3px solid var(--moss-color-primary-600)");
-    expect(judgmentRowRule).toContain("grid-template-columns: 64px minmax(0, 1fr)");
-    expect(judgmentRowRule).toContain("min-height: 24px");
+    expect(judgmentMatrixRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(judgmentCardRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
+    expect(judgmentCardRule).toContain("border-radius: 6px");
+    expect(judgmentCardRule).toContain("box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035)");
+    expect(judgmentCardRule).toContain("min-height: 72px");
     expect(strategyGridRule).toContain("display: grid");
     expect(strategyGridRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
     expect(strategyGridRule).toContain("border: 1px solid var(--moss-color-neutral-100)");

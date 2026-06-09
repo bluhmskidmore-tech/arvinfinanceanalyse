@@ -791,6 +791,20 @@
   color: var(--moss-color-success-700);
 }
 
+.curveCompactChart {
+  height: 132px;
+  width: 100%;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 4px;
+  background: var(--moss-color-card-bg);
+  overflow: hidden;
+}
+
+.curveCompactChart > div {
+  height: 100% !important;
+  width: 100% !important;
+}
+
 .curveTenorMatrix {
   display: grid;
   overflow: hidden;
@@ -978,44 +992,54 @@
 
 .referenceJudgmentMatrix {
   display: grid;
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 6px;
-  background: var(--moss-color-neutral-100);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.referenceJudgmentRow {
+.referenceJudgmentCard {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 2px 8px;
-  align-items: center;
-  min-height: 24px;
-  padding: 4px 8px;
+  gap: 4px;
+  min-height: 72px;
+  padding: 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
   background: var(--moss-color-card-bg);
+  box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035);
 }
 
-.referenceJudgmentRow:last-child {
-  padding-bottom: 8px;
+.referenceJudgmentCard[data-readout-status="returned"] {
+  border-left: 3px solid var(--moss-color-info-500);
+  background: var(--moss-color-info-50);
 }
 
-.referenceJudgmentRow span {
+.referenceJudgmentCard[data-readout-status="pending"] {
+  border-left: 3px solid var(--moss-color-neutral-400);
+  background: var(--moss-color-neutral-50);
+}
+
+.referenceJudgmentCard span {
   color: var(--moss-color-neutral-600);
   font-size: 12px;
   font-weight: 800;
 }
 
-.referenceJudgmentRow strong {
+.referenceJudgmentCard[data-readout-status="returned"] strong {
+  color: var(--moss-color-info-700);
+}
+
+.referenceJudgmentCard[data-readout-status="pending"] strong {
+  color: var(--moss-color-neutral-600);
+}
+
+.referenceJudgmentCard strong {
   overflow: hidden;
-  color: var(--moss-color-primary-900);
   font-size: 12px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.referenceJudgmentRow small {
-  grid-column: 1 / -1;
+.referenceJudgmentCard small {
   overflow: hidden;
   color: var(--moss-color-neutral-600);
   font-size: 10px;
@@ -1024,8 +1048,7 @@
   white-space: nowrap;
 }
 
-.referenceJudgmentRow em {
-  grid-column: 1 / -1;
+.referenceJudgmentCard em {
   overflow: hidden;
   color: var(--moss-color-neutral-500);
   font-size: 10px;
@@ -2103,9 +2126,14 @@
     scroll-snap-align: start;
   }
 
-  .referenceJudgmentRow {
+  .referenceJudgmentMatrix {
     grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+  }
+
+  .referenceJudgmentCard strong,
+  .referenceJudgmentCard small,
+  .referenceJudgmentCard em {
+    white-space: normal;
   }
 
   .referenceKpiValue {
