@@ -205,7 +205,7 @@ def _execute_balance_analysis_materialization(
             zqtz_fact_rows.append(native_row)
             if native_row.source_version:
                 source_versions.add(native_row.source_version)
-        fx_rate, fx_source_version = repo.lookup_fx_rate(
+        fx_lookup = repo.lookup_formal_fx_rate(
             report_date=report_date,
             base_currency=row.currency_code,
         )
@@ -214,14 +214,14 @@ def _execute_balance_analysis_materialization(
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="CNY",
-            fx_rate=fx_rate,
+            fx_rate=fx_lookup.rate,
         )
         if cny_row is not None:
             zqtz_fact_rows.append(cny_row)
             if cny_row.source_version:
                 source_versions.add(cny_row.source_version)
-        if fx_source_version and fx_source_version != "sv_fx_identity":
-            fx_source_versions.add(fx_source_version)
+        if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
+            fx_source_versions.add(fx_lookup.source_version)
 
     for row in tyw_snapshot_rows:
         position_scope = row.position_side if row.position_side in {"asset", "liability"} else "all"
@@ -235,7 +235,7 @@ def _execute_balance_analysis_materialization(
         tyw_fact_rows.append(native_row)
         if native_row.source_version:
             source_versions.add(native_row.source_version)
-        fx_rate, fx_source_version = repo.lookup_fx_rate(
+        fx_lookup = repo.lookup_formal_fx_rate(
             report_date=report_date,
             base_currency=row.currency_code,
         )
@@ -244,13 +244,13 @@ def _execute_balance_analysis_materialization(
             invest_type_raw=invest_type_raw,
             position_scope=position_scope,
             currency_basis="CNY",
-            fx_rate=fx_rate,
+            fx_rate=fx_lookup.rate,
         )
         tyw_fact_rows.append(cny_row)
         if cny_row.source_version:
             source_versions.add(cny_row.source_version)
-        if fx_source_version and fx_source_version != "sv_fx_identity":
-            fx_source_versions.add(fx_source_version)
+        if fx_lookup.source_version and fx_lookup.source_version != "sv_fx_identity":
+            fx_source_versions.add(fx_lookup.source_version)
 
     combined_source_version = "__".join(sorted(source_versions | fx_source_versions)) or "sv_balance_analysis_empty"
     try:
