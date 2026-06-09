@@ -113,7 +113,7 @@ function buildActionQueue({
     queue.push({
       key: "failed-read",
       rank: "P0",
-      title: `${failedStatus.label}读链路复核`,
+      title: "市场数据读链路复核",
       evidence: compactParts([failedStatus.detail]),
       evidencePack: compactParts([failedStatus.label, failedStatus.detail, "market-data"]),
       task: {
@@ -238,8 +238,8 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
     <section className={marketStyles.actionQueue} data-testid="module-home-market-actions">
       <div className={marketStyles.actionQueueHeader}>
         <span>交易预案</span>
-        <strong>待复核动作</strong>
-        <em>报价 / 曲线 / 跨资产复核</em>
+        <strong>待复核动作 / 报价 / 曲线 / 跨资产复核</strong>
+        <em>Action Queue · Owner / SLA / Gate / Evidence Pack</em>
       </div>
       <div className={marketStyles.actionQueueList}>
         {items.map((item) => {
@@ -301,9 +301,8 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
         })}
       </div>
       <div
-        className={`${marketStyles.actionQueueSourceGate} ${marketStyles.marketAuditOnly}`}
+        className={marketStyles.actionQueueSourceGate}
         data-testid="module-home-status-strip"
-        hidden
       >
         <span>Source Gate</span>
         <strong>{view.stateLabel}</strong>

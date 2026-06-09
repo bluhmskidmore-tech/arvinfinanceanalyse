@@ -62,6 +62,14 @@ function findMarketRow(panel: MarketDetailPanel | undefined, patterns: string[])
   return panel?.rows.find((row) => patterns.some((pattern) => `${row.key} ${row.label} ${row.source}`.includes(pattern)));
 }
 
+function marketCue(rateParts: string[], crossAssetLabel: string | undefined) {
+  const crossAssetText = crossAssetLabel ?? "跨资产信号";
+  if (rateParts.length === 0) {
+    return `先确认利率与流动性信号是否已返回，再看${crossAssetText}对债市判断的传导。`;
+  }
+  return `先确认 ${rateParts.join(" 与 ")}，再看${crossAssetText}对债市判断的传导。`;
+}
+
 type MarketHomeLayoutProps = {
   view: ModuleHomeView;
   config: ModuleWorkbenchHomeConfig;
@@ -134,15 +142,13 @@ export default function MarketHomeLayout({
       tone: macroStanceRow?.tone ?? macroOverviewPanel?.tone ?? "muted",
     },
   ];
-  const primaryEvidenceSegments = evidenceSegments(primaryBriefing?.evidence);
   const sourceScopeSegments = sourceSegments(view.sourceScope);
-  const marketKpis = view.kpis.length > 0 ? view.kpis : marketPulse;
-  const instrumentFacts = [
-    { label: "最新行情", value: `${latestTradeDate || "—"}` },
-    { label: "正式序列", value: `${formalTradeDate || "—"}` },
-    { label: "来源口径", value: view.sourceScope || "—" },
-    { label: "当前状态", value: view.stateLabel },
-  ];
+  const marketKpis = marketPulse.slice(0, 3);
+  const marketReadingOrder = "先看利率曲线与流动性，再看跨资产传导，必要时进入下钻复核。";
+  const marketJudgementCue = marketCue(
+    compactMarketParts([tenYearRow ? "10Y" : null, liquidityRow?.label]),
+    crossAssetRow?.label,
+  );
 
   const tabItems = useMemo(() => {
     const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
@@ -170,11 +176,14 @@ export default function MarketHomeLayout({
           </div>
           <div className={marketStyles.topbarCopy}>
             <p className={marketStyles.topbarSummary}>{view.question}</p>
-            <p className={marketStyles.topbarScope}>{view.summary}</p>
+            <p className={marketStyles.topbarScope}>{marketReadingOrder}</p>
           </div>
         </div>
-        <div className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}>
-          <span className={marketStyles.marketSearchBox}>搜索利率 / 曲线 / 跨资产</span>
+        <div
+          className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}
+          data-testid="module-home-market-topbar-audit-meta"
+          hidden
+        >
           <span className={statePillClass(stateTone)} data-tone={stateTone}>
             {view.stateLabel}
           </span>
@@ -190,20 +199,6 @@ export default function MarketHomeLayout({
           data-testid="module-home-market-cockpit"
           className={marketStyles.marketInstitutionalCockpit}
         >
-          <section className={marketStyles.marketInstrumentStrip} data-testid="module-home-market-instrument-strip">
-            <div className={marketStyles.marketInstrumentTitle}>
-              <strong>市场概览</strong>
-              <span>利率 / 流动性 / 跨资产</span>
-            </div>
-            <div className={marketStyles.marketInstrumentFacts}>
-              {instrumentFacts.map((item) => (
-                <span key={item.label}>
-                  <em>{item.label}</em>
-                  <b>{item.value}</b>
-                </span>
-              ))}
-            </div>
-          </section>
           <section
             data-testid="module-home-market-primary-grid"
             className={marketStyles.marketPrimaryGrid}
@@ -216,12 +211,11 @@ export default function MarketHomeLayout({
               <span className={dhStyles.dhTerminalEyebrow}>本日市场判断</span>
               <h2>{primaryBriefing.conclusion}</h2>
               <p className={`${dhStyles.dhImpact} ${marketStyles.marketHeroEvidence}`} data-testid="module-home-market-hero-evidence">
-                {(primaryEvidenceSegments.length > 0 ? primaryEvidenceSegments : [primaryBriefing.evidence]).map((part) => (
-                  <span key={part}>{part}</span>
-                ))}
+                <span>{marketJudgementCue}</span>
               </p>
               <div className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`} data-testid="module-home-market-hero-meta" hidden>
                 <span>{view.stateDetail}</span>
+                <span>{primaryBriefing.evidence}</span>
                 <span className={marketStyles.marketHeroSources}>
                   {sourceScopeSegments.length > 0
                     ? sourceScopeSegments.map((part, index) => <em key={part}>{index > 0 ? ` / ${part}` : part}</em>)
@@ -253,12 +247,14 @@ export default function MarketHomeLayout({
                 </section>
 
                 {secondaryBriefings.length > 0 ? (
-                  <section className={marketStyles.insightRow}>
+                  <section className={`${marketStyles.insightRow} ${marketStyles.marketAuditOnly}`} hidden>
                     {secondaryBriefings.map((item) => (
                       <article className={marketStyles.insightCell} key={item.title}>
                         <span className={marketStyles.insightLabel}>{item.title}</span>
                         <p className={marketStyles.insightCopy}>{item.conclusion}</p>
-                        <span className={marketStyles.insightEvidence}>{item.evidence}</span>
+                        <span className={`${marketStyles.insightEvidence} ${marketStyles.marketAuditOnly}`} hidden>
+                          {item.evidence}
+                        </span>
                       </article>
                     ))}
                   </section>
@@ -294,12 +290,15 @@ export default function MarketHomeLayout({
                 <span>交易检查清单</span>
                 <strong data-tone={stateTone}>{view.stateLabel}</strong>
               </div>
-              <p className={marketStyles.evidenceRailState} data-testid="module-home-market-evidence-rail-state">
+              <p
+                className={marketStyles.evidenceRailState}
+                data-testid="module-home-market-evidence-rail-state"
+              >
                 行情 {latestTradeDate || "—"}，正式序列 {formalTradeDate || "—"}；{view.stateLabel}。
               </p>
 
               <div className={marketStyles.evidenceRailMetricGrid} data-testid="module-home-market-evidence-rail-metrics">
-                {marketKpis.slice(0, 5).map((item) => (
+                {marketKpis.map((item) => (
                   <div className={marketStyles.evidenceRailMetric} data-tone={item.tone} key={item.key}>
                     <span>{item.label}</span>
                     <strong className={dhStyles.dhNum}>{item.value}</strong>
@@ -307,21 +306,16 @@ export default function MarketHomeLayout({
                 ))}
               </div>
 
-              {primaryBriefing ? (
-                <section className={marketStyles.evidenceRailCard} data-tone={primaryBriefing.tone}>
-                  <span className={marketStyles.evidenceRailLabel}>交易结论</span>
-                  <strong>{primaryBriefing.conclusion}</strong>
-                  <p>{primaryBriefing.evidence}</p>
-                </section>
-              ) : null}
-
-              <section className={marketStyles.evidenceRailCard} data-testid="module-home-market-audit-status">
+              <section
+                className={marketStyles.evidenceRailCard}
+                data-testid="module-home-market-audit-status"
+              >
                 <span className={marketStyles.evidenceRailLabel}>约束检查结果</span>
                 <div className={marketStyles.evidenceRailStatusList}>
                   {view.statuses.slice(0, 5).map((item) => (
                     <span data-tone={item.tone} key={item.key}>
                       <b>{item.label}</b>
-                      <em>{compactMarketParts([item.value, item.detail]).join(" / ") || "待返回"}</em>
+                      <em>{item.value || item.detail || "待返回"}</em>
                     </span>
                   ))}
                 </div>

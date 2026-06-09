@@ -2096,6 +2096,7 @@
 .evidenceRailCard[hidden],
 .decisionMatrixCell[hidden],
 .decisionMatrixMeta[hidden],
+.decisionMatrixEvidence[hidden],
 .decisionMatrixCell p[hidden],
 .actionQueueTaskMeta[hidden],
 .actionQueueGate[hidden],

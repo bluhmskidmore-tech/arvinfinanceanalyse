@@ -1106,28 +1106,33 @@ describe("MarketHomePage", () => {
     const evidenceRail = within(page).getByTestId("module-home-market-evidence-rail");
 
     expect(cockpit.className).toEqual(expect.stringContaining("marketInstitutionalCockpit"));
-    expect(within(page).getByTestId("module-home-toolbar")).toHaveTextContent("搜索利率 / 曲线 / 跨资产");
-    expect(within(page).getByTestId("module-home-market-instrument-strip")).toHaveTextContent("市场概览");
-    expect(within(page).getByTestId("module-home-market-instrument-strip")).toHaveTextContent("利率 / 流动性 / 跨资产");
     expect(primaryGrid).toContainElement(within(page).getByTestId("module-home-briefing"));
     expect(primaryGrid).toContainElement(evidenceRail);
     expect(within(evidenceRail).getByText("交易检查清单")).toBeVisible();
     const evidenceRailMetrics = within(evidenceRail).getByTestId("module-home-market-evidence-rail-metrics");
-    expect(within(evidenceRailMetrics).getByText("最新行情")).toBeVisible();
-    expect(within(evidenceRailMetrics).getByText("10年利率")).toBeVisible();
-    expect(within(evidenceRailMetrics).getByText("正式利率")).toBeVisible();
-    expect(within(evidenceRailMetrics).getByText("目录序列")).toBeVisible();
+    expect(within(evidenceRailMetrics).getByText("10Y国债")).toBeVisible();
+    expect(within(evidenceRailMetrics).getByText("流动性")).toBeVisible();
+    expect(within(evidenceRailMetrics).getByText("跨资产")).toBeVisible();
     const kpiStrip = within(page).getByTestId("module-home-kpi-strip");
-    expect(kpiStrip).toHaveTextContent("最新行情");
-    expect(kpiStrip).toHaveTextContent("10年利率");
-    expect(kpiStrip).toHaveTextContent("正式利率");
-    expect(kpiStrip).toHaveTextContent("目录序列");
+    expect(kpiStrip).toHaveTextContent("10Y国债");
+    expect(kpiStrip).toHaveTextContent("流动性");
+    expect(kpiStrip).toHaveTextContent("跨资产");
+    expect(kpiStrip).not.toHaveTextContent("最新行情");
+    expect(kpiStrip).not.toHaveTextContent("正式利率");
+    expect(kpiStrip).not.toHaveTextContent("目录序列");
+    expect(kpiStrip).not.toHaveTextContent("工具命中率");
     expect(within(evidenceRail).getByTestId("module-home-market-evidence-rail-state")).toBeVisible();
     expect(within(evidenceRail).getByTestId("module-home-market-audit-status")).toBeVisible();
     expect(within(evidenceRail).getByTestId("module-home-market-audit-status")).toHaveTextContent("约束检查结果");
     expect(evidenceRail).not.toHaveTextContent("AI 决策舱");
-    expect(within(page).queryByTestId("module-home-market-topbar-audit-meta")).not.toBeInTheDocument();
-    expect(within(evidenceRail).queryByText("Source Gate")).not.toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-toolbar")).toHaveTextContent(
+      "先看利率曲线与流动性，再看跨资产传导，必要时进入下钻复核。",
+    );
+    const topbarAuditMeta = within(page).getByTestId("module-home-market-topbar-audit-meta");
+    expect(topbarAuditMeta).toHaveAttribute("hidden");
+    expect(within(topbarAuditMeta).getByText("读取中")).toHaveAttribute("data-tone", "muted");
+    expect(within(topbarAuditMeta).getByText("读取中")).not.toBeVisible();
+    expect(within(page).getByTestId("module-home-status-strip")).toHaveTextContent("Source Gate");
     expect(within(evidenceRail).getByRole("link", { name: "市场数据" })).toHaveAttribute("href", "/market-data");
     expect(within(evidenceRail).getByRole("link", { name: "宏观工具" })).toHaveAttribute("href", "/macro-toolkit");
     expect(within(evidenceRail).getByRole("link", { name: "跨资产" })).toHaveAttribute("href", "/cross-asset");
@@ -1144,9 +1149,9 @@ describe("MarketHomePage", () => {
     expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("交易建议与约束检查");
     expect(within(page).getByTestId("module-home-market-matrix")).toHaveTextContent("待曲线核验");
     expect(within(page).queryByTestId("module-home-market-command")).not.toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-status-strip")).toHaveAttribute("hidden");
+    expect(within(page).getByTestId("module-home-status-strip")).toBeVisible();
     expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("交易预案");
-    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("待复核动作");
+    expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("待复核动作 / 报价 / 曲线 / 跨资产复核");
     expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("补齐国债/国开曲线核验");
     expect(within(page).getByTestId("module-home-market-hero-evidence")).toBeInTheDocument();
     const heroMeta = within(page).getByTestId("module-home-market-hero-meta");
@@ -1305,16 +1310,21 @@ describe("MarketHomePage", () => {
     expect(matrixRateCell.textContent).toContain("2026-05-29 / 2026-05-29 / -1bp / CA.CN_GOV_10Y");
     expect(matrixRateCell.textContent).not.toContain("2026-05-292026-05-29");
     const keyRateAction = within(page).getByTestId("module-home-market-action-key-rate-check");
-    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence")).toHaveTextContent(
+    const keyRateEvidence = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence");
+    const keyRateTaskMeta = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta");
+    const keyRateGate = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-gate");
+    const keyRateEvidencePack = within(keyRateAction).getByTestId(
+      "module-home-market-action-key-rate-check-evidence-pack",
+    );
+    expect(keyRateEvidence).toHaveTextContent(
       "10Y 国债 / 1.71% / -1bp / 2026-05-29",
     );
-    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta")).toBeVisible();
-    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-gate")).toBeVisible();
-    expect(
-      within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence-pack"),
-    ).toBeVisible();
+    expect(keyRateEvidence).not.toHaveTextContent("CA.CN_GOV_10Y");
+    expect(keyRateTaskMeta).toBeVisible();
+    expect(keyRateGate).toBeVisible();
+    expect(keyRateEvidencePack).toBeVisible();
+    expect(keyRateEvidencePack).toHaveTextContent("Evidence Pack 10Y 国债 / CA.CN_GOV_10Y");
     expect(keyRateAction.textContent).toContain(" / 10Y 国债 / 1.71%");
-    expect(keyRateAction.textContent).toContain("CA.CN_GOV_10Y");
     expect(keyRateAction.textContent).not.toContain("变动10Y 国债");
   });
 

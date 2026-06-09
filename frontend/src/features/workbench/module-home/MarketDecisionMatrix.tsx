@@ -22,7 +22,6 @@ type MatrixItem = {
   meta: string[];
   evidence: string[];
   tone: ModuleHomeTone;
-  auditOnly?: boolean;
 };
 
 function toneClass(tone: ModuleHomeTone) {
@@ -172,14 +171,13 @@ export function MarketDecisionMatrix({
       meta: compactParts([formalPanel?.stateLabel, `最新 ${latestTradeDate || "-"}`, `正式 ${formalTradeDate || "-"}`]),
       evidence: catalogPanel ? panelCoverage(catalogPanel, formalTradeDate) : compactParts([view.sourceScope]),
       tone: errorCount > 0 ? "error" : watchCount > 0 ? "watch" : "ok",
-      auditOnly: true,
     },
   ];
   return (
     <section className={marketStyles.decisionMatrix} data-testid="module-home-market-matrix">
       <div className={marketStyles.decisionMatrixHeader}>
         <span>交易建议与约束检查</span>
-        <em>报价 / 约束 / 风险 / 规模</em>
+        <em>利率 / 流动性 / 跨资产 / 宏观</em>
         <i className={marketStyles.marketAuditOnly} hidden>
           Market Decision Tape
         </i>
