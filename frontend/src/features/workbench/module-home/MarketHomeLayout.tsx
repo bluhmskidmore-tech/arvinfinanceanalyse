@@ -287,12 +287,15 @@ export default function MarketHomeLayout({
               className={marketStyles.evidenceRail}
             >
               <div className={marketStyles.evidenceRailHeader}>
-                <span>交易检查清单</span>
-                <strong data-tone={stateTone}>{view.stateLabel}</strong>
+                <span>市场快照</span>
+                <strong data-tone={stateTone} hidden>
+                  {view.stateLabel}
+                </strong>
               </div>
               <p
                 className={marketStyles.evidenceRailState}
                 data-testid="module-home-market-evidence-rail-state"
+                hidden
               >
                 行情 {latestTradeDate || "—"}，正式序列 {formalTradeDate || "—"}；{view.stateLabel}。
               </p>
@@ -309,6 +312,7 @@ export default function MarketHomeLayout({
               <section
                 className={marketStyles.evidenceRailCard}
                 data-testid="module-home-market-audit-status"
+                hidden
               >
                 <span className={marketStyles.evidenceRailLabel}>约束检查结果</span>
                 <div className={marketStyles.evidenceRailStatusList}>

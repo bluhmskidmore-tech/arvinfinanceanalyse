@@ -22,6 +22,7 @@ type MatrixItem = {
   meta: string[];
   evidence: string[];
   tone: ModuleHomeTone;
+  auditOnly?: boolean;
 };
 
 function toneClass(tone: ModuleHomeTone) {
@@ -171,12 +172,13 @@ export function MarketDecisionMatrix({
       meta: compactParts([formalPanel?.stateLabel, `最新 ${latestTradeDate || "-"}`, `正式 ${formalTradeDate || "-"}`]),
       evidence: catalogPanel ? panelCoverage(catalogPanel, formalTradeDate) : compactParts([view.sourceScope]),
       tone: errorCount > 0 ? "error" : watchCount > 0 ? "watch" : "ok",
+      auditOnly: true,
     },
   ];
   return (
     <section className={marketStyles.decisionMatrix} data-testid="module-home-market-matrix">
       <div className={marketStyles.decisionMatrixHeader}>
-        <span>交易建议与约束检查</span>
+        <span>市场决策要点</span>
         <em>利率 / 流动性 / 跨资产 / 宏观</em>
         <i className={marketStyles.marketAuditOnly} hidden>
           Market Decision Tape
@@ -188,6 +190,7 @@ export function MarketDecisionMatrix({
             className={marketStyles.decisionMatrixCell}
             data-testid={`module-home-market-matrix-cell-${item.key}`}
             data-tone={item.tone}
+            hidden={item.auditOnly}
             key={item.key}
           >
             <span>{item.label}</span>
@@ -205,6 +208,7 @@ export function MarketDecisionMatrix({
               aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
               className={marketStyles.decisionMatrixMeta}
               data-testid={`module-home-market-matrix-cell-${item.key}-meta`}
+              hidden
             >
               {item.meta.length > 0 ? renderFieldSegments(item.meta) : <span>待返回</span>}
             </em>
@@ -213,6 +217,7 @@ export function MarketDecisionMatrix({
               className={marketStyles.decisionMatrixEvidence}
               aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
               data-testid={`module-home-market-matrix-cell-${item.key}-evidence`}
+              hidden
             >
               {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
             </p>
