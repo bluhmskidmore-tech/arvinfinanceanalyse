@@ -387,7 +387,7 @@ MTR-RSK-001 fixed-income convention note:
 
 当前状态：
 
-- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 19 个 capture-ready 样本包。
+- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 20 个 capture-ready 样本包。
 - 该矩阵只使用本文件已有 `metric_id`，不新增或猜测产品分类指标。
 - 仍有部分样本是结构 / warning / narrative freeze，不等同于完整指标字典冻结。
 
@@ -493,7 +493,7 @@ Guardrails:
 - 本次会话未提供 `moss-metric-contracts`、`moss-lineage-evidence`、`moss-data-catalog` MCP；以下条目仅依据仓库内可读证据：`docs/page_contracts.md`、`docs/calc_rules.md`、`docs/data_contracts.md`、页面 `pages/*.tsx` / adapter / client、`backend/app/schemas/*.py`、相关 route。
 - `status=candidate` 表示页面首屏已显示、字段可追溯到 live endpoint，但 page contract / golden sample / 业务审批闭环仍未完成；因此统一保留 `pending_confirmation=true`。
 - `status=excluded` 表示当前页面虽展示该卡片，但它是过滤上下文、文本状态、workbook-local 汇总、或 analytical-only / mixed-source 说明面，不在本次补录中升格为正式 `MTR-*`。
-- 本节不会把 capture-ready 样本误写成正式审批；除 `GS-BOND-HEADLINE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A`、`GS-CONCENTRATION-MONITOR-A` 与已存在的 `GS-PROD-CAT-PNL-A` 外，不新增任何 `bound_sample_id`。
+- 本节不会把 capture-ready 样本误写成正式审批；除 `GS-BOND-HEADLINE-A`、`GS-AVERAGE-BALANCE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A`、`GS-CONCENTRATION-MONITOR-A` 与已存在的 `GS-PROD-CAT-PNL-A` 外，不新增任何 `bound_sample_id`。
 
 ### 15.1 页面覆盖矩阵
 
@@ -501,7 +501,7 @@ Guardrails:
 | --- | --- | --- | --- | --- |
 | `bond-dashboard` | 新增 4 条 `candidate`：`MTR-BOND-001`~`MTR-BOND-004` | `PAGE-BOND-001` | `GS-BOND-HEADLINE-A` | 页面 headline DTO 已 freeze，但 §12.5 仍将字典级批准视为 gap，因此保留 `pending_confirmation=true` |
 | `positions` | 新增 2 条 `candidate`：`MTR-POS-001`~`MTR-POS-002` | `PAGE-POS-001` | `none` | 首屏当前是筛选上下文；本次只登记两个列表总数指标 |
-| `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `none` | 页面文案已明确为分析口径子视图，不提升为正式口径 |
+| `average-balance` | 新增 3 条 `candidate`：`MTR-ADB-001`~`MTR-ADB-003` | `PAGE-CONTRACT-PENDING:/average-balance` | `GS-AVERAGE-BALANCE-A` | dedicated daily DTO 已 capture-ready 但未审批；页面文案已明确为分析口径子视图，不提升为正式口径；monthly NIM 仍 pending |
 | `ledger-pnl` | 新增 3 条 `candidate`：`MTR-LPN-001`~`MTR-LPN-003` | `PAGE-LEDGER-PNL-001` | `GS-LEDGER-PNL-SUMMARY-A` | dedicated summary DTO 已 capture-ready 但未审批；三条 summary 卡仍为 candidate，不能替代 formal PnL 或 product-category PnL |
 | `market-data` | 新增 1 条 `candidate`：`MTR-MKT-001` | `PAGE-MKT-001` | `none` | 仅登记宏观目录数 candidate；formal rates 片段不在本表升格为新的 formal `MTR-*` |
 | `operations-analysis` | 复用既有 `MTR-PCP-001`、`MTR-PCP-002`、`MTR-PCP-003` | `PAGE-OPS-001` | `GS-PROD-CAT-PNL-A`（复用上游 formal headline 真值） | `PAGE-OPS-001` 已对齐当前 product-category headline 实现；balance overview 仅为 supplemental topic-entry evidence；macro/FX/news 仍由 `GAP-OPS-MACRO-FX` 限定 |
@@ -528,8 +528,8 @@ Guardrails:
 
 #### 15.2.3 `average-balance`
 
-- `MTR-ADB-001` 区间日均总资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=none`; `pending_confirmation=true`.
-- `MTR-ADB-002` 区间日均总负债: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=none`; `pending_confirmation=true`.
+- `MTR-ADB-001` 区间日均总资产: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=GS-AVERAGE-BALANCE-A`; `pending_confirmation=true`.
+- `MTR-ADB-002` 区间日均总负债: `status=candidate`; `display_unit=亿元`; `precision=2`; `sign_rule=unsigned amount`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb`; `owner=TBD`; `last_reviewed=2026-06-09`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=GS-AVERAGE-BALANCE-A`; `pending_confirmation=true`.
 - `MTR-ADB-003` 年初至今利差: `status=candidate`; `display_unit=%`; `precision=2`; `sign_rule=signed percent; preserve source sign`; `null_rule=null -> --`; `source_endpoint=GET /api/analysis/adb/monthly`; `owner=TBD`; `last_reviewed=2026-05-10`; `bound_page_id=PAGE-CONTRACT-PENDING:/average-balance`; `bound_sample_id=none`; `pending_confirmation=true`.
 
 #### 15.2.4 `ledger-pnl`

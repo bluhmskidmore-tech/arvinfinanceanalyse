@@ -3211,11 +3211,14 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
         assert payload["primary_api"] == "/api/analysis/adb"
         assert "/api/analysis/adb/comparison" in payload["supporting_apis"]
         assert "/api/analysis/adb/monthly" in payload["supporting_apis"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == ["tests/golden_samples/GS-AVERAGE-BALANCE-A"]
         assert any("MTR-ADB-001" in item for item in payload["truth_chain"])
         assert any("PAGE-CONTRACT-PENDING:/average-balance" in item for item in payload["truth_chain"])
+        assert any("GS-AVERAGE-BALANCE-A" in item for item in payload["truth_chain"])
+        assert "tests/test_golden_samples_capture_ready.py" in payload["test_touchpoints"]
         assert any("not formal balance truth" in item for item in payload["guardrails"])
-        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("dedicated capture-ready daily ADB DTO sample" in item for item in payload["verification_focus"])
+        assert not any("No dedicated golden sample" in item for item in payload["verification_focus"])
         assert not any("formal_use_allowed=true" in item for item in payload["truth_chain"])
         assert not any("PAGE-BALANCE-001 formal truth" in item and "replace" in item for item in payload["guardrails"])
     finally:

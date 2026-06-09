@@ -85,6 +85,7 @@ OPTIONAL_DIRECT_EVIDENCE_PAGE_SLUGS = (
     "pnl-attribution",
     "stock-analysis",
     "cashflow-projection",
+    "average-balance",
     "concentration-monitor",
     "team-performance",
     "news-events",
@@ -264,6 +265,10 @@ def _governance_record_commands(page_slug: str) -> list[str]:
         "cashflow-projection": [
             "python scripts/emit_cashflow_projection_governance_record.py",
             "python scripts/emit_cashflow_projection_governance_record.py --write",
+        ],
+        "average-balance": [
+            "python scripts/emit_average_balance_governance_record.py",
+            "python scripts/emit_average_balance_governance_record.py --write",
         ],
         "decision-items": [
             "python scripts/emit_decision_items_governance_record.py",

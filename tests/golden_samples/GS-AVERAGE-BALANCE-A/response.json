@@ -1,0 +1,84 @@
+{
+  "calibration": {
+    "calibration_note": "资产负债范围，人民币币种，含同业（同业以本金计）",
+    "currency_basis": "CNY",
+    "data_basis": "formal_facts",
+    "position_scope": "all",
+    "source_families": [
+      "zqtz",
+      "tyw"
+    ],
+    "tyw_amount_semantics": "principal_as_market_and_amortized"
+  },
+  "result_meta": {
+    "amount_currency_basis": null,
+    "amount_currency_basis_note": null,
+    "as_of_date": null,
+    "basis": "analytical",
+    "cache_key": null,
+    "cache_version": "cv_adb_analysis_v1",
+    "date_basis": null,
+    "evidence_rows": null,
+    "fallback_date": null,
+    "fallback_mode": "none",
+    "filters_applied": {
+      "end_date": "2025-12-31",
+      "start_date": "2025-12-31"
+    },
+    "formal_use_allowed": false,
+    "generated_at": "2026-06-09T13:51:58.012231Z",
+    "next_drill": [],
+    "quality_flag": "ok",
+    "requested_report_date": null,
+    "resolved_report_date": null,
+    "result_kind": "adb.daily",
+    "rule_version": "rv_adb_gs_a",
+    "scenario_flag": false,
+    "source_surface": null,
+    "source_version": "sv_adb_gs_a_tyw__sv_adb_gs_a_zqtz",
+    "tables_used": [
+      "fact_formal_zqtz_balance_daily",
+      "fact_formal_tyw_balance_daily"
+    ],
+    "trace_id": "tr_adb_daily",
+    "vendor_status": "ok",
+    "vendor_version": "vv_none"
+  },
+  "result": {
+    "breakdown": [
+      {
+        "avg_balance": 120000000.0,
+        "category": "国债（含凭证式国债）",
+        "side": "Asset"
+      },
+      {
+        "avg_balance": 50000000.0,
+        "category": "同业拆出/存放",
+        "side": "Asset"
+      },
+      {
+        "avg_balance": 30000000.0,
+        "category": "Issuance-国债",
+        "side": "Liability"
+      },
+      {
+        "avg_balance": 20000000.0,
+        "category": "同业拆入/存放",
+        "side": "Liability"
+      }
+    ],
+    "summary": {
+      "end_spot_assets": 170000000.0,
+      "end_spot_liabilities": 50000000.0,
+      "total_avg_assets": 170000000.0,
+      "total_avg_liabilities": 50000000.0
+    },
+    "trend": [
+      {
+        "daily_balance": 170000000.0,
+        "date": "2025-12-31",
+        "moving_average_30d": 170000000.0
+      }
+    ]
+  }
+}

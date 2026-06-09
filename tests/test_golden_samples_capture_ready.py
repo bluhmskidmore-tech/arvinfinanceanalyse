@@ -42,6 +42,8 @@ PRODUCT_CATEGORY_PNL_READ_HEADERS = {
 }
 RISK_TENSOR_SAMPLE_PATHS = {"/api/risk/tensor"}
 RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
+AVERAGE_BALANCE_SAMPLE_PATHS = {"/api/analysis/adb"}
+AVERAGE_BALANCE_READ_HEADERS = {"X-User-Id": "average-balance-read-user", "X-User-Role": "viewer"}
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -185,6 +187,132 @@ def _setup_risk_warn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_risk_tensor_api.py",
     )
     module._configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch)
+
+
+def _setup_average_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import duckdb
+
+    module = load_module(
+        "backend.app.repositories.balance_analysis_repo",
+        "backend/app/repositories/balance_analysis_repo.py",
+    )
+    duckdb_path = tmp_path / "average-balance.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        module.ensure_balance_analysis_tables(conn)
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, account_category,
+              asset_class, bond_type, invest_type_std, accounting_basis, position_scope,
+              currency_basis, currency_code, market_value_amount, amortized_cost_amount,
+              accrued_interest_amount, coupon_rate, ytm_value, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-12-31",
+                "GS-ADB-BOND-A",
+                "Average Balance Desk",
+                "ADB",
+                "Hold to maturity",
+                "\u503a\u5238\u7c7b",
+                "\u56fd\u503a",
+                "H",
+                "AC",
+                "asset",
+                "CNY",
+                "CNY",
+                Decimal("120000000.00000000"),
+                Decimal("119000000.00000000"),
+                Decimal("1000000.00000000"),
+                Decimal("2.00000000"),
+                Decimal("2.50000000"),
+                False,
+                "sv_adb_gs_a_zqtz",
+                "rv_adb_gs_a",
+                "ib_adb_gs_a",
+                "tr_adb_gs_a_z1",
+                "2025-12-31",
+                "GS-ADB-BOND-L",
+                "Average Balance Desk",
+                "ADB",
+                "Issued bond",
+                "\u503a\u5238\u7c7b",
+                "\u56fd\u503a",
+                "H",
+                "AC",
+                "liability",
+                "CNY",
+                "CNY",
+                Decimal("30000000.00000000"),
+                Decimal("30000000.00000000"),
+                Decimal("0.00000000"),
+                Decimal("1.80000000"),
+                Decimal("1.80000000"),
+                True,
+                "sv_adb_gs_a_zqtz",
+                "rv_adb_gs_a",
+                "ib_adb_gs_a",
+                "tr_adb_gs_a_z2",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              invest_type_std, accounting_basis, position_scope, currency_basis,
+              currency_code, principal_amount, accrued_interest_amount, funding_cost_rate,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-12-31",
+                "GS-ADB-TYW-A",
+                "\u62c6\u653e\u540c\u4e1a",
+                "asset",
+                "Bank A",
+                "H",
+                "AC",
+                "asset",
+                "CNY",
+                "CNY",
+                Decimal("50000000.00000000"),
+                Decimal("0.00000000"),
+                Decimal("2.20000000"),
+                "sv_adb_gs_a_tyw",
+                "rv_adb_gs_a",
+                "ib_adb_gs_a",
+                "tr_adb_gs_a_t1",
+                "2025-12-31",
+                "GS-ADB-TYW-L",
+                "\u540c\u4e1a\u5b58\u653e",
+                "liability",
+                "Bank B",
+                "H",
+                "AC",
+                "liability",
+                "CNY",
+                "CNY",
+                Decimal("20000000.00000000"),
+                Decimal("0.00000000"),
+                Decimal("1.60000000"),
+                "sv_adb_gs_a_tyw",
+                "rv_adb_gs_a",
+                "ib_adb_gs_a",
+                "tr_adb_gs_a_t2",
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "average-balance-governance"))
+    get_settings.cache_clear()
 
 
 def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -969,6 +1097,8 @@ def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.Monk
         return _run_stock_analysis_observation_payload(request, tmp_path)
     if sample_id == "GS-CASHFLOW-PROJECTION-A":
         return _run_cashflow_projection_payload(request)
+    if sample_id == "GS-AVERAGE-BALANCE-A":
+        return _run_average_balance_payload(request)
     return _run_request_payload(request, tmp_path, monkeypatch)
 
 
@@ -1023,6 +1153,20 @@ def _run_cashflow_projection_payload(request: dict[str, Any]) -> dict[str, Any]:
     payload["result_meta"]["generated_at"] = "2026-06-09T00:00:00Z"
     payload["result"]["computed_at"] = "2026-06-09T00:00:00Z"
     return payload
+
+
+def _run_average_balance_payload(request: dict[str, Any]) -> dict[str, Any]:
+    service_mod = sys.modules.get("backend.app.services.adb_analysis_service")
+    if service_mod is None:
+        service_mod = load_module(
+            "backend.app.services.adb_analysis_service",
+            "backend/app/services/adb_analysis_service.py",
+        )
+    params = dict(request.get("params") or {})
+    return service_mod.adb_envelope_for_dates(
+        str(params["start_date"]),
+        str(params["end_date"]),
+    )
 
 
 def _run_request_payload(
@@ -1120,6 +1264,14 @@ def _run_request_payload(
             resource="risk_tensor",
         )
         headers = RISK_TENSOR_READ_HEADERS
+    elif request["path"] in AVERAGE_BALANCE_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="average-balance-read-scope.db",
+            resource="adb_analysis",
+        )
+        headers = AVERAGE_BALANCE_READ_HEADERS
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
         request["method"],
@@ -1784,6 +1936,33 @@ def _validate_stock_analysis_observation(actual: dict[str, Any], expected: dict[
     )
 
 
+def _validate_average_balance(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result", "summary"),
+            ("result", "trend"),
+            ("result", "breakdown"),
+        ],
+    )
+
+
 @dataclass(frozen=True)
 class CaptureReadyCase:
     setup: Any
@@ -1824,6 +2003,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-CASHFLOW-PROJECTION-A": CaptureReadyCase(
         setup=_setup_cashflow_projection,
         validator=_validate_cashflow_projection,
+    ),
+    "GS-AVERAGE-BALANCE-A": CaptureReadyCase(
+        setup=_setup_average_balance,
+        validator=_validate_average_balance,
     ),
 }
 

@@ -843,6 +843,45 @@ def test_concentration_monitor_readiness_exposes_candidate_record_path_without_f
     assert any("Existing golden sample is supporting or page DTO evidence only" in gap for gap in report["residual_gaps"])
 
 
+def test_average_balance_readiness_exposes_candidate_record_path_without_formal_promotion() -> None:
+    report = build_page_readiness_report("average-balance")
+
+    assert report["page_slug"] == "average-balance"
+    assert report["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert report["route"] == "/average-balance"
+    assert report["primary_api"] == "/api/analysis/adb"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "static-pass"
+    assert "codex-page-smoke.ps1 -PageSlug average-balance" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug average-balance -Run" in report["required_commands"][1]
+    assert report["run_supported"] is True
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "zqtz_bond_daily_snapshot",
+        "tyw_interbank_daily_snapshot",
+    ]
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_average_balance_governance_record.py",
+        "python scripts/emit_average_balance_governance_record.py --write",
+    ]
+    assert report["business_owner_approval_status"] is None
+    assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert any("candidate ADB analysis" in item for item in report["guardrails"])
+    assert any("MTR-ADB-001" in item for item in report["truth_chain"])
+    assert report["golden_samples"] == ["tests/golden_samples/GS-AVERAGE-BALANCE-A"]
+    assert report["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
+    assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
+    assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert any("Existing golden sample is supporting or page DTO evidence only" in gap for gap in report["residual_gaps"])
+
+
 def test_team_performance_readiness_exposes_candidate_direct_evidence_without_formal_promotion() -> None:
     report = build_page_readiness_report("team-performance")
 
@@ -1686,8 +1725,9 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["average-balance"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["average-balance"]["run_supported"] is True
     assert rows_by_slug["average-balance"]["formal_use_allowed"] is False
-    assert rows_by_slug["average-balance"]["has_golden_samples"] is False
+    assert rows_by_slug["average-balance"]["has_golden_samples"] is True
     assert rows_by_slug["average-balance"]["golden_sample_approved"] is False
+    assert rows_by_slug["average-balance"]["golden_sample_artifact_status"] == "captured-awaiting-approval"
     assert rows_by_slug["bank-ledger-dashboard"]["classification"] == "evidence-pending"
     assert rows_by_slug["bank-ledger-dashboard"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["bank-ledger-dashboard"]["route"] == "/bank-ledger-dashboard"

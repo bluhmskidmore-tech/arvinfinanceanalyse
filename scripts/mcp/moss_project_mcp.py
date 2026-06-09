@@ -2981,7 +2981,8 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         "truth_chain": [
             "docs/live_route_maturity.md marks /average-balance as temporary-exception with page id GAP-AVERAGE-BALANCE-PAGE.",
             "docs/metric_dictionary.md registers MTR-ADB-001 through MTR-ADB-003 as candidate metrics only.",
-            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/average-balance and bound_sample_id=none for the ADB candidate metrics.",
+            "docs/metric_dictionary.md keeps bound_page_id=PAGE-CONTRACT-PENDING:/average-balance; MTR-ADB-001 and MTR-ADB-002 are bound to GS-AVERAGE-BALANCE-A as candidate daily DTO sample evidence while MTR-ADB-003 remains monthly pending.",
+            "tests/golden_samples/GS-AVERAGE-BALANCE-A freezes GET /api/analysis/adb daily candidate DTO evidence and remains captured-awaiting-approval.",
             "GET /api/analysis/adb returns interval ADB analysis for the visible /average-balance route.",
             "GET /api/analysis/adb/monthly returns selected-year monthly ADB trend evidence.",
             "GET /api/analysis/adb/comparison and /api/analysis/adb/coverage support comparison and coverage diagnostics.",
@@ -3002,19 +3003,20 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
         ],
         "test_touchpoints": [
             "tests/test_adb_analysis_api.py",
+            "tests/test_golden_samples_capture_ready.py",
             "tests/test_result_meta_on_all_ui_endpoints.py",
             "frontend/src/test/AverageBalanceView.test.tsx",
         ],
-        "golden_samples": [],
+        "golden_samples": ["tests/golden_samples/GS-AVERAGE-BALANCE-A"],
         "verification_focus": [
-            "No dedicated golden sample is currently registered for GAP-AVERAGE-BALANCE-PAGE; verify through live-route maturity, ADB API tests, result_meta checks, and AverageBalanceView tests.",
+            "GS-AVERAGE-BALANCE-A is a dedicated capture-ready daily ADB DTO sample; verify it through live-route maturity, ADB API tests, result_meta checks, golden sample replay, and AverageBalanceView tests.",
             "Trace /api/analysis/adb, comparison, monthly, and coverage payloads through AverageBalanceView query state, boundary chips, charts, and result_meta display before changing page logic.",
             "Check observed, LOCF, and calendar-zero denominator semantics, selected date range, monthly/YTD basis, amount unit conversion, percent precision, null-vs-zero behavior, and fallback/no-data states.",
         ],
         "guardrails": [
             "GAP-AVERAGE-BALANCE-PAGE is candidate ADB analysis, not formal balance truth.",
             "Do not replace formal balance truth from PAGE-BALANCE-001 or /balance-analysis with ADB interval, comparison, monthly, or coverage output.",
-            "Do not promote MTR-ADB-001 through MTR-ADB-003 to formal use until a dedicated PAGE contract, golden sample, lineage records, manual audit, and owner approval exist.",
+            "Do not promote MTR-ADB-001 through MTR-ADB-003 to formal use until a dedicated PAGE contract, golden approval, lineage records, manual audit, and owner approval exist.",
             "Do not hide candidate, stale, fallback, no-data, denominator, date-range, or result_meta boundaries behind a successful /average-balance shell.",
             "Do not backfill missing ADB rows, monthly rows, comparison rows, or coverage diagnostics with static demo values in real mode.",
         ],
