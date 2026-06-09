@@ -34,6 +34,7 @@ import {
   selectProductCategoryDetailRows,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestSpreadAttributionSurface,
+  selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryTplScaleYieldChart,
@@ -101,6 +102,42 @@ function yi(value: number): string {
 
 function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
   return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+}
+
+function nonFormulaCashFixture(scaleYi: number, ratePct: number, days: number): string {
+  return annualizedCash(scaleYi, ratePct, days);
+}
+
+function pctMetric(raw: string) {
+  return { raw, display: `${Number(raw).toFixed(2)}%`, unit: "percent" as const };
+}
+
+function interestSpreadPayload(input: {
+  allAsset?: string | null;
+  allLiability?: string | null;
+  allSpread?: string | null;
+  cnyAsset?: string | null;
+  cnyLiability?: string | null;
+  cnySpread?: string | null;
+}) {
+  return {
+    all_currency_asset_yield_pct:
+      input.allAsset === undefined ? null : input.allAsset === null ? null : pctMetric(input.allAsset),
+    all_currency_liability_yield_pct:
+      input.allLiability === undefined
+        ? null
+        : input.allLiability === null
+          ? null
+          : pctMetric(input.allLiability),
+    all_currency_spread_pct:
+      input.allSpread === undefined ? null : input.allSpread === null ? null : pctMetric(input.allSpread),
+    cny_asset_yield_pct:
+      input.cnyAsset === undefined ? null : input.cnyAsset === null ? null : pctMetric(input.cnyAsset),
+    cny_liability_yield_pct:
+      input.cnyLiability === undefined ? null : input.cnyLiability === null ? null : pctMetric(input.cnyLiability),
+    cny_spread_pct:
+      input.cnySpread === undefined ? null : input.cnySpread === null ? null : pctMetric(input.cnySpread),
+  };
 }
 
 function attributionPayload(overrides: Partial<ProductCategoryAttributionPayload>): ProductCategoryAttributionPayload {
@@ -425,6 +462,11 @@ describe("productCategoryPnlPageModel", () => {
           rows: [],
           assetTotal,
           liabilityTotal,
+          interestSpread: interestSpreadPayload({
+            allAsset: "2.68",
+            allLiability: "1.63",
+            allSpread: null,
+          }),
         },
         {
           reportDate: "2026-01-31",
@@ -442,6 +484,11 @@ describe("productCategoryPnlPageModel", () => {
             business_net_income: "15000000",
             weighted_yield: "1.60",
             is_total: true,
+          }),
+          interestSpread: interestSpreadPayload({
+            allAsset: "2.55",
+            allLiability: "1.60",
+            allSpread: null,
           }),
         },
       ],
@@ -679,6 +726,141 @@ describe("productCategoryPnlPageModel", () => {
     expect(chart).toBeNull();
   });
 
+  it("builds interest spread comparison from backend spread fields", () => {
+    const snapshot = (reportDate: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          weighted_yield: "9.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allAsset: "2.55",
+          allLiability: "1.70",
+          allSpread: spread,
+        }),
+      });
+
+    const chart = selectProductCategoryInterestSpreadYearComparisonChart([
+      snapshot("2026-03-31", "0.85"),
+      snapshot("2025-01-31", "0.60"),
+      snapshot("2026-01-31", "0.75"),
+      snapshot("2025-03-31", "0.70"),
+      snapshot("2026-02-28", "0.80"),
+      snapshot("2025-02-28", "0.65"),
+    ]);
+
+    expect(chart?.labels).toEqual(["1\u6708", "2\u6708", "3\u6708"]);
+    expect(chart?.series).toEqual([
+      { year: "2025\u5e74", spread: [0.6, 0.65, 0.7] },
+      { year: "2026\u5e74", spread: [0.75, 0.8, 0.85] },
+    ]);
+  });
+
+  it("does not build an interest spread trend chart without backend spread fields", () => {
+    const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: assetYield,
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: liabilityYield,
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+      });
+
+    expect(
+      selectProductCategoryInterestSpreadChart([
+        snapshot("2026-01-31", "2.40", "1.65"),
+        snapshot("2026-02-28", "2.48", "1.68"),
+      ]),
+    ).toBeNull();
+  });
+
+  it("builds an interest spread trend chart from backend spread fields only", () => {
+    const snapshot = (reportDate: string, asset: string, liability: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          weighted_yield: "9.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allAsset: asset,
+          allLiability: liability,
+          allSpread: spread,
+        }),
+      });
+
+    expect(
+      selectProductCategoryInterestSpreadChart([
+        snapshot("2026-01-31", "2.40", "1.65", "0.75"),
+        snapshot("2026-02-28", "2.48", "1.68", "0.80"),
+      ]),
+    ).toEqual({
+      labels: ["2026\u5e7401\u6708", "2026\u5e7402\u6708"],
+      assetYield: [2.4, 2.48],
+      liabilityYield: [1.65, 1.68],
+      spread: [0.75, 0.8],
+    });
+  });
+
+  it("does not describe product-category spread as a frontend-derived yield difference", () => {
+    const pageSource = [
+      "src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+      "src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+    ]
+      .map((sourcePath) => readFileSync(sourcePath, "utf8"))
+      .join("\n");
+
+    expect(pageSource).not.toContain("生息资产收益率 - 负债端成本率");
+    expect(pageSource).not.toContain("按生息资产收益率减负债端付息率展示利差变化。");
+    expect(pageSource).not.toContain("按人民币生息资产收益率减人民币负债端成本");
+    expect(pageSource).not.toContain("利差变化=资产收益率贡献+负债成本贡献");
+    expect(pageSource).toContain("后端返回");
+  });
+
   it("groups intermediate business income by governed row without total fallback", () => {
     const snapshot = (reportDate: string, incomeYi: number | null, totalYi = 999) =>
       buildProductCategoryTrendSnapshot({
@@ -880,7 +1062,51 @@ describe("productCategoryPnlPageModel", () => {
     expect(chart).toBeNull();
   });
 
-  it("computes weighted interest spread attribution and reconciles bp movement", () => {
+  it("builds RMB spread comparison from backend RMB spread fields", () => {
+    const snapshot = (reportDate: string, spread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cny_scale: "0",
+          cny_cash: nonFormulaCashFixture(100, 9.99, 31),
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cny_scale: yi(80),
+          cny_cash: nonFormulaCashFixture(80, 1.55, 31),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          cnyAsset: "2.55",
+          cnyLiability: "1.70",
+          cnySpread: spread,
+        }),
+      });
+
+    const chart = selectProductCategoryInterestSpreadYearComparisonChart([
+      snapshot("2025-01-31", "0.70"),
+      snapshot("2025-02-28", "0.72"),
+      snapshot("2026-01-31", "0.85"),
+      snapshot("2026-02-28", "0.88"),
+    ], "cny");
+
+    expect(chart?.series).toEqual([
+      { year: "2025\u5e74", spread: [0.7, 0.72] },
+      { year: "2026\u5e74", spread: [0.85, 0.88] },
+    ]);
+  });
+
+  it("keeps weighted interest spread attribution unavailable without backend spread fields", () => {
     const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
       buildProductCategoryTrendSnapshot({
         report_date: reportDate,
@@ -896,7 +1122,14 @@ describe("productCategoryPnlPageModel", () => {
             weighted_yield: assetYield,
           }),
         ],
-        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cnx_scale: yi(120),
+          cnx_cash: nonFormulaCashFixture(120, Number(assetYield), 31),
+          weighted_yield: assetYield,
+          is_total: true,
+        }),
         liability_total: row({
           category_id: "liability_total",
           side: "liability",
@@ -920,19 +1153,92 @@ describe("productCategoryPnlPageModel", () => {
 
     expect(surface.complete).toBe(false);
     expect(surface.summary).toMatchObject({
+      assetYieldCurrent: null,
+      assetYieldPrior: null,
+      liabilityYieldCurrent: null,
+      liabilityYieldPrior: null,
+      spreadCurrent: null,
+      spreadPrior: null,
+      assetContributionBp: null,
+      liabilityContributionBp: null,
+      spreadDeltaBp: null,
+    });
+    expect(surface.incompleteReasons).toEqual([
+      "\u5168\u53e3\u5f84\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u5168\u53e3\u5f84\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528",
+      "\u5168\u53e3\u5f84\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+      "\u5168\u53e3\u5f84\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
+    ]);
+    expect(surface.rows.map((item) => item.key)).toEqual(["asset_yield", "liability_cost", "spread"]);
+    expect(surface.details.map((item) => item.key)).toEqual(["asset_total", "liability_total"]);
+  });
+
+  it("builds weighted interest spread attribution from backend spread fields", () => {
+    const snapshot = (
+      reportDate: string,
+      assetYield: string,
+      liabilityYield: string,
+      spread: string,
+    ) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: "99.99",
+          }),
+        ],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cnx_scale: yi(120),
+          cnx_cash: nonFormulaCashFixture(120, Number(assetYield), 31),
+          weighted_yield: "99.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cnx_scale: yi(100),
+          cnx_cash: nonFormulaCashFixture(100, Number(liabilityYield), 31),
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allAsset: assetYield,
+          allLiability: liabilityYield,
+          allSpread: spread,
+        }),
+      });
+
+    const surface = selectProductCategoryInterestSpreadAttributionSurface(
+      [
+        snapshot("2025-03-31", "2.35", "1.65", "0.70"),
+        snapshot("2026-03-31", "2.55", "1.70", "0.85"),
+      ],
+      { basis: "weighted", month: 3 },
+      2026,
+    );
+
+    expect(surface.complete).toBe(true);
+    expect(surface.summary).toMatchObject({
       assetYieldCurrent: 2.55,
       assetYieldPrior: 2.35,
       liabilityYieldCurrent: 1.7,
       liabilityYieldPrior: 1.65,
-      spreadCurrent: null,
-      spreadPrior: null,
+      spreadCurrent: 0.85,
+      spreadPrior: 0.7,
       assetContributionBp: 20,
       liabilityContributionBp: -5,
-      spreadDeltaBp: null,
+      spreadDeltaBp: 15,
     });
-    expect(surface.incompleteReasons).toEqual(["全口径利差指标未由后端返回"]);
-    expect(surface.rows.map((item) => item.key)).toEqual(["asset_yield", "liability_cost", "spread"]);
-    expect(surface.details.map((item) => item.key)).toEqual(["interest_earning_assets", "liability_total"]);
+    expect(surface.details.map((item) => item.key)).toEqual(["asset_total", "liability_total"]);
   });
 
   it("keeps RMB attribution incomplete instead of deriving yields from CNY cash and scale", () => {
@@ -991,6 +1297,67 @@ describe("productCategoryPnlPageModel", () => {
       "\u4eba\u6c11\u5e01\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
       "\u4eba\u6c11\u5e01\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528",
     ]);
+  });
+
+  it("builds RMB attribution from backend RMB spread fields", () => {
+    const snapshot = (
+      reportDate: string,
+      assetYield: string,
+      liabilityYield: string,
+      spread: string,
+    ) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({
+          category_id: "asset_total",
+          report_date: reportDate,
+          cny_scale: "0",
+          cny_cash: nonFormulaCashFixture(100, Number(assetYield), 31),
+          weighted_yield: "99.99",
+          is_total: true,
+        }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cny_scale: yi(80),
+          cny_cash: nonFormulaCashFixture(80, Number(liabilityYield), 31),
+          weighted_yield: "1.00",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          cnyAsset: assetYield,
+          cnyLiability: liabilityYield,
+          cnySpread: spread,
+        }),
+      });
+
+    const surface = selectProductCategoryInterestSpreadAttributionSurface(
+      [
+        snapshot("2025-03-31", "2.30", "1.60", "0.70"),
+        snapshot("2026-03-31", "2.55", "1.70", "0.85"),
+      ],
+      { basis: "cny", month: 3 },
+      2026,
+    );
+
+    expect(surface.complete).toBe(true);
+    expect(surface.summary).toMatchObject({
+      assetYieldCurrent: 2.55,
+      assetYieldPrior: 2.3,
+      liabilityYieldCurrent: 1.7,
+      liabilityYieldPrior: 1.6,
+      spreadCurrent: 0.85,
+      spreadPrior: 0.7,
+      assetContributionBp: 25,
+      liabilityContributionBp: -10,
+      spreadDeltaBp: 15,
+    });
   });
 
   it("does not reuse backend weighted yield for RMB attribution without backend RMB yield fields", () => {

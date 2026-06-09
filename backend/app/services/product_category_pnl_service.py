@@ -34,6 +34,7 @@ from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentListPayload,
     ProductCategoryManualAdjustmentPayload,
     ProductCategoryManualAdjustmentUpdateRequest,
+    ProductCategoryInterestSpreadPayload,
     ProductCategoryPnlPayload,
     ProductCategoryPnlRow,
     ProductCategorySortDirection,
@@ -616,6 +617,9 @@ def product_category_pnl_envelope(
         asset_total=asset_total,
         liability_total=liability_total,
         grand_total=grand_total,
+        interest_spread=ProductCategoryInterestSpreadPayload.model_validate(
+            analysis_envelope.result.summary.get("interest_spread", {})
+        ),
     )
     result_meta = (
         analysis_envelope.result_meta.model_copy(update={"quality_flag": "warning"})
