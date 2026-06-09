@@ -239,7 +239,9 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
       <div className={marketStyles.actionQueueHeader}>
         <span>下一步动作</span>
         <strong>只保留今天需要看的事</strong>
-        <em hidden>Action Queue · Owner / SLA / Gate / Evidence Pack</em>
+        <em data-testid="module-home-market-actions-audit-label" hidden>
+          Action Queue · Owner / SLA / Gate / Evidence Pack
+        </em>
       </div>
       <div className={marketStyles.actionQueueList}>
         {items.map((item) => {

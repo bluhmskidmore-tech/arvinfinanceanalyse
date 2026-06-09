@@ -180,7 +180,7 @@ export function MarketDecisionMatrix({
       <div className={marketStyles.decisionMatrixHeader}>
         <span>市场决策要点</span>
         <em>利率 / 流动性 / 跨资产 / 宏观</em>
-        <i className={marketStyles.marketAuditOnly} hidden>
+        <i className={marketStyles.marketAuditOnly} data-testid="module-home-market-matrix-audit-label" hidden>
           Market Decision Tape
         </i>
       </div>
