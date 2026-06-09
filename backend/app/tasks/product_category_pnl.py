@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -12,6 +13,7 @@ from backend.app.core_finance.product_category_pnl import (
     ManualAdjustment,
     apply_manual_adjustments,
     calculate_read_model,
+    calculate_product_category_interest_spread_metrics,
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
@@ -22,7 +24,11 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
-from backend.app.schemas.product_category_pnl import ProductCategoryPnlPayload, ProductCategoryPnlRow
+from backend.app.schemas.product_category_pnl import (
+    ProductCategoryInterestSpreadPayload,
+    ProductCategoryPnlPayload,
+    ProductCategoryPnlRow,
+)
 from backend.app.services.product_category_source_service import (
     RULE_VERSION,
     build_canonical_facts,
@@ -296,6 +302,12 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
     asset_total = ProductCategoryPnlRow.model_validate(calc_out["asset_total"])
     liability_total = ProductCategoryPnlRow.model_validate(calc_out["liability_total"])
     grand_total = ProductCategoryPnlRow.model_validate(calc_out["grand_total"])
+    interest_spread = calculate_product_category_interest_spread_metrics(
+        report_date=report_date,
+        view="ytd",
+        asset_row=asset_total.model_dump(mode="python"),
+        liability_row=liability_total.model_dump(mode="python"),
+    )
     return ProductCategoryPnlPayload(
         report_date=report_date,
         view="ytd",
@@ -305,6 +317,7 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         asset_total=asset_total,
         liability_total=liability_total,
         grand_total=grand_total,
+        interest_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_spread)),
     )
 
 

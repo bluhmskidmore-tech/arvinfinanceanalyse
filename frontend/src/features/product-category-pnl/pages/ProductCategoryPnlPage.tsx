@@ -867,7 +867,7 @@ function ProductCategoryInterestSpreadAttributionPanel(props: {
         <div>
           <h3 className="product-category-interest-spread-attribution__title">利差同比归因</h3>
           <p className="product-category-interest-spread-attribution__description">
-            {basisLabel} · {props.surface.selected.month}月 · 后端未返回正式利差字段时仅展示缺口态
+            {basisLabel} · {props.surface.selected.month}月 · 使用后端返回的正式利差字段
           </p>
         </div>
         <span className="product-category-interest-spread-attribution__badge">
@@ -3331,9 +3331,17 @@ export default function ProductCategoryPnlPage() {
         assetTotal: displayedAssetTotal,
         liabilityTotal: displayedLiabilityTotal,
         grandTotal: displayedGrandTotal,
+        interestSpread: currentSelectedPayload?.interest_spread ?? null,
         trendSnapshots,
       }),
-    [displayedAssetTotal, displayedGrandTotal, displayedLiabilityTotal, rowsToRender, trendSnapshots],
+    [
+      currentSelectedPayload?.interest_spread,
+      displayedAssetTotal,
+      displayedGrandTotal,
+      displayedLiabilityTotal,
+      rowsToRender,
+      trendSnapshots,
+    ],
   );
   const hasDiagnosticsSurface =
     diagnosticsSurface.matrixRows.length > 0 ||
@@ -4626,7 +4634,7 @@ export default function ProductCategoryPnlPage() {
               <div className="product-category-diagnostics__intro">
                 <h3 className="product-category-diagnostics__title">利差变动归因</h3>
                 <p className="product-category-diagnostics__description">
-                  后端未返回正式利差字段时，保留资产收益率、负债收益率和利差缺口提示。
+                  使用后端返回的资产收益率、负债收益率和利差字段；字段缺失时保留缺口提示。
                 </p>
               </div>
               <div className="product-category-diagnostics__spread-grid">
@@ -4965,14 +4973,14 @@ export default function ProductCategoryPnlPage() {
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread"
-              title="生息资产利差缺口图"
-              description="后端未返回正式利差字段时不展示前端派生利差，仅保留缺口态。"
+              title="资产负债利差趋势图"
+              description="仅展示后端返回的资产端收益率、负债端收益率和利差字段。"
               option={interestSpreadOption}
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread-yoy"
-              title="2年生息资产利差缺口对比图"
-              description="后端未返回正式利差字段时不展示同比利差曲线。"
+              title="2年资产负债利差对比图"
+              description="按后端返回的全口径利差字段展示同比曲线。"
               option={interestSpreadYearComparisonOption}
               onEvents={{
                 click: (params: unknown) =>
@@ -4985,8 +4993,8 @@ export default function ProductCategoryPnlPage() {
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread-yoy-cny"
-              title="人民币口径2年生息资产利差缺口对比图"
-              description="后端未返回人民币正式利差字段时不展示人民币口径利差曲线。"
+              title="人民币口径2年资产负债利差对比图"
+              description="按后端返回的人民币口径利差字段展示同比曲线。"
               option={cnyInterestSpreadYearComparisonOption}
               onEvents={{
                 click: (params: unknown) =>

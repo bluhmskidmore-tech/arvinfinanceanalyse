@@ -49,6 +49,12 @@ function fixtureCashAmount(scaleYi: number, ratePct: number, days: number): stri
   return String(scaleYi * 1000 + ratePct * 100 + days);
 }
 
+function withoutInterestSpread<T extends { result: object }>(envelope: T): T {
+  const result = { ...envelope.result } as Record<string, unknown>;
+  delete result.interest_spread;
+  return { ...envelope, result: result as T["result"] };
+}
+
 function readChartOption(panelTestId: string) {
   const panel = screen.getByTestId(panelTestId);
   return JSON.parse(
@@ -844,7 +850,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         if (options.reportDate !== "2026-01-31") {
           return env;
         }
@@ -914,7 +920,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const envelope = buildMockProductCategoryPnlEnvelope(options);
+        const envelope = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const assetTotal = { ...envelope.result.asset_total, weighted_yield: null };
         const liabilityTotal = {
           ...envelope.result.liability_total,
@@ -1003,9 +1009,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
@@ -1041,7 +1047,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(5);
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -1054,7 +1060,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const withGrandTotal = {
           ...env,
           result: {
@@ -1263,7 +1269,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = ratesByDate[options.reportDate] ?? { asset: "2.00", liability: "1.50" };
         return {
           ...env,
@@ -1330,7 +1336,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? { days: 31, assetCny: 2, liabilityCny: 1.5 };
         return {
           ...env,
@@ -1404,7 +1410,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const income = incomeByDate[options.reportDate];
         return {
           ...env,
@@ -1496,7 +1502,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
         return {
           ...env,
@@ -1554,7 +1560,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
         return {
           ...env,
@@ -1629,7 +1635,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = buildMockProductCategoryPnlEnvelope(options);
+        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         if (options.reportDate !== "2026-01-31") {
           return {
             ...env,

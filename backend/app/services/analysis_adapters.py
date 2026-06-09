@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
 
@@ -92,6 +93,16 @@ class ProductCategoryPnlAnalysisAdapter:
         asset_total = next(row for row in typed_rows if row.category_id == "asset_total")
         liability_total = next(row for row in typed_rows if row.category_id == "liability_total")
         grand_total = next(row for row in typed_rows if row.category_id == "grand_total")
+        from backend.app.core_finance.product_category_pnl import (
+            calculate_product_category_interest_spread_metrics,
+        )
+
+        interest_spread = calculate_product_category_interest_spread_metrics(
+            report_date=query.report_date,
+            view=view,
+            asset_row=asset_total.model_dump(mode="python"),
+            liability_row=liability_total.model_dump(mode="python"),
+        )
 
         result_kind = (
             "analysis.product_category_pnl"
@@ -130,6 +141,7 @@ class ProductCategoryPnlAnalysisAdapter:
                     "asset_total": asset_total.model_dump(mode="json"),
                     "liability_total": liability_total.model_dump(mode="json"),
                     "grand_total": grand_total.model_dump(mode="json"),
+                    "interest_spread": asdict(interest_spread),
                 },
                 rows=[row.model_dump(mode="json") for row in typed_rows],
                 attribution=_build_product_category_attribution(typed_rows, grand_total),

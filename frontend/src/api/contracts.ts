@@ -2867,6 +2867,21 @@ export type ProductCategoryDatesPayload = {
   report_dates: string[];
 };
 
+export type ProductCategoryMetricValue = {
+  raw: DecimalLike;
+  display: string;
+  unit: "percent";
+};
+
+export type ProductCategoryInterestSpreadPayload = {
+  all_currency_asset_yield_pct: ProductCategoryMetricValue | null;
+  all_currency_liability_yield_pct: ProductCategoryMetricValue | null;
+  all_currency_spread_pct: ProductCategoryMetricValue | null;
+  cny_asset_yield_pct: ProductCategoryMetricValue | null;
+  cny_liability_yield_pct: ProductCategoryMetricValue | null;
+  cny_spread_pct: ProductCategoryMetricValue | null;
+};
+
 export type ProductCategoryPnlPayload = {
   report_date: string;
   view: string;
@@ -2876,6 +2891,7 @@ export type ProductCategoryPnlPayload = {
   asset_total: ProductCategoryPnlRow;
   liability_total: ProductCategoryPnlRow;
   grand_total: ProductCategoryPnlRow;
+  interest_spread?: ProductCategoryInterestSpreadPayload | null;
 };
 
 export type ProductCategoryAttributionPoint = {

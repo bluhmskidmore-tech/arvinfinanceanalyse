@@ -442,6 +442,17 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     feb_asset_total = feb_monthly_payload["result"]["asset_total"]
     feb_liability_total = feb_monthly_payload["result"]["liability_total"]
     feb_grand_total = feb_monthly_payload["result"]["grand_total"]
+    feb_spread = feb_monthly_payload["result"]["interest_spread"]
+    assert feb_spread["all_currency_spread_pct"] == {
+        "raw": "167.12821433",
+        "display": "167.13%",
+        "unit": "percent",
+    }
+    assert feb_spread["cny_spread_pct"] == {
+        "raw": "167.27586031",
+        "display": "167.28%",
+        "unit": "percent",
+    }
     assert Decimal(str(feb_asset_total["baseline_ftp_rate_pct"])) == Decimal("1.60")
     assert abs(
         Decimal(str(feb_grand_total["cny_net"]))

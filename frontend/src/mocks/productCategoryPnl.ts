@@ -2,6 +2,7 @@ import type {
   ApiEnvelope,
   ProductCategoryAttributionPayload,
   ProductCategoryAttributionRow,
+  ProductCategoryInterestSpreadPayload,
   ProductCategoryPnlPayload,
   ProductCategoryPnlRow,
 } from "../api/contracts";
@@ -32,6 +33,10 @@ function withYuanValues(row: ProductCategoryPnlRow): ProductCategoryPnlRow {
     foreign_net: toYuan(row.foreign_net),
     business_net_income: toYuan(row.business_net_income),
   };
+}
+
+function percentMetric(raw: string) {
+  return { raw, display: `${Number(raw).toFixed(2)}%`, unit: "percent" as const };
 }
 
 export function buildProductCategoryMockYuanPayload(input: {
@@ -529,6 +534,14 @@ export function buildMockProductCategoryPnlEnvelope(
     liabilityTotal,
     grandTotal,
   });
+  const interestSpread: ProductCategoryInterestSpreadPayload = {
+    all_currency_asset_yield_pct: percentMetric("2.68"),
+    all_currency_liability_yield_pct: percentMetric("1.63"),
+    all_currency_spread_pct: percentMetric("1.05"),
+    cny_asset_yield_pct: percentMetric("2.64"),
+    cny_liability_yield_pct: percentMetric("1.62"),
+    cny_spread_pct: percentMetric("1.02"),
+  };
 
   return buildMockApiEnvelope(
     "product_category_pnl.detail",
@@ -541,6 +554,7 @@ export function buildMockProductCategoryPnlEnvelope(
       asset_total: yuanPayload.assetTotal,
       liability_total: yuanPayload.liabilityTotal,
       grand_total: yuanPayload.grandTotal,
+      interest_spread: interestSpread,
     },
     {
       basis: scenarioRate ? "scenario" : "formal",
