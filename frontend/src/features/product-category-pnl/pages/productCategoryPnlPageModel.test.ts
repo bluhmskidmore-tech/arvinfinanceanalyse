@@ -36,6 +36,7 @@ import {
   selectProductCategoryDecisionFocusSurface,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestSpreadAttributionSurface,
+  selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryOperatingActionBacktestSurface,
@@ -1938,6 +1939,39 @@ describe("productCategoryPnlPageModel", () => {
     ]);
 
     expect(chart).toBeNull();
+  });
+
+  it("does not build an interest spread trend chart without backend spread fields", () => {
+    const snapshot = (reportDate: string, assetYield: string, liabilityYield: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: assetYield,
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: liabilityYield,
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+      });
+
+    expect(
+      selectProductCategoryInterestSpreadChart([
+        snapshot("2026-01-31", "2.40", "1.65"),
+        snapshot("2026-02-28", "2.48", "1.68"),
+      ]),
+    ).toBeNull();
   });
 
   it("groups intermediate business income by governed row without total fallback", () => {

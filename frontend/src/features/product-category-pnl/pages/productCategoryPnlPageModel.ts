@@ -3986,34 +3986,9 @@ export function selectProductCategoryInterestEarningIncomeScaleChart(
 }
 
 export function selectProductCategoryInterestSpreadChart(
-  snapshots: ProductCategoryTrendSnapshot[],
+  _snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryInterestSpreadChart | null {
-  const chart = buildSnapshotChart(snapshots, (snapshot) => {
-    const assetRow = findProductCategoryRow(snapshot.rows, "interest_earning_assets");
-    const liabilityRow = snapshot.liabilityTotal;
-    if (!assetRow || !liabilityRow) {
-      return null;
-    }
-    const assetYield = percentNumber(assetRow.weighted_yield);
-    const liabilityYield = percentNumber(liabilityRow.weighted_yield);
-    if (assetYield === null || liabilityYield === null) {
-      return null;
-    }
-    return {
-      assetYield,
-      liabilityYield,
-      spread: null,
-    };
-  });
-  if (chart.labels.length === 0) {
-    return null;
-  }
-  return {
-    labels: chart.labels,
-    assetYield: chart.points.map((point) => point.assetYield),
-    liabilityYield: chart.points.map((point) => point.liabilityYield),
-    spread: chart.points.map((point) => point.spread),
-  };
+  return null;
 }
 
 export function selectProductCategoryInterestSpreadYearComparisonChart(
@@ -4450,11 +4425,11 @@ function liabilityCurrencyMetricLabels(
   rateValue: number | null;
 } {
   const amountValue = yiNumber(row?.[amountField]);
-  const rateValue = null;
+  const rateValue: number | null = null;
   return {
     amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
     amountValue,
-    rateLabel: rateValue !== null ? rateValue.toFixed(2) : "-",
+    rateLabel: "-",
     rateValue,
   };
 }
