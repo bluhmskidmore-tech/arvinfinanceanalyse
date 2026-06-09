@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
 from backend.app.core_finance.field_normalization import is_approved_status
-from backend.app.core_finance.pnl import compute_nonstd_signed_ledger_amount
+from backend.app.core_finance.pnl import compute_nonstd_signed_ledger_amount, compute_pnl_by_business_yield_and_ftp
 from backend.app.core_finance.reconciliation_checks import pnl_vs_ledger_diff
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS, match_zqtz_asset_bond_rows
 from backend.app.governance.formal_compute_lineage import (
@@ -74,7 +74,6 @@ PENDING_SOURCE_VERSION = "sv_pnl_pending"
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
 FTP_RATE_PCT = Decimal("1.600000")
-FTP_RATE_RATIO = Decimal("0.016")
 PNL_BY_BUSINESS_ADJUSTMENT_STREAM = "pnl_by_business_adjustments"
 V1_INTEREST_INCOME_JOURNAL_TYPE = LEDGER_PNL_ACCOUNT_PREFIXES[0]
 PNL_BY_BUSINESS_GLOBAL_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension, ...] = (
@@ -489,37 +488,34 @@ def _build_pnl_by_business_ytd_payload_from_groups(
     groups: dict[str, dict[str, object]],
     duckdb_path: str,
     source_tables: list[str],
+    balance_rows: list[dict[str, object]] | None = None,
 ) -> PnlByBusinessYtdPayload:
-    balance_rows = AccountingAssetMovementRepository(duckdb_path).fetch_zqtz_asset_business_rows(
-        report_date=max(loaded_dates),
-        currency_basis="CNX",
+    ytd_balance_rows = balance_rows
+    if ytd_balance_rows is None:
+        ytd_balance_rows = AccountingAssetMovementRepository(duckdb_path).fetch_zqtz_asset_business_rows(
+            report_date=max(loaded_dates),
+            currency_basis="CNX",
+        )
+        current_balance_rows = ytd_balance_rows
+        balance_by_key = {str(row["row_key"]): row for row in current_balance_rows}
+    else:
+        balance_by_key = _ytd_business_balance_rows_by_key(ytd_balance_rows, period_end=max(loaded_dates))
+    avg_balance_by_key, current_balance_by_key = _ytd_business_balance_amounts(
+        ytd_balance_rows,
+        period_end=max(loaded_dates),
     )
-    balance_by_key = {str(row["row_key"]): row for row in balance_rows}
+    calendar_days = _calendar_days(f"{min(loaded_dates)[:7]}-01", max(loaded_dates))
     items = [
-        PnlByBusinessYtdItem(
-            row_key=str(group["row_key"]),
-            sort_order=int(group["sort_order"]),
-            business_type=str(group["business_type"]),
-            interest_income=_quantize_decimal(Decimal(str(group["interest_income"]))),
-            fair_value_change=_quantize_decimal(Decimal(str(group["fair_value_change"]))),
-            capital_gain=_quantize_decimal(Decimal(str(group["capital_gain"]))),
-            manual_adjustment=_quantize_decimal(Decimal(str(group.get("manual_adjustment") or "0"))),
-            total_pnl=_quantize_decimal(Decimal(str(group["total_pnl"]))),
-            current_balance=_quantize_decimal(
-                Decimal(str(balance_by_key.get(str(group["row_key"]), {}).get("current_balance") or "0"))
-            ),
-            balance_yield_pct=_balance_yield_pct(
-                Decimal(str(group["total_pnl"])),
+        _ytd_business_item_from_group(
+            group=group,
+            total_pnl_for_proportion=total_pnl,
+            balance_row=balance_by_key.get(str(group["row_key"]), {}),
+            avg_balance=avg_balance_by_key.get(str(group["row_key"]), Decimal("0")),
+            current_balance=current_balance_by_key.get(
+                str(group["row_key"]),
                 Decimal(str(balance_by_key.get(str(group["row_key"]), {}).get("current_balance") or "0")),
             ),
-            source_kind=str(balance_by_key.get(str(group["row_key"]), {}).get("source_kind") or "zqtz"),
-            source_note=str(balance_by_key.get(str(group["row_key"]), {}).get("source_note") or group["source_note"]),
-            proportion=(
-                _quantize_ratio(Decimal(str(group["total_pnl"])) / total_pnl)
-                if total_pnl != Decimal("0")
-                else None
-            ),
-            assets_count=len(group["asset_codes"]) if group["asset_codes"] else int(group["row_count"]),
+            calendar_days=calendar_days,
         )
         for group in sorted(groups.values(), key=lambda item: (int(item["sort_order"]), str(item["row_key"])))
     ]
@@ -536,6 +532,102 @@ def _build_pnl_by_business_ytd_payload_from_groups(
         source_tables=source_tables,
         items=items,
     )
+
+
+def _ytd_business_item_from_group(
+    *,
+    group: dict[str, object],
+    total_pnl_for_proportion: Decimal,
+    balance_row: dict[str, object],
+    avg_balance: Decimal,
+    current_balance: Decimal,
+    calendar_days: int,
+) -> PnlByBusinessYtdItem:
+    total_pnl = Decimal(str(group["total_pnl"]))
+    yield_ftp = compute_pnl_by_business_yield_and_ftp(
+        total_pnl=total_pnl,
+        avg_balance=avg_balance,
+        calendar_days=calendar_days,
+        ftp_rate_pct=FTP_RATE_PCT,
+    )
+    return PnlByBusinessYtdItem(
+        row_key=str(group["row_key"]),
+        sort_order=int(group["sort_order"]),
+        business_type=str(group["business_type"]),
+        interest_income=_quantize_decimal(Decimal(str(group["interest_income"]))),
+        fair_value_change=_quantize_decimal(Decimal(str(group["fair_value_change"]))),
+        capital_gain=_quantize_decimal(Decimal(str(group["capital_gain"]))),
+        manual_adjustment=_quantize_decimal(Decimal(str(group.get("manual_adjustment") or "0"))),
+        total_pnl=_quantize_decimal(total_pnl),
+        avg_balance=_quantize_decimal(avg_balance),
+        current_balance=_quantize_decimal(current_balance),
+        balance_yield_pct=_balance_yield_pct(total_pnl, current_balance),
+        annualized_yield_pct=yield_ftp.annualized_yield_pct,
+        ftp_rate_pct=yield_ftp.ftp_rate_pct,
+        ftp_cost=yield_ftp.ftp_cost,
+        ftp_net_pnl=yield_ftp.ftp_net_pnl,
+        ftp_net_annualized_yield_pct=yield_ftp.ftp_net_annualized_yield_pct,
+        source_kind=str(balance_row.get("source_kind") or "zqtz"),
+        source_note=str(balance_row.get("source_note") or group["source_note"]),
+        proportion=(
+            _quantize_ratio(total_pnl / total_pnl_for_proportion)
+            if total_pnl_for_proportion != Decimal("0")
+            else None
+        ),
+        assets_count=len(group["asset_codes"]) if group["asset_codes"] else int(group["row_count"]),
+    )
+
+
+def _ytd_business_balance_rows_by_key(
+    balance_rows: list[dict[str, object]],
+    *,
+    period_end: str,
+) -> dict[str, dict[str, object]]:
+    out: dict[str, dict[str, object]] = {}
+    for row in balance_rows:
+        if _norm_text(row.get("report_date")) != period_end:
+            continue
+        classification = _analysis_classification_from_balance_row(row)
+        for row_def in match_zqtz_asset_bond_rows(classification):
+            row_key = str(row_def["row_key"])
+            existing = out.setdefault(
+                row_key,
+                {
+                    "row_key": row_key,
+                    "current_balance": Decimal("0"),
+                    "source_kind": "zqtz",
+                    "source_note": str(row_def.get("source_note") or "ZQTZ_ASSET_BOND_ROWS"),
+                },
+            )
+            existing["current_balance"] = Decimal(str(existing["current_balance"])) + _decimal_value(
+                row.get("current_amount")
+            )
+    return out
+
+
+def _ytd_business_balance_amounts(
+    balance_rows: list[dict[str, object]],
+    *,
+    period_end: str,
+) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+    avg_sums: dict[str, Decimal] = {}
+    current_sums: dict[str, Decimal] = {}
+    coverage_dates = {str(row.get("report_date")) for row in balance_rows if _norm_text(row.get("report_date"))}
+    denom = Decimal(str(len(coverage_dates))) if coverage_dates else Decimal("0")
+    for row in balance_rows:
+        classification = _analysis_classification_from_balance_row(row)
+        for row_def in match_zqtz_asset_bond_rows(classification):
+            row_key = str(row_def["row_key"])
+            avg_sums[row_key] = avg_sums.get(row_key, Decimal("0")) + _decimal_value(row.get("avg_amount"))
+            if _norm_text(row.get("report_date")) == period_end:
+                current_sums[row_key] = current_sums.get(row_key, Decimal("0")) + _decimal_value(
+                    row.get("current_amount")
+                )
+    avg_by_key = {
+        row_key: (value / denom if denom > Decimal("0") else Decimal("0"))
+        for row_key, value in avg_sums.items()
+    }
+    return avg_by_key, current_sums
 
 
 def _load_pnl_by_business_manual_adjustment_events(settings: Settings) -> list[dict[str, object]]:
@@ -824,6 +916,7 @@ def _pnl_by_business_ytd_from_formal_facts(
         groups=groups,
         duckdb_path=duckdb_path,
         source_tables=source_tables,
+        balance_rows=list(balance_rows),
     )
     return _build_pnl_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
@@ -905,6 +998,11 @@ def _pnl_by_business_ytd_from_refresh_bundles(
     if not loaded_dates:
         raise ValueError(f"No V1-compatible pnl source bundle found for year={year}.")
 
+    period_start = f"{min(loaded_dates)[:7]}-01"
+    balance_rows = repo.fetch_by_business_analysis_balance_rows(
+        start_date=period_start,
+        end_date=max(loaded_dates),
+    )
     settings = get_settings()
     total_pnl = _apply_pnl_by_business_manual_adjustments_to_ytd_groups(
         settings=settings,
@@ -932,6 +1030,7 @@ def _pnl_by_business_ytd_from_refresh_bundles(
         groups=groups,
         duckdb_path=duckdb_path,
         source_tables=source_tables,
+        balance_rows=balance_rows,
     )
     return _build_pnl_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
@@ -1997,9 +2096,12 @@ def _instrument_code_variants(value: object) -> tuple[str, ...]:
 
 
 def _analysis_annualized_yield_pct(total_pnl: Decimal, avg_balance: Decimal, calendar_days: int) -> Decimal | None:
-    if avg_balance <= Decimal("0") or calendar_days <= 0:
-        return None
-    return _quantize_yield_pct((total_pnl / avg_balance) * Decimal("365") / Decimal(str(calendar_days)) * Decimal("100"))
+    return compute_pnl_by_business_yield_and_ftp(
+        total_pnl=total_pnl,
+        avg_balance=avg_balance,
+        calendar_days=calendar_days,
+        ftp_rate_pct=FTP_RATE_PCT,
+    ).annualized_yield_pct
 
 
 def _analysis_ftp_values(
@@ -2009,17 +2111,16 @@ def _analysis_ftp_values(
     annualized_yield_pct: Decimal | None,
     calendar_days: int,
 ) -> dict[str, Decimal | None]:
-    if avg_balance <= Decimal("0") or calendar_days <= 0 or annualized_yield_pct is None:
-        return {
-            "ftp_cost": None,
-            "ftp_net_pnl": None,
-            "ftp_net_annualized_yield_pct": None,
-        }
-    ftp_cost = avg_balance * FTP_RATE_RATIO * Decimal(str(calendar_days)) / Decimal("365")
+    yield_ftp = compute_pnl_by_business_yield_and_ftp(
+        total_pnl=total_pnl,
+        avg_balance=avg_balance,
+        calendar_days=calendar_days,
+        ftp_rate_pct=FTP_RATE_PCT,
+    )
     return {
-        "ftp_cost": _quantize_decimal(ftp_cost),
-        "ftp_net_pnl": _quantize_decimal(total_pnl - ftp_cost),
-        "ftp_net_annualized_yield_pct": _quantize_yield_pct(annualized_yield_pct - FTP_RATE_PCT),
+        "ftp_cost": yield_ftp.ftp_cost,
+        "ftp_net_pnl": yield_ftp.ftp_net_pnl,
+        "ftp_net_annualized_yield_pct": yield_ftp.ftp_net_annualized_yield_pct,
     }
 
 

@@ -245,8 +245,14 @@ function buildPnlClient(): ApiClient {
         capital_gain: "20000.00",
         manual_adjustment: "0.00",
         total_pnl: "130000.00",
+        avg_balance: "100000000.00",
         current_balance: "100000000.00",
         balance_yield_pct: "0.0013",
+        annualized_yield_pct: "1.530645",
+        ftp_rate_pct: "1.600000",
+        ftp_cost: "135890.41",
+        ftp_net_pnl: "-5890.41",
+        ftp_net_annualized_yield_pct: "-0.069355",
         source_kind: "zqtz",
         source_note: "ZQTZ_ASSET_BOND_ROWS",
         proportion: "1.000000",
@@ -261,8 +267,14 @@ function buildPnlClient(): ApiClient {
         capital_gain: "0.00",
         manual_adjustment: "0.00",
         total_pnl: "0.00",
+        avg_balance: "70000000.00",
         current_balance: "70000000.00",
         balance_yield_pct: "0.0000",
+        annualized_yield_pct: "0.000000",
+        ftp_rate_pct: "1.600000",
+        ftp_cost: "95123.29",
+        ftp_net_pnl: "-95123.29",
+        ftp_net_annualized_yield_pct: "-1.600000",
         source_kind: "zqtz",
         source_note: "ZQTZ_ASSET_BOND_ROWS",
         proportion: "0.000000",
@@ -277,8 +289,14 @@ function buildPnlClient(): ApiClient {
         capital_gain: "0.00",
         manual_adjustment: "0.00",
         total_pnl: "50000.00",
+        avg_balance: "50000000.00",
         current_balance: "50000000.00",
         balance_yield_pct: "0.001",
+        annualized_yield_pct: "1.177419",
+        ftp_rate_pct: "1.600000",
+        ftp_cost: "67945.21",
+        ftp_net_pnl: "-17945.21",
+        ftp_net_annualized_yield_pct: "-0.422581",
         source_kind: "zqtz",
         source_note: "ZQTZSHOW 其中项：J0 剔除市值法清单后的成本法专户",
         proportion: "0.384615",
@@ -1143,6 +1161,27 @@ describe("pnl routed pages smoke", () => {
 
   it("shows true-zero ADB as present but zero-denominator limited in /pnl-by-business YTD", async () => {
     const client = buildPnlClient();
+    const originalYtd = await client.getPnlByBusinessYtd(2025, "2025-12-31");
+    client.getPnlByBusinessYtd = vi.fn(async (year: number, asOfDate?: string) => ({
+      ...originalYtd,
+      result: {
+        ...originalYtd.result,
+        year,
+        period_end_date: asOfDate ?? originalYtd.result.period_end_date,
+        items: originalYtd.result.items.map((item) =>
+          item.row_key === "asset_zqtz_policy_financial_bond"
+            ? {
+                ...item,
+                avg_balance: "0.00",
+                annualized_yield_pct: null,
+                ftp_cost: null,
+                ftp_net_pnl: null,
+                ftp_net_annualized_yield_pct: null,
+              }
+            : item,
+        ),
+      },
+    }));
     client.getAdbComparison = vi.fn(async (_startDate: string, _endDate: string) => ({
       report_date: _endDate,
       start_date: _startDate,
@@ -1194,6 +1233,38 @@ describe("pnl routed pages smoke", () => {
         "日均为0，收益率/FTP 暂不计算",
       );
       expect(screen.getByTestId("pnl-by-business-ftp-bridge")).toHaveTextContent("日均为0");
+    });
+  });
+
+  it("renders ftp bridge copy from backend ftp_rate_pct instead of a hard-coded rate", async () => {
+    const client = buildPnlClient();
+    const originalYtd = await client.getPnlByBusinessYtd(2025, "2025-12-31");
+    client.getPnlByBusinessYtd = vi.fn(async (year: number, asOfDate?: string) => ({
+      ...originalYtd,
+      result: {
+        ...originalYtd.result,
+        year,
+        period_end_date: asOfDate ?? originalYtd.result.period_end_date,
+        items: originalYtd.result.items.map((item) =>
+          item.row_key === "asset_zqtz_policy_financial_bond"
+            ? {
+                ...item,
+                ftp_rate_pct: "2.500000",
+              }
+            : item,
+        ),
+      },
+    }));
+
+    renderWorkbenchApp(["/pnl-by-business"], { client });
+
+    expect(await screen.findByTestId("pnl-by-business-page")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("pnl-by-business-view-mode"), { target: { value: "ytd" } });
+
+    await waitFor(() => {
+      const bridge = screen.getByTestId("pnl-by-business-ftp-bridge");
+      expect(bridge).toHaveTextContent("2.50%");
+      expect(bridge).not.toHaveTextContent("1.6%");
     });
   });
 

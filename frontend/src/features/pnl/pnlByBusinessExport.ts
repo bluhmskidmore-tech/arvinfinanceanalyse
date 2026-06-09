@@ -11,14 +11,12 @@ import type {
   PnlByBusinessAnalysisDimension,
 } from "../../api/contracts";
 import { inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
-import { resolveAdbAvgYuan } from "./zqtzAdbAvgRollup";
 
 type SheetAoA = SheetData;
 export type PnlByBusinessExportSheet = Sheet<Blob>;
 
 const YUAN_PER_WAN = 10_000;
 const YUAN_PER_YI = 100_000_000;
-const FTP_RATE_RATIO = 0.016;
 
 function num(raw: string | number | null | undefined): number | null {
   if (raw === null || raw === undefined || raw === "") {
@@ -26,44 +24,6 @@ function num(raw: string | number | null | undefined): number | null {
   }
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
-}
-
-/** 年化收益率百分点（损益/日均 × 365/天数 × 100） */
-function annualizedYieldPctPoints(
-  totalPnlYuan: string | number | null | undefined,
-  avgBalanceYuan: number | undefined,
-  calendarDays: number | null,
-): number | null {
-  const pnl = num(totalPnlYuan);
-  if (pnl === null || avgBalanceYuan === undefined || avgBalanceYuan <= 0 || !calendarDays || calendarDays <= 0) {
-    return null;
-  }
-  return (pnl / avgBalanceYuan) * (365 / calendarDays) * 100;
-}
-
-function ftpNetForYtdRow(
-  totalPnlYuan: string | number | null | undefined,
-  avgBalanceYuan: number | undefined,
-  calendarDays: number | null,
-): { ftpCost: number | null; ftpNet: number | null; ftpNetYieldPct: number | null } {
-  const pnl = num(totalPnlYuan);
-  const ann = annualizedYieldPctPoints(totalPnlYuan, avgBalanceYuan, calendarDays);
-  if (
-    pnl === null ||
-    ann === null ||
-    avgBalanceYuan === undefined ||
-    avgBalanceYuan <= 0 ||
-    !calendarDays ||
-    calendarDays <= 0
-  ) {
-    return { ftpCost: null, ftpNet: null, ftpNetYieldPct: null };
-  }
-  const ftpCost = avgBalanceYuan * FTP_RATE_RATIO * (calendarDays / 365);
-  return {
-    ftpCost,
-    ftpNet: pnl - ftpCost,
-    ftpNetYieldPct: ann - 1.6,
-  };
 }
 
 type ZqtzBusinessExportRow = {
@@ -146,8 +106,8 @@ function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: Shee
 
 function buildYtdMainSheet(
   rows: PnlByBusinessYtdItem[],
-  adbMap: Map<string, number>,
-  ytdCalendarDays: number | null,
+  _adbMap: Map<string, number>,
+  _ytdCalendarDays: number | null,
 ): SheetAoA {
   const header: SheetAoA[0] = [
     "业务种类",
@@ -166,19 +126,17 @@ function buildYtdMainSheet(
   const data: SheetAoA = [header];
   const parentRows = rows.filter(isParentZqtzBusinessRow);
   for (const row of parentRows) {
-    const adb = resolveAdbAvgYuan(row.business_type, adbMap);
-    const ftp = ftpNetForYtdRow(row.total_pnl, adb, ytdCalendarDays);
     data.push([
       row.business_type,
-      adb !== undefined ? adb / YUAN_PER_YI : null,
+      yiFromYuan(row.avg_balance),
       wanFromYuan(row.interest_income),
       wanFromYuan(row.fair_value_change),
       wanFromYuan(row.capital_gain),
       wanFromYuan(row.manual_adjustment),
       wanFromYuan(row.total_pnl),
-      annualizedYieldPctPoints(row.total_pnl, adb, ytdCalendarDays),
-      wanFromYuan(ftp.ftpNet),
-      ftp.ftpNetYieldPct,
+      num(row.annualized_yield_pct),
+      wanFromYuan(row.ftp_net_pnl),
+      num(row.ftp_net_annualized_yield_pct),
       num(row.proportion),
       row.assets_count,
     ]);
@@ -192,6 +150,8 @@ function buildYtdMainSheet(
     let assets = 0;
     let adbSum = 0;
     let hasAnyAdb = false;
+    let ftpNetPnl = 0;
+    let hasAnyFtpNetPnl = false;
     for (const row of parentRows) {
       interest += num(row.interest_income) ?? 0;
       fairValue += num(row.fair_value_change) ?? 0;
@@ -199,13 +159,17 @@ function buildYtdMainSheet(
       manual += num(row.manual_adjustment) ?? 0;
       totalPnl += num(row.total_pnl) ?? 0;
       assets += row.assets_count;
-      const adb = resolveAdbAvgYuan(row.business_type, adbMap);
-      if (adb !== undefined) {
+      const adb = num(row.avg_balance);
+      if (adb !== null) {
         hasAnyAdb = true;
         adbSum += adb;
       }
+      const ftpNet = num(row.ftp_net_pnl);
+      if (ftpNet !== null) {
+        hasAnyFtpNetPnl = true;
+        ftpNetPnl += ftpNet;
+      }
     }
-    const ftp = ftpNetForYtdRow(totalPnl, hasAnyAdb ? adbSum : undefined, ytdCalendarDays);
     data.push([
       "父级汇总",
       hasAnyAdb ? adbSum / YUAN_PER_YI : null,
@@ -215,8 +179,8 @@ function buildYtdMainSheet(
       manual / YUAN_PER_WAN,
       totalPnl / YUAN_PER_WAN,
       null,
-      wanFromYuan(ftp.ftpNet),
-      ftp.ftpNetYieldPct,
+      hasAnyFtpNetPnl ? ftpNetPnl / YUAN_PER_WAN : null,
+      null,
       null,
       assets,
     ]);
@@ -226,8 +190,8 @@ function buildYtdMainSheet(
 
 function buildYtdDetailSheet(
   rows: PnlByBusinessYtdItem[],
-  adbMap: Map<string, number>,
-  ytdCalendarDays: number | null,
+  _adbMap: Map<string, number>,
+  _ytdCalendarDays: number | null,
 ): SheetAoA {
   const header: SheetAoA[0] = [
     "业务种类",
@@ -246,19 +210,17 @@ function buildYtdDetailSheet(
   ];
   const data: SheetAoA = [header];
   for (const row of rows.filter(isDetailZqtzBusinessRow)) {
-    const adb = resolveAdbAvgYuan(row.business_type, adbMap);
-    const ftp = ftpNetForYtdRow(row.total_pnl, adb, ytdCalendarDays);
     data.push([
       row.business_type,
-      adb !== undefined ? adb / YUAN_PER_YI : null,
+      yiFromYuan(row.avg_balance),
       wanFromYuan(row.interest_income),
       wanFromYuan(row.fair_value_change),
       wanFromYuan(row.capital_gain),
       wanFromYuan(row.manual_adjustment),
       wanFromYuan(row.total_pnl),
-      annualizedYieldPctPoints(row.total_pnl, adb, ytdCalendarDays),
-      wanFromYuan(ftp.ftpNet),
-      ftp.ftpNetYieldPct,
+      num(row.annualized_yield_pct),
+      wanFromYuan(row.ftp_net_pnl),
+      num(row.ftp_net_annualized_yield_pct),
       num(row.proportion),
       row.assets_count,
       "父级拆解项，不参与父级汇总",

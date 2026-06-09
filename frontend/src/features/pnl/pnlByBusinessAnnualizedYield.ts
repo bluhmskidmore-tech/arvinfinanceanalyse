@@ -1,7 +1,4 @@
-/**
- * 业务种类损益页「年化收益率」：用区间累计损益、与日均列同源的区间日均余额（元）、
- * 区间自然日数（含首尾）做简单年化：(损益/日均)×(365/天数)，结果以百分比字符串展示。
- */
+/** 业务种类损益页「年化收益率」：后端返回百分点，本文件只负责展示格式化。 */
 
 export function inclusiveCalendarDays(startDate: string, endDate: string): number | null {
   const start = new Date(`${startDate}T12:00:00`);
@@ -13,20 +10,12 @@ export function inclusiveCalendarDays(startDate: string, endDate: string): numbe
 }
 
 export function formatAnnualizedYieldPctDisplay(
-  totalPnlYuan: number | null,
-  adbAvgYuan: number | null | undefined,
-  calendarDays: number | null,
+  annualizedYieldPct: string | number | null | undefined,
 ): string {
-  if (totalPnlYuan === null || !Number.isFinite(totalPnlYuan)) {
+  if (annualizedYieldPct === null || annualizedYieldPct === undefined || annualizedYieldPct === "") {
     return "-";
   }
-  if (adbAvgYuan === undefined || adbAvgYuan === null || !Number.isFinite(adbAvgYuan) || adbAvgYuan <= 0) {
-    return "-";
-  }
-  if (calendarDays === null || calendarDays < 1) {
-    return "-";
-  }
-  const annualizedPct = (totalPnlYuan / adbAvgYuan) * (365 / calendarDays) * 100;
+  const annualizedPct = Number(annualizedYieldPct);
   if (!Number.isFinite(annualizedPct)) {
     return "-";
   }

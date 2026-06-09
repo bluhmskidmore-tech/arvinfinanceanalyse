@@ -37,6 +37,8 @@ SIGN_FLIP_JOURNAL_TYPES: frozenset[str] = frozenset(LEDGER_PNL_ACCOUNT_PREFIXES)
 }
 
 ZERO = Decimal("0")
+TWOPLACES = Decimal("0.01")
+YIELD_PCT_PLACES = Decimal("0.000001")
 _FORMAL_517_EVENT_SEMANTICS: frozenset[str] = frozenset(
     {
         "realized_formal",
@@ -156,6 +158,46 @@ class RecognizedPnlComponents:
             + self.capital_gain_517
             + self.manual_adjustment
         )
+
+
+@dataclass(slots=True, frozen=True)
+class PnlByBusinessYieldAndFtp:
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
+
+
+def compute_pnl_by_business_yield_and_ftp(
+    *,
+    total_pnl: Decimal,
+    avg_balance: Decimal,
+    calendar_days: int,
+    ftp_rate_pct: Decimal,
+) -> PnlByBusinessYieldAndFtp:
+    normalized_ftp_rate_pct = _quantize_yield_pct(ftp_rate_pct)
+    if avg_balance <= ZERO or calendar_days <= 0:
+        return PnlByBusinessYieldAndFtp(
+            annualized_yield_pct=None,
+            ftp_rate_pct=normalized_ftp_rate_pct,
+            ftp_cost=None,
+            ftp_net_pnl=None,
+            ftp_net_annualized_yield_pct=None,
+        )
+
+    annualized_yield_pct = _quantize_yield_pct(
+        (total_pnl / avg_balance) * Decimal("365") / Decimal(str(calendar_days)) * Decimal("100")
+    )
+    ftp_rate_ratio = ftp_rate_pct / Decimal("100")
+    ftp_cost = _quantize_amount(avg_balance * ftp_rate_ratio * Decimal(str(calendar_days)) / Decimal("365"))
+    return PnlByBusinessYieldAndFtp(
+        annualized_yield_pct=annualized_yield_pct,
+        ftp_rate_pct=normalized_ftp_rate_pct,
+        ftp_cost=ftp_cost,
+        ftp_net_pnl=_quantize_amount(total_pnl - ftp_cost),
+        ftp_net_annualized_yield_pct=_quantize_yield_pct(annualized_yield_pct - normalized_ftp_rate_pct),
+    )
 
 
 def build_formal_pnl_fi_fact_rows(
@@ -352,9 +394,11 @@ __all__ = [
     "JournalType",
     "NonStdJournalEntry",
     "NonStdPnlBridgeRow",
+    "PnlByBusinessYieldAndFtp",
     "build_formal_pnl_fi_fact_rows",
     "build_nonstd_pnl_bridge_rows",
     "compute_nonstd_signed_ledger_amount",
+    "compute_pnl_by_business_yield_and_ftp",
     "normalize_fi_pnl_records",
     "normalize_nonstd_journal_entries",
 ]
@@ -498,6 +542,14 @@ def _entry_in_scope(entry_date: date, *, target_date: date, is_month_end: bool) 
 def _append_unique(items: list[str], value: str) -> None:
     if value and value not in items:
         items.append(value)
+
+
+def _quantize_amount(value: Decimal) -> Decimal:
+    return value.quantize(TWOPLACES)
+
+
+def _quantize_yield_pct(value: object) -> Decimal:
+    return Decimal(str(value)).quantize(YIELD_PCT_PLACES)
 
 
 def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:

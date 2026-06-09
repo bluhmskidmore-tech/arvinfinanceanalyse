@@ -20,7 +20,13 @@ const minimalYtdRow = (patch: Partial<PnlByBusinessYtdItem> = {}): PnlByBusiness
   capital_gain: "0",
   manual_adjustment: "0",
   total_pnl: "100000",
+  avg_balance: "1000000000",
   current_balance: "1000000000",
+  annualized_yield_pct: "9.876543",
+  ftp_rate_pct: "1.600000",
+  ftp_cost: "12345.67",
+  ftp_net_pnl: "76543.21",
+  ftp_net_annualized_yield_pct: "8.765432",
   balance_yield_pct: null,
   proportion: "0.1",
   assets_count: 3,
@@ -137,7 +143,7 @@ describe("buildPnlByBusinessSheets", () => {
       viewMode: "monthly",
       reportDate: "2025-12-31",
       year: 2025,
-      ytdRows: [minimalYtdRow()],
+      ytdRows: [minimalYtdRow({ avg_balance: "0", annualized_yield_pct: null, ftp_net_pnl: null, ftp_net_annualized_yield_pct: null })],
       adbAvgByBusinessType: new Map([["政策性金融债", 1_000_000_000]]),
       formalRows: [minimalFormalRow()],
       months: [minimalMonthlyBucket()],
@@ -221,7 +227,15 @@ describe("buildPnlByBusinessSheets", () => {
       periodStart: "2025-01-01",
       periodEnd: "2025-12-31",
       periodLabel: "2025 YTD",
-      ytdRows: [minimalYtdRow()],
+      ytdRows: [
+        minimalYtdRow({
+          avg_balance: "0",
+          annualized_yield_pct: null,
+          ftp_cost: null,
+          ftp_net_pnl: null,
+          ftp_net_annualized_yield_pct: null,
+        }),
+      ],
       adbAvgByBusinessType: new Map([["政策性金融债", 0]]),
       formalRows: [],
       months: [],
@@ -250,6 +264,45 @@ describe("buildPnlByBusinessSheets", () => {
     expect(footerRow?.[7]).toBeNull();
     expect(footerRow?.[8]).toBeNull();
     expect(footerRow?.[9]).toBeNull();
+  });
+
+  it("exports YTD annualized yield and FTP fields from backend fields", () => {
+    const businessType = minimalYtdRow().business_type;
+    const sheets = buildPnlByBusinessSheets({
+      viewMode: "ytd",
+      reportDate: "2025-12-31",
+      year: 2025,
+      periodStart: "2025-01-01",
+      periodEnd: "2025-12-31",
+      periodLabel: "2025 YTD",
+      ytdRows: [
+        minimalYtdRow({
+          total_pnl: "100000",
+          avg_balance: "1000000000",
+          annualized_yield_pct: "9.876543",
+          ftp_net_pnl: "76543.21",
+          ftp_net_annualized_yield_pct: "8.765432",
+        }),
+      ],
+      adbAvgByBusinessType: new Map([[businessType, 100_000_000]]),
+      formalRows: [],
+      months: [],
+      adjustments: [],
+      adjustmentEvents: [],
+      bondBucketRows: [],
+      bondBucketMonthlyRows: [],
+      negativeFtpRows: [],
+      analysisDimension: undefined,
+      analysisRows: [],
+      selectedBusinessLabel: businessType,
+    });
+
+    const ytdSheet = sheets[1];
+    const businessRow = ytdSheet?.data[1];
+
+    expect(businessRow?.[7]).toBe(9.876543);
+    expect(businessRow?.[8]).toBe(7.654321);
+    expect(businessRow?.[9]).toBe(8.765432);
   });
 
   it("builds a formal detail sheet with the writer sheet contract", () => {

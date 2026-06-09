@@ -728,6 +728,99 @@ def test_liability_analytics_yield_rows_prefer_formal_cny_zqtz_weights(tmp_path)
     assert payload["kpi"]["nim"] == 0.0175
 
 
+def test_liability_analytics_yield_kpis_match_formal_cny_row_calculation(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.liability_analytics_repo_yield_kpi_contract",
+        "backend/app/repositories/liability_analytics_repo.py",
+    )
+    compute_module = load_module(
+        "backend.app.core_finance.liability_analytics_compat_yield_kpi_contract",
+        "backend/app/core_finance/liability_analytics_compat.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              instrument_name varchar,
+              portfolio_name varchar,
+              asset_class varchar,
+              bond_type varchar,
+              invest_type_std varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              face_value_amount decimal(24, 8),
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table tyw_interbank_daily_snapshot (
+              report_date date,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              core_customer_type varchar,
+              principal_native decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date date,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'A1', 'afs asset', 'P', 'AFS', 'gov', 'A', 'asset', 'CNY', 'CNY', 100, 120, 110, 2.0, 2.5, '2030-01-01', 'sv_a', 'rv_a'),
+            ('2026-04-30', 'H1', 'htm asset', 'P', 'HTM', 'gov', 'H', 'asset', 'CNY', 'CNY', 100, 200, 150, 3.0, null, '2030-01-01', 'sv_h', 'rv_h'),
+            ('2026-04-30', 'T1', 'trading asset', 'P', 'TRADING', 'gov', 'T', 'asset', 'CNY', 'CNY', 999, 999, 999, 9.0, 9.0, '2030-01-01', 'sv_t', 'rv_t'),
+            ('2026-04-30', 'L1', 'ncd liability', 'P', 'issued', '鍚屼笟瀛樺崟', 'H', 'liability', 'CNY', 'CNY', 300, 330, 320, 2.4, null, '2027-01-01', 'sv_l', 'rv_l')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+            ('2026-04-30', 'IA1', 'repo', 'asset side', 'cp a', 'core', 400, 1.8, '2026-06-01', 'sv_ia', 'rv_ia'),
+            ('2026-04-30', 'IL1', 'repo', 'liability side', 'cp b', 'core', 500, 2.2, '2026-06-01', 'sv_il', 'rv_il')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
+    rows_by_date, tyw_by_date = repo.fetch_yield_rows_for_dates(["2026-04-30"])
+    expected = compute_module.compute_liability_yield_metrics(
+        "2026-04-30",
+        rows_by_date["2026-04-30"],
+        tyw_by_date["2026-04-30"],
+    )
+
+    actual = repo.fetch_yield_kpis_for_dates(["2026-04-30"])["2026-04-30"]
+
+    for key, expected_value in expected["kpi"].items():
+        if expected_value is None:
+            assert actual["kpi"][key] is None
+        else:
+            assert actual["kpi"][key] == pytest.approx(expected_value)
+    assert "sv_a" in actual["source_version"]
+    assert "rv_il" in actual["rule_version"]
+
+
 def test_liability_analytics_yield_rows_fall_back_when_formal_cny_lacks_invest_type(tmp_path):
     repo_module = load_module(
         "backend.app.repositories.liability_analytics_repo_missing_invest_type_contract",
@@ -1210,3 +1303,89 @@ def test_dashboard_repository_batch_bond_metrics_falls_back_per_missing_zqtz_dat
     assert previous_total == Decimal("200.00000000")
     assert previous_yield == Decimal("0.030000000000")
     assert previous_top[0][0] == "formal-gov"
+
+
+def test_dashboard_repository_lists_domain_date_context_from_all_available_tables(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.dashboard_repo_date_context_contract",
+        "backend/app/repositories/dashboard_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              position_scope varchar,
+              currency_basis varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_scope varchar,
+              currency_basis varchar
+            )
+            """
+        )
+        conn.execute("create table fact_formal_pnl_fi (report_date varchar)")
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date varchar)")
+        conn.execute("create table tyw_interbank_daily_snapshot (report_date varchar)")
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'asset', 'CNY'),
+            ('2026-04-29', 'asset', 'CNY'),
+            ('2026-04-28', 'liability', 'CNY'),
+            ('2026-04-27', 'asset', 'USD')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily values
+            ('2026-04-30', 'asset', 'CNY'),
+            ('2026-04-28', 'asset', 'CNY'),
+            ('2026-04-26', 'liability', 'CNY')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values
+            ('2026-04-30'), ('2026-03-31')
+            """
+        )
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+            ('2026-04-30'), ('2026-04-29')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+            ('2026-04-30'), ('2026-04-28')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+            ('2026-04-30'), ('2026-04-29')
+            """
+        )
+    finally:
+        conn.close()
+
+    context = repo_module.DashboardRepository(str(db_path)).list_domain_date_context()
+
+    assert context == {
+        "balance": ["2026-04-30", "2026-04-29", "2026-04-28"],
+        "pnl": ["2026-04-30", "2026-03-31"],
+        "liability": ["2026-04-30", "2026-04-29", "2026-04-28"],
+        "bond": ["2026-04-30", "2026-04-29"],
+    }

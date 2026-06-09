@@ -188,8 +188,14 @@ class PnlByBusinessYtdItem(BaseModel):
     capital_gain: Decimal
     manual_adjustment: Decimal
     total_pnl: Decimal
+    avg_balance: Decimal
     current_balance: Decimal
     balance_yield_pct: Decimal | None
+    annualized_yield_pct: Decimal | None
+    ftp_rate_pct: Decimal
+    ftp_cost: Decimal | None
+    ftp_net_pnl: Decimal | None
+    ftp_net_annualized_yield_pct: Decimal | None
     source_kind: str | None = None
     source_note: str | None = None
     proportion: Decimal | None

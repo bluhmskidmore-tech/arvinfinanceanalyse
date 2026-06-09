@@ -20,6 +20,7 @@ from backend.app.core_finance.calibers.rules.fx_mid_conversion import (
     InapplicableFxConversion,
     select_fx_date,
 )
+from backend.app.core_finance.fx_rates import get_usd_cny_rate
 
 _BD = date(2024, 1, 2)
 _ASOF = date(2024, 3, 4)
@@ -159,3 +160,23 @@ def test_select_fx_date_all_nine_matrix_cells(
 
 def test_inapplicable_fx_conversion_is_value_error_subclass() -> None:
     assert issubclass(InapplicableFxConversion, ValueError)
+
+
+def test_formal_canonical_usd_cny_rate_fails_closed_when_input_rows_are_empty() -> None:
+    with pytest.raises(RuntimeError) as excinfo:
+        get_usd_cny_rate([], date(2026, 3, 31))
+
+    assert "USD/CNY" in str(excinfo.value)
+    assert "formal" in str(excinfo.value)
+
+
+def test_formal_canonical_usd_cny_rate_fails_closed_when_only_stale_rows_exist() -> None:
+    with pytest.raises(RuntimeError) as excinfo:
+        get_usd_cny_rate(
+            [(date(2026, 2, 1), "7.1100")],
+            date(2026, 3, 31),
+        )
+
+    assert "USD/CNY" in str(excinfo.value)
+    assert "formal" in str(excinfo.value)
+    assert "7.25" not in str(excinfo.value)

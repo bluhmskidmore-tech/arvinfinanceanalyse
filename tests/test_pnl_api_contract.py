@@ -1484,6 +1484,133 @@ def test_pnl_by_business_ytd_total_matches_formal_fact_rollups(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
+def test_pnl_by_business_ytd_returns_backend_owned_yield_and_ftp_fields(monkeypatch):
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_defs = {str(row["row_key"]): row for row in category_module.ZQTZ_ASSET_BOND_ROWS}
+    policy_type = str(row_defs["asset_zqtz_policy_financial_bond"]["match_keywords"][0])
+    if hasattr(pnl_service, "clear_pnl_by_business_ytd_cache"):
+        pnl_service.clear_pnl_by_business_ytd_cache()
+
+    class FakePnlRepository:
+        def __init__(self, _path):
+            pass
+
+        def max_formal_or_nonstd_report_date_in_year(self, *, year, as_of_cap):
+            assert year == 2025
+            assert as_of_cap in {None, "2025-02-28"}
+            return "2025-02-28"
+
+        def formal_pnl_ytd_has_rows(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-02-28")
+            return True
+
+        def list_union_report_dates(self):
+            return ["2025-01-31", "2025-02-28"]
+
+        def fetch_by_business_analysis_pnl_rows(self, *, year, as_of_date):
+            assert (year, as_of_date) == (2025, "2025-02-28")
+            base = {
+                "source_kind": "formal_fi",
+                "instrument_code": "P001",
+                "portfolio_name": "Rate Desk",
+                "cost_center": "CC-RATE",
+                "currency_basis": "CNY",
+                "invest_type_std": policy_type,
+                "accounting_basis": "FVTPL",
+                "fair_value_change_516": Decimal("0.00"),
+                "capital_gain_517": Decimal("0.00"),
+                "manual_adjustment": Decimal("0.00"),
+            }
+            return [
+                {
+                    **base,
+                    "report_date": "2025-01-31",
+                    "interest_income_514": Decimal("100.00"),
+                    "total_pnl": Decimal("100.00"),
+                },
+                {
+                    **base,
+                    "report_date": "2025-02-28",
+                    "interest_income_514": Decimal("200.00"),
+                    "total_pnl": Decimal("200.00"),
+                },
+            ]
+
+        def fetch_by_business_analysis_balance_rows(self, *, start_date, end_date):
+            assert (start_date, end_date) == ("2025-01-01", "2025-02-28")
+            base = {
+                "instrument_code": "P001",
+                "instrument_name": "policy bond",
+                "portfolio_name": "Rate Desk",
+                "cost_center": "CC-RATE",
+                "account_category": "asset",
+                "asset_class": policy_type,
+                "bond_type": policy_type,
+                "sub_type": policy_type,
+                "business_type_primary": policy_type,
+                "business_type_final": policy_type,
+                "invest_type_std": "T",
+                "accounting_basis": "FVTPL",
+                "position_scope": "asset",
+                "currency_basis": "CNY",
+                "currency_code": "CNY",
+            }
+            return [
+                {
+                    **base,
+                    "report_date": "2025-01-31",
+                    "avg_amount": Decimal("1000.00"),
+                    "current_amount": Decimal("1100.00"),
+                },
+                {
+                    **base,
+                    "report_date": "2025-02-28",
+                    "avg_amount": Decimal("2000.00"),
+                    "current_amount": Decimal("2200.00"),
+                },
+            ]
+
+    monkeypatch.setattr(pnl_service, "PnlRepository", FakePnlRepository)
+    monkeypatch.setattr(
+        pnl_service,
+        "_build_pnl_formal_result_envelope_from_lineage",
+        lambda **kwargs: {"result_meta": {"result_kind": kwargs["result_kind"]}, "result": kwargs["result_payload"]},
+    )
+
+    payload = pnl_service.pnl_by_business_ytd_envelope(
+        duckdb_path="fake.duckdb",
+        governance_dir="fake-governance",
+        year=2025,
+        as_of_date="2025-02-28",
+    )
+
+    assert payload["result_meta"]["result_kind"] == "pnl.by_business_ytd"
+    by_key = {item["row_key"]: item for item in payload["result"]["items"]}
+    row = by_key["asset_zqtz_policy_financial_bond"]
+    assert set(row) >= {
+        "avg_balance",
+        "annualized_yield_pct",
+        "ftp_rate_pct",
+        "ftp_cost",
+        "ftp_net_pnl",
+        "ftp_net_annualized_yield_pct",
+    }
+    assert row["total_pnl"] == "300.00"
+    assert row["avg_balance"] == "1500.00"
+    assert row["current_balance"] == "2200.00"
+    assert row["annualized_yield_pct"] == "123.728814"
+    assert row["ftp_rate_pct"] == "1.600000"
+    assert row["ftp_cost"] == "3.88"
+    assert row["ftp_net_pnl"] == "296.12"
+    assert row["ftp_net_annualized_yield_pct"] == "122.128814"
+    if hasattr(pnl_service, "clear_pnl_by_business_ytd_cache"):
+        pnl_service.clear_pnl_by_business_ytd_cache()
+
+
 def test_pnl_by_business_ytd_classifies_each_report_month_before_accumulating(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"

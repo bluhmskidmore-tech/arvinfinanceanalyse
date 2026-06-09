@@ -59,6 +59,44 @@ class ProductCategoryPnlRepository:
             return "sv_product_category_empty"
         return str(row[0])
 
+    def fetch_home_headline_values(
+        self,
+        *,
+        report_date: str,
+        views: list[str],
+    ) -> dict[str, dict[str, object]]:
+        requested_views = [str(view).strip() for view in dict.fromkeys(views) if str(view or "").strip()]
+        if not requested_views:
+            return {}
+        categories = ("grand_total", "intermediate_business_income")
+        view_placeholders = ", ".join(["?"] * len(requested_views))
+        category_placeholders = ", ".join(["?"] * len(categories))
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                f"""
+                select view, category_id, business_net_income
+                from product_category_pnl_formal_read_model
+                where report_date = ?
+                  and view in ({view_placeholders})
+                  and category_id in ({category_placeholders})
+                """,
+                [report_date, *requested_views, *categories],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if _is_missing_read_model_error(exc):
+                return {}
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model is temporarily unavailable."
+            ) from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        result: dict[str, dict[str, object]] = {view: {} for view in requested_views}
+        for view, category_id, business_net_income in rows:
+            result.setdefault(str(view), {})[str(category_id)] = business_net_income
+        return result
+
     def fetch_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
         """Load persisted formal read-model rows only. Scenario FTP is overlaid in analysis_adapters, not stored here."""
         try:

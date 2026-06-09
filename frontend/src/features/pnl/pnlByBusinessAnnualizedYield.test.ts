@@ -10,18 +10,15 @@ describe("pnlByBusinessAnnualizedYield", () => {
     expect(inclusiveCalendarDays("2024-01-01", "2024-12-31")).toBe(366);
   });
 
-  it("formats annualized yield from PnL, ADB, and days", () => {
-    const pnl = 130_000;
-    const adb = 100_000_000;
-    const days = 365;
-    expect(formatAnnualizedYieldPctDisplay(pnl, adb, days)).toBe("0.13%");
+  it("formats backend annualized yield pct points without recalculating", () => {
+    expect(formatAnnualizedYieldPctDisplay("9.876543")).toBe("9.88%");
+    expect(formatAnnualizedYieldPctDisplay(0)).toBe("0.00%");
   });
 
   it("returns dash when inputs are unusable", () => {
-    expect(formatAnnualizedYieldPctDisplay(null, 1, 30)).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay(1, undefined, 30)).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay(1, 0, 30)).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay(1, 100, null)).toBe("-");
-    expect(formatAnnualizedYieldPctDisplay(1, 100, 0)).toBe("-");
+    expect(formatAnnualizedYieldPctDisplay(null)).toBe("-");
+    expect(formatAnnualizedYieldPctDisplay(undefined)).toBe("-");
+    expect(formatAnnualizedYieldPctDisplay("")).toBe("-");
+    expect(formatAnnualizedYieldPctDisplay("not-a-number")).toBe("-");
   });
 });

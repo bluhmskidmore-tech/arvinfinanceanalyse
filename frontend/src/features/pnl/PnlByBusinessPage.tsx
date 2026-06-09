@@ -169,8 +169,6 @@ function numeric(raw: string | number | null | undefined): number | null {
 
 /** 与日均分析页明细表「日均(亿元)」列一致：两位小数，单位写在表头 */
 const YUAN_PER_YI = 100_000_000;
-const FTP_RATE_PCT = 1.6;
-const FTP_RATE_RATIO = 0.016;
 const ANALYSIS_QUERY_STALE_MS = 5 * 60 * 1000;
 
 type ManualAdjustmentDraft = Pick<
@@ -240,45 +238,16 @@ function normalizeAdjustmentStatus(status: string): PnlByBusinessManualAdjustmen
   return "approved";
 }
 
-function annualizedYieldPctValue(
-  totalPnl: string | number | null | undefined,
-  avgBalance: number | undefined,
-  calendarDays: number | null,
-): number | null {
-  const pnl = numeric(totalPnl);
-  if (pnl === null || avgBalance === undefined || avgBalance <= 0 || !calendarDays || calendarDays <= 0) {
-    return null;
-  }
-  return (pnl / avgBalance) * (365 / calendarDays) * 100;
-}
-
-function ftpValuesForYtdRow(
-  totalPnl: string | number | null | undefined,
-  avgBalance: number | undefined,
-  calendarDays: number | null,
-): { ftpCost: number | null; ftpNetPnl: number | null; ftpNetYieldPct: number | null } {
-  const pnl = numeric(totalPnl);
-  const annualizedYield = annualizedYieldPctValue(totalPnl, avgBalance, calendarDays);
-  if (
-    pnl === null ||
-    annualizedYield === null ||
-    avgBalance === undefined ||
-    avgBalance <= 0 ||
-    !calendarDays ||
-    calendarDays <= 0
-  ) {
-    return { ftpCost: null, ftpNetPnl: null, ftpNetYieldPct: null };
-  }
-  const ftpCost = avgBalance * FTP_RATE_RATIO * (calendarDays / 365);
-  return {
-    ftpCost,
-    ftpNetPnl: pnl - ftpCost,
-    ftpNetYieldPct: annualizedYield - FTP_RATE_PCT,
-  };
-}
-
 /** 单日 formal 接口 `yield_pct`：与后端 SQL 一致，为百分数点（如 10.14 表示 10.14%），非 0–1 占比 */
 function formatFormalYieldPctPoints(raw: string | number | null | undefined) {
+  const value = numeric(raw);
+  if (value === null) {
+    return "-";
+  }
+  return `${value.toFixed(2)}%`;
+}
+
+function formatFtpRatePct(raw: string | number | null | undefined): string {
   const value = numeric(raw);
   if (value === null) {
     return "-";
@@ -304,14 +273,10 @@ function buildYtdRangeFromResultDates(
 
 function BusinessRowsTable({
   rows,
-  adbAvgByBusinessType,
-  ytdCalendarDays,
   selectedRowKey,
   onSelectRow,
 }: {
   rows: PnlByBusinessYtdItem[];
-  adbAvgByBusinessType: Map<string, number>;
-  ytdCalendarDays: number | null;
   selectedRowKey: string | null;
   onSelectRow: (row: PnlByBusinessYtdItem) => void;
 }) {
@@ -325,8 +290,10 @@ function BusinessRowsTable({
     let manual = 0;
     let totalPnl = 0;
     let assets = 0;
-    let adbSum = 0;
-    let hasAnyAdb = false;
+    let avgBalance = 0;
+    let hasAnyAvgBalance = false;
+    let ftpNetPnl = 0;
+    let hasAnyFtpNetPnl = false;
     for (const row of parentRows) {
       interest += numeric(row.interest_income) ?? 0;
       fairValue += numeric(row.fair_value_change) ?? 0;
@@ -334,14 +301,18 @@ function BusinessRowsTable({
       manual += numeric(row.manual_adjustment) ?? 0;
       totalPnl += numeric(row.total_pnl) ?? 0;
       assets += row.assets_count;
-      const adb = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
-      if (adb !== undefined) {
-        hasAnyAdb = true;
-        adbSum += adb;
+      const rowAvgBalance = numeric(row.avg_balance);
+      if (rowAvgBalance !== null) {
+        hasAnyAvgBalance = true;
+        avgBalance += rowAvgBalance;
+      }
+      const rowFtpNetPnl = numeric(row.ftp_net_pnl);
+      if (rowFtpNetPnl !== null) {
+        hasAnyFtpNetPnl = true;
+        ftpNetPnl += rowFtpNetPnl;
       }
     }
-    const adbCell = hasAnyAdb ? formatAdbAvgYiCell(adbSum) : "-";
-    const ftp = ftpValuesForYtdRow(totalPnl, hasAnyAdb ? adbSum : undefined, ytdCalendarDays);
+    const adbCell = hasAnyAvgBalance ? formatAvgBalanceYi(avgBalance) : "-";
     return {
       interest,
       fairValue,
@@ -349,18 +320,16 @@ function BusinessRowsTable({
       manual,
       totalPnl,
       assets,
-      adbSum,
+      adbSum: avgBalance,
       adbCell,
       yieldPct: "—",
-      ftpNetPnl: ftp.ftpNetPnl,
-      ftpNetYieldPct: ftp.ftpNetYieldPct,
+      ftpNetPnl: hasAnyFtpNetPnl ? ftpNetPnl : null,
+      ftpNetYieldPct: null,
     };
-  }, [parentRows, adbAvgByBusinessType, ytdCalendarDays]);
+  }, [parentRows]);
 
   const renderRow = (row: PnlByBusinessYtdItem, selectable: boolean) => {
-    const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
-    const avgDisplay = adbAvg !== undefined ? formatAdbAvgYiCell(adbAvg) : "-";
-    const ftp = ftpValuesForYtdRow(row.total_pnl, adbAvg, ytdCalendarDays);
+    const avgDisplay = formatAvgBalanceYi(row.avg_balance);
     return (
       <tr
         key={row.row_key}
@@ -386,9 +355,9 @@ function BusinessRowsTable({
         <td>{formatPnlWan(row.capital_gain)}</td>
         <td>{formatPnlWan(row.manual_adjustment)}</td>
         <td>{formatPnlWan(row.total_pnl)}</td>
-        <td>{formatAnnualizedYieldPctDisplay(numeric(row.total_pnl), adbAvg, ytdCalendarDays)}</td>
-        <td>{formatPnlWan(ftp.ftpNetPnl)}</td>
-        <td>{formatAnalysisYieldPct(ftp.ftpNetYieldPct)}</td>
+        <td>{formatAnnualizedYieldPctDisplay(row.annualized_yield_pct)}</td>
+        <td>{formatPnlWan(row.ftp_net_pnl)}</td>
+        <td>{formatAnalysisYieldPct(row.ftp_net_annualized_yield_pct)}</td>
         <td>{formatRatioPct(row.proportion)}</td>
         <td>{row.assets_count}</td>
       </tr>
@@ -1022,11 +991,9 @@ function FormalBusinessRowsTable({ rows }: { rows: PnlByBusinessRow[] }) {
 function DriverOverviewPanel({
   rows,
   adbAvgByBusinessType,
-  ytdCalendarDays,
 }: {
   rows: PnlByBusinessYtdItem[];
   adbAvgByBusinessType: Map<string, number>;
-  ytdCalendarDays: number | null;
 }) {
   const topRows = [...rows]
     .filter((row) => (numeric(row.total_pnl) ?? 0) > 0)
@@ -1038,8 +1005,7 @@ function DriverOverviewPanel({
     .slice(0, 5);
   const yieldRows = [...rows]
     .map((row) => {
-      const adbAvg = resolveAdbAvgYuan(row.business_type, adbAvgByBusinessType);
-      return { row, yieldPct: annualizedYieldPctValue(row.total_pnl, adbAvg, ytdCalendarDays) };
+      return { row, yieldPct: numeric(row.annualized_yield_pct) };
     })
     .filter((item) => item.yieldPct !== null)
     .sort((left, right) => Math.abs(right.yieldPct ?? 0) - Math.abs(left.yieldPct ?? 0))
@@ -1239,29 +1205,25 @@ function SelectedBusinessDrilldownPanel({
   rows,
   isLoading,
   isError,
-  adbAvgByBusinessType,
-  ytdCalendarDays,
 }: {
   selectedRow: PnlByBusinessYtdItem | undefined;
   rows: PnlByBusinessAnalysisRow[];
   isLoading: boolean;
   isError: boolean;
-  adbAvgByBusinessType: Map<string, number>;
-  ytdCalendarDays: number | null;
 }) {
   const drilldown = useMemo(() => buildPnlByBusinessSelectedDrilldownModel(rows), [rows]);
-  const avgBalance = selectedRow ? resolveAdbAvgYuan(selectedRow.business_type, adbAvgByBusinessType) : undefined;
-  const ftp = ftpValuesForYtdRow(selectedRow?.total_pnl, avgBalance, ytdCalendarDays);
+  const avgBalance = selectedRow?.avg_balance ?? null;
+  const ftpNetPnl = numeric(selectedRow?.ftp_net_pnl);
   const ftpStatus =
-    ftp.ftpNetPnl === null
+    ftpNetPnl === null
       ? "FTP 后不可算"
-      : ftp.ftpNetPnl < 0
+      : ftpNetPnl < 0
         ? "FTP 后转负"
         : "FTP 后仍为正";
   const dataLimit =
-    avgBalance === undefined
+    avgBalance === null
       ? "缺日均，收益率/FTP 仅能对账"
-      : avgBalance === 0
+      : numeric(avgBalance) === 0
         ? "日均为0，收益率/FTP 暂不计算"
         : "日均已接入，可看收益率与 FTP 后结果";
 
@@ -1291,7 +1253,7 @@ function SelectedBusinessDrilldownPanel({
           <small>FTP 后判断</small>
           <strong>{ftpStatus}</strong>
           <span>
-            {formatYuanAsWanUnit(ftp.ftpNetPnl)} · {formatAnalysisYieldPct(ftp.ftpNetYieldPct)}
+            {formatYuanAsWanUnit(selectedRow?.ftp_net_pnl)} · {formatAnalysisYieldPct(selectedRow?.ftp_net_annualized_yield_pct)}
           </span>
         </div>
         <div>
@@ -1364,21 +1326,17 @@ function BondBucketAnalysisPanel({
 
 function FtpBridgePanel({
   selectedRow,
-  adbAvgByBusinessType,
-  ytdCalendarDays,
 }: {
   selectedRow: PnlByBusinessYtdItem | undefined;
-  adbAvgByBusinessType: Map<string, number>;
-  ytdCalendarDays: number | null;
 }) {
-  const avgBalance = selectedRow ? resolveAdbAvgYuan(selectedRow.business_type, adbAvgByBusinessType) : undefined;
-  const ftp = ftpValuesForYtdRow(selectedRow?.total_pnl, avgBalance, ytdCalendarDays);
+  const avgBalance = selectedRow?.avg_balance ?? null;
+  const ftpRateDisplay = formatFtpRatePct(selectedRow?.ftp_rate_pct);
   return (
     <section className="pnl-by-business-analysis-block" data-testid="pnl-by-business-ftp-bridge">
       <div className="pnl-by-business-analysis-heading">
         <div>
           <h2>FTP后收益桥</h2>
-          <p>{selectedRow?.business_type ?? "-"} · FTP 年化利率 1.6%</p>
+          <p>{selectedRow?.business_type ?? "-"} · FTP 年化利率 {ftpRateDisplay}</p>
         </div>
       </div>
       <div className="pnl-by-business-analysis-kpis">
@@ -1390,21 +1348,21 @@ function FtpBridgePanel({
         />
         <KpiCard
           label="FTP成本"
-          value={formatYuanAsWanUnit(ftp.ftpCost)}
-          detail={avgBalance === undefined ? "日均缺失" : avgBalance === 0 ? "日均为0" : "日均 × 1.6%"}
-          tone={ftp.ftpCost && ftp.ftpCost > 0 ? "negative" : "default"}
+          value={formatYuanAsWanUnit(selectedRow?.ftp_cost)}
+          detail={avgBalance === null ? "日均缺失" : numeric(avgBalance) === 0 ? "日均为0" : `日均 × ${ftpRateDisplay}`}
+          tone={(numeric(selectedRow?.ftp_cost) ?? 0) > 0 ? "negative" : "default"}
         />
         <KpiCard
           label="FTP后收益"
-          value={formatYuanAsWanUnit(ftp.ftpNetPnl)}
+          value={formatYuanAsWanUnit(selectedRow?.ftp_net_pnl)}
           detail="合计损益 - FTP成本"
-          tone={toneFromSigned(ftp.ftpNetPnl)}
+          tone={toneFromSigned(selectedRow?.ftp_net_pnl)}
         />
         <KpiCard
           label="FTP后收益率"
-          value={formatAnalysisYieldPct(ftp.ftpNetYieldPct)}
-          detail="年化收益率 - 1.6%"
-          tone={toneFromSigned(ftp.ftpNetYieldPct)}
+          value={formatAnalysisYieldPct(selectedRow?.ftp_net_annualized_yield_pct)}
+          detail={`年化收益率 - ${ftpRateDisplay}`}
+          tone={toneFromSigned(selectedRow?.ftp_net_annualized_yield_pct)}
         />
       </div>
     </section>
@@ -1537,13 +1495,6 @@ export default function PnlByBusinessPage() {
     () => buildYtdRangeFromResultDates(ytdResult?.period_start_date, ytdResult?.period_end_date),
     [ytdResult?.period_start_date, ytdResult?.period_end_date],
   );
-
-  const ytdCalendarDays = useMemo(() => {
-    if (!ytdRange?.startDate || !ytdRange?.endDate) {
-      return null;
-    }
-    return inclusiveCalendarDays(ytdRange.startDate, ytdRange.endDate);
-  }, [ytdRange?.startDate, ytdRange?.endDate]);
 
   const adbComparisonQuery = useQuery({
     queryKey: ["pnl-by-business", "adb-comparison-ytd", client.mode, ytdRange?.startDate, ytdRange?.endDate],
@@ -2205,17 +2156,14 @@ export default function PnlByBusinessPage() {
               <DriverOverviewPanel
                 rows={ytdRows}
                 adbAvgByBusinessType={adbAvgByBusinessType}
-                ytdCalendarDays={ytdCalendarDays}
               />
               <PageSectionLead
                 eyebrow="Business Type"
                 title={`${selectedYear} 年累计明细`}
-                description="表中利息至合计损益为万元（接口为元÷1万）；日均(亿元)与日均分析同源，区间采用后端 YTD 结果返回的起止日期；「非底层投资资产」父级日均由下列细类目相加。年化收益率为（累计损益÷同区间日均余额）×（365÷自然日数，含首尾），与日均列同源；无日均或区间不可算时显示「-」。口径提示：同一资产在 ZQTZ 规则下可同时命中父类「非底层投资资产」与「其中」细类（如证券业资管计划、本币专户/市值法、外币委外、结构化融资（券商）等），故多行损益金额可能重叠展示——核对「证券业资管」量级时宜看该行及同前缀下的细分行，勿与父级简单相加以免重复。表末「父级汇总」仅对父级行求和（排除「其中」细分），占比与收益率列不宜相加故置「—」。"
+                description="表中利息至合计损益为万元（接口为元÷1万）；日均(亿元)与日均分析同源，区间采用后端 YTD 结果返回的起止日期；「非底层投资资产」父级日均由下列细类目相加。年化收益率与 FTP 后损益字段由后端 YTD 结果返回；无日均或区间不可算时显示「-」。口径提示：同一资产在 ZQTZ 规则下可同时命中父类「非底层投资资产」与「其中」细类（如证券业资管计划、本币专户/市值法、外币委外、结构化融资（券商）等），故多行损益金额可能重叠展示——核对「证券业资管」量级时宜看该行及同前缀下的细分行，勿与父级简单相加以免重复。表末「父级汇总」仅对父级行求和（排除「其中」细分），占比与收益率列不宜相加故置「—」。"
               />
               <BusinessRowsTable
                 rows={ytdRows}
-                adbAvgByBusinessType={adbAvgByBusinessType}
-                ytdCalendarDays={ytdCalendarDays}
                 selectedRowKey={selectedBusinessRow?.row_key ?? null}
                 onSelectRow={(row) => setSelectedBusinessKey(row.row_key)}
               />
@@ -2224,8 +2172,6 @@ export default function PnlByBusinessPage() {
                 rows={instrumentAnalysisRows}
                 isLoading={analysisBaseReady && (instrumentAnalysisQuery.isLoading || instrumentAnalysisQuery.isFetching)}
                 isError={instrumentAnalysisQuery.isError}
-                adbAvgByBusinessType={adbAvgByBusinessType}
-                ytdCalendarDays={ytdCalendarDays}
               />
               <PnlByBusinessManualAdjustmentPanel
                 rows={ytdRows}
@@ -2260,11 +2206,7 @@ export default function PnlByBusinessPage() {
                 title="月报业务种类明细"
                 description="逐月展开已发布月报，YTD 金额可用父级行与这些月报合计核对。"
               />
-              <FtpBridgePanel
-                selectedRow={selectedBusinessRow}
-                adbAvgByBusinessType={adbAvgByBusinessType}
-                ytdCalendarDays={ytdCalendarDays}
-              />
+              <FtpBridgePanel selectedRow={selectedBusinessRow} />
               <BondBucketAnalysisPanel
                 rows={bondBucketRows}
                 isLoading={analysisBaseReady && (analysisLoadStage < 2 || bondBucketQuery.isLoading || bondBucketQuery.isFetching)}
@@ -2314,11 +2256,7 @@ export default function PnlByBusinessPage() {
                   />
                   <KpiCard
                     label="日均"
-                    value={formatAvgBalanceYi(
-                      selectedBusinessRow
-                        ? resolveAdbAvgYuan(selectedBusinessRow.business_type, adbAvgByBusinessType)
-                        : null,
-                    )}
+                    value={formatAvgBalanceYi(selectedBusinessRow?.avg_balance)}
                     detail="ADB 同区间"
                   />
                   <KpiCard
@@ -2328,13 +2266,7 @@ export default function PnlByBusinessPage() {
                   />
                   <KpiCard
                     label="年化收益率"
-                    value={formatAnnualizedYieldPctDisplay(
-                      numeric(selectedBusinessRow?.total_pnl),
-                      selectedBusinessRow
-                        ? resolveAdbAvgYuan(selectedBusinessRow.business_type, adbAvgByBusinessType)
-                        : undefined,
-                      ytdCalendarDays,
-                    )}
+                    value={formatAnnualizedYieldPctDisplay(selectedBusinessRow?.annualized_yield_pct)}
                     detail="YTD 损益 / 日均"
                   />
                 </div>
