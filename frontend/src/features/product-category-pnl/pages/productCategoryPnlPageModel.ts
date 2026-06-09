@@ -4101,7 +4101,7 @@ export function selectProductCategoryIntermediateBusinessIncomeYearComparisonCha
 function interestSpreadMetricNumber(
   metric: ProductCategoryInterestSpreadPayload[keyof ProductCategoryInterestSpreadPayload] | null | undefined,
 ): number | null {
-  return percentNumber(metric?.raw);
+  return decimalNumber(metric?.raw);
 }
 
 function productCategoryInterestSpreadForBasis(

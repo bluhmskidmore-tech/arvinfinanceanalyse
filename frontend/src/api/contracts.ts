@@ -2891,7 +2891,7 @@ export type ProductCategoryPnlPayload = {
   asset_total: ProductCategoryPnlRow;
   liability_total: ProductCategoryPnlRow;
   grand_total: ProductCategoryPnlRow;
-  interest_spread?: ProductCategoryInterestSpreadPayload | null;
+  interest_spread: ProductCategoryInterestSpreadPayload | null;
 };
 
 export type ProductCategoryAttributionPoint = {
