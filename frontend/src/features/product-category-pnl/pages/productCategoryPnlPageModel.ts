@@ -3651,29 +3651,22 @@ function buildProductCategorySpreadMovementAttribution(input: {
   const currentAssetYield = interestSpreadMetricNumber(
     currentSnapshot?.interestSpread?.all_currency_asset_yield_pct,
   );
-  const currentAssetYieldDisplay =
-    currentAssetYield ?? percentNumber(currentSnapshot?.assetTotal?.weighted_yield);
   const currentLiabilityYield =
     interestSpreadMetricNumber(currentSnapshot?.interestSpread?.all_currency_liability_yield_pct);
-  const currentLiabilityYieldDisplay =
-    currentLiabilityYield ?? percentNumber(currentSnapshot?.liabilityTotal?.weighted_yield);
   const currentSpread = interestSpreadMetricNumber(currentSnapshot?.interestSpread?.all_currency_spread_pct);
   const priorAssetYield = interestSpreadMetricNumber(
     priorSnapshot?.interestSpread?.all_currency_asset_yield_pct,
   );
-  const priorAssetYieldDisplay = priorAssetYield ?? percentNumber(priorSnapshot?.assetTotal?.weighted_yield);
   const priorLiabilityYield = interestSpreadMetricNumber(priorSnapshot?.interestSpread?.all_currency_liability_yield_pct);
-  const priorLiabilityYieldDisplay =
-    priorLiabilityYield ?? percentNumber(priorSnapshot?.liabilityTotal?.weighted_yield);
   const priorSpread = interestSpreadMetricNumber(priorSnapshot?.interestSpread?.all_currency_spread_pct);
   const assetYieldDelta =
-    currentAssetYieldDisplay === null || priorAssetYieldDisplay === null
+    currentAssetYield === null || priorAssetYield === null
       ? null
-      : (currentAssetYieldDisplay - priorAssetYieldDisplay) * 100;
+      : (currentAssetYield - priorAssetYield) * 100;
   const liabilityYieldDelta =
-    currentLiabilityYieldDisplay === null || priorLiabilityYieldDisplay === null
+    currentLiabilityYield === null || priorLiabilityYield === null
       ? null
-      : (currentLiabilityYieldDisplay - priorLiabilityYieldDisplay) * 100;
+      : (currentLiabilityYield - priorLiabilityYield) * 100;
   const spreadDelta =
     currentSpread === null || priorSpread === null ? null : (currentSpread - priorSpread) * 100;
 
@@ -3681,9 +3674,9 @@ function buildProductCategorySpreadMovementAttribution(input: {
     currentLabel: currentLabel || "\u5f53\u524d\u671f",
     priorLabel: priorLabel || "\u4e0a\u671f",
     currentAssetYieldLabel:
-      currentAssetYieldDisplay === null ? "\u7f3a\u5931" : `${currentAssetYieldDisplay.toFixed(2)}%`,
+      currentAssetYield === null ? "\u7f3a\u5931" : `${currentAssetYield.toFixed(2)}%`,
     currentLiabilityYieldLabel:
-      currentLiabilityYieldDisplay === null ? "\u7f3a\u5931" : `${currentLiabilityYieldDisplay.toFixed(2)}%`,
+      currentLiabilityYield === null ? "\u7f3a\u5931" : `${currentLiabilityYield.toFixed(2)}%`,
     currentSpreadLabel: bpLabel(currentSpread),
     priorSpreadLabel: bpLabel(priorSpread),
     assetYieldDeltaLabel: signedBpLabel(assetYieldDelta),
@@ -3699,11 +3692,10 @@ function buildProductCategorySpreadMovementAttribution(input: {
       ...base,
     };
   }
-  if (currentAssetYieldDisplay === null || currentLiabilityYieldDisplay === null) {
+  if (currentAssetYield === null || currentLiabilityYield === null) {
     return {
       state: "incomplete",
-      reason:
-        "\u5f53\u524d\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u7f3a\u5931\uff0c\u65e0\u6cd5\u8ba1\u7b97\u5f53\u671f\u5229\u5dee\u3002",
+      reason: "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
       ...base,
     };
   }
