@@ -29,6 +29,8 @@ PNL_ATTRIBUTION_SAMPLE_PATHS = {"/api/pnl-attribution/volume-rate"}
 PNL_ATTRIBUTION_READ_HEADERS = {"X-User-Id": "pnl-attribution-read-user", "X-User-Role": "viewer"}
 LEDGER_PNL_SAMPLE_PATHS = {"/api/ledger-pnl/summary"}
 LEDGER_PNL_READ_HEADERS = {"X-User-Id": "ledger-pnl-read-user", "X-User-Role": "viewer"}
+CASHFLOW_PROJECTION_SAMPLE_PATHS = {"/api/cashflow-projection"}
+CASHFLOW_PROJECTION_READ_HEADERS = {"X-User-Id": "cashflow-projection-read-user", "X-User-Role": "viewer"}
 PNL_SAMPLE_PATHS = {"/api/pnl/bridge", "/api/pnl/data", "/api/pnl/overview"}
 PNL_READ_HEADERS = {"X-User-Id": "pnl-read-user", "X-User-Role": "viewer"}
 PRODUCT_CATEGORY_PNL_SAMPLE_PATHS = {"/ui/pnl/product-category"}
@@ -748,12 +750,94 @@ def _setup_ledger_pnl_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     )
 
 
+def _setup_cashflow_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+
+    def fake_fetch_zqtz_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+        assert report_date == "2026-04-30"
+        assert position_scope == "all"
+        assert currency_basis == "CNY"
+        return [
+            {
+                "instrument_code": "CF-BOND-001",
+                "instrument_name": "Cashflow Bond A",
+                "portfolio_name": "Liquidity Desk",
+                "cost_center": "CF",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 10, 30),
+                "face_value_amount": Decimal("1000"),
+                "market_value_amount": Decimal("1000"),
+                "coupon_rate": Decimal("0"),
+                "interest_mode": "bullet",
+                "currency_code": "CNY",
+                "source_version": "sv_cashflow_projection_gs_a_asset",
+                "rule_version": "rv_cashflow_projection_gs_a",
+            }
+        ]
+
+    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
+        assert report_date == "2026-04-30"
+        assert currency_basis == "CNY"
+        return [
+            {
+                "position_id": "CF-LIAB-001",
+                "counterparty_name": "Funding Bank A",
+                "product_type": "Term Funding",
+                "position_scope": "liability",
+                "position_side": "liability",
+                "maturity_date": date(2026, 7, 30),
+                "principal_amount": Decimal("800"),
+                "funding_cost_rate": Decimal("0"),
+                "currency_code": "CNY",
+                "source_version": "sv_cashflow_projection_gs_a_liability",
+                "rule_version": "rv_cashflow_projection_gs_a",
+            }
+        ]
+
+    def fake_fetch_bond_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+        assert report_date == "2026-04-30"
+        return [
+            {
+                "report_date": date(2026, 4, 30),
+                "instrument_code": "CF-BOND-001",
+                "portfolio_name": "Liquidity Desk",
+                "cost_center": "CF",
+                "currency_code": "CNY",
+                "maturity_date": date(2026, 10, 30),
+                "coupon_rate": Decimal("0"),
+                "ytm": Decimal("0"),
+                "macaulay_duration": Decimal("0.50"),
+            }
+        ]
+
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_zqtz_rows",
+        fake_fetch_zqtz_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.CashflowProjectionRepository,
+        "fetch_formal_tyw_liability_rows",
+        fake_fetch_tyw_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        fake_fetch_bond_analytics_rows,
+    )
+
+
 def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     request = _load_json(sample_id, "request.json")
     if sample_id == "GS-BOND-ANALYSIS-ACTION-ATTR-A":
         return _run_bond_analysis_action_attribution_payload(request)
     if sample_id == "GS-STOCK-ANALYSIS-OBS-A":
         return _run_stock_analysis_observation_payload(request, tmp_path)
+    if sample_id == "GS-CASHFLOW-PROJECTION-A":
+        return _run_cashflow_projection_payload(request)
     return _run_request_payload(request, tmp_path, monkeypatch)
 
 
@@ -780,6 +864,18 @@ def _run_stock_analysis_observation_payload(request: dict[str, Any], tmp_path: P
     )
     payload["result_meta"]["trace_id"] = "tr_stock_analysis_obs_gs_a"
     payload["result_meta"]["generated_at"] = "2026-06-06T00:00:00Z"
+    return payload
+
+
+def _run_cashflow_projection_payload(request: dict[str, Any]) -> dict[str, Any]:
+    service_mod = sys.modules.get("backend.app.services.cashflow_projection_service")
+    if service_mod is None:
+        pytest.fail("Cashflow golden-sample service fixture was not initialized.")
+    params = dict(request.get("params") or {})
+    payload = service_mod.get_cashflow_projection(date.fromisoformat(str(params["report_date"])))
+    payload["result_meta"]["trace_id"] = "tr_cashflow_projection_gs_a"
+    payload["result_meta"]["generated_at"] = "2026-06-09T00:00:00Z"
+    payload["result"]["computed_at"] = "2026-06-09T00:00:00Z"
     return payload
 
 
@@ -838,6 +934,14 @@ def _run_request_payload(
             resource="ledger_pnl",
         )
         headers = LEDGER_PNL_READ_HEADERS
+    elif request["path"] in CASHFLOW_PROJECTION_SAMPLE_PATHS:
+        _grant_sample_read_scope(
+            tmp_path,
+            monkeypatch,
+            db_name="cashflow-projection-read-scope.db",
+            resource="cashflow_projection",
+        )
+        headers = CASHFLOW_PROJECTION_READ_HEADERS
     elif request["path"] in PNL_SAMPLE_PATHS:
         _grant_sample_read_scope(
             tmp_path,
@@ -1405,6 +1509,46 @@ def _validate_ledger_pnl_summary(actual: dict[str, Any], expected: dict[str, Any
     )
 
 
+def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    actual["result"]["computed_at"] = expected["result"]["computed_at"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "requested_report_date"),
+            ("result_meta", "resolved_report_date"),
+            ("result_meta", "as_of_date"),
+            ("result_meta", "date_basis"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result_meta", "evidence_rows"),
+            ("result_meta", "source_surface"),
+            ("result", "report_date"),
+            ("result", "duration_gap"),
+            ("result", "asset_duration"),
+            ("result", "liability_duration"),
+            ("result", "equity_duration"),
+            ("result", "rate_sensitivity_1bp"),
+            ("result", "reinvestment_risk_12m"),
+            ("result", "monthly_buckets"),
+            ("result", "top_maturing_assets_12m"),
+            ("result", "warnings"),
+        ],
+    )
+
+
 def _validate_stock_analysis_observation(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -1469,6 +1613,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-LEDGER-PNL-SUMMARY-A": CaptureReadyCase(
         setup=_setup_ledger_pnl_summary,
         validator=_validate_ledger_pnl_summary,
+    ),
+    "GS-CASHFLOW-PROJECTION-A": CaptureReadyCase(
+        setup=_setup_cashflow_projection,
+        validator=_validate_cashflow_projection,
     ),
 }
 

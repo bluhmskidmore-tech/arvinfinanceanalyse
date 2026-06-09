@@ -441,7 +441,7 @@ def test_capture_ready_sample_count_stays_in_sync_across_docs_and_gate():
     metric_dictionary = _read_doc("metric_dictionary.md")
     golden_samples_readme = (GOLDEN_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert actual_count == 18
+    assert actual_count == 19
     assert sorted(CAPTURE_READY_CASES) == capture_ready_sample_ids
     assert sorted(SUPPORTING_ONLY_SAMPLE_IDS) == supporting_only_sample_ids
     assert metric_dictionary_sample_ids == capture_ready_sample_ids

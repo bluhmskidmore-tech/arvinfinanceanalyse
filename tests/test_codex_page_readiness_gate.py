@@ -801,8 +801,11 @@ def test_cashflow_projection_readiness_exposes_candidate_record_path_without_for
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert any("candidate liquidity projection evidence" in item for item in report["guardrails"])
     assert any("duration_gap" in item for item in report["truth_chain"])
+    assert report["golden_samples"] == ["tests/golden_samples/GS-CASHFLOW-PROJECTION-A"]
+    assert report["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
     assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
-    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+    assert any("Existing golden sample is supporting or page DTO evidence only" in gap for gap in report["residual_gaps"])
 
 
 def test_concentration_monitor_readiness_exposes_candidate_record_path_without_formal_promotion() -> None:
@@ -1698,7 +1701,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["cashflow-projection"]["source"] == "seeded_trace_bundle"
     assert rows_by_slug["cashflow-projection"]["run_supported"] is True
     assert rows_by_slug["cashflow-projection"]["formal_use_allowed"] is False
-    assert rows_by_slug["cashflow-projection"]["has_golden_samples"] is False
+    assert rows_by_slug["cashflow-projection"]["has_golden_samples"] is True
     assert rows_by_slug["cashflow-projection"]["golden_sample_approved"] is False
     assert rows_by_slug["concentration-monitor"]["classification"] == "evidence-pending"
     assert rows_by_slug["concentration-monitor"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"

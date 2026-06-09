@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/cashflow-projection",
+  "params": {
+    "report_date": "2026-04-30"
+  },
+  "basis": "analytical"
+}

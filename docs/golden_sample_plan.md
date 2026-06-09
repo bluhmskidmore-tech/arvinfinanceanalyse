@@ -18,7 +18,7 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 **18** 个样本包（其中 17 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
+- `tests/golden_samples/` 已经存在 **19** 个样本包（其中 18 个与 `tests/test_golden_samples_capture_ready.py` 矩阵一致，1 个为 supporting-only）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
@@ -36,6 +36,7 @@
   - `GS-EXEC-SUMMARY-A`
   - `GS-EXEC-PNL-ATTR-A`
   - `GS-LEDGER-PNL-SUMMARY-A`
+  - `GS-CASHFLOW-PROJECTION-A`
   - `GS-PORTFOLIO-HOME-A`（supporting-only，不进入 capture-ready 矩阵）
 - `scripts/backend_release_suite.py` 已经把 `tests/test_golden_samples_capture_ready.py` 纳入固定 release suite。
 
@@ -80,6 +81,7 @@
 | `GS-BOND-HEADLINE-A` | `GET /api/bond-dashboard/headline-kpis` | 已有样本包 | `tests/test_bond_dashboard_api_contract.py` + `tests/golden_samples/GS-BOND-HEADLINE-A/` + capture-ready | 冻结 bond-dashboard headline 页面真值，保留字典级 metric caveat |
 | `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GET /api/bond-analytics/action-attribution` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A/` + capture-ready | 冻结 `/bond-analysis` action-attribution DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
 | `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | 已有样本包 | `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A/` + capture-ready | 冻结 `/stock-analysis` Livermore observation DTO；保留 observational-only / no-trading-instruction / `formal_use_allowed=false` 边界 |
+| `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | 已有样本包 | `tests/test_cashflow_projection.py` + `tests/test_golden_samples_capture_ready.py` + `tests/golden_samples/GS-CASHFLOW-PROJECTION-A/` + capture-ready | 冻结 `/cashflow-projection` candidate liquidity projection DTO；保留 candidate-only / `formal_use_allowed=false` 边界 |
 | `GS-PROD-CAT-PNL-A` | `/ui/pnl/product-category` | 已有样本包 | `tests/test_product_category_pnl_flow.py` + `tests/golden_samples/GS-PROD-CAT-PNL-A/` + capture-ready | 与 `docs/pnl/product-category-page-truth-contract.md` / `PAGE-PROD-CAT-PNL-001` 绑定 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 作为受控 warning profile 样本纳入版本基线 |
@@ -170,7 +172,7 @@ tests/golden_samples/
 ### 8.1 本周必须完成
 
 1. 把 `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md`、`tests/golden_samples/` 纳入版本控制。
-2. 复核 17 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
+2. 复核 18 个现有 capture-ready 样本目录是否都符合 `request/response/assertions/approval` 结构，并保持 capture-ready 与 supporting-only 口径分离。
 3. 在 catalog 中补充每个样本对应的 `page_id`、`metric_id`、`tests/...`。
 
 ### 8.2 下周必须完成

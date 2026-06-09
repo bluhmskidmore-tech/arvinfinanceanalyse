@@ -3286,13 +3286,14 @@ def test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary
         assert payload["frontend_route"] == "/cashflow-projection"
         assert payload["primary_api"] == "/api/cashflow-projection"
         assert payload["supporting_apis"] == ["/ui/balance-analysis/dates"]
-        assert payload["golden_samples"] == []
+        assert payload["golden_samples"] == ["tests/golden_samples/GS-CASHFLOW-PROJECTION-A"]
         assert any("MTR-CFP-001" in item for item in payload["truth_chain"])
         assert any("PAGE-CONTRACT-PENDING:/cashflow-projection" in item for item in payload["truth_chain"])
+        assert any("GS-CASHFLOW-PROJECTION-A" in item for item in payload["truth_chain"])
         assert any("fact_formal_zqtz_balance_daily" in item for item in payload["truth_chain"])
         assert any("fact_formal_tyw_balance_daily" in item for item in payload["truth_chain"])
         assert any("formal liquidity truth" in item for item in payload["guardrails"])
-        assert any("No dedicated golden sample" in item for item in payload["verification_focus"])
+        assert any("GS-CASHFLOW-PROJECTION-A" in item for item in payload["verification_focus"])
         assert not any("formal_use_allowed=true" in item for item in payload["truth_chain"])
     finally:
         server.close()
