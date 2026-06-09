@@ -379,6 +379,11 @@ def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fail
         "replace_formal_balance_rows",
         _fail_replace,
     )
+    monkeypatch.setattr(
+        task_mod.BalanceAnalysisRepository,
+        "replace_formal_balance_rows",
+        _fail_replace,
+    )
 
     with pytest.raises(RuntimeError, match="synthetic write failure"):
         task_mod.materialize_balance_analysis_facts.fn(
