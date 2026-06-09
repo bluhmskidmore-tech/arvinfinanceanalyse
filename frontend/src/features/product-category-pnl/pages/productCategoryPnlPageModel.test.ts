@@ -20,7 +20,7 @@ import {
   PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS,
   PRODUCT_CATEGORY_MAIN_PAGE_VIEWS,
   availableViewsSupportMainPageSelector,
-  buildProductCategoryTrendSnapshot,
+  buildProductCategoryTrendSnapshot as buildProductCategoryTrendSnapshotModel,
   collectProductCategoryGovernanceNotices,
   defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryAttributionEffect,
@@ -140,6 +140,20 @@ function interestSpreadPayload(input: {
     cny_spread_pct:
       input.cnySpread === undefined ? null : input.cnySpread === null ? null : pctMetric(input.cnySpread),
   };
+}
+
+type ProductCategoryPnlPayloadFixture = Omit<ProductCategoryPnlPayload, "interest_spread"> &
+  Partial<Pick<ProductCategoryPnlPayload, "interest_spread">>;
+
+function productCategoryPnlPayload(payload: ProductCategoryPnlPayloadFixture): ProductCategoryPnlPayload {
+  return {
+    interest_spread: null,
+    ...payload,
+  };
+}
+
+function buildProductCategoryTrendSnapshot(payload: ProductCategoryPnlPayloadFixture, label?: string) {
+  return buildProductCategoryTrendSnapshotModel(productCategoryPnlPayload(payload), label);
 }
 
 function attributionPayload(overrides: Partial<ProductCategoryAttributionPayload>): ProductCategoryAttributionPayload {
@@ -588,7 +602,7 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("backtests operating action signals against the next monthly payload", () => {
-    const january: ProductCategoryPnlPayload = {
+    const january: ProductCategoryPnlPayload = productCategoryPnlPayload({
       report_date: "2026-01-31",
       view: "monthly",
       available_views: ["monthly", "ytd"],
@@ -633,7 +647,7 @@ describe("productCategoryPnlPageModel", () => {
         business_net_income: yi(0.1),
         is_total: true,
       }),
-    };
+    });
     const february: ProductCategoryPnlPayload = {
       ...january,
       report_date: "2026-02-28",
@@ -798,7 +812,7 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("does not backtest operating actions across non-consecutive report months", () => {
-    const january: ProductCategoryPnlPayload = {
+    const january: ProductCategoryPnlPayload = productCategoryPnlPayload({
       report_date: "2026-01-31",
       view: "monthly",
       available_views: ["monthly", "ytd"],
@@ -835,7 +849,7 @@ describe("productCategoryPnlPageModel", () => {
         business_net_income: yi(0.6),
         is_total: true,
       }),
-    };
+    });
     const march: ProductCategoryPnlPayload = {
       ...january,
       report_date: "2026-03-31",
@@ -877,7 +891,7 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("marks sample repair as signal-only when backtest months are covered", () => {
-    const payloadForReportDate = (reportDate: string): ProductCategoryPnlPayload => ({
+    const payloadForReportDate = (reportDate: string): ProductCategoryPnlPayload => productCategoryPnlPayload({
       report_date: reportDate,
       view: "monthly",
       available_views: ["monthly", "ytd"],
@@ -935,7 +949,7 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("builds a scenario sensitivity matrix from backend scenario payloads only", () => {
-    const baseline = {
+    const baseline = productCategoryPnlPayload({
       report_date: "2026-02-28",
       view: "monthly",
       available_views: ["monthly", "ytd"],
@@ -960,7 +974,7 @@ describe("productCategoryPnlPageModel", () => {
         is_total: true,
       }),
       grand_total: row({ category_id: "grand_total", business_net_income: yi(4.8), is_total: true }),
-    } satisfies ProductCategoryPnlPayload;
+    });
     const scenarios: ProductCategoryPnlPayload[] = [
       {
         ...baseline,
@@ -1246,7 +1260,7 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("builds a selected scenario review explanation from scenario rows and matching attribution evidence", () => {
-    const baseline = {
+    const baseline = productCategoryPnlPayload({
       report_date: "2026-02-28",
       view: "monthly",
       available_views: ["monthly", "ytd"],
@@ -1271,7 +1285,7 @@ describe("productCategoryPnlPageModel", () => {
         is_total: true,
       }),
       grand_total: row({ category_id: "grand_total", business_net_income: yi(4.8), is_total: true }),
-    } satisfies ProductCategoryPnlPayload;
+    });
     const scenarios: ProductCategoryPnlPayload[] = [
       {
         ...baseline,

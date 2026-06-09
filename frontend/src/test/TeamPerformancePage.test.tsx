@@ -212,6 +212,7 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
     asset_total: asset,
     liability_total: liability,
     grand_total: grand,
+    interest_spread: null,
   };
 }
 
@@ -463,6 +464,7 @@ describe("TeamPerformancePage", () => {
             business_net_income: "-300000",
           }),
         ],
+        interest_spread: null,
       } satisfies ProductCategoryPnlPayload,
     }));
 

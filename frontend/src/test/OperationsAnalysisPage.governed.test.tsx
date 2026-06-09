@@ -421,6 +421,7 @@ describe("OperationsAnalysisPage governed values", () => {
           asset_total: assetTotal,
           liability_total: liabilityTotal,
           grand_total: grandTotal,
+          interest_spread: null,
         },
       })),
     });
@@ -547,6 +548,7 @@ describe("OperationsAnalysisPage governed values", () => {
           asset_total: assetTotal,
           liability_total: liabilityTotal,
           grand_total: grandTotal,
+          interest_spread: null,
         },
       })),
     });

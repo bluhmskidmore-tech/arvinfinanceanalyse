@@ -116,6 +116,7 @@ function productCategoryPayload(reportDate: string): ProductCategoryPnlPayload {
       category_name: "合计",
       is_total: true,
     }),
+    interest_spread: null,
   };
 }
 
