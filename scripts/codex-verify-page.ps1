@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "concentration-monitor", "team-performance", "platform-config", "news-events")]
+  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events")]
   [string]$PageSlug = "product-category-pnl",
 
   [switch]$Run,
@@ -110,6 +110,15 @@ if (-not $SkipMcpContracts) {
       "tests/test_project_mcp_servers.py::test_risk_tensor_trace_bundle_preserves_formal_warning_boundaries",
       "tests/test_project_mcp_servers.py::test_lineage_evidence_mcp_maps_page_risk_contract_to_risk_tensor_records",
       "tests/test_project_mcp_servers.py::test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "cashflow-projection") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary",
+      "tests/test_codex_page_readiness_gate.py::test_cashflow_projection_readiness_exposes_candidate_record_path_without_formal_promotion",
+      "tests/test_cashflow_projection_governance_record.py",
       "-q"
     )
   }
@@ -498,6 +507,52 @@ if ($PageSlug -eq "dashboard-home") {
       Env = @{
         "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
         "MOSS_PLAYWRIGHT_PORT" = "5907"
+      }
+    }
+  )
+} elseif ($PageSlug -eq "cashflow-projection") {
+  $checks += @(
+    @{
+      Label = "Cashflow Projection backend API and result-meta tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @(
+        "-m",
+        "pytest",
+        "tests/test_cashflow_projection.py",
+        "tests/test_cashflow_projection_numeric_migration.py",
+        "tests/test_result_meta_source_surface_followup.py",
+        "tests/test_wave5_service_explicit_numeric.py",
+        "-q"
+      )
+    },
+    @{
+      Label = "Cashflow Projection frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/CashflowProjectionPage.test.tsx",
+        "src/features/cashflow-projection/adapters/cashflowProjectionAdapter.test.ts",
+        "src/features/cashflow-projection/pages/cashflowProjectionPageModel.test.ts"
+      )
+    },
+    @{
+      Label = "Cashflow Projection browser a11y smoke"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test:a11y-smoke",
+        "--",
+        "--grep",
+        "@cashflow-projection"
+      )
+      Env = @{
+        "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
+        "MOSS_PLAYWRIGHT_PORT" = "5908"
       }
     }
   )

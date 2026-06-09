@@ -415,6 +415,7 @@ def test_codex_verify_page_script_plans_product_category_checks():
         "macro-toolkit",
         "stock-analysis",
         "pnl-attribution",
+        "cashflow-projection",
         "concentration-monitor",
         "team-performance",
         "platform-config",
@@ -593,6 +594,17 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "PnlAttributionView.test.ts" in script
     assert "PnL Attribution browser a11y smoke" in script
     assert "@pnl-attribution" in script
+    assert "Cashflow Projection backend API and result-meta tests" in script
+    assert "tests/test_cashflow_projection.py" in script
+    assert "tests/test_cashflow_projection_numeric_migration.py" in script
+    assert "tests/test_result_meta_source_surface_followup.py" in script
+    assert "tests/test_wave5_service_explicit_numeric.py" in script
+    assert "Cashflow Projection frontend tests" in script
+    assert "CashflowProjectionPage.test.tsx" in script
+    assert "cashflowProjectionAdapter.test.ts" in script
+    assert "cashflowProjectionPageModel.test.ts" in script
+    assert "Cashflow Projection browser a11y smoke" in script
+    assert "@cashflow-projection" in script
     assert "Concentration Monitor backend credit-spread and result-meta tests" in script
     assert "tests/test_bond_analytics_api.py" in script
     assert "tests/test_bond_analytics_service.py" in script
@@ -664,6 +676,7 @@ def test_codex_page_smoke_script_emits_product_category_checklist():
         "macro-toolkit",
         "stock-analysis",
         "pnl-attribution",
+        "cashflow-projection",
         "concentration-monitor",
         "team-performance",
         "platform-config",
@@ -790,6 +803,22 @@ def test_codex_page_smoke_script_emits_product_category_checklist():
     assert "/api/pnl-attribution/volume-rate" in script
     assert "/api/pnl-attribution/tpl-market" in script
     assert "/api/pnl-attribution/composition" in script
+    assert "/cashflow-projection" in script
+    assert "/api/cashflow-projection" in script
+    cashflow_checklist = script.split('$PageSlug -eq "cashflow-projection"', 1)[1].split(
+        '$PageSlug -eq "team-performance"',
+        1,
+    )[0]
+    cashflow_live_probe = script.split('$PageSlug -eq "cashflow-projection"', 2)[2].split(
+        '$PageSlug -eq "team-performance"',
+        1,
+    )[0]
+    assert "$primaryApi`?report_date=$reportDate" in cashflow_live_probe
+    assert "$primaryApi`?date=$reportDate" not in cashflow_live_probe
+    assert "candidate cashflow projection question" in cashflow_checklist
+    assert "MTR-CFP" in cashflow_checklist
+    assert "formal liquidity truth" in cashflow_checklist
+    assert "certified risk-limit approval" in cashflow_checklist
     assert "/concentration-monitor" in script
     assert "/api/bond-analytics/credit-spread-migration" in script
     assert "/api/bond-analytics/dates" in script

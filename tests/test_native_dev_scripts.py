@@ -472,6 +472,25 @@ def test_codex_verify_page_supports_concentration_monitor_dry_run():
     assert "Codex verify page checks passed." not in output
 
 
+def test_codex_verify_page_supports_cashflow_projection_dry_run():
+    output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "cashflow-projection")
+
+    assert "Codex verify page: cashflow-projection" in output
+    assert "tests/test_project_mcp_servers.py" in output
+    assert "test_cashflow_projection_trace_bundle_preserves_candidate_liquidity_boundary" in output
+    assert "test_cashflow_projection_readiness_exposes_candidate_record_path_without_formal_promotion" in output
+    assert "tests/test_cashflow_projection.py" in output
+    assert "tests/test_cashflow_projection_numeric_migration.py" in output
+    assert "tests/test_result_meta_source_surface_followup.py" in output
+    assert "tests/test_wave5_service_explicit_numeric.py" in output
+    assert "CashflowProjectionPage.test.tsx" in output
+    assert "cashflowProjectionAdapter.test.ts" in output
+    assert "cashflowProjectionPageModel.test.ts" in output
+    assert "@cashflow-projection" in output
+    assert "Codex verify page dry run complete. Pass -Run to execute checks." in output
+    assert "Codex verify page checks passed." not in output
+
+
 def test_codex_verify_page_supports_team_performance_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "team-performance")
 
@@ -846,6 +865,21 @@ def test_codex_page_smoke_supports_concentration_monitor_checklist_only():
     assert "MTR-CON" in output
     assert "formal risk truth" in output
     assert "certified concentration-limit approval" in output
+    assert "Live checks:" not in output
+
+
+def test_codex_page_smoke_supports_cashflow_projection_checklist_only():
+    output = run_powershell_script("codex-page-smoke.ps1", "-PageSlug", "cashflow-projection")
+
+    assert "Codex page smoke: cashflow-projection" in output
+    assert "http://127.0.0.1:5888/cashflow-projection" in output
+    assert "/api/cashflow-projection" in output
+    assert "/ui/balance-analysis/dates" in output
+    assert "Playwright MCP" in output
+    assert "candidate cashflow projection question" in output
+    assert "MTR-CFP" in output
+    assert "formal liquidity truth" in output
+    assert "certified risk-limit approval" in output
     assert "Live checks:" not in output
 
 

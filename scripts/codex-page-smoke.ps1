@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "concentration-monitor", "team-performance", "platform-config", "news-events")]
+  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events")]
   [string]$PageSlug = "product-category-pnl",
 
   [string]$FrontendBaseUrl = "http://127.0.0.1:5888",
@@ -274,6 +274,21 @@ if ($PageSlug -eq "dashboard-home") {
     "Confirm no data, stale data, fallback, missing-source, vendor degradation, and loading failure states are explicit when triggered.",
     "Confirm result_meta remains inspectable: basis, formal_use_allowed, quality_flag, fallback_mode, trace_id, source_surface, source_version, rule_version, cache_version, tables_used, evidence_rows, generated_at.",
     "Do not treat issuer HHI, top5 concentration, credit weight, AA-and-below ratio, or frontend limit comparisons as formal risk truth or certified concentration-limit approval."
+  )
+} elseif ($PageSlug -eq "cashflow-projection") {
+  $route = "/cashflow-projection"
+  $routeAliases = @("/cashflow-projection")
+  $primaryApi = "/api/cashflow-projection"
+  $supportingApis = @(
+    "/ui/balance-analysis/dates"
+  )
+  $checklist = @(
+    "Open the route with Playwright MCP and confirm the first screen answers the candidate cashflow projection question.",
+    "Confirm report date selector, duration gap, asset/liability/equity duration, DV01, reinvestment readout, monthly projection chart, top maturity table, source evidence, and result meta/source badges are visible.",
+    "Confirm PAGE-CONTRACT-PENDING:/cashflow-projection and MTR-CFP candidate boundaries remain visible.",
+    "Confirm no data, stale data, fallback, missing-source, requested/resolved date mismatch, and loading failure states are explicit when triggered.",
+    "Confirm result_meta remains inspectable: basis, formal_use_allowed, quality_flag, fallback_mode, trace_id, source_surface, source_version, rule_version, cache_version, tables_used, evidence_rows, generated_at.",
+    "Do not treat duration gap, projected monthly cashflows, DV01, top maturities, or frontend risk readouts as formal liquidity truth, formal risk truth, balance truth, or certified risk-limit approval."
   )
 } elseif ($PageSlug -eq "team-performance") {
   $route = "/team-performance"
@@ -618,6 +633,8 @@ if ($CheckLive) {
         Write-Output "- Page API reachable: /api/bond-analytics/krd-curve-risk"
         Write-Output "- Page API reachable: /api/bond-analytics/portfolio-headlines"
       } elseif ($PageSlug -eq "concentration-monitor") {
+        Invoke-WebRequest -Uri "$ApiBaseUrl$primaryApi`?report_date=$reportDate" -UseBasicParsing | Out-Null
+      } elseif ($PageSlug -eq "cashflow-projection") {
         Invoke-WebRequest -Uri "$ApiBaseUrl$primaryApi`?report_date=$reportDate" -UseBasicParsing | Out-Null
       } elseif ($PageSlug -eq "team-performance") {
         $reportYear = ([string]$reportDates[0]).Substring(0, 4)

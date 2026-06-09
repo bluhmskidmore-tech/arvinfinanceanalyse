@@ -752,6 +752,73 @@ def test_kpi_performance_readiness_exposes_scoring_write_boundary_without_formal
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
 
 
+def test_cashflow_projection_readiness_exposes_candidate_record_path_without_formal_promotion() -> None:
+    report = build_page_readiness_report("cashflow-projection")
+
+    assert report["page_slug"] == "cashflow-projection"
+    assert report["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert report["route"] == "/cashflow-projection"
+    assert report["primary_api"] == "/api/cashflow-projection"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "static-pass"
+    assert "codex-page-smoke.ps1 -PageSlug cashflow-projection" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug cashflow-projection -Run" in report["required_commands"][1]
+    assert report["run_supported"] is True
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 2
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_cashflow_projection_governance_record.py",
+        "python scripts/emit_cashflow_projection_governance_record.py --write",
+    ]
+    assert report["business_owner_approval_status"] is None
+    assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert any("candidate liquidity projection evidence" in item for item in report["guardrails"])
+    assert any("duration_gap" in item for item in report["truth_chain"])
+    assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
+    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+
+
+def test_concentration_monitor_readiness_exposes_candidate_record_path_without_formal_promotion() -> None:
+    report = build_page_readiness_report("concentration-monitor")
+
+    assert report["page_slug"] == "concentration-monitor"
+    assert report["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert report["route"] == "/concentration-monitor"
+    assert report["primary_api"] == "/api/bond-analytics/credit-spread-migration"
+    assert report["approval_status"] == "candidate_or_pending"
+    assert report["formal_use_allowed"] is False
+    assert report["overall_status"] == "static-pass"
+    assert "codex-page-smoke.ps1 -PageSlug concentration-monitor" in report["required_commands"][0]
+    assert "codex-verify-page.ps1 -PageSlug concentration-monitor -Run" in report["required_commands"][1]
+    assert report["run_supported"] is True
+    assert report["catalog_date_evidence"]["status"] == "sampled"
+    assert report["catalog_date_evidence"]["sampled_table_names"] == ["fact_formal_bond_analytics_daily"]
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["governance_record_commands"] == [
+        "python scripts/emit_concentration_monitor_governance_record.py",
+        "python scripts/emit_concentration_monitor_governance_record.py --write",
+    ]
+    assert report["business_owner_approval_status"] is None
+    assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert any("candidate concentration-monitor evidence" in item for item in report["guardrails"])
+    assert any("fact_formal_bond_analytics_daily" in item for item in report["truth_chain"])
+    assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
+    assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
+
+
 def test_team_performance_readiness_exposes_candidate_direct_evidence_without_formal_promotion() -> None:
     report = build_page_readiness_report("team-performance")
 

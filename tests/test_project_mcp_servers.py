@@ -10462,7 +10462,7 @@ def test_data_catalog_page_catalog_date_coverage_configures_formal_seeded_pages(
                 "PAGE-RISK-001",
             )
         )
-        assert payload["summary"]["configured_page_count"] == 25
+        assert payload["summary"]["configured_page_count"] == 29
         assert payload["summary"]["deferred_no_direct_table_config_count"] == 7
         assert payload["summary"]["missing_explicit_config_count"] == 0
         assert payload["summary"]["formal_missing_explicit_config_count"] == 0
@@ -10591,7 +10591,7 @@ def test_data_catalog_page_catalog_date_coverage_configures_seeded_pages_with_cl
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["candidate_table_names"]
         assert "fact_table" not in pages["PAGE-CUBE-QUERY-001"]["configured_table_names"]
 
-        assert payload["summary"]["configured_page_count"] == 25
+        assert payload["summary"]["configured_page_count"] == 29
         assert payload["summary"]["deferred_no_direct_table_config_count"] == 7
         assert payload["summary"]["missing_explicit_config_count"] == 0
         assert payload["summary"]["formal_missing_explicit_config_count"] == 0
