@@ -44,9 +44,16 @@ function annualizedCash(scaleYi: number, ratePct: number, days: number): string 
   return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
 }
 
-function withoutInterestSpread<T extends { result: object }>(envelope: T): T {
+function withEmptyInterestSpread<T extends { result: object }>(envelope: T): T {
   const result = { ...envelope.result } as Record<string, unknown>;
-  delete result.interest_spread;
+  result.interest_spread = {
+    all_currency_asset_yield_pct: null,
+    all_currency_liability_yield_pct: null,
+    all_currency_spread_pct: null,
+    cny_asset_yield_pct: null,
+    cny_liability_yield_pct: null,
+    cny_spread_pct: null,
+  };
   return { ...envelope, result: result as T["result"] };
 }
 
@@ -531,7 +538,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         if (options.reportDate !== "2026-01-31") {
           return env;
         }
@@ -603,7 +610,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const envelope = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const envelope = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const assetTotal = { ...envelope.result.asset_total, weighted_yield: null };
         const liabilityTotal = {
           ...envelope.result.liability_total,
@@ -743,7 +750,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const withGrandTotal = {
           ...env,
           result: {
@@ -932,7 +939,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = ratesByDate[options.reportDate] ?? { asset: "2.00", liability: "1.50" };
         return {
           ...env,
@@ -1024,7 +1031,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? { days: 31, assetCny: 2, liabilityCny: 1.5 };
         return {
           ...env,
@@ -1121,7 +1128,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const income = incomeByDate[options.reportDate];
         return {
           ...env,
@@ -1213,7 +1220,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
         return {
           ...env,
@@ -1292,7 +1299,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
         return {
           ...env,
@@ -1373,7 +1380,7 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withoutInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         if (options.reportDate !== "2026-01-31") {
           return {
             ...env,

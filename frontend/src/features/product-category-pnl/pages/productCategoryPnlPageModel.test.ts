@@ -846,6 +846,52 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
+  it("reads backend Decimal interest spread sample values without frontend recomputation", () => {
+    const snapshot = buildProductCategoryTrendSnapshot({
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly"],
+      scenario_rate_pct: null,
+      rows: [],
+      asset_total: row({
+        category_id: "asset_total",
+        report_date: "2026-02-28",
+        weighted_yield: "999.99",
+        cny_cash: nonFormulaCashFixture(100, 9.99, 28),
+        cny_scale: yi(100),
+        is_total: true,
+      }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        report_date: "2026-02-28",
+        weighted_yield: "111.11",
+        cny_cash: nonFormulaCashFixture(80, 1.11, 28),
+        cny_scale: yi(80),
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", report_date: "2026-02-28", is_total: true }),
+      interest_spread: interestSpreadPayload({
+        allAsset: "2.55",
+        allLiability: "1.70",
+        allSpread: "0.85",
+        cnyAsset: "1.49821429",
+        cnyLiability: "0.29241072",
+        cnySpread: "1.20580357",
+      }),
+    });
+
+    expect(selectProductCategoryInterestSpreadChart([snapshot])).toEqual({
+      labels: ["2026\u5e7402\u6708"],
+      assetYield: [2.55],
+      liabilityYield: [1.7],
+      spread: [0.85],
+    });
+    expect(selectProductCategoryInterestSpreadYearComparisonChart([snapshot], "cny")?.series).toEqual([
+      { year: "2026\u5e74", spread: [1.20580357] },
+    ]);
+  });
+
   it("does not backfill spread diagnostics from row weighted yields when backend spread yield fields are missing", () => {
     const snapshot = (reportDate: string, assetYield: string, liabilityYield: string, spread: string) =>
       buildProductCategoryTrendSnapshot({
@@ -881,12 +927,16 @@ describe("productCategoryPnlPageModel", () => {
       ],
     });
 
-    expect(surface.spreadAttribution.state).toBe("incomplete");
-    expect(surface.spreadAttribution.currentAssetYieldLabel).toBe("缺失");
-    expect(surface.spreadAttribution.currentLiabilityYieldLabel).toBe("缺失");
-    expect(surface.spreadAttribution.assetYieldDeltaLabel).toBe("-");
-    expect(surface.spreadAttribution.liabilityYieldDeltaLabel).toBe("-");
-    expect(surface.spreadAttribution.reason).toBe("后端未返回资产端或负债端收益率字段，无法展示利差归因。");
+    const attribution = surface.spreadAttribution;
+    expect(attribution.state).toBe("incomplete");
+    if (attribution.state !== "incomplete") {
+      throw new Error("expected incomplete spread attribution");
+    }
+    expect(attribution.currentAssetYieldLabel).toBe("缺失");
+    expect(attribution.currentLiabilityYieldLabel).toBe("缺失");
+    expect(attribution.assetYieldDeltaLabel).toBe("-");
+    expect(attribution.liabilityYieldDeltaLabel).toBe("-");
+    expect(attribution.reason).toBe("后端未返回资产端或负债端收益率字段，无法展示利差归因。");
   });
 
   it("does not describe product-category spread as a frontend-derived yield difference", () => {
