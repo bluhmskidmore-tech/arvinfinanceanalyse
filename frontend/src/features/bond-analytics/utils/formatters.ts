@@ -52,8 +52,14 @@ export const formatPct = (value: Numeric | string | null | undefined): string =>
 };
 
 /** Format bp value */
-export const formatBp = (value: Numeric | string | null | undefined): string => {
-  if (value != null && typeof value !== "string" && value.unit === "bp" && value.display) {
+export const formatBp = (value: Numeric | string | number | null | undefined): string => {
+  if (
+    value != null &&
+    typeof value !== "string" &&
+    typeof value !== "number" &&
+    value.unit === "bp" &&
+    value.display
+  ) {
     return value.display;
   }
   const num = coerceRaw(value);

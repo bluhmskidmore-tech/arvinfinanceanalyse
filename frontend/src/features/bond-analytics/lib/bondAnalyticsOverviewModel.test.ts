@@ -4,6 +4,7 @@ import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
 import { formatRawAsNumeric } from "../../../utils/format";
 import type { ActionAttributionResponse } from "../types";
 import { buildBondAnalyticsOverviewModel } from "./bondAnalyticsOverviewModel";
+import { toBp } from "./bondAnalyticsHomeCalculations";
 
 function createResultMeta(
   overrides: Partial<ResultMeta> = {},
@@ -30,6 +31,15 @@ const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware
 const ratio = (raw: number, signAware = true) =>
   formatRawAsNumeric({ raw, unit: "ratio", sign_aware: signAware });
 const dv01 = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
+
+describe("toBp", () => {
+  it("converts governed Numeric units without threshold guessing", () => {
+    expect(toBp(formatRawAsNumeric({ raw: 0.42, unit: "bp", sign_aware: false }))).toBe(0.42);
+    expect(toBp(formatRawAsNumeric({ raw: 0.0042, unit: "ratio", sign_aware: false }))).toBe(42);
+    expect(toBp(formatRawAsNumeric({ raw: 0.0042, unit: "pct", sign_aware: false }))).toBe(42);
+    expect(toBp({ raw: 0.42, display: "0.42", precision: 2, sign_aware: false } as never)).toBeNull();
+  });
+});
 
 function createActionAttribution(
   overrides: Partial<ActionAttributionResponse> = {},

@@ -3,7 +3,8 @@ import { Card, Col, Row, Spin } from "antd";
 import type { BondDashboardHeadlinePayload, BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
-import { formatPct, formatYi, toneColor } from "../utils/formatters";
+import { computeBpDelta, toBp } from "../lib/bondAnalyticsHomeCalculations";
+import { formatBp, formatPct, formatYi, toneColor } from "../utils/formatters";
 
 function numOr(raw: Numeric | null | undefined): number {
   const n = bondNumericRaw(raw);
@@ -19,17 +20,14 @@ function relRatioLine(label: string, prevRaw: Numeric | null | undefined, curRaw
 }
 
 function spreadBpFoot(curRaw: Numeric | null | undefined, prevRaw: Numeric | null | undefined): string | null {
-  const c = numOr(curRaw);
-  if (!Number.isFinite(c)) return null;
-  const curBp = c < 0.5 ? c * 10000 : c;
+  const curBp = toBp(curRaw);
+  if (curBp === null) return null;
   if (prevRaw == null) {
-    return `最新 ${curBp.toFixed(1)} bp`;
+    return `最新 ${formatBp(curBp)}`;
   }
-  const p = numOr(prevRaw);
-  if (!Number.isFinite(p)) return `最新 ${curBp.toFixed(1)} bp`;
-  const prevBp = p < 0.5 ? p * 10000 : p;
-  const d = curBp - prevBp;
-  return `较上期 ${d >= 0 ? "+" : ""}${d.toFixed(1)} bp · 最新 ${curBp.toFixed(1)} bp`;
+  const d = computeBpDelta(curRaw, prevRaw);
+  if (d === null) return `最新 ${formatBp(curBp)}`;
+  return `较上期 ${d >= 0 ? "+" : ""}${d.toFixed(1)} bp · 最新 ${formatBp(curBp)}`;
 }
 
 function Tile({
@@ -108,8 +106,8 @@ export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRow
   const mvFoot = p ? relRatioLine("较上期", p.total_market_value, k.total_market_value) : null;
   const pnlFoot = p ? relRatioLine("较上期", p.unrealized_pnl, k.unrealized_pnl) : null;
   const ytmFoot =
-    p && Number.isFinite(numOr(k.weighted_ytm)) && Number.isFinite(numOr(p.weighted_ytm))
-      ? `较上期 ${((numOr(k.weighted_ytm) - numOr(p.weighted_ytm)) * 10000).toFixed(2)} bp`
+    p && computeBpDelta(k.weighted_ytm, p.weighted_ytm) !== null
+      ? `较上期 ${computeBpDelta(k.weighted_ytm, p.weighted_ytm)!.toFixed(2)} bp`
       : null;
   const dur = numOr(k.weighted_duration);
   const durFoot =
@@ -126,10 +124,8 @@ export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRow
   const pnlNum = numOr(k.unrealized_pnl);
   const pnlColor = Number.isFinite(pnlNum) ? toneColor(pnlNum) : undefined;
 
-  const spreadMedian = numOr(k.credit_spread_median);
-  const spreadLabel = Number.isFinite(spreadMedian)
-    ? `${(spreadMedian < 0.5 ? spreadMedian * 10000 : spreadMedian).toFixed(1)} bp`
-    : "—";
+  const spreadBp = toBp(k.credit_spread_median);
+  const spreadLabel = spreadBp === null ? "—" : formatBp(spreadBp);
 
   return (
     <Row gutter={[designTokens.space[3], designTokens.space[3]]}>

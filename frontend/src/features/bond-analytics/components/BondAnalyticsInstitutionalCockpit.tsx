@@ -16,6 +16,7 @@ import { bondNumericRaw, bondNumericRawOrNull } from "../adapters/bondAnalyticsA
 import {
   buildKpiValuePair,
   computeRelativeChangePct,
+  toBp,
 } from "../lib/bondAnalyticsHomeCalculations";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type { ActionAttributionResponse } from "../types";
@@ -27,7 +28,7 @@ import {
   buildMacroPointForDeltaDisplay,
   coalesceMacroSeriesDelta,
 } from "../lib/bondAnalyticsMacroSeries";
-import { formatPct, formatWan, formatYi } from "../utils/formatters";
+import { formatBp, formatPct, formatWan, formatYi } from "../utils/formatters";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
@@ -263,22 +264,12 @@ function curvePointByTenor(
 }
 
 function normalizeSpreadBp(spreadMedian: Numeric | null | undefined): number {
-  const raw = bondNumericRawOrNull(spreadMedian);
-  if (raw === null) {
-    return Number.NaN;
-  }
-  if (spreadMedian?.unit === "bp") {
-    return raw;
-  }
-  if (spreadMedian?.unit === "pct" || spreadMedian?.unit === "ratio") {
-    return raw * 10000;
-  }
-  return Number.NaN;
+  return toBp(spreadMedian) ?? Number.NaN;
 }
 
 function formatSpreadBpDisplay(spreadMedian: Numeric | null | undefined): string {
-  const spreadBp = normalizeSpreadBp(spreadMedian);
-  return Number.isFinite(spreadBp) ? `${spreadBp.toFixed(1)} bp` : "—";
+  const spreadBp = toBp(spreadMedian);
+  return spreadBp === null ? "—" : formatBp(spreadBp);
 }
 
 function buildReadoutFacts(args: {
@@ -1806,17 +1797,17 @@ export function BondAnalyticsInstitutionalCockpit({
                 marketValueMomPct={marketValueMomPct}
               />
             </Card>
-            <ReferenceReturnAttributionPanel
-              actionPnlDisplay={actionPnlDisplay}
-              actionPnlTone={actionPnlTone}
-              actionCount={actionAttribution?.total_actions ?? null}
-              marketValueMomPct={marketValueMomPct}
-              dv01Mom={dv01Mom}
-              unrealizedPnlDisplay={unrealizedPnlDisplay}
-              unrealizedPnlMomPct={unrealizedPnlMomPct}
-              onOpenModuleDetail={onOpenModuleDetail}
-            />
           </div>
+          <ReferenceReturnAttributionPanel
+            actionPnlDisplay={actionPnlDisplay}
+            actionPnlTone={actionPnlTone}
+            actionCount={actionAttribution?.total_actions ?? null}
+            marketValueMomPct={marketValueMomPct}
+            dv01Mom={dv01Mom}
+            unrealizedPnlDisplay={unrealizedPnlDisplay}
+            unrealizedPnlMomPct={unrealizedPnlMomPct}
+            onOpenModuleDetail={onOpenModuleDetail}
+          />
         </section>
 
         <AccountingDv01SummaryPanel
@@ -1843,6 +1834,7 @@ export function BondAnalyticsInstitutionalCockpit({
             }
             data-testid="bond-analysis-asset-structure"
             style={dashboardCardStyle}
+            className={styles.referenceStructureLeadCard}
             styles={{ body: cardBodyStyle }}
           >
             <DistributionDonut items={dashboardAssetItems} center={marketValueDisplay} emptyText="暂无资产结构" />
@@ -1855,7 +1847,7 @@ export function BondAnalyticsInstitutionalCockpit({
             title={<SectionCardTitle eyebrow="风险切片" title="久期 / DV01 / 信用" />}
             data-testid="bond-analysis-risk-monitor"
             style={dashboardCardStyle}
-            className={styles.referenceMaturityCard}
+            className={`${styles.referenceMaturityCard} ${styles.referenceDistributionSupportCard}`}
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.riskEvidenceList}>
@@ -1880,6 +1872,7 @@ export function BondAnalyticsInstitutionalCockpit({
             size="small"
             title={<SectionCardTitle eyebrow="集中度证据" title="发行人/行业分布" />}
             style={dashboardCardStyle}
+            className={styles.referenceDistributionSupportCard}
             styles={{ body: cardBodyStyle }}
           >
             <RegionDistributionPanel items={industryItems} emptyText="暂无发行人/行业读面" />

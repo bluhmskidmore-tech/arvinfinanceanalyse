@@ -34,7 +34,10 @@ export function toBp(value: Numeric | null | undefined): number | null {
   if (value?.unit === "bp") {
     return raw;
   }
-  return raw * 10000;
+  if (value?.unit === "pct" || value?.unit === "ratio") {
+    return raw * 10000;
+  }
+  return null;
 }
 
 export function buildKpiValuePair(
