@@ -851,7 +851,7 @@ function bpLabel(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
     return "-";
   }
-  return `${value.toFixed(1).replace(/\.0$/, "")}bp`;
+  return `${(value * 100).toFixed(1).replace(/\.0$/, "")}bp`;
 }
 
 function signedYiDeltaLabel(value: number | null): string {

@@ -89,17 +89,23 @@ def calculate_product_category_interest_spread_metrics(
         "cny_scale",
         days_for_view,
     )
+    all_currency_asset_metric = _build_product_category_metric_value(all_currency_asset_yield)
+    all_currency_liability_metric = _build_product_category_metric_value(all_currency_liability_yield)
+    cny_asset_metric = _build_product_category_metric_value(cny_asset_yield)
+    cny_liability_metric = _build_product_category_metric_value(cny_liability_yield)
 
     return ProductCategoryInterestSpreadMetrics(
-        all_currency_asset_yield_pct=_build_product_category_metric_value(all_currency_asset_yield),
-        all_currency_liability_yield_pct=_build_product_category_metric_value(all_currency_liability_yield),
-        all_currency_spread_pct=_build_product_category_metric_value(
-            _subtract_when_present(all_currency_asset_yield, all_currency_liability_yield)
+        all_currency_asset_yield_pct=all_currency_asset_metric,
+        all_currency_liability_yield_pct=all_currency_liability_metric,
+        all_currency_spread_pct=_build_product_category_metric_value_from_metrics(
+            all_currency_asset_metric,
+            all_currency_liability_metric,
         ),
-        cny_asset_yield_pct=_build_product_category_metric_value(cny_asset_yield),
-        cny_liability_yield_pct=_build_product_category_metric_value(cny_liability_yield),
-        cny_spread_pct=_build_product_category_metric_value(
-            _subtract_when_present(cny_asset_yield, cny_liability_yield)
+        cny_asset_yield_pct=cny_asset_metric,
+        cny_liability_yield_pct=cny_liability_metric,
+        cny_spread_pct=_build_product_category_metric_value_from_metrics(
+            cny_asset_metric,
+            cny_liability_metric,
         ),
     )
 
@@ -582,18 +588,21 @@ def _calculate_weighted_yield_from_row(
     return _calculate_weighted_yield(cash, scale, days_for_view)
 
 
-def _subtract_when_present(left: Decimal | None, right: Decimal | None) -> Decimal | None:
-    if left is None or right is None:
-        return None
-    return left - right
-
-
 def _build_product_category_metric_value(value: Decimal | None) -> ProductCategoryMetricValue | None:
     if value is None:
         return None
     raw = value.quantize(PRODUCT_CATEGORY_RATE_RAW_QUANT)
     display = f"{raw.quantize(PRODUCT_CATEGORY_RATE_DISPLAY_QUANT)}%"
     return ProductCategoryMetricValue(raw=raw, display=display)
+
+
+def _build_product_category_metric_value_from_metrics(
+    left: ProductCategoryMetricValue | None,
+    right: ProductCategoryMetricValue | None,
+) -> ProductCategoryMetricValue | None:
+    if left is None or right is None:
+        return None
+    return _build_product_category_metric_value(left.raw - right.raw)
 
 
 def _decimal_or_none(value: object) -> Decimal | None:

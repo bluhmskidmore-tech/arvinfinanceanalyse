@@ -293,8 +293,8 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
     interest_spread = calculate_product_category_interest_spread_metrics(
         report_date=report_date,
         view="ytd",
-        asset_row=asset_total.model_dump(mode="python"),
-        liability_row=liability_total.model_dump(mode="python"),
+        asset_row=asset_total.model_dump(mode="json"),
+        liability_row=liability_total.model_dump(mode="json"),
     )
     return ProductCategoryPnlPayload(
         report_date=report_date,

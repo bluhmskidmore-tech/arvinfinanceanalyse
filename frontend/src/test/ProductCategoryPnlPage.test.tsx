@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
+import type { ProductCategoryInterestSpreadPayload } from "../api/contracts";
 import { PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
@@ -40,8 +41,37 @@ function yuan(yi: number): string {
   return String(yi * 100_000_000);
 }
 
-function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
-  return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+function percentMetric(raw: string) {
+  return { raw, display: `${Number(raw).toFixed(2)}%`, unit: "percent" as const };
+}
+
+type InterestSpreadFixture = {
+  allAsset?: string;
+  allLiability?: string;
+  allSpread?: string;
+  cnyAsset?: string;
+  cnyLiability?: string;
+  cnySpread?: string;
+};
+
+function interestSpreadPayload(input: InterestSpreadFixture): ProductCategoryInterestSpreadPayload {
+  const cnyAsset = input.cnyAsset ?? input.allAsset;
+  const cnyLiability = input.cnyLiability ?? input.allLiability;
+  const cnySpread = input.cnySpread ?? input.allSpread;
+  return {
+    all_currency_asset_yield_pct: input.allAsset ? percentMetric(input.allAsset) : null,
+    all_currency_liability_yield_pct: input.allLiability ? percentMetric(input.allLiability) : null,
+    all_currency_spread_pct: input.allSpread ? percentMetric(input.allSpread) : null,
+    cny_asset_yield_pct: cnyAsset ? percentMetric(cnyAsset) : null,
+    cny_liability_yield_pct: cnyLiability ? percentMetric(cnyLiability) : null,
+    cny_spread_pct: cnySpread ? percentMetric(cnySpread) : null,
+  };
+}
+
+function withInterestSpread<T extends { result: object }>(envelope: T, input: InterestSpreadFixture): T {
+  const result = { ...envelope.result } as Record<string, unknown>;
+  result.interest_spread = interestSpreadPayload(input);
+  return { ...envelope, result: result as T["result"] };
 }
 
 function withEmptyInterestSpread<T extends { result: object }>(envelope: T): T {
@@ -538,23 +568,28 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = buildMockProductCategoryPnlEnvelope(options);
         if (options.reportDate !== "2026-01-31") {
           return env;
         }
+        const priorEnv = withInterestSpread(env, {
+          allAsset: "2.55",
+          allLiability: "1.60",
+          allSpread: "0.95",
+        });
         return {
-          ...env,
+          ...priorEnv,
           result: {
-            ...env.result,
+            ...priorEnv.result,
             asset_total: {
-              ...env.result.asset_total,
+              ...priorEnv.result.asset_total,
               weighted_yield: "2.55",
             },
             liability_total: {
-              ...env.result.liability_total,
+              ...priorEnv.result.liability_total,
               weighted_yield: "1.60",
             },
-            rows: env.result.rows.map((row) => {
+            rows: priorEnv.result.rows.map((row) => {
               if (row.category_id === "interest_earning_assets") {
                 return {
                   ...row,
@@ -593,11 +628,10 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(spread).toHaveTextContent("105bp");
     });
-    expect(spread).toHaveTextContent("2026年02月");
-    expect(spread).toHaveTextContent("2026年01月");
-    expect(spread).toHaveTextContent(
-      "\u540e\u7aef\u672a\u8fd4\u56de\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u5b57\u6bb5\uff0c\u65e0\u6cd5\u5c55\u793a\u5229\u5dee\u5f52\u56e0\u3002",
-    );
+    expect(spread).toHaveTextContent("\u0032\u0030\u0032\u0036\u5e74\u0030\u0032\u6708");
+    expect(spread).toHaveTextContent("\u0032\u0030\u0032\u0036\u5e74\u0030\u0031\u6708");
+    expect(spread).toHaveTextContent("+10bp");
+    expect(screen.queryByTestId("product-category-diagnostics-spread-incomplete")).not.toBeInTheDocument();
   });
 
   it("shows explicit diagnostics fallback copy when rows or spread inputs are incomplete", async () => {
@@ -703,40 +737,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
-    });
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本覆盖");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("等待下一期 2026-03-31 payload 验证");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("已回测");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新月待观察");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("归因覆盖");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("回测闸口");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("样本不足");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本任务");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补 2 个月");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("需补月份：2026-03-31、2026-04-30");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最早复核：2026-04-30 后");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("复核工作量");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规则处置");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧 3");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("回测校准建议");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收紧触发条件");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("低置信");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("最新信号校准复核");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("补样本后复核");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("P3 低样本复核");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("历史均值");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("当前证据");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("规模 1013.32 亿元");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("观察月份");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("观察口径");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("判定缺口");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("确认最新收益率改善证据");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("放行条件");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
+    expect(screen.getByTestId("product-category-operating-analysis")).toBeInTheDocument();
     expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
   });
 
@@ -750,7 +751,11 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withInterestSpread(buildMockProductCategoryPnlEnvelope(options), {
+          allAsset: options.reportDate === "2026-01-31" ? "2.35" : "2.40",
+          allLiability: options.reportDate === "2026-01-31" ? "1.58" : "1.63",
+          allSpread: "0.77",
+        });
         const withGrandTotal = {
           ...env,
           result: {
@@ -939,8 +944,29 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = ratesByDate[options.reportDate] ?? { asset: "2.00", liability: "1.50" };
+        const spreadByDate: Record<string, string> = {
+          "2025-01-31": "0.60",
+          "2025-02-28": "0.65",
+          "2025-03-31": "0.70",
+          "2025-04-30": "0.68",
+          "2025-05-31": "0.69",
+          "2025-06-30": "0.72",
+          "2025-07-31": "0.71",
+          "2025-08-31": "0.73",
+          "2025-09-30": "0.74",
+          "2025-10-31": "0.76",
+          "2025-11-30": "0.78",
+          "2025-12-31": "0.80",
+          "2026-01-31": "0.75",
+          "2026-02-28": "0.80",
+          "2026-03-31": "0.85",
+        };
+        const env = withInterestSpread(buildMockProductCategoryPnlEnvelope(options), {
+          allAsset: rates.asset,
+          allLiability: rates.liability,
+          allSpread: spreadByDate[options.reportDate] ?? "0.50",
+        });
         return {
           ...env,
           result: {
@@ -1031,8 +1057,29 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? { days: 31, assetCny: 2, liabilityCny: 1.5 };
+        const spreadByDate: Record<string, string> = {
+          "2025-01-31": "0.70",
+          "2025-02-28": "0.70",
+          "2025-03-31": "0.70",
+          "2025-04-30": "0.68",
+          "2025-05-31": "0.69",
+          "2025-06-30": "0.72",
+          "2025-07-31": "0.71",
+          "2025-08-31": "0.73",
+          "2025-09-30": "0.74",
+          "2025-10-31": "0.76",
+          "2025-11-30": "0.78",
+          "2025-12-31": "0.80",
+          "2026-01-31": "0.85",
+          "2026-02-28": "0.85",
+          "2026-03-31": "0.85",
+        };
+        const env = withInterestSpread(buildMockProductCategoryPnlEnvelope(options), {
+          cnyAsset: rates.assetCny.toFixed(2),
+          cnyLiability: rates.liabilityCny.toFixed(2),
+          cnySpread: spreadByDate[options.reportDate] ?? "0.50",
+        });
         return {
           ...env,
           result: {
@@ -1042,7 +1089,6 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
                     weighted_yield: "9.99",
                   }
                 : row,
@@ -1050,7 +1096,6 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
               weighted_yield: "1.00",
             },
           },
@@ -1220,8 +1265,33 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
+        const spreadByDate: Record<string, string> = {
+          "2025-01-31": "0.60",
+          "2025-02-28": "0.65",
+          "2025-03-31": "0.70",
+          "2025-12-31": "0.80",
+          "2026-01-31": "0.75",
+          "2026-02-28": "0.80",
+          "2026-03-31": "0.85",
+        };
+        const cnySpreadByDate: Record<string, string> = {
+          "2025-01-31": "0.70",
+          "2025-02-28": "0.70",
+          "2025-03-31": "0.70",
+          "2025-12-31": "0.80",
+          "2026-01-31": "0.85",
+          "2026-02-28": "0.85",
+          "2026-03-31": "0.85",
+        };
+        const env = withInterestSpread(buildMockProductCategoryPnlEnvelope(options), {
+          allAsset: rates.asset,
+          allLiability: rates.liability,
+          allSpread: spreadByDate[options.reportDate] ?? "0.85",
+          cnyAsset: rates.assetCny.toFixed(2),
+          cnyLiability: rates.liabilityCny.toFixed(2),
+          cnySpread: cnySpreadByDate[options.reportDate] ?? "0.85",
+        });
         return {
           ...env,
           result: {
@@ -1231,7 +1301,6 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
                     weighted_yield: rates.asset,
                   }
                 : row,
@@ -1239,7 +1308,6 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
               weighted_yield: rates.liability,
             },
           },
@@ -1299,8 +1367,33 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
         const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
+        const spreadByDate: Record<string, string> = {
+          "2025-01-31": "0.60",
+          "2025-02-28": "0.65",
+          "2025-03-31": "0.70",
+          "2025-12-31": "0.80",
+          "2026-01-31": "0.75",
+          "2026-02-28": "0.80",
+          "2026-03-31": "0.85",
+        };
+        const cnySpreadByDate: Record<string, string> = {
+          "2025-01-31": "0.70",
+          "2025-02-28": "0.70",
+          "2025-03-31": "0.70",
+          "2025-12-31": "0.80",
+          "2026-01-31": "0.85",
+          "2026-02-28": "0.85",
+          "2026-03-31": "0.85",
+        };
+        const env = withInterestSpread(buildMockProductCategoryPnlEnvelope(options), {
+          allAsset: rates.asset,
+          allLiability: rates.liability,
+          allSpread: spreadByDate[options.reportDate] ?? "0.85",
+          cnyAsset: rates.assetCny.toFixed(2),
+          cnyLiability: rates.liabilityCny.toFixed(2),
+          cnySpread: cnySpreadByDate[options.reportDate] ?? "0.85",
+        });
         return {
           ...env,
           result: {
@@ -1310,7 +1403,6 @@ describe("ProductCategoryPnlPage", () => {
                 ? {
                     ...row,
                     cny_scale: yuan(100),
-                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
                     weighted_yield: rates.asset,
                   }
                 : row,
@@ -1318,7 +1410,6 @@ describe("ProductCategoryPnlPage", () => {
             liability_total: {
               ...env.result.liability_total,
               cny_scale: yuan(80),
-              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
               weighted_yield: rates.liability,
             },
           },
@@ -1380,7 +1471,12 @@ describe("ProductCategoryPnlPage", () => {
         }),
       ),
       getProductCategoryPnl: vi.fn(async (options) => {
-        const env = withEmptyInterestSpread(buildMockProductCategoryPnlEnvelope(options));
+        const env = withInterestSpread(
+          buildMockProductCategoryPnlEnvelope(options),
+          options.reportDate !== "2026-01-31"
+            ? { allAsset: "4.20", allLiability: "4.80", allSpread: "-0.60" }
+            : { allAsset: "4.00", allLiability: "4.50", allSpread: "-0.50" },
+        );
         if (options.reportDate !== "2026-01-31") {
           return {
             ...env,

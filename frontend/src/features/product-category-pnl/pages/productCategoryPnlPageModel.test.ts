@@ -592,6 +592,57 @@ describe("productCategoryPnlPageModel", () => {
     }
   });
 
+  it("formats backend percent spreads as basis-point diagnostics labels", () => {
+    const assetTotal = row({
+      category_id: "asset_total",
+      weighted_yield: "2.68",
+      is_total: true,
+    });
+    const liabilityTotal = row({
+      category_id: "liability_total",
+      side: "liability",
+      weighted_yield: "1.63",
+      is_total: true,
+    });
+
+    const surface = buildProductCategoryDiagnosticsSurface({
+      rows: [],
+      trendSnapshots: [
+        {
+          reportDate: "2026-02-28",
+          label: "2026\u5e7402\u6708",
+          rows: [],
+          assetTotal,
+          liabilityTotal,
+          interestSpread: interestSpreadPayload({
+            allAsset: "2.68",
+            allLiability: "1.63",
+            allSpread: "1.05",
+          }),
+        },
+        {
+          reportDate: "2026-01-31",
+          label: "2026\u5e7401\u6708",
+          rows: [],
+          assetTotal,
+          liabilityTotal,
+          interestSpread: interestSpreadPayload({
+            allAsset: "2.55",
+            allLiability: "1.60",
+            allSpread: "0.95",
+          }),
+        },
+      ],
+    });
+
+    expect(surface.spreadAttribution).toMatchObject({
+      state: "ready",
+      currentSpreadLabel: "105bp",
+      priorSpreadLabel: "95bp",
+      spreadDeltaLabel: "+10bp",
+    });
+  });
+
   it("selects trend dates from the selected report month onward and snapshots payload rows without rollup", () => {
     expect(
       selectProductCategoryTrendReportDates("2026-02-28", [

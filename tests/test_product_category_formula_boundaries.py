@@ -196,7 +196,7 @@ def test_product_category_interest_spread_metrics_are_decimal_core_finance_outpu
     assert metrics.all_currency_spread_pct.unit == "percent"
     assert metrics.all_currency_spread_pct.display == "0.85%"
     assert metrics.cny_spread_pct is not None
-    assert metrics.cny_spread_pct.raw == Decimal("1.20580357")
+    assert metrics.cny_spread_pct.raw == Decimal("1.20580358")
     assert metrics.cny_spread_pct.unit == "percent"
     assert metrics.cny_spread_pct.display == "1.21%"
 
