@@ -524,9 +524,12 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     renderCockpit(client);
 
-    const dailyJudgment = await screen.findByTestId("bond-analysis-daily-judgment");
+    const dashboard = await screen.findByTestId("bond-analysis-reference-dashboard");
+    const topbar = within(dashboard).getByTestId("bond-analysis-reference-topbar");
+    const dailyJudgment = within(dashboard).getByTestId("bond-analysis-daily-judgment");
 
     await waitFor(() => {
+      expect(topbar).toHaveTextContent("部分核心债券读面已返回");
       expect(dailyJudgment).toHaveTextContent("固定收益读面");
       expect(dailyJudgment).toHaveTextContent("首屏读面拆解");
       expect(dailyJudgment).toHaveTextContent("久期 3.45 年");
