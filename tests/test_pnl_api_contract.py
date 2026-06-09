@@ -2838,6 +2838,61 @@ def test_pnl_by_business_ytd_uses_v1_formula_and_balance_movement_rows(tmp_path,
     get_settings.cache_clear()
 
 
+def test_pnl_by_business_ytd_refresh_bundle_rejects_prior_day_fx_locs(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    classification = _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    _replace_pnl_refresh_fx_rows(
+        duckdb_path,
+        rows=[
+            ("2025-12-30", "USD", "CNY", "7.00000000", True, False, "sv_fx_prior_only", "2025-12-30"),
+        ],
+    )
+    _force_pnl_ytd_refresh_bundle_contract(monkeypatch)
+
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    enterprise_type = classification["enterprise_type"]
+
+    class FakeRefreshInput:
+        report_date = "2025-12-31"
+        is_month_end = True
+
+        def __init__(self):
+            self.fi_rows = [
+                {
+                    "instrument_code": "E001",
+                    "asset_class": enterprise_type,
+                    "interest_income_514": Decimal("10.00"),
+                    "fair_value_change_516": Decimal("0.00"),
+                    "capital_gain_517": Decimal("0.00"),
+                    "fx_base_currency": "USD",
+                    "source_version": "sv-fi-usd",
+                }
+            ]
+            self.nonstd_rows_by_type = {}
+
+    monkeypatch.setattr(
+        pnl_service,
+        "load_latest_pnl_refresh_input",
+        lambda **_kwargs: FakeRefreshInput(),
+    )
+    monkeypatch.setattr(
+        pnl_service,
+        "list_pnl_refresh_report_dates",
+        lambda **_kwargs: ["2025-12-31"],
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/by-business-ytd", params={"year": 2025})
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "Missing formal fx rate" in detail
+    assert "base_currency=USD" in detail
+    assert "report_date=2025-12-31" in detail
+    get_settings.cache_clear()
+
+
 def legacy_pnl_by_business_ytd_uses_v1_import_formula_and_sub_type_mapping(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
@@ -3059,6 +3114,53 @@ def test_pnl_v1_data_returns_v1_detail_formula_rows(tmp_path, monkeypatch):
     assert Decimal(by_code["JM001"]["interest_income"]).quantize(Decimal("0.01")) == Decimal("100.00")
     assert Decimal(by_code["JM001"]["capital_gain"]).quantize(Decimal("0.01")) == Decimal("20.00")
     assert Decimal(by_code["JM001"]["total_pnl"]).quantize(Decimal("0.01")) == Decimal("120.00")
+    get_settings.cache_clear()
+
+
+def test_pnl_v1_data_rejects_prior_day_fx_locs_for_report_date(tmp_path, monkeypatch):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _replace_pnl_refresh_fx_rows(
+        duckdb_path,
+        rows=[
+            ("2025-12-30", "USD", "CNY", "7.00000000", True, False, "sv_fx_prior_only", "2025-12-30"),
+        ],
+    )
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    class FakeRefreshInput:
+        report_date = "2025-12-31"
+        is_month_end = True
+        fi_rows = [
+            {
+                "instrument_code": "USD-FI",
+                "instrument_name": "USD FI",
+                "portfolio_name": "FI Desk",
+                "asset_class": "test-bond",
+                "interest_income_514": Decimal("10.00"),
+                "fair_value_change_516": Decimal("0.00"),
+                "capital_gain_517": Decimal("0.00"),
+                "fx_base_currency": "USD",
+                "source_version": "sv-fi-usd",
+                "trace_id": "tr-fi-usd",
+            }
+        ]
+        nonstd_rows_by_type = {}
+
+    monkeypatch.setattr(
+        pnl_service,
+        "load_latest_pnl_refresh_input",
+        lambda **_kwargs: FakeRefreshInput(),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/v1-data", params={"date": "2025-12-31"})
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "Missing formal fx rate" in detail
+    assert "base_currency=USD" in detail
+    assert "report_date=2025-12-31" in detail
     get_settings.cache_clear()
 
 
@@ -5023,15 +5125,26 @@ def _seed_pnl_by_business_ytd_balance_rows(duckdb_path: Path) -> dict[str, str]:
               base_currency varchar,
               quote_currency varchar,
               mid_rate decimal(18, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              observed_trade_date varchar,
               source_version varchar
             )
             """
         )
+        conn.execute("alter table fx_daily_mid add column if not exists source_name varchar")
+        conn.execute("alter table fx_daily_mid add column if not exists is_business_day boolean")
+        conn.execute("alter table fx_daily_mid add column if not exists is_carry_forward boolean")
+        conn.execute("alter table fx_daily_mid add column if not exists observed_trade_date varchar")
         conn.execute("delete from fx_daily_mid where trade_date = '2025-12-31'")
         conn.execute(
             """
-            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate, source_version)
-            values ('2025-12-31', 'USD', 'CNY', 7.00000000, 'sv_fx_ytd_balance')
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate, source_name,
+              is_business_day, is_carry_forward, observed_trade_date, source_version
+            )
+            values ('2025-12-31', 'USD', 'CNY', 7.00000000, 'CFETS', true, false, '2025-12-31', 'sv_fx_ytd_balance')
             """
         )
         conn.executemany(
@@ -5254,6 +5367,57 @@ def _seed_pnl_by_business_ytd_balance_rows(duckdb_path: Path) -> dict[str, str]:
         "commercial_type": commercial_type,
         "other_type": other_type,
     }
+
+
+def _replace_pnl_refresh_fx_rows(
+    duckdb_path: Path,
+    *,
+    rows: list[tuple[str, str, str, str, bool, bool, str, str]],
+) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(18, 8),
+              source_name varchar,
+              is_business_day boolean,
+              is_carry_forward boolean,
+              source_version varchar,
+              observed_trade_date varchar
+            )
+            """
+        )
+        conn.execute("delete from fx_daily_mid")
+        conn.executemany(
+            """
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate,
+              source_name, is_business_day, is_carry_forward, source_version,
+              observed_trade_date
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    trade_date,
+                    base_currency,
+                    quote_currency,
+                    mid_rate,
+                    "CFETS",
+                    is_business_day,
+                    is_carry_forward,
+                    source_version,
+                    observed_trade_date,
+                )
+                for trade_date, base_currency, quote_currency, mid_rate, is_business_day, is_carry_forward, source_version, observed_trade_date in rows
+            ],
+        )
+    finally:
+        conn.close()
 
 
 def _seed_pnl_by_business_month(duckdb_path: Path) -> None:

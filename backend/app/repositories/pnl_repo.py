@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 import duckdb
@@ -342,6 +343,71 @@ class PnlRepository:
             if "conn" in locals():
                 conn.close()
         return {str(base): Decimal(str(rate)) for base, rate in rows if base and rate is not None}
+
+    def fetch_formal_fx_rates(self, report_date: str, base_currencies: set[str]) -> dict[str, Decimal]:
+        required = sorted({currency.strip().upper() for currency in base_currencies if currency.strip()})
+        required_fx = [currency for currency in required if currency not in {"CNY", "CNX", "RMB"}]
+        if not required_fx:
+            return {}
+        placeholders = ", ".join(["?"] * len(required_fx))
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            rows = conn.execute(
+                f"""
+                select
+                  upper(base_currency) as base_currency,
+                  mid_rate,
+                  is_business_day,
+                  is_carry_forward,
+                  cast(observed_trade_date as varchar) as observed_trade_date
+                from fx_daily_mid
+                where try_cast(trade_date as date) = ?::date
+                  and upper(quote_currency) = 'CNY'
+                  and upper(base_currency) in ({placeholders})
+                """,
+                [report_date, *required_fx],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return {}
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+        rates: dict[str, Decimal] = {}
+        for base_currency, mid_rate, is_business_day, is_carry_forward, observed_trade_date in rows:
+            if base_currency is None or mid_rate is None:
+                continue
+            base = str(base_currency)
+            business_day = bool(is_business_day)
+            carry_forward = bool(is_carry_forward)
+            observed_trade_date_str = str(observed_trade_date) if observed_trade_date is not None else None
+            if business_day:
+                if carry_forward:
+                    raise ValueError(
+                        f"Invalid formal fx metadata for base_currency={base} report_date={report_date}: "
+                        "business-day row cannot be carry-forward."
+                    )
+                rates[base] = Decimal(str(mid_rate))
+                continue
+            if not carry_forward or observed_trade_date_str is None:
+                raise ValueError(
+                    f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
+                    "non-business-day row must carry forward an observed prior trade date."
+                )
+            if date.fromisoformat(observed_trade_date_str) >= date.fromisoformat(report_date):
+                raise ValueError(
+                    f"Invalid formal fx carry-forward metadata for base_currency={base} report_date={report_date}: "
+                    f"observed_trade_date={observed_trade_date_str} must be before report_date."
+                )
+            rates[base] = Decimal(str(mid_rate))
+
+        missing = [currency for currency in required_fx if currency not in rates]
+        if missing:
+            missing_text = ", ".join(missing)
+            raise ValueError(f"Missing formal fx rate for base_currency={missing_text} report_date={report_date}")
+        return rates
 
     def fetch_formal_fi_rows(self, report_date: str) -> list[dict[str, object]]:
         return self._fetch_rows(

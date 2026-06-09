@@ -405,7 +405,7 @@ def pnl_v1_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: 
         for row in rows
     ):
         base_currencies.add("USD")
-    fx_rates = repo.fetch_latest_fx_rates(target_report_date, base_currencies)
+    fx_rates = repo.fetch_formal_fx_rates(target_report_date, base_currencies)
     missing_fx = sorted(currency for currency in base_currencies if currency not in fx_rates)
     if missing_fx:
         raise RuntimeError(f"Missing fx rates for report_date={target_report_date}: {missing_fx}")
@@ -980,7 +980,7 @@ def _pnl_by_business_ytd_from_refresh_bundles(
         }
         if any(str(row.get("asset_code") or "").strip().upper().startswith("J1") for rows in refresh_input.nonstd_rows_by_type.values() for row in rows):
             base_currencies.add("USD")
-        fx_rates = repo.fetch_latest_fx_rates(report_date, base_currencies)
+        fx_rates = repo.fetch_formal_fx_rates(report_date, base_currencies)
         missing_fx = sorted(currency for currency in base_currencies if currency not in fx_rates)
         if missing_fx:
             raise RuntimeError(f"Missing fx rates for report_date={report_date}: {missing_fx}")
