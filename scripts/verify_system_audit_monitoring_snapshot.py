@@ -335,6 +335,99 @@ def _verify_pulse(
     )
 
 
+def _verify_latest_session_recheck(
+    *,
+    manifest: dict[str, Any],
+    monitoring: dict[str, Any],
+    errors: list[str],
+) -> None:
+    recheck = monitoring.get("latest_session_recheck") or {}
+    _expect_equal(
+        errors,
+        label="latest session recheck closure_effect",
+        actual=recheck.get("closure_effect"),
+        expected="none",
+    )
+    _expect_equal(
+        errors,
+        label="latest session recheck open_blocker_count",
+        actual=recheck.get("open_blocker_count"),
+        expected=len(manifest.get("open_blockers", [])),
+    )
+
+    direct = recheck.get("direct_app_mcp_gitnexus_tool_surface") or {}
+    _expect_equal(
+        errors,
+        label="latest session direct App status",
+        actual=direct.get("status"),
+        expected="tool_surface_unavailable_in_current_codex_app_session",
+    )
+    _expect_equal(
+        errors,
+        label="latest session relevant direct tool count",
+        actual=direct.get("relevant_direct_tool_count"),
+        expected=0,
+    )
+    _expect_false(
+        errors,
+        label="latest session direct App MCP evidence captured",
+        actual=direct.get("direct_app_mcp_evidence_captured"),
+    )
+    _expect_false(
+        errors,
+        label="latest session direct GitNexus evidence captured",
+        actual=direct.get("direct_gitnexus_evidence_captured"),
+    )
+
+    secret = recheck.get("local_secret_hygiene") or {}
+    _expect_false(
+        errors,
+        label="latest session secret values_read",
+        actual=secret.get("values_read"),
+    )
+    _expect_false(
+        errors,
+        label="latest session secret_values_captured",
+        actual=secret.get("secret_values_captured"),
+    )
+    _expect_false(
+        errors,
+        label="latest session clears_secret_scan",
+        actual=secret.get("clears_secret_scan"),
+    )
+
+    ledger = recheck.get("ledger_pnl_direct_governance_record") or {}
+    _expect_equal(
+        errors,
+        label="latest session Ledger record_write_status",
+        actual=ledger.get("record_write_status"),
+        expected="not_requested",
+    )
+    _expect_false(
+        errors,
+        label="latest session writes_governance_records",
+        actual=ledger.get("writes_governance_records"),
+    )
+    _expect_false(
+        errors,
+        label="latest session Ledger formal_use_allowed",
+        actual=ledger.get("formal_use_allowed"),
+    )
+
+    calculation = recheck.get("calculation_owner_decision") or {}
+    _expect_equal(
+        errors,
+        label="latest session calculation captured_decision_count",
+        actual=calculation.get("captured_decision_count"),
+        expected=0,
+    )
+    _expect_false(
+        errors,
+        label="latest session chooses_or_approves_conventions",
+        actual=calculation.get("chooses_or_approves_conventions"),
+    )
+
+
 def verify_monitoring_snapshot(
     *,
     manifest_path: Path = DEFAULT_MANIFEST,
@@ -488,6 +581,11 @@ def verify_monitoring_snapshot(
         ledger=ledger,
         errors=errors,
     )
+    _verify_latest_session_recheck(
+        manifest=manifest,
+        monitoring=monitoring,
+        errors=errors,
+    )
 
     return {
         "report_kind": "system_audit_monitoring_snapshot_verification",
@@ -512,11 +610,35 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        help=(
+            "Exit non-zero unless monitoring verification passes with zero open blockers "
+            "and a completion-ready pulse. The default verifies monitoring alignment."
+        ),
+    )
     args = parser.parse_args(argv)
 
     result = verify_monitoring_snapshot(manifest_path=args.manifest)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["status"] == "pass" else 1
+    if result["status"] != "pass":
+        return 1
+    if args.require_complete and (
+        result["open_blocker_count"] != 0
+        or result["pulse_completion_state"] != "ready_for_completion_audit"
+    ):
+        print(
+            (
+                "System audit monitoring is not complete: "
+                f"open_blocker_count={result['open_blocker_count']}, "
+                f"pulse_completion_state={result['pulse_completion_state']}, "
+                f"completion_status={result['completion_status']}"
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

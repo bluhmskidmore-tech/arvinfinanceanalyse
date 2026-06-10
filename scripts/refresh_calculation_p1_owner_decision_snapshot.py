@@ -270,6 +270,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--capture-template", type=Path, default=DEFAULT_CAPTURE_TEMPLATE)
     parser.add_argument("--generated-at", default=None)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--require-owner-decisions-captured",
+        action="store_true",
+        help=(
+            "Exit non-zero unless every open P1 row has an owner decision captured. "
+            "The default refresh remains a read-only pending-decision snapshot."
+        ),
+    )
     args = parser.parse_args(argv)
 
     snapshot = build_snapshot(
@@ -282,7 +290,22 @@ def main(argv: list[str] | None = None) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(payload + "\n", encoding="utf-8")
     print(payload)
-    return 0 if snapshot["status"]["overall"] != "matrix_drift" else 1
+    if snapshot["status"]["overall"] == "matrix_drift":
+        return 1
+    if args.require_owner_decisions_captured:
+        capture = snapshot["capture_template"]
+        if capture["captured_decision_count"] != capture["row_count"]:
+            print(
+                (
+                    "Calculation P1 owner decisions are not fully captured: "
+                    f"captured_decision_count={capture['captured_decision_count']}, "
+                    f"row_count={capture['row_count']}, "
+                    f"pending_count={capture['pending_count']}"
+                ),
+                file=sys.stderr,
+            )
+            return 1
+    return 0
 
 
 if __name__ == "__main__":

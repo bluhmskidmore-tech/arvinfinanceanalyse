@@ -173,3 +173,29 @@ def test_system_audit_pulse_cli_outputs_markdown() -> None:
     assert "- Completion state: `not_complete`" in completed.stdout
     assert "`business_contract_certified=0`" in completed.stdout
     assert "does not approve metrics" in completed.stdout
+
+
+def test_system_audit_pulse_cli_strict_full_score_gate_rejects_current_blockers() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--generated-at",
+            "2026-06-10T19:45:00+08:00",
+            "--require-full-score-ready",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "pass"
+    assert payload["full_score_ready"] is False
+    assert payload["completion_state"] == "not_complete"
+    assert payload["open_blocker_count"] == 5
+    assert "System audit is not full-score ready" in completed.stderr
+    assert "open_blocker_count=5" in completed.stderr

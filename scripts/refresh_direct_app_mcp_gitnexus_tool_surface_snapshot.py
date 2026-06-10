@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
 
@@ -302,6 +303,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--moss-general-tool-names", nargs="*", default=[])
     parser.add_argument("--moss-named-tool-names", nargs="*", default=[])
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--require-direct-evidence-captured",
+        action="store_true",
+        help=(
+            "Exit non-zero unless all expected direct MOSS/GitNexus tools are exposed "
+            "and direct App/GitNexus evidence is captured. The default remains a "
+            "non-closing tool-surface snapshot."
+        ),
+    )
     args = parser.parse_args(argv)
 
     snapshot = build_snapshot(
@@ -316,6 +326,23 @@ def main(argv: list[str] | None = None) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(payload + "\n", encoding="utf-8")
     print(payload)
+    if args.require_direct_evidence_captured:
+        status = snapshot["status"]
+        if (
+            snapshot["missing_direct_servers"]
+            or not status["direct_app_mcp_evidence_captured"]
+            or not status["direct_gitnexus_evidence_captured"]
+        ):
+            print(
+                (
+                    "Direct App MCP/GitNexus evidence is not captured: "
+                    f"missing_direct_servers={snapshot['missing_direct_servers']}, "
+                    f"direct_app_mcp_evidence_captured={status['direct_app_mcp_evidence_captured']}, "
+                    f"direct_gitnexus_evidence_captured={status['direct_gitnexus_evidence_captured']}"
+                ),
+                file=sys.stderr,
+            )
+            return 1
     return 0
 
 

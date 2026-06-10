@@ -310,3 +310,79 @@ def test_ledger_pnl_direct_governance_snapshot_refresh_cli_writes_only_output(
     assert payload["status"]["writes_governance_records"] is False
     assert payload["dry_run_result"]["record_write_status"] == "not_requested"
     assert not governance_dir.exists()
+
+
+def test_ledger_pnl_direct_governance_snapshot_strict_gate_rejects_missing_record(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_path = tmp_path / "snapshot.json"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setattr(
+        refresh_module,
+        "build_page_readiness_report",
+        lambda _page_slug: _stub_readiness(),
+    )
+
+    exit_code = refresh_module.main(
+        [
+            "--generated-at",
+            "2026-06-10T20:30:00+08:00",
+            "--governance-dir",
+            str(governance_dir),
+            "--output",
+            str(output_path),
+            "--require-written-record-located",
+        ]
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert payload["status"]["overall"] == "dry_run_candidate_only"
+    assert payload["dry_run_result"]["record_write_status"] == "not_requested"
+    assert payload["dry_run_result"]["existing_record_line"] is None
+    assert not governance_dir.exists()
+
+
+def test_ledger_pnl_direct_governance_snapshot_strict_gate_accepts_existing_record(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output_path = tmp_path / "snapshot.json"
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir()
+    record = refresh_module.build_record("2026-06-10T20:30:00+08:00")
+    stream_path = governance_dir / "cache_manifest.jsonl"
+    stream_path.write_text(
+        json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        refresh_module,
+        "build_page_readiness_report",
+        lambda _page_slug: _stub_readiness(),
+    )
+
+    exit_code = refresh_module.main(
+        [
+            "--generated-at",
+            "2026-06-10T20:30:00+08:00",
+            "--governance-dir",
+            str(governance_dir),
+            "--output",
+            str(output_path),
+            "--require-written-record-located",
+        ]
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    written_records = [
+        json.loads(line)
+        for line in stream_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert exit_code == 0
+    assert payload["status"]["overall"] == "written_record_located"
+    assert payload["dry_run_result"]["record_write_status"] == "not_requested"
+    assert payload["dry_run_result"]["existing_record_line"] == 1
+    assert written_records == [record]

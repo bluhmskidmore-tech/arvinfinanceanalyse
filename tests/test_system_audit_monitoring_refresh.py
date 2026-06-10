@@ -64,6 +64,24 @@ def test_system_audit_monitoring_refresh_keeps_all_boundaries() -> None:
     assert report["pulse"]["completion_state"] == "not_complete"
     assert report["pulse"]["open_blocker_count"] == 5
     assert report["pulse"]["drift_error_count"] == 0
+    assert report["latest_session_recheck"]["checked_at"] == "2026-06-10T21:25:00+08:00"
+    assert report["latest_session_recheck"]["closure_effect"] == "none"
+    assert report["latest_session_recheck"]["open_blocker_count"] == 5
+    assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
+        "relevant_direct_tool_count"
+    ] == 0
+    assert report["latest_session_recheck"]["direct_app_mcp_gitnexus_tool_surface"][
+        "direct_app_mcp_evidence_captured"
+    ] is False
+    assert report["latest_session_recheck"]["local_secret_hygiene"][
+        "values_read"
+    ] is False
+    assert report["latest_session_recheck"]["ledger_pnl_direct_governance_record"][
+        "record_write_status"
+    ] == "not_requested"
+    assert report["latest_session_recheck"]["calculation_owner_decision"][
+        "captured_decision_count"
+    ] == 0
     assert "does not write DuckDB or governance records" in report["boundary"]
     assert "read or rotate secret values" in report["boundary"]
 
@@ -89,6 +107,7 @@ def test_system_audit_monitoring_refresh_cli_writes_monitor_report_only(
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert payload["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert payload["latest_session_recheck"]["checked_at"] == "2026-06-10T21:25:00+08:00"
     assert payload["write_outputs"] is False
     assert payload["completion_verification"]["status"] == "pass"
     assert payload["pulse"]["status"] == "pass"

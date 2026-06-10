@@ -399,6 +399,14 @@ def main(argv: list[str] | None = None) -> int:
         default="json",
         help="Output format.",
     )
+    parser.add_argument(
+        "--require-full-score-ready",
+        action="store_true",
+        help=(
+            "Exit non-zero unless the pulse proves full_score_ready=true. "
+            "Use this as a strict gate; the normal pulse remains a health monitor."
+        ),
+    )
     args = parser.parse_args(argv)
 
     report = build_pulse(
@@ -415,7 +423,20 @@ def main(argv: list[str] | None = None) -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n", encoding="utf-8")
     print(payload)
-    return 0 if report["status"] == "pass" else 1
+    if report["status"] != "pass":
+        return 1
+    if args.require_full_score_ready and not report["full_score_ready"]:
+        print(
+            (
+                "System audit is not full-score ready: "
+                f"completion_state={report['completion_state']}, "
+                f"open_blocker_count={report['open_blocker_count']}, "
+                f"drift_error_count={len(report['drift_errors'])}"
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

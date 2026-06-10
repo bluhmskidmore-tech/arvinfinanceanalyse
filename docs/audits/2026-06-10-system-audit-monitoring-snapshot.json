@@ -63,6 +63,36 @@
     "drift_error_count": 0,
     "drift_errors": []
   },
+  "latest_session_recheck": {
+    "checked_at": "2026-06-10T22:44:04+08:00",
+    "closure_effect": "none",
+    "open_blocker_count": 5,
+    "direct_app_mcp_gitnexus_tool_surface": {
+      "status": "tool_surface_unavailable_in_current_codex_app_session",
+      "returned_primary_tool_count": 0,
+      "returned_gitnexus_tool_count": 3,
+      "relevant_direct_tool_count": 0,
+      "direct_app_mcp_evidence_captured": false,
+      "direct_gitnexus_evidence_captured": false
+    },
+    "local_secret_hygiene": {
+      "status": "local_ignored_untracked_findings",
+      "values_read": false,
+      "secret_values_captured": false,
+      "clears_secret_scan": false
+    },
+    "ledger_pnl_direct_governance_record": {
+      "status": "dry_run_candidate_only",
+      "record_write_status": "not_requested",
+      "writes_governance_records": false,
+      "formal_use_allowed": false
+    },
+    "calculation_owner_decision": {
+      "status": "owner_decision_required",
+      "captured_decision_count": 0,
+      "chooses_or_approves_conventions": false
+    }
+  },
   "output_paths": {
     "calculation_owner_decision_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-snapshot.json",
     "direct_app_mcp_gitnexus_tool_surface_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",

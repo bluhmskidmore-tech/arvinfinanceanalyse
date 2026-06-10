@@ -51,6 +51,16 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     original_follow_up_packet_path = manifest["artifacts"][
         "owner_governance_follow_up_packet"
     ]
+    for blocker in follow_up_packet["blocker_packets"]:
+        for artifact in blocker.get("required_input_artifacts", []):
+            if not isinstance(artifact, str) or artifact.startswith("<"):
+                continue
+            source = ROOT / artifact
+            if not source.exists():
+                continue
+            target = tmp_path / artifact
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     manifest["artifacts"]["completion_snapshot"] = "docs/audits/completion-snapshot.json"
     manifest["artifacts"][
         "owner_governance_follow_up_packet"
@@ -197,6 +207,30 @@ def test_verify_completion_snapshot_fails_when_follow_up_packet_approves_metrics
     assert any(
         "owner/governance follow-up packet status approves_metrics must be False" in item
         for item in result["errors"]
+    )
+
+
+def test_verify_completion_snapshot_fails_when_follow_up_input_artifact_is_missing(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    packet_path = tmp_path / manifest["artifacts"]["owner_governance_follow_up_packet"]
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    direct_packet = next(
+        item
+        for item in packet["blocker_packets"]
+        if item["blocker_id"] == "direct-app-mcp-gitnexus-evidence"
+    )
+    direct_packet["required_input_artifacts"].append(".missing-tool-config.toml")
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "direct-app-mcp-gitnexus-evidence required input artifact is missing: .missing-tool-config.toml"
+        in result["errors"]
     )
 
 
@@ -410,3 +444,28 @@ def test_verify_completion_snapshot_cli_outputs_json() -> None:
     assert payload["follow_up_brief_blocker_count"] == 5
     assert payload["calculation_prework_p1_count"] == 10
     assert payload["errors"] == []
+
+
+def test_verify_completion_snapshot_cli_strict_completion_rejects_current_blockers() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--manifest",
+            str(MANIFEST),
+            "--require-complete",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "pass"
+    assert payload["open_blocker_count"] == 5
+    assert payload["errors"] == []
+    assert "System audit completion is not complete" in completed.stderr
+    assert "open_blocker_count=5" in completed.stderr

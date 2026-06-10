@@ -150,6 +150,20 @@ def test_verify_monitoring_snapshot_fails_when_secret_hygiene_is_cleared(
     assert "local secret refresh clears_secret_scan must be false" in result["errors"]
 
 
+def test_verify_monitoring_snapshot_fails_when_latest_recheck_claims_closure(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_monitoring_package(tmp_path)
+    monitoring = _load_package_json(manifest_path, "system_audit_monitoring_snapshot")
+    monitoring["latest_session_recheck"]["closure_effect"] = "closed"
+    _write_package_json(manifest_path, "system_audit_monitoring_snapshot", monitoring)
+
+    result = verify_monitoring_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "latest session recheck closure_effect expected 'none', got 'closed'" in result["errors"]
+
+
 def test_verify_monitoring_snapshot_fails_when_pulse_completion_state_drifts(
     tmp_path: Path,
 ) -> None:
@@ -183,3 +197,29 @@ def test_verify_monitoring_snapshot_cli_outputs_json() -> None:
     assert payload["open_blocker_count"] == 5
     assert payload["pulse_completion_state"] == "not_complete"
     assert payload["errors"] == []
+
+
+def test_verify_monitoring_snapshot_cli_strict_completion_rejects_current_blockers() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--manifest",
+            str(MANIFEST),
+            "--require-complete",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "pass"
+    assert payload["open_blocker_count"] == 5
+    assert payload["pulse_completion_state"] == "not_complete"
+    assert payload["errors"] == []
+    assert "System audit monitoring is not complete" in completed.stderr
+    assert "open_blocker_count=5" in completed.stderr

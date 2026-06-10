@@ -84,6 +84,38 @@ def test_calculation_p1_owner_decision_snapshot_cli_outputs_json(tmp_path: Path)
     assert payload["drift_errors"] == []
 
 
+def test_calculation_p1_owner_decision_snapshot_cli_strict_gate_rejects_pending_rows(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "calculation-p1-snapshot.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--generated-at",
+            "2026-06-10T20:45:00+08:00",
+            "--output",
+            str(output_path),
+            "--require-owner-decisions-captured",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["status"]["overall"] == "owner_decision_required"
+    assert payload["capture_template"]["captured_decision_count"] == 0
+    assert payload["capture_template"]["row_count"] == 10
+    assert payload["capture_template"]["pending_count"] == 10
+    assert "Calculation P1 owner decisions are not fully captured" in completed.stderr
+    assert "captured_decision_count=0" in completed.stderr
+
+
 def test_calculation_p1_owner_decision_snapshot_fails_closed_when_p108_reopens(
     tmp_path: Path,
 ) -> None:

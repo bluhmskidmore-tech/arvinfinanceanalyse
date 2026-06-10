@@ -281,6 +281,32 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         manifest["open_blockers"]
     )
     assert monitoring_snapshot["pulse"]["drift_errors"] == []
+    latest_recheck = monitoring_snapshot["latest_session_recheck"]
+    assert latest_recheck["closure_effect"] == "none"
+    assert latest_recheck["open_blocker_count"] == len(manifest["open_blockers"])
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "direct_app_mcp_evidence_captured"
+    ] is False
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "direct_gitnexus_evidence_captured"
+    ] is False
+    assert latest_recheck["direct_app_mcp_gitnexus_tool_surface"][
+        "relevant_direct_tool_count"
+    ] == 0
+    assert latest_recheck["local_secret_hygiene"]["values_read"] is False
+    assert latest_recheck["local_secret_hygiene"]["secret_values_captured"] is False
+    assert latest_recheck["ledger_pnl_direct_governance_record"][
+        "record_write_status"
+    ] == "not_requested"
+    assert latest_recheck["ledger_pnl_direct_governance_record"][
+        "writes_governance_records"
+    ] is False
+    assert latest_recheck["calculation_owner_decision"][
+        "captured_decision_count"
+    ] == 0
+    assert latest_recheck["calculation_owner_decision"][
+        "chooses_or_approves_conventions"
+    ] is False
     assert monitoring_snapshot["refresh_results"]["calculation_owner_decision"][
         "open_decision_count"
     ] == counts["calculation_display_open_p1"]
@@ -491,7 +517,7 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
         missing_inputs = [
             path
             for path in follow_up["required_input_artifacts"]
-            if path.startswith("docs/")
+            if not path.startswith("<")
             and not (ROOT / path).exists()
         ]
         assert missing_inputs == []

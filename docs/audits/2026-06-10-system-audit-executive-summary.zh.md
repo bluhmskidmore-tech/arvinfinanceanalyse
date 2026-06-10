@@ -15,7 +15,7 @@
 | `2026-06-10-system-audit-completion-snapshot.json` | 机器可读完成快照：5 个开放阻塞、5 个 completion gate、`follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`、`calculation_prework_p1_count=10`。 |
 | `2026-06-10-owner-governance-follow-up-packet.json` | owner/governance 跟进包：路由 5 个开放阻塞，但不批准指标、页面、治理记录或 route certification。 |
 | `2026-06-10-owner-governance-follow-up-brief.zh.md` | owner/governance 中文跟进简报：把 5 个开放阻塞转成可开会、可分派、可复核的责任清单。 |
-| `scripts/verify_system_audit_completion_snapshot.py` / `tests/test_system_audit_*.py` | 审计包一致性 guard：当前窄测为 21 passed，并覆盖 10 个开放计算/展示 P1 的工程预备映射。 |
+| `scripts/verify_system_audit_completion_snapshot.py` / `scripts/verify_system_audit_monitoring_snapshot.py` / `tests/test_system_audit_*.py` | 审计包一致性 guard：当前窄测包含 21 passed 合同守卫和 7 passed monitoring verifier，并覆盖 10 个开放计算/展示 P1 的工程预备映射。 |
 | `2026-06-10-calculation-logic-audit.md` | 计算/展示逻辑专项审计，记录 10 个剩余开放 P1；P1-08 已验证关闭。 |
 | `2026-06-10-calculation-p1-owner-decision-matrix.md` | 10 个剩余 P1 的 owner 裁决矩阵，另记录 P1-08 关闭证据。 |
 | `2026-06-10-owner-approval-mcp-evidence-summary.md` | 7 个 owner approval 待完成页面的 MCP/审批证据汇总。 |
@@ -62,4 +62,4 @@
 - 技术测试通过不是 owner approval。
 - owner/governance 跟进包不是正式审批文件，也不授权 Ledger PnL `--write`。
 - 本摘要不是正式审批文件。
-Guard refresh: `pytest tests/test_system_audit_manifest_contract.py tests/test_system_audit_completion_snapshot_verifier.py -q` -> 21 passed; `python scripts\verify_system_audit_completion_snapshot.py` -> `follow_up_packet_count=5`, `follow_up_brief_blocker_count=5`, `calculation_prework_p1_count=10`, `errors=[]`. This is technical evidence only, not business approval.
+Guard refresh: `pytest tests/test_system_audit_manifest_contract.py tests/test_system_audit_completion_snapshot_verifier.py -q` -> 21 passed; `pytest tests/test_system_audit_monitoring_snapshot_verifier.py -q` -> 7 passed; `python scripts\verify_system_audit_completion_snapshot.py` -> `follow_up_packet_count=5`, `follow_up_brief_blocker_count=5`, `calculation_prework_p1_count=10`, `errors=[]`; `python scripts\verify_system_audit_monitoring_snapshot.py` -> `pulse_completion_state=not_complete`, `errors=[]`. This is technical evidence only, not business approval.

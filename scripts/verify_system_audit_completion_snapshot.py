@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 
@@ -24,6 +25,11 @@ EXPECTED_OPEN_CALCULATION_P1_IDS = [
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _resolve(repo_root: Path, path_value: str) -> Path:
+    path = Path(path_value)
+    return path if path.is_absolute() else repo_root / path
 
 
 def _append_if_missing(value: Any, *, errors: list[str], message: str) -> None:
@@ -217,6 +223,16 @@ def _verify_follow_up_packet(
             errors=errors,
             message=f"{blocker_id} missing required_input_artifacts",
         )
+        for artifact in follow_up.get("required_input_artifacts") or []:
+            if not isinstance(artifact, str):
+                errors.append(f"{blocker_id} has non-string required input artifact")
+                continue
+            if artifact.startswith("<"):
+                continue
+            if not _resolve(repo_root, artifact).exists():
+                errors.append(
+                    f"{blocker_id} required input artifact is missing: {artifact}"
+                )
         _append_if_missing(
             follow_up.get("required_meeting_or_governance_output"),
             errors=errors,
@@ -651,11 +667,32 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MANIFEST,
         help="Path to the system audit manifest.",
     )
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        help=(
+            "Exit non-zero unless the completion verifier passes with zero open blockers. "
+            "Use this as the strict completion gate; the default verifies package consistency."
+        ),
+    )
     args = parser.parse_args(argv)
 
     result = verify_completion_snapshot(manifest_path=args.manifest)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["status"] == "pass" else 1
+    if result["status"] != "pass":
+        return 1
+    if args.require_complete and result["open_blocker_count"] != 0:
+        print(
+            (
+                "System audit completion is not complete: "
+                f"open_blocker_count={result['open_blocker_count']}, "
+                f"completion_gate_count={result['completion_gate_count']}, "
+                f"calculation_snapshot_status={result['calculation_snapshot_status']}"
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

@@ -142,6 +142,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--generated-at", default=None)
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT)
     parser.add_argument("--output", type=Path, default=DEFAULT_SNAPSHOT)
+    parser.add_argument(
+        "--require-clean-boundary",
+        action="store_true",
+        help=(
+            "Exit non-zero unless the value-free boundary check has no ignored/untracked "
+            "config/.env finding and still captures no secret values."
+        ),
+    )
     args = parser.parse_args(argv)
 
     snapshot = build_snapshot(
@@ -153,6 +161,27 @@ def main(argv: list[str] | None = None) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(payload + "\n", encoding="utf-8")
     print(payload)
+    if args.require_clean_boundary:
+        latest = snapshot["latest_boundary_only_recheck"]
+        boundary = latest["boundary_checks"]
+        status = snapshot["status"]
+        ignored_result = boundary["git_status_ignored"]["result"]
+        if (
+            latest["secret_values_captured"]
+            or status["secret_values_captured"]
+            or status["clears_secret_scan"]
+            or bool(ignored_result)
+        ):
+            print(
+                (
+                    "Local secret hygiene boundary is not clean: "
+                    f"ignored_status={ignored_result!r}, "
+                    f"secret_values_captured={status['secret_values_captured']}, "
+                    f"clears_secret_scan={status['clears_secret_scan']}"
+                ),
+                file=sys.stderr,
+            )
+            return 1
     return 0
 
 

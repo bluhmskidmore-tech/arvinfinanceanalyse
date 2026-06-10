@@ -65,6 +65,7 @@ def _timestamp(prefix: str, generated_at: str) -> str:
 def build_monitoring_snapshot(
     *,
     generated_at: str | None = None,
+    latest_session_recheck_at: str | None = None,
     write_outputs: bool = False,
     primary_tool_names: list[str] | None = None,
     gitnexus_tool_names: list[str] | None = None,
@@ -72,6 +73,7 @@ def build_monitoring_snapshot(
     moss_named_tool_names: list[str] | None = None,
 ) -> dict[str, Any]:
     generated_at = generated_at or _now_shanghai()
+    latest_session_recheck_at = latest_session_recheck_at or generated_at
     calc_snapshot = build_calculation_snapshot(generated_at=generated_at)
     direct_snapshot = build_direct_tool_snapshot(
         generated_at=generated_at,
@@ -181,6 +183,60 @@ def build_monitoring_snapshot(
             "drift_error_count": len(pulse_snapshot["drift_errors"]),
             "drift_errors": pulse_snapshot["drift_errors"],
         },
+        "latest_session_recheck": {
+            "checked_at": latest_session_recheck_at,
+            "closure_effect": "none",
+            "open_blocker_count": len(pulse_snapshot["open_blockers"]),
+            "direct_app_mcp_gitnexus_tool_surface": {
+                "status": direct_snapshot["status"]["overall"],
+                "returned_primary_tool_count": direct_snapshot["tool_discovery"][
+                    "discovered_tool_count"
+                ],
+                "returned_gitnexus_tool_count": direct_snapshot["focused_rechecks"][0][
+                    "returned_tool_count"
+                ],
+                "relevant_direct_tool_count": sum(
+                    item["relevant_direct_tool_count"]
+                    for item in direct_snapshot["focused_rechecks"]
+                )
+                + direct_snapshot["tool_discovery"]["relevant_direct_tool_count"],
+                "direct_app_mcp_evidence_captured": direct_snapshot["status"][
+                    "direct_app_mcp_evidence_captured"
+                ],
+                "direct_gitnexus_evidence_captured": direct_snapshot["status"][
+                    "direct_gitnexus_evidence_captured"
+                ],
+            },
+            "local_secret_hygiene": {
+                "status": secret_snapshot["status"]["overall"],
+                "values_read": secret_snapshot["value_handling"]["values_read"],
+                "secret_values_captured": secret_snapshot["status"][
+                    "secret_values_captured"
+                ],
+                "clears_secret_scan": secret_snapshot["status"]["clears_secret_scan"],
+            },
+            "ledger_pnl_direct_governance_record": {
+                "status": ledger_snapshot["status"]["overall"],
+                "record_write_status": ledger_snapshot["dry_run_result"][
+                    "record_write_status"
+                ],
+                "writes_governance_records": ledger_snapshot["status"][
+                    "writes_governance_records"
+                ],
+                "formal_use_allowed": ledger_snapshot["dry_run_result"][
+                    "formal_use_allowed"
+                ],
+            },
+            "calculation_owner_decision": {
+                "status": calc_snapshot["status"]["overall"],
+                "captured_decision_count": calc_snapshot["capture_template"][
+                    "captured_decision_count"
+                ],
+                "chooses_or_approves_conventions": calc_snapshot["status"][
+                    "chooses_or_approves_conventions"
+                ],
+            },
+        },
         "output_paths": {key: str(path) for key, path in outputs.items()},
         "boundary": (
             "This monitoring snapshot refreshes read-only audit artifacts and runs the "
@@ -196,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Run the read-only system audit monitoring refresh bundle.",
     )
     parser.add_argument("--generated-at", default=None)
+    parser.add_argument("--latest-session-recheck-at", default=None)
     parser.add_argument("--write-outputs", action="store_true")
     parser.add_argument("--primary-tool-names", nargs="*", default=[])
     parser.add_argument("--gitnexus-tool-names", nargs="*", default=[])
@@ -206,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = build_monitoring_snapshot(
         generated_at=args.generated_at,
+        latest_session_recheck_at=args.latest_session_recheck_at,
         write_outputs=args.write_outputs,
         primary_tool_names=args.primary_tool_names,
         gitnexus_tool_names=args.gitnexus_tool_names,

@@ -121,3 +121,34 @@ def test_direct_app_tool_surface_snapshot_cli_writes_only_output(tmp_path: Path)
     )
     assert payload["status"]["writes_governance_records"] is False
     assert payload["tool_discovery"]["discovered_tool_count"] == 0
+
+
+def test_direct_app_tool_surface_snapshot_cli_strict_gate_rejects_missing_evidence(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "direct-tool-snapshot.json"
+
+    exit_code = refresh_module.main(
+        [
+            "--generated-at",
+            "2026-06-10T21:25:00+08:00",
+            "--gitnexus-tool-names",
+            "codex_app.handoff_thread",
+            "codex_app.fork_thread",
+            "codex_app.automation_update",
+            "--output",
+            str(output_path),
+            "--require-direct-evidence-captured",
+        ]
+    )
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert payload["status"]["overall"] == (
+        "tool_surface_unavailable_in_current_codex_app_session"
+    )
+    assert payload["status"]["direct_app_mcp_evidence_captured"] is False
+    assert payload["status"]["direct_gitnexus_evidence_captured"] is False
+    assert set(payload["missing_direct_servers"]) == set(
+        refresh_module.EXPECTED_DIRECT_SERVERS
+    )

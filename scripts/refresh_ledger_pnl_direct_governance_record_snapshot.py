@@ -246,6 +246,14 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_OUTPUT,
         help="Snapshot JSON output path. Only this audit artifact is written.",
     )
+    parser.add_argument(
+        "--require-written-record-located",
+        action="store_true",
+        help=(
+            "Exit non-zero unless an existing direct page/API governance record is located. "
+            "This never writes the record; it is a strict post-governance-write gate."
+        ),
+    )
     args = parser.parse_args(argv)
 
     snapshot = build_snapshot(
@@ -258,6 +266,21 @@ def main(argv: list[str] | None = None) -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(payload + "\n", encoding="utf-8")
     print(payload)
+    if (
+        args.require_written_record_located
+        and snapshot["status"]["overall"] != "written_record_located"
+    ):
+        dry_run = snapshot["dry_run_result"]
+        print(
+            (
+                "Ledger PnL direct governance record is not located: "
+                f"status={snapshot['status']['overall']}, "
+                f"record_write_status={dry_run['record_write_status']}, "
+                f"existing_record_line={dry_run['existing_record_line']}"
+            ),
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
