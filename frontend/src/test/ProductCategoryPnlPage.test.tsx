@@ -189,6 +189,12 @@ describe("ProductCategoryPnlPage", () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const table = await screen.findByTestId("product-category-table");
+    expect(table).toHaveTextContent("人民币净收入");
+    expect(table).toHaveTextContent("外币净收入");
+    expect(table).toHaveTextContent("营业净收入");
+    expect(table).not.toHaveTextContent("人民币减收入");
+    expect(table).not.toHaveTextContent("外币减收入");
+    expect(table).not.toHaveTextContent("营业减收入");
     expect(screen.getByTestId("product-category-page")).toHaveClass("product-category-page-shell");
     expect(screen.getByTestId("product-category-contract-hero")).toHaveClass(
       "product-category-contract-hero",

@@ -4361,14 +4361,14 @@ export default function ProductCategoryPnlPage() {
                 </th>
                 <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币</th>
                 <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币FTP</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币减收入</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">人民币净收入</th>
                 <th className="product-category-formal-table__head product-category-formal-table__head--number">外币</th>
                 <th className="product-category-formal-table__head product-category-formal-table__head--number">外币FTP</th>
-                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币减收入</th>
+                <th className="product-category-formal-table__head product-category-formal-table__head--number">外币净收入</th>
                 <th
                   className="product-category-formal-table__head product-category-formal-table__head--number product-category-formal-table__head--highlight"
                 >
-                  营业减收入
+                  营业净收入
                 </th>
               </tr>
             </thead>
