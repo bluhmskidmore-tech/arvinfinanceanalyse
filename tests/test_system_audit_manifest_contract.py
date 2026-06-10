@@ -50,6 +50,8 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
         "business_display_coverage",
         "real_backend_smoke_runbook",
         "real_backend_smoke_result",
+        "system_audit_pulse_script",
+        "system_audit_pulse_tests",
     }
     assert required_artifacts <= set(manifest["artifacts"])
 
@@ -87,10 +89,12 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "python scripts\\codex_page_readiness.py --all",
         "python scripts\\codex_page_readiness.py --route-scope",
         "python scripts\\business_display_coverage_report.py",
+        "python scripts\\system_audit_pulse.py",
     }
     all_pages = fresh_by_command["python scripts\\codex_page_readiness.py --all"]
     route_scope = fresh_by_command["python scripts\\codex_page_readiness.py --route-scope"]
     coverage_summary = fresh_by_command["python scripts\\business_display_coverage_report.py"]
+    pulse = fresh_by_command["python scripts\\system_audit_pulse.py"]
 
     assert all_pages["page_count"] == counts["seeded_pages"]
     assert all_pages["static_pass_count"] == counts["static_pass_pages"]
@@ -109,6 +113,16 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     ]
     assert coverage_summary["tracked_route_count"] == counts["business_display_tracked_routes"]
     assert coverage_summary["route_gap_count"] == counts["business_display_route_gaps"]
+    assert pulse == {
+        "status": "pass",
+        "completion_state": "not_complete",
+        "open_blocker_count": len(manifest["open_blockers"]),
+        "route_count": counts["seeded_pages"],
+        "business_contract_certified_count": counts["business_contract_certified_routes"],
+        "business_display_route_gap_count": counts["business_display_route_gaps"],
+        "completion_snapshot_error_count": 0,
+        "readiness_source": "manifest_last_full_readiness",
+    }
     assert "does not approve routes" in manifest["fresh_verification"]["interpretation"]
 
     priority_rows = [
@@ -172,6 +186,25 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     )
     assert calculation_blocker["last_checked_at"] in p108_evidence["result"]
     assert calculation_blocker["last_checked_at"] in decision_matrix
+
+    pulse_evidence = next(
+        item
+        for item in manifest["verification_evidence"]
+        if item["scope"] == "system_audit_pulse_read_only_guard"
+    )
+    assert "pytest tests/test_system_audit_pulse.py -q" in pulse_evidence["command"]
+    assert "python scripts\\system_audit_pulse.py" in pulse_evidence["command"]
+    assert "5 passed" in pulse_evidence["result"]
+    assert "completion_state=not_complete" in pulse_evidence["result"]
+    assert f"open_blocker_count={len(manifest['open_blockers'])}" in pulse_evidence[
+        "result"
+    ]
+    assert "business_contract_certified_count=0" in pulse_evidence["result"]
+    assert "route_gap_count=0" in pulse_evidence["result"]
+    assert "drift_errors=[]" in pulse_evidence["result"]
+    assert "no approval/write/secret-clear/certification flags" in pulse_evidence[
+        "result"
+    ]
 
 
 def test_completion_checklist_maps_open_blockers_without_approval() -> None:

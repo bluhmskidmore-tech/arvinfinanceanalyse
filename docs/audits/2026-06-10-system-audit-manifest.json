@@ -35,7 +35,9 @@
     "local_secret_hygiene_runbook": "docs/audits/2026-06-10-local-secret-hygiene-runbook.md",
     "business_display_coverage": "docs/audits/business-display-coverage-report.json",
     "real_backend_smoke_runbook": "docs/audits/2026-06-10-real-backend-smoke-runbook.md",
-    "real_backend_smoke_result": "docs/audits/2026-06-10-real-backend-smoke-result.md"
+    "real_backend_smoke_result": "docs/audits/2026-06-10-real-backend-smoke-result.md",
+    "system_audit_pulse_script": "scripts/system_audit_pulse.py",
+    "system_audit_pulse_tests": "tests/test_system_audit_pulse.py"
   },
   "counts": {
     "seeded_pages": 39,
@@ -91,6 +93,19 @@
           "browser_smoke_a11y_configured_route_count": 26,
           "browser_smoke_a11y_gap_count": 0,
           "coverage_status": "tracked"
+        }
+      },
+      {
+        "command": "python scripts\\system_audit_pulse.py",
+        "summary": {
+          "status": "pass",
+          "completion_state": "not_complete",
+          "open_blocker_count": 5,
+          "route_count": 39,
+          "business_contract_certified_count": 0,
+          "business_display_route_gap_count": 0,
+          "completion_snapshot_error_count": 0,
+          "readiness_source": "manifest_last_full_readiness"
         }
       }
     ],
@@ -231,6 +246,11 @@
       "scope": "completion_snapshot_verifier",
       "command": "python scripts\\verify_system_audit_completion_snapshot.py",
       "result": "pass; open_blocker_count=5; completion_gate_count=5; follow_up_packet_count=5; follow_up_brief_blocker_count=5; calculation_prework_p1_count=10; errors=[]"
+    },
+    {
+      "scope": "system_audit_pulse_read_only_guard",
+      "command": "pytest tests/test_system_audit_pulse.py -q; python scripts\\system_audit_pulse.py --generated-at 2026-06-10T19:45:00+08:00",
+      "result": "5 passed; pulse status pass; completion_state=not_complete; open_blocker_count=5; route_count=39; business_contract_certified_count=0; tracked_route_count=26; route_gap_count=0; completion_snapshot status pass; drift_errors=[]; evidence_scope read_only=true and no approval/write/secret-clear/certification flags are set"
     },
     {
       "scope": "local_secret_hygiene_boundary",
