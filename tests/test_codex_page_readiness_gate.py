@@ -430,6 +430,17 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
     assert report["audit_review"]["status"] == "ready_for_audit_review"
     assert report["audit_review"]["closure_approved"] is False
     assert "docs/audits/2026-06-06-bond-analysis-gate-i-lane.md" in report["contract_docs"]
+    assert "docs/pnl/bond-analysis-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/bond-analysis-sign-off-packet.md" in report["contract_docs"]
+    assert "docs/pnl/bond-analysis-governance-audit-packet.md" in report["contract_docs"]
+    assert "docs/pnl/bond-analysis-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md" in report["contract_docs"]
+    assert "docs/pnl/bond-analysis-owner-signoff-runbook.md" in report["contract_docs"]
+    assert any("preserving formal_use_allowed=false" in item for item in report["truth_chain"])
+    assert any("candidate sign-off evidence only" in item for item in report["truth_chain"])
+    assert any("remains unsigned" in item for item in report["truth_chain"])
+    assert any("review-only convention evidence" in item for item in report["truth_chain"])
+    assert any("without promoting Bond Analysis to formal fixed-income metric truth" in item for item in report["truth_chain"])
 
     gates = {gate["name"]: gate for gate in report["static_gates"]}
     assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"

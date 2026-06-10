@@ -1515,6 +1515,52 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
         server.close()
 
 
+def test_bond_analysis_trace_bundle_preserves_candidate_owner_handoff_boundaries() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        for alias in (
+            "bond-analysis",
+            "/bond-analysis",
+            "PAGE-BOND-ANALYSIS-001",
+            "/api/bond-analytics/action-attribution",
+            "GS-BOND-ANALYSIS-ACTION-ATTR-A",
+        ):
+            result = server.request(
+                "tools/call",
+                {"name": "get_page_trace_bundle", "arguments": {"page_slug": alias}},
+            )
+            payload = json.loads(result["content"][0]["text"])
+            assert payload["page_slug"] == "bond-analysis"
+
+        assert payload["page_id"] == "PAGE-BOND-ANALYSIS-001"
+        assert payload["primary_api"] == "/api/bond-analytics/action-attribution"
+        assert "/api/bond-analytics/dv01-risk" in payload["supporting_apis"]
+        assert "/api/bond-analytics/krd-curve-risk" in payload["supporting_apis"]
+        assert payload["golden_samples"] == ["tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A"]
+        assert "docs/pnl/bond-analysis-owner-evidence-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/bond-analysis-sign-off-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/bond-analysis-governance-audit-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/bond-analysis-business-owner-approval-template.md" in payload["contract_docs"]
+        assert "docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md" in payload["contract_docs"]
+        assert "docs/pnl/bond-analysis-owner-signoff-runbook.md" in payload["contract_docs"]
+        assert any("PAGE-BOND-ANALYSIS-001" in item for item in payload["truth_chain"])
+        assert any("PAGE-BOND-001" in item and "must not certify /bond-analysis" in item for item in payload["truth_chain"])
+        assert any("preserving formal_use_allowed=false" in item for item in payload["truth_chain"])
+        assert any("candidate sign-off evidence only" in item for item in payload["truth_chain"])
+        assert any("remains unsigned" in item for item in payload["truth_chain"])
+        assert any("review-only convention evidence" in item for item in payload["truth_chain"])
+        assert any("without promoting Bond Analysis to formal fixed-income metric truth" in item for item in payload["truth_chain"])
+        assert any("do not certify /bond-analysis" in item for item in payload["guardrails"])
+        assert any("Do not use PAGE-BOND-001" in item for item in payload["guardrails"])
+        assert any("Do not promote DV01" in item for item in payload["guardrails"])
+        assert any("result_meta" in item for item in payload["verification_focus"])
+    finally:
+        server.close()
+
+
 def test_executive_overview_trace_bundle_preserves_analytical_overlay_boundaries() -> None:
     server = McpProcess("metric-contracts")
     try:

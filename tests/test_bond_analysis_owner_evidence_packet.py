@@ -18,6 +18,7 @@ SCRIPT = ROOT / "scripts" / "bond_analysis_owner_evidence_packet.py"
 SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "bond-analysis-sign-off-packet.md"
 GOVERNANCE_AUDIT_PACKET = ROOT / "docs" / "pnl" / "bond-analysis-governance-audit-packet.md"
 OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "bond-analysis-owner-evidence-packet.md"
+OWNER_SIGNOFF_RUNBOOK = ROOT / "docs" / "pnl" / "bond-analysis-owner-signoff-runbook.md"
 LIVE_SMOKE_EVIDENCE_ARTIFACT = (
     "docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md"
 )
@@ -255,3 +256,30 @@ def test_bond_analysis_signoff_and_audit_packets_surface_no_certification_scope(
         assert "- `certification_effect=none`" in text
     assert "python scripts/emit_bond_analysis_governance_record.py" in audit_packet
     assert "python scripts/emit_bond_analysis_governance_record.py --write" in audit_packet
+
+
+def test_bond_analysis_owner_signoff_runbook_preserves_candidate_boundary() -> None:
+    text = OWNER_SIGNOFF_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "# Bond Analysis Owner Signoff Runbook" in text
+    assert "`PAGE-BOND-ANALYSIS-001`" in text
+    assert "`/api/bond-analytics/action-attribution`" in text
+    assert "`docs/pnl/bond-analysis-business-owner-approval-template.md`" in text
+    assert "`docs/pnl/bond-analysis-owner-evidence-packet.md`" in text
+    assert "`docs/pnl/bond-analysis-sign-off-packet.md`" in text
+    assert "`docs/pnl/bond-analysis-governance-audit-packet.md`" in text
+    assert "`docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`" in text
+    assert "Keep `formal_use_allowed=false`." in text
+    assert "Keep `closure_approved=false`." in text
+    assert "Keep `certification_effect=none`." in text
+    assert "Do not promote DV01, duration, KRD, yield/YTM, credit-spread" in text
+    assert "`PAGE-BOND-001`" in text
+    assert "`GS-BOND-HEADLINE-A`" in text
+    assert "`MTR-BOND-001` through `MTR-BOND-004`" in text
+    assert "Do not treat dry-run governance output as a written direct PAGE/API governance record." in text
+    assert "`GS-BOND-ANALYSIS-ACTION-ATTR-A`" in text
+    assert "`captured-awaiting-approval`" in text
+    assert (
+        "Passing it still does not promote Bond Analysis to formal fixed-income "
+        "metric truth or set `closure_approved=true`."
+    ) in text
