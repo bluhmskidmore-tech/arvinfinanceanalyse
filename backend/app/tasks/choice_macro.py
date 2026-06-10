@@ -46,6 +46,13 @@ logger = logging.getLogger(__name__)
 
 CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
+CHOICE_MACRO_REFRESH_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_REFRESH_CACHE_KEY = "choice_macro.latest"
+CHOICE_MACRO_SCOPED_REFRESH_JOB_NAME = "choice_macro_scoped_refresh"
+CHOICE_MACRO_SCOPED_CACHE_KEY = "choice_macro.scoped"
+SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE = (
+    "Scoped Choice macro refresh requires at least one non-empty batch_ids or series_ids value."
+)
 STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS = 7
 STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
 PUBLIC_HEADLINE_RULE_VERSION = "rv_public_cross_asset_headline_v1"
@@ -295,6 +302,8 @@ def refresh_choice_macro_snapshot(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     backfill_days: int = 0,
+    batch_ids: list[str] | None = None,
+    series_ids: list[str] | None = None,
 ) -> dict[str, object]:
     logger.info("starting refresh_choice_macro_snapshot, backfill_days=%s", backfill_days)
     _init_runtime()
@@ -312,18 +321,34 @@ def refresh_choice_macro_snapshot(
         local_archive_path=str(settings.local_archive_path),
     )
 
-    run = BuildRunRecord(
-        job_name="choice_macro_refresh",
-        status="running",
-        cache_key="choice_macro.latest",
-    )
-    run_id = f"{run.job_name}:{run.created_at}"
     source_version = "sv_choice_macro_pending"
     vendor_version = "vv_none"
     refresh_warnings: list[dict[str, str]] = []
+    scope_requested = batch_ids is not None or series_ids is not None
+    target_batch_ids = _normalize_choice_scope_values(batch_ids)
+    target_series_ids = _normalize_choice_scope_values(series_ids)
+    if scope_requested and not target_batch_ids and not target_series_ids:
+        raise ValueError(SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE)
+    scoped_refresh = bool(target_batch_ids or target_series_ids)
+    scoped_cache_version = (
+        _build_choice_scope_cache_version(
+            batch_ids=target_batch_ids,
+            series_ids=target_series_ids,
+        )
+        if scoped_refresh
+        else None
+    )
+    run = BuildRunRecord(
+        job_name=CHOICE_MACRO_SCOPED_REFRESH_JOB_NAME if scoped_refresh else CHOICE_MACRO_REFRESH_JOB_NAME,
+        status="running",
+        cache_key=CHOICE_MACRO_SCOPED_CACHE_KEY if scoped_refresh else CHOICE_MACRO_REFRESH_CACHE_KEY,
+    )
+    run_id = f"{run.job_name}:{run.created_at}"
 
     try:
         if backfill_days > 1:
+            if scoped_refresh:
+                raise ValueError("Scoped Choice macro refresh does not support backfill_days > 1.")
             snapshot, series_registry = _fetch_backfill_snapshots(
                 settings=settings,
                 backfill_days=backfill_days,
@@ -331,6 +356,12 @@ def refresh_choice_macro_snapshot(
             )
         else:
             batches = load_choice_macro_batches(settings)
+            if scoped_refresh:
+                batches = _filter_choice_macro_batches(
+                    batches,
+                    batch_ids=target_batch_ids,
+                    series_ids=target_series_ids,
+                )
             series_registry = _build_choice_series_registry(batches)
             fetch_plan = _build_choice_macro_fetch_plan(batches)
 
@@ -346,10 +377,17 @@ def refresh_choice_macro_snapshot(
                     )
                 except RuntimeError as exc:
                     if _is_choice_no_data_error(exc):
+                        if scoped_refresh:
+                            _raise_incomplete_scoped_choice_refresh(
+                                sorted(series.series_id for series in batch.series),
+                                [],
+                            )
                         continue
                     raise
                 batch_snapshots.append(snapshot)
             snapshot = merge_choice_macro_snapshots(batch_snapshots)
+            if scoped_refresh:
+                _validate_scoped_choice_snapshot(snapshot, series_registry)
 
         vendor_version = snapshot.vendor_version
         source_version = _build_source_version(snapshot.raw_payload)
@@ -386,12 +424,29 @@ def refresh_choice_macro_snapshot(
             try:
                 _ensure_tables(conn)
                 conn.execute("begin transaction")
-                choice_series_ids = _choice_managed_series_ids(conn, series_registry)
-                _delete_choice_managed_rows(
-                    conn,
-                    series_ids=choice_series_ids,
-                    trade_dates=sorted(backfill_trade_dates) if backfill_days > 1 and backfill_trade_dates else None,
-                )
+                if scoped_refresh:
+                    _delete_scoped_choice_rows(
+                        conn,
+                        series_ids=sorted(series_registry),
+                        fact_pairs=sorted(
+                            {
+                                (point.series_id, str(point.trade_date))
+                                for point in snapshot.series
+                                if point.trade_date
+                            }
+                        ),
+                    )
+                else:
+                    choice_series_ids = _choice_managed_series_ids(conn, series_registry)
+                    _delete_choice_managed_rows(
+                        conn,
+                        series_ids=choice_series_ids,
+                        trade_dates=(
+                            sorted(backfill_trade_dates)
+                            if backfill_days > 1 and backfill_trade_dates
+                            else None
+                        ),
+                    )
 
                 for point in snapshot.series:
                     conn.execute(
@@ -507,6 +562,7 @@ def refresh_choice_macro_snapshot(
                     CACHE_MANIFEST_STREAM,
                     CacheManifestRecord(
                         cache_key=run.cache_key,
+                        cache_version=scoped_cache_version,
                         source_version=source_version,
                         vendor_version=snapshot.vendor_version,
                         rule_version=RULE_VERSION,
@@ -519,6 +575,7 @@ def refresh_choice_macro_snapshot(
                         job_name=run.job_name,
                         status="completed",
                         cache_key=run.cache_key,
+                        cache_version=scoped_cache_version,
                         lock=CHOICE_MACRO_LOCK.key,
                         source_version=source_version,
                         vendor_version=snapshot.vendor_version,
@@ -532,6 +589,7 @@ def refresh_choice_macro_snapshot(
             job_name=run.job_name,
             status="failed",
             cache_key=run.cache_key,
+            cache_version=scoped_cache_version,
             lock=CHOICE_MACRO_LOCK.key,
             source_version=source_version,
             vendor_version=vendor_version,
@@ -589,6 +647,8 @@ def refresh_choice_macro_snapshot(
         "cache_key": run.cache_key,
         "gate_supplement_refresh": gate_supplement_result,
     }
+    if scoped_cache_version is not None:
+        result["cache_version"] = scoped_cache_version
     result["status"] = status
     result["quality_flag"] = quality_flag
     if warning_code is not None:
@@ -1299,6 +1359,79 @@ def _build_choice_macro_fetch_plan(
     return plan
 
 
+def _normalize_choice_scope_values(values: list[str] | None) -> list[str]:
+    return [item for value in values or [] if (item := str(value).strip())]
+
+
+def _build_choice_scope_cache_version(
+    *,
+    batch_ids: list[str],
+    series_ids: list[str],
+) -> str:
+    parts: list[str] = []
+    if batch_ids:
+        parts.append("batch_ids=" + ",".join(sorted(set(batch_ids))))
+    if series_ids:
+        parts.append("series_ids=" + ",".join(sorted(set(series_ids))))
+    return ";".join(parts)
+
+
+def _filter_choice_macro_batches(
+    batches: list[ChoiceMacroBatchConfig],
+    *,
+    batch_ids: list[str] | None,
+    series_ids: list[str] | None,
+) -> list[ChoiceMacroBatchConfig]:
+    target_batch_ids = set(_normalize_choice_scope_values(batch_ids))
+    target_series_ids = set(_normalize_choice_scope_values(series_ids))
+    if not target_batch_ids and not target_series_ids:
+        raise ValueError(SCOPED_CHOICE_SCOPE_REQUIRED_MESSAGE)
+
+    filtered: list[ChoiceMacroBatchConfig] = []
+    for batch in batches:
+        if target_batch_ids and batch.batch_id not in target_batch_ids:
+            continue
+        series = [
+            series
+            for series in batch.series
+            if not target_series_ids or series.series_id in target_series_ids
+        ]
+        if not series:
+            continue
+        filtered.append(batch.model_copy(update={"series": series}))
+
+    if not filtered:
+        raise ValueError("Scoped Choice macro refresh matched no series.")
+    return filtered
+
+
+def _validate_scoped_choice_snapshot(
+    snapshot: ChoiceMacroSnapshot,
+    series_registry: dict[str, dict[str, object]],
+) -> None:
+    expected_series_ids = set(series_registry)
+    fetched_series_ids = {point.series_id for point in snapshot.series}
+    missing_series_ids = sorted(expected_series_ids - fetched_series_ids)
+    unexpected_series_ids = sorted(fetched_series_ids - expected_series_ids)
+    if missing_series_ids or unexpected_series_ids:
+        _raise_incomplete_scoped_choice_refresh(missing_series_ids, unexpected_series_ids)
+
+
+def _raise_incomplete_scoped_choice_refresh(
+    missing_series_ids: list[str],
+    unexpected_series_ids: list[str],
+) -> None:
+    details: list[str] = []
+    if missing_series_ids:
+        details.append(f"missing: {', '.join(missing_series_ids)}")
+    if unexpected_series_ids:
+        details.append(f"unexpected: {', '.join(unexpected_series_ids)}")
+    raise RuntimeError(
+        "Scoped Choice macro refresh returned incomplete series; "
+        + "; ".join(details)
+    )
+
+
 def _serialize_choice_request_options(options: dict[str, object]) -> str:
     return ",".join(
         f"{key}={_serialize_choice_request_option_value(value)}"
@@ -1441,6 +1574,27 @@ def _delete_choice_managed_rows(
         conn.execute(f"delete from fact_choice_macro_daily where series_id in ({series_placeholders})", series_ids)
     conn.execute(f"delete from phase1_macro_vendor_catalog where series_id in ({series_placeholders})", series_ids)
     conn.execute(f"delete from market_data_series_category where series_id in ({series_placeholders})", series_ids)
+
+
+def _delete_scoped_choice_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: list[str],
+    fact_pairs: list[tuple[str, str]],
+) -> None:
+    if not series_ids:
+        return
+
+    series_placeholders = ", ".join(["?"] * len(series_ids))
+    conn.execute(f"delete from choice_market_snapshot where series_id in ({series_placeholders})", series_ids)
+    conn.execute(f"delete from phase1_macro_vendor_catalog where series_id in ({series_placeholders})", series_ids)
+    conn.execute(f"delete from market_data_series_category where series_id in ({series_placeholders})", series_ids)
+
+    if not fact_pairs:
+        return
+    fact_conditions = " or ".join(["(series_id = ? and trade_date = ?)"] * len(fact_pairs))
+    fact_params = [value for pair in fact_pairs for value in pair]
+    conn.execute(f"delete from fact_choice_macro_daily where {fact_conditions}", fact_params)
 
 
 def _fetch_backfill_snapshots(

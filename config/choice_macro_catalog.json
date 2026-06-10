@@ -1777,6 +1777,133 @@
       ]
     },
     {
+      "batch_id": "choice_funding_shibor_latest",
+      "fetch_mode": "latest",
+      "fetch_granularity": "single",
+      "refresh_tier": "fallback",
+      "policy_note": "Choice live probe 2026-06-10 confirmed SHIBOR latest values; latest lane only because same-day date_slice returned no data in local account.",
+      "request_options": {
+        "IsLatest": 1,
+        "RowIndex": 1,
+        "Ispandas": 1,
+        "RECVtimeout": 5
+      },
+      "series": [
+        {
+          "series_id": "EMM00166252",
+          "series_name": "SHIBOR:ON",
+          "vendor_series_code": "EMM00166252",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        },
+        {
+          "series_id": "EMM00166253",
+          "series_name": "SHIBOR:1W",
+          "vendor_series_code": "EMM00166253",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        },
+        {
+          "series_id": "EMM00166254",
+          "series_name": "SHIBOR:2W",
+          "vendor_series_code": "EMM00166254",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        },
+        {
+          "series_id": "EMM00167612",
+          "series_name": "SHIBOR:1M",
+          "vendor_series_code": "EMM00167612",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        },
+        {
+          "series_id": "EMM00167613",
+          "series_name": "SHIBOR:3M",
+          "vendor_series_code": "EMM00167613",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        },
+        {
+          "series_id": "EMM00167614",
+          "series_name": "SHIBOR:6M",
+          "vendor_series_code": "EMM00167614",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        },
+        {
+          "series_id": "EMM00167708",
+          "series_name": "SHIBOR:1Y",
+          "vendor_series_code": "EMM00167708",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "money_liquidity",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "rates",
+            "shibor",
+            "funding"
+          ]
+        }
+      ]
+    },
+    {
       "batch_id": "isolated_vendor_pending",
       "fetch_mode": "latest",
       "fetch_granularity": "single",
@@ -1789,118 +1916,6 @@
         "RECVtimeout": 5
       },
       "series": [
-        {
-          "series_id": "EMM00166252",
-          "series_name": "SHIBOR:隔夜",
-          "vendor_series_code": "EMM00166252",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166253",
-          "series_name": "SHIBOR:1周",
-          "vendor_series_code": "EMM00166253",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166254",
-          "series_name": "SHIBOR:2周",
-          "vendor_series_code": "EMM00166254",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167612",
-          "series_name": "银行间同业拆借加权利率:1天",
-          "vendor_series_code": "EMM00167612",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167613",
-          "series_name": "银行间同业拆借加权利率:7天",
-          "vendor_series_code": "EMM00167613",
-          "frequency": "daily",
-          "unit": "%",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167614",
-          "series_name": "银行间同业拆借加权利率:14天",
-          "vendor_series_code": "EMM00167614",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167708",
-          "series_name": "银行间同业拆借加权利率:21天",
-          "vendor_series_code": "EMM00167708",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
         {
           "series_id": "EMM01474568",
           "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:6M",
