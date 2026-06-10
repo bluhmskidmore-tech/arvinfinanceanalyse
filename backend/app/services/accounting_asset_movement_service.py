@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -41,11 +41,12 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_meta,
 )
 from backend.app.tasks.accounting_asset_movement import (
+    JOB_NAME,
+    PENDING_SOURCE_VERSION,
     RULE_VERSION,
-    refresh_accounting_asset_movement_window_sync,
+    CACHE_KEY,
+    refresh_accounting_asset_movement_window,
 )
-from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline_sync
-from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 CONTROL_ACCOUNTS = ["141%", "142%", "143%", "1440101%"]
@@ -293,28 +294,31 @@ def refresh_accounting_asset_movement(
         currency_basis=currency_basis,
         month_count=REFRESH_MONTH_COUNT,
     )
-    product_category_refreshed_dates = _refresh_missing_product_category_dates(
-        settings,
-        report_dates=report_dates,
-        currency_basis=currency_basis,
-    )
-    formal_balance_refreshed_dates = _refresh_formal_zqtz_dates(
-        settings,
-        report_dates=report_dates,
-    )
-
-    payloads_by_date = _materialize_accounting_asset_movement_window(
+    run_id = _build_refresh_run_id()
+    refresh_accounting_asset_movement_window.send(
         duckdb_path=duckdb_path,
         governance_dir=str(settings.governance_path),
         report_dates=report_dates,
+        anchor_report_date=report_date,
         currency_basis=currency_basis,
-        product_category_refreshed_dates=product_category_refreshed_dates,
-        formal_balance_refreshed_dates=formal_balance_refreshed_dates,
+        run_id=run_id,
+        product_category_source_dir=str(settings.product_category_source_dir),
+        data_root=str(settings.data_input_root),
+        archive_dir=str(settings.local_archive_path),
+        fx_source_path=_resolve_refresh_fx_source_path(settings),
     )
-    payload = payloads_by_date[report_date]
-    payload["product_category_refreshed_dates"] = product_category_refreshed_dates
-    payload["formal_balance_refreshed_dates"] = formal_balance_refreshed_dates
-    payload["movement_refreshed_dates"] = report_dates
+    payload = {
+        "status": "queued",
+        "cache_key": CACHE_KEY,
+        "report_date": report_date,
+        "currency_basis": currency_basis,
+        "run_id": run_id,
+        "job_name": JOB_NAME,
+        "trigger_mode": "async",
+        "source_version": PENDING_SOURCE_VERSION,
+        "rule_version": RULE_VERSION,
+        "movement_refreshed_dates": report_dates,
+    }
     return AccountingAssetMovementRefreshPayload.model_validate(payload).model_dump(mode="json")
 
 
@@ -336,79 +340,8 @@ def _recent_report_dates_for_refresh(
     return sorted(set(report_dates))
 
 
-def _materialize_accounting_asset_movement_window(
-    *,
-    duckdb_path: str,
-    governance_dir: str | None,
-    report_dates: list[str],
-    currency_basis: str,
-    product_category_refreshed_dates: list[str] | None = None,
-    formal_balance_refreshed_dates: list[str] | None = None,
-) -> dict[str, dict[str, object]]:
-    task_payload = refresh_accounting_asset_movement_window_sync(
-        duckdb_path=duckdb_path,
-        governance_dir=governance_dir,
-        report_dates=report_dates,
-        anchor_report_date=report_dates[-1],
-        currency_basis=currency_basis,
-        product_category_refreshed_dates=product_category_refreshed_dates or [],
-        formal_balance_refreshed_dates=formal_balance_refreshed_dates or [],
-    )
-    payloads_by_date = task_payload.get("payloads_by_date", {})
-    if not isinstance(payloads_by_date, dict):
-        raise RuntimeError("Accounting asset movement refresh task returned no per-date payloads.")
-    return {
-        str(report_date): dict(payload)
-        for report_date, payload in payloads_by_date.items()
-        if isinstance(payload, dict)
-    }
-
-
 def _connect_for_read_after_refresh(duckdb_path: str) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(duckdb_path, read_only=True)
-
-
-def _refresh_missing_product_category_dates(
-    settings: Settings,
-    *,
-    report_dates: list[str],
-    currency_basis: str,
-) -> list[str]:
-    missing_dates = _missing_product_category_control_dates(
-        str(settings.duckdb_path),
-        report_dates=report_dates,
-        currency_basis=currency_basis,
-    )
-    if not missing_dates:
-        return []
-
-    source_dir = _resolve_refresh_product_category_source_dir(settings, missing_dates)
-    if not _has_product_category_sources_for_dates(source_dir, missing_dates):
-        joined_dates = ", ".join(missing_dates)
-        raise RuntimeError(
-            "Cannot refresh accounting asset movement because "
-            "product_category_pnl_canonical_fact has no control-account rows "
-            f"for {joined_dates}, and no matching product-category source files were found."
-        )
-
-    materialize_product_category_pnl_sync(
-        duckdb_path=str(settings.duckdb_path),
-        source_dir=str(source_dir),
-        governance_dir=str(settings.governance_path),
-    )
-
-    remaining_dates = _missing_product_category_control_dates(
-        str(settings.duckdb_path),
-        report_dates=missing_dates,
-        currency_basis=currency_basis,
-    )
-    if remaining_dates:
-        joined_dates = ", ".join(remaining_dates)
-        raise RuntimeError(
-            "Product-category PnL refresh completed but control-account rows "
-            f"are still missing for {joined_dates}."
-        )
-    return missing_dates
 
 
 def _missing_product_category_control_dates(
@@ -492,31 +425,6 @@ def _has_product_category_sources_for_dates(
     return True
 
 
-def _refresh_formal_zqtz_dates(
-    settings: Settings,
-    *,
-    report_dates: list[str],
-) -> list[str]:
-    fx_source_path = _resolve_refresh_fx_source_path(settings)
-    data_root = _resolve_refresh_data_root(settings, report_dates)
-    if not _has_zqtz_sources_for_dates(data_root, report_dates):
-        joined_dates = ", ".join(report_dates)
-        raise RuntimeError(
-            "Cannot refresh formal ZQTZ balances because matching ZQTZSHOW "
-            f"source files were not found for {joined_dates}."
-        )
-    for current_report_date in report_dates:
-        run_formal_balance_pipeline_sync(
-            report_date=current_report_date,
-            data_root=str(data_root),
-            duckdb_path=str(settings.duckdb_path),
-            governance_dir=str(settings.governance_path),
-            archive_dir=str(settings.local_archive_path),
-            fx_source_path=fx_source_path,
-        )
-    return report_dates
-
-
 def _resolve_refresh_data_root(settings: Settings, report_dates: list[str]) -> Path:
     configured_root = Path(settings.data_input_root)
     if _has_zqtz_sources_for_dates(configured_root, report_dates):
@@ -566,6 +474,10 @@ def _resolve_refresh_fx_source_path(settings: Settings) -> str | None:
     if str(settings.environment).lower() == "development" and repo_default_path.exists():
         return str(repo_default_path)
     return None
+
+
+def _build_refresh_run_id() -> str:
+    return f"{JOB_NAME}:{datetime.now(UTC).isoformat()}"
 
 
 def _stale_formal_zqtz_dates(

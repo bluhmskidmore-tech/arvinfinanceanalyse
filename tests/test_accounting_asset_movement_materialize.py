@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from decimal import Decimal
 from pathlib import Path
 
@@ -249,6 +250,192 @@ def test_task_owned_refresh_writes_governance_runs_and_manifests_for_each_report
     assert manifests[0]["lineage"]["formal_balance_refreshed_dates"] == ["2026-02-28"]
 
 
+def test_task_owned_refresh_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_refresh_sources(duckdb_path, ["2026-02-28"])
+
+    materialize_mod = importlib.import_module("backend.app.tasks.materialize")
+    locks_mod = importlib.import_module("backend.app.governance.locks")
+    writer_lock = materialize_mod.resolve_materialize_lock(duckdb_path)
+    observed = {"contention_checked": False}
+    original_materialize = movement_task.materialize_accounting_asset_movement_on_connection
+
+    def materialize_under_lock(conn, *, report_date: str, currency_basis: str = "CNX"):
+        with pytest.raises(TimeoutError):
+            with locks_mod.acquire_lock(
+                writer_lock,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.01,
+            ):
+                pass
+        observed["contention_checked"] = True
+        return original_materialize(conn, report_date=report_date, currency_basis=currency_basis)
+
+    monkeypatch.setattr(
+        movement_task,
+        "materialize_accounting_asset_movement_on_connection",
+        materialize_under_lock,
+    )
+
+    payload = movement_task.refresh_accounting_asset_movement_window.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_dates=["2026-02-28"],
+        anchor_report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["lock"].startswith(movement_task.ACCOUNTING_ASSET_MOVEMENT_REFRESH_LOCK.key)
+    assert observed["contention_checked"] is True
+
+
+def test_task_owned_refresh_materializes_missing_product_category_before_movement(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    report_dates = ["2026-01-31", "2026-02-28"]
+    _seed_refresh_sources(duckdb_path, report_dates)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("delete from product_category_pnl_canonical_fact")
+    finally:
+        conn.close()
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "product-category-202601.xlsx").write_bytes(b"placeholder")
+    (source_dir / "product-category-202602.xlsx").write_bytes(b"placeholder")
+
+    events: list[tuple[str, object]] = []
+
+    def fake_product_category_refresh(**kwargs):
+        events.append(("product", kwargs["source_dir"]))
+        _seed_product_category_control_rows(duckdb_path, report_dates)
+        return {"status": "completed"}
+
+    original_materialize = movement_task.materialize_accounting_asset_movement_on_connection
+
+    def tracked_materialize(conn, *, report_date: str, currency_basis: str = "CNX"):
+        events.append(("movement", report_date))
+        return original_materialize(conn, report_date=report_date, currency_basis=currency_basis)
+
+    monkeypatch.setattr(movement_task, "materialize_product_category_pnl_sync", fake_product_category_refresh)
+    monkeypatch.setattr(movement_task, "materialize_accounting_asset_movement_on_connection", tracked_materialize)
+
+    payload = movement_task.refresh_accounting_asset_movement_window.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_dates=report_dates,
+        anchor_report_date="2026-02-28",
+        currency_basis="CNX",
+        product_category_source_dir=str(source_dir),
+    )
+
+    assert payload["product_category_refreshed_dates"] == report_dates
+    assert events[:3] == [
+        ("product", str(source_dir)),
+        ("movement", "2026-01-31"),
+        ("movement", "2026-02-28"),
+    ]
+
+
+def test_task_owned_refresh_rematerializes_stale_zqtz_formal_before_movement(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    report_dates = ["2026-01-31", "2026-02-28"]
+    _seed_refresh_sources(duckdb_path, report_dates)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              business_type_primary varchar,
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, 'asset', 'CNY', ?, ?, ?, 'sv-zqtz', 'rv-zqtz')",
+            [
+                ("2026-01-31", "FVTPL", "", "110", "0"),
+                ("2026-01-31", "AC", "", "0", "220"),
+                ("2026-01-31", "FVOCI", "", "80", "0"),
+                ("2026-02-28", "FVTPL", "fresh", "110", "0"),
+                ("2026-02-28", "AC", "fresh", "0", "220"),
+                ("2026-02-28", "FVOCI", "fresh", "80", "0"),
+            ],
+        )
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set business_type_primary = ''
+            where report_date = '2026-01-31'
+            """
+        )
+    finally:
+        conn.close()
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    (data_root / "ZQTZSHOW-20260131.xls").write_bytes(b"placeholder")
+
+    events: list[tuple[str, object]] = []
+
+    def fake_formal_pipeline(**kwargs):
+        events.append(("formal", kwargs["report_date"]))
+        conn = duckdb.connect(str(duckdb_path), read_only=False)
+        try:
+            conn.execute(
+                """
+                update fact_formal_zqtz_balance_daily
+                set business_type_primary = 'fresh'
+                where report_date = ?
+                """,
+                [kwargs["report_date"]],
+            )
+        finally:
+            conn.close()
+        return {"status": "completed", "report_date": kwargs["report_date"]}
+
+    original_materialize = movement_task.materialize_accounting_asset_movement_on_connection
+
+    def tracked_materialize(conn, *, report_date: str, currency_basis: str = "CNX"):
+        events.append(("movement", report_date))
+        return original_materialize(conn, report_date=report_date, currency_basis=currency_basis)
+
+    monkeypatch.setattr(movement_task, "run_formal_balance_pipeline_sync", fake_formal_pipeline)
+    monkeypatch.setattr(movement_task, "materialize_accounting_asset_movement_on_connection", tracked_materialize)
+
+    payload = movement_task.refresh_accounting_asset_movement_window.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_dates=report_dates,
+        anchor_report_date="2026-02-28",
+        currency_basis="CNX",
+        data_root=str(data_root),
+        fx_source_path="test-output/fx.csv",
+    )
+
+    assert payload["formal_balance_refreshed_dates"] == ["2026-01-31"]
+    assert events[:3] == [
+        ("formal", "2026-01-31"),
+        ("movement", "2026-01-31"),
+        ("movement", "2026-02-28"),
+    ]
+
+
 def test_task_owned_refresh_rolls_back_all_target_dates_and_writes_failed_run_only(
     tmp_path,
     monkeypatch,
@@ -441,6 +628,65 @@ def _seed_refresh_sources(duckdb_path: Path, report_dates: list[str]) -> None:
                         28,
                         f"sv-gl-{report_date}",
                         f"rv-gl-{report_date}",
+                    ),
+                ]
+            )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+    finally:
+        conn.close()
+
+
+def _seed_product_category_control_rows(duckdb_path: Path, report_dates: list[str]) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        rows: list[tuple[object, ...]] = []
+        for report_date in report_dates:
+            rows.extend(
+                [
+                    (
+                        report_date,
+                        "14101010001",
+                        "CNX",
+                        "TPL",
+                        "100",
+                        "110",
+                        "0",
+                        "0",
+                        "0",
+                        28,
+                        "sv-gl",
+                        "rv-gl",
+                    ),
+                    (
+                        report_date,
+                        "14201010001",
+                        "CNX",
+                        "AC",
+                        "200",
+                        "220",
+                        "0",
+                        "0",
+                        "0",
+                        28,
+                        "sv-gl",
+                        "rv-gl",
+                    ),
+                    (
+                        report_date,
+                        "14401010001",
+                        "CNX",
+                        "OCI",
+                        "70",
+                        "80",
+                        "0",
+                        "0",
+                        "0",
+                        28,
+                        "sv-gl",
+                        "rv-gl",
                     ),
                 ]
             )

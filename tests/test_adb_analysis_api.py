@@ -341,6 +341,8 @@ def test_adb_route_keeps_duckdb_reads_in_service_layer() -> None:
 
     assert "import duckdb" not in source
     assert "duckdb.connect" not in source
+    assert "_execute_balance_analysis_materialization" not in source
+    assert "materialize_balance_analysis_facts.fn" not in source
 
 
 def test_adb_backfill_candidate_dates_filters_formal_dates_to_cny(
@@ -371,6 +373,62 @@ def test_adb_backfill_candidate_dates_filters_formal_dates_to_cny(
     assert result["snapshot_dates"] == ["2025-06-02"]
     assert result["formal_dates"] == []
     assert result["missing_dates"] == ["2025-06-02"]
+
+
+def test_adb_backfill_queues_materialization_tasks_without_sync_private_call(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    route_mod = load_module(
+        "backend.app.api.routes.adb_analysis",
+        "backend/app/api/routes/adb_analysis.py",
+    )
+    _configure_adb_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id="adb-backfill-user",
+        role=None,
+        resource="adb_analysis",
+        action="backfill",
+    )
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(tmp_path / "data_input"))
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        route_mod.adb_analysis_service,
+        "adb_backfill_candidate_dates",
+        lambda *_args, **_kwargs: {
+            "snapshot_dates": ["2025-06-02", "2025-06-03"],
+            "formal_dates": [],
+            "missing_dates": ["2025-06-02", "2025-06-03"],
+        },
+    )
+    send_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        route_mod.materialize_balance_analysis_facts,
+        "send",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/analysis/adb/backfill",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03"},
+        headers={"X-User-Id": "adb-backfill-user"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert payload["total_missing"] == 2
+    assert payload["queued_count"] == 2
+    assert payload["failed_count"] == 0
+    assert [call["report_date"] for call in send_calls] == ["2025-06-02", "2025-06-03"]
+    assert all(call["duckdb_path"] == str(tmp_path / "moss.duckdb") for call in send_calls)
+    assert all(call["governance_dir"] == str(tmp_path / "governance") for call in send_calls)
+    assert all(call["data_root"] == str(tmp_path / "data_input") for call in send_calls)
 
 
 def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-import time
 from datetime import date, datetime
-from pathlib import Path
 from typing import Annotated
 
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import adb_analysis_service
+from backend.app.tasks.balance_analysis_materialize import materialize_balance_analysis_facts
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 logger = logging.getLogger(__name__)
@@ -159,41 +158,30 @@ def adb_backfill(
             "formal_dates": len(candidate_dates["formal_dates"]),
         }
 
-    # Import materialization function
-    from backend.app.tasks.balance_analysis_materialize import (
-        _execute_balance_analysis_materialization,
-    )
-
-    success = 0
+    queued = 0
     failed: list[dict] = []
     for report_date_str in missing:
-        t0 = time.time()
         try:
-            result = _execute_balance_analysis_materialization(
+            materialize_balance_analysis_facts.send(
                 report_date=report_date_str,
-                duckdb_file=Path(db_path),
+                duckdb_path=db_path,
                 governance_dir=str(settings.governance_path),
                 data_root=str(settings.data_input_root),
             )
-            elapsed = time.time() - t0
             logger.info(
-                "Backfill %s OK: zqtz=%d tyw=%d (%.1fs)",
+                "Queued ADB formal balance backfill %s",
                 report_date_str,
-                result.payload.get("zqtz_rows", 0),
-                result.payload.get("tyw_rows", 0),
-                elapsed,
             )
-            success += 1
+            queued += 1
         except Exception as exc:
-            elapsed = time.time() - t0
-            logger.warning("Backfill %s FAILED: %s (%.1fs)", report_date_str, exc, elapsed)
+            logger.warning("Queue ADB backfill %s FAILED: %s", report_date_str, exc)
             failed.append({"date": report_date_str, "error": str(exc)})
 
     return {
-        "status": "completed",
+        "status": "queued" if queued else "failed",
         "total_missing": len(missing),
-        "success": success,
+        "queued_count": queued,
         "failed_count": len(failed),
         "failed": failed[:20],
-        "message": f"Backfilled {success}/{len(missing)} dates.",
+        "message": f"Queued {queued}/{len(missing)} backfill dates.",
     }

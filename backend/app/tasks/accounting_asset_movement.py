@@ -14,7 +14,7 @@ from backend.app.core_finance.accounting_asset_movement import (
     build_accounting_asset_movement_rows,
 )
 from backend.app.core_finance.accounting_basis_constants import ACCOUNTING_BASIS_AC
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
@@ -24,6 +24,8 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
+from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline_sync
+from backend.app.tasks.product_category_pnl import materialize_product_category_pnl_sync
 
 RULE_VERSION = "rv_accounting_asset_movement_v2"
 CACHE_KEY = "accounting_asset_movement.monthly"
@@ -109,6 +111,10 @@ def _refresh_accounting_asset_movement_window(
     currency_basis: str = "CNX",
     product_category_refreshed_dates: list[str] | None = None,
     formal_balance_refreshed_dates: list[str] | None = None,
+    product_category_source_dir: str | None = None,
+    data_root: str | None = None,
+    archive_dir: str | None = None,
+    fx_source_path: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, object]:
     if not _movement_refresh_via_task_enabled():
@@ -156,9 +162,46 @@ def _refresh_accounting_asset_movement_window(
     )
 
     payloads_by_date: dict[str, dict[str, object]] = {}
+    refreshed_product_category_dates: list[str] = []
+    refreshed_formal_balance_dates: list[str] = []
     try:
+        refreshed_product_category_dates = (
+            list(product_category_refreshed_dates)
+            if product_category_refreshed_dates is not None
+            else (
+                _refresh_missing_product_category_dates(
+                    duckdb_path=str(duckdb_file),
+                    governance_dir=str(governance_path),
+                    report_dates=normalized_report_dates,
+                    currency_basis=currency_basis,
+                    source_dir=product_category_source_dir,
+                )
+                if product_category_source_dir is not None
+                else []
+            )
+        )
+        refreshed_formal_balance_dates = (
+            list(formal_balance_refreshed_dates)
+            if formal_balance_refreshed_dates is not None
+            else (
+                _refresh_formal_zqtz_dates(
+                    duckdb_path=str(duckdb_file),
+                    governance_dir=str(governance_path),
+                    report_dates=normalized_report_dates,
+                    data_root=data_root,
+                    archive_dir=archive_dir,
+                    fx_source_path=fx_source_path,
+                )
+                if data_root is not None
+                else []
+            )
+        )
+        writer_lock = resolve_duckdb_writer_lock(
+            duckdb_file,
+            ttl_seconds=lock_definition.ttl_seconds,
+        )
         with acquire_lock(
-            lock_definition,
+            writer_lock,
             base_dir=duckdb_file.parent,
             timeout_seconds=0.1,
         ):
@@ -236,8 +279,8 @@ def _refresh_accounting_asset_movement_window(
                         "rule_version": RULE_VERSION,
                         "fact_tables": list(FACT_TABLES),
                         "movement_refreshed_dates": normalized_report_dates,
-                        "product_category_refreshed_dates": list(product_category_refreshed_dates or []),
-                        "formal_balance_refreshed_dates": list(formal_balance_refreshed_dates or []),
+                        "product_category_refreshed_dates": refreshed_product_category_dates,
+                        "formal_balance_refreshed_dates": refreshed_formal_balance_dates,
                     },
                 ).model_dump(),
             )
@@ -274,8 +317,8 @@ def _refresh_accounting_asset_movement_window(
         "rule_version": RULE_VERSION,
         "payloads_by_date": payloads_by_date,
         "movement_refreshed_dates": normalized_report_dates,
-        "product_category_refreshed_dates": list(product_category_refreshed_dates or []),
-        "formal_balance_refreshed_dates": list(formal_balance_refreshed_dates or []),
+        "product_category_refreshed_dates": refreshed_product_category_dates,
+        "formal_balance_refreshed_dates": refreshed_formal_balance_dates,
     }
 
 
@@ -294,6 +337,10 @@ def refresh_accounting_asset_movement_window_sync(
     currency_basis: str = "CNX",
     product_category_refreshed_dates: list[str] | None = None,
     formal_balance_refreshed_dates: list[str] | None = None,
+    product_category_source_dir: str | None = None,
+    data_root: str | None = None,
+    archive_dir: str | None = None,
+    fx_source_path: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, object]:
     return _refresh_accounting_asset_movement_window(
@@ -304,6 +351,10 @@ def refresh_accounting_asset_movement_window_sync(
         currency_basis=currency_basis,
         product_category_refreshed_dates=product_category_refreshed_dates,
         formal_balance_refreshed_dates=formal_balance_refreshed_dates,
+        product_category_source_dir=product_category_source_dir,
+        data_root=data_root,
+        archive_dir=archive_dir,
+        fx_source_path=fx_source_path,
         run_id=run_id,
     )
 
@@ -410,6 +461,217 @@ def _checkpoint_if_possible(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute("checkpoint")
     except duckdb.Error:
         pass
+
+
+def _refresh_missing_product_category_dates(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_dates: list[str],
+    currency_basis: str,
+    source_dir: str | None,
+) -> list[str]:
+    missing_dates = _missing_product_category_control_dates(
+        duckdb_path,
+        report_dates=report_dates,
+        currency_basis=currency_basis,
+    )
+    if not missing_dates:
+        return []
+
+    source_path = Path(source_dir) if source_dir else Path(get_settings().product_category_source_dir)
+    if not _has_product_category_sources_for_dates(source_path, missing_dates):
+        joined_dates = ", ".join(missing_dates)
+        raise RuntimeError(
+            "Cannot refresh accounting asset movement because "
+            "product_category_pnl_canonical_fact has no control-account rows "
+            f"for {joined_dates}, and no matching product-category source files were found."
+        )
+
+    materialize_product_category_pnl_sync(
+        duckdb_path=duckdb_path,
+        source_dir=str(source_path),
+        governance_dir=governance_dir,
+    )
+
+    remaining_dates = _missing_product_category_control_dates(
+        duckdb_path,
+        report_dates=missing_dates,
+        currency_basis=currency_basis,
+    )
+    if remaining_dates:
+        joined_dates = ", ".join(remaining_dates)
+        raise RuntimeError(
+            "Product-category PnL refresh completed but control-account rows "
+            f"are still missing for {joined_dates}."
+        )
+    return missing_dates
+
+
+def _missing_product_category_control_dates(
+    duckdb_path: str,
+    *,
+    report_dates: list[str],
+    currency_basis: str,
+) -> list[str]:
+    if not report_dates:
+        return []
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
+        table_exists = conn.execute(
+            """
+            select 1
+            from information_schema.tables
+            where table_name = 'product_category_pnl_canonical_fact'
+            limit 1
+            """
+        ).fetchone()
+        if table_exists is None:
+            return report_dates
+        rows = conn.execute(
+            """
+            select cast(report_date as varchar) as report_date, count(*) as row_count
+            from product_category_pnl_canonical_fact
+            where cast(report_date as varchar) in (select unnest(?))
+              and currency = ?
+              and (
+                account_code like '141%'
+                or account_code like '142%'
+                or account_code like '143%'
+                or account_code like '1440101%'
+              )
+            group by 1
+            """,
+            [report_dates, currency_basis],
+        ).fetchall()
+    except duckdb.Error:
+        return report_dates
+    finally:
+        if "conn" in locals():
+            conn.close()
+
+    available_dates = {str(row[0]) for row in rows if int(row[1] or 0) > 0}
+    return [
+        current_report_date
+        for current_report_date in report_dates
+        if current_report_date not in available_dates
+    ]
+
+
+def _has_product_category_sources_for_dates(
+    source_dir: Path,
+    report_dates: list[str],
+) -> bool:
+    if not report_dates or not source_dir.exists():
+        return False
+    for report_date in report_dates:
+        month_token = report_date[:7].replace("-", "")
+        if not any(source_dir.glob(f"*{month_token}*.xls*")):
+            return False
+    return True
+
+
+def _refresh_formal_zqtz_dates(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_dates: list[str],
+    data_root: str | None,
+    archive_dir: str | None,
+    fx_source_path: str | None,
+) -> list[str]:
+    stale_dates = _stale_formal_zqtz_dates(duckdb_path, report_dates=report_dates)
+    if not stale_dates:
+        return []
+
+    data_root_path = Path(data_root) if data_root else Path(get_settings().data_input_root)
+    if not _has_zqtz_sources_for_dates(data_root_path, stale_dates):
+        joined_dates = ", ".join(stale_dates)
+        raise RuntimeError(
+            "Cannot refresh formal ZQTZ balances because matching ZQTZSHOW "
+            f"source files were not found for {joined_dates}."
+        )
+    for current_report_date in stale_dates:
+        run_formal_balance_pipeline_sync(
+            report_date=current_report_date,
+            data_root=str(data_root_path),
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            archive_dir=archive_dir,
+            fx_source_path=fx_source_path,
+        )
+    return stale_dates
+
+
+def _has_zqtz_sources_for_dates(data_root: Path, report_dates: list[str]) -> bool:
+    if not report_dates or not data_root.exists():
+        return False
+    for report_date in report_dates:
+        compact_date = report_date.replace("-", "")
+        dotted_date = report_date.replace("-", ".")
+        has_source = any(
+            any(data_root.glob(pattern))
+            for pattern in (
+                f"ZQTZSHOW*{compact_date}*.xls",
+                f"ZQTZSHOW*{dotted_date}*.xls",
+            )
+        )
+        if not has_source:
+            return False
+    return True
+
+
+def _stale_formal_zqtz_dates(
+    duckdb_path: str,
+    *,
+    report_dates: list[str],
+) -> list[str]:
+    if not report_dates:
+        return []
+    try:
+        conn = duckdb.connect(duckdb_path, read_only=True)
+        rows = conn.execute(
+            """
+            select
+              cast(report_date as varchar) as report_date,
+              count(*) as row_count,
+              sum(
+                case
+                  when coalesce(trim(business_type_primary), '') = '' then 1
+                  else 0
+                end
+              ) as empty_business_type_count
+            from fact_formal_zqtz_balance_daily
+            where cast(report_date as varchar) in (select unnest(?))
+              and currency_basis = 'CNY'
+              and position_scope = 'asset'
+            group by 1
+            """,
+            [report_dates],
+        ).fetchall()
+    except duckdb.Error:
+        return report_dates
+    finally:
+        if "conn" in locals():
+            conn.close()
+
+    freshness_by_date = {
+        str(row[0]): {
+            "row_count": int(row[1] or 0),
+            "empty_business_type_count": int(row[2] or 0),
+        }
+        for row in rows
+    }
+    stale_dates: list[str] = []
+    for current_report_date in report_dates:
+        freshness = freshness_by_date.get(current_report_date)
+        if freshness is None:
+            stale_dates.append(current_report_date)
+            continue
+        row_count = freshness["row_count"]
+        if row_count == 0 or freshness["empty_business_type_count"] == row_count:
+            stale_dates.append(current_report_date)
+    return stale_dates
 
 
 def materialize_accounting_asset_movement_on_connection(
