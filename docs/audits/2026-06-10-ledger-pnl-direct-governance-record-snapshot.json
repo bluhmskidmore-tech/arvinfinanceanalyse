@@ -1,0 +1,86 @@
+{
+  "report_kind": "ledger_pnl_direct_governance_record_snapshot",
+  "generated_at": "2026-06-10T12:47:03+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "page": {
+    "page_slug": "ledger-pnl",
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary"
+  },
+  "status": {
+    "overall": "dry_run_candidate_only",
+    "fail_closed": true,
+    "writes_governance_records": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false
+  },
+  "dry_run_result": {
+    "command": "python scripts\\emit_ledger_pnl_governance_record.py",
+    "mode": "dry-run",
+    "target_stream": "cache_manifest",
+    "target_path": "F:\\MOSS-V3\\data\\governance\\cache_manifest.jsonl",
+    "record_write_status": "not_requested",
+    "existing_record_line": null,
+    "validation_status": "ready_for_audit_review",
+    "missing_required_fields": [],
+    "failed_required_field_groups": [],
+    "formal_use_allowed": false,
+    "residual_gap": "Required checklist fields are present, but this does not prove page execution completeness and still needs audit review against page contract, lineage, date/catalog, and current UI/API payloads."
+  },
+  "record_key": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "primary_api": "/api/ledger-pnl/summary",
+    "report_date": "2026-05-31",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL"
+  },
+  "candidate_record": {
+    "page_id": "PAGE-LEDGER-PNL-001",
+    "page_slug": "ledger-pnl",
+    "frontend_route": "/ledger-pnl",
+    "primary_api": "/api/ledger-pnl/summary",
+    "report_date": "2026-05-31",
+    "basis": "ledger",
+    "source_surface": "ledger_pnl.summary",
+    "tables_used": [
+      "qdb_general_ledger_workbook"
+    ],
+    "source_version": "sv_product_category_3353b116b9a6",
+    "rule_version": "rv_ledger_pnl_v1",
+    "cache_version": "cv_ledger_pnl_v1",
+    "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
+    "result_kind": "ledger_pnl.summary",
+    "formal_use_allowed": false
+  },
+  "written_record_search": {
+    "command": "Select-String -Path 'F:\\MOSS-V3\\data\\governance\\cache_manifest.jsonl' -Pattern 'PAGE-LEDGER-PNL-001','/api/ledger-pnl/summary','ledger_pnl.summary:2026-05-31:ALL'",
+    "matches": {
+      "PAGE-LEDGER-PNL-001": 0,
+      "/api/ledger-pnl/summary": 0,
+      "ledger_pnl.summary:2026-05-31:ALL": 0
+    },
+    "interpretation": "No matching written direct page/API governance record was found in cache_manifest.jsonl."
+  },
+  "page_readiness_result": {
+    "command": "python scripts\\codex_page_readiness.py --page-slug ledger-pnl",
+    "overall_status": "static-pass",
+    "formal_use_allowed": false,
+    "closure_approved": false,
+    "business_owner_approval_captured": false,
+    "approval_status": "pending",
+    "approval_action_item_count": 11,
+    "governance_record_validation": null,
+    "audit_review": null,
+    "residual_gaps": [
+      "full data-catalog/date review required before page-level closure.",
+      "direct page-keyed governance records are still required before treating this as proof of a specific page/API execution.",
+      "Candidate metric dictionary-level approval remains pending.",
+      "Existing golden sample is supporting or page DTO evidence only, not dictionary-level approval."
+    ]
+  },
+  "closure_gate": "Only an approved governance workflow may write or locate the direct page/API record. After that, rerun governance validation, Ledger PnL page readiness, owner approval strict checks, and live page/API evidence review. Keep formal_use_allowed=false and closure_approved=false until owner approval and all page-specific gates are captured.",
+  "boundary": "This snapshot proves only that a field-complete dry-run candidate exists and no matching written direct record was found. It does not write governance records, approve metrics/pages, certify routes, prove live page/API execution, or capture business-owner approval."
+}
