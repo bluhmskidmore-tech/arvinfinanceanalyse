@@ -1392,6 +1392,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const footerSupportStackRule = cssRuleBody(".footerSupportStack");
     const footerEvidenceBlockRule = cssRuleBody(".footerEvidenceBlock");
     const footerActionBarRule = cssRuleBody(".footerActionBar");
+    const footerRiskRowRule = cssRuleBody(".footerRiskRow");
 
     expect(footerGridRule).toContain("display: grid");
     expect(footerGridRule).toContain("grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr)");
@@ -1404,6 +1405,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(footerActionBarRule).toContain("display: grid");
     expect(footerActionBarRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(footerActionBarRule).toContain("align-items: center");
+    expect(footerRiskRowRule).toContain("display: flex");
+    expect(COCKPIT_CSS).not.toContain(".footerRiskList div");
     expect(COCKPIT_CSS).not.toContain(".footerSparkline");
   });
 

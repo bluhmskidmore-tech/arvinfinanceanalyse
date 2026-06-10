@@ -1766,28 +1766,28 @@ export function BondAnalyticsInstitutionalCockpit({
     ...item,
     detail: `市值 ${item.caption}`,
   }));
-  const riskRows = [
-    {
-      label: "组合久期",
-      value: riskQ.data?.result ? formatDurationDisplay(riskQ.data.result.weighted_duration) : durationDisplay,
-      detail: "来自风险指标读面",
-    },
-    {
-      label: "组合 DV01",
-      value: dv01Display,
-      detail: "利率敏感度",
-    },
-    {
-      label: "信用占比",
-      value: riskQ.data?.result ? formatPct(riskQ.data.result.credit_ratio) : creditWeightDisplay,
-      detail: "信用债市值占比",
-    },
-    {
-      label: "利差 DV01",
-      value: riskQ.data?.result ? formatWan(riskQ.data.result.total_spread_dv01) : "—",
-      detail: "信用利差敏感度",
-    },
-  ];
+  const durationRiskRow = {
+    label: "组合久期",
+    value: riskQ.data?.result ? formatDurationDisplay(riskQ.data.result.weighted_duration) : durationDisplay,
+    detail: "来自风险指标读面",
+  };
+  const dv01RiskRow = {
+    label: "组合 DV01",
+    value: dv01Display,
+    detail: "利率敏感度",
+  };
+  const creditRatioRiskRow = {
+    label: "信用占比",
+    value: riskQ.data?.result ? formatPct(riskQ.data.result.credit_ratio) : creditWeightDisplay,
+    detail: "信用债市值占比",
+  };
+  const spreadDv01RiskRow = {
+    label: "利差 DV01",
+    value: riskQ.data?.result ? formatWan(riskQ.data.result.total_spread_dv01) : "—",
+    detail: "信用利差敏感度",
+  };
+  const riskRows = [durationRiskRow, dv01RiskRow, creditRatioRiskRow, spreadDv01RiskRow];
+  const footerRiskRows = [durationRiskRow, dv01RiskRow, creditRatioRiskRow];
   const topbarReportDate = dashboardReportDate || reportDate || "—";
   const topbarReportStatus = isDashboardDateFallback
     ? `快照回退 ${dashboardReportDate || "—"}`
@@ -2166,8 +2166,8 @@ export function BondAnalyticsInstitutionalCockpit({
               styles={{ body: cardBodyStyle }}
             >
               <div className={styles.footerRiskList}>
-                {riskRows.slice(0, 3).map((row) => (
-                  <div key={row.label}>
+                {footerRiskRows.map((row) => (
+                  <div key={row.label} className={styles.footerRiskRow}>
                     <span>{row.label}</span>
                     <strong>{row.value}</strong>
                   </div>
