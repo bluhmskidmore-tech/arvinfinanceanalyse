@@ -659,6 +659,22 @@ def test_materialize_uses_distinct_locks_for_different_duckdb_files_in_same_dire
     assert first_lock.key != second_lock.key
 
 
+def test_snapshot_and_preview_materialize_share_same_duckdb_writer_lock(tmp_path):
+    preview_task = sys.modules.get("backend.app.tasks.materialize")
+    if preview_task is None:
+        preview_task = load_module("backend.app.tasks.materialize", "backend/app/tasks/materialize.py")
+    snapshot_task = sys.modules.get("backend.app.tasks.snapshot_materialize")
+    if snapshot_task is None:
+        snapshot_task = load_module(
+            "backend.app.tasks.snapshot_materialize",
+            "backend/app/tasks/snapshot_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "shared.duckdb"
+
+    assert preview_task.resolve_materialize_lock(duckdb_path).key == snapshot_task.resolve_snapshot_lock(duckdb_path).key
+
+
 def test_materialize_lock_normalizes_case_for_same_duckdb_path(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.materialize")
     if task_module is None:

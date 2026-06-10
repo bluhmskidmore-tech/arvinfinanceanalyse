@@ -393,6 +393,7 @@ def _materialize_yield_curve_month_end_backfill(
         report_date=report_date,
         governance_dir=str(governance_path),
         lock_base_dir=str(duckdb_file.parent),
+        duckdb_path=str(duckdb_file),
         run_id=run_id,
         execute_materialization=lambda: _execute_yield_curve_month_end_backfill(
             duckdb_path=str(duckdb_file),
@@ -446,6 +447,7 @@ def _materialize_yield_curve(
         report_date=trade_date,
         governance_dir=str(governance_path),
         lock_base_dir=str(duckdb_file.parent),
+        duckdb_path=str(duckdb_file),
         run_id=run_id,
         execute_materialization=lambda: _execute_yield_curve_materialization(
             trade_date=trade_date,

@@ -78,8 +78,15 @@ def resolve_formal_facts_lineage(
         cache_key,
         job_name=job_name,
         report_date=report_date,
+        require_source_version=True,
     ) or {}
     normalized_row_sources = _normalized_non_empty_values(row_source_versions)
+    if has_rows and not latest_build:
+        raise RuntimeError(
+            "Canonical completed formal build terminal unavailable "
+            f"for cache_key={cache_key}, job_name={job_name}, report_date={report_date}; "
+            "refusing to certify orphan formal fact rows."
+        )
     if not has_rows and not latest_build:
         return _build_lineage_values(
             source_version=default_source_version,

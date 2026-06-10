@@ -6,7 +6,7 @@ from pathlib import Path
 
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import require_registered_formal_module
-from backend.app.governance.locks import acquire_lock
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -31,6 +31,7 @@ def run_formal_materialize(
     governance_dir: str,
     lock_base_dir: str,
     execute_materialization: Callable[[], FormalComputeMaterializeResult | dict[str, object]],
+    duckdb_path: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, object]:
     descriptor = require_registered_formal_module(descriptor)
@@ -75,7 +76,12 @@ def run_formal_materialize(
     )
 
     try:
-        with acquire_lock(descriptor.lock_definition, base_dir=Path(lock_base_dir)):
+        writer_lock = (
+            resolve_duckdb_writer_lock(duckdb_path, ttl_seconds=descriptor.lock_definition.ttl_seconds)
+            if duckdb_path is not None
+            else descriptor.lock_definition
+        )
+        with acquire_lock(writer_lock, base_dir=Path(lock_base_dir)):
             result = FormalComputeMaterializeResult.model_validate(
                 execute_materialization()
             )
@@ -144,52 +150,77 @@ def run_formal_materialize(
         input_sources=list(descriptor.input_sources),
         fact_tables=list(descriptor.fact_tables),
     )
-    governance_repo.append_many_atomic(
-        [
-            (
-                CACHE_MANIFEST_STREAM,
-                CacheManifestRecord(
-                    cache_key=descriptor.cache_key,
-                    cache_version=descriptor.stable_output_version,
-                    source_version=result.source_version,
-                    vendor_version=result.vendor_version,
-                    rule_version=descriptor.rule_version,
-                    basis=descriptor.basis,
-                    module_name=descriptor.module_name,
-                    result_kind_family=descriptor.result_kind_family,
-                    run_id=active_run_id,
-                    report_date=report_date,
-                    input_sources=list(descriptor.input_sources),
-                    fact_tables=list(descriptor.fact_tables),
-                    lineage=_manifest_min_lineage(
-                        descriptor=descriptor,
+    try:
+        governance_repo.append_many_atomic(
+            [
+                (
+                    CACHE_MANIFEST_STREAM,
+                    CacheManifestRecord(
+                        cache_key=descriptor.cache_key,
+                        cache_version=descriptor.stable_output_version,
+                        source_version=result.source_version,
+                        vendor_version=result.vendor_version,
+                        rule_version=descriptor.rule_version,
+                        basis=descriptor.basis,
+                        module_name=descriptor.module_name,
+                        result_kind_family=descriptor.result_kind_family,
                         run_id=active_run_id,
                         report_date=report_date,
-                        source_version=result.source_version,
-                        vendor_version=result.vendor_version,
-                    ),
-                ).model_dump(),
-            ),
-            (
-                CACHE_BUILD_RUN_STREAM,
-                {
-                    **_build_run_record_payload(
-                        descriptor=descriptor,
-                        run_id=active_run_id,
-                        job_name=job_name,
-                        status="completed",
-                        source_version=result.source_version,
-                        vendor_version=result.vendor_version,
-                        include_rule_version=True,
-                    ),
-                    "report_date": report_date,
-                    "queued_at": queued_at,
-                    "started_at": started_at,
-                    "finished_at": finished_at,
-                },
-            ),
-        ]
-    )
+                        input_sources=list(descriptor.input_sources),
+                        fact_tables=list(descriptor.fact_tables),
+                        lineage=_manifest_min_lineage(
+                            descriptor=descriptor,
+                            run_id=active_run_id,
+                            report_date=report_date,
+                            source_version=result.source_version,
+                            vendor_version=result.vendor_version,
+                        ),
+                    ).model_dump(),
+                ),
+                (
+                    CACHE_BUILD_RUN_STREAM,
+                    {
+                        **_build_run_record_payload(
+                            descriptor=descriptor,
+                            run_id=active_run_id,
+                            job_name=job_name,
+                            status="completed",
+                            source_version=result.source_version,
+                            vendor_version=result.vendor_version,
+                            include_rule_version=True,
+                        ),
+                        "report_date": report_date,
+                        "queued_at": queued_at,
+                        "started_at": started_at,
+                        "finished_at": finished_at,
+                    },
+                ),
+            ]
+        )
+    except Exception as exc:
+        failure_reason = _failure_reason(exc)
+        governance_repo.append(
+            CACHE_BUILD_RUN_STREAM,
+            {
+                **_build_run_record_payload(
+                    descriptor=descriptor,
+                    run_id=active_run_id,
+                    job_name=job_name,
+                    status="failed",
+                    source_version=result.source_version,
+                    vendor_version=result.vendor_version,
+                    include_rule_version=True,
+                ),
+                "report_date": report_date,
+                "queued_at": queued_at,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "error_message": str(exc),
+                "failure_category": "governance_terminal_write_failure",
+                "failure_reason": failure_reason,
+            },
+        )
+        raise
 
     payload = FormalComputeRuntimePayload(
         run=FormalComputeRuntimeRunPayload(

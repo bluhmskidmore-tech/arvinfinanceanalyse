@@ -158,6 +158,140 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
     assert manifests[-1]["source_version"] == payload["source_version"]
 
 
+def test_pnl_materialize_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+    materialize_mod = load_module(
+        "backend.app.tasks.materialize",
+        "backend/app/tasks/materialize.py",
+    )
+    locks_mod = load_module(
+        "backend.app.governance.locks",
+        "backend/app/governance/locks.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    writer_lock = materialize_mod.resolve_materialize_lock(duckdb_path)
+    observed = {"contention_checked": False}
+    original_normalize = task_module.normalize_fi_pnl_records
+
+    def normalize_under_lock(*args, **kwargs):
+        with pytest.raises(TimeoutError):
+            with locks_mod.acquire_lock(
+                writer_lock,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.01,
+            ):
+                pass
+        observed["contention_checked"] = True
+        return original_normalize(*args, **kwargs)
+
+    monkeypatch.setattr(task_module, "normalize_fi_pnl_records", normalize_under_lock)
+
+    payload = task_module.materialize_pnl_facts.fn(
+        report_date="2025-12-31",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "240001.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "TRADING_ASSET",
+                "interest_income_514": "12.50",
+                "fair_value_change_516": "-3.25",
+                "capital_gain_517": "1.75",
+                "manual_adjustment": "0.50",
+                "currency_basis": "CNY",
+                "source_version": "src-v1",
+                "approval_status": "approved",
+                "event_semantics": "realized_incremental",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["lock"] == task_module.PNL_MATERIALIZE_LOCK.key
+    assert observed["contention_checked"] is True
+
+
+def test_pnl_materialize_failed_terminal_preserves_computed_source_version(tmp_path, monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+    governance_mod = sys.modules.get("backend.app.repositories.governance_repo")
+    if governance_mod is None:
+        governance_mod = load_module(
+            "backend.app.repositories.governance_repo",
+            "backend/app/repositories/governance_repo.py",
+        )
+
+    original_append_many_atomic = governance_mod.GovernanceRepository.append_many_atomic
+
+    def fail_completed_terminal_write(self, entries):
+        if any(stream == governance_mod.CACHE_MANIFEST_STREAM for stream, _payload in entries):
+            raise RuntimeError("completed terminal write failed")
+        return original_append_many_atomic(self, entries)
+
+    monkeypatch.setattr(
+        governance_mod.GovernanceRepository,
+        "append_many_atomic",
+        fail_completed_terminal_write,
+    )
+
+    governance_dir = tmp_path / "governance"
+    with pytest.raises(RuntimeError, match="completed terminal write failed"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "TRADING_ASSET",
+                    "interest_income_514": "12.50",
+                    "fair_value_change_516": "-3.25",
+                    "capital_gain_517": "1.75",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "source_version": "src-v1",
+                    "approval_status": "approved",
+                    "event_semantics": "realized_incremental",
+                    "realized_flag": True,
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(governance_dir),
+            formal_pnl_enabled=True,
+            formal_pnl_scope_json='["*"]',
+        )
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert build_runs[-1]["source_version"] == "src-v1"
+    assert build_runs[-1]["error_message"] == "completed terminal write failed"
+
+
 def test_pnl_materialize_task_converts_usd_fi_rows_with_month_end_fx(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:

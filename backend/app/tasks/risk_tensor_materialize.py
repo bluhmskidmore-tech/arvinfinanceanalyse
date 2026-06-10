@@ -198,6 +198,7 @@ def _materialize_risk_tensor_facts(
         report_date=report_date,
         governance_dir=str(governance_path),
         lock_base_dir=str(duckdb_file.parent),
+        duckdb_path=str(duckdb_file),
         run_id=run_id,
         execute_materialization=lambda: _execute_risk_tensor_materialization(
             report_date=report_date,

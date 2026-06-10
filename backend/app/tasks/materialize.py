@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import os
 import sys
@@ -6,7 +5,7 @@ from importlib import import_module
 from pathlib import Path
 
 import duckdb
-from backend.app.governance.locks import MATERIALIZE_LOCK, LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
@@ -33,12 +32,7 @@ def resolve_data_input_root() -> Path:
 
 
 def resolve_materialize_lock(duckdb_file: Path) -> LockDefinition:
-    canonical_path = os.path.normcase(str(duckdb_file.resolve()))
-    digest = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()[:12]
-    return LockDefinition(
-        key=f"{MATERIALIZE_LOCK.key}:{digest}",
-        ttl_seconds=MATERIALIZE_LOCK.ttl_seconds,
-    )
+    return resolve_duckdb_writer_lock(duckdb_file)
 
 
 def _source_preview_repo():

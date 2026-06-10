@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
+from backend.app.governance.locks import acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.akshare_adapter import VendorAdapter as AkShareVendorAdapter
 from backend.app.repositories.choice_client import ChoiceClient
@@ -295,6 +296,22 @@ def _materialize_fx_mid_rows(
     duckdb_path: str,
 ) -> dict[str, object]:
     logger.info("starting materialize_fx_mid_rows for csv_path=%s", csv_path)
+    duckdb_file = Path(duckdb_path)
+    writer_lock = resolve_duckdb_writer_lock(duckdb_file)
+    with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+        payload = _materialize_fx_mid_rows_under_writer_lock(
+            csv_path=csv_path,
+            duckdb_path=duckdb_path,
+        )
+    logger.info("completed materialize_fx_mid_rows")
+    return payload
+
+
+def _materialize_fx_mid_rows_under_writer_lock(
+    *,
+    csv_path: str,
+    duckdb_path: str,
+) -> dict[str, object]:
     csv_file = Path(csv_path)
     if not csv_file.exists():
         raise FileNotFoundError(f"FX mid CSV not found: {csv_file}")
@@ -333,7 +350,6 @@ def _materialize_fx_mid_rows(
 
     _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=rows)
 
-    logger.info("completed materialize_fx_mid_rows")
     return {
         "status": "completed",
         "row_count": len(rows),
@@ -416,6 +432,8 @@ def _materialize_fx_mid_for_report_date(
     explicit_csv_path: str = "",
 ) -> dict[str, object]:
     logger.info("starting materialize_fx_mid_for_report_date for report_date=%s", report_date)
+    duckdb_file = Path(duckdb_path)
+    writer_lock = resolve_duckdb_writer_lock(duckdb_file)
     csv_path = resolve_fx_mid_csv_path(
         official_csv_path=official_csv_path,
         explicit_csv_path=explicit_csv_path,
@@ -423,10 +441,11 @@ def _materialize_fx_mid_for_report_date(
     )
 
     if csv_path is not None:
-        payload = _materialize_fx_mid_rows(
-            csv_path=str(csv_path),
-            duckdb_path=duckdb_path,
-        )
+        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+            payload = _materialize_fx_mid_rows_under_writer_lock(
+                csv_path=str(csv_path),
+                duckdb_path=duckdb_path,
+            )
         logger.info("completed materialize_fx_mid_for_report_date")
         return {
             **payload,
@@ -448,7 +467,8 @@ def _materialize_fx_mid_for_report_date(
         choice_rows = []
 
     if choice_rows:
-        _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
+        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+            _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
         logger.info("completed materialize_fx_mid_for_report_date")
         return {
             "status": "completed",
@@ -472,7 +492,8 @@ def _materialize_fx_mid_for_report_date(
         akshare_rows = []
 
     if akshare_rows:
-        _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
+        with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
+            _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
         logger.info("completed materialize_fx_mid_for_report_date")
         return {
             "status": "completed",

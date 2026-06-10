@@ -1,4 +1,5 @@
 import os
+import hashlib
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -19,6 +20,19 @@ class LockDefinition:
 
 
 MATERIALIZE_LOCK = LockDefinition(key="lock:duckdb:materialize", ttl_seconds=900)
+
+
+def resolve_duckdb_writer_lock(
+    duckdb_file: Path | str,
+    *,
+    ttl_seconds: int = MATERIALIZE_LOCK.ttl_seconds,
+) -> LockDefinition:
+    canonical_path = os.path.normcase(str(Path(duckdb_file).resolve()))
+    digest = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()[:12]
+    return LockDefinition(
+        key=f"{MATERIALIZE_LOCK.key}:{digest}",
+        ttl_seconds=ttl_seconds,
+    )
 
 
 @contextmanager

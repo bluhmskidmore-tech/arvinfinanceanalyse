@@ -15,7 +15,7 @@ from backend.app.core_finance.product_category_pnl import (
     calculate_read_model,
     calculate_product_category_interest_spread_metrics,
 )
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
@@ -60,7 +60,12 @@ def _materialize_product_category_pnl(
     run = BuildRunRecord(job_name="product_category_pnl", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
 
-    with acquire_lock(PRODUCT_CATEGORY_PNL_LOCK, base_dir=governance_path):
+    writer_lock = resolve_duckdb_writer_lock(
+        duckdb_file,
+        ttl_seconds=PRODUCT_CATEGORY_PNL_LOCK.ttl_seconds,
+    )
+
+    with acquire_lock(writer_lock, base_dir=duckdb_file.parent):
         repo.append(
             CACHE_BUILD_RUN_STREAM,
             {

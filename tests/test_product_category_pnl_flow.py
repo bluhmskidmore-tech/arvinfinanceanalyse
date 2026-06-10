@@ -490,6 +490,61 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     get_settings.cache_clear()
 
 
+def test_product_category_materialize_holds_global_duckdb_writer_lock(tmp_path, monkeypatch):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    materialize_mod = load_module(
+        "backend.app.tasks.materialize",
+        "backend/app/tasks/materialize.py",
+    )
+    locks_mod = load_module(
+        "backend.app.governance.locks",
+        "backend/app/governance/locks.py",
+    )
+
+    writer_lock = materialize_mod.resolve_materialize_lock(duckdb_path)
+    observed = {"contention_checked": False}
+    original_build_canonical_facts = task_module.build_canonical_facts
+
+    def build_canonical_facts_under_lock(pair):
+        with pytest.raises(TimeoutError):
+            with locks_mod.acquire_lock(
+                writer_lock,
+                base_dir=duckdb_path.parent,
+                timeout_seconds=0.01,
+            ):
+                pass
+        observed["contention_checked"] = True
+        return original_build_canonical_facts(pair)
+
+    monkeypatch.setattr(
+        task_module,
+        "build_canonical_facts",
+        build_canonical_facts_under_lock,
+    )
+
+    payload = task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["lock"] == task_module.PRODUCT_CATEGORY_PNL_LOCK.key
+    assert observed["contention_checked"] is True
+
+
 def test_product_category_pnl_identical_requests_yield_identical_result_payload(tmp_path, monkeypatch):
     """同等条件（同库、同参数）下，计算结果负载 result 应逐字段一致；result_meta 含 generated_at 可能不同。"""
     data_root = tmp_path / "data_input"

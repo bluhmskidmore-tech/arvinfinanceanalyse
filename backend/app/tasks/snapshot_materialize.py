@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 
 import duckdb
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.locks import LockDefinition, acquire_lock, resolve_duckdb_writer_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     SNAPSHOT_BUILD_RUN_STREAM,
@@ -47,12 +47,7 @@ SNAPSHOT_KEY = "snapshot.zqtz_tyw.standardized"
 
 
 def resolve_snapshot_lock(duckdb_file: Path) -> LockDefinition:
-    canonical_path = os.path.normcase(str(duckdb_file.resolve()))
-    digest = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()[:12]
-    return LockDefinition(
-        key=f"lock:duckdb:snapshot-materialize:{digest}",
-        ttl_seconds=900,
-    )
+    return resolve_duckdb_writer_lock(duckdb_file)
 
 
 def _locf_tyw_snapshot_rows(
