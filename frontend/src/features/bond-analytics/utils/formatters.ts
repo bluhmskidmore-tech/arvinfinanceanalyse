@@ -36,6 +36,16 @@ export const formatWan = (value: FormatValue): string => {
   return `${(num / 1e4).toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 万`;
 };
 
+/** Format DV01 raw yuan-per-bp exposure to 万元/bp display. */
+export const formatDv01Wan = (value: FormatValue, digits = 2): string => {
+  const num = coerceRaw(value);
+  if (Number.isNaN(num)) return "-";
+  return (num / 1e4).toLocaleString("zh-CN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
+
 /** Format percentage: `pct` unit uses server display; `ratio` uses raw×100 (e.g. 0.25 → 25%). */
 export const formatPct = (value: Numeric | string | null | undefined): string => {
   if (value != null && typeof value !== "string") {

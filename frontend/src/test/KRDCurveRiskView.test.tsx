@@ -143,6 +143,10 @@ describe("KRDCurveRiskView", () => {
     expect(await screen.findByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("修正久期")).toBeInTheDocument();
     expect(screen.getByText("DV01 (万元/bp)")).toBeInTheDocument();
+    const portfolioDv01Kpi = screen.getByText("DV01 (万元/bp)").closest(".ant-statistic");
+    expect(portfolioDv01Kpi).not.toBeNull();
+    expect(portfolioDv01Kpi).toHaveTextContent("15.00");
+    expect(within(portfolioDv01Kpi as HTMLElement).queryByText("150,000")).not.toBeInTheDocument();
     expect(screen.getByText("凸性")).toBeInTheDocument();
 
     expect(screen.getByText("KRD 分布")).toBeInTheDocument();

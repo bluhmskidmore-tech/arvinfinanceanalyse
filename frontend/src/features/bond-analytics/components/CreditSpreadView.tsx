@@ -5,6 +5,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
 import type { Numeric } from "../../../api/contracts";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type {
   CreditSpreadAnalysisResponse,
@@ -14,7 +15,7 @@ import type {
   CreditSpreadMigrationResponse,
 } from "../types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { formatWan, formatYi, formatBp } from "../utils/formatters";
+import { formatDv01Wan, formatWan, formatYi, formatBp } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 const dt = designTokens;
@@ -568,6 +569,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
 
   const data = summaryQuery.data?.result ?? null;
   const detailData = detailQuery.data?.result ?? null;
+  const detailMeta = detailQuery.data?.result_meta ?? null;
   const detailError = detailQuery.isError
     ? detailQuery.error instanceof Error
       ? detailQuery.error.message
@@ -708,7 +710,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="利差 DV01（万元/bp）" value={data.spread_dv01.display} />
+            <Statistic title="利差 DV01（万元/bp）" value={formatDv01Wan(data.spread_dv01)} />
           </Card>
         </Col>
         <Col span={6}>
@@ -724,7 +726,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Statistic title="OCI信用债敞口" value={formatYi(data.oci_credit_exposure)} />
           </Col>
           <Col span={8}>
-            <Statistic title="OCI 利差 DV01" value={data.oci_spread_dv01.display} />
+            <Statistic title="OCI 利差 DV01" value={formatDv01Wan(data.oci_spread_dv01)} />
           </Col>
           <Col span={8}>
             <Statistic title="利差走阔25bp影响" value={formatWan(data.oci_sensitivity_25bp)} />
@@ -1016,6 +1018,17 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           description={mergedWarnings.map((w, i) => <div key={i}>{w}</div>)}
         />
       )}
+      <FormalResultMetaPanel
+        testId="credit-spread-detail-result-meta"
+        title="信用利差明细证据"
+        sections={[
+          {
+            key: "detail",
+            title: "信用利差明细",
+            meta: detailMeta,
+          },
+        ]}
+      />
     </div>
   );
 }

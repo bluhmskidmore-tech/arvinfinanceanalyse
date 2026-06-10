@@ -6,7 +6,7 @@ import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
 import { designTokens } from "../../../theme/designSystem";
-import { formatWan, formatYi } from "../utils/formatters";
+import { formatDv01Wan, formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
@@ -352,7 +352,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="DV01 (万元/bp)" value={data.portfolio_dv01.display} />
+            <Statistic title="DV01 (万元/bp)" value={formatDv01Wan(data.portfolio_dv01)} />
           </Card>
         </Col>
         <Col span={6}>

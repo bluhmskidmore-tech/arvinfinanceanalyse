@@ -1007,20 +1007,26 @@
   box-shadow: 0 2px 6px rgba(22, 35, 46, 0.035);
 }
 
-.referenceJudgmentCard[data-readout-status="returned"] {
-  border-left: 3px solid var(--moss-color-info-500);
-  background: var(--moss-color-info-50);
-}
-
-.referenceJudgmentCard[data-readout-status="pending"] {
-  border-left: 3px solid var(--moss-color-neutral-400);
-  background: var(--moss-color-neutral-50);
-}
-
 .referenceJudgmentCard span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--moss-color-neutral-600);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.referenceJudgmentCard span::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--moss-color-neutral-300);
+  content: "";
+}
+
+.referenceJudgmentCard[data-readout-status="returned"] span::before {
+  background: var(--moss-color-info-500);
 }
 
 .referenceJudgmentCard[data-readout-status="returned"] strong {

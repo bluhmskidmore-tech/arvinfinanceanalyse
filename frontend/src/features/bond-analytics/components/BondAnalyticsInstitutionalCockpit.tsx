@@ -2085,7 +2085,7 @@ export function BondAnalyticsInstitutionalCockpit({
                 <span>市值 {formatSignedPct(marketValueMomPct)}</span>
                 <span>DV01 {Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : "—"}</span>
               </div>
-              <Button size="small" type="text" data-testid="bond-analysis-home-open-action-attribution-footer" onClick={() => onOpenModuleDetail?.("action-attribution")}>
+              <Button size="small" type="text" data-testid="bond-analysis-decision-next-action" onClick={() => onOpenModuleDetail?.("action-attribution")}>
                 打开动作归因
               </Button>
             </div>
