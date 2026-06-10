@@ -135,7 +135,7 @@
       "id": "direct-app-mcp-gitnexus-evidence",
       "severity": "P1",
       "status": "tool_surface_unavailable_in_session",
-      "last_checked_at": "2026-06-10T15:56:52+08:00",
+      "last_checked_at": "2026-06-10T17:21:58+08:00",
       "tool_discovery_query": "moss metric contracts lineage evidence data catalog gitnexus MCP tools",
       "tool_discovery_result": "0 tools found",
       "snapshot": "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -209,22 +209,22 @@
     {
       "scope": "supply_chain_osv",
       "command": ".\\.codex-tmp\\security-tools\\bin\\osv-scanner.exe scan source . --output=F:/MOSS-V3/test_output/security-scans/osv-report.json --format=json --lockfile=backend/uv.lock --lockfile=frontend/package-lock.json; .\\.codex-tmp\\security-tools\\bin\\gitleaks.exe dir . --config .gitleaks.toml --report-format json --report-path test_output/security-scans/gitleaks-report.json --no-banner --redact",
-      "result": "refreshed at 2026-06-10T15:45:10+08:00; OSV report parsed as 0 results, 0 package findings, 0 vulnerabilities; redacted gitleaks report parsed as 2 local ignored/untracked config/.env findings, generic-api-key rule, values not captured"
+      "result": "last full refresh at 2026-06-10T15:45:10+08:00; OSV report parsed as 0 results, 0 package findings, 0 vulnerabilities; redacted gitleaks report parsed as 2 local ignored/untracked config/.env findings, generic-api-key rule, values not captured. Latest non-closing retry at 2026-06-10T17:30:56+08:00 still found 2 redacted gitleaks findings; OSV could not refresh because proxy 127.0.0.1:9 refused the connection"
     },
     {
       "scope": "audit_package_contract_guard",
       "command": "pytest tests/test_system_audit_manifest_contract.py tests/test_system_audit_completion_snapshot_verifier.py -q",
-      "result": "19 passed"
+      "result": "21 passed"
     },
     {
       "scope": "completion_snapshot_verifier",
       "command": "python scripts\\verify_system_audit_completion_snapshot.py",
-      "result": "pass; open_blocker_count=5; completion_gate_count=5; follow_up_packet_count=5; follow_up_brief_blocker_count=5; errors=[]"
+      "result": "pass; open_blocker_count=5; completion_gate_count=5; follow_up_packet_count=5; follow_up_brief_blocker_count=5; calculation_prework_p1_count=10; errors=[]"
     },
     {
       "scope": "local_secret_hygiene_boundary",
       "command": "python scripts\\supply_chain_security_scan.py --dry-run; Test-Path config/.env; git check-ignore -v config/.env; git ls-files -- config/.env; git status --ignored --short -- config/.env",
-      "result": "refreshed at 2026-06-10T15:45:10+08:00; gitleaks dry-run command includes --redact; config/.env exists, is ignored by .gitignore:4, is untracked, and is reported as ignored; redacted report confirms two local findings by name only; secret values were not read or captured"
+      "result": "last full refresh at 2026-06-10T15:45:10+08:00; latest non-closing retry at 2026-06-10T17:30:56+08:00; gitleaks dry-run command includes --redact; config/.env exists, is ignored by .gitignore:4, is untracked, and is reported as ignored; redacted report confirms two local findings by name only; OSV retry was not refreshed because proxy 127.0.0.1:9 refused the connection; secret values were not read or captured"
     },
     {
       "scope": "ledger_pnl_direct_governance_record_snapshot",
@@ -239,7 +239,7 @@
     {
       "scope": "direct_app_mcp_gitnexus_tool_discovery",
       "command": "tool_search query: moss metric contracts lineage evidence data catalog gitnexus MCP tools",
-      "result": "0 tools found in current Codex App tool surface at 2026-06-10T15:56:52+08:00; local .codex/config.toml and .mcp.json still declare the expected servers, so the direct App evidence gap remains fail-closed"
+      "result": "0 tools found in current Codex App tool surface at 2026-06-10T17:21:58+08:00; local .codex/config.toml and .mcp.json still declare the expected servers, so the direct App evidence gap remains fail-closed"
     },
     {
       "scope": "full_real_backend_browser_smoke",

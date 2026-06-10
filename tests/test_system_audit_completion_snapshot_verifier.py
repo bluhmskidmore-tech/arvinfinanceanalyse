@@ -28,10 +28,17 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     follow_up_brief = (
         ROOT / manifest["artifacts"]["owner_governance_follow_up_brief_zh"]
     ).read_text(encoding="utf-8")
+    calculation_matrix = (
+        ROOT / manifest["artifacts"]["calculation_owner_decision_matrix"]
+    ).read_text(encoding="utf-8")
     manifest_path = audit_dir / "manifest.json"
     snapshot_path = audit_dir / "completion-snapshot.json"
     follow_up_packet_path = audit_dir / "owner-governance-follow-up-packet.json"
     follow_up_brief_path = audit_dir / "owner-governance-follow-up-brief.zh.md"
+    calculation_matrix_path = audit_dir / "calculation-p1-owner-decision-matrix.md"
+    original_follow_up_packet_path = manifest["artifacts"][
+        "owner_governance_follow_up_packet"
+    ]
     manifest["artifacts"]["completion_snapshot"] = "docs/audits/completion-snapshot.json"
     manifest["artifacts"][
         "owner_governance_follow_up_packet"
@@ -39,6 +46,17 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     manifest["artifacts"][
         "owner_governance_follow_up_brief_zh"
     ] = "docs/audits/owner-governance-follow-up-brief.zh.md"
+    manifest["artifacts"][
+        "calculation_owner_decision_matrix"
+    ] = "docs/audits/calculation-p1-owner-decision-matrix.md"
+    follow_up_brief = follow_up_brief.replace(
+        original_follow_up_packet_path,
+        manifest["artifacts"]["owner_governance_follow_up_packet"],
+    )
+    follow_up_brief = follow_up_brief.replace(
+        "`2026-06-10-owner-governance-follow-up-packet.json`",
+        f"`{manifest['artifacts']['owner_governance_follow_up_packet']}`",
+    )
     snapshot["source_artifacts"][
         "owner_governance_follow_up_packet"
     ] = "docs/audits/owner-governance-follow-up-packet.json"
@@ -52,6 +70,7 @@ def _copy_audit_files(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     follow_up_brief_path.write_text(follow_up_brief, encoding="utf-8")
+    calculation_matrix_path.write_text(calculation_matrix, encoding="utf-8")
     return manifest_path
 
 
@@ -63,6 +82,7 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["completion_gate_count"] == 5
     assert result["follow_up_packet_count"] == 5
     assert result["follow_up_brief_blocker_count"] == 5
+    assert result["calculation_prework_p1_count"] == 10
     assert result["errors"] == []
 
 
@@ -138,6 +158,8 @@ def test_verify_completion_snapshot_fails_when_secret_boundary_is_removed(
     )
     secret_packet["prohibited_actions"] = []
     secret_packet["explicit_non_approval_boundary"] = "Secret values may be handled later."
+    secret_packet["engineering_prework_available_now"] = []
+    secret_packet["closure_evidence_after_external_input"] = []
     packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2), encoding="utf-8")
 
     result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
@@ -148,6 +170,18 @@ def test_verify_completion_snapshot_fails_when_secret_boundary_is_removed(
         "errors"
     ]
     assert "local secret follow-up must preserve explicit no-secret-values boundary" in result[
+        "errors"
+    ]
+    assert "local-secret-hygiene missing engineering_prework_available_now" in result[
+        "errors"
+    ]
+    assert "local-secret-hygiene missing closure_evidence_after_external_input" in result[
+        "errors"
+    ]
+    assert "local secret follow-up must keep engineering prework value-free" in result[
+        "errors"
+    ]
+    assert "local secret follow-up must require no-value closure evidence" in result[
         "errors"
     ]
 
@@ -194,6 +228,53 @@ def test_verify_completion_snapshot_fails_when_follow_up_brief_boundary_is_remov
     )
 
 
+def test_verify_completion_snapshot_fails_when_calculation_prework_map_drops_item(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    matrix_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_matrix"]
+    matrix = matrix_path.read_text(encoding="utf-8").replace(
+        "- **P1-10 Frontend formal aggregation**:",
+        "- **P1-10-removed Frontend formal aggregation**:",
+    )
+    matrix_path.write_text(matrix, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "calculation prework map missing P1-10" in result["errors"]
+
+
+def test_verify_completion_snapshot_fails_when_calculation_prework_boundary_is_removed(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    matrix_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_matrix"]
+    matrix = matrix_path.read_text(encoding="utf-8").replace(
+        "It does not choose or approve any convention; it does not change code; it does not certify routes/pages.",
+        "It prepares implementation work.",
+    )
+    matrix_path.write_text(matrix, encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert (
+        "calculation prework map missing boundary: does not choose or approve any convention"
+        in result["errors"]
+    )
+    assert (
+        "calculation prework map missing boundary: does not change code"
+        in result["errors"]
+    )
+    assert (
+        "calculation prework map missing boundary: does not certify routes/pages"
+        in result["errors"]
+    )
+
+
 def test_verify_completion_snapshot_cli_outputs_json() -> None:
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--manifest", str(MANIFEST)],
@@ -210,4 +291,5 @@ def test_verify_completion_snapshot_cli_outputs_json() -> None:
     assert payload["status"] == "pass"
     assert payload["follow_up_packet_count"] == 5
     assert payload["follow_up_brief_blocker_count"] == 5
+    assert payload["calculation_prework_p1_count"] == 10
     assert payload["errors"] == []

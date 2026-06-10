@@ -8,6 +8,18 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "docs" / "audits" / "2026-06-10-system-audit-manifest.json"
+EXPECTED_OPEN_CALCULATION_P1_IDS = [
+    "P1-01",
+    "P1-02",
+    "P1-03",
+    "P1-04",
+    "P1-05",
+    "P1-06",
+    "P1-07",
+    "P1-09",
+    "P1-10",
+    "P1-11",
+]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -105,6 +117,21 @@ def _verify_follow_up_packet(
             message=f"{blocker_id} missing required_verification_commands",
         )
         _append_if_missing(
+            follow_up.get("engineering_prework_available_now"),
+            errors=errors,
+            message=f"{blocker_id} missing engineering_prework_available_now",
+        )
+        _append_if_missing(
+            follow_up.get("external_input_required_for_closure"),
+            errors=errors,
+            message=f"{blocker_id} missing external_input_required_for_closure",
+        )
+        _append_if_missing(
+            follow_up.get("closure_evidence_after_external_input"),
+            errors=errors,
+            message=f"{blocker_id} missing closure_evidence_after_external_input",
+        )
+        _append_if_missing(
             follow_up.get("prohibited_actions"),
             errors=errors,
             message=f"{blocker_id} missing prohibited_actions",
@@ -132,6 +159,10 @@ def _verify_follow_up_packet(
         "explicit_non_approval_boundary", ""
     ):
         errors.append("Ledger PnL follow-up must state it does not authorize --write")
+    if "authorization" not in " ".join(
+        ledger_packet.get("external_input_required_for_closure", [])
+    ):
+        errors.append("Ledger PnL follow-up must keep --write authorization external")
 
     secret_packet = packet_blockers.get("local-secret-hygiene", {})
     secret_actions = " ".join(secret_packet.get("prohibited_actions", []))
@@ -143,12 +174,24 @@ def _verify_follow_up_packet(
         secret_packet.get("explicit_non_approval_boundary", "")
     ):
         errors.append("local secret follow-up must preserve explicit no-secret-values boundary")
+    if "without reading config/.env values" not in " ".join(
+        secret_packet.get("engineering_prework_available_now", [])
+    ):
+        errors.append("local secret follow-up must keep engineering prework value-free")
+    if "no secret values appear" not in " ".join(
+        secret_packet.get("closure_evidence_after_external_input", [])
+    ):
+        errors.append("local secret follow-up must require no-value closure evidence")
 
     direct_app_packet = packet_blockers.get("direct-app-mcp-gitnexus-evidence", {})
     if "treat local stdio MCP success as direct App-surface closure" not in " ".join(
         direct_app_packet.get("prohibited_actions", [])
     ):
         errors.append("direct App MCP/GitNexus follow-up must keep local stdio fallback separate")
+    if "fallback-only" not in " ".join(
+        direct_app_packet.get("engineering_prework_available_now", [])
+    ):
+        errors.append("direct App MCP/GitNexus follow-up must mark local evidence fallback-only")
 
     global_boundary = packet.get("global_non_approval_boundary", "")
     if "does not approve metrics" not in global_boundary:
@@ -219,6 +262,72 @@ def _verify_follow_up_brief(
                 )
 
     return covered_blocker_count
+
+
+def _verify_calculation_p1_prework_map(
+    *,
+    manifest: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> int | None:
+    matrix_rel_path = manifest.get("artifacts", {}).get("calculation_owner_decision_matrix")
+    if not matrix_rel_path:
+        errors.append("manifest missing calculation_owner_decision_matrix artifact")
+        return None
+
+    matrix_path = repo_root / matrix_rel_path
+    if not matrix_path.exists():
+        errors.append("calculation owner decision matrix artifact is missing")
+        return None
+
+    matrix = matrix_path.read_text(encoding="utf-8")
+    if "## Verified Closed Before Owner Review" not in matrix:
+        errors.append("calculation decision matrix missing verified-closed section")
+        return None
+
+    open_decision_section, verified_closed_section = matrix.split(
+        "## Verified Closed Before Owner Review",
+        maxsplit=1,
+    )
+    open_decision_rows = [
+        line
+        for line in open_decision_section.splitlines()
+        if line.startswith("| P1-")
+    ]
+    open_decision_ids = [line.split("|")[1].strip() for line in open_decision_rows]
+    expected_count = manifest.get("counts", {}).get("calculation_display_open_p1")
+    if len(open_decision_rows) != expected_count:
+        errors.append(
+            "calculation decision matrix open P1 row count does not match manifest"
+        )
+    if open_decision_ids != EXPECTED_OPEN_CALCULATION_P1_IDS:
+        errors.append("calculation decision matrix open P1 IDs do not match expected order")
+    if any(line.startswith("| P1-08 |") for line in open_decision_rows):
+        errors.append("P1-08 must not appear as an open owner-decision row")
+    if "P1-08" not in verified_closed_section:
+        errors.append("P1-08 verified-closed evidence is missing")
+
+    prework_marker = "## Engineering Prework / Impact Slice Map"
+    if prework_marker not in verified_closed_section:
+        errors.append("calculation decision matrix missing engineering prework map")
+        return len(open_decision_rows)
+
+    prework_section = verified_closed_section.split(prework_marker, maxsplit=1)[1]
+    required_boundaries = [
+        "does not choose or approve any convention",
+        "does not change code",
+        "does not certify routes/pages",
+    ]
+    for boundary in required_boundaries:
+        if boundary not in prework_section:
+            errors.append(f"calculation prework map missing boundary: {boundary}")
+    if "| P1-" in prework_section:
+        errors.append("calculation prework map must not add P1 table rows")
+    for p1_id in EXPECTED_OPEN_CALCULATION_P1_IDS:
+        if f"- **{p1_id} " not in prework_section:
+            errors.append(f"calculation prework map missing {p1_id}")
+
+    return len(open_decision_rows)
 
 
 def verify_completion_snapshot(
@@ -300,6 +409,11 @@ def verify_completion_snapshot(
         repo_root=repo_root,
         errors=errors,
     )
+    calculation_prework_p1_count = _verify_calculation_p1_prework_map(
+        manifest=manifest,
+        repo_root=repo_root,
+        errors=errors,
+    )
 
     return {
         "report_kind": "system_audit_completion_snapshot_verification",
@@ -312,6 +426,7 @@ def verify_completion_snapshot(
             follow_up_packet.get("blocker_packet_count") if follow_up_packet else None
         ),
         "follow_up_brief_blocker_count": follow_up_brief_blocker_count,
+        "calculation_prework_p1_count": calculation_prework_p1_count,
         "errors": errors,
     }
 

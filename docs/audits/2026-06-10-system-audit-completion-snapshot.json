@@ -98,7 +98,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T15:56:52+08:00",
+      "last_checked_at": "2026-06-10T17:21:58+08:00",
       "required_evidence": [
         "fresh Codex App tool surface exposes expected MOSS MCP tools",
         "fresh Codex App tool surface exposes GitNexus tools",
@@ -126,6 +126,7 @@
       "current_contradicting_evidence": [
         "redacted gitleaks 2 ignored/untracked config/.env findings",
         "OSV 0 vulnerabilities does not clear secret findings",
+        "latest non-closing retry at 2026-06-10T17:30:56+08:00 still has 2 redacted gitleaks findings and OSV was not refreshed because proxy 127.0.0.1:9 refused the connection",
         "secret values not captured",
         "environment owner action not recorded"
       ],

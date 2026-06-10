@@ -19,6 +19,7 @@ Machine-readable snapshot: `docs/audits/2026-06-10-local-secret-hygiene-snapshot
 - Last boundary refresh: `2026-06-10T15:45:10+08:00`; secret values were not read or captured.
 - Refreshed OSV result: direct portable `osv-scanner` run against `backend/uv.lock` and `frontend/package-lock.json` exited 0 with 0 results and 0 vulnerabilities.
 - Refreshed gitleaks result: direct portable redacted `gitleaks` run exited 1 because 2 findings remain in ignored/untracked `config/.env`; values were redacted, and only secret names plus file/line boundaries are recorded.
+- Latest non-closing retry: `2026-06-10T17:30:56+08:00`; safe boundary checks still show `config/.env` exists, is ignored, and is untracked; redacted gitleaks still reports 2 ignored/untracked local findings with values not captured; OSV could not be refreshed because proxy `127.0.0.1:9` refused the connection, so the previous successful OSV 0-vulnerability result remains the last successful OSV evidence.
 
 ## Non-Closure Boundary
 

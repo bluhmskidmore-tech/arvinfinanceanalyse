@@ -62,3 +62,4 @@
 - 技术测试通过不是 owner approval。
 - owner/governance 跟进包不是正式审批文件，也不授权 Ledger PnL `--write`。
 - 本摘要不是正式审批文件。
+Guard refresh: `pytest tests/test_system_audit_manifest_contract.py tests/test_system_audit_completion_snapshot_verifier.py -q` -> 21 passed; `python scripts\verify_system_audit_completion_snapshot.py` -> `follow_up_packet_count=5`, `follow_up_brief_blocker_count=5`, `calculation_prework_p1_count=10`, `errors=[]`. This is technical evidence only, not business approval.

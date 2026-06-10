@@ -57,6 +57,20 @@
         "python scripts\\codex_page_readiness.py --all",
         "python -m pytest <seven owner approval status test files> -q"
       ],
+      "engineering_prework_available_now": [
+        "rerun strict owner checkers to prove the seven pages remain fail-closed before any meeting output is captured",
+        "keep page-readiness and owner-action summaries current without filling approval fields",
+        "prepare page-specific evidence bundles from existing audit artifacts for owner review"
+      ],
+      "external_input_required_for_closure": [
+        "owner name, role, approval decision, approval date, signature, and page-specific evidence acknowledgement for each page",
+        "ledger-pnl owner approval only after the direct governance record gap is cleared"
+      ],
+      "closure_evidence_after_external_input": [
+        "strict owner checkers exit 0 for the seven pages",
+        "owner approval status tests pass with captured approval evidence",
+        "page readiness still keeps governance-record, route-certification, and formal-use boundaries separate"
+      ],
       "explicit_non_approval_boundary": "This packet does not capture owner approval, certify routes, or approve any page.",
       "prohibited_actions": [
         "mark any pending page closure_approved=true without captured owner approval evidence",
@@ -86,6 +100,20 @@
         "python scripts\\emit_ledger_pnl_governance_record.py",
         "python scripts\\codex_page_readiness.py --page-slug ledger-pnl",
         "python -m pytest tests\\test_project_mcp_servers.py::test_lineage_evidence_governance_record_blueprint_queue_covers_default_open_gaps tests\\test_ledger_pnl_business_owner_approval_status.py -q --tb=short"
+      ],
+      "engineering_prework_available_now": [
+        "rerun the dry-run candidate command without --write",
+        "rerun ledger-pnl page readiness to preserve the missing direct-record boundary",
+        "search governance records read-only for PAGE-LEDGER-PNL-001, /api/ledger-pnl/summary, and ledger_pnl.summary:2026-05-31:ALL"
+      ],
+      "external_input_required_for_closure": [
+        "explicit governance-owner or user authorization before any --write execution",
+        "approved workflow output that writes or locates the direct page/API governance record"
+      ],
+      "closure_evidence_after_external_input": [
+        "written or located direct record covers PAGE-LEDGER-PNL-001, /api/ledger-pnl/summary, and ledger_pnl.summary:2026-05-31:ALL",
+        "page readiness no longer reports governance_record_validation=missing_direct_records for ledger-pnl",
+        "formal-use and owner-approval gates remain separately evaluated after the direct record is present"
       ],
       "authorization_required_commands_not_preapproved": [
         "python scripts\\emit_ledger_pnl_governance_record.py --write"
@@ -126,6 +154,20 @@
         "targeted formatter, adapter, selector, service, or API tests for each selected convention",
         "python scripts\\verify_system_audit_completion_snapshot.py"
       ],
+      "engineering_prework_available_now": [
+        "keep the P1 decision matrix synchronized with calculation audit evidence",
+        "trace current formatter, adapter, selector, service, or API tests that freeze each competing convention",
+        "prepare implementation slices per P1 row without selecting an ambiguous convention in code"
+      ],
+      "external_input_required_for_closure": [
+        "business owner selects the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11",
+        "metric governance accepts the target rule location in docs/calc_rules.md, metric dictionary, or page contract"
+      ],
+      "closure_evidence_after_external_input": [
+        "docs/calc_rules.md, contracts, implementation, and tests reflect the selected convention",
+        "tests that formerly froze the losing convention are updated with numeric regression evidence",
+        "the relevant P1 rows move to verified-closed evidence without reopening P1-08"
+      ],
       "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention.",
       "prohibited_actions": [
         "infer a formal metric convention from UI copy or preview data",
@@ -137,7 +179,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T15:56:52+08:00",
+      "last_checked_at": "2026-06-10T17:21:58+08:00",
       "responsible_owner_type": "engineering_tooling_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -154,6 +196,20 @@
       "required_verification_commands": [
         "tool_search query: moss metric contracts lineage evidence data catalog gitnexus MCP tools",
         "pytest tests/test_system_audit_manifest_contract.py -q"
+      ],
+      "engineering_prework_available_now": [
+        "repeat tool_search in the current Codex App tool surface and record the timestamped result",
+        "verify local .codex/config.toml, .mcp.json, and docs/MCP_RUNBOOK.md still declare the expected servers",
+        "keep local stdio MCP and contract-suite evidence marked fallback-only"
+      ],
+      "external_input_required_for_closure": [
+        "fresh Codex App session exposes direct MOSS MCP and GitNexus tools",
+        "tooling owner records a formal resolution if the direct tool surface cannot expose them"
+      ],
+      "closure_evidence_after_external_input": [
+        "direct App tool calls capture MOSS metric-contract, lineage, data-catalog, and GitNexus evidence",
+        "direct App evidence is compared against local stdio evidence without promoting fallback-only checks",
+        "manifest and completion snapshot record the direct-tool result and stay non-approving"
       ],
       "explicit_non_approval_boundary": "This packet does not capture direct Codex App MCP/GitNexus evidence.",
       "prohibited_actions": [
@@ -184,6 +240,20 @@
         "git check-ignore -v config/.env",
         "git ls-files -- config/.env",
         "git status --ignored --short -- config/.env"
+      ],
+      "engineering_prework_available_now": [
+        "rerun safe boundary checks without reading config/.env values",
+        "rerun redacted gitleaks and parse only file, line, rule, and secret-name evidence",
+        "record OSV retry status without replacing the last successful result when network access fails"
+      ],
+      "external_input_required_for_closure": [
+        "environment owner rotates, removes, or explicitly accepts the local-only credentials outside the repository",
+        "clean runner or security owner supplies a secret-scan result or accepted local-only finding record without values"
+      ],
+      "closure_evidence_after_external_input": [
+        "config/.env remains ignored and untracked",
+        "clean-runner gitleaks passes or an owner-accepted local-only finding record exists outside source control",
+        "no secret values appear in docs, tests, logs, screenshots, commits, chat, or scan artifacts"
       ],
       "explicit_non_approval_boundary": "This packet does not read, request, capture, rotate, clear, or approve any secret value.",
       "prohibited_actions": [

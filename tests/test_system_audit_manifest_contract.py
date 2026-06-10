@@ -121,8 +121,7 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         if line.startswith("| P1-")
     ]
     open_decision_ids = [line.split("|")[1].strip() for line in open_decision_rows]
-    assert len(open_decision_rows) == counts["calculation_display_open_p1"]
-    assert open_decision_ids == [
+    expected_open_decision_ids = [
         "P1-01",
         "P1-02",
         "P1-03",
@@ -134,10 +133,22 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "P1-10",
         "P1-11",
     ]
+    assert len(open_decision_rows) == counts["calculation_display_open_p1"]
+    assert open_decision_ids == expected_open_decision_ids
     assert all(not line.startswith("| P1-08 |") for line in open_decision_rows)
     assert "P1-08" in verified_closed_section
     assert "Open owner-decision row count remains `10`" in decision_matrix
     assert "passed with 2 test files and 16 tests" in decision_matrix
+
+    prework_marker = "## Engineering Prework / Impact Slice Map"
+    assert prework_marker in verified_closed_section
+    prework_section = verified_closed_section.split(prework_marker, maxsplit=1)[1]
+    assert "does not choose or approve any convention" in prework_section
+    assert "does not change code" in prework_section
+    assert "does not certify routes/pages" in prework_section
+    assert "| P1-" not in prework_section
+    for p1_id in expected_open_decision_ids:
+        assert f"**{p1_id}" in prework_section
 
     calculation_blocker = next(
         item
@@ -278,6 +289,9 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
         assert follow_up["required_input_artifacts"]
         assert follow_up["required_meeting_or_governance_output"]
         assert follow_up["required_verification_commands"]
+        assert follow_up["engineering_prework_available_now"]
+        assert follow_up["external_input_required_for_closure"]
+        assert follow_up["closure_evidence_after_external_input"]
         assert "does not" in follow_up["explicit_non_approval_boundary"]
         assert follow_up["prohibited_actions"]
         assert follow_up["fail_closed_until"]
@@ -299,6 +313,9 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "does not authorize --write execution" in ledger_packet[
         "explicit_non_approval_boundary"
     ]
+    assert "authorization" in " ".join(
+        ledger_packet["external_input_required_for_closure"]
+    )
 
     secret_packet = packet_blockers["local-secret-hygiene"]
     assert "read or paste config/.env values" in secret_packet["prohibited_actions"]
@@ -308,10 +325,19 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "does not read, request, capture, rotate, clear, or approve any secret value" in (
         secret_packet["explicit_non_approval_boundary"]
     )
+    assert "without reading config/.env values" in " ".join(
+        secret_packet["engineering_prework_available_now"]
+    )
+    assert "no secret values appear" in " ".join(
+        secret_packet["closure_evidence_after_external_input"]
+    )
 
     direct_app_packet = packet_blockers["direct-app-mcp-gitnexus-evidence"]
     assert "treat local stdio MCP success as direct App-surface closure" in (
         direct_app_packet["prohibited_actions"]
+    )
+    assert "fallback-only" in " ".join(
+        direct_app_packet["engineering_prework_available_now"]
     )
 
     assert "does not approve metrics" in packet["global_non_approval_boundary"]
@@ -327,13 +353,13 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in main_report
     assert "follow_up_packet_count=5" in main_report
     assert "follow_up_brief_blocker_count=5" in main_report
-    assert "19 passed" in main_report
+    assert "21 passed" in main_report
     assert "does not authorize Ledger PnL `--write`" in main_report
     assert "2026-06-10-owner-governance-follow-up-packet.json" in executive_summary_zh
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in executive_summary_zh
     assert "follow_up_packet_count=5" in executive_summary_zh
     assert "follow_up_brief_blocker_count=5" in executive_summary_zh
-    assert "19 passed" in executive_summary_zh
+    assert "21 passed" in executive_summary_zh
     assert "12 条优先级行动" in executive_summary_zh
     assert "不授权 Ledger PnL `--write`" in executive_summary_zh
 
@@ -675,10 +701,36 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
         "MOSS_TUSHARE_TOKEN",
         "STITCH_API_KEY",
     ]
+    retry = snapshot["latest_non_closing_retry"]
+    assert retry["checked_at"] == "2026-06-10T17:30:56+08:00"
+    assert retry["values_read_by_human"] is False
+    assert retry["values_written_to_artifacts"] is False
+    assert retry["dry_run_plan"]["exit_code"] == 0
+    assert retry["dry_run_plan"]["gitleaks_redaction_enabled"] is True
+    assert retry["boundary_checks"]["config_env_exists"] is True
+    assert retry["boundary_checks"]["git_check_ignore"]["matched_rule"] == (
+        ".gitignore:4:config/.env"
+    )
+    assert retry["boundary_checks"]["git_ls_files"]["tracked_path_count"] == 0
+    assert retry["boundary_checks"]["git_status_ignored"]["result"] == "!! config/.env"
+    assert retry["redacted_gitleaks_retry"]["exit_code"] == 1
+    assert retry["redacted_gitleaks_retry"]["exit_code_interpretation"] == (
+        "findings_present"
+    )
+    assert retry["redacted_gitleaks_retry"]["finding_count"] == 2
+    assert retry["redacted_gitleaks_retry"]["finding_rule_ids"] == ["generic-api-key"]
+    assert retry["redacted_gitleaks_retry"]["finding_files"] == ["config/.env"]
+    assert retry["redacted_gitleaks_retry"]["redaction_enabled"] is True
+    assert retry["redacted_gitleaks_retry"]["secret_values_captured"] is False
+    assert retry["osv_retry"]["exit_code"] == 1
+    assert retry["osv_retry"]["status"] == "not_refreshed_network_proxy_refused"
+    assert "proxy 127.0.0.1:9 refused" in retry["osv_retry"]["result"]
 
     assert "Do not paste credential values" in runbook
     assert "Do not add `config/.env` to Git." in runbook
     assert boundary["checked_at"] in runbook
+    assert retry["checked_at"] in runbook
+    assert "proxy `127.0.0.1:9` refused the connection" in runbook
     assert "does not read, expose, rotate, clear, or approve any secret value" in snapshot[
         "boundary"
     ]
@@ -694,6 +746,8 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
         if item["scope"] == "local_secret_hygiene_boundary"
     )
     assert boundary["checked_at"] in secret_evidence["result"]
+    assert retry["checked_at"] in secret_evidence["result"]
+    assert "proxy 127.0.0.1:9 refused" in secret_evidence["result"]
 
 
 def test_owner_review_artifacts_preserve_non_approval_boundaries() -> None:
