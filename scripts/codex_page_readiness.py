@@ -29,6 +29,9 @@ from scripts.check_bond_analysis_business_owner_approval import (  # noqa: E402
 from scripts.check_stock_analysis_business_owner_approval import (  # noqa: E402
     build_status as build_stock_analysis_approval_status,
 )
+from scripts.check_average_balance_business_owner_approval import (  # noqa: E402
+    build_status as build_average_balance_approval_status,
+)
 from scripts.mcp.moss_project_mcp import (  # noqa: E402
     DEFAULT_DUCKDB_PATH,
     DEFAULT_GOVERNANCE_DIR,
@@ -336,6 +339,12 @@ def _approval_status_commands(page_slug: str) -> list[str]:
             "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 "
             "-PageSlug stock-analysis -RequireApprovalCaptured",
         ],
+        "average-balance": [
+            "python scripts/check_average_balance_business_owner_approval.py",
+            "python scripts/check_average_balance_business_owner_approval.py --require-captured",
+            "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 "
+            "-PageSlug average-balance -RequireApprovalCaptured",
+        ],
     }
     return commands_by_page.get(page_slug, [])
 
@@ -384,6 +393,10 @@ def _business_owner_approval_status(page_slug: str) -> dict[str, Any] | None:
     if page_slug == "stock-analysis":
         return build_stock_analysis_approval_status(
             ROOT / "docs" / "pnl" / "stock-analysis-business-owner-approval-template.md",
+        )
+    if page_slug == "average-balance":
+        return build_average_balance_approval_status(
+            ROOT / "docs" / "pnl" / "average-balance-business-owner-approval-template.md",
         )
     return None
 

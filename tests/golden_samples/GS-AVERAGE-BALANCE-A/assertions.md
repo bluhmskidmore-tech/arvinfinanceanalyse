@@ -3,7 +3,7 @@
 ## Source
 
 - `docs/live_route_maturity.md` -> `GAP-AVERAGE-BALANCE-PAGE`
-- `docs/metric_dictionary.md` -> `MTR-ADB-001` through `MTR-ADB-003`
+- `docs/metric_dictionary.md` -> `MTR-ADB-001` and `MTR-ADB-002` daily sample binding; `MTR-ADB-003` remains monthly pending with `bound_sample_id=none`
 - `backend/app/api/routes/adb_analysis.py`
 - `backend/app/services/adb_analysis_service.py`
 - `backend/app/core_finance/adb_analytics.py`

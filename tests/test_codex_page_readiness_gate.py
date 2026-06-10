@@ -871,10 +871,34 @@ def test_average_balance_readiness_exposes_candidate_record_path_without_formal_
         "python scripts/emit_average_balance_governance_record.py",
         "python scripts/emit_average_balance_governance_record.py --write",
     ]
-    assert report["business_owner_approval_status"] is None
+    assert report["approval_status_commands"] == [
+        "python scripts/check_average_balance_business_owner_approval.py",
+        "python scripts/check_average_balance_business_owner_approval.py --require-captured",
+        "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 "
+        "-PageSlug average-balance -RequireApprovalCaptured",
+    ]
+    assert report["business_owner_approval_status"]["approval_status"] == "pending"
+    assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
+    assert report["business_owner_approval_status"]["approval_action_item_count"] == 13
+    assert "daily_golden_sample_review" in report["business_owner_approval_status"]["remaining_blockers"]
+    assert "monthly_adb_nim_boundary_acceptance" in report["business_owner_approval_status"]["remaining_blockers"]
+    assert report["business_owner_approval_status"]["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
+    assert report["business_owner_approval_status"]["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+        "approves_formal_balance_truth": False,
+        "approves_monthly_adb_nim_truth": False,
+    }
     assert "docs/live_route_maturity.md" in report["contract_docs"]
+    assert "docs/pnl/average-balance-page-contract.md" in report["contract_docs"]
+    assert "docs/pnl/average-balance-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/audits/2026-06-09-average-balance-live-smoke-evidence.md" in report["contract_docs"]
     assert any("candidate ADB analysis" in item for item in report["guardrails"])
     assert any("MTR-ADB-001" in item for item in report["truth_chain"])
+    assert any("live-smoke reference evidence only" in item for item in report["truth_chain"])
     assert report["golden_samples"] == ["tests/golden_samples/GS-AVERAGE-BALANCE-A"]
     assert report["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
     assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
@@ -1238,8 +1262,8 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
     assert payload["summary"]["run_supported_count"] == sum(
         1 for page in payload["pages"] if page["run_supported"]
     )
-    assert payload["summary"]["business_owner_approval_pending_count"] == 6
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 71
+    assert payload["summary"]["business_owner_approval_pending_count"] == 7
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 84
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["blocking_pages"] == [
@@ -1257,6 +1281,7 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
     assert set(pending_by_slug) == {
         "balance-analysis",
         "bond-analysis",
+        "average-balance",
         "ledger-pnl",
         "pnl-attribution",
         "product-category-pnl",
@@ -1420,6 +1445,22 @@ def test_all_page_readiness_covers_every_unique_seeded_trace_bundle(
     assert stock_pending["approval_action_item_count"] == 11
     assert "not_trading_instruction_review" in stock_pending["remaining_blockers"]
     assert stock_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
+    average_balance_pending = pending_by_slug["average-balance"]
+    assert average_balance_pending["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert average_balance_pending["approval_action_item_count"] == 13
+    assert average_balance_pending["business_owner_approval_captured"] is False
+    assert "daily_golden_sample_review" in average_balance_pending["remaining_blockers"]
+    assert "monthly_adb_nim_boundary_acceptance" in average_balance_pending["remaining_blockers"]
+    assert average_balance_pending["approval_field_status"]["reviewed_owner_evidence_packet"] == "valid"
+    assert average_balance_pending["evidence_scope"] == {
+        "approves_metric_or_page": False,
+        "writes_governance_records": False,
+        "proves_page_execution": False,
+        "captures_business_owner_approval": False,
+        "certification_effect": "none",
+        "approves_formal_balance_truth": False,
+        "approves_monthly_adb_nim_truth": False,
+    }
     assert payload["approval_status_commands"] == [
         "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 -All -RequireApprovalCaptured",
     ]
@@ -1719,7 +1760,7 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["kpi-performance"]["run_supported"] is True
     assert rows_by_slug["kpi-performance"]["visible_navigation_route"] is True
     assert rows_by_slug["average-balance"]["classification"] == "evidence-pending"
-    assert rows_by_slug["average-balance"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
+    assert rows_by_slug["average-balance"]["blocking_reason"] == "business_owner_approval_pending"
     assert rows_by_slug["average-balance"]["route"] == "/average-balance"
     assert rows_by_slug["average-balance"]["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
     assert rows_by_slug["average-balance"]["source"] == "seeded_trace_bundle"
@@ -1728,6 +1769,8 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert rows_by_slug["average-balance"]["has_golden_samples"] is True
     assert rows_by_slug["average-balance"]["golden_sample_approved"] is False
     assert rows_by_slug["average-balance"]["golden_sample_artifact_status"] == "captured-awaiting-approval"
+    assert rows_by_slug["average-balance"]["has_approval_checker"] is True
+    assert rows_by_slug["average-balance"]["business_owner_approval_captured"] is False
     assert rows_by_slug["bank-ledger-dashboard"]["classification"] == "evidence-pending"
     assert rows_by_slug["bank-ledger-dashboard"]["blocking_reason"] == "golden_or_manual_audit_or_owner_approval_pending"
     assert rows_by_slug["bank-ledger-dashboard"]["route"] == "/bank-ledger-dashboard"
@@ -1847,8 +1890,8 @@ def test_page_readiness_cli_all_mode_emits_batch_report(tmp_path: Path) -> None:
     assert payload["summary"]["page_count"] == 39
     assert payload["summary"]["blocked_count"] == 6
     assert payload["summary"]["run_supported_count"] == 27
-    assert payload["summary"]["business_owner_approval_pending_count"] == 6
-    assert payload["summary"]["business_owner_approval_action_item_count"] == 71
+    assert payload["summary"]["business_owner_approval_pending_count"] == 7
+    assert payload["summary"]["business_owner_approval_action_item_count"] == 84
     assert payload["summary"]["business_owner_action_signoff_missing_or_invalid_item_count"] == 5
     assert payload["summary"]["business_owner_action_signoff_pending_review_item_count"] == 10
     assert payload["blocking_pages"] == [
@@ -1865,6 +1908,7 @@ def test_page_readiness_cli_all_mode_emits_batch_report(tmp_path: Path) -> None:
     } == {
         "balance-analysis",
         "bond-analysis",
+        "average-balance",
         "ledger-pnl",
         "pnl-attribution",
         "product-category-pnl",
@@ -2246,7 +2290,7 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     )
 
     assert "Business-owner approval pending pages:" in completed.stdout
-    assert "business_owner_approval_action_item_count=71" in completed.stdout
+    assert "business_owner_approval_action_item_count=84" in completed.stdout
     assert "business_owner_action_signoff_missing_or_invalid_item_count=5" in completed.stdout
     assert "business_owner_action_signoff_pending_review_item_count=10" in completed.stdout
     assert (
@@ -2264,6 +2308,7 @@ def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> No
     assert "- pnl-attribution (PAGE-PNL-ATTR-WB-001): pending; captured=False; action_items=11" in completed.stdout
     assert "- bond-analysis (PAGE-BOND-ANALYSIS-001): pending; captured=False; action_items=12" in completed.stdout
     assert "- stock-analysis (GAP-STOCK-ANALYSIS-PAGE): pending; captured=False; action_items=11" in completed.stdout
+    assert "- average-balance (GAP-AVERAGE-BALANCE-PAGE): pending; captured=False; action_items=13" in completed.stdout
     assert "Approval evidence scope:" in completed.stdout
     assert "  - proves_page_execution=False" in completed.stdout
     assert "  - captures_business_owner_approval=False" in completed.stdout
