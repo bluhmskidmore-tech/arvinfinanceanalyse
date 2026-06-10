@@ -35,6 +35,7 @@ import {
   defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryAttributionEffect,
   formatProductCategoryDualMetaDistinctLine,
+  formatProductCategoryForeignDisplayValue,
   formatProductCategoryReportMonthLabel,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
@@ -434,6 +435,20 @@ function formalValueToneClassName(value: DecimalLike | null | undefined): string
 }
 
 function formalCategoryIndentClassName(level: number): string {
+function formalForeignValueToneClassName(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+): string {
+  if (value === null || value === undefined) {
+    return formalValueToneClassName(value);
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return formalValueToneClassName(value);
+  }
+  return formalValueToneClassName(row.side === "liability" ? -parsed : parsed);
+}
+
   const clampedLevel = Math.min(Math.max(Math.trunc(level), 0), 8);
   return `product-category-formal-table__category-indent product-category-formal-table__category-indent--level-${clampedLevel}`;
 }
@@ -4389,7 +4404,7 @@ export default function ProductCategoryPnlPage() {
                     {formatProductCategoryRowDisplayValue(row, row.cny_scale)}
                   </td>
                   <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                    {formatProductCategoryRowDisplayValue(row, row.foreign_scale)}
+                    {formatProductCategoryForeignDisplayValue(row, row.foreign_scale)}
                   </td>
                   <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--group-start">
                     {formatProductCategoryRowDisplayValue(row, row.cnx_cash)}
@@ -4409,18 +4424,18 @@ export default function ProductCategoryPnlPage() {
                     {formatProductCategoryRowDisplayValue(row, row.cny_net)}
                   </td>
                   <td className="product-category-formal-table__cell product-category-formal-table__cell--number">
-                    {formatProductCategoryRowDisplayValue(row, row.foreign_cash)}
+                    {formatProductCategoryForeignDisplayValue(row, row.foreign_cash)}
                   </td>
                   <td className="product-category-formal-table__cell product-category-formal-table__cell--number product-category-formal-table__cell--ftp">
-                    {formatProductCategoryRowDisplayValue(row, row.foreign_ftp)}
+                    {formatProductCategoryForeignDisplayValue(row, row.foreign_ftp)}
                   </td>
                   <td
                     className={[
                       "product-category-formal-table__cell product-category-formal-table__cell--number",
-                      formalValueToneClassName(row.foreign_net),
+                      formalForeignValueToneClassName(row, row.foreign_net),
                     ].join(" ")}
                   >
-                    {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
+                    {formatProductCategoryForeignDisplayValue(row, row.foreign_net)}
                   </td>
                   <td
                     className={[

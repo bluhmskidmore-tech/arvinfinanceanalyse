@@ -1827,25 +1827,44 @@ describe("ProductCategoryPnlPage", () => {
           result: {
             ...env.result,
             available_views: ["monthly", "qtd", "ytd", "year_to_report_month_end"],
-            rows: env.result.rows.map((r) =>
-              r.category_id === "repo_assets"
-                ? {
-                    ...r,
-                    cnx_scale: "101000000",
-                    cny_scale: "102000000",
-                    foreign_scale: "103000000",
-                    cnx_cash: "104000000",
-                    cny_cash: "105000000",
-                    cny_ftp: "106000000",
-                    cny_net: "-107000000",
-                    foreign_cash: "108000000",
-                    foreign_ftp: "109000000",
-                    foreign_net: "-110000000",
-                    business_net_income: "111000000",
-                    weighted_yield: "2.345",
-                  }
-                : r,
-            ),
+            rows: env.result.rows.map((r) => {
+              if (r.category_id === "repo_assets") {
+                return {
+                  ...r,
+                  cnx_scale: "101000000",
+                  cny_scale: "102000000",
+                  foreign_scale: "103000000",
+                  cnx_cash: "104000000",
+                  cny_cash: "105000000",
+                  cny_ftp: "106000000",
+                  cny_net: "-107000000",
+                  foreign_cash: "108000000",
+                  foreign_ftp: "109000000",
+                  foreign_net: "-110000000",
+                  business_net_income: "111000000",
+                  weighted_yield: "2.345",
+                };
+              }
+              if (r.category_id === "interbank_deposits") {
+                return {
+                  ...r,
+                  category_name: "liability delta fixture",
+                  cnx_scale: "-57850000000",
+                  cny_scale: "-57906000000",
+                  foreign_scale: "56000000",
+                  cnx_cash: "-104000000",
+                  cny_cash: "-105000000",
+                  cny_ftp: "-106000000",
+                  cny_net: "-107000000",
+                  foreign_cash: "108000000",
+                  foreign_ftp: "109000000",
+                  foreign_net: "110000000",
+                  business_net_income: "-111000000",
+                  weighted_yield: "1.234",
+                };
+              }
+              return r;
+            }),
           },
         };
       }),
@@ -1880,6 +1899,23 @@ describe("ProductCategoryPnlPage", () => {
     const baseClient = createApiClient({ mode: "mock" });
     const negYuan = "-123456789";
     renderWorkbenchAppWithClient({
+    const liabilityRow = within(table).getByText("liability delta fixture").closest("tr");
+    expect(liabilityRow).toBeTruthy();
+    expect(within(liabilityRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "liability delta fixture",
+      "578.50",
+      "579.06",
+      "-0.56",
+      "1.04",
+      "1.05",
+      "1.06",
+      "1.07",
+      "-1.08",
+      "-1.09",
+      "-1.10",
+      "1.11",
+      "1.23",
+    ]);
       ...baseClient,
       getProductCategoryPnl: vi.fn(async (options) => {
         const env = buildMockProductCategoryPnlEnvelope(options);

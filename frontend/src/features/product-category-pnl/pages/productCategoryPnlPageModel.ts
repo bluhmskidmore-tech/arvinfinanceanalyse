@@ -949,6 +949,22 @@ export function formatProductCategoryRowDisplayValue(
 }
 
 export function formatProductCategoryYieldValue(
+export function formatProductCategoryForeignDisplayValue(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+  digits = 2,
+): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return String(value);
+  }
+  const displayValue = row.side === "liability" ? -parsed : parsed;
+  return (displayValue / YUAN_PER_YI).toFixed(digits);
+}
+
   value: DecimalLike | null | undefined,
   digits = 2,
 ): string {
@@ -980,6 +996,17 @@ export function toneForProductCategoryValue(value: DecimalLike | null | undefine
 }
 
 function decimalNumber(value: DecimalLike | null | undefined): number | null {
+export function toneForProductCategoryForeignDisplayValue(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+): string {
+  const displayValue = productCategoryForeignDisplayNumber(row, value);
+  if (displayValue === null) {
+    return PRODUCT_CATEGORY_VALUE_TONE_COLORS.default;
+  }
+  return toneForProductCategoryValue(displayValue);
+}
+
   if (value === null || value === undefined) {
     return null;
   }
@@ -1012,6 +1039,17 @@ function toneNameForValue(value: DecimalLike | null | undefined): "neutral" | "p
 }
 
 function formatSignedProductCategoryYi(value: number | null): string {
+function productCategoryForeignDisplayNumber(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+): number | null {
+  const parsed = decimalNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+  return row.side === "liability" ? -parsed : parsed;
+}
+
   return signedYiDeltaLabel(value);
 }
 
@@ -3492,7 +3530,10 @@ function formatProductCategoryDiagnosticMoneyLabel(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
 ): string {
-  const display = formatProductCategoryRowDisplayValue(row, value);
+  options?: { foreignDisplay?: boolean },
+  const display = options?.foreignDisplay
+    ? formatProductCategoryForeignDisplayValue(row, value)
+    : formatProductCategoryRowDisplayValue(row, value);
   return display === "-" ? "\u7f3a\u5931" : `${display} \u4ebf\u5143`;
 }
 
@@ -3586,8 +3627,10 @@ function buildProductCategoryDiagnosticsMatrixRow(
     yieldMissing: yieldDisplay.missing,
     cnyNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.cny_net),
     cnyNetTone: toneNameForValue(row.cny_net),
-    foreignNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.foreign_net),
-    foreignNetTone: toneNameForValue(row.foreign_net),
+    foreignNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.foreign_net, {
+      foreignDisplay: true,
+    }),
+    foreignNetTone: toneNameForValue(productCategoryForeignDisplayNumber(row, row.foreign_net)),
     driverHint: buildProductCategoryDriverHint(row),
   };
 }
