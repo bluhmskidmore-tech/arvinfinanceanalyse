@@ -19,6 +19,10 @@ export function bondNumericRawOrNull(n: Numeric | string | null | undefined): nu
   return bondNumericRaw(n);
 }
 
+export function finiteNumberOr(value: number | null | undefined, fallback = 0): number {
+  return value !== null && value !== undefined && Number.isFinite(value) ? value : fallback;
+}
+
 export function bondNumericDisplay(n: Numeric | string | null | undefined): string {
   if (n === null || n === undefined) {
     return "—";
@@ -35,18 +39,18 @@ export function bondChartMagnitude(value: Numeric | string): number | null {
 }
 
 export function returnDecompositionWaterfallRawSteps(d: ReturnDecompositionPayload): number[] {
-  const carry = bondNumericRaw(d.carry) ?? 0;
-  const rollDown = bondNumericRaw(d.roll_down) ?? 0;
-  const rateEffect = bondNumericRaw(d.rate_effect) ?? 0;
-  const spreadEffect = bondNumericRaw(d.spread_effect) ?? 0;
-  const trading = bondNumericRaw(d.trading) ?? 0;
-  const fxEffect = bondNumericRaw(d.fx_effect) ?? 0;
-  const convexityEffect = bondNumericRaw(d.convexity_effect) ?? 0;
-  const explained = bondNumericRaw(d.explained_pnl) ?? 0;
+  const carry = finiteNumberOr(bondNumericRaw(d.carry));
+  const rollDown = finiteNumberOr(bondNumericRaw(d.roll_down));
+  const rateEffect = finiteNumberOr(bondNumericRaw(d.rate_effect));
+  const spreadEffect = finiteNumberOr(bondNumericRaw(d.spread_effect));
+  const trading = finiteNumberOr(bondNumericRaw(d.trading));
+  const fxEffect = finiteNumberOr(bondNumericRaw(d.fx_effect));
+  const convexityEffect = finiteNumberOr(bondNumericRaw(d.convexity_effect));
+  const explained = finiteNumberOr(bondNumericRaw(d.explained_pnl));
   const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
-    Number.isFinite(v) ? v : 0,
+    finiteNumberOr(v),
   );
-  return [...stepValues, Number.isFinite(explained) ? explained : 0];
+  return [...stepValues, explained];
 }
 
 export function returnDecompositionWaterfallDisplayStrings(d: ReturnDecompositionPayload): string[] {
