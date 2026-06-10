@@ -24,12 +24,12 @@ export function mapPortfolioComparisonToExposureRows(
   }
 
   const totalMv = payload.items.reduce(
-    (sum, item) => sum + nativeToNumber(item.total_market_value),
+    (sum, item) => sum + (nativeToNumber(item.total_market_value) ?? 0),
     0,
   );
 
   const rows: HomeExposureRow[] = payload.items.map((item, index) => {
-    const mvYuan = nativeToNumber(item.total_market_value);
+    const mvYuan = nativeToNumber(item.total_market_value) ?? 0;
     return {
       id: `portfolio-${index}-${item.portfolio_name}`,
       account: item.portfolio_name?.trim() || GAP,

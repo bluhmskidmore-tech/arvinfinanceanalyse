@@ -271,9 +271,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           const w = bondNumericRaw(b.market_value_weight);
           return [
             `<div style="font-weight:600;margin-bottom:4px">${b.tenor}</div>`,
-            `KRD：${Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display}`,
-            `DV01：${Number.isFinite(dv01) ? dv01.toFixed(6) : b.dv01.display}`,
-            `market_value_weight：${Number.isFinite(w) ? w.toFixed(6) : b.market_value_weight.display}`,
+            `KRD：${krd === null ? b.krd.display : krd.toFixed(3)}`,
+            `DV01：${dv01 === null ? b.dv01.display : dv01.toFixed(6)}`,
+            `market_value_weight：${w === null ? b.market_value_weight.display : w.toFixed(6)}`,
           ].join("<br/>");
         },
       },

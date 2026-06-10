@@ -73,7 +73,7 @@ function isFiniteNumber(value: number | null | undefined): value is number {
 
 function numOr(raw: Numeric | null | undefined): number {
   const n = bondNumericRaw(raw);
-  return Number.isFinite(n) ? n : Number.NaN;
+  return n === null ? Number.NaN : n;
 }
 
 function numOrNullAware(raw: Numeric | null | undefined): number {
@@ -1682,7 +1682,7 @@ export function BondAnalyticsInstitutionalCockpit({
     k && numOr(k.unrealized_pnl) !== 0 ? (numOr(k.unrealized_pnl) > 0 ? "positive" : "negative") : "default";
   const actionPnlDisplay = actionAttribution ? formatWan(actionAttribution.total_pnl_from_actions) : "—";
   const actionPnlTone =
-    Number.isFinite(totalActionPnl) && totalActionPnl !== 0
+    totalActionPnl !== null && Number.isFinite(totalActionPnl) && totalActionPnl !== 0
       ? totalActionPnl > 0
         ? "positive"
         : "negative"

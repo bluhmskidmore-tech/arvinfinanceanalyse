@@ -728,6 +728,9 @@ function formatBondHeadlineKpi(
   }
   if (key === "bond_count") {
     const count = typeof value === "number" ? value : nativeToNumber(value);
+    if (count === null) {
+      return "-";
+    }
     return `${count.toLocaleString("zh-CN", { maximumFractionDigits: 0 })} 只`;
   }
   if (typeof value !== "object" || !("raw" in value)) {
@@ -754,12 +757,12 @@ function distributionRows(
 ): ModuleHomeDistributionRow[] {
   const totalRaw =
     totalMarketValue !== undefined
-      ? nativeToNumber(totalMarketValue)
-      : items.reduce((sum, item) => sum + nativeToNumber(item.marketValue), 0);
+      ? (nativeToNumber(totalMarketValue) ?? 0)
+      : items.reduce((sum, item) => sum + (nativeToNumber(item.marketValue) ?? 0), 0);
 
   return items.map((item) => {
     const mvRaw = nativeToNumber(item.marketValue);
-    const barPct = totalRaw > 0 ? (mvRaw / totalRaw) * 100 : 0;
+    const barPct = totalRaw > 0 && mvRaw !== null ? (mvRaw / totalRaw) * 100 : 0;
     const share = item.percentage ? plain(item.percentage) : "-";
     return {
       key: item.key,
@@ -767,7 +770,7 @@ function distributionRows(
       marketValue: `${formatYi(item.marketValue)} 亿元`,
       share,
       barPct: Math.min(100, Math.max(0, barPct)),
-      tone: mvRaw > 0 ? "ok" : "muted",
+      tone: mvRaw !== null && mvRaw > 0 ? "ok" : "muted",
     };
   });
 }
@@ -894,7 +897,10 @@ function buildRiskIndicatorDetailRows(risk: RiskIndicatorsPayload): ModuleHomeDe
     {
       key: "risk-weighted-convexity",
       label: "凸性(加权)",
-      value: nativeToNumber(risk.weighted_convexity).toFixed(4),
+      value: (() => {
+        const raw = nativeToNumber(risk.weighted_convexity);
+        return raw === null ? "-" : raw.toFixed(4);
+      })(),
       tradeDate: reportDate,
       source: "weighted_convexity",
       tone: "ok",
@@ -1437,7 +1443,7 @@ function buildPortfolioComparisonChart(
     unit: "亿元",
     orientation: "horizontal",
     categories: items.map((item) => item.portfolio_name),
-    values: items.map((item) => nativeToNumber(item.total_market_value) / 1e8),
+    values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
   };
 }
 
@@ -1448,7 +1454,7 @@ function buildYieldDistributionChart(payload: YieldDistributionPayload): ModuleH
     unit: "亿元",
     orientation: "vertical",
     categories: items.map((item) => item.yield_bucket),
-    values: items.map((item) => nativeToNumber(item.total_market_value) / 1e8),
+    values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
   };
 }
 
@@ -1459,7 +1465,7 @@ function buildSpreadAnalysisChart(payload: SpreadAnalysisPayload): ModuleHomeDet
     unit: "亿元",
     orientation: "horizontal",
     categories: items.map((item) => item.bond_type),
-    values: items.map((item) => nativeToNumber(item.total_market_value) / 1e8),
+    values: items.map((item) => (nativeToNumber(item.total_market_value) ?? 0) / 1e8),
   };
 }
 

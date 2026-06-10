@@ -31,7 +31,9 @@ export function mapAssetStructureToHomeAssetBars(
   }
 
   const sorted = [...payload.items].sort(
-    (left, right) => nativeToNumber(right.total_market_value) - nativeToNumber(left.total_market_value),
+    (left, right) =>
+      (nativeToNumber(right.total_market_value) ?? 0) -
+      (nativeToNumber(left.total_market_value) ?? 0),
   );
 
   const head = sorted.slice(0, topN);
@@ -43,7 +45,7 @@ export function mapAssetStructureToHomeAssetBars(
           {
             category: "其他",
             total_market_value: {
-              raw: tail.reduce((sum, item) => sum + nativeToNumber(item.total_market_value), 0),
+              raw: tail.reduce((sum, item) => sum + (nativeToNumber(item.total_market_value) ?? 0), 0),
               unit: "yuan" as const,
               display: "",
               precision: 2,

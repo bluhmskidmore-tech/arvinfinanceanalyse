@@ -8,7 +8,7 @@ import { formatBp, formatPct, formatYi, toneColor } from "../utils/formatters";
 
 function numOr(raw: Numeric | null | undefined): number {
   const n = bondNumericRaw(raw);
-  return Number.isFinite(n) ? n : Number.NaN;
+  return n === null ? Number.NaN : n;
 }
 
 function relRatioLine(label: string, prevRaw: Numeric | null | undefined, curRaw: Numeric | null | undefined): string | null {

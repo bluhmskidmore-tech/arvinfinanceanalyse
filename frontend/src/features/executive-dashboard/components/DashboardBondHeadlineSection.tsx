@@ -39,7 +39,7 @@ function parseHeadlineValue(
     }
     return parsed;
   }
-  return nativeToNumber(value as Parameters<typeof nativeToNumber>[0]);
+  return nativeToNumber(value as Parameters<typeof nativeToNumber>[0]) ?? 0;
 }
 
 type HeadlineCell = {

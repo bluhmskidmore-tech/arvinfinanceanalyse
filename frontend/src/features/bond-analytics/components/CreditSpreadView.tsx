@@ -461,7 +461,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
         center: ["50%", "56%"],
         data: metrics.top_items.map((it) => ({
           name: it.name,
-          value: bondNumericRaw(it.market_value),
+          value: bondNumericRaw(it.market_value) ?? undefined,
         })),
       },
     ],
@@ -471,7 +471,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
 function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   const pieData = metrics.top_items.map((it, idx) => ({
     name: it.name,
-    value: bondNumericRaw(it.market_value),
+    value: bondNumericRaw(it.market_value) ?? undefined,
     marketValueRaw: it.market_value,
     weight: it.weight,
     itemStyle: { color: ISSUER_SLICE_COLORS[idx % ISSUER_SLICE_COLORS.length] },

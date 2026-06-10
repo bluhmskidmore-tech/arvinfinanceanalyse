@@ -60,7 +60,7 @@ export function AssetStructurePie({
         label: { show: false },
         data: items.map((it) => ({
           name: it.category || "—",
-          value: nativeToNumber(it.total_market_value),
+          value: nativeToNumber(it.total_market_value) ?? undefined,
         })),
       },
     ],

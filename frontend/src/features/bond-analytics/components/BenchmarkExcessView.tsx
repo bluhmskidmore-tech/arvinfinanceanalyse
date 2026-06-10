@@ -64,7 +64,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
     spreadEffect,
     selectionEffect,
     allocationEffect,
-  ].map((v) => (Number.isFinite(v) ? v : 0));
+  ].map((v) => v ?? 0);
 
   const helperRaw: number[] = [];
   const valueRaw: number[] = [];
@@ -86,7 +86,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
   }
 
   helperRaw.push(0);
-  valueRaw.push(Number.isFinite(excessReturn) ? excessReturn : 0);
+  valueRaw.push(excessReturn ?? 0);
   barColors.push(CHART_ACCENT);
 
   const displayStrings = [

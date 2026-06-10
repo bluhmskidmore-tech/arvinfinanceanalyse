@@ -100,7 +100,7 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
   if (!rows.length) return null;
   const data = rows.map((row) => ({
     name: row.asset_class,
-    value: bondNumericRaw(row.market_value),
+    value: bondNumericRaw(row.market_value) ?? undefined,
     marketValueRaw: row.market_value,
     weight: row.weight,
     itemStyle: {

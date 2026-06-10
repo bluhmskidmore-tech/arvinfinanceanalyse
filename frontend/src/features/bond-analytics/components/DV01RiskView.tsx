@@ -65,7 +65,7 @@ function formatMoneyYi(value: Numeric | null | undefined): string {
 function formatSignedMoneyYi(value: Numeric | null | undefined): string {
   if (!value) return "—";
   const raw = bondNumericRaw(value);
-  if (!Number.isFinite(raw)) return value.display || "—";
+  if (raw === null) return value.display || "—";
   const absYi = Math.abs(raw) / 100_000_000;
   const sign = raw > 0 ? "+" : raw < 0 ? "-" : "";
   return `${sign}${absYi.toLocaleString("zh-CN", {
