@@ -1255,10 +1255,10 @@ describe("ProductCategoryPnlPage", () => {
     expect(interestEarningAssetLiabilityScaleOption.series?.map((series) => series.type)).toEqual(["bar", "bar"]);
     expect(interestEarningAssetLiabilityScaleOption.series?.[0]?.data).toEqual([2800, 2898.5]);
     expect(interestEarningAssetLiabilityScaleOption.series?.[1]?.data).toEqual([1728.58, 1728.58]);
-    expect(interestEarningAssetLiabilityScaleOption.backgroundColor).toBe("#f8fafc");
+    expect(interestEarningAssetLiabilityScaleOption.backgroundColor).toBe("transparent");
     expect(interestEarningAssetLiabilityScaleOption.tooltip).toMatchObject({
-      backgroundColor: "rgba(15, 23, 42, 0.94)",
-      borderColor: "rgba(148, 163, 184, 0.28)",
+      backgroundColor: "rgba(255, 255, 255, 0.98)",
+      borderColor: "rgba(148, 163, 184, 0.34)",
     });
     expect(interestEarningAssetLiabilityScaleOption.legend).toMatchObject({
       top: 4,
@@ -1269,7 +1269,7 @@ describe("ProductCategoryPnlPage", () => {
       ],
     });
     expect(interestEarningAssetLiabilityScaleOption.grid).toMatchObject({
-      top: 48,
+      top: 46,
       bottom: 18,
       containLabel: true,
     });
@@ -1278,24 +1278,22 @@ describe("ProductCategoryPnlPage", () => {
       scale: true,
     });
     expect(interestEarningAssetLiabilityScaleOption.series?.[0]).toMatchObject({
-      barMaxWidth: 14,
+      barMaxWidth: 12,
       barMinHeight: 2,
-      barGap: "30%",
-      label: { show: true },
+      barGap: "36%",
       itemStyle: {
-        color: "rgba(37, 99, 235, 0.78)",
-        borderColor: "rgba(29, 78, 216, 0.58)",
-        borderRadius: [4, 4, 1, 1],
+        color: "rgba(71, 96, 128, 0.72)",
+        borderColor: "rgba(45, 67, 96, 0.34)",
+        borderRadius: [2, 2, 0, 0],
       },
     });
     expect(interestEarningAssetLiabilityScaleOption.series?.[1]).toMatchObject({
-      barMaxWidth: 14,
+      barMaxWidth: 12,
       barMinHeight: 2,
-      label: { show: true },
       itemStyle: {
-        color: "rgba(217, 119, 6, 0.72)",
-        borderColor: "rgba(180, 83, 9, 0.5)",
-        borderRadius: [4, 4, 1, 1],
+        color: "rgba(166, 132, 81, 0.66)",
+        borderColor: "rgba(130, 87, 34, 0.3)",
+        borderRadius: [2, 2, 0, 0],
       },
     });
 
