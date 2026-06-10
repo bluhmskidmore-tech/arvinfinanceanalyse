@@ -3245,6 +3245,345 @@
   padding: 9px;
 }
 
+/* Terminal-density pass: tighten the market home without changing data sources or labels. */
+.marketInstitutionalCockpit {
+  gap: 10px;
+  padding: 10px;
+  border-color: #d3dfec;
+  background: #eef3f8;
+}
+
+.marketPrimaryGrid {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 318px);
+  gap: 8px;
+}
+
+.marketHero {
+  gap: 0;
+}
+
+.marketKpiBox {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 88px;
+}
+
+.marketKpiTile {
+  min-height: 88px;
+  padding: 9px 11px 8px;
+}
+
+.marketKpiTile:nth-child(3) {
+  border-right: 0;
+}
+
+.marketKpiTile > div:nth-child(2) {
+  font-size: 20px;
+}
+
+.decisionMatrixGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.decisionMatrixCell {
+  min-height: 112px;
+}
+
+.actionQueueList {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.workGrid {
+  grid-template-columns: minmax(380px, 0.78fr) minmax(0, 1.22fr);
+  gap: 8px;
+}
+
+.marketWorkbenchSection,
+.depthSection,
+.navigationSection {
+  gap: 8px;
+  padding: 0;
+}
+
+.depthQuad {
+  gap: 8px;
+}
+
+.ratePanel,
+.terminalCard,
+.depthPanel,
+.macroSection {
+  padding: 10px;
+}
+
+.rateTableHead,
+.rateTableRow {
+  grid-template-columns: minmax(112px, 1fr) minmax(62px, auto) minmax(44px, auto) minmax(76px, auto);
+  gap: 8px;
+}
+
+.rateTableLabel,
+.rateTableHead span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rateTableScroll {
+  max-height: 294px;
+}
+
+.terminalTableScroll {
+  max-height: 220px;
+}
+
+.panelScroll {
+  max-height: 260px;
+}
+
+.terminalPanelSplit .terminalChart {
+  min-height: 172px;
+}
+
+.depthPanelBodySplit .terminalChart {
+  min-height: 190px;
+}
+
+.evidenceRail {
+  top: 8px;
+  gap: 6px;
+  padding: 9px;
+}
+
+.evidenceRailMetricGrid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #d7e1ee;
+  border-radius: 3px;
+  background: #d7e1ee;
+}
+
+.evidenceRailMetric {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 0;
+  background: #f8fbff;
+}
+
+.evidenceRailMetric span {
+  font-size: 10.5px;
+}
+
+.evidenceRailMetric strong {
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.evidenceRailActionList {
+  gap: 4px;
+}
+
+.evidenceRailLink {
+  min-height: 28px;
+}
+
+.marketTopbar {
+  border-color: #25384c;
+  border-left: 3px solid #f5a623;
+  background:
+    linear-gradient(90deg, rgba(245, 166, 35, 0.12), transparent 28%),
+    linear-gradient(180deg, #0c131b 0%, #071019 100%);
+  color: #dce7f4;
+}
+
+.marketTopbar h1 {
+  color: #ffffff;
+}
+
+.marketTopbar :where(span) {
+  border-color: rgba(118, 147, 180, 0.28);
+}
+
+.topbarSummary {
+  color: #f7c56d;
+}
+
+.marketInstitutionalCockpit {
+  background: #eaf1f8;
+}
+
+.marketPrimaryGrid {
+  padding: 8px;
+  border: 1px solid #1f3347;
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 10% 0%, rgba(245, 166, 35, 0.16), transparent 26%),
+    linear-gradient(180deg, #0b141f 0%, #080f17 100%);
+  background-size: 48px 48px, 48px 48px, auto, auto;
+}
+
+.judgementCard,
+.marketKpiBox,
+.decisionMatrix,
+.actionQueue,
+.evidenceRail {
+  border-color: #2a4056;
+  background: #0e1721;
+  box-shadow: none;
+}
+
+.judgementCard {
+  border-left-color: #f5a623;
+  background:
+    linear-gradient(90deg, rgba(245, 166, 35, 0.1), transparent 34%),
+    linear-gradient(180deg, #121d28 0%, #0c141e 100%);
+}
+
+.judgementCard h2,
+.actionQueueHeader strong,
+.actionQueueTitleRow strong,
+.evidenceRailHeader span {
+  color: #f4f7fb;
+}
+
+.judgementCard p,
+.decisionMatrixHeader em,
+.actionQueueHeader em,
+.actionQueueMain em,
+.evidenceRailState {
+  color: #9fb0c4;
+}
+
+.judgementCard :global(.dhTerminalEyebrow),
+.decisionMatrixHeader span,
+.actionQueueHeader span {
+  color: #f5a623;
+}
+
+.marketKpiBox {
+  border-top: 0;
+  background: #0b121b;
+}
+
+.marketKpiTile {
+  border-right-color: #25384c;
+  background: #0f1823;
+}
+
+.marketKpiTile > div:first-child,
+.decisionMatrixCell > span,
+.evidenceRailMetric span {
+  color: #9fb0c4;
+}
+
+.marketKpiTile > div:nth-child(2),
+.evidenceRailMetric strong {
+  color: #69b7ff;
+}
+
+.marketKpiTile[data-tone="watch"] > div:nth-child(2),
+.decisionMatrixCell[data-tone="watch"] strong,
+.actionQueueItem[data-tone="watch"] .actionQueueRank {
+  color: #f5c56f;
+}
+
+.marketKpiTile[data-tone="error"] > div:nth-child(2),
+.decisionMatrixCell[data-tone="error"] strong,
+.actionQueueItem[data-tone="error"] .actionQueueRank {
+  color: #ff7b72;
+}
+
+.marketKpiDetail em {
+  border-color: rgba(105, 183, 255, 0.18);
+  background: rgba(105, 183, 255, 0.1);
+  color: #bfd4ea;
+}
+
+.decisionMatrix,
+.actionQueue {
+  background: #213246;
+}
+
+.decisionMatrixHeader,
+.actionQueueHeader {
+  border-right-color: #2a4056;
+  background: #0f1823;
+}
+
+.decisionMatrixGrid,
+.actionQueueList {
+  background: #213246;
+}
+
+.decisionMatrixCell,
+.actionQueueItem {
+  border-top-color: #3c91e6;
+  background: #111b27;
+}
+
+.decisionMatrixCell strong {
+  color: #e8f1fb;
+}
+
+.decisionMatrixSummary {
+  color: #b3c3d6;
+}
+
+.actionQueueItem:hover {
+  background: #172536;
+}
+
+.actionQueueRank,
+.actionQueueItem b {
+  border: 1px solid rgba(105, 183, 255, 0.2);
+  background: rgba(105, 183, 255, 0.12);
+  color: #8fc8ff;
+}
+
+.evidenceRail {
+  border-top-color: #f5a623;
+}
+
+.evidenceRailHeader {
+  border-bottom-color: #2a4056;
+}
+
+.evidenceRailMetricGrid {
+  border-color: #2a4056;
+  background: #2a4056;
+}
+
+.evidenceRailMetric {
+  background: #111b27;
+}
+
+.evidenceRailActionList {
+  border-top: 1px solid #2a4056;
+  padding-top: 6px;
+}
+
+.evidenceRailLink {
+  border-color: #2a4056;
+  background: #111b27;
+  color: #e4edf7;
+}
+
+.evidenceRailLink::after {
+  color: #f5a623;
+}
+
+.evidenceRailLink:hover {
+  border-color: rgba(245, 166, 35, 0.42);
+  background: #172536;
+}
+
 @media (max-width: 1180px) {
   .marketHero,
   .workGrid,
