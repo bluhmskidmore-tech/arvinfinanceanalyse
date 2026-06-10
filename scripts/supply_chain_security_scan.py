@@ -34,6 +34,10 @@ def _command_path(path: Path) -> str:
         return path.as_posix()
 
 
+def _output_path(path: Path) -> str:
+    return path.as_posix() if path.is_absolute() else _command_path(path)
+
+
 def _gitleaks_command(report_dir: Path) -> list[str]:
     return [
         "gitleaks",
@@ -56,7 +60,7 @@ def _osv_command(report_dir: Path) -> list[str]:
         "scan",
         "source",
         ".",
-        f"--output={_command_path(report_dir / 'osv-report.json')}",
+        f"--output={_output_path(report_dir / 'osv-report.json')}",
         "--format=json",
     ]
     command.extend(

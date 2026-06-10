@@ -5,8 +5,13 @@ useDefault = true
 description = "Generated repo snapshots and local artifact directories"
 paths = [
   '''^audit_pack/source_snapshot/''',
+  '''^\.codex-tmp/''',
   '''^\.codex-pr-logs/''',
+  '''^\.omx/''',
   '''^\.playwright-mcp/''',
+  '''^data/''',
+  '''^dist/''',
+  '''^frontend/dist/''',
   '''^test_output/''',
   '''^tmp/''',
   '''^tmp-governance/''',
@@ -36,4 +41,11 @@ description = "TypeScript Api-prefixed type aliases are not credentials"
 regexTarget = "match"
 regexes = [
   '''ApiDV01[A-Za-z0-9_]+''',
+]
+
+[[allowlists]]
+description = "Risk Tensor governed metric key comparisons are not credentials"
+regexTarget = "match"
+regexes = [
+  '''metricKey\s*={2,3}\s*["'](?:regulatory_dv01|dominant_krd_bucket)["']''',
 ]
