@@ -249,6 +249,30 @@ def test_codex_verify_page_supports_balance_analysis_dry_run():
     assert "Codex verify page checks passed." not in output
 
 
+def test_codex_verify_page_supports_average_balance_dry_run():
+    output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "average-balance")
+
+    assert "Codex verify page: average-balance" in output
+    assert "test_average_balance_trace_bundle_preserves_adb_candidate_boundary" in output
+    assert "test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_candidate_boundary_when_requested" in output
+    assert "Average Balance backend ADB API and governance tests" in output
+    assert "tests/test_adb_analysis_api.py" in output
+    assert "tests/test_average_balance_governance_record.py" in output
+    assert "tests/test_average_balance_owner_evidence_packet.py" in output
+    assert "tests/test_average_balance_live_smoke_evidence.py" in output
+    assert "tests/test_average_balance_business_owner_approval_status.py" in output
+    assert "test_capture_ready_golden_sample_matches_selected_fields[GS-AVERAGE-BALANCE-A]" in output
+    assert "test_capture_ready_golden_sample_matches_selected_fields[GS-AVERAGE-BALANCE-MONTHLY-A]" in output
+    assert "Average Balance frontend tests" in output
+    assert "AverageBalancePage.test.tsx" in output
+    assert "AverageBalanceView.test.tsx" in output
+    assert "LiveRouteRealPageSmoke.test.tsx" in output
+    assert "Average Balance browser a11y smoke" in output
+    assert "@average-balance" in output
+    assert "Codex verify page dry run complete. Pass -Run to execute checks." in output
+    assert "Codex verify page checks passed." not in output
+
+
 def test_codex_verify_page_supports_pnl_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "pnl")
 
@@ -305,7 +329,8 @@ def test_codex_verify_page_supports_bond_analysis_dry_run():
     output = run_powershell_script("codex-verify-page.ps1", "-PageSlug", "bond-analysis")
 
     assert "Codex verify page: bond-analysis" in output
-    assert "tests/test_project_mcp_servers.py" in output
+    assert "test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowing_dashboard_evidence" in output
+    assert "tests/test_bond_analysis_governance_record.py" in output
     assert "tests/test_bond_analytics_api.py" in output
     assert "tests/core_finance/test_action_attribution.py" in output
     assert "tests/test_action_attribution.py" not in output
@@ -570,6 +595,26 @@ def test_codex_page_smoke_supports_balance_analysis_checklist_only():
     assert "/ui/balance-analysis/dates" in output
     assert "Playwright MCP" in output
     assert "formal balance truth" in output
+    assert "Live checks:" not in output
+
+
+def test_codex_page_smoke_supports_average_balance_checklist_only():
+    output = run_powershell_script("codex-page-smoke.ps1", "-PageSlug", "average-balance")
+
+    assert "Codex page smoke: average-balance" in output
+    assert "http://127.0.0.1:5888/average-balance" in output
+    assert "http://127.0.0.1:5888/adb" in output
+    assert "/api/analysis/adb" in output
+    assert "/api/analysis/adb/comparison" in output
+    assert "/api/analysis/adb/monthly" in output
+    assert "/api/analysis/adb/coverage" in output
+    assert "/ui/balance-analysis/dates" in output
+    assert "Playwright MCP" in output
+    assert "candidate average-balance ADB analysis question" in output
+    assert "GAP-AVERAGE-BALANCE-PAGE" in output
+    assert "formal_use_allowed=false" in output
+    assert "PAGE-BALANCE-001" in output
+    assert "MTR-ADB-003 stays tied only to GS-AVERAGE-BALANCE-MONTHLY-A candidate monthly ADB/NIM DTO evidence" in output
     assert "Live checks:" not in output
 
 

@@ -401,6 +401,7 @@ def test_codex_verify_page_script_plans_product_category_checks():
         "dashboard-home",
         "product-category-pnl",
         "balance-analysis",
+        "average-balance",
         "pnl",
         "pnl-bridge",
         "risk-tensor",
@@ -466,6 +467,17 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "BalanceAnalysisPage.test.tsx" in script
     assert "Balance-analysis browser a11y smoke" in script
     assert "@balance-analysis" in script
+    assert "Average Balance backend ADB API and governance tests" in script
+    assert "tests/test_adb_analysis_api.py" in script
+    assert "tests/test_average_balance_governance_record.py" in script
+    assert "tests/test_average_balance_owner_evidence_packet.py" in script
+    assert "tests/test_average_balance_live_smoke_evidence.py" in script
+    assert "tests/test_average_balance_business_owner_approval_status.py" in script
+    assert "Average Balance frontend tests" in script
+    assert "AverageBalancePage.test.tsx" in script
+    assert "AverageBalanceView.test.tsx" in script
+    assert "Average Balance browser a11y smoke" in script
+    assert "@average-balance" in script
     assert "PnL backend API contract tests" in script
     assert "tests/test_pnl_api_contract.py" in script
     assert "PnL frontend route tests" in script
@@ -662,6 +674,7 @@ def test_codex_page_smoke_script_emits_product_category_checklist():
         "dashboard-home",
         "product-category-pnl",
         "balance-analysis",
+        "average-balance",
         "pnl",
         "pnl-bridge",
         "risk-tensor",
@@ -696,6 +709,16 @@ def test_codex_page_smoke_script_emits_product_category_checklist():
     assert "/ui/balance-analysis/overview" in script
     assert "/ui/balance-analysis/dates" in script
     assert "formal balance truth" in script
+    assert "/average-balance" in script
+    assert "/adb" in script
+    assert "/api/analysis/adb" in script
+    assert "/api/analysis/adb/comparison" in script
+    assert "/api/analysis/adb/monthly" in script
+    assert "/api/analysis/adb/coverage" in script
+    assert "candidate average-balance ADB analysis question" in script
+    assert "GAP-AVERAGE-BALANCE-PAGE" in script
+    assert "formal_use_allowed=false" in script
+    assert "MTR-ADB-003 stays tied only to GS-AVERAGE-BALANCE-MONTHLY-A candidate monthly ADB/NIM DTO evidence" in script
     assert "/pnl" in script
     assert "/api/pnl/overview" in script
     assert "/api/pnl/dates" in script
