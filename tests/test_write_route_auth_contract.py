@@ -210,20 +210,25 @@ def _patch_source_backfill_refresh(monkeypatch, calls: list[str]) -> str:
 
 
 def _patch_commodity_futures_refresh(monkeypatch, calls: list[str]) -> str:
-    import backend.app.api.routes.macro_toolkit as route_module
+    from backend.app.services import macro_toolkit_service
 
-    def fake_run_commodity_daily_ingest(**_kwargs):
+    def fake_refresh_commodity_futures(**_kwargs):
         calls.append("called")
-        return {
-            "status": "dry_run",
-            "dry_run": True,
-            "row_count": 0,
-            "product_count": 2,
-            "products": [{"product_code": "RB"}, {"product_code": "CU"}],
-            "table": "fact_commodity_futures_daily",
-        }
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "dry_run",
+                "dry_run": True,
+                "row_count": 0,
+                "product_count": 2,
+                "products": [{"product_code": "RB"}, {"product_code": "CU"}],
+                "table": "fact_commodity_futures_daily",
+            },
+            quality_flag="ok",
+            fallback_mode="none",
+            as_of_date="2026-06-01",
+        )
 
-    monkeypatch.setattr(route_module, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
+    monkeypatch.setattr(macro_toolkit_service, "refresh_commodity_futures", fake_refresh_commodity_futures)
     return "fact_commodity_futures_daily"
 
 
