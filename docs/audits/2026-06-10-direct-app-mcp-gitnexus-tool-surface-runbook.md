@@ -7,7 +7,11 @@ Use this runbook to close the direct Codex App MCP/GitNexus evidence gap after a
 ## Current Recorded State
 
 - `tool_search` query: `moss metric contracts lineage evidence data catalog gitnexus MCP tools`
-- Last recorded result at `2026-06-10T17:21:58+08:00`: 0 direct tools found in the current Codex App tool surface.
+- Last recorded result at `2026-06-10T19:07:21+08:00`: 0 relevant direct MOSS/GitNexus tools found in the current Codex App tool surface.
+- Focused rechecks at `2026-06-10T19:07:21+08:00`:
+  - `moss metric contracts lineage evidence data catalog MCP tools` returned 0 tools.
+  - `moss-data-catalog moss-lineage-evidence moss-metric-contracts` returned 0 tools.
+  - `gitnexus MCP impact call path symbol repository evidence` returned 0 tools.
 - Local registration files declare the expected servers:
   - `.codex/config.toml`
   - `.mcp.json`
@@ -70,4 +74,4 @@ pytest tests/test_system_audit_manifest_contract.py -q
 
 ## If Tools Are Still Missing
 
-Keep the blocker open as a client/session exposure limitation if local config still declares the expected servers. Record the new timestamp, discovery query, and 0-tool result in the snapshot and manifest. Do not promote local stdio evidence to direct App MCP/GitNexus evidence.
+Keep the blocker open as a client/session exposure limitation if local config still declares the expected servers. Record the new timestamp, discovery query, and focused recheck results in the snapshot and manifest. Do not promote local stdio evidence or unrelated Codex App tools, if any appear, to direct App MCP/GitNexus evidence.

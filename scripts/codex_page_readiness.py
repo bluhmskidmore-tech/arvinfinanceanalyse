@@ -38,6 +38,7 @@ from scripts.mcp.moss_project_mcp import (  # noqa: E402
     DEFAULT_GOVERNANCE_DIR,
     page_catalog_date_evidence,
     page_evidence_readiness,
+    page_governance_audit_review_checklist_row,
     page_governance_audit_review_checklist,
     page_governance_record_validation,
     page_trace_bundle,
@@ -629,6 +630,28 @@ def _all_direct_evidence_reports_for_current_context() -> dict[str, dict[str, An
     return _direct_evidence_reports_for_current_context(ALL_DIRECT_EVIDENCE_PAGE_SLUGS)
 
 
+def _direct_governance_evidence_reports_for_current_context() -> dict[str, dict[str, Any]]:
+    return _direct_governance_evidence_reports_for_page_slugs(
+        ALL_DIRECT_EVIDENCE_PAGE_SLUGS
+    )
+
+
+def _direct_governance_evidence_reports_for_page_slugs(
+    page_slugs: tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    streams = _governance_stream_paths()
+    stream_items = tuple((name, str(streams[name])) for name in GOVERNANCE_STREAM_NAMES)
+    direct_page_slugs = tuple(
+        slug for slug in page_slugs if slug in ALL_DIRECT_EVIDENCE_PAGE_SLUGS
+    )
+    if not direct_page_slugs:
+        return {}
+    return _direct_governance_evidence_reports_for_context(
+        stream_items,
+        direct_page_slugs,
+    )
+
+
 def _direct_evidence_reports_for_current_context(
     page_slugs: tuple[str, ...],
 ) -> dict[str, dict[str, Any]]:
@@ -672,15 +695,10 @@ def _direct_evidence_reports_for_context(
             max_results=20,
         )
     )
-    audit_pages = _payload_pages_by_slug(
-        page_governance_audit_review_checklist(
-            bundles,
-            streams,
-            list(page_slugs),
-            list(GOVERNANCE_STREAM_NAMES),
-            max_results=20,
-        )
-    )
+    audit_pages = {
+        page_slug: page_governance_audit_review_checklist_row(page)
+        for page_slug, page in validation_pages.items()
+    }
     reports: dict[str, dict[str, Any]] = {}
     for page_slug in page_slugs:
         catalog_page = catalog_pages.get(page_slug)
@@ -692,6 +710,46 @@ def _direct_evidence_reports_for_context(
                 if catalog_page is not None
                 else _missing_direct_catalog_date_summary()
             ),
+            "governance_record_validation": (
+                _direct_governance_summary(validation_page, audit_page)
+                if validation_page is not None and audit_page is not None
+                else _missing_direct_governance_summary()
+            ),
+            "audit_review": (
+                _audit_review_summary(audit_page)
+                if audit_page is not None
+                else _missing_audit_review_summary()
+            ),
+        }
+    return reports
+
+
+@lru_cache(maxsize=128)
+def _direct_governance_evidence_reports_for_context(
+    stream_items: tuple[tuple[str, str], ...],
+    page_slugs: tuple[str, ...],
+) -> dict[str, dict[str, Any]]:
+    bundles = product_page_trace_bundles()
+    streams = {name: Path(path) for name, path in stream_items}
+    validation_pages = _payload_pages_by_slug(
+        page_governance_record_validation(
+            bundles,
+            streams,
+            list(page_slugs),
+            list(GOVERNANCE_STREAM_NAMES),
+            max_results=20,
+        )
+    )
+    audit_pages = {
+        page_slug: page_governance_audit_review_checklist_row(page)
+        for page_slug, page in validation_pages.items()
+    }
+    reports: dict[str, dict[str, Any]] = {}
+    for page_slug in page_slugs:
+        validation_page = validation_pages.get(page_slug)
+        audit_page = audit_pages.get(page_slug)
+        reports[page_slug] = {
+            "catalog_date_evidence": _missing_direct_catalog_date_summary(),
             "governance_record_validation": (
                 _direct_governance_summary(validation_page, audit_page)
                 if validation_page is not None and audit_page is not None
@@ -937,7 +995,7 @@ def build_route_scope_classification_report(
         seeded_pages = pages
     else:
         page_slugs = seeded_page_slugs()
-        direct_evidence_reports = _all_direct_evidence_reports_for_current_context()
+        direct_evidence_reports = _direct_governance_evidence_reports_for_current_context()
         seeded_pages = [
             build_page_readiness_report(
                 page_slug,

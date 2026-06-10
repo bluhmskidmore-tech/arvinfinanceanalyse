@@ -77,7 +77,7 @@ Fastest closure order from current evidence:
 
 ## Ledger PnL Direct-Record Drill-Down
 
-A fresh Ledger PnL dry-run at `2026-06-10T15:20:42+08:00` confirms the current direct-record issue is not a missing-field problem in the candidate payload. `python scripts\emit_ledger_pnl_governance_record.py` generated a field-complete `PAGE-LEDGER-PNL-001` candidate for `/api/ledger-pnl/summary` with:
+A fresh Ledger PnL dry-run at `2026-06-10T19:22:49+08:00` confirms the current direct-record issue is not a missing-field problem in the candidate payload. `python scripts\emit_ledger_pnl_governance_record.py` generated a field-complete `PAGE-LEDGER-PNL-001` candidate for `/api/ledger-pnl/summary` with:
 
 - `report_date=2026-05-31`
 - `basis=ledger`
@@ -118,9 +118,9 @@ During this audit, PnL Attribution's service layer was narrowly adjusted so a mi
 ## Verification Commands
 
 - Local MCP stdio call: `moss-lineage-evidence.get_page_governance_audit_evidence_packet` for each of the seven pages.
-- Approval checker normal mode for all seven pages, refreshed at `2026-06-10T15:17:35+08:00` -> exit 0 with `approval_status=pending` and `business_owner_approval_captured=false`.
-- Approval checker strict mode for all seven pages, refreshed at `2026-06-10T15:17:35+08:00` -> exit 1, preserving the fail-closed owner approval gate.
-- Owner approval status pytest suite, refreshed at `2026-06-10T15:17:35+08:00` -> 91 passed.
+- Approval checker normal mode for all seven pages, refreshed at `2026-06-10T19:26:44+08:00` -> exit 0 with `approval_status=pending` and `business_owner_approval_captured=false`.
+- Approval checker strict mode for all seven pages, refreshed at `2026-06-10T19:26:44+08:00` -> exit 1, preserving the fail-closed owner approval gate.
+- Owner approval status pytest suite, refreshed at `2026-06-10T19:26:44+08:00` -> 93 passed.
 - `npm run test:a11y-smoke -- --grep '@(product-category-pnl|balance-analysis|average-balance|bond-analysis|ledger-pnl|stock-analysis|pnl-attribution)' --workers=1` -> 7 passed.
 - `npm.cmd run test -- <seven-page frontend test slice>` -> 20 test files passed, 517 tests passed.
 - PnL Attribution empty-storage and formal PnL storage fail-closed pytest slice -> 15 passed.

@@ -1,6 +1,6 @@
 {
   "report_kind": "ledger_pnl_direct_governance_record_snapshot",
-  "generated_at": "2026-06-10T15:20:42+08:00",
+  "generated_at": "2026-06-10T19:22:49+08:00",
   "repo_root": "F:\\MOSS-V3",
   "audit_date": "2026-06-10",
   "page": {
@@ -53,7 +53,7 @@
     "cache_version": "cv_ledger_pnl_v1",
     "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
     "result_kind": "ledger_pnl.summary",
-    "created_at": "2026-06-10T07:20:01.145454Z",
+    "created_at": "2026-06-10T11:22:49.893759Z",
     "formal_use_allowed": false
   },
   "written_record_search": {

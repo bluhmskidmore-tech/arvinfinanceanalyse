@@ -34,7 +34,7 @@
     {
       "blocker_id": "owner-approval-7-pages",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T15:17:35+08:00",
+      "last_checked_at": "2026-06-10T19:26:44+08:00",
       "responsible_owner_type": "page_business_owners_and_engineering_qa_gatekeeper",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-owner-review-brief.zh.md",
@@ -82,7 +82,7 @@
     {
       "blocker_id": "ledger-pnl-direct-governance-record",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T15:20:42+08:00",
+      "last_checked_at": "2026-06-10T19:22:49+08:00",
       "responsible_owner_type": "governance_owner_and_ledger_pnl_business_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json",
@@ -129,7 +129,7 @@
     {
       "blocker_id": "calculation-display-p1-decisions",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T15:07:55+08:00",
+      "last_checked_at": "2026-06-10T19:30:36+08:00",
       "responsible_owner_type": "business_owner_and_metric_governance",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-calculation-logic-audit.md",
@@ -179,7 +179,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T17:21:58+08:00",
+      "last_checked_at": "2026-06-10T19:07:21+08:00",
       "responsible_owner_type": "engineering_tooling_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -199,6 +199,7 @@
       ],
       "engineering_prework_available_now": [
         "repeat tool_search in the current Codex App tool surface and record the timestamped result",
+        "record focused keyword recheck counts, including 0-tool results, as non-closure evidence",
         "verify local .codex/config.toml, .mcp.json, and docs/MCP_RUNBOOK.md still declare the expected servers",
         "keep local stdio MCP and contract-suite evidence marked fallback-only"
       ],
@@ -222,7 +223,7 @@
     {
       "blocker_id": "local-secret-hygiene",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T15:45:10+08:00",
+      "last_checked_at": "2026-06-10T19:09:35+08:00",
       "responsible_owner_type": "environment_owner_and_security_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
@@ -243,6 +244,7 @@
       ],
       "engineering_prework_available_now": [
         "rerun safe boundary checks without reading config/.env values",
+        "record boundary-only rechecks separately from full redacted scans",
         "rerun redacted gitleaks and parse only file, line, rule, and secret-name evidence",
         "record OSV retry status without replacing the last successful result when network access fails"
       ],

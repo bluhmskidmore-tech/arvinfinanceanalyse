@@ -1,6 +1,6 @@
 {
   "report_kind": "owner_approval_fail_closed_snapshot",
-  "generated_at": "2026-06-10T15:17:35+08:00",
+  "generated_at": "2026-06-10T19:26:44+08:00",
   "repo_root": "F:\\MOSS-V3",
   "audit_date": "2026-06-10",
   "status": {
@@ -25,7 +25,7 @@
   },
   "test_result": {
     "owner_approval_test_files": 7,
-    "result": "91 passed"
+    "result": "93 passed"
   },
   "pages": [
     {

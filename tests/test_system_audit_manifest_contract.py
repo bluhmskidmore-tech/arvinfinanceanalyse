@@ -96,6 +96,14 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     assert all_pages["static_pass_count"] == counts["static_pass_pages"]
     assert all_pages["owner_approval_pending_count"] == counts["owner_approval_pending_pages"]
     assert all_pages["owner_approval_action_item_sum"] == counts["owner_approval_action_items"]
+    assert all_pages["direct_evidence_explicit_count"] == counts["seeded_pages"]
+    assert all_pages["direct_evidence_null_count"] == 0
+    assert all_pages["audit_review_null_count"] == 0
+    assert (
+        all_pages["missing_direct_records_count"]
+        + all_pages["direct_records_ready_for_audit_review_count"]
+        == counts["seeded_pages"]
+    )
     assert route_scope["business_contract_certified_count"] == counts[
         "business_contract_certified_routes"
     ]
@@ -187,7 +195,8 @@ def test_completion_checklist_maps_open_blockers_without_approval() -> None:
     assert "`calculation-display-p1-decisions`" in checklist
     assert "10 rows remain open" in checklist
     assert "`direct-app-mcp-gitnexus-evidence`" in checklist
-    assert "`tool_search` returned 0 direct tools" in checklist
+    assert "`tool_search` returned 0 relevant direct MOSS/GitNexus tools" in checklist
+    assert "focused MOSS/GitNexus keyword rechecks also returned 0 tools" in checklist
     assert "`local-secret-hygiene`" in checklist
     assert "redacted gitleaks 2 ignored/untracked" in checklist
     assert "do not run `python scripts\\emit_ledger_pnl_governance_record.py --write`" in checklist
@@ -236,6 +245,13 @@ def test_completion_snapshot_matches_open_blockers_and_stays_non_approving() -> 
         assert gate["fail_closed_until"]
 
     assert snapshot["summary"]["direct_app_tool_discovery_count"] == 0
+    assert snapshot["summary"]["readiness_direct_evidence_null_count"] == 0
+    assert snapshot["summary"]["readiness_audit_review_null_count"] == 0
+    assert (
+        snapshot["summary"]["readiness_missing_direct_records_count"]
+        + snapshot["summary"]["readiness_direct_records_ready_for_audit_review_count"]
+        == manifest["counts"]["seeded_pages"]
+    )
     assert snapshot["summary"]["local_secret_gitleaks_finding_count"] == 2
     assert "does not approve metrics" in snapshot["boundary"]
     assert "does not approve" in snapshot["boundary"]
@@ -348,17 +364,20 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "| P1-00A | Use the owner/governance follow-up packet" in action_register
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in action_register
     assert "follow_up_packet_count=5" in action_register
+    assert "calculation_prework_p1_count=10" in action_register
     assert "unauthorized Ledger PnL `--write`" in action_register
     assert "2026-06-10-owner-governance-follow-up-packet.json" in main_report
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in main_report
     assert "follow_up_packet_count=5" in main_report
     assert "follow_up_brief_blocker_count=5" in main_report
+    assert "calculation_prework_p1_count=10" in main_report
     assert "21 passed" in main_report
     assert "does not authorize Ledger PnL `--write`" in main_report
     assert "2026-06-10-owner-governance-follow-up-packet.json" in executive_summary_zh
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in executive_summary_zh
     assert "follow_up_packet_count=5" in executive_summary_zh
     assert "follow_up_brief_blocker_count=5" in executive_summary_zh
+    assert "calculation_prework_p1_count=10" in executive_summary_zh
     assert "21 passed" in executive_summary_zh
     assert "12 条优先级行动" in executive_summary_zh
     assert "不授权 Ledger PnL `--write`" in executive_summary_zh
@@ -424,7 +443,7 @@ def test_owner_approval_snapshot_matches_manifest_and_stays_fail_closed() -> Non
         "owner_approval_action_items"
     ]
     assert summary["strict_require_captured_rejected_count"] == summary["page_count"]
-    assert snapshot["test_result"]["result"] == "91 passed"
+    assert snapshot["test_result"]["result"] == "93 passed"
 
     open_owner_blocker = next(
         item for item in manifest["open_blockers"] if item["id"] == "owner-approval-7-pages"
@@ -580,6 +599,26 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
     assert snapshot["generated_at"] == discovery["checked_at"]
     assert discovery["discovered_tool_count"] == 0
     assert discovery["discovered_tools"] == []
+    focused_rechecks = {
+        item["query"]: item for item in snapshot["focused_rechecks"]
+    }
+    assert set(focused_rechecks) == {
+        "gitnexus MCP impact call path symbol repository evidence",
+        "moss metric contracts lineage evidence data catalog MCP tools",
+        "moss-data-catalog moss-lineage-evidence moss-metric-contracts",
+    }
+    gitnexus_recheck = focused_rechecks[
+        "gitnexus MCP impact call path symbol repository evidence"
+    ]
+    assert gitnexus_recheck["returned_tool_count"] == 0
+    assert gitnexus_recheck["returned_tools"] == []
+    assert gitnexus_recheck["relevant_direct_tool_count"] == 0
+    assert "no direct GitNexus or MOSS evidence tools" in gitnexus_recheck["interpretation"]
+    assert all(item["returned_tool_count"] == 0 for item in focused_rechecks.values())
+    assert all(
+        item["relevant_direct_tool_count"] == 0
+        for item in focused_rechecks.values()
+    )
 
     expected_servers = {
         "gitnexus",
@@ -621,6 +660,7 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
     assert "Start a fresh Codex App session" in runbook
     assert "Do not treat any of the following as direct App-surface closure" in runbook
     assert "Local stdio MCP handshake success." in runbook
+    assert "focused recheck results" in runbook
     assert "pytest tests/test_system_audit_manifest_contract.py -q" in runbook
     assert discovery["checked_at"] in runbook
 
@@ -725,11 +765,30 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     assert retry["osv_retry"]["exit_code"] == 1
     assert retry["osv_retry"]["status"] == "not_refreshed_network_proxy_refused"
     assert "proxy 127.0.0.1:9 refused" in retry["osv_retry"]["result"]
+    latest_boundary = snapshot["latest_boundary_only_recheck"]
+    assert latest_boundary["checked_at"] == "2026-06-10T19:09:35+08:00"
+    assert latest_boundary["values_read_by_human"] is False
+    assert latest_boundary["values_written_to_artifacts"] is False
+    assert latest_boundary["secret_values_captured"] is False
+    assert latest_boundary["scan_not_rerun"] is True
+    assert "did not replace the last full redacted scan evidence" in latest_boundary[
+        "reason"
+    ]
+    assert latest_boundary["boundary_checks"]["config_env_exists"] is True
+    assert latest_boundary["boundary_checks"]["git_check_ignore"]["matched_rule"] == (
+        ".gitignore:4:config/.env"
+    )
+    assert latest_boundary["boundary_checks"]["git_ls_files"]["tracked_path_count"] == 0
+    assert latest_boundary["boundary_checks"]["git_status_ignored"]["result"] == (
+        "!! config/.env"
+    )
+    assert latest_boundary["closure_effect"] == "none"
 
     assert "Do not paste credential values" in runbook
     assert "Do not add `config/.env` to Git." in runbook
     assert boundary["checked_at"] in runbook
     assert retry["checked_at"] in runbook
+    assert latest_boundary["checked_at"] in runbook
     assert "proxy `127.0.0.1:9` refused the connection" in runbook
     assert "does not read, expose, rotate, clear, or approve any secret value" in snapshot[
         "boundary"
@@ -738,7 +797,7 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     secret_blocker = next(
         item for item in manifest["open_blockers"] if item["id"] == "local-secret-hygiene"
     )
-    assert secret_blocker["last_checked_at"] == boundary["checked_at"]
+    assert secret_blocker["last_checked_at"] == latest_boundary["checked_at"]
 
     secret_evidence = next(
         item
@@ -747,6 +806,8 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     )
     assert boundary["checked_at"] in secret_evidence["result"]
     assert retry["checked_at"] in secret_evidence["result"]
+    assert latest_boundary["checked_at"] in secret_evidence["result"]
+    assert "boundary-only recheck" in secret_evidence["result"]
     assert "proxy 127.0.0.1:9 refused" in secret_evidence["result"]
 
 

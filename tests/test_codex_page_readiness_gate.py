@@ -64,11 +64,6 @@ def test_optional_direct_evidence_missing_batch_rows_stays_fail_closed(monkeypat
         "page_governance_record_validation",
         lambda *args, **kwargs: {"pages": []},
     )
-    monkeypatch.setattr(
-        readiness_module,
-        "page_governance_audit_review_checklist",
-        lambda *args, **kwargs: {"pages": []},
-    )
 
     try:
         report = build_page_readiness_report("pnl")
@@ -1967,6 +1962,58 @@ def test_route_scope_classification_keeps_certification_claim_route_scoped() -> 
     assert "news-events" in payload["next_evidence_pending_routes"]
     assert "bond-analysis" not in payload["next_gate_i_gap_routes"]
     assert payload["next_gate_i_gap_routes"] == []
+
+
+def test_route_scope_classification_skips_catalog_date_sampling(monkeypatch) -> None:
+    readiness_module._direct_governance_evidence_reports_for_context.cache_clear()
+
+    def fail_catalog_date_sampling(*_args, **_kwargs):
+        raise AssertionError("route-scope classification should not sample catalog dates")
+
+    def governance_record_validation(_bundles, _streams, page_slugs, _stream_names, *, max_results):
+        assert max_results == 20
+        return {
+            "pages": [
+                {
+                    "page_slug": page_slug,
+                    "page_id": f"TEST-{page_slug}",
+                    "page_name": page_slug,
+                    "frontend_route": f"/{page_slug}",
+                    "primary_api": f"/api/test/{page_slug}",
+                    "approval_status": "candidate_or_pending",
+                    "record_formal_use_policy": {
+                        "formal_use_allowed": False,
+                        "certification_effect": "none",
+                    },
+                    "validation_status": "missing_direct_records",
+                    "direct_record_validations": [],
+                    "expanded_anchor_records": [],
+                    "residual_gaps": [],
+                }
+                for page_slug in page_slugs
+            ]
+        }
+
+    monkeypatch.setattr(
+        readiness_module,
+        "page_catalog_date_evidence",
+        fail_catalog_date_sampling,
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "page_governance_audit_review_checklist",
+        fail_catalog_date_sampling,
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "page_governance_record_validation",
+        governance_record_validation,
+    )
+
+    payload = readiness_module.build_route_scope_classification_report()
+
+    assert payload["scope"] == "route-scope-classification"
+    assert payload["summary"]["seeded_trace_bundle_count"] == 39
 
 
 def test_all_page_readiness_embeds_route_scope_classification_summary() -> None:

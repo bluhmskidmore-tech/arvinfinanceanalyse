@@ -2,7 +2,7 @@
 
 ## 一句话结论
 
-本轮系统审计已经形成完整证据包和执行队列，并新增 owner/governance 跟进包把 5 个开放阻塞逐项路由到责任 owner、所需输入、治理输出和验证命令；但系统尚未达到业务闭环。当前仍开放：页面 owner approval、Ledger PnL 直接治理记录、10 个剩余计算/展示 P1 口径裁决、direct App MCP/GitNexus 证据、以及本地 secret hygiene。真实后端全量 browser smoke 已完成 47/47 通过，审计快照 verifier 报告 `follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`，合同测试为 19 passed；这些只证明技术证据包自洽，不等于业务批准。
+本轮系统审计已经形成完整证据包和执行队列，并新增 owner/governance 跟进包把 5 个开放阻塞逐项路由到责任 owner、所需输入、治理输出和验证命令；但系统尚未达到业务闭环。当前仍开放：页面 owner approval、Ledger PnL 直接治理记录、10 个剩余计算/展示 P1 口径裁决、direct App MCP/GitNexus 证据、以及本地 secret hygiene。真实后端全量 browser smoke 已完成 47/47 通过，审计快照 verifier 报告 `follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`、`calculation_prework_p1_count=10`，合同测试为 21 passed；这些只证明技术证据包自洽，不等于业务批准。
 
 ## 已完成的审计交付
 
@@ -12,10 +12,10 @@
 | `2026-06-10-system-audit-index.md` | 本次审计文件入口。 |
 | `2026-06-10-system-audit-action-register.md` | 后续执行队列，含 12 条优先级行动。 |
 | `2026-06-10-system-audit-completion-checklist.md` | 审计完成度检查清单，保持 5 个 completion gate fail-closed。 |
-| `2026-06-10-system-audit-completion-snapshot.json` | 机器可读完成快照：5 个开放阻塞、5 个 completion gate、`follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`。 |
+| `2026-06-10-system-audit-completion-snapshot.json` | 机器可读完成快照：5 个开放阻塞、5 个 completion gate、`follow_up_packet_count=5`、`follow_up_brief_blocker_count=5`、`calculation_prework_p1_count=10`。 |
 | `2026-06-10-owner-governance-follow-up-packet.json` | owner/governance 跟进包：路由 5 个开放阻塞，但不批准指标、页面、治理记录或 route certification。 |
 | `2026-06-10-owner-governance-follow-up-brief.zh.md` | owner/governance 中文跟进简报：把 5 个开放阻塞转成可开会、可分派、可复核的责任清单。 |
-| `scripts/verify_system_audit_completion_snapshot.py` / `tests/test_system_audit_*.py` | 审计包一致性 guard：当前窄测为 19 passed。 |
+| `scripts/verify_system_audit_completion_snapshot.py` / `tests/test_system_audit_*.py` | 审计包一致性 guard：当前窄测为 21 passed，并覆盖 10 个开放计算/展示 P1 的工程预备映射。 |
 | `2026-06-10-calculation-logic-audit.md` | 计算/展示逻辑专项审计，记录 10 个剩余开放 P1；P1-08 已验证关闭。 |
 | `2026-06-10-calculation-p1-owner-decision-matrix.md` | 10 个剩余 P1 的 owner 裁决矩阵，另记录 P1-08 关闭证据。 |
 | `2026-06-10-owner-approval-mcp-evidence-summary.md` | 7 个 owner approval 待完成页面的 MCP/审批证据汇总。 |
