@@ -2148,7 +2148,7 @@ export function BondAnalyticsInstitutionalCockpit({
                     <span>DV01 {Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : "—"}</span>
                   </div>
                   <div className={styles.footerActionBar}>
-                    <span>按钮仅挂在动作归因证据块内，不独立悬浮成通用操作。</span>
+                    <span>市值变动与 DV01 变动用于核对动作归因字段返回范围。</span>
                     <Button size="small" type="text" data-testid="bond-analysis-decision-next-action" onClick={() => onOpenModuleDetail?.("action-attribution")}>
                       打开动作归因
                     </Button>
@@ -2176,7 +2176,7 @@ export function BondAnalyticsInstitutionalCockpit({
                   只列已返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。
                 </div>
                 <div className={styles.footerActionBar}>
-                  <span>下钻入口绑定在当前风险字段上下文。</span>
+                  <span>信用利差字段以下钻返回为准；缺失继续保留证据缺口。</span>
                   <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread-footer" onClick={() => onOpenModuleDetail?.("credit-spread")}>
                     打开信用利差
                   </Button>

@@ -1361,6 +1361,52 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(COCKPIT_CSS).not.toContain(".footerSparkline");
   });
 
+  it("renders the footer evidence grid as a primary summary card with a support stack", async () => {
+    renderCockpit(createApiClient({ mode: "mock" }));
+
+    const dashboard = await screen.findByTestId("bond-analysis-reference-dashboard");
+    const footerGrid = within(dashboard).getByTestId("bond-analysis-footer-evidence-grid");
+    const summaryCard = within(footerGrid).getByTestId("bond-analysis-summary-card");
+    const supportStack = within(footerGrid).getByTestId("bond-analysis-footer-support-stack");
+    const primaryEvidence = within(summaryCard).getByTestId("bond-analysis-footer-primary-evidence");
+    const trendBoundary = within(summaryCard).getByTestId("bond-analysis-return-trend-boundary");
+    const actionAttributionCard = within(supportStack).getByTestId("bond-analysis-today-focus");
+    const riskGuardrails = within(supportStack).getByTestId("bond-analysis-risk-guardrails");
+
+    expect(summaryCard).toBeInTheDocument();
+    expect(supportStack).toBeInTheDocument();
+    expect(summaryCard).toContainElement(primaryEvidence);
+    expect(primaryEvidence).toContainElement(trendBoundary);
+    expect(trendBoundary).toHaveTextContent("不绘制趋势占位");
+    expect(actionAttributionCard).toHaveTextContent("动作归因");
+    expect(actionAttributionCard).toHaveTextContent("市值变动与 DV01 变动用于核对动作归因字段返回范围。");
+    expect(riskGuardrails).toHaveTextContent("只列已返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。");
+    expect(riskGuardrails).toHaveTextContent("信用利差字段以下钻返回为准；缺失继续保留证据缺口。");
+    expect(riskGuardrails).not.toHaveTextContent("风险可控");
+    expect(riskGuardrails).not.toHaveTextContent("健康");
+    expect(riskGuardrails).not.toHaveTextContent("稳定");
+  });
+
+  it("locks the footer evidence CSS structure without sparkline placeholders", () => {
+    const footerGridRule = cssRuleBody(".referenceFooterGrid");
+    const footerSupportStackRule = cssRuleBody(".footerSupportStack");
+    const footerEvidenceBlockRule = cssRuleBody(".footerEvidenceBlock");
+    const footerActionBarRule = cssRuleBody(".footerActionBar");
+
+    expect(footerGridRule).toContain("display: grid");
+    expect(footerGridRule).toContain("grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr)");
+    expect(footerSupportStackRule).toContain("display: grid");
+    expect(footerSupportStackRule).toContain("gap: 1px");
+    expect(footerSupportStackRule).toContain("min-width: 0");
+    expect(footerEvidenceBlockRule).toContain("display: grid");
+    expect(footerEvidenceBlockRule).toContain("gap: 8px");
+    expect(footerEvidenceBlockRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
+    expect(footerActionBarRule).toContain("display: grid");
+    expect(footerActionBarRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(footerActionBarRule).toContain("align-items: center");
+    expect(COCKPIT_CSS).not.toContain(".footerSparkline");
+  });
+
   it("keeps cockpit cards in a compact institutional panel style", () => {
     const source = readFileSync(
       resolve(
