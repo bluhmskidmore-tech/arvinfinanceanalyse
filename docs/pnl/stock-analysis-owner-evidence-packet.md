@@ -45,7 +45,7 @@ Out of scope:
 ## Governance Dry-Run
 
 Governance record write status: `not_requested`
-Governance validation status: `missing_direct_records`
+Governance validation status: `direct_records_ready_for_audit_review`
 
 ## Configured Table Anchors
 
@@ -60,6 +60,7 @@ Governance validation status: `missing_direct_records`
 - signoff_packet: `docs/pnl/stock-analysis-sign-off-packet.md`
 - governance_audit_packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 - approval_template: `docs/pnl/stock-analysis-business-owner-approval-template.md`
+- owner_signoff_runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`
 - golden_sample: `tests/golden_samples/GS-STOCK-ANALYSIS-OBS-A`
 - readiness_command: `python scripts/codex_page_readiness.py --page-slug stock-analysis`
 

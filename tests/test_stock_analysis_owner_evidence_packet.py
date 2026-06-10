@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "stock_analysis_owner_evidence_packet.py"
 SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-sign-off-packet.md"
 GOVERNANCE_AUDIT_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-governance-audit-packet.md"
+OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "stock-analysis-owner-evidence-packet.md"
+OWNER_SIGNOFF_RUNBOOK = ROOT / "docs" / "pnl" / "stock-analysis-owner-signoff-runbook.md"
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -69,6 +71,9 @@ def test_stock_analysis_owner_evidence_packet_preserves_observational_boundary()
     }
     assert "trading instructions" in packet["out_of_scope_surfaces"]
     assert "not_trading_instruction_review" in packet["remaining_blockers"]
+    assert packet["evidence_anchors"]["owner_signoff_runbook"] == (
+        "docs/pnl/stock-analysis-owner-signoff-runbook.md"
+    )
 
 
 def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path) -> None:
@@ -105,7 +110,14 @@ def test_stock_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path
     assert "Governance validation status: `direct_records_ready_for_audit_review`" in text
     assert "This packet does not approve page closure" in text
     assert "- `certification_effect=none`" in text
+    assert "- owner_signoff_runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`" in text
     assert "No-trading-instruction boundary accepted: `yes` (`pending`)" in text
+
+
+def test_stock_analysis_owner_evidence_packet_surfaces_owner_runbook_anchor() -> None:
+    owner_packet = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
+
+    assert "- owner_signoff_runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`" in owner_packet
 
 
 def test_stock_analysis_signoff_and_audit_packets_surface_no_certification_scope() -> None:
@@ -119,3 +131,31 @@ def test_stock_analysis_signoff_and_audit_packets_surface_no_certification_scope
         assert "- `proves_page_execution=false`" in text
         assert "- `captures_business_owner_approval=false`" in text
         assert "- `certification_effect=none`" in text
+
+
+def test_stock_analysis_owner_signoff_runbook_preserves_observational_boundary() -> None:
+    text = OWNER_SIGNOFF_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "It does not approve closure by itself." in text
+    assert "`GAP-STOCK-ANALYSIS-PAGE`" in text
+    assert "`/ui/market-data/livermore`" in text
+    assert "`docs/pnl/stock-analysis-business-owner-approval-template.md`" in text
+    assert "`docs/pnl/stock-analysis-owner-evidence-packet.md`" in text
+    assert "`docs/pnl/stock-analysis-sign-off-packet.md`" in text
+    assert "`docs/pnl/stock-analysis-governance-audit-packet.md`" in text
+    assert "Keep `formal_use_allowed=false`." in text
+    assert "Keep `closure_approved=false`." in text
+    assert "Keep `certification_effect=none`." in text
+    assert "Do not create `PAGE-STOCK-*` page contracts." in text
+    assert "Do not create or promote `MTR-STOCK-*` metric approvals." in text
+    assert "formal stock-analysis truth" in text
+    assert "trading instructions" in text
+    assert "execution approvals" in text
+    assert "allocation advice" in text
+    assert "position-change commands" in text
+    assert "dry-run governance output" in text
+    assert "`GS-STOCK-ANALYSIS-OBS-A`" in text
+    assert "captured-awaiting-approval" in text
+    assert "python scripts/codex_page_readiness.py --page-slug stock-analysis" in text
+    assert "python scripts/check_stock_analysis_business_owner_approval.py --require-captured" in text
+    assert "scripts/codex-verify-page.ps1 -PageSlug stock-analysis -Run" in text

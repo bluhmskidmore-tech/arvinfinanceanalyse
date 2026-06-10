@@ -46,6 +46,7 @@ Business owner signature: `<required>`
 Reviewed sign-off packet: `docs/pnl/stock-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/stock-analysis-owner-evidence-packet.md`
+Owner signoff runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`
 
 ## Evidence Review
 
@@ -216,3 +217,15 @@ def test_stock_analysis_business_owner_approval_checker_rejects_bad_approval_dat
     assert completed.returncode == 0
     assert payload["business_owner_approval_captured"] is False
     assert payload["remaining_blockers"] == ["business_owner_approval", "approval_date"]
+
+
+def test_stock_analysis_business_owner_approval_template_references_owner_runbook() -> None:
+    text = TEMPLATE.read_text(encoding="utf-8")
+
+    assert "Reviewed sign-off packet: `docs/pnl/stock-analysis-sign-off-packet.md`" in text
+    assert (
+        "Reviewed governance audit packet: "
+        "`docs/pnl/stock-analysis-governance-audit-packet.md`"
+    ) in text
+    assert "Reviewed owner evidence packet: `docs/pnl/stock-analysis-owner-evidence-packet.md`" in text
+    assert "Owner signoff runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`" in text

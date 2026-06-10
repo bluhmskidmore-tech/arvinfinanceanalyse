@@ -33,6 +33,11 @@ Fixed-income convention decision draft: `docs/pnl/bond-analysis-fixed-income-con
 8. Run `python scripts/codex_page_readiness.py --page-slug bond-analysis`.
 9. Run `python scripts/check_bond_analysis_business_owner_approval.py`.
 10. Run `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run`.
+11. Review latest verification evidence in `docs/pnl/bond-analysis-sign-off-packet.md`.
+12. Run `python -m pytest tests/test_golden_samples_capture_ready.py -q`.
+13. Run `python -m pytest tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py -q`.
+
+Owner boundary verification must still report approval pending before the template is signed.
 
 ## Approval Template Fill Rules
 

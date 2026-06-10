@@ -34,6 +34,7 @@ Business owner signature: `<required>`
 Reviewed sign-off packet: `docs/pnl/stock-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/stock-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/stock-analysis-owner-evidence-packet.md`
+Owner signoff runbook: `docs/pnl/stock-analysis-owner-signoff-runbook.md`
 
 ## Evidence Review
 

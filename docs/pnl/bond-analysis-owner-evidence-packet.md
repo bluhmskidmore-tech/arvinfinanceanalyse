@@ -63,6 +63,12 @@ Commands:
 - Live smoke evidence: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
 - Live smoke command: `scripts/codex-page-smoke.ps1 -PageSlug bond-analysis`
 - Readiness command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`
+- Full page verification command: `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run`
+- Full page verification result: `passed: candidate governance tests, bond analytics backend tests, frontend tests, browser a11y smoke, typecheck, debt audit, and production build`
+- Golden sample capture-ready command: `python -m pytest tests/test_golden_samples_capture_ready.py -q`
+- Golden sample capture-ready result: `passed: 28 tests`
+- Owner boundary command: `python -m pytest tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py -q`
+- Owner boundary result: `passed: 36 tests; owner approval remains fail-closed`
 - Boundary: Direct governance record and static readiness are ready for audit review. UI/API payload and live smoke evidence remain reviewer-confirmation inputs only; owner approval remains pending.
 
 ## Manual Review Evidence References
