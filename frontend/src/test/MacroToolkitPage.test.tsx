@@ -3236,6 +3236,60 @@ describe("MacroToolkitPage", () => {
     );
   });
 
+  it("renders degraded model-chain runs as warning instead of success", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const client = {
+      ...baseClient,
+      runMacroToolkitScriptChain: async (options) => {
+        const response = await baseClient.runMacroToolkitScriptChain(options);
+        return {
+          ...response,
+          result: {
+            ...response.result,
+            run: {
+              ...response.result.run,
+              status: "degraded",
+              dry_run: false,
+            },
+          },
+        };
+      },
+    } as ApiClient;
+    const user = userEvent.setup();
+
+    renderWorkbenchApp(["/macro-toolkit"], { client });
+
+    const operationsConsole = await screen.findByTestId("macro-toolkit-operations-console");
+    await user.click(within(operationsConsole).getByRole("button", { name: /运行模型链/ }));
+
+    const chainRunStatus = await within(operationsConsole).findByText(/degraded/);
+    const chainRunAlert = requireClosestElement(chainRunStatus.closest(".ant-alert"), "model chain alert");
+    expect(chainRunAlert).toHaveClass("ant-alert-warning");
+    expect(chainRunAlert).not.toHaveClass("ant-alert-success");
+  });
+
+  it("keeps mock execution receipts degraded when expected artifacts stay missing", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const response = await client.runMacroToolkitScriptChain({ dryRun: false, timeoutSeconds: 30 });
+    const receiptsByScript = new Map(response.result.run.receipts.map((receipt) => [receipt.script_name, receipt]));
+
+    for (const [scriptName, missingOutputs] of [
+      ["dcc_garch_cn", ["dcc_latest.csv", "dcc_results.csv"]],
+      ["cta_trend_cn", ["cta_results.csv"]],
+      ["risk_monitor", ["risk_log.csv", "risk_state.csv"]],
+    ] as const) {
+      const receipt = receiptsByScript.get(scriptName);
+      expect(receipt?.status).toBe("completed");
+      expect(receipt?.missing_outputs_after).toEqual(missingOutputs);
+      expect(receipt?.produced_outputs).toEqual([]);
+      expect(receipt?.degraded_reason).toBe("missing_expected_outputs_after_run");
+      expect(receipt?.data_asof).toBeNull();
+      expect(receipt?.formal_use_allowed).toBe(false);
+      expect(receipt?.observation_only).toBe(true);
+    }
+  });
+
   it("prefers committee evidence scripts for the default run action", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const scriptsEnvelope = await baseClient.getMacroToolkitScripts();
@@ -4838,7 +4892,7 @@ describe("MacroToolkitPage", () => {
     expect(repairFeedback).toHaveTextContent("commodity preview unavailable");
   });
 
-  it("previews Crisis Score suggested commodity futures from the evidence panel", async () => {
+  it("previews Crisis Score suggested commodity futures and queues refresh from the evidence panel", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
     const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
@@ -4971,16 +5025,13 @@ describe("MacroToolkitPage", () => {
       products: ["RB", "I", "AL", "AU"],
       dryRun: false,
     });
-    expect(commodityPanel).toHaveTextContent("商品期货刷新完成：4 个品种，88 行");
-    expect(commodityPanel).toHaveTextContent("完整分析证据已重新读取");
-    expect(commodityPanel).toHaveTextContent("Crisis Score 样本缺口变化");
-    expect(commodityPanel).toHaveTextContent("Rebar futures 17/20 -> 20/20");
-    expect(commodityPanel).toHaveTextContent("Iron ore futures 17/20 -> 20/20");
-    expect(commodityPanel).toHaveTextContent("Aluminum futures 17/20 -> 20/20");
-    expect(commodityPanel).toHaveTextContent("Gold futures 17/20 -> 20/20");
+    await waitFor(() =>
+      expect(commodityPanel).toHaveTextContent("商品期货刷新已排队，4 个品种，等待后台任务完成"),
+    );
+    expect(commodityPanel).toHaveTextContent("商品期货刷新已排队，等待后台任务完成。");
+    expect(commodityPanel).not.toHaveTextContent("完整分析证据已重新读取");
+    expect(commodityPanel).not.toHaveTextContent("Crisis Score 样本缺口变化");
     const reloadedCrisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
-    await waitFor(() => expect(reloadedCrisisEvidence).toHaveTextContent("2026-06-01"));
-    expect(reloadedCrisisEvidence).toHaveTextContent("3187.42");
     const operationsConsoleAfterCommodity = await screen.findByTestId("macro-toolkit-operations-console");
     const commodityWorkQueue = within(operationsConsoleAfterCommodity).getByTestId("macro-toolkit-committee-work-queue");
     const commoditySignoff = within(commodityWorkQueue).getByLabelText("投委会签核轨道");
@@ -4989,15 +5040,7 @@ describe("MacroToolkitPage", () => {
     expect(commoditySignoff).toHaveTextContent("数据健康");
     expect(commodityWorkQueue).toHaveTextContent("商品期货刷新");
     expect(commodityWorkQueue).toHaveTextContent("回执待复核");
-    const closurePanel = within(reloadedCrisisEvidence).getByLabelText("Crisis Score 样本刷新闭环");
-    expect(closurePanel).toHaveTextContent("建议品种 RB / I / AL / AU");
-    expect(closurePanel).toHaveTextContent("实际刷新 RB / I / AL / AU");
-    expect(closurePanel).toHaveTextContent("完整分析已重读");
-    expect(closurePanel).toHaveTextContent("已补齐 4/4");
-    expect(closurePanel).toHaveTextContent("Rebar futures");
-    expect(closurePanel).toHaveTextContent("刷新前 17/20");
-    expect(closurePanel).toHaveTextContent("刷新后 20/20");
-    expect(closurePanel).toHaveTextContent("剩余缺口 0");
+    expect(within(reloadedCrisisEvidence).queryByLabelText("Crisis Score 样本刷新闭环")).not.toBeInTheDocument();
   });
 
   it("shows remaining Crisis Score sample gaps when the commodity preview is still short", async () => {
@@ -5019,10 +5062,14 @@ describe("MacroToolkitPage", () => {
               ...response.result.refresh,
               estimated_total_rows: 4,
               estimated_trading_days: 1,
-              products: response.result.refresh.products?.map((product) => ({
-                ...product,
-                estimated_rows: 1,
-              })),
+              products: response.result.refresh.products?.map((product) =>
+                typeof product === "string"
+                  ? product
+                  : {
+                      ...product,
+                      estimated_rows: 1,
+                    },
+              ),
             },
           },
         };
@@ -5059,7 +5106,7 @@ describe("MacroToolkitPage", () => {
     ).toBeEnabled();
   });
 
-  it("keeps a partial Crisis Score sample closure after commodity refresh reloads full evidence", async () => {
+  it("keeps Crisis Score sample gaps pending while queued commodity refresh waits for the worker", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const analysisEnvelope = await baseClient.getMacroToolkitAnalysis({ detail: "full" });
     const refreshCalls: Array<Parameters<ApiClient["refreshCommodityFutures"]>[0]> = [];
@@ -5148,17 +5195,16 @@ describe("MacroToolkitPage", () => {
       products: ["RB", "I", "AL", "AU"],
       dryRun: false,
     });
+    const commodityPanel = await screen.findByLabelText("商品期货刷新");
+    await waitFor(() =>
+      expect(commodityPanel).toHaveTextContent("商品期货刷新已排队，4 个品种，等待后台任务完成"),
+    );
+    const repairFeedback = await screen.findByTestId("crisis-gap-repair-feedback");
+    expect(repairFeedback).toHaveTextContent("商品期货刷新已排队。");
+    expect(repairFeedback).toHaveTextContent("等待后台任务完成");
     const reloadedCrisisEvidence = await screen.findByLabelText("Crisis Score 数据来源");
-    const closurePanel = await within(reloadedCrisisEvidence).findByLabelText("Crisis Score 样本刷新闭环");
-    expect(closurePanel).toHaveTextContent("建议品种 RB / I / AL / AU");
-    expect(closurePanel).toHaveTextContent("实际刷新 RB / I / AL / AU");
-    expect(closurePanel).toHaveTextContent("完整分析已重读");
-    expect(closurePanel).toHaveTextContent("已补齐 2/4");
-    expect(closurePanel).toHaveTextContent("Rebar futures");
-    expect(closurePanel).toHaveTextContent("刷新前 17/20");
-    expect(closurePanel).toHaveTextContent("刷新后 19/20");
-    expect(closurePanel).toHaveTextContent("剩余缺口 1");
-    expect(reloadedCrisisEvidence).toHaveTextContent("完整分析已重读，仍有缺口");
+    expect(within(reloadedCrisisEvidence).queryByLabelText("Crisis Score 样本刷新闭环")).not.toBeInTheDocument();
+    expect(reloadedCrisisEvidence).not.toHaveTextContent("完整分析已重读，仍有缺口");
     expect(reloadedCrisisEvidence).toHaveTextContent("COMMODITY_SAMPLE_SHORT");
   });
 
@@ -6537,6 +6583,26 @@ describe("MacroToolkitPage", () => {
     const scriptTraceDetail = scriptTraceMetric.querySelector("small");
     expect(scriptTraceDetail).toHaveAttribute("title", expect.stringContaining("rebalance_cn[allocation]:missing"));
     expect(scriptTraceDetail).toHaveAttribute("title", expect.stringContaining("risk_parity_cn[allocation]"));
+  });
+
+  it("surfaces model readiness blockers as observation-only instead of healthy", async () => {
+    renderWorkbenchApp(["/macro-toolkit"]);
+
+    const readinessDetail = await screen.findByTestId("macro-toolkit-model-readiness-detail");
+
+    expect(readinessDetail).toHaveTextContent("model readiness");
+    expect(readinessDetail).toHaveTextContent("observation-only");
+    expect(readinessDetail).toHaveTextContent("DCC-GARCH missing output");
+    expect(readinessDetail).toHaveTextContent("CTA Trend missing output");
+    expect(readinessDetail).toHaveTextContent("Risk Monitor missing output");
+    expect(readinessDetail).toHaveTextContent("dcc_latest.csv");
+    expect(readinessDetail).toHaveTextContent("dcc_results.csv");
+    expect(readinessDetail).toHaveTextContent("cta_results.csv");
+    expect(readinessDetail).toHaveTextContent("risk_log.csv");
+    expect(readinessDetail).toHaveTextContent("risk_state.csv");
+    expect(readinessDetail).not.toHaveTextContent("DCC-GARCH artifact-backed");
+    expect(readinessDetail).not.toHaveTextContent("CTA Trend artifact-backed");
+    expect(readinessDetail).not.toHaveTextContent("Risk Monitor artifact-backed");
   });
 
   it("keeps the page frame and non-formal boundary visible while core analysis is still loading", async () => {

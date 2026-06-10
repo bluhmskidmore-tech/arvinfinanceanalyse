@@ -36,9 +36,11 @@ import type {
   MacroToolkitHasonStrategy,
   MacroToolkitInputEvidence,
   MacroToolkitIndicator,
+  MacroToolkitModelReadiness,
   MacroToolkitOutputFile,
   MacroToolkitRunResponse,
   MacroToolkitScriptRecord,
+  MacroToolkitScriptChainRun,
   MacroToolkitSignalCard,
   MacroToolkitShadowPortfolio,
   MacroToolkitShadowPortfolioHolding,
@@ -422,6 +424,13 @@ function statusTone(status: MacroToolkitRunResponse["status"]) {
   if (status === "completed") return "success";
   if (status === "timeout") return "warning";
   return "error";
+}
+
+function chainRunAlertType(status: string): "success" | "warning" | "error" | "info" {
+  if (status === "failed" || status === "timeout") return "error";
+  if (status === "degraded") return "warning";
+  if (status === "completed" || status === "dry_run") return "success";
+  return "info";
 }
 
 function toneTagColor(tone: MacroToolkitSignalCard["tone"]) {
@@ -1236,6 +1245,9 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const committeeActionLocatorRef = useRef<HTMLDivElement | null>(null);
   const [runResult, setRunResult] = useState<MacroToolkitRunResponse | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [chainRunResult, setChainRunResult] = useState<MacroToolkitScriptChainRun | null>(null);
+  const [chainRunError, setChainRunError] = useState<string | null>(null);
+  const [isRunningChain, setIsRunningChain] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isRefreshingCffex, setIsRefreshingCffex] = useState(false);
@@ -1469,6 +1481,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
   const isOperationActionBusy =
     isMacroRefreshing ||
     isRunning ||
+    isRunningChain ||
     isRefreshingChoiceStock ||
     isRefreshingCffex ||
     refreshingSourceAlias != null;
@@ -2452,6 +2465,66 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     strategyQuery,
   ]);
 
+  const runScriptChain = useCallback(async (dryRun: boolean) => {
+    const receiptId = nextActionReceiptId(dryRun ? "script-chain-dry-run" : "script-chain");
+    const receiptDecision = actionReceiptDecisionFields("script");
+    setIsRunningChain(true);
+    setChainRunError(null);
+    setChainRunResult(null);
+    recordActionReceipt({
+      id: receiptId,
+      ...receiptDecision,
+      action: dryRun ? "预检模型运行链" : "运行模型链",
+      status: "running",
+      time: "进行中",
+      target: "macro_toolkit_chain",
+      artifact: payload?.output_dir ?? "data/macro_toolkit/output",
+      nextStep: dryRun ? "核对 manifest 与 expected_outputs" : "等待模型链返回后核对产物回执",
+    });
+    try {
+      const response = await client.runMacroToolkitScriptChain({ dryRun });
+      const result = response.result.run;
+      setChainRunResult(result);
+      recordActionReceipt({
+        id: receiptId,
+        ...receiptDecision,
+        action: dryRun ? "预检模型运行链" : "运行模型链",
+        status: result.status === "completed" || result.status === "dry_run" ? "completed" : "warning",
+        time: "刚刚",
+        target: "macro_toolkit_chain",
+        artifact: `步骤 ${result.receipts.length}/${result.manifest.length} · 缺口 ${result.readiness_after.degraded_count}`,
+        nextStep: "核对 model_readiness 与 receipts",
+      });
+      await clearFullAnalysisCache();
+      await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
+      await loadFullAnalysis();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "模型链运行失败";
+      setChainRunError(errorMessage);
+      recordActionReceipt({
+        id: receiptId,
+        ...receiptDecision,
+        action: dryRun ? "预检模型运行链" : "运行模型链",
+        status: "failed",
+        time: "刚刚",
+        target: "macro_toolkit_chain",
+        artifact: errorMessage,
+        nextStep: "检查执行权限、脚本依赖和运行链回执",
+      });
+    } finally {
+      setIsRunningChain(false);
+    }
+  }, [
+    analysisQuery,
+    clearFullAnalysisCache,
+    client,
+    loadFullAnalysis,
+    payload?.output_dir,
+    recordActionReceipt,
+    scriptsQuery,
+    strategyQuery,
+  ]);
+
   const refreshCffexMemberRank = useCallback(async () => {
     const receiptId = nextActionReceiptId("cffex");
     const receiptDecision = actionReceiptDecisionFields("cffex");
@@ -2860,6 +2933,7 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       const refresh = response.result.refresh;
       setCommodityRefreshRun(refresh);
       setCommodityRefreshResult(formatCommodityRefreshResult(refresh));
+      const isQueuedRefresh = refresh.status === "queued";
       recordActionReceipt({
         id: receiptId,
         ...receiptDecision,
@@ -2879,6 +2953,20 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
         refreshedProducts: commodityRefreshRunProducts(refresh),
         fullReloaded: false,
       });
+      if (isQueuedRefresh) {
+        setCommodityEvidenceReloadMessage("商品期货刷新已排队，等待后台任务完成。");
+        if (commodityGapGroup) {
+          setCrisisGapRepairFeedback({
+            groupKey: commodityGapGroup.key,
+            groupLabel: commodityGapGroup.label,
+            status: "pending",
+            message: "商品期货刷新已排队。",
+            detail: formatCommodityRefreshResult(refresh),
+          });
+        }
+        await scriptsQuery.refetch();
+        return;
+      }
       await clearFullAnalysisCache({ preserveCrisisGapRepairFeedback: shouldReloadFullAnalysis && Boolean(commodityGapGroup) });
       await Promise.all([scriptsQuery.refetch(), analysisQuery.refetch(), strategyQuery.refetch()]);
       if (shouldReloadFullAnalysis) {
@@ -3474,7 +3562,11 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
     </section>
   ) : null;
   const hasonStrategySection = hasonStrategy ? (
-    <HasonMacroStrategyPanel strategy={hasonStrategy} variant={showOperations ? "detail" : "observation"} />
+    <HasonMacroStrategyPanel
+      strategy={hasonStrategy}
+      modelReadiness={analysis?.model_readiness}
+      variant={showOperations ? "detail" : "observation"}
+    />
   ) : null;
   const observationEvidenceTraceSummary = analysis ? (
     <ObservationEvidenceTraceSummary
@@ -4325,6 +4417,22 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
           运行选中脚本
         </Button>
         <Button
+          icon={<InfoCircleOutlined />}
+          loading={isRunningChain}
+          disabled={isOperationActionBusy && !isRunningChain}
+          onClick={() => void runScriptChain(true)}
+        >
+          预检模型链
+        </Button>
+        <Button
+          icon={<PlayCircleOutlined />}
+          loading={isRunningChain}
+          disabled={isOperationActionBusy && !isRunningChain}
+          onClick={() => void runScriptChain(false)}
+        >
+          运行模型链
+        </Button>
+        <Button
           icon={<ReloadOutlined />}
           loading={isRefreshingChoiceStock}
           disabled={isOperationActionBusy && !isRefreshingChoiceStock}
@@ -4366,6 +4474,15 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
       {refreshError ? <Alert type="error" showIcon message={refreshError} /> : null}
       {commodityRefreshResult ? <Alert type="success" showIcon message={commodityRefreshResult} /> : null}
       {commodityRefreshError ? <Alert type="error" showIcon message={commodityRefreshError} /> : null}
+      {chainRunResult ? (
+        <Alert
+          type={chainRunAlertType(chainRunResult.status)}
+          showIcon
+          message={`模型链：${chainRunResult.status}`}
+          description={`步骤 ${chainRunResult.receipts.length}/${chainRunResult.manifest.length} · artifact-backed ${chainRunResult.readiness_after.artifact_backed_count}/${chainRunResult.readiness_after.total_count} · observation-only`}
+        />
+      ) : null}
+      {chainRunError ? <Alert type="error" showIcon message={chainRunError} /> : null}
       {runResult ? (
         <Alert
           type={statusTone(runResult.status)}
@@ -5681,6 +5798,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                     >
                       运行选中脚本
                     </Button>
+                    <Button
+                      icon={<InfoCircleOutlined />}
+                      disabled={isOperationActionBusy && !isRunningChain}
+                      loading={isRunningChain}
+                      onClick={() => void runScriptChain(true)}
+                    >
+                      预检模型链
+                    </Button>
                   </div>
                   <Table
                     className="macro-toolkit-table--receipt"
@@ -5717,6 +5842,14 @@ export default function MacroToolkitPage({ mode = "toolkit" }: MacroToolkitPageP
                         showIcon
                         message={`状态：${runResult.status}`}
                         description={`退出码：${runResult.exit_code ?? "无"} · 输出文件：${runResult.output_files.length}`}
+                      />
+                    ) : null}
+                    {chainRunResult ? (
+                      <Alert
+                        type={chainRunAlertType(chainRunResult.status)}
+                        showIcon
+                        message={`模型链：${chainRunResult.status}`}
+                        description={`步骤：${chainRunResult.receipts.length}/${chainRunResult.manifest.length} · 缺口：${chainRunResult.readiness_after.degraded_count}`}
                       />
                     ) : null}
                     <pre className="macro-toolkit-console">
@@ -6861,9 +6994,11 @@ function CrisisScoreEvidencePanel({
 
 function HasonMacroStrategyPanel({
   strategy,
+  modelReadiness = [],
   variant = "detail",
 }: {
   strategy: MacroToolkitHasonStrategy;
+  modelReadiness?: MacroToolkitModelReadiness[];
   variant?: "detail" | "observation";
 }) {
   const readiness = strategy.readiness;
@@ -6881,6 +7016,14 @@ function HasonMacroStrategyPanel({
     : runtimeOutputsCurrent
       ? "none"
       : "freshness not confirmed";
+  const readinessEntries = modelReadiness.length ? modelReadiness : deriveModelReadinessFromHasonStrategy(strategy);
+  const blockedReadinessEntries = readinessEntries.filter((item) => !isArtifactBackedModelReadiness(item.readiness));
+  const readinessHeadline = blockedReadinessEntries.length
+    ? blockedReadinessEntries.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ")
+    : "all observed models remain observation-only";
+  const readinessDetail = blockedReadinessEntries.length
+    ? blockedReadinessEntries.map(formatModelReadinessDetail).join(" / ")
+    : readinessEntries.map((item) => `${item.label} ${modelReadinessStatusLabel(item.readiness)}`).join(" / ");
   const tracedScripts = strategy.source_trace;
   const tracedScriptPreview = tracedScripts.slice(0, 5);
   if (variant === "observation") {
@@ -6930,6 +7073,13 @@ function HasonMacroStrategyPanel({
             detailMaxLength={40}
           />
         </div>
+        {readinessEntries.length ? (
+          <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-model-readiness-detail">
+            <span>model readiness / observation-only</span>
+            <strong>{readinessHeadline}</strong>
+            <small>{readinessDetail}</small>
+          </div>
+        ) : null}
       </section>
     );
   }
@@ -7023,6 +7173,13 @@ function HasonMacroStrategyPanel({
           </small>
         ) : null}
       </div>
+      {readinessEntries.length ? (
+        <div className="macro-toolkit-hason-runtime" data-testid="macro-toolkit-model-readiness-detail">
+          <span>model readiness / observation-only</span>
+          <strong>{readinessHeadline}</strong>
+          <small>{readinessDetail}</small>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -7034,6 +7191,56 @@ function formatHasonRuntimeOutput(item: MacroToolkitHasonStrategy["runtime_outpu
     `${hasonInvalidDateText(item)}` +
     `${item.modified_date ? ` file ${item.modified_date}` : ""}`
   );
+}
+
+function deriveModelReadinessFromHasonStrategy(strategy: MacroToolkitHasonStrategy): MacroToolkitModelReadiness[] {
+  return strategy.source_trace.map((item) => ({
+    id: item.script,
+    label: item.script,
+    script_name: item.script,
+    expected_outputs: strategy.required_runtime_outputs,
+    readiness: !item.available
+      ? "registered_only"
+      : strategy.missing_runtime_outputs.length
+        ? "missing_output"
+        : strategy.stale_runtime_outputs.length
+          ? "stale"
+          : "unknown",
+    observation_only: strategy.observation_only,
+    formal_use_allowed: strategy.formal_use_allowed,
+    latest_modified_at: null,
+    latest_content_date: null,
+    missing_outputs: strategy.missing_runtime_outputs,
+    stale_outputs: strategy.stale_runtime_outputs,
+    notes: [],
+  }));
+}
+
+function isArtifactBackedModelReadiness(readiness: MacroToolkitModelReadiness["readiness"]) {
+  return readiness === "artifact_backed";
+}
+
+function modelReadinessStatusLabel(readiness: MacroToolkitModelReadiness["readiness"]) {
+  const labels: Record<MacroToolkitModelReadiness["readiness"], string> = {
+    artifact_backed: "artifact-backed",
+    missing_output: "missing output",
+    stale: "stale",
+    registered_only: "registered only",
+    degraded: "degraded",
+    unknown: "unknown",
+  };
+  return labels[readiness];
+}
+
+function formatModelReadinessDetail(item: MacroToolkitModelReadiness) {
+  const gaps = [
+    item.missing_outputs.length ? `missing ${item.missing_outputs.join(" / ")}` : "",
+    item.stale_outputs.length ? `stale ${item.stale_outputs.join(" / ")}` : "",
+    item.latest_content_date ? `content ${item.latest_content_date}` : "",
+  ].filter(Boolean);
+  return `${item.label} (${item.script_name}) ${modelReadinessStatusLabel(item.readiness)}${
+    item.observation_only ? " · observation-only" : ""
+  }${gaps.length ? ` · ${gaps.join(" · ")}` : ""}`;
 }
 
 function hasonContentDateText(item: MacroToolkitHasonStrategy["runtime_outputs"][number]) {
@@ -9626,7 +9833,8 @@ function choiceStockTableSummary(
 function normalizeCommodityRefreshRows(refresh: MacroToolkitCommodityFuturesRefreshRun): CommodityRefreshProductRow[] {
   const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
   const table = refresh.table ?? "fact_commodity_futures_daily";
-  return (refresh.products ?? []).filter(isRecord).map((item, index) => {
+  return (refresh.products ?? []).map((rawItem, index) => {
+    const item = isRecord(rawItem) ? rawItem : { product_code: rawItem };
     const rawProductCode = commodityRefreshProductCode(item.product_code, index);
     const rawSeriesId = commodityRefreshString(item.series_id);
     const productCode = normalizeCommodityRefreshProductCode(rawProductCode, rawSeriesId);
@@ -9773,6 +9981,9 @@ function commodityRefreshStatusColor(status: CommodityRefreshProductRow["status"
 function formatCommodityRefreshResult(refresh: MacroToolkitCommodityFuturesRefreshRun) {
   const productCount = refresh.product_count ?? refresh.products?.length ?? 0;
   const isDryRun = refresh.status === "dry_run" || refresh.dry_run === true;
+  if (refresh.status === "queued") {
+    return `商品期货刷新已排队，${productCount} 个品种，等待后台任务完成`;
+  }
   const rowCount = isDryRun
     ? refresh.estimated_total_rows ?? refresh.row_count ?? 0
     : refresh.row_count ?? refresh.estimated_total_rows ?? 0;

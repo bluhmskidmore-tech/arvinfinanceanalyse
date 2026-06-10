@@ -203,6 +203,8 @@ export type MacroToolkitPayload = {
   cffex_member_rank?: MacroToolkitCffexMemberRankStatus;
   choice_stock_refresh?: MacroToolkitChoiceStockRefreshStatus;
   commodity_futures_refresh?: MacroToolkitCommodityFuturesRefreshStatus;
+  model_readiness?: MacroToolkitModelReadiness[];
+  readiness_summary?: MacroToolkitReadinessSummary;
   warnings: string[];
 };
 
@@ -487,6 +489,63 @@ export type MacroToolkitHasonStrategyModule = {
   evidence: string[];
 };
 
+export type MacroToolkitArtifactReceipt = {
+  status: string;
+  model_id: string;
+  script_name: string;
+  artifact_paths: string[];
+  missing_artifacts: string[];
+  degraded_reason: string | null;
+  data_asof: string | null;
+  generated_at: string;
+  runtime_endpoint: string;
+  page_surface: string;
+  formal_use_allowed: boolean;
+  observation_only: boolean;
+};
+
+export type MacroToolkitModelReadiness = {
+  id: string;
+  label: string;
+  script_name: string;
+  script_available?: boolean;
+  expected_outputs: string[];
+  outputs?: Array<{
+    name: string;
+    freshness_status: string;
+    freshness_basis: string;
+    modified_at: string | null;
+    modified_date: string | null;
+    content_date: string | null;
+    content_date_min: string | null;
+    content_date_max: string | null;
+    content_date_invalid_count: number;
+    reference_date: string | null;
+  }>;
+  readiness: "artifact_backed" | "missing_output" | "stale" | "registered_only" | "degraded" | "unknown";
+  degraded_reason?: string | null;
+  evidence_level?: string;
+  date_basis?: string;
+  artifact_receipt?: MacroToolkitArtifactReceipt;
+  observation_only: boolean;
+  formal_use_allowed: boolean;
+  latest_modified_at?: string | null;
+  latest_content_date?: string | null;
+  missing_outputs: string[];
+  stale_outputs: string[];
+  degraded_outputs?: string[];
+  notes: string[];
+};
+
+export type MacroToolkitReadinessSummary = {
+  total_count: number;
+  artifact_backed_count: number;
+  degraded_count: number;
+  status_counts: Record<string, number>;
+  observation_only: boolean;
+  formal_use_allowed: boolean;
+};
+
 export type MacroToolkitHasonStrategy = {
   key: "hason_macro_strategy" | string;
   framework_name: string;
@@ -550,6 +609,8 @@ export type MacroToolkitAnalysisPayload = {
   };
   indicators: MacroToolkitIndicator[];
   signal_cards: MacroToolkitSignalCard[];
+  model_readiness?: MacroToolkitModelReadiness[];
+  readiness_summary?: MacroToolkitReadinessSummary;
   hason_strategy?: MacroToolkitHasonStrategy;
   a_share_risk?: MacroToolkitAShareRiskPayload;
   capability_results: MacroToolkitCapabilityResult[];
@@ -581,6 +642,53 @@ export type MacroToolkitRunResponse = {
   message?: string;
 };
 
+export type MacroToolkitScriptChainRun = {
+  chain_id?: string;
+  status: "completed" | "failed" | "timeout" | "dry_run" | string;
+  dry_run: boolean;
+  started_at: string;
+  finished_at: string;
+  timeout_seconds: number;
+  manifest: Array<{
+    order: number;
+    script_name: string;
+    label: string;
+    expected_outputs: string[];
+    available: boolean;
+  }>;
+  receipts: Array<{
+    order: number;
+    chain_id?: string;
+    script_name: string;
+    status: string;
+    exit_code: number | null;
+    expected_outputs: string[];
+    produced_outputs: string[];
+    missing_outputs_after: string[];
+    degraded_reason?: string | null;
+    data_asof?: string | null;
+    generated_at?: string;
+    runtime_endpoint?: string;
+    page_surface?: string;
+    formal_use_allowed?: boolean;
+    observation_only?: boolean;
+    started_at?: string | null;
+    finished_at?: string | null;
+    stdout: string;
+    stderr: string;
+  }>;
+  readiness_before: MacroToolkitReadinessSummary;
+  readiness_after: MacroToolkitReadinessSummary;
+  model_readiness: MacroToolkitModelReadiness[];
+  observation_only: boolean;
+  formal_use_allowed: boolean;
+};
+
+export type MacroToolkitScriptChainRunResponse = ApiEnvelope<{
+  run: MacroToolkitScriptChainRun;
+  model_readiness: MacroToolkitModelReadiness[];
+}>;
+
 export type MacroToolkitCffexRefreshResponse = ApiEnvelope<{
   refresh: Record<string, unknown>;
   cffex_member_rank: MacroToolkitCffexMemberRankStatus;
@@ -610,7 +718,7 @@ export type MacroToolkitCommodityFuturesRefreshRun = {
   row_count?: number;
   estimated_total_rows?: number;
   estimated_trading_days?: number;
-  products?: Array<Record<string, unknown>>;
+  products?: Array<Record<string, unknown> | string>;
   table?: string;
   rule_version?: string;
   permission?: MacroToolkitCommodityFuturesRefreshPermission;
@@ -644,6 +752,10 @@ export type MacroToolkitClientMethods = {
     name: string,
     options?: { timeoutSeconds?: number; argv?: string[] },
   ) => Promise<MacroToolkitRunResponse>;
+  runMacroToolkitScriptChain: (options?: {
+    dryRun?: boolean;
+    timeoutSeconds?: number;
+  }) => Promise<MacroToolkitScriptChainRunResponse>;
   refreshCffexMemberRank: (options?: {
     tradeDate?: string;
     contracts?: string[];
@@ -1606,6 +1718,153 @@ const MOCK_HASON_STRATEGY: MacroToolkitHasonStrategy = {
   ],
 };
 
+const MOCK_MODEL_READINESS: MacroToolkitModelReadiness[] = [
+  {
+    id: "dcc_garch",
+    label: "DCC-GARCH",
+    script_name: "dcc_garch_cn",
+    script_available: true,
+    expected_outputs: ["dcc_latest.csv", "dcc_results.csv"],
+    readiness: "missing_output",
+    degraded_reason: "missing_expected_outputs",
+    evidence_level: "registered_script_only",
+    date_basis: "missing",
+    artifact_receipt: {
+      status: "missing_output",
+      model_id: "dcc_garch",
+      script_name: "dcc_garch_cn",
+      artifact_paths: [],
+      missing_artifacts: ["dcc_latest.csv", "dcc_results.csv"],
+      degraded_reason: "missing_expected_outputs",
+      data_asof: null,
+      generated_at: "2026-04-30T09:00:00+00:00",
+      runtime_endpoint: "/ui/macro/toolkit/scripts/run-chain",
+      page_surface: "/macro-toolkit#macro-toolkit-model-readiness-detail",
+      formal_use_allowed: false,
+      observation_only: true,
+    },
+    observation_only: true,
+    formal_use_allowed: false,
+    latest_modified_at: null,
+    latest_content_date: null,
+    missing_outputs: ["dcc_latest.csv", "dcc_results.csv"],
+    stale_outputs: [],
+    degraded_outputs: [],
+    notes: ["Registered in the toolkit, but the expected runtime artifacts are missing."],
+  },
+  {
+    id: "cta_trend",
+    label: "CTA Trend",
+    script_name: "cta_trend_cn",
+    script_available: true,
+    expected_outputs: ["cta_results.csv"],
+    readiness: "missing_output",
+    degraded_reason: "missing_expected_outputs",
+    evidence_level: "registered_script_only",
+    date_basis: "missing",
+    artifact_receipt: {
+      status: "missing_output",
+      model_id: "cta_trend",
+      script_name: "cta_trend_cn",
+      artifact_paths: [],
+      missing_artifacts: ["cta_results.csv"],
+      degraded_reason: "missing_expected_outputs",
+      data_asof: null,
+      generated_at: "2026-04-30T09:00:00+00:00",
+      runtime_endpoint: "/ui/macro/toolkit/scripts/run-chain",
+      page_surface: "/macro-toolkit#macro-toolkit-model-readiness-detail",
+      formal_use_allowed: false,
+      observation_only: true,
+    },
+    observation_only: true,
+    formal_use_allowed: false,
+    latest_modified_at: null,
+    latest_content_date: null,
+    missing_outputs: ["cta_results.csv"],
+    stale_outputs: [],
+    degraded_outputs: [],
+    notes: ["Registered in the toolkit, but the expected runtime artifacts are missing."],
+  },
+  {
+    id: "risk_monitor",
+    label: "Risk Monitor",
+    script_name: "risk_monitor",
+    script_available: true,
+    expected_outputs: ["risk_log.csv", "risk_state.csv"],
+    readiness: "missing_output",
+    degraded_reason: "missing_expected_outputs",
+    evidence_level: "registered_script_only",
+    date_basis: "missing",
+    artifact_receipt: {
+      status: "missing_output",
+      model_id: "risk_monitor",
+      script_name: "risk_monitor",
+      artifact_paths: [],
+      missing_artifacts: ["risk_log.csv", "risk_state.csv"],
+      degraded_reason: "missing_expected_outputs",
+      data_asof: null,
+      generated_at: "2026-04-30T09:00:00+00:00",
+      runtime_endpoint: "/ui/macro/toolkit/scripts/run-chain",
+      page_surface: "/macro-toolkit#macro-toolkit-model-readiness-detail",
+      formal_use_allowed: false,
+      observation_only: true,
+    },
+    observation_only: true,
+    formal_use_allowed: false,
+    latest_modified_at: null,
+    latest_content_date: null,
+    missing_outputs: ["risk_log.csv", "risk_state.csv"],
+    stale_outputs: [],
+    degraded_outputs: [],
+    notes: ["Registered in the toolkit, but the expected runtime artifacts are missing."],
+  },
+  {
+    id: "final_signal",
+    label: "Final Signal Aggregator",
+    script_name: "signal_aggregator",
+    script_available: true,
+    expected_outputs: ["final_signal.csv"],
+    readiness: "artifact_backed",
+    degraded_reason: null,
+    evidence_level: "fresh_artifacts",
+    date_basis: "csv_content",
+    artifact_receipt: {
+      status: "artifact_backed",
+      model_id: "final_signal",
+      script_name: "signal_aggregator",
+      artifact_paths: ["final_signal.csv"],
+      missing_artifacts: [],
+      degraded_reason: null,
+      data_asof: "2026-04-30",
+      generated_at: "2026-04-30T09:00:00+00:00",
+      runtime_endpoint: "/ui/macro/toolkit/scripts/run-chain",
+      page_surface: "/macro-toolkit#macro-toolkit-model-readiness-detail",
+      formal_use_allowed: false,
+      observation_only: true,
+    },
+    observation_only: true,
+    formal_use_allowed: false,
+    latest_modified_at: "2026-04-30T15:00:00+00:00",
+    latest_content_date: "2026-04-30",
+    missing_outputs: [],
+    stale_outputs: [],
+    degraded_outputs: [],
+    notes: ["Artifacts are present for observation and review only."],
+  },
+];
+
+const MOCK_READINESS_SUMMARY: MacroToolkitReadinessSummary = {
+  total_count: MOCK_MODEL_READINESS.length,
+  artifact_backed_count: 1,
+  degraded_count: 3,
+  status_counts: {
+    artifact_backed: 1,
+    missing_output: 3,
+  },
+  observation_only: true,
+  formal_use_allowed: false,
+};
+
 const MOCK_SHADOW_PORTFOLIO_REPORT: MacroToolkitShadowPortfolioReport = {
   status: "complete",
   basis: "read_only_shadow",
@@ -1974,6 +2233,8 @@ const MOCK_ANALYSIS: MacroToolkitAnalysisPayload = {
       evidence: ["尚未发现输出文件"],
     },
   ],
+  model_readiness: MOCK_MODEL_READINESS,
+  readiness_summary: MOCK_READINESS_SUMMARY,
   hason_strategy: MOCK_HASON_STRATEGY,
   a_share_risk: MOCK_A_SHARE_RISK,
   capability_results: MOCK_CAPABILITY_RESULTS,
@@ -2208,6 +2469,8 @@ const MOCK_PAYLOAD: MacroToolkitPayload = {
   },
   choice_stock_refresh: MOCK_CHOICE_STOCK_REFRESH,
   commodity_futures_refresh: MOCK_COMMODITY_FUTURES_REFRESH,
+  model_readiness: MOCK_MODEL_READINESS,
+  readiness_summary: MOCK_READINESS_SUMMARY,
   warnings: [],
 };
 
@@ -2261,6 +2524,88 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         stderr: "",
         output_files: [],
       };
+    },
+    async runMacroToolkitScriptChain(options) {
+      const dryRun = options?.dryRun ?? true;
+      const manifest = [
+        ["merrill_clock_cn", ["merrill_clock_latest.csv", "merrill_clock_history.csv"]],
+        ["crisis_score_cn", ["crisis_score_latest.csv", "crisis_score_history.csv"]],
+        ["bond_futures_data", ["bond_futures_latest.csv", "bond_futures_history.csv"]],
+        ["bond_futures_signals", ["bond_signals_latest.csv"]],
+        ["crowding_cn", ["crowding_latest.csv", "crowding_history.csv"]],
+        ["dcc_garch_cn", ["dcc_latest.csv", "dcc_results.csv"]],
+        ["cta_trend_cn", ["cta_results.csv"]],
+        ["signal_aggregator", ["final_signal.csv"]],
+        ["risk_monitor", ["risk_log.csv", "risk_state.csv"]],
+      ].map(([scriptName, expectedOutputs], index) => ({
+        order: index + 1,
+        script_name: scriptName as string,
+        label: scriptName as string,
+        expected_outputs: expectedOutputs as string[],
+        available: true,
+      }));
+      const run: MacroToolkitScriptChainRun = {
+        chain_id: "macro_toolkit_chain:mock",
+        status: dryRun ? "dry_run" : MOCK_READINESS_SUMMARY.degraded_count > 0 ? "degraded" : "completed",
+        dry_run: dryRun,
+        started_at: "2026-04-30T09:00:00+00:00",
+        finished_at: "2026-04-30T09:00:01+00:00",
+        timeout_seconds: options?.timeoutSeconds ?? 120,
+        manifest,
+        receipts: manifest.map((step) => {
+          const missingOutputsAfter =
+            dryRun || ["dcc_garch_cn", "cta_trend_cn", "risk_monitor"].includes(step.script_name)
+              ? step.expected_outputs
+              : [];
+          let degradedReason: string | null = null;
+          if (dryRun) {
+            degradedReason = "dry_run_not_executed";
+          } else if (missingOutputsAfter.length) {
+            degradedReason = "missing_expected_outputs_after_run";
+          }
+          return {
+            order: step.order,
+            chain_id: "macro_toolkit_chain:mock",
+            script_name: step.script_name,
+            status: dryRun ? "dry_run" : "completed",
+            exit_code: dryRun ? null : 0,
+            expected_outputs: step.expected_outputs,
+            produced_outputs: dryRun ? [] : step.expected_outputs.filter((output) => !missingOutputsAfter.includes(output)),
+            missing_outputs_after: missingOutputsAfter,
+            degraded_reason: degradedReason,
+            data_asof: dryRun || missingOutputsAfter.length ? null : "2026-04-30",
+            generated_at: "2026-04-30T09:00:01+00:00",
+            runtime_endpoint: "/ui/macro/toolkit/scripts/run-chain",
+            page_surface: "/macro-toolkit#macro-toolkit-script-artifact-detail",
+            formal_use_allowed: false,
+            observation_only: true,
+            started_at: null,
+            finished_at: dryRun ? null : "2026-04-30T09:00:01+00:00",
+            stdout: "",
+            stderr: "",
+          };
+        }),
+        readiness_before: MOCK_READINESS_SUMMARY,
+        readiness_after: MOCK_READINESS_SUMMARY,
+        model_readiness: MOCK_MODEL_READINESS,
+        observation_only: true,
+        formal_use_allowed: false,
+      };
+      return buildMockApiEnvelope(
+        "macro_toolkit.script_chain_run",
+        {
+          run,
+          model_readiness: MOCK_MODEL_READINESS,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "macro_toolkit_mock",
+          vendor_version: "choice+tushare",
+          rule_version: "rv_macro_toolkit_ui_v1",
+          cache_version: "none",
+        },
+      );
     },
     async refreshCffexMemberRank() {
       return buildMockApiEnvelope(
@@ -2325,49 +2670,29 @@ export function createMockMacroToolkitClient(): MacroToolkitClientMethods {
         return `COMMODITY.${product}`;
       };
       const refresh: MacroToolkitCommodityFuturesRefreshRun = {
-        status: options?.dryRun ? "dry_run" : "completed",
+        status: options?.dryRun ? "dry_run" : "queued",
         dry_run: options?.dryRun ?? false,
         start_date: options?.startDate ?? null,
         end_date: options?.endDate ?? "2026-04-30",
         product_count: products.length,
-        row_count: options?.dryRun ? 0 : products.length * 22,
+        row_count: options?.dryRun ? 0 : undefined,
         estimated_total_rows: options?.dryRun ? products.length * 22 : undefined,
         estimated_trading_days: options?.dryRun ? 22 : undefined,
-        products: products.map((product) => ({
-          product_code: product,
-          name_zh: productNames[product] ?? product,
-          row_count: options?.dryRun ? undefined : 22,
-          estimated_rows: options?.dryRun ? 22 : undefined,
-          latest_date: options?.dryRun ? undefined : options?.endDate ?? "2026-04-30",
-          latest_value: product === "NHCI" && !options?.dryRun ? 3187.42 : undefined,
-          series_id: productSeriesId(product),
-          vendor: options?.dryRun ? "estimate_only" : "tushare",
-        })),
+        products: options?.dryRun
+          ? products.map((product) => ({
+              product_code: product,
+              name_zh: productNames[product] ?? product,
+              estimated_rows: 22,
+              series_id: productSeriesId(product),
+              vendor: "estimate_only",
+            }))
+          : products,
         table: "fact_commodity_futures_daily",
         rule_version: "rv_commodity_daily_v1",
         permission: MOCK_COMMODITY_FUTURES_REFRESH.permission,
       };
       const afterStatus: MacroToolkitCommodityFuturesHealthStatus = {
         ...MOCK_COMMODITY_FUTURES_REFRESH.status!,
-        row_count: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.row_count : products.length * 22,
-        latest_trade_date: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.latest_trade_date : "2026-04-30",
-        source_vendors: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.source_vendors : ["tushare"],
-        coverage: {
-          ...MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage,
-          available_product_count: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.available_product_count : products.length,
-          available_products: options?.dryRun
-            ? MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.available_products
-            : products,
-          missing_products: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.coverage.missing_products : [],
-        },
-        nanhua_input: {
-          ...MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input,
-          latest_trade_date: options?.dryRun
-            ? MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.latest_trade_date
-            : "2026-04-30",
-          latest_value: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.latest_value : 3187.42,
-          row_count: options?.dryRun ? MOCK_COMMODITY_FUTURES_REFRESH.status!.nanhua_input.row_count : 22,
-        },
       };
       refresh.before_status = MOCK_COMMODITY_FUTURES_REFRESH.status;
       refresh.after_status = afterStatus;
@@ -2497,6 +2822,20 @@ export function createRealMacroToolkitClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             argv: options?.argv ?? [],
+            timeout_seconds: options?.timeoutSeconds ?? 120,
+          }),
+        },
+      ),
+    runMacroToolkitScriptChain: (options) =>
+      requestActionJson<MacroToolkitScriptChainRunResponse>(
+        fetchImpl,
+        baseUrl,
+        "/ui/macro/toolkit/scripts/run-chain",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dry_run: options?.dryRun ?? true,
             timeout_seconds: options?.timeoutSeconds ?? 120,
           }),
         },

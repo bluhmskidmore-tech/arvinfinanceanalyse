@@ -58,7 +58,7 @@ from backend.app.repositories.cffex_member_rank_repo import DEFAULT_CFFEX_CONTRA
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import macro_adversarial_signal_service, macro_toolkit_service
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS, run_commodity_daily_ingest
+from backend.app.tasks.commodity_daily_ingest import COMMODITY_PRODUCTS
 from backend.app.tasks.macro_backfill import backfill_macro_series
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -240,6 +240,11 @@ class MacroToolkitRunRequest(BaseModel):
     timeout_seconds: int = Field(default=120, ge=5, le=600)
 
 
+class MacroToolkitRunChainRequest(BaseModel):
+    dry_run: bool = True
+    timeout_seconds: int = Field(default=120, ge=5, le=600)
+
+
 class CffexMemberRankRefreshRequest(BaseModel):
     trade_date: str | None = None
     contracts: list[str] = Field(default_factory=lambda: list(DEFAULT_CFFEX_CONTRACTS))
@@ -282,6 +287,10 @@ def macro_toolkit_scripts(
     )
     commodity_permission = _commodity_futures_refresh_permission_payload(auth, settings=settings)
     commodity_status = _commodity_futures_status(settings.duckdb_path)
+    readiness = macro_toolkit_service.macro_model_readiness(
+        output_dir=OUTPUT_DIR,
+        reference_date=_latest_source_check_date(source_checks),
+    )
     return _envelope(
         "macro_toolkit.scripts",
         {
@@ -307,6 +316,8 @@ def macro_toolkit_scripts(
                 "permission": commodity_permission,
                 "status": commodity_status,
             },
+            "model_readiness": readiness["model_readiness"],
+            "readiness_summary": readiness["readiness_summary"],
             "warnings": _script_warnings(cffex_status),
         },
     )
@@ -331,6 +342,10 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
     indicator_by_key = {str(item["key"]): item for item in indicators}
     output_files = _output_files()
     analysis_date = _latest_indicator_date(indicators)
+    readiness = macro_toolkit_service.macro_model_readiness(
+        output_dir=OUTPUT_DIR,
+        reference_date=analysis_date,
+    )
     if detail == "core":
         a_share_risk = None
         capability_results: list[dict[str, object]] = []
@@ -402,6 +417,8 @@ def _build_macro_toolkit_analysis(detail: str) -> dict[str, object]:
             ),
             "runtime_status": runtime_status,
             "data_health": data_health,
+            "model_readiness": readiness["model_readiness"],
+            "readiness_summary": readiness["readiness_summary"],
             "warnings": warnings,
         },
     )
@@ -629,36 +646,27 @@ def macro_toolkit_refresh_commodity_futures(
     products = _macro_commodity_refresh_products(refresh_request.products)
     before_status = _commodity_futures_status(settings.duckdb_path)
     try:
-        refresh = run_commodity_daily_ingest(
+        refresh = macro_toolkit_service.refresh_commodity_futures(
             start_date=start_date,
             end_date=end_date,
             duckdb_path=str(settings.duckdb_path),
             products=products,
             dry_run=refresh_request.dry_run,
+            permission=permission,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        message = str(exc).lower()
-        if "duckdb" not in message and "cannot open file" not in message and "another process" not in message:
-            raise
-        raise HTTPException(
-            status_code=503,
-            detail="DuckDB is busy during commodity futures refresh; close other readers and retry.",
-        ) from exc
-    if not refresh_request.dry_run:
-        market_home_response_cache.invalidate()
-        clear_system_macro_source_cache()
-    status = str(refresh.get("status") or "")
-    after_status = before_status if refresh_request.dry_run else _commodity_futures_status(settings.duckdb_path)
+    except macro_toolkit_service.MacroToolkitQueueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    status = str(refresh.payload.get("status") or "")
+    after_status = before_status
     summary = _commodity_futures_refresh_summary(
         before_status=before_status,
         after_status=after_status,
         dry_run=refresh_request.dry_run,
     )
     refresh_payload = {
-        **refresh,
-        "permission": permission,
+        **refresh.payload,
         "before_status": before_status,
         "after_status": after_status,
         "summary": summary,
@@ -673,9 +681,9 @@ def macro_toolkit_refresh_commodity_futures(
                 "status": after_status,
             },
         },
-        quality_flag="ok" if status in {"completed", "dry_run"} else "warning",
-        fallback_mode="none",
-        as_of_date=str(refresh.get("end_date") or end_date),
+        quality_flag=refresh.quality_flag if status == "queued" else ("ok" if status == "dry_run" else "warning"),
+        fallback_mode=refresh.fallback_mode,
+        as_of_date=refresh.as_of_date or end_date,
     )
 
 
@@ -716,9 +724,47 @@ def macro_toolkit_run(
             name=name,
             argv=run_request.argv,
             timeout_seconds=run_request.timeout_seconds,
+            output_dir=OUTPUT_DIR,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/scripts/run-chain")
+def macro_toolkit_run_chain(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    request: MacroToolkitRunChainRequest | None = None,
+) -> dict[str, object]:
+    run_request = request or MacroToolkitRunChainRequest()
+    settings = get_settings()
+    _ensure_macro_toolkit_script_execute_allowed(auth, settings, script_name="macro_toolkit_chain")
+    source_checks = _source_checks(settings.duckdb_path)
+    try:
+        payload = macro_toolkit_service.run_macro_toolkit_chain(
+            dry_run=run_request.dry_run,
+            timeout_seconds=run_request.timeout_seconds,
+            output_dir=OUTPUT_DIR,
+            reference_date=_latest_source_check_date(source_checks),
+            governance_path=settings.governance_path,
+            authorize_script=lambda script_name: _ensure_macro_toolkit_script_execute_allowed(
+                auth,
+                settings,
+                script_name=script_name,
+            ),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except macro_toolkit_service.MacroToolkitConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not run_request.dry_run:
+        market_home_response_cache.invalidate()
+    return _envelope(
+        "macro_toolkit.script_chain_run",
+        {"run": payload, "model_readiness": payload["model_readiness"]},
+        quality_flag="ok" if str(payload.get("status")) in {"completed", "dry_run"} else "warning",
+        fallback_mode="none",
+        as_of_date=None,
+    )
 
 
 def _ensure_macro_toolkit_read_allowed(auth: AuthContext, settings: object) -> None:
@@ -842,22 +888,7 @@ def _script_payload(script: MacroToolkitScript) -> dict[str, object]:
 
 
 def _output_files() -> list[dict[str, object]]:
-    if not OUTPUT_DIR.exists():
-        return []
-    files: list[dict[str, object]] = []
-    for path in sorted(OUTPUT_DIR.glob("*")):
-        if not path.is_file():
-            continue
-        stat = path.stat()
-        files.append(
-            {
-                "name": path.name,
-                "path": str(path),
-                "size_bytes": stat.st_size,
-                "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
-            }
-        )
-    return files
+    return macro_toolkit_service.output_files(OUTPUT_DIR)
 
 
 def _source_checks(duckdb_path: str | Path) -> list[dict[str, object]]:

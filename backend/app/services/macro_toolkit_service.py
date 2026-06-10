@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
@@ -19,6 +20,7 @@ from backend.app.core_finance.macro.toolkit.runner import (
     PROJECT_ROOT,
     TOOLKIT_ROOT,
     get_toolkit_script,
+    iter_toolkit_scripts,
     run_toolkit_script,
 )
 from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias
@@ -30,6 +32,7 @@ from backend.app.tasks.choice_stock_materialize import (
     materialize_choice_stock_factor_snapshot,
     materialize_choice_stock_inputs,
 )
+from backend.app.tasks.commodity_daily_ingest import run_commodity_daily_ingest, run_commodity_daily_ingest_task
 from fastapi import BackgroundTasks
 
 CHOICE_STOCK_REFRESH_JOB_NAME = "choice_stock_refresh"
@@ -39,11 +42,95 @@ CHOICE_STOCK_REFRESH_LOCK = "lock:choice_stock_refresh"
 CHOICE_STOCK_REFRESH_RULE_VERSION = "rv_choice_stock_materialization_front_layer_v1"
 _CHOICE_STOCK_REFRESH_IN_FLIGHT_STATUSES = {"queued", "running"}
 DEFAULT_MACRO_COMMODITY_REFRESH_PRODUCTS = ("RB", "I", "CU", "AL", "SC", "AU", "NHCI")
+COMMODITY_FUTURES_REFRESH_JOB_NAME = "commodity_futures_daily_ingest"
+COMMODITY_FUTURES_REFRESH_CACHE_KEY = "commodity_futures.daily"
+COMMODITY_FUTURES_REFRESH_CACHE_VERSION = "commodity_futures_daily_v1"
+COMMODITY_FUTURES_REFRESH_RULE_VERSION = "rv_commodity_daily_v1"
 EQUITY_PRICE_LOOKBACK_DAYS = 260
 EQUITY_PRICE_MIN_OBSERVATIONS = 80
 EQUITY_PRICE_MAX_STOCKS = 500
 A_SHARE_RISK_LOOKBACK_DAYS = 35
 A_SHARE_RISK_MAX_STOCKS = 8000
+MACRO_TOOLKIT_OBSERVATION_ONLY = True
+MACRO_TOOLKIT_FORMAL_USE_ALLOWED = False
+MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS = ("日期", "date", "trade_date", "as_of_date")
+MACRO_TOOLKIT_CHAIN_LOCK = LockDefinition(key="lock:macro_toolkit:script-chain", ttl_seconds=900)
+MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT = "/ui/macro/toolkit/scripts/run-chain"
+MACRO_TOOLKIT_MODEL_READINESS_SURFACE = "/macro-toolkit#macro-toolkit-model-readiness-detail"
+MACRO_TOOLKIT_SCRIPT_ARTIFACT_SURFACE = "/macro-toolkit#macro-toolkit-script-artifact-detail"
+
+_MACRO_MODEL_DEFINITIONS: tuple[dict[str, object], ...] = (
+    {
+        "id": "merrill_clock",
+        "label": "Merrill Clock",
+        "script_name": "merrill_clock_cn",
+        "expected_outputs": ("merrill_clock_latest.csv", "merrill_clock_history.csv"),
+        "notes": ("Macro cycle and asset allocation candidate signal.",),
+    },
+    {
+        "id": "crisis_score",
+        "label": "Crisis Score",
+        "script_name": "crisis_score_cn",
+        "expected_outputs": ("crisis_score_latest.csv", "crisis_score_history.csv"),
+        "notes": ("Stress score candidate signal.",),
+    },
+    {
+        "id": "bond_futures_basis",
+        "label": "Bond Futures Basis / IRR / Safety Margin",
+        "script_name": "bond_futures_data",
+        "expected_outputs": ("bond_futures_latest.csv", "bond_futures_history.csv"),
+        "notes": ("Treasury futures basis and safety-margin evidence.",),
+    },
+    {
+        "id": "bond_futures_four_factor",
+        "label": "Bond Futures Four-Factor Trend",
+        "script_name": "bond_futures_signals",
+        "expected_outputs": ("bond_signals_latest.csv",),
+        "notes": ("MA, channel, MACD and Bollinger style treasury-futures signal evidence.",),
+    },
+    {
+        "id": "funding_conditions",
+        "label": "Funding Conditions / Flow",
+        "script_name": "merrill_clock_cn",
+        "expected_outputs": ("merrill_clock_latest.csv",),
+        "notes": ("Funding condition is evidenced through DR007/NCD inputs and Merrill liquidity momentum, not a standalone formal metric.",),
+    },
+    {
+        "id": "crowding",
+        "label": "Crowding",
+        "script_name": "crowding_cn",
+        "expected_outputs": ("crowding_latest.csv", "crowding_history.csv"),
+        "notes": ("Crowding candidate signal.",),
+    },
+    {
+        "id": "dcc_garch",
+        "label": "DCC-GARCH",
+        "script_name": "dcc_garch_cn",
+        "expected_outputs": ("dcc_latest.csv", "dcc_results.csv"),
+        "notes": ("Dynamic conditional correlation candidate signal.",),
+    },
+    {
+        "id": "cta_trend",
+        "label": "CTA Trend",
+        "script_name": "cta_trend_cn",
+        "expected_outputs": ("cta_results.csv",),
+        "notes": ("CTA trend candidate signal.",),
+    },
+    {
+        "id": "final_signal",
+        "label": "Final Signal Aggregator",
+        "script_name": "signal_aggregator",
+        "expected_outputs": ("final_signal.csv",),
+        "notes": ("Aggregates macro, bond futures, crisis and crowding evidence.",),
+    },
+    {
+        "id": "risk_monitor",
+        "label": "Risk Monitor",
+        "script_name": "risk_monitor",
+        "expected_outputs": ("risk_state.csv", "risk_log.csv"),
+        "notes": ("Risk warning threshold monitor.",),
+    },
+)
 
 _CURVE_TYPE_TO_ID = {
     "treasury": "CN_GOVT",
@@ -87,11 +174,16 @@ class MacroToolkitConflictError(RuntimeError):
     pass
 
 
+class MacroToolkitQueueError(RuntimeError):
+    pass
+
+
 def run_macro_toolkit_script(
     *,
     name: str,
     argv: list[str],
     timeout_seconds: int,
+    output_dir: str | Path = OUTPUT_DIR,
 ) -> dict[str, object]:
     script = get_toolkit_script(name)
     env = os.environ.copy()
@@ -116,7 +208,7 @@ def run_macro_toolkit_script(
             "exit_code": None,
             "stdout": _tail_text(exc.stdout),
             "stderr": _tail_text(exc.stderr),
-            "output_files": _output_files(),
+            "output_files": output_files(output_dir),
             "message": f"script exceeded {timeout_seconds}s timeout",
         }
     except OSError as exc:
@@ -127,7 +219,7 @@ def run_macro_toolkit_script(
             "exit_code": exit_code,
             "stdout": _tail_text(stdout_text),
             "stderr": _tail_text(f"{stderr_text}\nsubprocess fallback: {exc}".strip()),
-            "output_files": _output_files(),
+            "output_files": output_files(output_dir),
         }
 
     return {
@@ -136,7 +228,140 @@ def run_macro_toolkit_script(
         "exit_code": completed.returncode,
         "stdout": _tail_text(completed.stdout),
         "stderr": _tail_text(completed.stderr),
-        "output_files": _output_files(),
+        "output_files": output_files(output_dir),
+    }
+
+
+def output_files(output_dir: str | Path = OUTPUT_DIR) -> list[dict[str, object]]:
+    directory = Path(output_dir)
+    if not directory.exists():
+        return []
+    files: list[dict[str, object]] = []
+    for path in sorted(directory.glob("*")):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        files.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "size_bytes": stat.st_size,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+            }
+        )
+    return files
+
+
+def macro_model_readiness(
+    *,
+    output_dir: str | Path = OUTPUT_DIR,
+    reference_date: str | None = None,
+) -> dict[str, object]:
+    files = output_files(output_dir)
+    files_by_name = {str(item["name"]): item for item in files}
+    model_readiness = [
+        _macro_model_readiness_payload(model, files_by_name=files_by_name, reference_date=reference_date)
+        for model in _MACRO_MODEL_DEFINITIONS
+    ]
+    counts: dict[str, int] = {}
+    for item in model_readiness:
+        status = str(item["readiness"])
+        counts[status] = counts.get(status, 0) + 1
+    degraded_count = sum(
+        counts.get(status, 0)
+        for status in ("missing_output", "stale", "registered_only", "degraded", "unknown")
+    )
+    return {
+        "model_readiness": model_readiness,
+        "readiness_summary": {
+            "total_count": len(model_readiness),
+            "artifact_backed_count": counts.get("artifact_backed", 0),
+            "degraded_count": degraded_count,
+            "status_counts": counts,
+            "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+            "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        },
+    }
+
+
+def run_macro_toolkit_chain(
+    *,
+    dry_run: bool,
+    timeout_seconds: int,
+    output_dir: str | Path = OUTPUT_DIR,
+    reference_date: str | None = None,
+    governance_path: str | Path | None = None,
+    authorize_script: Callable[[str], None] | None = None,
+) -> dict[str, object]:
+    if not dry_run and authorize_script is not None:
+        for step in _macro_run_manifest():
+            authorize_script(str(step["script_name"]))
+
+    if dry_run or governance_path is None:
+        return _run_macro_toolkit_chain_unlocked(
+            dry_run=dry_run,
+            timeout_seconds=timeout_seconds,
+            output_dir=output_dir,
+            reference_date=reference_date,
+        )
+
+    try:
+        with acquire_lock(MACRO_TOOLKIT_CHAIN_LOCK, base_dir=governance_path, timeout_seconds=0.1):
+            return _run_macro_toolkit_chain_unlocked(
+                dry_run=dry_run,
+                timeout_seconds=timeout_seconds,
+                output_dir=output_dir,
+                reference_date=reference_date,
+            )
+    except TimeoutError as exc:
+        raise MacroToolkitConflictError("Macro toolkit script chain is already in progress.") from exc
+
+
+def _run_macro_toolkit_chain_unlocked(
+    *,
+    dry_run: bool,
+    timeout_seconds: int,
+    output_dir: str | Path,
+    reference_date: str | None,
+) -> dict[str, object]:
+    started_at = datetime.now(UTC).isoformat()
+    chain_id = f"macro_toolkit_chain:{uuid.uuid4().hex[:12]}"
+    readiness_before = macro_model_readiness(output_dir=output_dir, reference_date=reference_date)
+    receipts: list[dict[str, object]] = []
+    if dry_run:
+        receipts = [_dry_run_receipt(step, chain_id=chain_id, output_dir=output_dir) for step in _macro_run_manifest()]
+        status = "dry_run"
+    else:
+        status = "completed"
+        for step in _macro_run_manifest():
+            result = run_macro_toolkit_script(
+                name=str(step["script_name"]),
+                argv=[],
+                timeout_seconds=timeout_seconds,
+                output_dir=output_dir,
+            )
+            receipt = _run_receipt(step, result, chain_id=chain_id, output_dir=output_dir)
+            receipts.append(receipt)
+            if str(receipt["status"]) != "completed":
+                status = str(receipt["status"])
+                break
+    readiness_after = macro_model_readiness(output_dir=output_dir, reference_date=reference_date)
+    if status == "completed" and int(readiness_after["readiness_summary"]["degraded_count"]) > 0:
+        status = "degraded"
+    return {
+        "chain_id": chain_id,
+        "status": status,
+        "dry_run": dry_run,
+        "started_at": started_at,
+        "finished_at": datetime.now(UTC).isoformat(),
+        "timeout_seconds": timeout_seconds,
+        "manifest": _macro_run_manifest(),
+        "receipts": receipts,
+        "readiness_before": readiness_before["readiness_summary"],
+        "readiness_after": readiness_after["readiness_summary"],
+        "model_readiness": readiness_after["model_readiness"],
+        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
     }
 
 
@@ -158,6 +383,67 @@ def refresh_cffex_member_rank(
         quality_flag="ok" if int(payload.get("row_count") or 0) > 0 else "warning",
         fallback_mode="none",
         as_of_date=_optional_text(payload.get("trade_date")),
+    )
+
+
+def refresh_commodity_futures(
+    *,
+    start_date: str,
+    end_date: str,
+    duckdb_path: str,
+    products: tuple[str, ...],
+    dry_run: bool,
+    permission: dict[str, object],
+) -> MacroToolkitActionResult:
+    if dry_run:
+        payload = run_commodity_daily_ingest(
+            start_date=start_date,
+            end_date=end_date,
+            duckdb_path=duckdb_path,
+            products=products,
+            dry_run=True,
+        )
+        return MacroToolkitActionResult(
+            payload={**payload, "permission": permission},
+            quality_flag="ok" if str(payload.get("status")) == "dry_run" else "warning",
+            fallback_mode="none",
+            as_of_date=end_date,
+        )
+
+    run_id = f"{COMMODITY_FUTURES_REFRESH_JOB_NAME}:{end_date}:{uuid.uuid4().hex[:12]}"
+    queued_at = datetime.now(UTC).isoformat()
+    try:
+        run_commodity_daily_ingest_task.send(
+            start_date=start_date,
+            end_date=end_date,
+            duckdb_path=duckdb_path,
+            products=products,
+            dry_run=False,
+        )
+    except Exception as exc:
+        raise MacroToolkitQueueError(str(exc)) from exc
+    return MacroToolkitActionResult(
+        payload={
+            "status": "queued",
+            "run_id": run_id,
+            "job_name": COMMODITY_FUTURES_REFRESH_JOB_NAME,
+            "cache_key": COMMODITY_FUTURES_REFRESH_CACHE_KEY,
+            "cache_version": COMMODITY_FUTURES_REFRESH_CACHE_VERSION,
+            "rule_version": COMMODITY_FUTURES_REFRESH_RULE_VERSION,
+            "start_date": start_date,
+            "end_date": end_date,
+            "duckdb_path": duckdb_path,
+            "products": list(products),
+            "product_count": len(products),
+            "row_count": None,
+            "dry_run": False,
+            "queued_at": queued_at,
+            "table": "fact_commodity_futures_daily",
+            "permission": permission,
+        },
+        quality_flag="warning",
+        fallback_mode="none",
+        as_of_date=end_date,
     )
 
 
@@ -1330,22 +1616,414 @@ def _script_payload(
 
 
 def _output_files() -> list[dict[str, object]]:
-    if not OUTPUT_DIR.exists():
-        return []
-    files: list[dict[str, object]] = []
-    for path in sorted(OUTPUT_DIR.glob("*")):
-        if not path.is_file():
-            continue
-        stat = path.stat()
-        files.append(
+    return output_files(OUTPUT_DIR)
+
+
+def _macro_model_readiness_payload(
+    model: dict[str, object],
+    *,
+    files_by_name: dict[str, dict[str, object]],
+    reference_date: str | None,
+) -> dict[str, object]:
+    expected_outputs = [str(name) for name in model["expected_outputs"]]
+    script_name = str(model["script_name"])
+    script = get_toolkit_script(script_name)
+    outputs = [
+        _macro_output_health(name, files_by_name.get(name), reference_date=reference_date)
+        for name in expected_outputs
+    ]
+    missing_outputs = [str(item["name"]) for item in outputs if item["freshness_status"] == "missing"]
+    stale_outputs = [str(item["name"]) for item in outputs if item["freshness_status"] == "stale"]
+    degraded_outputs = [
+        str(item["name"])
+        for item in outputs
+        if item["freshness_status"] in {"unknown", "future", "mixed", "invalid_date"}
+    ]
+    present_outputs = [item for item in outputs if item["freshness_status"] != "missing"]
+    latest_modified_at = max(
+        (str(item["modified_at"]) for item in outputs if item.get("modified_at")),
+        default=None,
+    )
+    latest_content_date = max(
+        (str(item["content_date"]) for item in outputs if item.get("content_date")),
+        default=None,
+    )
+    readiness = _model_readiness_status(
+        script_available=script.path.exists(),
+        expected_count=len(expected_outputs),
+        missing_outputs=missing_outputs,
+        stale_outputs=stale_outputs,
+        degraded_outputs=degraded_outputs,
+        present_count=len(present_outputs),
+    )
+    notes = [str(note) for note in model.get("notes", ())]
+    if readiness != "artifact_backed":
+        notes.append("Registered script is not enough for system readiness; expected output artifacts must exist and be fresh.")
+    degraded_reason = _macro_readiness_degraded_reason(
+        readiness=readiness,
+        script_available=script.path.exists(),
+        missing_outputs=missing_outputs,
+        stale_outputs=stale_outputs,
+        degraded_outputs=degraded_outputs,
+    )
+    evidence_level = _macro_readiness_evidence_level(readiness=readiness, present_count=len(present_outputs))
+    date_basis = _macro_readiness_date_basis(outputs)
+    return {
+        "id": str(model["id"]),
+        "label": str(model["label"]),
+        "script_name": script_name,
+        "script_available": script.path.exists(),
+        "expected_outputs": expected_outputs,
+        "outputs": outputs,
+        "missing_outputs": missing_outputs,
+        "stale_outputs": stale_outputs,
+        "degraded_outputs": degraded_outputs,
+        "latest_modified_at": latest_modified_at,
+        "latest_content_date": latest_content_date,
+        "readiness": readiness,
+        "degraded_reason": degraded_reason,
+        "evidence_level": evidence_level,
+        "date_basis": date_basis,
+        "artifact_receipt": _macro_artifact_receipt(
+            model_id=str(model["id"]),
+            script_name=script_name,
+            readiness=readiness,
+            outputs=outputs,
+            degraded_reason=degraded_reason,
+            data_asof=latest_content_date,
+        ),
+        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "notes": notes,
+    }
+
+
+def _macro_readiness_degraded_reason(
+    *,
+    readiness: str,
+    script_available: bool,
+    missing_outputs: list[str],
+    stale_outputs: list[str],
+    degraded_outputs: list[str],
+) -> str | None:
+    if not script_available:
+        return "script_unavailable"
+    if missing_outputs:
+        return "missing_expected_outputs"
+    if stale_outputs:
+        return "stale_expected_outputs"
+    if degraded_outputs:
+        return "indeterminate_output_dates"
+    if readiness == "registered_only":
+        return "no_expected_outputs_registered"
+    return None
+
+
+def _macro_readiness_evidence_level(*, readiness: str, present_count: int) -> str:
+    if readiness == "artifact_backed":
+        return "fresh_artifacts"
+    if present_count:
+        return "partial_artifacts"
+    return "registered_script_only"
+
+
+def _macro_readiness_date_basis(outputs: list[dict[str, object]]) -> str:
+    statuses = {str(item["freshness_status"]) for item in outputs}
+    if not outputs or statuses == {"missing"}:
+        return "missing"
+    bases = {
+        str(item["freshness_basis"])
+        for item in outputs
+        if item.get("freshness_basis") and item["freshness_status"] != "missing"
+    }
+    if "csv_content" in bases:
+        return "csv_content"
+    if "file_modified_date" in bases:
+        return "file_modified_date"
+    return "unknown"
+
+
+def _macro_artifact_receipt(
+    *,
+    model_id: str,
+    script_name: str,
+    readiness: str,
+    outputs: list[dict[str, object]],
+    degraded_reason: str | None,
+    data_asof: str | None,
+) -> dict[str, object]:
+    return {
+        "status": readiness,
+        "model_id": model_id,
+        "script_name": script_name,
+        "artifact_paths": sorted(str(item["name"]) for item in outputs if item["freshness_status"] != "missing"),
+        "missing_artifacts": sorted(str(item["name"]) for item in outputs if item["freshness_status"] == "missing"),
+        "degraded_reason": degraded_reason,
+        "data_asof": data_asof,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "runtime_endpoint": MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
+        "page_surface": MACRO_TOOLKIT_MODEL_READINESS_SURFACE,
+        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+    }
+
+
+def _macro_output_health(
+    name: str,
+    file_payload: dict[str, object] | None,
+    *,
+    reference_date: str | None,
+) -> dict[str, object]:
+    if file_payload is None:
+        return {
+            "name": name,
+            "freshness_status": "missing",
+            "freshness_basis": "missing",
+            "modified_at": None,
+            "modified_date": None,
+            "content_date": None,
+            "content_date_min": None,
+            "content_date_max": None,
+            "content_date_invalid_count": 0,
+            "reference_date": reference_date,
+        }
+    modified_at = str(file_payload.get("modified_at") or "").strip() or None
+    modified_date = _macro_output_modified_date(modified_at)
+    content_dates = _macro_output_content_dates(file_payload)
+    content_date = content_dates["max"]
+    content_date_min = content_dates["min"]
+    content_date_max = content_dates["max"]
+    content_date_invalid_count = int(content_dates["invalid_count"] or 0)
+    has_content_date_column = bool(content_dates["date_column"])
+    freshness_basis = "csv_content" if has_content_date_column else "file_modified_date"
+    freshness_status = (
+        "invalid_date"
+        if content_date_invalid_count
+        else "mixed"
+        if content_date_min and content_date_max and content_date_min != content_date_max
+        else "unknown"
+        if has_content_date_column and not content_date
+        else _macro_output_freshness(content_date or modified_date, reference_date)
+    )
+    return {
+        "name": name,
+        "freshness_status": freshness_status,
+        "freshness_basis": freshness_basis,
+        "modified_at": modified_at,
+        "modified_date": modified_date,
+        "content_date": content_date,
+        "content_date_min": content_date_min,
+        "content_date_max": content_date_max,
+        "content_date_invalid_count": content_date_invalid_count,
+        "reference_date": reference_date,
+    }
+
+
+def _model_readiness_status(
+    *,
+    script_available: bool,
+    expected_count: int,
+    missing_outputs: list[str],
+    stale_outputs: list[str],
+    degraded_outputs: list[str],
+    present_count: int,
+) -> str:
+    if not script_available:
+        return "unknown"
+    if expected_count == 0:
+        return "registered_only"
+    if missing_outputs and present_count == 0:
+        return "missing_output"
+    if missing_outputs:
+        return "degraded"
+    if stale_outputs:
+        return "stale"
+    if degraded_outputs:
+        return "degraded"
+    return "artifact_backed"
+
+
+def _macro_output_modified_date(modified_at: str | None) -> str | None:
+    if not modified_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(modified_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.date().isoformat()
+    return parsed.astimezone(UTC).date().isoformat()
+
+
+def _macro_output_content_dates(file_payload: dict[str, object]) -> dict[str, str | int | None]:
+    path_value = file_payload.get("path")
+    if not path_value:
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
+    path = Path(str(path_value))
+    if not path.is_file():
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
+    try:
+        columns = pd.read_csv(path, nrows=0).columns
+        date_column = next((column for column in MACRO_TOOLKIT_OUTPUT_DATE_COLUMNS if column in columns), None)
+        if date_column is None:
+            return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
+        frame = pd.read_csv(path, usecols=[date_column])
+    except (OSError, UnicodeError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": None}
+    if frame.empty:
+        return {"min": None, "max": None, "invalid_count": 0, "date_column": date_column}
+    raw_dates = frame[date_column].dropna()
+    parsed = pd.to_datetime(raw_dates, errors="coerce")
+    invalid_count = int(parsed.isna().sum())
+    parsed = parsed.dropna()
+    if parsed.empty:
+        return {"min": None, "max": None, "invalid_count": invalid_count, "date_column": date_column}
+    return {
+        "min": parsed.min().date().isoformat(),
+        "max": parsed.max().date().isoformat(),
+        "invalid_count": invalid_count,
+        "date_column": date_column,
+    }
+
+
+def _macro_output_freshness(output_date: str | None, reference_date: str | None) -> str:
+    if not output_date:
+        return "unknown"
+    if not reference_date:
+        return "present"
+    try:
+        output_day = date.fromisoformat(output_date[:10])
+        reference_day = date.fromisoformat(reference_date[:10])
+    except ValueError:
+        return "unknown"
+    if output_day > reference_day:
+        return "future"
+    return "current" if output_day == reference_day else "stale"
+
+
+def _macro_run_manifest() -> list[dict[str, object]]:
+    labels_by_script = {
+        "merrill_clock_cn": "Merrill Clock",
+        "crisis_score_cn": "Crisis Score",
+        "bond_futures_data": "Bond Futures Basis / IRR / Safety Margin",
+        "bond_futures_signals": "Bond Futures Four-Factor Trend",
+        "crowding_cn": "Crowding",
+        "dcc_garch_cn": "DCC-GARCH",
+        "cta_trend_cn": "CTA Trend",
+        "signal_aggregator": "Final Signal Aggregator",
+        "risk_monitor": "Risk Monitor",
+    }
+    outputs_by_script: dict[str, list[str]] = {}
+    for model in _MACRO_MODEL_DEFINITIONS:
+        script_name = str(model["script_name"])
+        outputs_by_script.setdefault(script_name, [])
+        outputs_by_script[script_name].extend(str(name) for name in model["expected_outputs"])
+    ordered_scripts = (
+        "merrill_clock_cn",
+        "crisis_score_cn",
+        "bond_futures_data",
+        "bond_futures_signals",
+        "crowding_cn",
+        "dcc_garch_cn",
+        "cta_trend_cn",
+        "signal_aggregator",
+        "risk_monitor",
+    )
+    registry = {script.name: script for script in iter_toolkit_scripts()}
+    manifest: list[dict[str, object]] = []
+    for order, script_name in enumerate(ordered_scripts, start=1):
+        script = registry[script_name]
+        manifest.append(
             {
-                "name": path.name,
-                "path": str(path),
-                "size_bytes": stat.st_size,
-                "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+                "order": order,
+                "script_name": script_name,
+                "label": labels_by_script[script_name],
+                "expected_outputs": sorted(set(outputs_by_script.get(script_name, []))),
+                "available": script.path.exists(),
             }
         )
-    return files
+    return manifest
+
+
+def _dry_run_receipt(step: dict[str, object], *, chain_id: str, output_dir: str | Path) -> dict[str, object]:
+    return {
+        "order": int(step["order"]),
+        "chain_id": chain_id,
+        "script_name": str(step["script_name"]),
+        "status": "dry_run",
+        "exit_code": None,
+        "expected_outputs": list(step.get("expected_outputs") or []),
+        "produced_outputs": [],
+        "missing_outputs_after": _missing_expected_outputs(step, output_dir=output_dir),
+        "degraded_reason": "dry_run_not_executed",
+        "data_asof": None,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "runtime_endpoint": MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
+        "page_surface": MACRO_TOOLKIT_SCRIPT_ARTIFACT_SURFACE,
+        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+        "started_at": None,
+        "finished_at": None,
+        "stdout": "",
+        "stderr": "",
+    }
+
+
+def _run_receipt(
+    step: dict[str, object],
+    result: dict[str, object],
+    *,
+    chain_id: str,
+    output_dir: str | Path,
+) -> dict[str, object]:
+    expected_outputs = [str(name) for name in step.get("expected_outputs") or []]
+    outputs = output_files(output_dir)
+    output_names = {str(item["name"]) for item in outputs}
+    missing_outputs_after = [name for name in expected_outputs if name not in output_names]
+    return {
+        "order": int(step["order"]),
+        "chain_id": chain_id,
+        "script_name": str(step["script_name"]),
+        "status": str(result.get("status") or "unknown"),
+        "exit_code": result.get("exit_code"),
+        "expected_outputs": expected_outputs,
+        "produced_outputs": sorted(name for name in expected_outputs if name in output_names),
+        "missing_outputs_after": missing_outputs_after,
+        "degraded_reason": _macro_run_degraded_reason(status=str(result.get("status") or "unknown"), missing_outputs=missing_outputs_after),
+        "data_asof": _macro_run_data_asof(expected_outputs=expected_outputs, outputs=outputs),
+        "generated_at": datetime.now(UTC).isoformat(),
+        "runtime_endpoint": MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
+        "page_surface": MACRO_TOOLKIT_SCRIPT_ARTIFACT_SURFACE,
+        "formal_use_allowed": MACRO_TOOLKIT_FORMAL_USE_ALLOWED,
+        "observation_only": MACRO_TOOLKIT_OBSERVATION_ONLY,
+        "started_at": result.get("started_at"),
+        "finished_at": result.get("finished_at"),
+        "stdout": str(result.get("stdout") or ""),
+        "stderr": str(result.get("stderr") or ""),
+    }
+
+
+def _macro_run_degraded_reason(*, status: str, missing_outputs: list[str]) -> str | None:
+    if status != "completed":
+        return "script_execution_not_completed"
+    if missing_outputs:
+        return "missing_expected_outputs_after_run"
+    return None
+
+
+def _macro_run_data_asof(*, expected_outputs: list[str], outputs: list[dict[str, object]]) -> str | None:
+    files_by_name = {str(item["name"]): item for item in outputs}
+    content_dates: list[str] = []
+    for name in expected_outputs:
+        content_date = _macro_output_health(name, files_by_name.get(name), reference_date=None).get("content_date")
+        if content_date:
+            content_dates.append(str(content_date))
+    return max(content_dates, default=None)
+
+
+def _missing_expected_outputs(step: dict[str, object], *, output_dir: str | Path) -> list[str]:
+    output_names = {str(item["name"]) for item in output_files(output_dir)}
+    return [str(name) for name in step.get("expected_outputs") or [] if str(name) not in output_names]
 
 
 def _tail_text(value: str | bytes | None, limit: int = 12000) -> str:
