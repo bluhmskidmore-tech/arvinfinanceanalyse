@@ -29,6 +29,63 @@ from scripts.mcp.moss_project_mcp import product_page_trace_bundles
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def assert_direct_evidence_visible_without_closure(report: dict) -> None:
+    assert report["catalog_date_evidence"] is not None
+    assert report["catalog_date_evidence"]["status"] in {"sampled", "incomplete"}
+    assert report["governance_record_validation"] is not None
+    assert report["governance_record_validation"]["status"] in {
+        "direct_records_ready_for_audit_review",
+        "missing_direct_records",
+    }
+    assert report["audit_review"] is not None
+    assert report["audit_review"]["closure_approved"] is False
+
+
+def assert_catalog_gap_matches_direct_evidence(report: dict) -> None:
+    has_gap = any(
+        "full data-catalog/date review" in gap
+        for gap in report["residual_gaps"]
+    )
+    if report["catalog_date_evidence"]["status"] == "sampled":
+        assert not has_gap
+    else:
+        assert has_gap
+
+
+def test_optional_direct_evidence_missing_batch_rows_stays_fail_closed(monkeypatch) -> None:
+    readiness_module._direct_evidence_reports_for_context.cache_clear()
+    monkeypatch.setattr(
+        readiness_module,
+        "page_catalog_date_evidence",
+        lambda *args, **kwargs: {"pages": []},
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "page_governance_record_validation",
+        lambda *args, **kwargs: {"pages": []},
+    )
+    monkeypatch.setattr(
+        readiness_module,
+        "page_governance_audit_review_checklist",
+        lambda *args, **kwargs: {"pages": []},
+    )
+
+    try:
+        report = build_page_readiness_report("pnl")
+    finally:
+        readiness_module._direct_evidence_reports_for_context.cache_clear()
+
+    assert report["overall_status"] == "static-pass"
+    assert report["catalog_date_evidence"]["status"] == "incomplete"
+    assert report["catalog_date_evidence"]["table_count"] == 0
+    assert report["governance_record_validation"]["status"] == "missing_direct_records"
+    assert report["governance_record_validation"]["ready_record_count"] == 0
+    assert report["audit_review"]["status"] == "blocked_by_record_gaps"
+    assert report["audit_review"]["closure_approved"] is False
+    assert_catalog_gap_matches_direct_evidence(report)
+    assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
+
+
 def test_balance_movement_freshness_gate_blocks_when_read_model_lags_upstream(tmp_path) -> None:
     import duckdb
 
@@ -284,9 +341,8 @@ def test_pnl_readiness_exposes_run_commands_without_direct_record_promotion() ->
     assert "codex-page-smoke.ps1 -PageSlug pnl" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug pnl -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
 
 
@@ -305,9 +361,8 @@ def test_pnl_bridge_readiness_exposes_run_commands_without_direct_record_promoti
     assert "codex-page-smoke.ps1 -PageSlug pnl-bridge" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug pnl-bridge -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
 
 
@@ -657,9 +712,8 @@ def test_positions_readiness_exposes_run_commands_without_direct_record_promotio
     assert "codex-page-smoke.ps1 -PageSlug positions" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug positions -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Candidate metric dictionary-level approval remains pending." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -680,9 +734,8 @@ def test_operations_analysis_readiness_exposes_run_commands_without_full_page_pr
     assert "codex-page-smoke.ps1 -PageSlug operations-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug operations-analysis -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("GAP-OPS-MACRO-FX" in gap for gap in report["residual_gaps"])
@@ -701,9 +754,8 @@ def test_liability_analytics_readiness_exposes_run_commands_without_formal_promo
     assert "codex-page-smoke.ps1 -PageSlug liability-analytics" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug liability-analytics -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -722,9 +774,8 @@ def test_market_data_readiness_exposes_run_commands_without_full_page_promotion(
     assert "codex-page-smoke.ps1 -PageSlug market-data" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug market-data -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -743,13 +794,12 @@ def test_cross_asset_readiness_exposes_run_commands_without_formal_promotion() -
     assert "codex-page-smoke.ps1 -PageSlug cross-asset" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug cross-asset -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert_direct_evidence_visible_without_closure(report)
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert any("/api/macro-bond-linkage/analysis" in item for item in report["truth_chain"])
     assert any("NCD" in item and "proxy" in item for item in report["guardrails"])
     assert any("Livermore" in item and "observational" in item for item in report["guardrails"])
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
@@ -1105,9 +1155,8 @@ def test_macro_toolkit_readiness_exposes_run_commands_without_formal_promotion()
     assert "codex-page-smoke.ps1 -PageSlug macro-toolkit" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug macro-toolkit -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
-    assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
+    assert_direct_evidence_visible_without_closure(report)
+    assert_catalog_gap_matches_direct_evidence(report)
     assert any("direct page-keyed governance records" in gap for gap in report["residual_gaps"])
     assert any("Mixed-source page cannot be collapsed into full-page formal truth." in gap for gap in report["residual_gaps"])
     assert any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
