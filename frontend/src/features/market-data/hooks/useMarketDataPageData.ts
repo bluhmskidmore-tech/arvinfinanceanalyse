@@ -160,7 +160,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
       client.mode,
     ]);
     return buildMarketDataCategoryStore({
-      catalog: catalogEnvelope?.result.catalog ?? [],
+      catalog: catalogEnvelope?.result.series ?? [],
       latestSeries: latestEnvelope?.result.series ?? [],
       fxAnalyticalGroups: [],
     }).linkageReportDate;

@@ -70,8 +70,10 @@ export function enrichMarketHomeRow<T extends MarketHomeSparklineRow>(
   byId: Map<string, ChoiceMacroLatestPoint>,
 ): T {
   const point = byId.get(row.source);
+  const sparklinePoint =
+    point?.series_id === "CA.CSI300" ? byId.get("CA.CSI300_PCT_CHG") ?? point : point;
   const detail = point && row.source === "CA.CSI300" ? resolveMacroSnapshotDetail(point, byId) ?? row.detail : row.detail;
-  const sparkline = sparklineFromChoicePoint(point);
+  const sparkline = sparklineFromChoicePoint(sparklinePoint);
   if (detail === row.detail && !sparkline) {
     return row;
   }

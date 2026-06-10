@@ -73,6 +73,12 @@ const MOCK_RATES_PAYLOAD: ChoiceMacroLatestPayload = {
     macroPoint("EMM01843735", "China financial conditions index", 98.6, "index", 0.35, [
       97.9, 98.1, 98.3, 98.6,
     ]),
+    macroPoint("CA.CSI300", "沪深300指数收盘价", 4102.25, "index", 17.13, [
+      4060.12, 4088.34, 4119.38, 4102.25,
+    ]),
+    macroPoint("CA.CSI300_PCT_CHG", "沪深300涨跌幅", -0.42, "%", -0.05, [
+      0.31, 0.18, -0.12, -0.42,
+    ]),
     macroPoint("CA.USDCNY", "USD/CNY spot", 7.14, "CNY/USD", 0.0064, [
       7.11, 7.12, 7.13, 7.14,
     ]),

@@ -39,6 +39,7 @@
 - `/positions`（持仓与对手方下钻）
 - `/market-data`（市场数据：宏观/利率/外汇/结构化 NCD 等，含多源与 preview）
 - `/operations-analysis`（经营分析：证据链 + 正式余额入口，Wave 1 例外与计划并存）
+- `/bond-trading-desk`（单券交易分析台，深钻路由，见 §13.9）
 
 不覆盖：
 
@@ -1224,6 +1225,61 @@
 
 - `data-testid`：`positions-page`、`positions-page-title`；`RouteRegistry` 对 `/positions` 路由
 
+## 13.9 PAGE-BOND-DESK-001 单券交易分析台
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-BOND-DESK-001`
+- 页面名称：`单券交易分析台`
+- 路由：前端 `/bond-trading-desk?bond_code=&report_date=`；**导航默认 hidden**（由重仓券/持仓深钻进入，见 `navigation.ts` `navigationVisibility: "hidden"`）
+- 页面状态：`active-read-compose`（只读拼装，无独立单券 formal endpoint）
+- 设计锚点：`docs/superpowers/specs/2026-06-10-bond-trading-desk-design.md`
+
+### B. 业务问题与不回答
+
+- **须回答**：在选定 `bond_code` 与 `report_date` 下，本券在组合中的身份、市值/久期/YTM/权重/利差（若列表命中）及持仓变动（若命中）是什么；数据从哪条只读链路拼来。
+- **不回答**：不提供买卖指令、约束红绿灯、盘口报价、相似券打分、情景压力数值；不在前端重算正式金融指标；不将组合级结论冒充单券交易建议。
+
+### C. 必有 / 禁止 section
+
+- **必有**：`bond-trading-desk-page`、`bond-trading-desk-identity`、`bond-trading-desk-conclusion`、`bond-trading-desk-metrics`、`bond-trading-desk-gaps`、`bond-trading-desk-decision-rail`、`report_date` 选择、`bond_code` 输入或 URL 同步
+- **禁止**：无 `bond_code` 时假装有单券结论；静默隐藏 `api_pending` 模块；用 mock 盘口/约束表冒充正式读面
+
+### D. 时间语义
+
+- `requested_report_date`：URL `report_date` 或 `getBondAnalyticsDates` 默认首项
+- `resolved_report_date`：各拼装请求 URL 中的 `report_date` 与各 payload 内 `report_date`
+- `bond_code`：URL `bond_code`（必填）；与 `instrument_code` / `bond_code` 字段大小写无关 trim 后匹配
+
+### E. Endpoint / DTO 表（拼装源，非单券专用）
+
+| Endpoint | 用途 | DTO |
+| --- | --- | --- |
+| `GET /api/bond-analytics/dates` | 报告日 | `BondAnalyticsDatesPayload` |
+| `GET /api/bond-analytics/top-holdings?top_n=`（≤500） | 重仓券命中 | `BondTopHoldingsPayload` / `BondTopHoldingItem` |
+| `GET /api/positions/bonds?page_size=`（≤500） | 持仓列表命中 | `BondPositionItem` |
+| `GET /api/credit-spread-analysis/detail` | 利差行命中 | `CreditSpreadDetailBondRow` |
+| `GET /api/bond-analytics/position-changes` | 变动行命中 | `BondPositionChangesPayload` |
+
+**缺口（须 UI 标注，不得前端补算）：** 单券 profile API、盘口、约束校验、相似券、情景压力、组合冲击专用 DTO。
+
+### F. 指标映射
+
+- 不新增 `metric_id`；展示字段仅透传上述 DTO 列（市值、YTM、修正久期、权重、信用利差等），未命中列显示「待返回」或空态文案。
+
+### G. 状态
+
+- **Loading**：dates 与拼装查询并行；`bond_code` 空时不 enabled 拼装查询
+- **Empty**：`bond_code` 空 → 引导输入；拼装未命中 → `bond-trading-desk-empty` 说明查找范围（top-holdings + positions 前 500）
+- **Error**：各 query 错误须在页面级 `Alert` 可见，不覆盖首屏为加载中
+- **Stale / fallback**：以各 `result_meta` 为准；拼装源不一致时结论须注明 `coverageSource`
+
+### H. 测试锚点
+
+- `frontend/src/features/bond-trading-desk/lib/bondTradingDeskPageModel.test.ts`
+- `frontend/src/test/BondTradingDeskPage.test.tsx`
+- 深钻：`TopHoldingsView` 行链至 `/bond-trading-desk?bond_code=&report_date=`
+
 ## 13.8 PAGE-MKT-001 市场数据
 
 ### A. 页面身份
@@ -1265,7 +1321,7 @@
 | `getMacroBondLinkageAnalysis` | `GET /api/macro-bond-linkage/analysis?report_date=` | 债券-宏观联动 **analytical** 读面 |
 | `getChoiceMacroRefreshStatus` / refresh POST | vendor 运维 | 非主值 |
 
-> **实现核对（仓库当前 `MarketDataPage.tsx`）**：本页已挂载查询的上表方法为 `getMacroFoundation`、`getChoiceMacroLatest`、`getFxAnalytical`、`getNcdFundingProxy`、`getMacroBondLinkageAnalysis`、`getChoiceMacroRefreshStatus`（及刷新 POST）、`getMarketDataRates`、`getLivermoreStrategy`。`getFxFormalStatus` 在 `marketDataClient` 存在，但本页**未**发起独立 `useQuery`；若其他路由消费该端点，以对应页面契约为准。
+> **实现核对（仓库当前 `MarketDataPage.tsx`）**：本页已挂载查询的上表方法为 `getMacroFoundation`、`getChoiceMacroLatest`、`getFxFormalStatus`、`getFxAnalytical`、`getNcdFundingProxy`、`getMacroBondLinkageAnalysis`、`getChoiceMacroRefreshStatus`（及刷新 POST）、`getMarketDataRates`、`getLivermoreStrategy`（Livermore 展开后 `enabled`）。
 
 ### F. 指标映射
 
@@ -1280,7 +1336,41 @@
 
 - `frontend/src/test/MarketDataPage.test.tsx`、`ApiClient.test.ts`（端点 URL 拼写）、`RouteRegistry.test.tsx`
 
-### H.1 Blocked formal-use visibility
+### H.1 Hero filter strip（前端读面筛选，不触发新 API）
+
+- **控件锚点**：`market-data-filter-strip`、`market-data-active-filter-summary`（`MarketDataHeroSection.tsx`）。
+- **筛选维度**（均为**前端本地过滤**，不改变 `useQuery` 参数或后端请求）：
+  - **国债 / 国开**（`curveFilter`）：过滤 `RateQuoteTable`、Market Tape、首屏终端 KPI；`both` 表示不过滤曲线品种。
+  - **来源**（`sourceFilter`）：过滤利率主表、资金表、Tape、KPI；分类规则见下。
+  - **中票 / 城投**（`creditSegment`）：仅过滤宏观深度「信用利差」Tab 的 `credit_spread` 联动槽位（`buildSpreadSlots`）；按 `MacroBondLinkageTopCorrelation.series_name` 是否包含「中票」或「城投」匹配；`both` 表示不过滤信用分段。
+- **来源分类规则**（`classifyTerminalSource` / `matchesSourceFilter`，`marketDataTerminalModel.ts`）：
+  - 优先读取 catalog `vendor_name`（`buildCatalogVendorNameMap(catalog)`，按 `series_id` 对齐）；当 `vendor_name=choice` 时归为 **Choice**。
+  - 否则读取每行/API 点上的 `source_version` 与 `vendor_version`，拼接为小写字符串；若包含子串 `choice` → **Choice**；否则 → **内部**（含 `public_*`、`fred`、`boc` 等中性 lineage）。
+  - 前端**不得**据此重算利率/利差数值，仅决定行是否展示。
+- **Fragment golden**（`GS-MKT-RATES-FRAGMENT-A`）：冻结 `GET /ui/market-data/rates` formal 片段；不关闭 `GAP-MKT-DATA` 全页缺口。回归：`marketDataRatesFragmentGolden.test.ts`、`tests/test_golden_samples_capture_ready.py`。
+- **生效摘要文案**：`buildMarketDataActiveFilterSummary` 将非默认筛选拼为 `国债 + Choice` 等形式；全部为默认时显示 `全部`。
+- **Tab 联动**：当 `creditSegment` 为 `mtn` 或 `urban` 时，页面自动切换宏观深度 Tab 至 **信用利差**（`macroDepthTab=spreads`）；改回 `both` 时不强制回切曲线 Tab。
+- **空态**：筛选后无匹配行时，利率/资金表展示 `market-data-*-filter-empty`，不补 demo 数。
+- **回归锚点**：`frontend/src/features/market-data/lib/marketDataTerminalModel.test.ts`、`frontend/src/test/MarketDataPage.test.tsx`（`updates shell filter state locally…`）。
+
+### H.2 首屏收口与延迟加载（Route A）
+
+- **Livermore**：`market-data-livermore-collapse` 默认折叠；`getLivermoreStrategy` 仅在用户展开后 `enabled`（`useMarketDataPageData({ livermoreEnabled })`）。展开前 DOM 中不应出现 `market-data-livermore-panel` 正文。
+- **宏观深度 Tab**：仅渲染当前 `macroDepthTab` 对应 panel（曲线 / 信用利差 / 压力与情景），非激活 Tab 的 `market-data-macro-tab-*` 不应挂载。
+- **查询焦点**：市场页相关 `useQuery` 设置 `refetchOnWindowFocus: false`；`staleTime` 继续沿用 `externalDataQueryOptions`（稳定 date_slice 30 分钟，其余 5 分钟）。
+- **壳层**：`WorkbenchShell` 在 `market-data` 路由隐藏市场工作台子导航网格（`isMarketDataTerminalMain`）。
+- **布局版本**：`data-layout-rev=2026-06-10g`。
+- **回归**：`MarketDataPage.test.tsx`（`defers macro-bond linkage…`、`keeps Livermore deferred…`、`renders only the active macro depth tab panel`）。
+
+### H.4 新数据源接入（Route C）
+
+- **正式外汇**：页面挂载 `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status`；`market-data-fx-formal-collapse` 默认折叠，展开后展示 `market-data-fx-formal-table`（仅后端行，前端不补算中间价）。
+- **与 analytical 分离**：`getFxAnalytical` 仍为分析观察；正式外汇状态单独进入证据轨 `FX formal` 与运维 KPI `market-data-fx-formal-materialized`。
+- **仍 source-pending**：国债期货 / 现券成交 / 信用成交无 outward contract；`market-data-source-pending-contract-note` 明示缺口，面板保持 `source-pending` 空态。
+- **布局版本**：`data-layout-rev=2026-06-10g`（首屏状态条仅保留利率口径；运维 KPI 与联动 API 懒加载）。
+- **回归**：`MarketDataPage.test.tsx`、`marketDataPageModel.test.ts`、`frontend/tests/playwright/market-data-terminal-smoke.spec.mjs`。
+
+### H.3 Blocked formal-use visibility
 
 - If the `/market-data` formal rates fragment returns `result_meta.basis=formal` but `formal_use_allowed=false`, the page must not present it as formal-ready.
 - Required user-visible copy: `formal · blocked`, `禁止作为正式口径`, and first-screen status `分析/候选`.

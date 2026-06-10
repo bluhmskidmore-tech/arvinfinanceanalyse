@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChoiceMacroLatestPoint, ResultMeta } from "../../../api/contracts";
+import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint, ResultMeta } from "../../../api/contracts";
 import {
   buildCatalogVendorNameMap,
   buildMarketDataActiveFilterSummary,
@@ -48,6 +48,16 @@ function point(partial: Partial<ChoiceMacroLatestPoint> & Pick<ChoiceMacroLatest
     latest_change: 0.012,
     recent_points: [],
     ...partial,
+  };
+}
+
+function recentPoint(trade_date: string, value_numeric: number): ChoiceMacroRecentPoint {
+  return {
+    trade_date,
+    value_numeric,
+    source_version: "sv_market_rates",
+    vendor_version: "vv_market_rates",
+    quality_flag: "ok",
   };
 }
 
@@ -145,8 +155,8 @@ describe("buildMarketDataTerminalModel", () => {
               value_numeric: 1.94,
               latest_change: -0.012,
               recent_points: [
-                { trade_date: "2026-04-28", value_numeric: 1.96, vendor_version: "vv_market_rates" },
-                { trade_date: "2026-04-29", value_numeric: 1.952, vendor_version: "vv_market_rates" },
+                recentPoint("2026-04-28", 1.96),
+                recentPoint("2026-04-29", 1.952),
               ],
             }),
             point({
@@ -191,8 +201,8 @@ describe("buildMarketDataTerminalModel", () => {
         series_id: "EMM00166466",
         value_numeric: 1.94,
         recent_points: [
-          { trade_date: "2026-04-28", value_numeric: 1.96, vendor_version: "vv_market_rates" },
-          { trade_date: "2026-04-29", value_numeric: 1.952, vendor_version: "vv_market_rates" },
+          recentPoint("2026-04-28", 1.96),
+          recentPoint("2026-04-29", 1.952),
         ],
       }),
     );

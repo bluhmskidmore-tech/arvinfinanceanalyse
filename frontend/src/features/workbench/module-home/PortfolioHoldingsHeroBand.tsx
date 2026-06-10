@@ -69,7 +69,7 @@ export function PortfolioHoldingsHeroBand({
           <p className={styles.holdingsHeroMeta}>{heroMeta}</p>
         </div>
         <div className={styles.holdingsHeroActions}>
-          {panel.viewAllPath ? (
+          {panel?.viewAllPath ? (
             <Link className={styles.holdingsSectionLink} to={panel.viewAllPath}>
               债券总览
             </Link>

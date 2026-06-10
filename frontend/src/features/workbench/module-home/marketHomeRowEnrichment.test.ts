@@ -52,6 +52,10 @@ describe("marketHomeRowEnrichment", () => {
           series_id: "CA.CSI300_PCT_CHG",
           unit: "%",
           value_numeric: -0.45,
+          recent_points: [
+            { trade_date: "2026-05-28", value_numeric: 0.2, source_version: "sv", vendor_version: "vv", quality_flag: "ok" },
+            { trade_date: "2026-05-29", value_numeric: -0.45, source_version: "sv", vendor_version: "vv", quality_flag: "ok" },
+          ],
         }),
       ],
     ]);
@@ -80,6 +84,10 @@ describe("marketHomeRowEnrichment", () => {
           series_id: "CA.CSI300_PCT_CHG",
           unit: "%",
           value_numeric: -0.45,
+          recent_points: [
+            { trade_date: "2026-05-28", value_numeric: 0.2, source_version: "sv", vendor_version: "vv", quality_flag: "ok" },
+            { trade_date: "2026-05-29", value_numeric: -0.45, source_version: "sv", vendor_version: "vv", quality_flag: "ok" },
+          ],
         }),
       ],
     ]);
@@ -97,7 +105,7 @@ describe("marketHomeRowEnrichment", () => {
     expect(enrichMarketHomeRow(row, byId)).toEqual({
       ...row,
       detail: "日变动 -0.45%",
-      sparkline: [4914.21, 4892.12],
+      sparkline: [0.2, -0.45],
     });
   });
 });
