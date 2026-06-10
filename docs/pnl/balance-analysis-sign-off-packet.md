@@ -38,5 +38,5 @@ These six items are a subset of the same 11 pending owner actions so the reviewe
 The reviewer must treat `GS-BAL-OVERVIEW-A` review and Live smoke evidence review as required pre-signature review steps that remain pending until the owner completes the canonical approval template.
 The business owner name, role, decision, date, and signature actions remain pending in the canonical template and are not displaced by this sign-off packet subset.
 `python scripts/emit_balance_analysis_governance_record.py --write` is operator-only and not part of this closure round.
-The linked live smoke artifact records passed route/API reachability only; it does not approve closure and does not clear the full verify blockers recorded there.
-No MCP-backed contract, lineage, catalog, or impact proof is claimed in this sign-off packet because `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, and `gitnexus` were unavailable during this slice.
+The linked live smoke artifact records passed route/API reachability and a 2026-06-10 full page verification pass; it does not approve closure or business-owner signoff.
+No external business-owner approval, golden-sample owner approval, governance write, or closure approval is claimed in this sign-off packet.

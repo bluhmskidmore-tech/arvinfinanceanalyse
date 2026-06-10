@@ -37,10 +37,9 @@ The five bullets below summarize the current 11 pending owner actions from the c
 - The owner still has 11 pending owner actions in the canonical template for this closure slice; this audit packet is only a grouped review view over those same actions.
 - The readiness script is a multi-source aggregator over direct evidence, audit review state, and normalized owner-state output. It is not a second owner-state source.
 - No governance write occurs in this closure round.
-- The linked live smoke artifact records a passed live reachability check, but it does not close owner review or resolve the separately recorded full verify blockers.
+- The linked live smoke artifact records a passed live reachability check and a 2026-06-10 full page verification pass, but it does not close owner review.
 
 ## Residual Risk
 
-- MCP servers `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, and `gitnexus` were unavailable during this closure slice.
-- Local substitutes used instead: balance-analysis readiness output, governance dry-run validation, the balance-analysis owner checker, and repository golden-sample artifacts.
-- No MCP-backed metric-contract, lineage, catalog, or impact proof is claimed in this packet.
+- No external business-owner approval, golden-sample owner approval, governance write, or closure approval is claimed in this packet.
+- Reviewer handoff evidence uses balance-analysis readiness output, governance dry-run validation, the balance-analysis owner checker, repository golden-sample artifacts, and `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run`.

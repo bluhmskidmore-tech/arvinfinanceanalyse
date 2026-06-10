@@ -95,6 +95,15 @@ def test_product_category_readiness_static_gates_surface_contract_evidence() -> 
 
     assert report["route"] == "/product-category-pnl"
     assert report["primary_api"] == "/ui/pnl/product-category"
+    assert "docs/pnl/product-category-pnl-first-certification-packet.md" in report["contract_docs"]
+    assert "docs/pnl/product-category-pnl-owner-decision-packet.md" in report["contract_docs"]
+    assert "docs/pnl/product-category-pnl-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/product-category-pnl-approval-runbook.md" in report["contract_docs"]
+    assert "docs/pnl/product-category-remaining-blockers.md" in report["contract_docs"]
+    assert any("first-certification-packet.md packages source-to-screen evidence" in item for item in report["truth_chain"])
+    assert any("owner-decision-packet.md lists pending product/API owner decisions" in item for item in report["truth_chain"])
+    assert any("business-owner-approval-template.md is the only owner approval checker input" in item for item in report["truth_chain"])
+    assert any("approval-runbook.md lists the review path" in item for item in report["truth_chain"])
     assert report["catalog_date_evidence"]["status"] == "sampled"
     assert report["catalog_date_evidence"]["present_table_count"] == 2
     assert report["catalog_date_evidence"]["date_sampled_table_count"] == 2
@@ -240,6 +249,12 @@ def test_balance_analysis_readiness_exposes_direct_record_and_run_commands(
     assert report["business_owner_approval_status"]["approval_action_item_count"] == 11
     assert report["business_owner_approval_status"]["formal_use_allowed"] is True
     assert report["business_owner_approval_status"]["closure_approved"] is False
+    assert "docs/pnl/balance-analysis-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/balance-analysis-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/balance-analysis-owner-signoff-runbook.md" in report["contract_docs"]
+    assert "docs/audits/2026-06-07-balance-analysis-live-smoke-evidence.md" in report["contract_docs"]
+    assert any("post-signing verification commands" in item for item in report["truth_chain"])
+    assert any("formal_use_allowed=true and closure_approved=false" in item for item in report["truth_chain"])
     assert "python scripts/emit_balance_analysis_governance_record.py" in report["governance_record_commands"]
     assert (
         "python scripts/emit_balance_analysis_governance_record.py --write"
@@ -551,6 +566,15 @@ def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promoti
         "python scripts/check_ledger_pnl_business_owner_approval.py --require-captured",
         "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 -PageSlug ledger-pnl -RequireApprovalCaptured",
     ]
+    assert "docs/pnl/ledger-pnl-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/ledger-pnl-sign-off-packet.md" in report["contract_docs"]
+    assert "docs/pnl/ledger-pnl-governance-audit-packet.md" in report["contract_docs"]
+    assert "docs/pnl/ledger-pnl-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/ledger-pnl-owner-signoff-runbook.md" in report["contract_docs"]
+    assert any("preserving formal_use_allowed=false" in item for item in report["truth_chain"])
+    assert any("candidate sign-off evidence only" in item for item in report["truth_chain"])
+    assert any("remains unsigned" in item for item in report["truth_chain"])
+    assert any("without promoting Ledger PnL to formal PnL truth" in item for item in report["truth_chain"])
     assert report["business_owner_approval_status"]["approval_status"] == "pending"
     assert report["business_owner_approval_status"]["business_owner_approval_captured"] is False
     assert report["business_owner_approval_status"]["remaining_blockers"] == [
@@ -895,11 +919,13 @@ def test_average_balance_readiness_exposes_candidate_record_path_without_formal_
     assert "docs/live_route_maturity.md" in report["contract_docs"]
     assert "docs/pnl/average-balance-page-contract.md" in report["contract_docs"]
     assert "docs/pnl/average-balance-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/average-balance-owner-signoff-runbook.md" in report["contract_docs"]
     assert "docs/audits/2026-06-09-average-balance-live-smoke-evidence.md" in report["contract_docs"]
     assert any("candidate ADB analysis" in item for item in report["guardrails"])
     assert any("MTR-ADB-001" in item for item in report["truth_chain"])
     assert any("GS-AVERAGE-BALANCE-MONTHLY-A" in item for item in report["truth_chain"])
     assert any("live-smoke reference evidence only" in item for item in report["truth_chain"])
+    assert any("post-signing verification commands" in item for item in report["truth_chain"])
     assert report["golden_samples"] == [
         "tests/golden_samples/GS-AVERAGE-BALANCE-A",
         "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A",
@@ -1144,6 +1170,15 @@ def test_pnl_attribution_readiness_exposes_run_commands_without_formal_pnl_promo
     assert report["approval_status"] == "candidate_or_pending"
     assert report["formal_use_allowed"] is False
     assert report["overall_status"] == "static-pass"
+    assert "docs/pnl/pnl-attribution-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/pnl-attribution-sign-off-packet.md" in report["contract_docs"]
+    assert "docs/pnl/pnl-attribution-governance-audit-packet.md" in report["contract_docs"]
+    assert "docs/pnl/pnl-attribution-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/pnl-attribution-owner-signoff-runbook.md" in report["contract_docs"]
+    assert any("owner-review evidence while preserving formal_use_allowed=false" in item for item in report["truth_chain"])
+    assert any("candidate sign-off evidence only" in item for item in report["truth_chain"])
+    assert any("business-owner-approval-template.md is the only owner approval checker input" in item for item in report["truth_chain"])
+    assert any("without promoting formal PnL truth" in item for item in report["truth_chain"])
     assert len(report["required_commands"]) == 3
     assert "codex-page-smoke.ps1 -PageSlug pnl-attribution" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug pnl-attribution -Run" in report["required_commands"][1]

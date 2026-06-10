@@ -10,6 +10,7 @@ PACKET = ROOT / "docs" / "pnl" / "pnl-attribution-sign-off-packet.md"
 APPROVAL_TEMPLATE = ROOT / "docs" / "pnl" / "pnl-attribution-business-owner-approval-template.md"
 AUDIT_PACKET = ROOT / "docs" / "pnl" / "pnl-attribution-governance-audit-packet.md"
 OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "pnl-attribution-owner-evidence-packet.md"
+OWNER_SIGNOFF_RUNBOOK = ROOT / "docs" / "pnl" / "pnl-attribution-owner-signoff-runbook.md"
 
 
 def test_pnl_attribution_signoff_packet_preserves_candidate_boundary() -> None:
@@ -130,6 +131,30 @@ def test_pnl_attribution_signoff_packet_includes_business_owner_handoff_state() 
         "Keep `formal_use_allowed=false` and `closure_approved=false` until "
         "business-owner approval is explicitly captured."
     ) in text
+
+
+def test_pnl_attribution_owner_signoff_runbook_preserves_candidate_boundary() -> None:
+    text = OWNER_SIGNOFF_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "# PnL Attribution Owner Signoff Runbook" in text
+    assert "`PAGE-PNL-ATTR-WB-001`" in text
+    assert "`/api/pnl-attribution/volume-rate`" in text
+    assert "`docs/pnl/pnl-attribution-business-owner-approval-template.md`" in text
+    assert "`docs/pnl/pnl-attribution-owner-evidence-packet.md`" in text
+    assert "`docs/pnl/pnl-attribution-sign-off-packet.md`" in text
+    assert "`docs/pnl/pnl-attribution-governance-audit-packet.md`" in text
+    assert "Keep `formal_use_allowed=false`." in text
+    assert "Keep `closure_approved=false`." in text
+    assert "Keep `certification_effect=none`." in text
+    assert "Do not promote this workbench to formal PnL truth." in text
+    assert "Do not replace `/api/pnl/overview`." in text
+    assert "Do not merge this workbench with `/ui/pnl/attribution`." in text
+    assert "Do not treat primary API DTO `formal_use_allowed=true` result metadata as full-page owner approval." in text
+    assert "`GS-PNL-ATTR-WB-A`" in text
+    assert "`captured-awaiting-approval`" in text
+    assert "Run `python scripts/check_pnl_attribution_business_owner_approval.py --require-captured`" not in text
+    assert "`python scripts/check_pnl_attribution_business_owner_approval.py --require-captured`" in text
+    assert "Passing it still does not promote the workbench to formal PnL truth or set `closure_approved=true`." in text
 
 
 def test_pnl_attribution_business_owner_approval_template_is_pending_only() -> None:

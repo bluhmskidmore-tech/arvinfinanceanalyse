@@ -60,6 +60,7 @@ Business owner signature: `<required>`
 Reviewed sign-off packet: `docs/pnl/balance-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/balance-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/balance-analysis-owner-evidence-packet.md`
+Owner signoff runbook: `docs/pnl/balance-analysis-owner-signoff-runbook.md`
 
 ## Evidence Review
 
@@ -73,11 +74,10 @@ Reviewed owner evidence packet: `docs/pnl/balance-analysis-owner-evidence-packet
 ## Notes
 
 - Residual evidence risk:
-  - MCP servers `moss-metric-contracts`, `moss-lineage-evidence`, `moss-data-catalog`, and `gitnexus` were unavailable during this closure slice.
-  - Local substitutes used instead: `python scripts/check_balance_analysis_business_owner_approval.py`, `python scripts/codex_page_readiness.py --page-slug balance-analysis`, `python scripts/emit_balance_analysis_governance_record.py`, and `tests/golden_samples/GS-BAL-OVERVIEW-A/`.
-  - No MCP-backed metric-contract, lineage, catalog, or impact proof is claimed in this template.
+  - No external business-owner approval, golden-sample owner approval, governance write, or closure approval is claimed in this template.
+  - Reviewer evidence should be checked with `python scripts/check_balance_analysis_business_owner_approval.py`, `python scripts/codex_page_readiness.py --page-slug balance-analysis`, `python scripts/emit_balance_analysis_governance_record.py`, `tests/golden_samples/GS-BAL-OVERVIEW-A/`, and `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run`.
 - Live smoke evidence note:
   - Durable balance-analysis live smoke artifact: `docs/audits/2026-06-07-balance-analysis-live-smoke-evidence.md`.
   - Treat live smoke evidence review as a required owner-review follow-up that remains pending until the owner reviews this artifact and marks it reviewed here.
-  - The artifact records a passed live smoke reachability check, but full verify remains blocked by separately recorded global MCP expectation and development fallback authorization test failures.
+  - The artifact records a passed live smoke reachability check and a 2026-06-10 update showing full page verification now passes; this is still not owner approval.
 Decision notes: `<required if reject or request_changes>`

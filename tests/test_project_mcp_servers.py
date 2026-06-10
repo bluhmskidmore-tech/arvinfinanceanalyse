@@ -90,6 +90,7 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_IDS = [
     "PAGE-RISK-001",
     "PAGE-DASH-001",
     "PAGE-EXEC-OVERVIEW-001",
+    "GAP-CONCENTRATION-MONITOR-PAGE",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-BY-BUSINESS-001",
     "PAGE-PNL-ATTR-WB-001",
@@ -101,15 +102,17 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_IDS = [
     "PAGE-PORTFOLIO-HOME-001",
     "PAGE-RISK-HOME-001",
     "PAGE-PERFORMANCE-HOME-001",
+    "GAP-TEAM-PERFORMANCE-PAGE",
     "PAGE-REPORTS-HOME-001",
     "PAGE-LEDGER-PNL-001",
     "PAGE-POS-001",
     "PAGE-MKT-001",
     "GAP-CROSS-ASSET-PAGE",
-    "GAP-STOCK-ANALYSIS-PAGE",
+    "GAP-PLATFORM-CONFIG-PAGE",
+    "GAP-NEWS-EVENTS-PAGE",
     "PAGE-MARKET-HOME-001",
+    "GAP-STOCK-ANALYSIS-PAGE",
     "PAGE-EXEC-SUMMARY-001",
-    "GAP-DECISION-ITEMS-PAGE",
     "PAGE-EXEC-PNL-ATTR-001",
     "PAGE-MACRO-TOOLKIT-001",
     "PAGE-MACRO-OBS-001",
@@ -125,6 +128,7 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS = [
     "risk-tensor",
     "dashboard-home",
     "executive-overview",
+    "concentration-monitor",
     "balance-movement-analysis",
     "pnl-by-business",
     "pnl-attribution",
@@ -136,15 +140,17 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS = [
     "portfolio-home",
     "risk-home",
     "performance-home",
+    "team-performance",
     "reports-home",
     "ledger-pnl",
     "positions",
     "market-data",
     "cross-asset",
-    "stock-analysis",
+    "platform-config",
+    "news-events",
     "market-home",
+    "stock-analysis",
     "executive-summary",
-    "decision-items",
     "executive-pnl-attribution",
     "macro-toolkit",
     "macro-observation",
@@ -152,13 +158,12 @@ ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS = [
     "kpi-performance",
 ]
 
-CONFIGURED_CATALOG_DATE_PAGE_SLUGS = ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS[:25]
-DEFERRED_CATALOG_DATE_PAGE_SLUGS = ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS[25:]
+CONFIGURED_CATALOG_DATE_PAGE_SLUGS = ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS[:29]
+DEFERRED_CATALOG_DATE_PAGE_SLUGS = ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS[29:]
 CATALOG_DATE_RECORD_GAP_PAGE_IDS = [
     "PAGE-DASH-001",
     "PAGE-EXEC-OVERVIEW-001",
     "PAGE-EXEC-SUMMARY-001",
-    "GAP-DECISION-ITEMS-PAGE",
     "PAGE-PNL-001",
     "PAGE-LEDGER-PNL-001",
     "PAGE-PNL-BY-BUSINESS-001",
@@ -166,11 +171,9 @@ CATALOG_DATE_RECORD_GAP_PAGE_IDS = [
     "PAGE-OPS-001",
     "PAGE-LIAB-ANALYTICS-001",
     "PAGE-BRIDGE-001",
-    "PAGE-BOND-ANALYSIS-001",
     "PAGE-POS-001",
     "PAGE-MKT-001",
     "GAP-CROSS-ASSET-PAGE",
-    "GAP-STOCK-ANALYSIS-PAGE",
     "PAGE-MACRO-TOOLKIT-001",
     "PAGE-MACRO-OBS-001",
     "PAGE-AGENT-001",
@@ -179,14 +182,12 @@ CATALOG_DATE_RECORD_GAP_PAGE_IDS = [
     "PAGE-MARKET-HOME-001",
     "PAGE-RISK-HOME-001",
     "PAGE-PERFORMANCE-HOME-001",
-    "GAP-KPI-PERFORMANCE-PAGE",
     "PAGE-REPORTS-HOME-001",
 ]
 CATALOG_DATE_RECORD_GAP_PAGE_SLUGS = [
     "dashboard-home",
     "executive-overview",
     "executive-summary",
-    "decision-items",
     "pnl",
     "ledger-pnl",
     "pnl-by-business",
@@ -194,11 +195,9 @@ CATALOG_DATE_RECORD_GAP_PAGE_SLUGS = [
     "operations-analysis",
     "liability-analytics",
     "pnl-bridge",
-    "bond-analysis",
     "positions",
     "market-data",
     "cross-asset",
-    "stock-analysis",
     "macro-toolkit",
     "macro-observation",
     "agent",
@@ -207,26 +206,77 @@ CATALOG_DATE_RECORD_GAP_PAGE_SLUGS = [
     "market-home",
     "risk-home",
     "performance-home",
-    "kpi-performance",
     "reports-home",
 ]
 
 READY_FOR_AUDIT_PAGE_IDS = [
     "PAGE-PROD-CAT-001",
     "PAGE-BALANCE-001",
+    "GAP-CONCENTRATION-MONITOR-PAGE",
     "PAGE-BAL-MOVE-001",
     "PAGE-PNL-ATTR-WB-001",
     "PAGE-RISK-001",
     "PAGE-BOND-001",
+    "PAGE-BOND-ANALYSIS-001",
+    "GAP-STOCK-ANALYSIS-PAGE",
+    "GAP-PLATFORM-CONFIG-PAGE",
+    "GAP-NEWS-EVENTS-PAGE",
+    "GAP-TEAM-PERFORMANCE-PAGE",
+    "GAP-KPI-PERFORMANCE-PAGE",
 ]
 
 READY_FOR_AUDIT_PAGE_SLUGS = [
     "product-category-pnl",
     "balance-analysis",
+    "concentration-monitor",
     "balance-movement-analysis",
     "pnl-attribution",
     "risk-tensor",
     "bond-dashboard",
+    "bond-analysis",
+    "stock-analysis",
+    "platform-config",
+    "news-events",
+    "team-performance",
+    "kpi-performance",
+]
+
+GOVERNANCE_READY_FOR_AUDIT_PAGE_IDS = [
+    "PAGE-PROD-CAT-001",
+    "PAGE-BALANCE-001",
+    "GAP-AVERAGE-BALANCE-PAGE",
+    "GAP-CASHFLOW-PROJECTION-PAGE",
+    "GAP-CONCENTRATION-MONITOR-PAGE",
+    "GAP-DECISION-ITEMS-PAGE",
+    "PAGE-BAL-MOVE-001",
+    "PAGE-PNL-ATTR-WB-001",
+    "PAGE-RISK-001",
+    "PAGE-BOND-001",
+    "PAGE-BOND-ANALYSIS-001",
+    "GAP-STOCK-ANALYSIS-PAGE",
+    "GAP-PLATFORM-CONFIG-PAGE",
+    "GAP-NEWS-EVENTS-PAGE",
+    "GAP-TEAM-PERFORMANCE-PAGE",
+    "GAP-KPI-PERFORMANCE-PAGE",
+]
+
+GOVERNANCE_READY_FOR_AUDIT_PAGE_SLUGS = [
+    "product-category-pnl",
+    "balance-analysis",
+    "average-balance",
+    "cashflow-projection",
+    "concentration-monitor",
+    "decision-items",
+    "balance-movement-analysis",
+    "pnl-attribution",
+    "risk-tensor",
+    "bond-dashboard",
+    "bond-analysis",
+    "stock-analysis",
+    "platform-config",
+    "news-events",
+    "team-performance",
+    "kpi-performance",
 ]
 
 
@@ -498,9 +548,9 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "stage_type": "remediation_type_batches",
                 "work_item_group": "record_remediation_work_items",
                 "work_item_count": 2,
-                "page_count": 27,
-                "record_gap_page_count": 27,
-                "ready_manual_review_page_count": 5,
+                "page_count": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
+                "record_gap_page_count": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
+                "ready_manual_review_page_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
                 "includes_ready_manual_review_pages": False,
                 "suggested_tool_call_count": 4,
                 "arguments": {
@@ -521,12 +571,12 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "captures_business_owner_approval": False,
                 "approves_metric_or_page": False,
             },
-            "page_count": 27,
-            "work_item_count": 13,
+            "page_count": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
+            "work_item_count": 15,
             "source_work_item_group_counts": {
                 "record_remediation_work_items": 2,
                 "record_remediation_evidence_work_items": 4,
-                "record_remediation_review_lane_work_items": 7,
+                "record_remediation_review_lane_work_items": 9,
             },
             "arguments": {
                 "page_slugs": CATALOG_DATE_RECORD_GAP_PAGE_SLUGS,
@@ -549,7 +599,7 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "work_item_group": "suggested_tool_call_work_items",
                 "tool": "moss-data-catalog.get_page_catalog_date_evidence",
                 "work_item_count": 3,
-                "page_count": 25,
+                "page_count": len(CONFIGURED_CATALOG_DATE_PAGE_SLUGS),
                 "suggested_tool_call_count": 3,
                 "arguments": {
                     "page_slugs": CONFIGURED_CATALOG_DATE_PAGE_SLUGS,
@@ -569,7 +619,7 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "captures_business_owner_approval": False,
                 "approves_metric_or_page": False,
             },
-            "page_count": 32,
+            "page_count": len(ALL_SEEDED_CATALOG_DATE_LINEAGE_PAGE_SLUGS),
             "work_item_count": 14,
             "source_work_item_group_counts": {
                 "suggested_tool_call_work_items": 14,
@@ -595,16 +645,10 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "work_item_group": "record_remediation_work_items",
                 "tool": "moss-lineage-evidence.get_page_governance_audit_review_queue",
                 "work_item_count": 1,
-                "page_count": 5,
+                "page_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
                 "suggested_tool_call_count": 1,
                 "arguments": {
-                    "page_slugs": [
-                        "product-category-pnl",
-                        "balance-movement-analysis",
-                        "pnl-attribution",
-                        "risk-tensor",
-                        "bond-dashboard",
-                    ],
+                    "page_slugs": READY_FOR_AUDIT_PAGE_SLUGS,
                 },
                 "next_step": "collect_manual_audit_review_queue_without_approval",
                 "uses_work_item_groups": ["record_remediation_work_items"],
@@ -620,19 +664,13 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "captures_business_owner_approval": False,
                 "approves_metric_or_page": False,
             },
-            "page_count": 5,
-            "work_item_count": 5,
+            "page_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
+            "work_item_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
             "source_work_item_group_counts": {
                 "record_remediation_work_items": 2,
             },
             "arguments": {
-                "page_slugs": [
-                    "product-category-pnl",
-                    "balance-movement-analysis",
-                    "pnl-attribution",
-                    "risk-tensor",
-                    "bond-dashboard",
-                ],
+                "page_slugs": READY_FOR_AUDIT_PAGE_SLUGS,
             },
             "must_complete_before": ["business_owner_approval"],
             "queue_grants_closure": False,
@@ -648,15 +686,9 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "stage_type": "owner_approval_request_batches",
                 "work_item_group": "record_remediation_work_items",
                 "work_item_count": 1,
-                "page_count": 5,
+                "page_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
                 "arguments": {
-                    "page_slugs": [
-                        "product-category-pnl",
-                        "balance-movement-analysis",
-                        "pnl-attribution",
-                        "risk-tensor",
-                        "bond-dashboard",
-                    ],
+                    "page_slugs": READY_FOR_AUDIT_PAGE_SLUGS,
                 },
                 "next_step": "prepare_owner_approval_request_after_manual_audit_review",
                 "uses_work_item_groups": ["record_remediation_work_items"],
@@ -670,19 +702,13 @@ def _expected_all_seeded_closure_execution_sequence() -> list[dict[str, Any]]:
                 "captures_business_owner_approval": False,
                 "approves_metric_or_page": False,
             },
-            "page_count": 5,
-            "work_item_count": 5,
+            "page_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
+            "work_item_count": len(READY_FOR_AUDIT_PAGE_SLUGS),
             "source_work_item_group_counts": {
                 "record_remediation_work_items": 2,
             },
             "arguments": {
-                "page_slugs": [
-                    "product-category-pnl",
-                    "balance-movement-analysis",
-                    "pnl-attribution",
-                    "risk-tensor",
-                    "bond-dashboard",
-                ],
+                "page_slugs": READY_FOR_AUDIT_PAGE_SLUGS,
             },
             "must_complete_before": [],
             "queue_grants_closure": False,
@@ -1352,6 +1378,16 @@ def test_metric_contracts_mcp_exposes_seeded_page_trace_bundles(
         assert payload["verification_focus"]
         assert payload["guardrails"]
         assert any(guardrail_marker in guardrail for guardrail in payload["guardrails"])
+        if page_slug == "product-category-pnl":
+            assert "docs/pnl/product-category-pnl-first-certification-packet.md" in payload["contract_docs"]
+            assert "docs/pnl/product-category-pnl-owner-decision-packet.md" in payload["contract_docs"]
+            assert "docs/pnl/product-category-pnl-business-owner-approval-template.md" in payload["contract_docs"]
+            assert "docs/pnl/product-category-pnl-approval-runbook.md" in payload["contract_docs"]
+            assert "docs/pnl/product-category-remaining-blockers.md" in payload["contract_docs"]
+            assert any("without approving certification" in item for item in payload["truth_chain"])
+            assert any("without capturing them" in item for item in payload["truth_chain"])
+            assert any("remains unsigned" in item for item in payload["truth_chain"])
+            assert any("closure_approved=false" in item for item in payload["truth_chain"])
 
         alias_result = server.request(
             "tools/call",
@@ -1462,6 +1498,15 @@ def test_ledger_pnl_trace_bundle_preserves_candidate_source_contract_boundaries(
         assert any("MTR-LPN-003" in item for item in payload["truth_chain"])
         assert any("ledger_pnl.formal_financial_indicator_source_contract" in item for item in payload["truth_chain"])
         assert any("GS-LEDGER-PNL-FIN-IND-202603-B" in item for item in payload["truth_chain"])
+        assert "docs/pnl/ledger-pnl-owner-evidence-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/ledger-pnl-sign-off-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/ledger-pnl-governance-audit-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/ledger-pnl-business-owner-approval-template.md" in payload["contract_docs"]
+        assert "docs/pnl/ledger-pnl-owner-signoff-runbook.md" in payload["contract_docs"]
+        assert any("preserving formal_use_allowed=false" in item for item in payload["truth_chain"])
+        assert any("candidate sign-off evidence only" in item for item in payload["truth_chain"])
+        assert any("remains unsigned" in item for item in payload["truth_chain"])
+        assert any("without promoting Ledger PnL to formal PnL truth" in item for item in payload["truth_chain"])
         assert any("pending_confirmation=true" in item for item in payload["guardrails"])
         assert any("formal PnL" in item for item in payload["guardrails"])
         assert any("formal financial indicator truth" in item for item in payload["guardrails"])
@@ -1602,6 +1647,15 @@ def test_pnl_attribution_workbench_trace_bundle_preserves_workbench_boundaries()
         assert any("MTR-PAT-304" in item for item in payload["truth_chain"])
         assert any("VolumeRateAttributionPayload" in item for item in payload["truth_chain"])
         assert any("Campisi" in item for item in payload["truth_chain"])
+        assert "docs/pnl/pnl-attribution-owner-evidence-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/pnl-attribution-sign-off-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/pnl-attribution-governance-audit-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/pnl-attribution-business-owner-approval-template.md" in payload["contract_docs"]
+        assert "docs/pnl/pnl-attribution-owner-signoff-runbook.md" in payload["contract_docs"]
+        assert any("formal_use_allowed=false" in item for item in payload["truth_chain"])
+        assert any("does not approve page closure" in item for item in payload["truth_chain"])
+        assert any("remains unsigned" in item for item in payload["truth_chain"])
+        assert any("without promoting formal PnL truth" in item for item in payload["truth_chain"])
         assert any("formal PnL overview" in item for item in payload["guardrails"])
         assert any("executive analytical overlay" in item for item in payload["guardrails"])
         assert any("front" in item for item in payload["guardrails"])
@@ -1710,10 +1764,16 @@ def test_balance_analysis_trace_bundle_preserves_formal_workbook_boundaries() ->
         assert "/ui/balance-analysis/summary" in payload["supporting_apis"]
         assert "tests/golden_samples/GS-BAL-OVERVIEW-A" in payload["golden_samples"]
         assert "tests/golden_samples/GS-BAL-WORKBOOK-A" in payload["golden_samples"]
+        assert "docs/pnl/balance-analysis-owner-evidence-packet.md" in payload["contract_docs"]
+        assert "docs/pnl/balance-analysis-business-owner-approval-template.md" in payload["contract_docs"]
+        assert "docs/pnl/balance-analysis-owner-signoff-runbook.md" in payload["contract_docs"]
+        assert "docs/audits/2026-06-07-balance-analysis-live-smoke-evidence.md" in payload["contract_docs"]
         assert any("MTR-BAL-001" in item for item in payload["truth_chain"])
         assert any("MTR-BAL-203" in item for item in payload["truth_chain"])
         assert any("balance_analysis_overview_envelope" in item for item in payload["truth_chain"])
         assert any("BalanceAnalysisWorkbookPayload" in item for item in payload["truth_chain"])
+        assert any("post-signing verification commands" in item for item in payload["truth_chain"])
+        assert any("formal_use_allowed=true and closure_approved=false" in item for item in payload["truth_chain"])
         assert any("advanced_attribution" in item for item in payload["guardrails"])
         assert any("formal balance truth" in item for item in payload["guardrails"])
         assert any("frontend" in item for item in payload["guardrails"])
@@ -3211,13 +3271,20 @@ def test_average_balance_trace_bundle_preserves_adb_candidate_boundary() -> None
         assert payload["primary_api"] == "/api/analysis/adb"
         assert "/api/analysis/adb/comparison" in payload["supporting_apis"]
         assert "/api/analysis/adb/monthly" in payload["supporting_apis"]
-        assert payload["golden_samples"] == ["tests/golden_samples/GS-AVERAGE-BALANCE-A"]
+        assert "docs/audits/2026-06-09-average-balance-live-smoke-evidence.md" in payload["contract_docs"]
+        assert payload["golden_samples"] == [
+            "tests/golden_samples/GS-AVERAGE-BALANCE-A",
+            "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A",
+        ]
         assert any("MTR-ADB-001" in item for item in payload["truth_chain"])
         assert any("PAGE-CONTRACT-PENDING:/average-balance" in item for item in payload["truth_chain"])
         assert any("GS-AVERAGE-BALANCE-A" in item for item in payload["truth_chain"])
+        assert any("GS-AVERAGE-BALANCE-MONTHLY-A" in item for item in payload["truth_chain"])
+        assert any("live-smoke reference evidence only" in item for item in payload["truth_chain"])
         assert "tests/test_golden_samples_capture_ready.py" in payload["test_touchpoints"]
         assert any("not formal balance truth" in item for item in payload["guardrails"])
         assert any("dedicated capture-ready daily ADB DTO sample" in item for item in payload["verification_focus"])
+        assert any("dedicated capture-ready monthly ADB/NIM DTO sample" in item for item in payload["verification_focus"])
         assert not any("No dedicated golden sample" in item for item in payload["verification_focus"])
         assert not any("formal_use_allowed=true" in item for item in payload["truth_chain"])
         assert not any("PAGE-BALANCE-001 formal truth" in item and "replace" in item for item in payload["guardrails"])
@@ -6349,40 +6416,34 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
         assert payload["summary"]["packet_count"] == payload["summary"]["ready_for_audit_review_count"]
         assert payload["summary"]["closure_approved_count"] == 0
         assert payload["summary"]["ready_for_audit_review_pages"] == [
-            {"page_id": "PAGE-PROD-CAT-001", "page_slug": "product-category-pnl"},
-            {"page_id": "PAGE-BAL-MOVE-001", "page_slug": "balance-movement-analysis"},
-            {"page_id": "PAGE-PNL-ATTR-WB-001", "page_slug": "pnl-attribution"},
-            {"page_id": "PAGE-RISK-001", "page_slug": "risk-tensor"},
-            {"page_id": "PAGE-BOND-001", "page_slug": "bond-dashboard"},
+            {"page_id": page_id, "page_slug": page_slug}
+            for page_id, page_slug in zip(
+                GOVERNANCE_READY_FOR_AUDIT_PAGE_IDS,
+                GOVERNANCE_READY_FOR_AUDIT_PAGE_SLUGS,
+                strict=True,
+            )
         ]
-        assert [item["page_id"] for item in payload["items"]] == [
-            "PAGE-PROD-CAT-001",
-            "PAGE-BAL-MOVE-001",
-            "PAGE-PNL-ATTR-WB-001",
-            "PAGE-RISK-001",
-            "PAGE-BOND-001",
-        ]
+        assert [item["page_id"] for item in payload["items"]] == GOVERNANCE_READY_FOR_AUDIT_PAGE_IDS
 
         report = (
             REPO_ROOT / "docs" / "audits" / "2026-06-02-system-audit-first-pass.md"
         ).read_text(encoding="utf-8")
         assert (
-            "the all-seeded review state has 5 ready-for-audit-review pages "
-            "(`PAGE-PROD-CAT-001`, `PAGE-BAL-MOVE-001`, `PAGE-PNL-ATTR-WB-001`, "
-            "`PAGE-RISK-001`, and `PAGE-BOND-001`), 27 pages blocked by record gaps, "
+            "the all-seeded review state has 16 ready-for-audit-review pages, "
+            "23 pages blocked by record gaps, "
             "and 0 closure-approved pages"
         ) in report
-        assert "5 ready pages and 27 blocked pages" in report
-        assert "5 ready pages and 29 blocked pages" not in report
+        assert "16 ready pages and 23 blocked pages" in report
+        assert "5 ready pages and 27 blocked pages" not in report
         assert (
-            "Against the current all-seeded repository snapshot it returns 5 packets, "
-            "9 remaining manual blockers"
+            "Against the current all-seeded repository snapshot it returns 16 packets, "
+            "42 remaining manual blockers"
         ) in report
         assert (
-            "27 direct-record remediation work items: 27 create-direct-record tasks"
+            "23 direct-record remediation work items: 23 create-direct-record tasks"
         ) in report
-        assert "39 seeded-page open gaps" in report
-        assert "29 seeded-page open gaps" not in report
+        assert "23 seeded-page open gaps" in report
+        assert "39 seeded-page open gaps" not in report
         assert (
             "A suggested-call scope-audit follow-up first failed because those "
             "grouped suggested-tool work items had per-item flags but no "
@@ -6395,13 +6456,13 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
         ) in report
         assert (
             "after adding `closure_dispatch_packet_scope_audit`, "
-            "`queue_boundary_audit` now rolls up 48 assignment rows across "
+            "`queue_boundary_audit` now rolls up 50 assignment rows across "
             "record-gap execution-plan, remediation, suggested-call, "
             "evidence-collection execution-plan, manual-audit execution-plan, "
             "business-owner approval execution-plan, closure-blocker, and "
             "closure-dispatch packet scope audits"
         ) in report
-        assert "with a 3/13/14/5/2/2/4/1/4 source split" in report
+        assert "with a 3/15/14/5/2/2/4/1/4 source split" in report
         assert (
             "A next-action scope-audit follow-up first failed because a stale "
             "`next_closure_action` pointer could still contradict "
@@ -6409,7 +6470,7 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
         ) in report
         assert (
             "after adding `next_closure_action_scope_audit`, the queue boundary "
-            "still rolls up 48 assignment rows with a 3/13/14/5/2/2/4/1/4 "
+            "still rolls up 50 assignment rows with a 3/15/14/5/2/2/4/1/4 "
             "source split"
         ) in report
         assert (
@@ -6441,7 +6502,7 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
         assert (
             "after adding the plan, the queue reports 2 execution stages covering "
             "owner approval request batches and owner approval receipt review "
-            "batches for the 5 ready pages"
+            "batches for the 13 ready pages"
         ) in report
         assert (
             "A catalog/date-lineage closure-readiness follow-up first failed "
@@ -6449,14 +6510,14 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "for page closure readiness"
         ) in report
         assert (
-            "the queue now reports `closure_readiness`: 32 pages, 0 "
-            "closure-ready pages, 32 closure-blocked pages"
+            "the queue now reports `closure_readiness`: 35 pages, 0 "
+            "closure-ready pages, 35 closure-blocked pages"
         ) in report
         assert "4 closure-blocker assignment rows" in report
         assert (
-            "closure blocker breakdown of record gaps 27/13, "
-            "catalog/date-lineage evidence 32/14, manual audit 5/5, "
-            "and business-owner approval 5/5"
+            "closure blocker breakdown of record gaps 22/15, "
+            "catalog/date-lineage evidence 35/14, manual audit 13/13, "
+            "and business-owner approval 13/13"
         ) in report
         assert (
             "residual closure requirements remain record-gap remediation, "
@@ -6607,8 +6668,8 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
         ) in report
         assert (
             "Catalog/date-lineage `record_readiness` overlay proof: the current "
-            "all-seeded catalog/date-lineage review queue reports 5 "
-            "ready-for-audit-review pages and 27 pages blocked by record gaps"
+            "all-seeded catalog/date-lineage review queue reports 13 "
+            "ready-for-audit-review pages and 22 pages blocked by record gaps"
         ) in report
         assert (
             "The overlay copies direct-record validation/checklist state only; "
@@ -6618,8 +6679,8 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
         assert (
             "Catalog/date-lineage `record_remediation` routing proof: the "
             "current all-seeded queue exposes row-level `record_remediation` "
-            "plus `record_remediation_breakdown`: 27 create-direct-record "
-            "tasks and 5 none/ready rows"
+            "plus `record_remediation_breakdown`: 22 create-direct-record "
+            "tasks and 13 none/ready rows"
         ) in report
         assert (
             "This is read-only assignment metadata only; it does not write "
@@ -6631,8 +6692,8 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "Catalog/date-lineage `record_remediation_work_items` proof: a "
             "follow-up regression first failed because remediation routing "
             "still had to be assigned from row-level entries; after adding the "
-            "summary work items, the queue groups 27 create-direct-record "
-            "pages and 5 ready/manual-review pages"
+            "summary work items, the queue groups 22 create-direct-record "
+            "pages and 13 ready/manual-review pages"
         ) in report
         assert (
             "The grouped remediation work items preserve page-slug arguments "
@@ -6647,7 +6708,7 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "`moss-lineage-evidence.get_page_governance_audit_review_queue` "
             "and "
             "`moss-lineage-evidence.get_page_governance_audit_evidence_packet_queue` "
-            "for the 5 ready pages without executing either call"
+            "for the 13 ready pages without executing either call"
         ) in report
         assert (
             "Catalog/date-lineage `record_gap_execution_plan` proof: a "
@@ -6661,10 +6722,10 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "review-lane batches"
         ) in report
         assert (
-            "It keeps `blocked_page_count=27`, "
-            "`ready_manual_review_page_count=5`, the 2/4/6 source group "
+            "It keeps `blocked_page_count=22`, "
+            "`ready_manual_review_page_count=13`, the 2/4/9 source group "
             "counts, 4 read-only suggested tool calls, stage arguments "
-            "limited to the 27 blocked pages, and `queue_grants_closure=false`"
+            "limited to the 22 blocked pages, and `queue_grants_closure=false`"
         ) in report
         assert (
             "`record_gap_execution_plan_scope_audit` adds those 3 plan stages "
@@ -6684,7 +6745,7 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "the queue groups 4 evidence collection keys"
         ) in report
         assert (
-            "`page_api_execution_identifier` routes 27 create-direct-record "
+            "`page_api_execution_identifier` routes 22 create-direct-record "
             "pages, while `direct_page_or_primary_api_anchor`, "
             "`required_record_fields`, and `configured_or_deferred_table_anchors` "
             "carry the matching blocked-page assignment set"
@@ -6700,17 +6761,18 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "`record_remediation_review_lane_work_items` proof: a follow-up "
             "regression first failed because review lanes and remediation "
             "types still had to be cross-referenced manually; after adding "
-            "the lane-remediation work items, the queue groups 7 review-lane "
+            "the lane-remediation work items, the queue groups 9 review-lane "
             "remediation batches"
         ) in report
         assert (
-            "The formal/governed lane now routes 3 P1 create-direct-record "
-            "pages and 2 P1 ready/manual-review pages, while the candidate "
-            "formal-source lane routes 11 P1 create-direct-record pages "
-            "and 3 P1 ready/manual-review pages, the candidate-or-mixed "
-            "lane routes the remaining mixed/candidate pages, and the "
-            "GAP/observational lane keeps Stock Analysis separate despite "
-            "its configured Livermore table anchors"
+            "The formal/governed lane now routes 2 P1 create-direct-record "
+            "pages and 3 P1 ready/manual-review pages, while the candidate "
+            "formal-source lane routes 10 P1 create-direct-record pages "
+            "and 6 P1 ready/manual-review pages, the candidate-or-mixed "
+            "lane routes 5 create-direct-record pages and 2 ready/manual-review "
+            "pages, the deferred lane routes 5 create-direct-record pages and "
+            "1 ready/manual-review page, and the GAP/observational lane keeps "
+            "Stock Analysis separate despite its configured Livermore table anchors"
         ) in report
         assert (
             "These lane-remediation work items keep the same no-write, "
@@ -6722,7 +6784,7 @@ def test_lineage_evidence_audit_report_matches_current_all_seeded_packet_queue()
             "Catalog/date-lineage `record_remediation_scope_audit` proof: a "
             "follow-up regression first failed because the new remediation "
             "work items had per-item boundary flags but no summary-level "
-            "drift guard; after adding the audit, the queue reports 13 checked "
+            "drift guard; after adding the audit, the queue reports 15 checked "
             "remediation assignment rows across remediation, evidence, and "
             "lane-remediation work items, with zero scope violations"
         ) in report
@@ -10247,7 +10309,8 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         pages = {page["page_id"]: page for page in payload["pages"]}
         assert "GAP-AVERAGE-BALANCE-PAGE" not in pages
         assert "GAP-BANK-LEDGER-DASHBOARD-PAGE" not in pages
-        assert "GAP-CONCENTRATION-MONITOR-PAGE" not in pages
+        assert "GAP-CASHFLOW-PROJECTION-PAGE" not in pages
+        assert "GAP-DECISION-ITEMS-PAGE" not in pages
         missing_pages = [
             page for page in payload["pages"] if page["coverage_status"] == "missing_explicit_table_config"
         ]
@@ -10297,6 +10360,15 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
         ]
         assert cross_asset["evidence_scope"]["approves_metric_or_page"] is False
 
+        concentration_monitor = pages["GAP-CONCENTRATION-MONITOR-PAGE"]
+        assert concentration_monitor["coverage_status"] == "configured_direct_tables"
+        assert concentration_monitor["approval_status"] == "candidate_or_pending"
+        assert concentration_monitor["configured_table_names"] == [
+            "fact_formal_bond_analytics_daily",
+        ]
+        assert concentration_monitor["evidence_scope"]["samples_duckdb_tables"] is False
+        assert concentration_monitor["evidence_scope"]["approves_metric_or_page"] is False
+
         if "GAP-AVERAGE-BALANCE-PAGE" in pages:
             average_balance = pages["GAP-AVERAGE-BALANCE-PAGE"]
             assert average_balance["coverage_status"] == "configured_direct_tables"
@@ -10310,14 +10382,6 @@ def test_data_catalog_page_catalog_date_coverage_prioritizes_missing_seeded_page
             assert kpi_performance["approval_status"] == "candidate_or_pending"
             assert kpi_performance["evidence_scope"]["samples_duckdb_tables"] is False
             assert kpi_performance["evidence_scope"]["approves_metric_or_page"] is False
-
-        decision_items = pages["GAP-DECISION-ITEMS-PAGE"]
-        assert decision_items["coverage_status"] == "deferred_no_direct_table_config"
-        assert decision_items["approval_status"] == "candidate_or_pending"
-        assert "Read/write governance action queue" in decision_items["deferred_no_direct_table_config_reason"]
-        assert decision_items["configured_table_names"] == []
-        assert decision_items["evidence_scope"]["samples_duckdb_tables"] is False
-        assert decision_items["evidence_scope"]["approves_metric_or_page"] is False
 
         executive_summary = pages["PAGE-EXEC-SUMMARY-001"]
         assert executive_summary["priority"] == "P2"
@@ -10716,18 +10780,18 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
             "deferred_review_item_count": 2,
             "p1_review_item_count": 2,
             "gap_or_observational_review_item_count": 1,
-            "ready_for_audit_review_count": 2,
-            "blocked_by_record_gaps_count": 3,
+            "ready_for_audit_review_count": 3,
+            "blocked_by_record_gaps_count": 2,
             "closure_readiness": {
                 "page_count": 5,
-                "ready_for_audit_review_count": 2,
-                "blocked_by_record_gaps_count": 3,
+                "ready_for_audit_review_count": 3,
+                "blocked_by_record_gaps_count": 2,
                 "record_remediation_work_item_count": record_remediation_work_item_count,
                 "suggested_tool_call_work_item_count": suggested_tool_call_work_item_count,
                 "closure_blocker_work_item_count": 4,
                 "closure_blocker_work_item_breakdown": {
                     "record_gap_remediation": {
-                        "page_count": 3,
+                        "page_count": 2,
                         "work_item_count": record_remediation_work_item_count,
                     },
                     "catalog_date_lineage_evidence_collection": {
@@ -10735,12 +10799,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                         "work_item_count": suggested_tool_call_work_item_count,
                     },
                     "manual_audit_review": {
-                        "page_count": 2,
-                        "work_item_count": 2,
+                        "page_count": 3,
+                        "work_item_count": 3,
                     },
                     "business_owner_approval": {
-                        "page_count": 2,
-                        "work_item_count": 2,
+                        "page_count": 3,
+                        "work_item_count": 3,
                     },
                 },
                 "queue_boundary_work_item_count": closure_readiness_for_assertion["queue_boundary_work_item_count"],
@@ -10765,14 +10829,13 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                         "stage_type": "remediation_type_batches",
                         "work_item_group": "record_remediation_work_items",
                         "work_item_count": 2,
-                        "page_count": 3,
-                        "record_gap_page_count": 3,
-                        "ready_manual_review_page_count": 2,
+                        "page_count": 2,
+                        "record_gap_page_count": 2,
+                        "ready_manual_review_page_count": 3,
                         "includes_ready_manual_review_pages": False,
                         "suggested_tool_call_count": 4,
                         "arguments": {
                             "page_slugs": [
-                                "stock-analysis",
                                 "executive-summary",
                                 "macro-toolkit",
                             ],
@@ -10792,11 +10855,10 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                         "captures_business_owner_approval": False,
                         "approves_metric_or_page": False,
                     },
-                    "page_count": 3,
+                    "page_count": 2,
                     "work_item_count": record_remediation_work_item_count,
                     "arguments": {
                         "page_slugs": [
-                            "stock-analysis",
                             "executive-summary",
                             "macro-toolkit",
                         ],
@@ -10819,14 +10881,13 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                             "stage_type": "remediation_type_batches",
                             "work_item_group": "record_remediation_work_items",
                             "work_item_count": 2,
-                            "page_count": 3,
-                            "record_gap_page_count": 3,
-                            "ready_manual_review_page_count": 2,
+                            "page_count": 2,
+                            "record_gap_page_count": 2,
+                            "ready_manual_review_page_count": 3,
                             "includes_ready_manual_review_pages": False,
                             "suggested_tool_call_count": 4,
                             "arguments": {
                                 "page_slugs": [
-                                    "stock-analysis",
                                     "executive-summary",
                                     "macro-toolkit",
                                 ],
@@ -10846,12 +10907,11 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                             "captures_business_owner_approval": False,
                             "approves_metric_or_page": False,
                         },
-                        "page_count": 3,
+                        "page_count": 2,
                         "work_item_count": record_remediation_work_item_count,
                         "source_work_item_group_counts": record_gap_step["source_work_item_group_counts"],
                         "arguments": {
                             "page_slugs": [
-                                "stock-analysis",
                                 "executive-summary",
                                 "macro-toolkit",
                             ],
@@ -10928,9 +10988,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                             "work_item_group": "record_remediation_work_items",
                             "tool": "moss-lineage-evidence.get_page_governance_audit_review_queue",
                             "work_item_count": 1,
-                            "page_count": 2,
+                            "page_count": 3,
                             "suggested_tool_call_count": 1,
-                            "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution"]},
+                            "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution", "stock-analysis"]},
                             "next_step": "collect_manual_audit_review_queue_without_approval",
                             "uses_work_item_groups": ["record_remediation_work_items"],
                             "must_complete_before": [
@@ -10945,12 +11005,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                             "captures_business_owner_approval": False,
                             "approves_metric_or_page": False,
                         },
-                        "page_count": 2,
-                        "work_item_count": 2,
+                        "page_count": 3,
+                        "work_item_count": 3,
                         "source_work_item_group_counts": {
                             "record_remediation_work_items": 2,
                         },
-                        "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution"]},
+                        "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution", "stock-analysis"]},
                         "must_complete_before": ["business_owner_approval"],
                         "queue_grants_closure": False,
                     },
@@ -10965,8 +11025,8 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                             "stage_type": "owner_approval_request_batches",
                             "work_item_group": "record_remediation_work_items",
                             "work_item_count": 1,
-                            "page_count": 2,
-                            "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution"]},
+                            "page_count": 3,
+                            "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution", "stock-analysis"]},
                             "next_step": "prepare_owner_approval_request_after_manual_audit_review",
                             "uses_work_item_groups": ["record_remediation_work_items"],
                             "must_complete_before": ["owner_approval_receipt_review_batches"],
@@ -10979,12 +11039,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_prioritizes_formal_
                             "captures_business_owner_approval": False,
                             "approves_metric_or_page": False,
                         },
-                        "page_count": 2,
-                        "work_item_count": 2,
+                        "page_count": 3,
+                        "work_item_count": 3,
                         "source_work_item_group_counts": {
                             "record_remediation_work_items": 2,
                         },
-                        "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution"]},
+                        "arguments": {"page_slugs": ["balance-analysis", "pnl-attribution", "stock-analysis"]},
                         "must_complete_before": [],
                         "queue_grants_closure": False,
                     },
@@ -11127,9 +11187,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
         assert summary_for_assertion["page_count"] == len(review_rows)
         assert summary_for_assertion["review_item_count"] == len(payload["review_queue"])
         assert summary_for_assertion["deferred_review_item_count"] == len(payload["deferred_review_queue"])
-        assert summary_for_assertion["page_count"] == 32
-        assert summary_for_assertion["review_item_count"] == 25
-        assert summary_for_assertion["deferred_review_item_count"] == 7
+        assert summary_for_assertion["page_count"] == 35
+        assert summary_for_assertion["review_item_count"] == 29
+        assert summary_for_assertion["deferred_review_item_count"] == 6
         assert summary_for_assertion["p1_review_item_count"] == sum(
             1 for row in review_rows if row["review_priority"] == "P1"
         )
@@ -11225,10 +11285,10 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
             for lane, breakdown in lane_breakdown.items()
         } == {
             "formal_governed_catalog_date_lineage_review": 5,
-            "candidate_formal_source_mixed_review": 14,
-            "candidate_or_mixed_catalog_date_lineage_review": 5,
+            "candidate_formal_source_mixed_review": 16,
+            "candidate_or_mixed_catalog_date_lineage_review": 7,
             "gap_observational_separate_review": 1,
-            "deferred_no_direct_table_config_review": 7,
+            "deferred_no_direct_table_config_review": 6,
         }
         assert all(row["formal_page_closure_allowed"] is False for row in review_rows)
         assert all(row["evidence_scope"]["samples_duckdb_tables"] is False for row in review_rows)
@@ -11251,14 +11311,17 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_summarizes_all_seed
         assert rows["PAGE-PORTFOLIO-HOME-001"]["record_readiness"]["audit_review_status"] == "blocked_by_record_gaps"
         assert rows["PAGE-OPS-001"]["record_readiness"]["record_validation_status"] == "missing_direct_records"
         assert rows["PAGE-OPS-001"]["record_remediation"]["remediation_type"] == "create_direct_record"
-        assert rows["PAGE-BOND-ANALYSIS-001"]["record_remediation"]["remediation_type"] == "create_direct_record"
+        assert rows["PAGE-BOND-ANALYSIS-001"]["record_remediation"]["remediation_type"] == "none"
+        assert rows["PAGE-BOND-ANALYSIS-001"]["record_remediation"]["approval_boundary"] == "review_routing_only"
+        assert rows["PAGE-BOND-ANALYSIS-001"]["formal_page_closure_allowed"] is False
         assert rows["GAP-CROSS-ASSET-PAGE"]["record_remediation"]["remediation_type"] == "create_direct_record"
         stock = rows["GAP-STOCK-ANALYSIS-PAGE"]
         assert stock["review_lane"] == "gap_observational_separate_review"
         assert stock["page_id"] in lane_breakdown[stock["review_lane"]]["page_ids"]
         assert stock["approval_status"] == "gap_or_observational"
         assert stock["formal_page_closure_allowed"] is False
-        assert stock["record_remediation"]["remediation_type"] == "create_direct_record"
+        assert stock["record_remediation"]["remediation_type"] == "none"
+        assert stock["record_remediation"]["approval_boundary"] == "review_routing_only"
         assert rows["PAGE-BOND-001"]["record_readiness"] == {
             "record_validation_status": "direct_records_ready_for_audit_review",
             "audit_review_status": "ready_for_audit_review",
@@ -11394,10 +11457,11 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
                 "moss-lineage-evidence.validate_page_governance_records",
             )
         ]
-        assert candidate_validation["work_item_count"] == 14
+        assert candidate_validation["work_item_count"] == 16
         assert candidate_validation["arguments"]["page_slugs"] == [
             "dashboard-home",
             "executive-overview",
+            "concentration-monitor",
             "balance-movement-analysis",
             "pnl-by-business",
             "pnl-attribution",
@@ -11409,6 +11473,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
             "portfolio-home",
             "risk-home",
             "performance-home",
+            "team-performance",
             "reports-home",
         ]
 
@@ -11423,6 +11488,8 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
             "PAGE-POS-001",
             "PAGE-MKT-001",
             "GAP-CROSS-ASSET-PAGE",
+            "GAP-PLATFORM-CONFIG-PAGE",
+            "GAP-NEWS-EVENTS-PAGE",
             "PAGE-MARKET-HOME-001",
         }
         catalog_items_by_page_id = {
@@ -11440,10 +11507,9 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_suggested_ca
                 "moss-lineage-evidence.get_page_governance_gap_queue",
             )
         ]
-        assert deferred_gap_queue["work_item_count"] == 7
+        assert deferred_gap_queue["work_item_count"] == 6
         assert deferred_gap_queue["arguments"]["page_slugs"] == [
             "executive-summary",
-            "decision-items",
             "executive-pnl-attribution",
             "macro-toolkit",
             "macro-observation",
@@ -12313,7 +12379,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_routes_closure_bloc
         assert record_gap_item["captures_business_owner_approval"] is False
         assert record_gap_item["approves_metric_or_page"] is False
         assert record_gap_item["queue_grants_closure"] is False
-        assert "kpi-performance" in record_gap_item["arguments"]["page_slugs"]
+        assert "kpi-performance" not in record_gap_item["arguments"]["page_slugs"]
 
         catalog_item = work_items["catalog_date_lineage_evidence_collection"]
         evidence_plan = payload["evidence_collection_execution_plan"]
@@ -12869,7 +12935,7 @@ def test_data_catalog_page_catalog_date_lineage_closure_dispatch_packet_scope_au
             "packet_key": "dispatch_steps[0].page_count",
             "expected_key": "closure_execution_sequence[0].page_count",
             "packet_value": 99,
-            "expected_value": 27,
+            "expected_value": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
         },
         {
             "work_item_group": "closure_dispatch_packet.dispatch_steps",
@@ -13108,11 +13174,11 @@ def test_data_catalog_page_catalog_date_lineage_queue_boundary_audit_flags_drift
                     {
                         "work_item_group": "closure_readiness.next_closure_action",
                         "work_item_index": None,
-                        "action_key": "next_closure_action.page_count",
-                        "expected_key": "closure_execution_sequence[0].page_count",
-                        "action_value": 99,
-                        "expected_value": 24,
-                    }
+                "action_key": "next_closure_action.page_count",
+                "expected_key": "closure_execution_sequence[0].page_count",
+                "action_value": 99,
+                "expected_value": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
+            }
                 ],
             },
             "closure_dispatch_packet_scope_audit": {
@@ -13185,7 +13251,7 @@ def test_data_catalog_page_catalog_date_lineage_queue_boundary_audit_flags_drift
                         "packet_key": "dispatch_steps[0].page_count",
                         "expected_key": "closure_execution_sequence[0].page_count",
                         "packet_value": 99,
-                        "expected_value": 24,
+                        "expected_value": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
                     }
                 ],
             },
@@ -13341,7 +13407,7 @@ def test_data_catalog_page_catalog_date_lineage_queue_boundary_audit_flags_drift
             "action_key": "next_closure_action.page_count",
             "expected_key": "closure_execution_sequence[0].page_count",
             "action_value": 99,
-            "expected_value": 24,
+            "expected_value": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
             "scope_audit": "next_closure_action_scope_audit",
         },
         {
@@ -13359,7 +13425,7 @@ def test_data_catalog_page_catalog_date_lineage_queue_boundary_audit_flags_drift
             "packet_key": "dispatch_steps[0].page_count",
             "expected_key": "closure_execution_sequence[0].page_count",
             "packet_value": 99,
-            "expected_value": 24,
+            "expected_value": len(CATALOG_DATE_RECORD_GAP_PAGE_SLUGS),
             "scope_audit": "closure_dispatch_packet_scope_audit",
         }
     ]
@@ -13394,8 +13460,8 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         assert create_item["arguments"] == {
             "page_slugs": create_item["page_slugs"],
         }
-        assert "GAP-KPI-PERFORMANCE-PAGE" in create_item["page_ids"]
-        assert "kpi-performance" in create_item["page_slugs"]
+        assert "GAP-KPI-PERFORMANCE-PAGE" not in create_item["page_ids"]
+        assert "kpi-performance" not in create_item["page_slugs"]
         assert create_item["suggested_tool_calls"] == [
             {
                 "tool": "moss-lineage-evidence.get_page_governance_record_requirements",
@@ -13416,11 +13482,11 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         assert ready_item["remediation_type"] == "none"
         assert ready_item["next_step"] == "manual_audit_review"
         assert ready_item["approval_boundary"] == "review_routing_only"
-        assert ready_item["page_ids"] == [
+        assert sorted(ready_item["page_ids"]) == sorted(
             row["page_id"]
             for row in payload["review_queue"] + payload["deferred_review_queue"]
             if row["record_remediation"]["remediation_type"] == "none"
-        ]
+        )
         assert ready_item["page_ids"] == READY_FOR_AUDIT_PAGE_IDS
         assert ready_item["suggested_tool_calls"] == [
             {
@@ -13538,8 +13604,8 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_builds_record_gap_e
         assert plan["execution_stages"][2]["arguments"] == {
             "page_slugs": review_lane_record_gap_page_slugs,
         }
-        assert "kpi-performance" in plan["record_gap_arguments"]["page_slugs"]
-        assert "kpi-performance" in plan["execution_stages"][2]["arguments"]["page_slugs"]
+        assert "kpi-performance" not in plan["record_gap_arguments"]["page_slugs"]
+        assert "kpi-performance" not in plan["execution_stages"][2]["arguments"]["page_slugs"]
         assert plan["queue_grants_closure"] is False
         assert all(stage["writes_governance_records"] is False for stage in plan["execution_stages"])
         assert all(stage["executes_tool_calls"] is False for stage in plan["execution_stages"])
@@ -13670,7 +13736,7 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
         ]
         assert set(execution_identifier["page_ids"]) == set(queue_create_page_ids)
         assert set(by_key["direct_page_or_primary_api_anchor"]["page_ids"]) == set(queue_create_page_ids)
-        assert "GAP-KPI-PERFORMANCE-PAGE" in execution_identifier["page_ids"]
+        assert "GAP-KPI-PERFORMANCE-PAGE" not in execution_identifier["page_ids"]
 
         assert all(item["writes_governance_records"] is False for item in work_items)
         assert all(item["executes_tool_calls"] is False for item in work_items)
@@ -13779,8 +13845,12 @@ def test_data_catalog_page_catalog_date_lineage_review_queue_groups_record_remed
             if row["review_lane"] == "deferred_no_direct_table_config_review"
             and row["record_remediation"]["remediation_type"] == "create_direct_record"
         ]
-        assert "kpi-performance" in deferred_create["page_slugs"]
+        assert "kpi-performance" not in deferred_create["page_slugs"]
         assert deferred_create["approves_metric_or_page"] is False
+        deferred_ready = by_lane_type[("deferred_no_direct_table_config_review", "none")]
+        assert deferred_ready["page_ids"] == ["GAP-KPI-PERFORMANCE-PAGE"]
+        assert deferred_ready["page_slugs"] == ["kpi-performance"]
+        assert deferred_ready["approves_metric_or_page"] is False
 
         assert all(item["writes_governance_records"] is False for item in work_items)
         assert all(item["executes_tool_calls"] is False for item in work_items)

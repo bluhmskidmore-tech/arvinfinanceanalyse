@@ -73,6 +73,9 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
         "approves_monthly_adb_nim_truth": False,
     }
     assert packet["evidence_anchors"]["page_contract"] == "docs/pnl/average-balance-page-contract.md"
+    assert packet["evidence_anchors"]["owner_signoff_runbook"] == (
+        "docs/pnl/average-balance-owner-signoff-runbook.md"
+    )
     assert packet["evidence_anchors"]["live_smoke_evidence"] == (
         "docs/audits/2026-06-09-average-balance-live-smoke-evidence.md"
     )
@@ -128,6 +131,7 @@ def test_average_balance_owner_evidence_packet_cli_writes_markdown(tmp_path: Pat
     assert "- `MTR-ADB-003`" in text
     assert "Governance validation status: `ready_for_audit_review`" in text
     assert "live_smoke_evidence: `docs/audits/2026-06-09-average-balance-live-smoke-evidence.md`" in text
+    assert "owner_signoff_runbook: `docs/pnl/average-balance-owner-signoff-runbook.md`" in text
     assert "latest_verification_snapshot: `docs/audits/2026-06-10-average-balance-candidate-verification.md`" in text
     assert "monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`" in text
     assert "smoke_command: `scripts/codex-page-smoke.ps1 -PageSlug average-balance`" in text

@@ -61,6 +61,7 @@ Existing record line: `dry-run not written`
 
 - page_contract: `docs/pnl/average-balance-page-contract.md`
 - owner_approval_template: `docs/pnl/average-balance-business-owner-approval-template.md`
+- owner_signoff_runbook: `docs/pnl/average-balance-owner-signoff-runbook.md`
 - daily_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-A`
 - monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`
 - metric_dictionary: `docs/metric_dictionary.md`

@@ -74,27 +74,28 @@ Command:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run
 ```
 
-Result: blocked before page-specific checks completed.
+Result on original capture: blocked before page-specific checks completed.
 
-Blocking evidence:
+Historical blocking evidence:
 
 - `tests/test_project_mcp_servers.py` reported `187 passed` and `9 failed`.
-- The failures show `balance-analysis` is now present in ready-for-audit-review rows where older assertions still expected it in record-gap routing. This is a global MCP expectation mismatch, not a live smoke reachability failure.
-
-Follow-up isolation command:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run -SkipMcpContracts
-```
+- The failures showed `balance-analysis` was present in ready-for-audit-review rows where older assertions still expected it in record-gap routing. This was a global MCP expectation mismatch, not a live smoke reachability failure.
 
 Remediation update:
 
 - The page-specific development fallback read blocker was remediated after this live-smoke artifact was first captured.
 - Before remediation, `test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope` received HTTP `403`, which showed the development fallback read path was still blocked before page-specific verification could complete.
-- `tests/test_balance_analysis_api.py tests/test_balance_analysis_consumer_surface.py` now reports `34 passed`.
 - `test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope` now passes.
-- `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run -SkipMcpContracts` now passes through the backend, frontend, browser a11y smoke, typecheck, frontend debt audit, and production build checks.
-- Full `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run` remains blocked only in `tests/test_project_mcp_servers.py`, where 9 legacy MCP assertions still expect `balance-analysis` to remain in record-gap routing instead of the current ready-for-audit-review queue.
+
+Current verification update on 2026-06-10:
+
+- `scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run` passed.
+- MCP contract tests: `199 passed`.
+- Balance-analysis backend API and consumer surface tests: `34 passed`.
+- Balance-analysis frontend tests: `25 passed`.
+- Balance-analysis browser a11y smoke: `1 passed`.
+- Frontend typecheck, frontend debt audit, and production build passed.
+- This current pass resolves the historical full-verify blocker for reviewer handoff, but it does not approve closure or capture business-owner approval.
 
 ## Non-Claims
 
@@ -106,7 +107,7 @@ This artifact:
 - does not mark live smoke review complete in the canonical owner template
 - does not approve `GS-BAL-OVERVIEW-A`
 - does not write governance records
-- does not resolve the full verify blockers listed above
+- does not treat the 2026-06-10 full page verification pass as owner approval
 
 ## Owner Review Handling
 

@@ -111,14 +111,36 @@ def test_balance_analysis_owner_docs_link_durable_live_smoke_artifact() -> None:
     assert "business_owner_approval_captured=false" in artifact_text
     assert "closure_approved=false" in artifact_text
     assert "does not approve closure" in artifact_text
-    assert "Result: blocked before page-specific checks completed." in artifact_text
+    assert "Result on original capture: blocked before page-specific checks completed." in artifact_text
     assert "tests/test_project_mcp_servers.py" in artifact_text
     assert "9 failed" in artifact_text
     assert "ready-for-audit-review rows" in artifact_text
     assert "record-gap routing" in artifact_text
     assert "test_balance_analysis_read_surface_allows_development_fallback_without_explicit_scope" in artifact_text
     assert "received HTTP `403`" in artifact_text
+    assert "Current verification update on 2026-06-10" in artifact_text
+    assert "scripts/codex-verify-page.ps1 -PageSlug balance-analysis -Run` passed" in artifact_text
+    assert "MCP contract tests: `199 passed`" in artifact_text
+    assert "Balance-analysis frontend tests: `25 passed`" in artifact_text
+    assert "does not treat the 2026-06-10 full page verification pass as owner approval" in artifact_text
     assert "live smoke action stays pending until the owner marks" in artifact_text
+
+
+def test_balance_analysis_owner_docs_expose_signoff_runbook_without_approval() -> None:
+    owner_packet = (ROOT / "docs" / "pnl" / "balance-analysis-owner-evidence-packet.md").read_text(
+        encoding="utf-8"
+    )
+    template_text = TEMPLATE.read_text(encoding="utf-8")
+    runbook = ROOT / "docs" / "pnl" / "balance-analysis-owner-signoff-runbook.md"
+    runbook_text = runbook.read_text(encoding="utf-8")
+
+    assert runbook.is_file()
+    assert "owner_signoff_runbook: `docs/pnl/balance-analysis-owner-signoff-runbook.md`" in owner_packet
+    assert "Owner signoff runbook: `docs/pnl/balance-analysis-owner-signoff-runbook.md`" in template_text
+    assert "Keep `formal_use_allowed=true`" in runbook_text
+    assert "Keep `closure_approved=false`" in runbook_text
+    assert "it is not owner approval" in owner_packet
+    assert "does not set `closure_approved=true`" in runbook_text
 
 
 def test_balance_analysis_business_owner_approval_checker_reports_pending_template() -> None:
