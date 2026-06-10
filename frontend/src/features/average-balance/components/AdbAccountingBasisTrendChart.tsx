@@ -30,6 +30,11 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
     data: trend.map((t) => {
       const row = t.rows.find((r) => (r.basis_bucket || "").trim() === bucket);
       if (!row) return null;
+      if (
+        row.daily_avg_balance === null ||
+        row.daily_avg_balance === undefined ||
+        Number.isNaN(row.daily_avg_balance)
+      ) return null;
       return row.daily_avg_balance / YI;
     }),
   }));

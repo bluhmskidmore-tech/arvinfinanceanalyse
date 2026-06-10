@@ -226,15 +226,20 @@ function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
 function buildMonthlyBreakdownColumns(kind: BreakdownKind): ColumnsType<AdbMonthlyBreakdownItem> {
   return [
     { title: "分类", dataIndex: "category", key: "category" },
-    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number | null | undefined) => (value === null || value === undefined ? "—" : value.toFixed(2)) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
   ];
 }
 
+function hasFiniteAvgBalance(row: AdbMonthlyBreakdownItem): row is AdbMonthlyBreakdownItem & { avg_balance: number } {
+  return row.avg_balance !== null && row.avg_balance !== undefined && Number.isFinite(row.avg_balance);
+}
+
 function buildMonthlyRows(breakdown: AdbMonthlyBreakdownItem[]): MonthlyBarRow[] {
   return breakdown
     .slice()
+    .filter(hasFiniteAvgBalance)
     .sort((left, right) => right.avg_balance - left.avg_balance)
     .slice(0, 10)
     .map((row) => ({ category: row.category, avgYi: row.avg_balance / YI, weightedRate: row.weighted_rate ?? null }));
@@ -336,8 +341,8 @@ function buildMonthlyCategoryMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMa
 
   const latest = months[months.length - 1];
   return Array.from(rows.values()).sort((left, right) => {
-    const leftValue = latest ? (left.values[latest.month] ?? 0) : 0;
-    const rightValue = latest ? (right.values[latest.month] ?? 0) : 0;
+    const leftValue = latest ? (left.values[latest.month] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY;
+    const rightValue = latest ? (right.values[latest.month] ?? Number.NEGATIVE_INFINITY) : Number.NEGATIVE_INFINITY;
     return rightValue - leftValue;
   });
 }
@@ -619,8 +624,8 @@ export default function AverageBalanceView() {
     () => [
       { title: "月份", dataIndex: "month_label", key: "month_label", render: (value: string) => <Text strong>{value}</Text> },
       { title: "天数", dataIndex: "num_days", key: "num_days", align: "right" },
-      { title: "日均资产(亿元)", dataIndex: "avg_assets", key: "avg_assets", align: "right", render: (value: number) => (value / YI).toFixed(2) },
-      { title: "日均负债(亿元)", dataIndex: "avg_liabilities", key: "avg_liabilities", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+      { title: "日均资产(亿元)", dataIndex: "avg_assets", key: "avg_assets", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
+      { title: "日均负债(亿元)", dataIndex: "avg_liabilities", key: "avg_liabilities", align: "right", render: (value: number | null) => formatMatrixValue(value, "amount") },
       { title: "加权YTM", dataIndex: "asset_yield", key: "asset_yield", align: "right", render: (value: number | null) => formatPct(value) },
       { title: "加权票息", dataIndex: "liability_cost", key: "liability_cost", align: "right", render: (value: number | null) => formatPct(value) },
       {

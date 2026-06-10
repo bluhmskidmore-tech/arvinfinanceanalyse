@@ -126,6 +126,9 @@ const requestEnvelopeOrPlainJsonWithMeta = async <T>(
   return { result: payload as T };
 };
 
+const normalizeNullableNumber = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Number(value);
+
 function normalizeAccountingBasisTrendItem(item: unknown): AdbAccountingBasisDailyAvgTrendItem {
   const basis = item as Record<string, unknown>;
   const rows = Array.isArray(basis.rows) ? basis.rows : [];
@@ -133,16 +136,13 @@ function normalizeAccountingBasisTrendItem(item: unknown): AdbAccountingBasisDai
     report_date: String(basis.report_date ?? ""),
     report_month: String(basis.report_month ?? String(basis.report_date ?? "").slice(0, 7)),
     currency_basis: String(basis.currency_basis ?? ""),
-    daily_avg_total: Number(basis.daily_avg_total ?? 0),
+    daily_avg_total: normalizeNullableNumber(basis.daily_avg_total),
     rows: rows.map((entry) => {
       const row = entry as Record<string, unknown>;
       return {
         basis_bucket: String(row.basis_bucket ?? ""),
-        daily_avg_balance: Number(row.daily_avg_balance ?? 0),
-        daily_avg_pct:
-          row.daily_avg_pct === null || row.daily_avg_pct === undefined
-            ? null
-            : Number(row.daily_avg_pct),
+        daily_avg_balance: normalizeNullableNumber(row.daily_avg_balance),
+        daily_avg_pct: normalizeNullableNumber(row.daily_avg_pct),
         source_account_patterns: Array.isArray(row.source_account_patterns)
           ? row.source_account_patterns.map(String)
           : [],
@@ -161,9 +161,6 @@ function normalizeAdbComparisonResponse(
   raw: Record<string, unknown>,
   resultMeta?: ResultMeta,
 ): AdbComparisonResponse {
-  const normalizeNullableNumber = (value: unknown): number | null =>
-    value === null || value === undefined ? null : Number(value);
-
   const mapBreakdown = (items: unknown[]) =>
     items.map((item) => {
       const row = item as Record<string, unknown>;
@@ -232,16 +229,13 @@ function normalizeAdbComparisonResponse(
       ? {
           report_date: String(accountingBasisRaw.report_date ?? ""),
           currency_basis: String(accountingBasisRaw.currency_basis ?? ""),
-          daily_avg_total: Number(accountingBasisRaw.daily_avg_total ?? 0),
+          daily_avg_total: normalizeNullableNumber(accountingBasisRaw.daily_avg_total),
           rows: (Array.isArray(accountingBasisRows) ? accountingBasisRows : []).map((item) => {
             const row = item as Record<string, unknown>;
             return {
               basis_bucket: String(row.basis_bucket ?? ""),
-              daily_avg_balance: Number(row.daily_avg_balance ?? 0),
-              daily_avg_pct:
-                row.daily_avg_pct === null || row.daily_avg_pct === undefined
-                  ? null
-                  : Number(row.daily_avg_pct),
+              daily_avg_balance: normalizeNullableNumber(row.daily_avg_balance),
+              daily_avg_pct: normalizeNullableNumber(row.daily_avg_pct),
               source_account_patterns: Array.isArray(row.source_account_patterns)
                 ? row.source_account_patterns.map(String)
                 : [],
@@ -284,7 +278,10 @@ function normalizeAdbMonthlyResponse(
           const breakdown = entry as Record<string, unknown>;
           return {
             category: String(breakdown.category ?? ""),
-            avg_balance: Number(breakdown.avg_balance ?? 0),
+            avg_balance:
+              breakdown.avg_balance === null || breakdown.avg_balance === undefined
+                ? null
+                : Number(breakdown.avg_balance),
             proportion:
               breakdown.proportion === null || breakdown.proportion === undefined
                 ? null
@@ -300,8 +297,8 @@ function normalizeAdbMonthlyResponse(
         month: String(row.month ?? ""),
         month_label: String(row.month_label ?? row.month ?? ""),
         num_days: Number(row.num_days ?? 0),
-        avg_assets: Number(row.avg_assets ?? 0),
-        avg_liabilities: Number(row.avg_liabilities ?? 0),
+        avg_assets: normalizeNullableNumber(row.avg_assets),
+        avg_liabilities: normalizeNullableNumber(row.avg_liabilities),
         asset_yield:
           row.asset_yield === null || row.asset_yield === undefined
             ? null
@@ -335,8 +332,8 @@ function normalizeAdbMonthlyResponse(
       };
     }),
     accounting_basis_daily_avg_trend: accountingBasisTrend.map(normalizeAccountingBasisTrendItem),
-    ytd_avg_assets: Number(raw.ytd_avg_assets ?? 0),
-    ytd_avg_liabilities: Number(raw.ytd_avg_liabilities ?? 0),
+    ytd_avg_assets: normalizeNullableNumber(raw.ytd_avg_assets),
+    ytd_avg_liabilities: normalizeNullableNumber(raw.ytd_avg_liabilities),
     ytd_asset_yield:
       raw.ytd_asset_yield === null || raw.ytd_asset_yield === undefined
         ? null

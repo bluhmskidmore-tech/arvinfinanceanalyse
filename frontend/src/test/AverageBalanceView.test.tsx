@@ -537,6 +537,88 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("true-zero-adb").closest("tr")).toHaveTextContent("0.00");
   });
 
+  it("renders missing accounting-basis daily average balances as unavailable instead of zero", async () => {
+    renderView({
+      async getAdbComparison(startDate: string, endDate: string, _opts?: { topN?: number }) {
+        const current = await createApiClient({ mode: "mock" }).getAdbComparison(startDate, endDate, _opts);
+        if (startDate.startsWith("2025")) {
+          return {
+            ...current,
+            report_date: "2025-04-14",
+            start_date: startDate,
+            end_date: endDate,
+          };
+        }
+        return {
+          ...current,
+          accounting_basis_daily_avg: {
+            report_date: "2026-04-14",
+            currency_basis: "CNY",
+            daily_avg_total: null,
+            rows: [
+              {
+                basis_bucket: "missing-basis-adb",
+                daily_avg_balance: null,
+                daily_avg_pct: null,
+                source_account_patterns: [],
+              },
+              {
+                basis_bucket: "true-zero-basis-adb",
+                daily_avg_balance: 0,
+                daily_avg_pct: 0,
+                source_account_patterns: [],
+              },
+            ],
+            accounting_controls: [],
+            excluded_controls: [],
+          },
+          accounting_basis_daily_avg_trend: [
+            {
+              report_date: "2026-03-31",
+              report_month: "2026-03",
+              currency_basis: "CNY",
+              daily_avg_total: null,
+              rows: [
+                {
+                  basis_bucket: "missing-basis-adb",
+                  daily_avg_balance: null,
+                  daily_avg_pct: null,
+                  source_account_patterns: [],
+                },
+              ],
+              accounting_controls: [],
+              excluded_controls: [],
+            },
+            {
+              report_date: "2026-04-14",
+              report_month: "2026-04",
+              currency_basis: "CNY",
+              daily_avg_total: 0,
+              rows: [
+                {
+                  basis_bucket: "missing-basis-adb",
+                  daily_avg_balance: null,
+                  daily_avg_pct: null,
+                  source_account_patterns: [],
+                },
+              ],
+              accounting_controls: [],
+              excluded_controls: [],
+            },
+          ],
+        };
+      },
+    });
+
+    const section = await screen.findByTestId("adb-accounting-basis-section");
+    await waitFor(() => expect(section).toHaveTextContent("missing-basis-adb"));
+    const missingRow = screen.getByText("missing-basis-adb").closest("tr");
+    const zeroRow = screen.getByText("true-zero-basis-adb").closest("tr");
+    expect(missingRow).toHaveTextContent("—");
+    expect(missingRow).not.toHaveTextContent("0.00");
+    expect(zeroRow).toHaveTextContent("0.00");
+  });
+
   it("renders the monthly statistics tab with YTD summary, expandable table, and deep analysis panels", async () => {
     const user = userEvent.setup();
     renderView();
@@ -573,6 +655,73 @@ describe("AverageBalanceView", () => {
     expect(matrix).toHaveTextContent("利差");
     expect(screen.getAllByTestId("adb-monthly-breakdown-table")).toHaveLength(2);
     expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
+  });
+
+  it("renders missing monthly average balances as unavailable instead of zero", async () => {
+    const user = userEvent.setup();
+    renderView({
+      async getAdbMonthly() {
+        return {
+          year: 2026,
+          ytd_avg_assets: null,
+          ytd_avg_liabilities: null,
+          ytd_asset_yield: null,
+          ytd_liability_cost: null,
+          ytd_nim: null,
+          months: [
+            {
+              month: "2026-03",
+              month_label: "Null Month",
+              num_days: 31,
+              avg_assets: null,
+              avg_liabilities: null,
+              asset_yield: null,
+              liability_cost: null,
+              net_interest_margin: null,
+              mom_change_assets: null,
+              mom_change_pct_assets: null,
+              mom_change_liabilities: null,
+              mom_change_pct_liabilities: null,
+              breakdown_assets: [
+                {
+                  category: "missing-monthly-adb",
+                  avg_balance: null,
+                  proportion: null,
+                  weighted_rate: null,
+                },
+                {
+                  category: "true-zero-monthly-adb",
+                  avg_balance: 0,
+                  proportion: 0,
+                  weighted_rate: null,
+                },
+              ],
+              breakdown_liabilities: [],
+            },
+          ],
+        };
+      },
+    });
+
+    await user.click(await screen.findByRole("tab", { name: "月度统计" }));
+
+    const ytdAssetCard = (await screen.findByText("年初至今日均资产")).closest(".ant-card");
+    const ytdLiabilityCard = screen.getByText("年初至今日均负债").closest(".ant-card");
+    expect(ytdAssetCard).toHaveTextContent("—");
+    expect(ytdLiabilityCard).toHaveTextContent("—");
+
+    await waitFor(() => expect(screen.getAllByText("Null Month").length).toBeGreaterThan(0));
+    const monthlyRow = screen
+      .getAllByText("Null Month")
+      .map((node) => node.closest("tr"))
+      .find((row): row is HTMLTableRowElement => Boolean(row?.textContent?.includes("31")));
+    expect(monthlyRow).toHaveTextContent("—");
+    expect(monthlyRow).not.toHaveTextContent("0.00");
+
+    const missingBreakdownRow = screen.getByText("missing-monthly-adb").closest("tr");
+    const zeroBreakdownRow = screen.getByText("true-zero-monthly-adb").closest("tr");
+    expect(missingBreakdownRow).toHaveTextContent("—");
+    expect(zeroBreakdownRow).toHaveTextContent("0.00");
   });
 
   it("shows an explicit error state when report dates fail and no daily query can start", async () => {

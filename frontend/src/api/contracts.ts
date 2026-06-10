@@ -5274,7 +5274,7 @@ export type AdbCategoryItem = {
 
 export type AdbAccountingBasisDailyAvgItem = {
   basis_bucket: "AC" | "OCI" | "TPL" | string;
-  daily_avg_balance: number;
+  daily_avg_balance: number | null;
   daily_avg_pct: number | null;
   source_account_patterns: string[];
 };
@@ -5283,7 +5283,7 @@ export type AdbAccountingBasisDailyAvg = {
   report_date: string;
   report_month?: string;
   currency_basis: string;
-  daily_avg_total: number;
+  daily_avg_total: number | null;
   rows: AdbAccountingBasisDailyAvgItem[];
   accounting_controls: string[];
   excluded_controls: string[];
@@ -5341,7 +5341,7 @@ export type AdbComparisonResponse = {
 
 export type AdbMonthlyBreakdownItem = {
   category: string;
-  avg_balance: number;
+  avg_balance: number | null;
   proportion?: number | null;
   weighted_rate?: number | null;
 };
@@ -5350,8 +5350,8 @@ export type AdbMonthlyDataItem = {
   month: string;
   month_label: string;
   num_days: number;
-  avg_assets: number;
-  avg_liabilities: number;
+  avg_assets: number | null;
+  avg_liabilities: number | null;
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
@@ -5368,8 +5368,8 @@ export type AdbMonthlyResponse = {
   year: number;
   months: AdbMonthlyDataItem[];
   accounting_basis_daily_avg_trend?: AdbAccountingBasisDailyAvgTrendItem[];
-  ytd_avg_assets: number;
-  ytd_avg_liabilities: number;
+  ytd_avg_assets: number | null;
+  ytd_avg_liabilities: number | null;
   ytd_asset_yield: number | null;
   ytd_liability_cost: number | null;
   ytd_nim: number | null;

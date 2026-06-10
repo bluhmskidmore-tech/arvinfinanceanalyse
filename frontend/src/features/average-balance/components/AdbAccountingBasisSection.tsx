@@ -12,7 +12,7 @@ const { Text, Paragraph } = Typography;
 type Row = {
   key: string;
   basis_bucket: string;
-  daily_avg_yi: number;
+  daily_avg_yi: number | null;
   daily_avg_pct: number | null;
 };
 
@@ -20,7 +20,10 @@ function buildSnapshotRows(snapshot: AdbAccountingBasisDailyAvg): Row[] {
   return snapshot.rows.map((r, i) => ({
     key: `${r.basis_bucket}-${i}`,
     basis_bucket: r.basis_bucket || "—",
-    daily_avg_yi: r.daily_avg_balance / YI,
+    daily_avg_yi:
+      r.daily_avg_balance === null || r.daily_avg_balance === undefined
+        ? null
+        : r.daily_avg_balance / YI,
     daily_avg_pct: r.daily_avg_pct,
   }));
 }
@@ -32,7 +35,8 @@ const snapshotColumns: ColumnsType<Row> = [
     dataIndex: "daily_avg_yi",
     key: "daily_avg_yi",
     align: "right",
-    render: (v: number) => v.toFixed(2),
+    render: (v: number | null) =>
+      v === null || v === undefined || Number.isNaN(v) ? "—" : v.toFixed(2),
   },
   {
     title: "占比（%）",
