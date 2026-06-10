@@ -24,12 +24,14 @@ def _run_report(*args: str) -> tuple[int, dict[str, object]]:
     return completed.returncode, json.loads(completed.stdout)
 
 
-def test_business_display_coverage_report_tracks_high_risk_routes() -> None:
+def test_business_display_coverage_report_tracks_browser_smoke_business_routes() -> None:
     report = build_report(generated_at="2026-06-06T23:20:00+08:00")
 
     assert report["report_kind"] == "business_display_coverage_report"
     assert report["generated_at"] == "2026-06-06T23:20:00+08:00"
-    assert report["summary"]["browser_smoke_a11y_configured_route_count"] == 8
+    assert report["summary"]["tracked_route_count"] == 26
+    assert report["summary"]["route_gap_count"] == 0
+    assert report["summary"]["browser_smoke_a11y_configured_route_count"] == 26
     assert report["summary"]["browser_smoke_a11y_gap_count"] == 0
     assert report["evidence_scope"] == {
         "runs_tests": False,
@@ -42,19 +44,59 @@ def test_business_display_coverage_report_tracks_high_risk_routes() -> None:
     }
 
     routes = {item["route"]: item for item in report["routes"]}
-    assert {
+    assert set(routes) == {
+        "/",
+        "/bond-dashboard",
+        "/balance-analysis",
+        "/balance-movement-analysis",
+        "/cross-asset",
         "/product-category-pnl",
+        "/pnl",
+        "/pnl-bridge",
+        "/risk-tensor",
         "/ledger-pnl",
+        "/positions",
+        "/operations-analysis",
+        "/liability-analytics",
+        "/market-data",
+        "/macro-toolkit",
+        "/cashflow-projection",
+        "/concentration-monitor",
+        "/stock-analysis",
+        "/average-balance",
+        "/bond-analysis",
         "/pnl-attribution",
+        "/team-performance",
+        "/decision-items",
+        "/kpi",
+        "/news-events",
+        "/platform-config",
+    }
+    assert {
         "/bond-analysis",
         "/stock-analysis",
+        "/average-balance",
         "/cashflow-projection",
         "/concentration-monitor",
         "/team-performance",
     }.issubset(routes)
+    assert routes["/"]["page_id"] == "PAGE-DASH-001"
+    assert routes["/bond-dashboard"]["business_boundary"] == "candidate_bond_dashboard_not_risk_tensor_truth"
+    assert routes["/balance-analysis"]["evidence"]["owner_boundary_test"]["path"] == (
+        "tests/test_balance_analysis_business_owner_approval_status.py"
+    )
+    assert routes["/pnl-bridge"]["page_id"] == "PAGE-BRIDGE-001"
+    assert routes["/risk-tensor"]["risk_tier"] == "critical"
+    assert routes["/positions"]["business_boundary"] == "candidate_position_list_not_formal_metric_truth"
+    assert routes["/decision-items"]["page_id"] == "GAP-DECISION-ITEMS-PAGE"
+    assert routes["/kpi"]["page_id"] == "GAP-KPI-PERFORMANCE-PAGE"
+    assert routes["/news-events"]["evidence"]["governance_or_boundary_test"]["exists"] is True
+    assert routes["/platform-config"]["business_boundary"] == "diagnostic_config_surface"
     assert routes["/pnl-attribution"]["risk_tier"] == "critical"
     assert routes["/stock-analysis"]["business_boundary"] == "observational_no_trading"
     assert routes["/stock-analysis"]["coverage_status"] == "tracked"
+    assert routes["/average-balance"]["business_boundary"] == "candidate_daily_adb_not_formal_balance_truth"
+    assert routes["/average-balance"]["coverage_status"] == "tracked"
     assert "frontend_page_test" in routes["/product-category-pnl"]["evidence"]
     assert "backend_or_api_test" in routes["/bond-analysis"]["evidence"]
     assert routes["/bond-analysis"]["evidence"]["owner_boundary_test"]["exists"] is True
@@ -83,6 +125,9 @@ def test_business_display_coverage_report_tracks_high_risk_routes() -> None:
     assert routes["/team-performance"]["evidence"]["browser_smoke_a11y_config"]["ready_selector"] == (
         '[data-testid="team-performance-page"]'
     )
+    assert routes["/average-balance"]["evidence"]["browser_smoke_a11y_config"]["ready_selector"] == (
+        '[data-testid="average-balance-page"]'
+    )
 
 
 def test_business_display_coverage_report_surfaces_missing_targets_without_approval(
@@ -94,7 +139,7 @@ def test_business_display_coverage_report_surfaces_missing_targets_without_appro
 
     report = build_report(repo_root=repo_root, generated_at="2026-06-06T23:20:00+08:00")
 
-    assert report["summary"]["tracked_route_count"] >= 8
+    assert report["summary"]["tracked_route_count"] == 26
     assert report["summary"]["route_gap_count"] == report["summary"]["tracked_route_count"]
     assert report["summary"]["browser_smoke_a11y_configured_route_count"] == 0
     assert report["summary"]["browser_smoke_a11y_gap_count"] == report["summary"]["tracked_route_count"]
@@ -118,7 +163,7 @@ def test_business_display_coverage_report_cli_writes_json(tmp_path: Path) -> Non
     assert returncode == 0
     assert payload["report_path"] == str(output_path)
     assert payload["coverage_status"] in {"tracked", "gaps"}
-    assert payload["tracked_route_count"] >= 8
+    assert payload["tracked_route_count"] == 26
     assert payload["browser_smoke_a11y_gap_count"] == 0
     assert payload["evidence_scope"]["maps_existing_test_evidence"] is True
 

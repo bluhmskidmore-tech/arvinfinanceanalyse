@@ -28,7 +28,7 @@ REQUIRED_WHEN_FRONTEND_DISPLAY_LOGIC_CHANGES = [
     "npm.cmd run debt:audit",
 ]
 
-HIGH_RISK_ROUTES: tuple[dict[str, Any], ...] = (
+BUSINESS_DISPLAY_ROUTES: tuple[dict[str, Any], ...] = (
     {
         "route": "/product-category-pnl",
         "page_id": "PAGE-PROD-CAT-PNL-001",
@@ -95,6 +95,19 @@ HIGH_RISK_ROUTES: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "route": "/average-balance",
+        "page_id": "GAP-AVERAGE-BALANCE-PAGE",
+        "risk_tier": "critical",
+        "business_boundary": "candidate_daily_adb_not_formal_balance_truth",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/AverageBalanceView.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/AverageBalanceView.test.tsx",
+            "backend_or_api_test": "tests/test_adb_analysis_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "owner_boundary_test": "tests/test_average_balance_owner_evidence_packet.py",
+        },
+    },
+    {
         "route": "/cashflow-projection",
         "page_id": "GAP-CASHFLOW-PROJECTION-PAGE",
         "risk_tier": "high",
@@ -133,7 +146,229 @@ HIGH_RISK_ROUTES: tuple[dict[str, Any], ...] = (
             "owner_boundary_test": "tests/test_codex_page_readiness_gate.py",
         },
     },
+    {
+        "route": "/",
+        "page_id": "PAGE-DASH-001",
+        "risk_tier": "high",
+        "business_boundary": "mixed_source_home_snapshot_not_formal_page_closure",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/DashboardHomePage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/DeferredTerminalHomeContent.test.tsx",
+            "backend_or_api_test": "tests/test_dashboard_api_contract.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/bond-dashboard",
+        "page_id": "PAGE-BOND-001",
+        "risk_tier": "high",
+        "business_boundary": "candidate_bond_dashboard_not_risk_tensor_truth",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/BondDashboardPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/BondKpiRow.unit.test.tsx",
+            "backend_or_api_test": "tests/test_bond_dashboard_api_contract.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/balance-analysis",
+        "page_id": "PAGE-BALANCE-001",
+        "risk_tier": "critical",
+        "business_boundary": "formal_balance_truth_owner_pending",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/BalanceAnalysisPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/BalanceAnalysisPage.test.tsx",
+            "backend_or_api_test": "tests/test_balance_analysis_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "owner_boundary_test": "tests/test_balance_analysis_business_owner_approval_status.py",
+        },
+    },
+    {
+        "route": "/balance-movement-analysis",
+        "page_id": "PAGE-BAL-MOVE-001",
+        "risk_tier": "critical",
+        "business_boundary": "movement_explanation_not_balance_truth",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/BalanceMovementAnalysisPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/BalanceMovementAnalysisPage.test.tsx",
+            "backend_or_api_test": "tests/test_accounting_asset_movement_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/cross-asset",
+        "page_id": "GAP-CROSS-ASSET-PAGE",
+        "risk_tier": "high",
+        "business_boundary": "mixed_source_analytical_surface",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/CrossAssetPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/CrossAssetDriversRoute.test.tsx",
+            "backend_or_api_test": "tests/test_cross_asset_macro_environment_backfill.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/pnl",
+        "page_id": "PAGE-PNL-001",
+        "risk_tier": "critical",
+        "business_boundary": "formal_pnl_overview_result_meta_required",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/PnlPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/PnlRoutesSmoke.test.tsx",
+            "backend_or_api_test": "tests/test_pnl_api_contract.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/pnl-bridge",
+        "page_id": "PAGE-BRIDGE-001",
+        "risk_tier": "critical",
+        "business_boundary": "formal_bridge_warning_and_source_boundary",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/PnlBridgePage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/PnlRoutesSmoke.test.tsx",
+            "backend_or_api_test": "tests/test_pnl_bridge_core.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/risk-tensor",
+        "page_id": "PAGE-RISK-001",
+        "risk_tier": "critical",
+        "business_boundary": "formal_risk_tensor_result_meta_required",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/RiskTensorPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/RiskTensorPage.test.tsx",
+            "backend_or_api_test": "tests/test_risk_tensor_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/positions",
+        "page_id": "PAGE-POS-001",
+        "risk_tier": "high",
+        "business_boundary": "candidate_position_list_not_formal_metric_truth",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/PositionsView.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/PositionsView.test.tsx",
+            "backend_or_api_test": "tests/test_positions_api_contract.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/operations-analysis",
+        "page_id": "PAGE-OPS-001",
+        "risk_tier": "high",
+        "business_boundary": "mixed_source_operations_temporary_exception",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/OperationsAnalysisPage.test.tsx",
+            "frontend_governed_test": "frontend/src/test/OperationsAnalysisPage.governed.test.tsx",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/liability-analytics",
+        "page_id": "PAGE-LIAB-ANALYTICS-001",
+        "risk_tier": "high",
+        "business_boundary": "mixed_source_liability_analytics",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/LiabilityAnalyticsPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/LiabilityAnalyticsPage.test.tsx",
+            "backend_or_api_test": "tests/test_liability_analytics_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/market-data",
+        "page_id": "PAGE-MKT-001",
+        "risk_tier": "high",
+        "business_boundary": "mixed_source_market_data_formal_fragment_only",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/MarketDataPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/features/market-data/lib/livermoreStrategyModel.test.ts",
+            "backend_or_api_test": "tests/test_market_data_ncd_proxy_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/macro-toolkit",
+        "page_id": "PAGE-MACRO-TOOLKIT-001",
+        "risk_tier": "high",
+        "business_boundary": "tooling_surface_not_formal_metric_truth",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/MacroToolkitPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/MacroToolkitPage.test.tsx",
+            "backend_or_api_test": "tests/test_macro_toolkit_scripts.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/decision-items",
+        "page_id": "GAP-DECISION-ITEMS-PAGE",
+        "risk_tier": "high",
+        "business_boundary": "candidate_read_write_governance_queue",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/DecisionItemsPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/DecisionItemsRoute.test.tsx",
+            "backend_or_api_test": "tests/test_decision_items_governance_record.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
+    {
+        "route": "/kpi",
+        "page_id": "GAP-KPI-PERFORMANCE-PAGE",
+        "risk_tier": "high",
+        "business_boundary": "candidate_read_write_scoring_workbench",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/KpiPerformancePage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/KpiTracePanel.test.tsx",
+            "backend_or_api_test": "tests/test_kpi_api.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_kpi_performance_governance_record.py",
+        },
+    },
+    {
+        "route": "/news-events",
+        "page_id": "GAP-NEWS-EVENTS-PAGE",
+        "risk_tier": "high",
+        "business_boundary": "analytical_event_context",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/NewsEventsPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/NewsEventsPage.test.tsx",
+            "backend_or_api_test": "tests/test_choice_news_routes.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_news_events_governance_record.py",
+        },
+    },
+    {
+        "route": "/platform-config",
+        "page_id": "GAP-PLATFORM-CONFIG-PAGE",
+        "risk_tier": "high",
+        "business_boundary": "diagnostic_config_surface",
+        "evidence": {
+            "frontend_page_test": "frontend/src/test/PlatformConfigPage.test.tsx",
+            "frontend_model_or_adapter_test": "frontend/src/test/PlatformConfigPage.test.tsx",
+            "backend_or_api_test": "tests/test_platform_config_governance_record.py",
+            "readiness_or_mcp_test": "tests/test_codex_page_readiness_gate.py",
+            "governance_or_boundary_test": "tests/test_project_mcp_servers.py",
+        },
+    },
 )
+
+HIGH_RISK_ROUTES = BUSINESS_DISPLAY_ROUTES
 
 
 def _default_generated_at() -> str:
@@ -228,7 +463,7 @@ def build_report(
 ) -> dict[str, Any]:
     root = Path(repo_root)
     smoke_pages = _smoke_pages(root)
-    routes = [_route_report(root, spec, smoke_pages) for spec in HIGH_RISK_ROUTES]
+    routes = [_route_report(root, spec, smoke_pages) for spec in BUSINESS_DISPLAY_ROUTES]
     route_gap_count = sum(1 for item in routes if item["coverage_status"] != "tracked")
     browser_smoke_configured_count = sum(
         1
@@ -254,7 +489,7 @@ def build_report(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Build a static coverage map for high-risk business display paths.",
+        description="Build a static coverage map for browser-smoke business display paths.",
     )
     parser.add_argument(
         "--output",
