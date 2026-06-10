@@ -3582,7 +3582,7 @@ export default function ProductCategoryPnlPage() {
             labels: interestSpreadChart.labels,
             series: [
               {
-                name: "资产端合计收益率（%）",
+                name: "生息资产收益率（%）",
                 data: interestSpreadChart.assetYield,
                 color: designTokens.color.success[600],
               },
@@ -3592,7 +3592,7 @@ export default function ProductCategoryPnlPage() {
                 color: designTokens.color.neutral[500],
               },
               {
-                name: "资产负债利差（%）",
+                name: "生息资产利差（%）",
                 data: interestSpreadChart.spread,
                 color: designTokens.color.danger[500],
               },
@@ -5092,7 +5092,7 @@ export default function ProductCategoryPnlPage() {
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread"
               title="资产负债利差趋势图"
-              description="仅展示后端返回的资产端合计收益率、负债端合计收益率和资产负债利差字段。"
+              description="仅展示后端返回的资产端收益率、负债端收益率和利差字段。"
               option={interestSpreadOption}
             />
             <DerivedChartPanel

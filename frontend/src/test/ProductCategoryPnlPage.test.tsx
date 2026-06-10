@@ -1055,6 +1055,17 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toHaveTextContent(
       "资产负债利差趋势图",
     );
+    const existingInterestSpreadOption = readChartOption("product-category-derived-chart-interest-spread");
+    expect(existingInterestSpreadOption.legend?.data).toEqual([
+      "生息资产收益率（%）",
+      "负债端加权收益率（%）",
+      "生息资产利差（%）",
+    ]);
+    expect(existingInterestSpreadOption.series?.map((series) => series.name)).toEqual([
+      "生息资产收益率（%）",
+      "负债端加权收益率（%）",
+      "生息资产利差（%）",
+    ]);
     expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread")).toHaveTextContent(
       "生息资产负债利差趋势图",
     );
