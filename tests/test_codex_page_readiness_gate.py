@@ -574,8 +574,15 @@ def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promoti
     assert "codex-page-smoke.ps1 -PageSlug ledger-pnl" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug ledger-pnl -Run" in report["required_commands"][1]
     assert report["run_supported"] is True
-    assert report["catalog_date_evidence"] is None
-    assert report["governance_record_validation"] is None
+    assert report["catalog_date_evidence"]["status"] == "incomplete"
+    assert report["catalog_date_evidence"]["table_count"] == 3
+    assert report["catalog_date_evidence"]["present_table_count"] == 2
+    assert report["catalog_date_evidence"]["date_sampled_table_count"] == 1
+    assert report["governance_record_validation"]["status"] == "missing_direct_records"
+    assert report["governance_record_validation"]["ready_record_count"] == 0
+    assert report["governance_record_validation"]["direct_record_count"] == 0
+    assert report["audit_review"]["status"] == "blocked_by_record_gaps"
+    assert report["audit_review"]["closure_approved"] is False
     assert report["governance_record_commands"] == [
         "python scripts/emit_ledger_pnl_governance_record.py",
         "python scripts/emit_ledger_pnl_governance_record.py --write",
@@ -629,6 +636,7 @@ def test_ledger_pnl_readiness_exposes_run_commands_without_direct_record_promoti
         "current_status": "pending",
     } in report["business_owner_approval_status"]["approval_action_items"]
     gates = {gate["name"]: gate for gate in report["static_gates"]}
+    assert "direct_governance_record_ready" not in gates
     assert gates["business_owner_approval_status"]["outcome"] == "pass"
     assert gates["business_owner_approval_status"]["detail"] == "pending; captured=false"
     assert any("full data-catalog/date review" in gap for gap in report["residual_gaps"])
@@ -1136,6 +1144,19 @@ def test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion(
     ]
     assert "docs/audits/2026-06-06-stock-analysis-gate-i-lane.md" in report["contract_docs"]
     assert "docs/pnl/stock-analysis-owner-evidence-packet.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-sign-off-packet.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-governance-audit-packet.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-business-owner-approval-template.md" in report["contract_docs"]
+    assert "docs/pnl/stock-analysis-owner-signoff-runbook.md" in report["contract_docs"]
+    assert any("owner-review evidence while preserving formal_use_allowed=false" in item for item in report["truth_chain"])
+    assert any("observational sign-off evidence only" in item for item in report["truth_chain"])
+    assert any("review-only audit evidence" in item for item in report["truth_chain"])
+    assert any("business-owner-approval-template.md captures pending owner fields and remains unsigned" in item for item in report["truth_chain"])
+    assert any(
+        "owner-signoff-runbook.md lists the human review, fill, and post-signing verification commands"
+        in item
+        for item in report["truth_chain"]
+    )
     assert "codex-page-smoke.ps1 -PageSlug stock-analysis" in report["required_commands"][0]
     assert "codex-verify-page.ps1 -PageSlug stock-analysis -Run" in report["required_commands"][1]
     assert report["approval_status_commands"] == [

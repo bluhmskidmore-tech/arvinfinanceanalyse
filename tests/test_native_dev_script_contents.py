@@ -583,6 +583,12 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "Macro Toolkit browser a11y smoke" in script
     assert "@macro-toolkit" in script
     assert "Stock Analysis backend Livermore observation and diagnostics tests" in script
+    assert "test_stock_analysis_trace_bundle_preserves_observational_livermore_boundaries" in script
+    assert "test_lineage_evidence_mcp_maps_stock_analysis_gap_to_observational_livermore_records" in script
+    assert "test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion" in script
+    assert "tests/test_stock_analysis_governance_record.py" in script
+    assert "tests/test_stock_analysis_owner_evidence_packet.py" in script
+    assert "tests/test_stock_analysis_business_owner_approval_status.py" in script
     assert "tests/test_market_data_livermore_candidate_history.py" in script
     assert "tests/test_market_data_livermore_stock_detail.py" in script
     assert "tests/test_market_data_livermore_sector_rank_series.py" in script

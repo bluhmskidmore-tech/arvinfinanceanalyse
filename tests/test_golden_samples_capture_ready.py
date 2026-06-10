@@ -315,6 +315,31 @@ def _setup_average_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     get_settings.cache_clear()
 
 
+def _append_bond_analytics_completed_build(
+    *,
+    governance_path: Path,
+    report_date: str,
+    source_version: str,
+    run_id: str,
+) -> None:
+    from backend.app.tasks.bond_analytics_materialize import CACHE_KEY, CACHE_VERSION, RULE_VERSION
+
+    governance_path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": run_id,
+        "job_name": "bond_analytics_materialize",
+        "status": "completed",
+        "cache_key": CACHE_KEY,
+        "cache_version": CACHE_VERSION,
+        "source_version": source_version,
+        "vendor_version": "vv_none",
+        "rule_version": RULE_VERSION,
+        "report_date": report_date,
+    }
+    with (governance_path / "cache_build_run.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 
@@ -390,6 +415,12 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
                 ),
             ],
         )
+    _append_bond_analytics_completed_build(
+        governance_path=tmp_path / "gov",
+        report_date="2026-03-31",
+        source_version="sv",
+        run_id="golden-sample:bond-headline:2026-03-31",
+    )
 
 
 def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -456,6 +487,12 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
 
     monkeypatch.setattr(service_mod, "BondAnalyticsRepository", Repo)
     monkeypatch.setattr(service_mod, "PnlRepository", PnlRepo)
+    _append_bond_analytics_completed_build(
+        governance_path=tmp_path / "governance",
+        report_date="2026-03-31",
+        source_version="sv_bond_analysis_action_attr_gs_a",
+        run_id="golden-sample:bond-analysis-action-attribution:2026-03-31",
+    )
 
 
 def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -550,6 +587,12 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             "curve_latest_fallback": False,
             "curve_unavailable": True,
         },
+    )
+    _append_bond_analytics_completed_build(
+        governance_path=tmp_path / "governance",
+        report_date="2026-03-31",
+        source_version="sv_concentration_monitor_gs_a",
+        run_id="golden-sample:concentration-monitor:2026-03-31",
     )
 
 

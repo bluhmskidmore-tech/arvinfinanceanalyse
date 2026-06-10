@@ -84,6 +84,7 @@ DIRECT_EVIDENCE_PAGE_SLUGS = (
 )
 OPTIONAL_DIRECT_EVIDENCE_PAGE_SLUGS = (
     "decision-items",
+    "ledger-pnl",
     "kpi-performance",
     "pnl-attribution",
     "stock-analysis",

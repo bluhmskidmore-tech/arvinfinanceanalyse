@@ -210,6 +210,18 @@ if (-not $SkipMcpContracts) {
       "tests/test_team_performance_governance_record.py",
       "-q"
     )
+  } elseif ($PageSlug -eq "stock-analysis") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_stock_analysis_trace_bundle_preserves_observational_livermore_boundaries",
+      "tests/test_project_mcp_servers.py::test_lineage_evidence_mcp_maps_stock_analysis_gap_to_observational_livermore_records",
+      "tests/test_codex_page_readiness_gate.py::test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion",
+      "tests/test_stock_analysis_governance_record.py",
+      "tests/test_stock_analysis_owner_evidence_packet.py",
+      "tests/test_stock_analysis_business_owner_approval_status.py",
+      "-q"
+    )
   }
   $checks += @(
     @{
