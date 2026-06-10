@@ -487,7 +487,8 @@ function pickLargestDv01Row(rows: AccountingDv01SummaryRow[]) {
   let largestDv01 = Number.NEGATIVE_INFINITY;
 
   for (const row of rows) {
-    const rawDv01 = Math.abs(bondNumericRaw(row.payload?.total_dv01));
+    const dv01 = bondNumericRaw(row.payload?.total_dv01);
+    const rawDv01 = dv01 === null ? Number.NaN : Math.abs(dv01);
     if (Number.isFinite(rawDv01) && rawDv01 > largestDv01) {
       largest = row;
       largestDv01 = rawDv01;

@@ -68,8 +68,14 @@ export function TopHoldingsView({ reportDate }: Props) {
   }, [client, reportDate, topN]);
 
   const topWeightSum = useMemo(() => {
-    if (!data?.items.length) return 0;
-    return data.items.reduce((acc, row) => acc + bondNumericRaw(row.weight), 0);
+    if (!data?.items.length) return null;
+    let sum = 0;
+    for (const row of data.items) {
+      const raw = bondNumericRaw(row.weight);
+      if (raw === null) return null;
+      sum += raw;
+    }
+    return sum;
   }, [data]);
 
   if (!reportDate) {
@@ -119,13 +125,17 @@ export function TopHoldingsView({ reportDate }: Props) {
           <Card size="small">
             <Statistic
               title={`Top ${data.top_n} 合计市值占比（相对组合总市值）`}
-              value={formatPct({
-                raw: topWeightSum,
-                unit: "ratio",
-                display: "",
-                precision: 4,
-                sign_aware: false,
-              })}
+              value={
+                topWeightSum === null
+                  ? "—"
+                  : formatPct({
+                      raw: topWeightSum,
+                      unit: "ratio",
+                      display: "",
+                      precision: 4,
+                      sign_aware: false,
+                    })
+              }
             />
           </Card>
           <Card size="small" title="持仓明细">

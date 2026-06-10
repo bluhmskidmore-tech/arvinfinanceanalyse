@@ -63,16 +63,16 @@ describe("bondNumericRaw", () => {
     expect(bondNumericRaw("3.25")).toBe(3.25);
   });
 
-  it("returns 0 for null raw", () => {
-    expect(bondNumericRaw(num({ raw: null }))).toBe(0);
+  it("returns null for null raw", () => {
+    expect(bondNumericRaw(num({ raw: null }))).toBeNull();
   });
 
-  it("returns 0 for undefined", () => {
-    expect(bondNumericRaw(undefined)).toBe(0);
+  it("returns null for undefined", () => {
+    expect(bondNumericRaw(undefined)).toBeNull();
   });
 
-  it("returns 0 for non-finite string", () => {
-    expect(bondNumericRaw("x")).toBe(0);
+  it("returns null for non-finite string", () => {
+    expect(bondNumericRaw("x")).toBeNull();
   });
 });
 

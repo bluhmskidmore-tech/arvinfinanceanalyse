@@ -255,7 +255,7 @@ export function ReturnDecompositionView({
         <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {effects.map((e) => {
             const num = bondNumericRaw(e.value);
-            const color = num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+            const color = num === null ? designTokens.color.neutral[900] : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
             return (
               <div key={e.label} style={{ textAlign: "center", minWidth: 100 }}>
                 <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{e.label}</div>

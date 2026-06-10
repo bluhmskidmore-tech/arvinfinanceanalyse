@@ -77,7 +77,7 @@ const detailColumns = [
     width: 120,
     render: (v: Numeric) => {
       const num = bondNumericRaw(v);
-      const color = num >= 0 ? "#cf1322" : "#3f8600";
+      const color = num === null ? undefined : num >= 0 ? "#cf1322" : "#3f8600";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
   },
@@ -95,7 +95,7 @@ const detailColumns = [
     width: 110,
     render: (v: Numeric) => {
       const num = bondNumericRaw(v);
-      const color = num >= 0 ? "#cf1322" : "#3f8600";
+      const color = num === null ? undefined : num >= 0 ? "#cf1322" : "#3f8600";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
   },
@@ -268,7 +268,8 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
             {data.by_action_type.map((item) => {
               const pnl = bondNumericRaw(item.total_pnl_economic);
               const totalPnl = bondNumericRaw(data.total_pnl_from_actions);
-              const pct = totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
+              const pct = pnl !== null && totalPnl !== null && totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
+              const pnlColor = pnl === null ? "#5c6b82" : pnl >= 0 ? "#cf1322" : "#3f8600";
               return (
                 <div key={item.action_type} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Tag color={ACTION_COLORS[item.action_type] || "default"} style={{ width: 80, textAlign: "center" }}>
@@ -296,7 +297,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                       lineHeight: 1.4,
                     }}
                   >
-                    <div style={{ fontVariantNumeric: "tabular-nums", color: pnl >= 0 ? "#cf1322" : "#3f8600" }}>
+                    <div style={{ fontVariantNumeric: "tabular-nums", color: pnlColor }}>
                       经济 {formatWan(item.total_pnl_economic)}
                     </div>
                     <div style={{ fontVariantNumeric: "tabular-nums" }}>

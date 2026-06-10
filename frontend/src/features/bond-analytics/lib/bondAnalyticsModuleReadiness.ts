@@ -58,9 +58,10 @@ export function classifyWarningSignals(warnings: string[]) {
 function hasRealActionAttributionContent(
   actionAttribution: ActionAttributionResponse,
 ): boolean {
+  const actionPnl = bondNumericRaw(actionAttribution.total_pnl_from_actions);
   return (
     actionAttribution.total_actions > 0 ||
-    bondNumericRaw(actionAttribution.total_pnl_from_actions) !== 0 ||
+    (actionPnl !== null && actionPnl !== 0) ||
     actionAttribution.by_action_type.length > 0 ||
     actionAttribution.action_details.length > 0
   );

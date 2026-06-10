@@ -198,7 +198,7 @@ function buildRatingTenorHeatmapData(
   creditMarketValueField: Numeric | string,
 ): { seriesData: [number, number, number][]; maxPct: number } | null {
   const denom = bondNumericRaw(creditMarketValueField);
-  if (!Number.isFinite(denom) || denom <= 0) return null;
+  if (denom === null || denom <= 0) return null;
 
   const sums = new Map<string, number>();
   let anyMapped = false;
@@ -207,7 +207,7 @@ function buildRatingTenorHeatmapData(
     const xi = mapTenorBucketToXIndex(row.tenor_bucket);
     if (yKey == null || xi == null) continue;
     const mv = bondNumericRaw(row.market_value);
-    if (!Number.isFinite(mv) || mv <= 0) continue;
+    if (mv === null || mv <= 0) continue;
     anyMapped = true;
     const key = `${yKey}|${xi}`;
     sums.set(key, (sums.get(key) ?? 0) + mv);
@@ -307,7 +307,7 @@ function concentrationBarOption(
   const names = items.map((it) => it.name);
   const pcts = items.map((it) => {
     const w = bondNumericRaw(it.weight);
-    return Number.isFinite(w) ? Number((w * 100).toFixed(4)) : 0;
+    return w === null ? null : Number((w * 100).toFixed(4));
   });
   return {
     grid: {
@@ -322,8 +322,9 @@ function concentrationBarOption(
       axisPointer: { type: "shadow" },
       formatter: (params: unknown) => {
         const list = Array.isArray(params) ? params : [params];
-        const p = list[0] as { name?: string; value?: number };
-        return `${p.name ?? ""}<br/>${yAxisName}：${p.value ?? 0}%`;
+        const p = list[0] as { name?: string; value?: number | null };
+        const value = typeof p.value === "number" ? `${p.value}%` : "—";
+        return `${p.name ?? ""}<br/>${yAxisName}：${value}`;
       },
     },
     xAxis: {
@@ -460,7 +461,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
         center: ["50%", "56%"],
         data: metrics.top_items.map((it) => ({
           name: it.name,
-          value: bondNumericRaw(it.market_value) || 0,
+          value: bondNumericRaw(it.market_value),
         })),
       },
     ],
@@ -470,7 +471,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
 function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   const pieData = metrics.top_items.map((it, idx) => ({
     name: it.name,
-    value: bondNumericRaw(it.market_value) || 0,
+    value: bondNumericRaw(it.market_value),
     marketValueRaw: it.market_value,
     weight: it.weight,
     itemStyle: { color: ISSUER_SLICE_COLORS[idx % ISSUER_SLICE_COLORS.length] },
@@ -625,8 +626,10 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           data: scenarios.map((s) => {
             const v = bondNumericRaw(s.pnl_impact);
             return {
-              value: Number.isFinite(v) ? v : 0,
-              itemStyle: { color: v >= 0 ? dt.color.semantic.loss : dt.color.semantic.profit },
+              value: v,
+              itemStyle: {
+                color: v === null ? dt.color.neutral[300] : v >= 0 ? dt.color.semantic.loss : dt.color.semantic.profit,
+              },
             };
           }),
         },
@@ -704,7 +707,11 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Statistic
               title="信用债市值"
               value={formatYi(displayCreditMarketValue)}
-              suffix={`(${(bondNumericRaw(data.credit_weight) * 100).toFixed(1)}%)`}
+              suffix={
+                bondNumericRaw(data.credit_weight) === null
+                  ? undefined
+                  : `(${(bondNumericRaw(data.credit_weight)! * 100).toFixed(1)}%)`
+              }
             />
           </Card>
         </Col>

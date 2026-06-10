@@ -1,21 +1,7 @@
 import type { Numeric, ReturnDecompositionPayload } from "../../../api/contracts";
 
 /** Raw scalar for charts / sorting; governed Numeric or legacy string. */
-export function bondNumericRaw(n: Numeric | string | null | undefined): number {
-  if (n === null || n === undefined) {
-    return 0;
-  }
-  if (typeof n === "string") {
-    const v = Number.parseFloat(n);
-    return Number.isFinite(v) ? v : 0;
-  }
-  if (n.raw === null || !Number.isFinite(n.raw)) {
-    return 0;
-  }
-  return n.raw;
-}
-
-export function bondNumericRawOrNull(n: Numeric | string | null | undefined): number | null {
+export function bondNumericRaw(n: Numeric | string | null | undefined): number | null {
   if (n === null || n === undefined) {
     return null;
   }
@@ -27,6 +13,10 @@ export function bondNumericRawOrNull(n: Numeric | string | null | undefined): nu
     return null;
   }
   return n.raw;
+}
+
+export function bondNumericRawOrNull(n: Numeric | string | null | undefined): number | null {
+  return bondNumericRaw(n);
 }
 
 export function bondNumericDisplay(n: Numeric | string | null | undefined): string {
@@ -45,14 +35,14 @@ export function bondChartMagnitude(value: Numeric | string): number {
 }
 
 export function returnDecompositionWaterfallRawSteps(d: ReturnDecompositionPayload): number[] {
-  const carry = bondNumericRaw(d.carry);
-  const rollDown = bondNumericRaw(d.roll_down);
-  const rateEffect = bondNumericRaw(d.rate_effect);
-  const spreadEffect = bondNumericRaw(d.spread_effect);
-  const trading = bondNumericRaw(d.trading);
-  const fxEffect = bondNumericRaw(d.fx_effect);
-  const convexityEffect = bondNumericRaw(d.convexity_effect);
-  const explained = bondNumericRaw(d.explained_pnl);
+  const carry = bondNumericRaw(d.carry) ?? 0;
+  const rollDown = bondNumericRaw(d.roll_down) ?? 0;
+  const rateEffect = bondNumericRaw(d.rate_effect) ?? 0;
+  const spreadEffect = bondNumericRaw(d.spread_effect) ?? 0;
+  const trading = bondNumericRaw(d.trading) ?? 0;
+  const fxEffect = bondNumericRaw(d.fx_effect) ?? 0;
+  const convexityEffect = bondNumericRaw(d.convexity_effect) ?? 0;
+  const explained = bondNumericRaw(d.explained_pnl) ?? 0;
   const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
     Number.isFinite(v) ? v : 0,
   );

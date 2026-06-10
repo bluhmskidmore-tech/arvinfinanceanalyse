@@ -186,7 +186,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
   if (!data) return null;
 
   const excessNum = bondNumericRaw(data.excess_return);
-  const excessColor = excessNum >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+  const excessColor = excessNum === null ? designTokens.color.neutral[900] : excessNum >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
 
   const decomp = [
     { label: "久期效应", value: data.duration_effect },
@@ -309,7 +309,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {decomp.map((d) => {
             const num = bondNumericRaw(d.value);
-            const color = num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
+            const color = num === null ? designTokens.color.neutral[900] : num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
             return (
               <div key={d.label} style={{ textAlign: "center", minWidth: 100 }}>
                 <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{d.label}</div>

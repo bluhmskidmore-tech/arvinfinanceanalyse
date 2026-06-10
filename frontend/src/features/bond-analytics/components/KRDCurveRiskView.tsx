@@ -298,14 +298,19 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           barMaxWidth: 48,
           data: buckets.map((b) => {
             const krd = bondNumericRaw(b.krd);
-            const color = krd >= 0 ? designTokens.color.primary[600] : designTokens.color.semantic.loss;
+            const color =
+              krd === null
+                ? designTokens.color.neutral[400]
+                : krd >= 0
+                  ? designTokens.color.primary[600]
+                  : designTokens.color.semantic.loss;
             return {
               value: krd,
               itemStyle: { color },
               label: {
                 show: true,
-                position: krd >= 0 ? "top" : "bottom",
-                formatter: Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display,
+                position: krd === null || krd >= 0 ? "top" : "bottom",
+                formatter: krd === null ? b.krd.display : krd.toFixed(3),
                 color: designTokens.color.neutral[800],
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
