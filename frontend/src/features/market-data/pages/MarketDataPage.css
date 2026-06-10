@@ -579,6 +579,40 @@
   margin-top: var(--moss-space-2);
 }
 
+.market-data-macro-depth-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--moss-space-2);
+  border-bottom: 1px solid var(--moss-color-neutral-200);
+}
+
+.market-data-macro-depth-tab {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--moss-color-neutral-600);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.market-data-macro-depth-tab:hover {
+  color: var(--moss-color-primary-700);
+}
+
+.market-data-macro-depth-tab:focus-visible {
+  outline: 2px solid var(--moss-color-primary-500);
+  outline-offset: 2px;
+}
+
+.market-data-macro-depth-tab--active {
+  border-bottom-color: var(--moss-color-primary-600);
+  color: var(--moss-color-primary-700);
+}
+
 .market-data-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
