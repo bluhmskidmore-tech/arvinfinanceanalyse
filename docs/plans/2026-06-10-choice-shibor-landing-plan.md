@@ -41,6 +41,13 @@ Do not run the existing full `refresh_choice_macro_snapshot` directly against pr
 
 Recommended: add scoped refresh support, then run only `choice_funding_shibor_latest`.
 
+Scoped refresh contract after remediation:
+
+- Scoped Choice refresh is a partial landing only. It skips Livermore gate supplement materialization and returns `gate_supplement_refresh = {"status": "skipped", "reason": "scoped_refresh"}`.
+- Raw Choice payload archive is written only after the DuckDB transaction commits successfully. A fetch followed by a DuckDB write failure must leave no archive file, vendor snapshot manifest, vendor version registry record, or cache manifest for that failed run.
+- Scoped payload validation rejects duplicate vendor points for the same `series_id` before any DuckDB rows, archive files, or governance manifests are written.
+- If DuckDB commit succeeds but archive or governance append later fails, treat the run as failed and retry. The landed rows are not a completed SHIBOR landing until archive/governance manifests and cache build records complete successfully.
+
 Scoped write semantics:
 
 - Fetch only batches matching `batch_ids=["choice_funding_shibor_latest"]`.
@@ -189,6 +196,7 @@ Expected:
 
 - `status = completed`
 - `series_count = 7`
+- `gate_supplement_refresh.status = skipped` and `gate_supplement_refresh.reason = scoped_refresh`
 - no warnings except explicitly explainable Choice runtime warnings
 
 **Step 3: Verify landed rows**
@@ -302,6 +310,8 @@ Expected:
 - exactly 7 SHIBOR series landed;
 - non-SHIBOR Choice row counts unchanged except for unrelated concurrent refreshes;
 - governance streams receive `vendor_snapshot_manifest`, `vendor_version_registry`, and `cache_build_run`.
+- Livermore gate supplement materialization is skipped because this is a scoped Choice refresh.
+- If the task reports failure after DuckDB commit but before archive/governance completion, do not treat the landing as complete. Retry the same scoped refresh after checking the failed-run record and any partial archive/governance artifacts.
 
 **Step 3: Post-write SQL checks**
 
@@ -388,7 +398,10 @@ Then invalidate relevant API/page caches if the running app has already served t
 - Scoped refresh lands exactly seven SHIBOR series.
 - No duplicate facts by `series_id + trade_date`.
 - No duplicate catalog/category/snapshot rows by `series_id`.
+- Duplicate vendor points are rejected before any scoped write, archive, or governance manifest.
 - Existing non-SHIBOR Choice rows remain untouched in scoped mode.
+- Scoped refresh reports Livermore gate supplement as skipped.
+- Raw payload archive is present only for runs that pass the DuckDB commit boundary.
 - Governance manifest and run records are written.
 - No production write is attempted before dev DuckDB trial passes.
 - No trading/order APIs are called.

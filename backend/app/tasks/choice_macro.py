@@ -392,19 +392,6 @@ def refresh_choice_macro_snapshot(
         vendor_version = snapshot.vendor_version
         source_version = _build_source_version(snapshot.raw_payload)
 
-        archived = object_store.archive_bytes(
-            payload=json.dumps(snapshot.raw_payload, ensure_ascii=False).encode("utf-8"),
-            source_name="choice-macro",
-            source_key=f"choice/macro/{snapshot.vendor_version}.json",
-            ingest_batch_id=run_id.replace(":", "_"),
-        )
-        vendor_snapshot_manifest = object_store.build_vendor_snapshot_manifest(
-            vendor_name=snapshot.vendor_name,
-            vendor_version=snapshot.vendor_version,
-            archived_path=str(archived["archived_path"]),
-            snapshot_kind="macro",
-            capture_mode="live" if backfill_days <= 1 else "backfill",
-        )
         vendor_version_registry = {
             "vendor_name": snapshot.vendor_name,
             "vendor_version": snapshot.vendor_version,
@@ -548,6 +535,20 @@ def refresh_choice_macro_snapshot(
             finally:
                 conn.close()
 
+        archived = object_store.archive_bytes(
+            payload=json.dumps(snapshot.raw_payload, ensure_ascii=False).encode("utf-8"),
+            source_name="choice-macro",
+            source_key=f"choice/macro/{snapshot.vendor_version}.json",
+            ingest_batch_id=run_id.replace(":", "_"),
+        )
+        vendor_snapshot_manifest = object_store.build_vendor_snapshot_manifest(
+            vendor_name=snapshot.vendor_name,
+            vendor_version=snapshot.vendor_version,
+            archived_path=str(archived["archived_path"]),
+            snapshot_kind="macro",
+            capture_mode="live" if backfill_days <= 1 else "backfill",
+        )
+
         repo.append_many_atomic(
             [
                 (
@@ -601,31 +602,37 @@ def refresh_choice_macro_snapshot(
         raise exc
 
     gate_supplement_result: dict[str, object] | None = None
-    try:
-        from backend.app.services.livermore_gate_supplement_compute_service import (
-            compute_and_materialize_gate_supplement,
-        )
-
-        gate_supplement_result = compute_and_materialize_gate_supplement(
-            duckdb_path=str(duckdb_file),
-            lookback_days=max(backfill_days, STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS),
-        )
-    except Exception as exc:
-        logger.warning(
-            "livermore gate supplement refresh failed after choice_macro refresh: %s",
-            exc,
-        )
-        gate_warning = _choice_warning(
-            code="gate_supplement_failed",
-            message=str(exc),
-        )
-        refresh_warnings.append(gate_warning)
+    if scoped_refresh:
         gate_supplement_result = {
-            "status": "failed",
-            "quality_flag": "warning",
-            "warning_code": "gate_supplement_failed",
-            "message": str(exc),
+            "status": "skipped",
+            "reason": "scoped_refresh",
         }
+    else:
+        try:
+            from backend.app.services.livermore_gate_supplement_compute_service import (
+                compute_and_materialize_gate_supplement,
+            )
+
+            gate_supplement_result = compute_and_materialize_gate_supplement(
+                duckdb_path=str(duckdb_file),
+                lookback_days=max(backfill_days, STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS),
+            )
+        except Exception as exc:
+            logger.warning(
+                "livermore gate supplement refresh failed after choice_macro refresh: %s",
+                exc,
+            )
+            gate_warning = _choice_warning(
+                code="gate_supplement_failed",
+                message=str(exc),
+            )
+            refresh_warnings.append(gate_warning)
+            gate_supplement_result = {
+                "status": "failed",
+                "quality_flag": "warning",
+                "warning_code": "gate_supplement_failed",
+                "message": str(exc),
+            }
 
     status = "completed"
     quality_flag = "ok"
@@ -1415,6 +1422,17 @@ def _validate_scoped_choice_snapshot(
     unexpected_series_ids = sorted(fetched_series_ids - expected_series_ids)
     if missing_series_ids or unexpected_series_ids:
         _raise_incomplete_scoped_choice_refresh(missing_series_ids, unexpected_series_ids)
+    seen_series_ids: set[str] = set()
+    duplicate_series_ids: set[str] = set()
+    for point in snapshot.series:
+        if point.series_id in seen_series_ids:
+            duplicate_series_ids.add(point.series_id)
+        seen_series_ids.add(point.series_id)
+    if duplicate_series_ids:
+        raise RuntimeError(
+            "Scoped Choice macro refresh returned duplicate series; "
+            f"duplicate: {', '.join(sorted(duplicate_series_ids))}"
+        )
 
 
 def _raise_incomplete_scoped_choice_refresh(
