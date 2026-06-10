@@ -1,0 +1,48 @@
+{
+  "result_meta": {
+    "basis": "analytical",
+    "result_kind": "adb.monthly",
+    "formal_use_allowed": false,
+    "source_version": "sv_adb_gs_a_tyw__sv_adb_gs_a_zqtz",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_adb_gs_a",
+    "cache_version": "cv_adb_analysis_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "filters_applied": {
+      "year": 2025
+    },
+    "tables_used": [
+      "fact_formal_zqtz_balance_daily",
+      "fact_formal_tyw_balance_daily"
+    ]
+  },
+  "result": {
+    "year": 2025,
+    "months": [
+      {
+        "month": "2025-12",
+        "num_days": 1,
+        "avg_assets": 170000000.0,
+        "avg_liabilities": 50000000.0,
+        "end_spot_assets": 170000000.0,
+        "end_spot_liabilities": 50000000.0,
+        "mom_change_assets": null,
+        "mom_change_pct_assets": null,
+        "mom_change_liabilities": null,
+        "mom_change_pct_liabilities": null,
+        "asset_yield": 2.4118,
+        "liability_cost": 1.72,
+        "net_interest_margin": 0.6918
+      }
+    ],
+    "ytd_avg_assets": 170000000.0,
+    "ytd_avg_liabilities": 50000000.0,
+    "ytd_asset_yield": 2.4118,
+    "ytd_liability_cost": 1.72,
+    "ytd_nim": 0.6918,
+    "unit": "percent"
+  }
+}

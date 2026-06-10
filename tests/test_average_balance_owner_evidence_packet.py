@@ -41,8 +41,14 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     assert packet["closure_approved"] is False
     assert packet["business_owner_approval_captured"] is False
     assert packet["approval_action_item_count"] == 13
-    assert packet["golden_sample_boundary"] == "daily_adb_candidate_dto_capture_ready_pending_approval"
+    assert packet["golden_sample_boundary"] == (
+        "daily_and_monthly_adb_candidate_dto_capture_ready_pending_approval"
+    )
     assert packet["dedicated_golden_sample_id"] == "GS-AVERAGE-BALANCE-A"
+    assert packet["dedicated_golden_sample_ids"] == [
+        "GS-AVERAGE-BALANCE-A",
+        "GS-AVERAGE-BALANCE-MONTHLY-A",
+    ]
     assert packet["daily_candidate_metric_ids"] == ["MTR-ADB-001", "MTR-ADB-002"]
     assert packet["monthly_pending_metric_ids"] == ["MTR-ADB-003"]
     assert packet["monthly_adb_nim_approval_allowed"] is False
@@ -69,6 +75,12 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     assert packet["evidence_anchors"]["page_contract"] == "docs/pnl/average-balance-page-contract.md"
     assert packet["evidence_anchors"]["live_smoke_evidence"] == (
         "docs/audits/2026-06-09-average-balance-live-smoke-evidence.md"
+    )
+    assert packet["evidence_anchors"]["latest_verification_snapshot"] == (
+        "docs/audits/2026-06-10-average-balance-candidate-verification.md"
+    )
+    assert packet["evidence_anchors"]["monthly_golden_sample"] == (
+        "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A"
     )
     assert packet["evidence_anchors"]["smoke_command"] == (
         "scripts/codex-page-smoke.ps1 -PageSlug average-balance"
@@ -107,7 +119,7 @@ def test_average_balance_owner_evidence_packet_cli_writes_markdown(tmp_path: Pat
     assert "# Average Balance Owner Evidence Packet" in text
     assert "Business contract status: `evidence-pending`" in text
     assert "Formal use allowed: `formal_use_allowed=false`" in text
-    assert "Dedicated golden sample: `GS-AVERAGE-BALANCE-A`" in text
+    assert "Dedicated golden samples: `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`" in text
     assert "Monthly ADB/NIM approval allowed: `false`" in text
     assert "Formal balance truth approval allowed: `false`" in text
     assert "Existing record line: `dry-run not written`" in text
@@ -116,6 +128,8 @@ def test_average_balance_owner_evidence_packet_cli_writes_markdown(tmp_path: Pat
     assert "- `MTR-ADB-003`" in text
     assert "Governance validation status: `ready_for_audit_review`" in text
     assert "live_smoke_evidence: `docs/audits/2026-06-09-average-balance-live-smoke-evidence.md`" in text
+    assert "latest_verification_snapshot: `docs/audits/2026-06-10-average-balance-candidate-verification.md`" in text
+    assert "monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`" in text
     assert "smoke_command: `scripts/codex-page-smoke.ps1 -PageSlug average-balance`" in text
     assert "verify_command: `scripts/codex-verify-page.ps1 -PageSlug average-balance -Run`" in text
     assert "This packet does not approve page closure" in text

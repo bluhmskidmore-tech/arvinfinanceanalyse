@@ -14,15 +14,15 @@ This packet does not approve page closure, write governance records, prove page 
 
 ## Current Certification Blockers
 
-- `golden_sample_boundary=daily_adb_candidate_dto_capture_ready_pending_approval`
+- `golden_sample_boundary=daily_and_monthly_adb_candidate_dto_capture_ready_pending_approval`
 - `golden_sample_approval_artifact_status=captured-awaiting-approval`
 - `approval_action_item_count=13`
 - `business_owner_approval_captured=false`
 
 ## Boundary
 
-Golden sample boundary: `daily_adb_candidate_dto_capture_ready_pending_approval`
-Dedicated golden sample: `GS-AVERAGE-BALANCE-A`
+Golden sample boundary: `daily_and_monthly_adb_candidate_dto_capture_ready_pending_approval`
+Dedicated golden samples: `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`
 Monthly ADB/NIM approval allowed: `false`
 Formal balance truth approval allowed: `false`
 
@@ -31,7 +31,7 @@ Daily candidate metrics covered by the sample:
 - `MTR-ADB-001`
 - `MTR-ADB-002`
 
-Monthly pending metrics not covered by the sample:
+Monthly candidate metrics covered only by the monthly candidate sample:
 
 - `MTR-ADB-003`
 
@@ -62,8 +62,10 @@ Existing record line: `dry-run not written`
 - page_contract: `docs/pnl/average-balance-page-contract.md`
 - owner_approval_template: `docs/pnl/average-balance-business-owner-approval-template.md`
 - daily_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-A`
+- monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`
 - metric_dictionary: `docs/metric_dictionary.md`
 - live_smoke_evidence: `docs/audits/2026-06-09-average-balance-live-smoke-evidence.md`
+- latest_verification_snapshot: `docs/audits/2026-06-10-average-balance-candidate-verification.md`
 - readiness_command: `python scripts/codex_page_readiness.py --page-slug average-balance`
 - smoke_command: `scripts/codex-page-smoke.ps1 -PageSlug average-balance`
 - verify_command: `scripts/codex-verify-page.ps1 -PageSlug average-balance -Run`
@@ -73,7 +75,7 @@ Existing record line: `dry-run not written`
 ## Reviewer Checklist
 
 - Confirm MTR-ADB-001 and MTR-ADB-002 remain candidate daily ADB metrics bound to GS-AVERAGE-BALANCE-A.
-- Confirm MTR-ADB-003 remains monthly ADB/NIM pending with bound_sample_id=none.
+- Confirm MTR-ADB-003 remains candidate monthly ADB/NIM evidence bound only to GS-AVERAGE-BALANCE-MONTHLY-A.
 - Review the dry-run governance candidate without treating it as a written direct record.
 - Review current UI/API payload and live smoke evidence before signature.
 - Complete and sign docs/pnl/average-balance-business-owner-approval-template.md before any closure claim.

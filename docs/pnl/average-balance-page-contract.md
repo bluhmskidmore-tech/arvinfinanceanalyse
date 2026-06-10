@@ -32,11 +32,11 @@ Daily sample-bound candidate metrics:
 - `MTR-ADB-001`: interval daily average total assets, from `GET /api/analysis/adb` summary.
 - `MTR-ADB-002`: interval daily average total liabilities, from `GET /api/analysis/adb` summary.
 
-Monthly pending candidate metric:
+Monthly sample-bound candidate metric:
 
-- `MTR-ADB-003`: YTD spread / monthly ADB-NIM view, from `GET /api/analysis/adb/monthly`; this metric has `bound_sample_id=none` and is not covered by `GS-AVERAGE-BALANCE-A`.
+- `MTR-ADB-003`: YTD spread / monthly ADB-NIM view, from `GET /api/analysis/adb/monthly`; this metric has candidate sample coverage through `GS-AVERAGE-BALANCE-MONTHLY-A`.
 
-`GS-AVERAGE-BALANCE-A` freezes only the daily ADB candidate DTO for `MTR-ADB-001` and `MTR-ADB-002`. It does not approve `MTR-ADB-003`, formal balance truth, manual audit closure, page closure, or business-owner approval.
+`GS-AVERAGE-BALANCE-A` freezes only the daily ADB candidate DTO for `MTR-ADB-001` and `MTR-ADB-002`. `GS-AVERAGE-BALANCE-MONTHLY-A` freezes selected monthly ADB/NIM candidate DTO fields for `MTR-ADB-003`. Neither sample approves formal balance truth, manual audit closure, page closure, or business-owner approval.
 
 ## Denominator Semantics
 
@@ -64,14 +64,14 @@ Frontend code must not infer, swap, or silently relabel these denominator modes.
   - `zqtz_bond_daily_snapshot`
   - `tyw_interbank_daily_snapshot`
 - Golden sample review for `GS-AVERAGE-BALANCE-A`, limited to the daily candidate DTO.
-- Separate monthly ADB/NIM sample or explicit owner decision for `MTR-ADB-003`.
+- Golden sample review for `GS-AVERAGE-BALANCE-MONTHLY-A`, limited to selected monthly ADB/NIM candidate DTO fields.
 - Live smoke evidence for visible candidate, stale, fallback, no-data, denominator, date-range, and `result_meta` states.
 - Completed owner evidence packet and signed business-owner approval template.
 
 ## Prohibitions
 
 - Do not set `formal_use_allowed=true` for `/average-balance`.
-- Do not use `GS-AVERAGE-BALANCE-A` as monthly ADB/NIM approval.
+- Do not use `GS-AVERAGE-BALANCE-A` or `GS-AVERAGE-BALANCE-MONTHLY-A` as metric approval, page approval, or business-owner approval.
 - Do not hide candidate-only, stale, fallback, denominator, or no-data states.
 - Do not backfill missing ADB, monthly, comparison, or coverage rows with static demo values.
 - Do not treat written governance evidence as owner approval or live page execution proof.

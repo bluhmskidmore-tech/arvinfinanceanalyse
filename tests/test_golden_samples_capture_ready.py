@@ -1099,6 +1099,8 @@ def _run_sample_request(sample_id: str, tmp_path: Path, monkeypatch: pytest.Monk
         return _run_cashflow_projection_payload(request)
     if sample_id == "GS-AVERAGE-BALANCE-A":
         return _run_average_balance_payload(request)
+    if sample_id == "GS-AVERAGE-BALANCE-MONTHLY-A":
+        return _run_average_balance_monthly_payload(request)
     return _run_request_payload(request, tmp_path, monkeypatch)
 
 
@@ -1167,6 +1169,17 @@ def _run_average_balance_payload(request: dict[str, Any]) -> dict[str, Any]:
         str(params["start_date"]),
         str(params["end_date"]),
     )
+
+
+def _run_average_balance_monthly_payload(request: dict[str, Any]) -> dict[str, Any]:
+    service_mod = sys.modules.get("backend.app.services.adb_analysis_service")
+    if service_mod is None:
+        service_mod = load_module(
+            "backend.app.services.adb_analysis_service",
+            "backend/app/services/adb_analysis_service.py",
+        )
+    params = dict(request.get("params") or {})
+    return service_mod.adb_monthly_envelope(int(params["year"]))
 
 
 def _run_request_payload(
@@ -1963,6 +1976,48 @@ def _validate_average_balance(actual: dict[str, Any], expected: dict[str, Any]) 
     )
 
 
+def _validate_average_balance_monthly(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "filters_applied"),
+            ("result_meta", "tables_used"),
+            ("result", "year"),
+            ("result", "months", 0, "month"),
+            ("result", "months", 0, "num_days"),
+            ("result", "months", 0, "avg_assets"),
+            ("result", "months", 0, "avg_liabilities"),
+            ("result", "months", 0, "end_spot_assets"),
+            ("result", "months", 0, "end_spot_liabilities"),
+            ("result", "months", 0, "mom_change_assets"),
+            ("result", "months", 0, "mom_change_pct_assets"),
+            ("result", "months", 0, "mom_change_liabilities"),
+            ("result", "months", 0, "mom_change_pct_liabilities"),
+            ("result", "months", 0, "asset_yield"),
+            ("result", "months", 0, "liability_cost"),
+            ("result", "months", 0, "net_interest_margin"),
+            ("result", "ytd_avg_assets"),
+            ("result", "ytd_avg_liabilities"),
+            ("result", "ytd_asset_yield"),
+            ("result", "ytd_liability_cost"),
+            ("result", "ytd_nim"),
+            ("result", "unit"),
+        ],
+    )
+
+
 @dataclass(frozen=True)
 class CaptureReadyCase:
     setup: Any
@@ -2007,6 +2062,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-AVERAGE-BALANCE-A": CaptureReadyCase(
         setup=_setup_average_balance,
         validator=_validate_average_balance,
+    ),
+    "GS-AVERAGE-BALANCE-MONTHLY-A": CaptureReadyCase(
+        setup=_setup_average_balance,
+        validator=_validate_average_balance_monthly,
     ),
 }
 

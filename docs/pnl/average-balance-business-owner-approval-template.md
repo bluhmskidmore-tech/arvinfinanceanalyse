@@ -14,7 +14,8 @@ Closure approved: `closure_approved=false`
 
 - Do not promote `MTR-ADB-001` through `MTR-ADB-003` to formal use.
 - `GS-AVERAGE-BALANCE-A` covers only the daily `GET /api/analysis/adb` DTO for `MTR-ADB-001` and `MTR-ADB-002`.
-- `MTR-ADB-003` remains monthly ADB/NIM pending and has no dedicated monthly/NIM golden sample.
+- `GS-AVERAGE-BALANCE-MONTHLY-A` covers only selected candidate `GET /api/analysis/adb/monthly` DTO fields for `MTR-ADB-003`.
+- `MTR-ADB-003` remains monthly ADB/NIM pending until explicit owner approval is completed.
 - Do not replace `PAGE-BALANCE-001` or `/balance-analysis` formal balance truth.
 
 ## Evidence Scope
