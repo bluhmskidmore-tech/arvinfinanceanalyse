@@ -83,8 +83,13 @@ function readChartOption(panelTestId: string) {
   };
 }
 
-async function loadTrendDiagnostics(user = userEvent.setup()) {
-  await user.click(await screen.findByTestId("product-category-load-trend-diagnostics"));
+async function waitForTrendDiagnosticsAutoLoad() {
+  await screen.findByTestId("product-category-diagnostics-surface");
+  await waitFor(() => {
+    expect(screen.getByTestId("product-category-operating-action-backtest")).not.toHaveTextContent(
+      "选择报表日期后",
+    );
+  });
 }
 
 function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy" = "mom") {
@@ -277,7 +282,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("选择性扩张");
     expect(screen.getByTestId("product-category-operating-action-queue")).toHaveTextContent("重定价/提效");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作队列次月命中率");
-    expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("加载趋势诊断后");
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
+    });
     expect(screen.getByTestId("product-category-financial-analysis")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("FTP 情景敏感度");
     expect(screen.getByTestId("product-category-scenario-sensitivity")).toHaveTextContent("加载矩阵");
@@ -597,8 +604,10 @@ describe("ProductCategoryPnlPage", () => {
       expect(pnlSpy).toHaveBeenCalled();
       expect(adjSpy).toHaveBeenCalled();
     });
-    expect(pnlSpy.mock.calls.map((call) => call[0]!.reportDate)).toEqual([firstDate]);
-    expect(pnlSpy.mock.calls[0]![0]).toMatchObject({ view: "monthly" });
+    expect(pnlSpy.mock.calls.map((call) => call[0]!.reportDate)).toEqual(
+      expect.arrayContaining([firstDate, "2026-02-28", "2026-01-31"]),
+    );
+    expect(pnlSpy.mock.calls[0]![0]).toMatchObject({ reportDate: firstDate, view: "monthly" });
     expect(adjSpy.mock.calls.every((call) => call[0] === firstDate)).toBe(true);
     expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
       "href",
@@ -619,7 +628,7 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     await screen.findByTestId("product-category-table");
-    expect(getProductCategoryPnl.mock.calls.map((call) => call[0]?.scenarioRatePct)).toEqual([undefined]);
+    expect(getProductCategoryPnl.mock.calls.every((call) => call[0]?.scenarioRatePct === undefined)).toBe(true);
 
     await user.click(within(screen.getByTestId("product-category-scenario-sensitivity")).getByRole("button"));
 
@@ -913,7 +922,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     const spread = await screen.findByTestId("product-category-diagnostics-spread");
     await waitFor(() => {
       expect(spread).toHaveTextContent("缺少完整收益率对比");
@@ -962,7 +971,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-spread-incomplete")).toHaveTextContent(
       "后端未返回资产端或负债端收益率字段，无法展示利差归因。",
     );
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
     expect(liabilityOption.series?.[0]?.data).toEqual([null]);
@@ -997,7 +1006,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-liability-side-detail-credit_linked_notes");
     const liabilityOption = readChartOption("product-category-liability-side-trend");
     expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
@@ -1014,10 +1023,7 @@ describe("ProductCategoryPnlPage", () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     await screen.findByTestId("product-category-table");
-    expect(screen.getByTestId("product-category-trend-diagnostics-gate")).toBeInTheDocument();
-    expect(screen.queryByTestId("product-category-derived-chart-tpl-scale-yield")).not.toBeInTheDocument();
-    await loadTrendDiagnostics();
-    expect(screen.getByTestId("product-category-derived-chart-tpl-scale-yield")).toBeInTheDocument();
+    expect(await screen.findByTestId("product-category-derived-chart-tpl-scale-yield")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-currency-net-income")).toBeInTheDocument();
     expect(
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
@@ -1122,7 +1128,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-derived-chart-tpl-scale-yield");
 
     const tplOption = readChartOption("product-category-derived-chart-tpl-scale-yield");
@@ -1209,7 +1215,7 @@ describe("ProductCategoryPnlPage", () => {
   it("places a mobile liability-side detail matrix readout before the raw detail matrix", async () => {
     renderWorkbenchAppWithTwoMonthLiabilityTrend();
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     const rawMatrix = await screen.findByTestId("product-category-liability-side-detail-matrix");
     const readout = screen.getByTestId("product-category-liability-side-detail-matrix-mobile-readout");
 
@@ -1223,7 +1229,7 @@ describe("ProductCategoryPnlPage", () => {
   it("places mobile liability-side currency readouts before each raw currency matrix", async () => {
     renderWorkbenchAppWithTwoMonthLiabilityTrend();
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     const cnyMatrix = await screen.findByTestId("product-category-liability-side-currency-matrix-cny");
     const foreignMatrix = screen.getByTestId("product-category-liability-side-currency-matrix-foreign");
     const cnyReadout = screen.getByTestId("product-category-liability-side-currency-matrix-cny-mobile-readout");
@@ -1302,7 +1308,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy")).not.toBeInTheDocument();
   });
 
@@ -1376,7 +1382,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
   });
 
@@ -1451,7 +1457,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-derived-chart-intermediate-business-income-yoy");
     const incomeOption = readChartOption("product-category-derived-chart-intermediate-business-income-yoy");
 
@@ -1479,7 +1485,6 @@ describe("ProductCategoryPnlPage", () => {
   });
 
   it("keeps interest-spread attribution incomplete when backend spread fields are absent", async () => {
-    const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     const dateInputs: Record<
       string,
@@ -1542,7 +1547,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics(user);
+    await waitForTrendDiagnosticsAutoLoad();
     const attribution = await screen.findByTestId("product-category-interest-spread-attribution");
     await waitFor(() => {
       expect(attribution).toHaveTextContent("\u5168\u53e3\u5f84");
@@ -1600,13 +1605,13 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics(user);
+    await waitForTrendDiagnosticsAutoLoad();
     await screen.findByTestId("product-category-interest-spread-attribution");
     expect(screen.queryByTestId("product-category-derived-chart-interest-spread-yoy-cny")).not.toBeInTheDocument();
 
     const monthSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
     await user.selectOptions(monthSelect, "2026-02-28");
-    await loadTrendDiagnostics(user);
+    await waitForTrendDiagnosticsAutoLoad();
 
     await waitFor(() => {
       expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
@@ -1632,7 +1637,7 @@ describe("ProductCategoryPnlPage", () => {
       ),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     const panel = await screen.findByTestId("product-category-interest-spread-attribution");
     expect(panel).toHaveTextContent("\u5f85\u8865\u6570");
     expect(panel).toHaveTextContent("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
@@ -1680,7 +1685,7 @@ describe("ProductCategoryPnlPage", () => {
       }),
     });
 
-    await loadTrendDiagnostics();
+    await waitForTrendDiagnosticsAutoLoad();
     await waitFor(() => {
       expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
     });
@@ -1716,15 +1721,11 @@ describe("ProductCategoryPnlPage", () => {
 
     await screen.findByTestId("product-category-table");
     await waitFor(() => {
-      expect(getProductCategoryPnl).toHaveBeenCalledTimes(1);
       expect(getProductCategoryPnl).toHaveBeenCalledWith({
         reportDate: "2026-03-31",
         view: "monthly",
       });
     });
-    expect(screen.queryByTestId("product-category-derived-chart-tpl-scale-yield")).not.toBeInTheDocument();
-
-    await loadTrendDiagnostics(user);
     await screen.findByTestId("product-category-derived-chart-tpl-scale-yield");
     await waitFor(() => {
       const tplOption = readChartOption("product-category-derived-chart-tpl-scale-yield");
@@ -1790,17 +1791,14 @@ describe("ProductCategoryPnlPage", () => {
     const viewButtons = within(screen.getByRole("group", { name: "视图模式" })).getAllByRole("button");
     await user.click(viewButtons[1]!);
     await waitFor(() => {
-      expect(getProductCategoryPnl).toHaveBeenCalledTimes(1);
       expect(getProductCategoryPnl).toHaveBeenCalledWith({
         reportDate: "2026-03-31",
         view: "ytd",
       });
     });
 
-    getProductCategoryPnl.mockClear();
-    await loadTrendDiagnostics(user);
     await waitFor(() => {
-      expect(getProductCategoryPnl).toHaveBeenCalledTimes(8);
+      expect(getProductCategoryPnl).toHaveBeenCalledTimes(9);
     });
     const ytdCalls = getProductCategoryPnl.mock.calls
       .map((call) => call[0])
@@ -1815,6 +1813,7 @@ describe("ProductCategoryPnlPage", () => {
       "2025-12-31:ytd",
       "2026-01-31:ytd",
       "2026-02-28:ytd",
+      "2026-03-31:ytd",
     ]);
   });
   it("Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention", async () => {

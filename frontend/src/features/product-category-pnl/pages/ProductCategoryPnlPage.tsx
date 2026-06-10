@@ -1302,7 +1302,7 @@ function ProductCategoryOperatingActionBacktestPanel(props: {
       </div>
       {!props.isHistoryLoaded ? (
         <div className="product-category-action-backtest__empty">
-          加载趋势诊断后，可用历史月度快照回测动作信号。
+          选择报表日期后，可用历史月度快照回测动作信号。
         </div>
       ) : props.historyLoading ? (
         <div className="product-category-action-backtest__empty">正在加载历史月度快照。</div>
@@ -2873,7 +2873,6 @@ export default function ProductCategoryPnlPage() {
     Record<string, ScenarioActionClosureStatus>
   >({});
   const [scenarioActionClosureMemoCategoryId, setScenarioActionClosureMemoCategoryId] = useState<string | null>(null);
-  const [loadedTrendDiagnosticsKey, setLoadedTrendDiagnosticsKey] = useState("");
   const [editingAdjustmentId, setEditingAdjustmentId] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
@@ -3007,9 +3006,7 @@ export default function ProductCategoryPnlPage() {
   const displayedAssetTotal = scenario?.asset_total ?? baseline?.asset_total;
   const displayedLiabilityTotal = scenario?.liability_total ?? baseline?.liability_total;
   const currentSelectedPayload = scenario ?? baseline;
-  const trendDiagnosticsKey = `${selectedDate}|${selectedView}|${appliedScenarioRate}`;
-  const trendDiagnosticsLoaded =
-    Boolean(selectedDate) && loadedTrendDiagnosticsKey === trendDiagnosticsKey;
+  const trendDiagnosticsLoaded = Boolean(selectedDate);
   const selectedYearMonth = useMemo(() => reportDateYearMonth(selectedDate), [selectedDate]);
 
   const rowsToRender = useMemo(
@@ -4478,27 +4475,6 @@ export default function ProductCategoryPnlPage() {
             testId="product-category-diagnostics-lead"
           />
           <div className="product-category-diagnostics" data-testid="product-category-diagnostics-surface">
-            {!trendDiagnosticsLoaded ? (
-              <article
-                className="product-category-diagnostics__card product-category-trend-diagnostics-gate"
-                data-testid="product-category-trend-diagnostics-gate"
-              >
-                <div className="product-category-diagnostics__intro">
-                  <h3 className="product-category-diagnostics__title">趋势诊断</h3>
-                  <p className="product-category-diagnostics__description">
-                    首屏先展示当前报表月正式口径；趋势图和两年利差对比需要额外加载历史快照。
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="product-category-trend-diagnostics-gate__button"
-                  data-testid="product-category-load-trend-diagnostics"
-                  onClick={() => setLoadedTrendDiagnosticsKey(trendDiagnosticsKey)}
-                >
-                  加载趋势诊断
-                </button>
-              </article>
-            ) : null}
             <article className="product-category-diagnostics__card" data-testid="product-category-diagnostics-matrix">
               <div className="product-category-diagnostics__header">
                 <div className="product-category-diagnostics__intro">
