@@ -147,6 +147,10 @@ export function compactStockText(text: string | null | undefined, maxLength = 28
 
 export function formatGeneratedAtLabel(value: string | null | undefined) {
   if (!value) return "";
+  const sourceTimestamp = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if (sourceTimestamp) {
+    return `${sourceTimestamp[2]}-${sourceTimestamp[3]} ${sourceTimestamp[4]}:${sourceTimestamp[5]}`;
+  }
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.format("MM-DD HH:mm") : compactStockText(value, 12);
 }

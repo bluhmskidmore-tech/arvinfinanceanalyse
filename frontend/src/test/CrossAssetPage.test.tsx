@@ -523,7 +523,7 @@ describe("CrossAssetPage", () => {
     expect(trustPanel).toHaveTextContent("宏观质量");
     expect(trustPanel).toHaveTextContent("联动质量");
     expect(trustPanel).toHaveTextContent("下一步");
-    expect(trustPanel).toHaveTextContent("核对状态");
+    await waitFor(() => expect(trustPanel).toHaveTextContent("核对状态"));
     expect(trustPanel).not.toHaveTextContent("先核对状态提示");
     expect(trustPanel).toHaveTextContent("降级快照");
     expect(trustPanel.querySelector(".cross-asset-trust-panel__summary em")).toHaveTextContent("含降级");
