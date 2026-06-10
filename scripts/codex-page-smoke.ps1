@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
+  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "average-balance", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
   [string]$PageSlug = "product-category-pnl",
 
   [string]$FrontendBaseUrl = "http://127.0.0.1:5888",
@@ -155,6 +155,24 @@ if ($PageSlug -eq "dashboard-home") {
     "Confirm result_meta fields remain inspectable: basis, quality_flag, fallback_mode, trace_id, source_version, rule_version, cache_version, generated_at.",
     "Confirm overview totals stay tied to fact_formal_zqtz_balance_daily and fact_formal_tyw_balance_daily.",
     "Do not use balance movement explanation, positions totals, or product-category PnL logic to replace PAGE-BALANCE-001 formal balance truth."
+  )
+} elseif ($PageSlug -eq "average-balance") {
+  $route = "/average-balance"
+  $routeAliases = @("/average-balance", "/adb")
+  $primaryApi = "/api/analysis/adb"
+  $supportingApis = @(
+    "/api/analysis/adb/comparison",
+    "/api/analysis/adb/monthly",
+    "/api/analysis/adb/coverage",
+    "/ui/balance-analysis/dates"
+  )
+  $checklist = @(
+    "Open the route with Playwright MCP and confirm the first screen answers the candidate average-balance ADB analysis question.",
+    "Confirm report date/range selectors, denominator basis, observed/LOCF/calendar-zero boundaries, daily comparison, monthly trend, coverage diagnostics, and result_meta/source badges are visible.",
+    "Confirm GAP-AVERAGE-BALANCE-PAGE stays candidate-only with formal_use_allowed=false and PAGE-BALANCE-001 /balance-analysis remains the formal balance truth.",
+    "Confirm no data, stale data, fallback, low coverage, missing result_meta, pending owner approval, and loading failure states are explicit when triggered.",
+    "Confirm MTR-ADB-001 and MTR-ADB-002 stay tied to GS-AVERAGE-BALANCE-A daily DTO evidence; MTR-ADB-003 stays tied only to GS-AVERAGE-BALANCE-MONTHLY-A candidate monthly ADB/NIM DTO evidence.",
+    "Do not promote ADB interval, comparison, monthly, coverage, or golden-sample DTO values into formal balance truth or owner-approved metric closure."
   )
 } elseif ($PageSlug -eq "decision-items") {
   $route = "/decision-items"
@@ -678,6 +696,15 @@ if ($CheckLive) {
         Invoke-WebRequest -Uri "$ApiBaseUrl$primaryApi`?year=$reportYear&report_date=$reportDate" -UseBasicParsing | Out-Null
         Invoke-WebRequest -Uri "$ApiBaseUrl/ui/pnl/product-category`?report_date=$reportDate&view=monthly" -UseBasicParsing | Out-Null
         Write-Output "- Page API reachable: /ui/pnl/product-category"
+      } elseif ($PageSlug -eq "average-balance") {
+        $reportYear = ([string]$reportDates[0]).Substring(0, 4)
+        Invoke-WebRequest -Uri "$ApiBaseUrl$primaryApi`?start_date=$reportDate&end_date=$reportDate" -UseBasicParsing | Out-Null
+        Invoke-WebRequest -Uri "$ApiBaseUrl/api/analysis/adb/comparison`?start_date=$reportDate&end_date=$reportDate&top_n=5" -UseBasicParsing | Out-Null
+        Invoke-WebRequest -Uri "$ApiBaseUrl/api/analysis/adb/monthly`?year=$reportYear" -UseBasicParsing | Out-Null
+        Invoke-WebRequest -Uri "$ApiBaseUrl/api/analysis/adb/coverage`?start_date=$reportDate&end_date=$reportDate" -UseBasicParsing | Out-Null
+        Write-Output "- Page API reachable: /api/analysis/adb/comparison"
+        Write-Output "- Page API reachable: /api/analysis/adb/monthly"
+        Write-Output "- Page API reachable: /api/analysis/adb/coverage"
       } elseif ($PageSlug -eq "platform-config") {
         Invoke-WebRequest -Uri "$ApiBaseUrl$primaryApi" -UseBasicParsing | Out-Null
         Invoke-WebRequest -Uri "$ApiBaseUrl/health/ready" -UseBasicParsing | Out-Null

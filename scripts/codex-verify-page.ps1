@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
+  [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "average-balance", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
   [string]$PageSlug = "product-category-pnl",
 
   [switch]$Run,
@@ -132,6 +132,19 @@ if (-not $SkipMcpContracts) {
       "tests/test_project_mcp_servers.py::test_lineage_evidence_mcp_maps_product_category_page_aliases_to_formal_model_records",
       "tests/test_codex_page_readiness_gate.py::test_product_category_readiness_static_gates_surface_contract_evidence",
       "tests/test_product_category_governance_doc_contract.py",
+      "-q"
+    )
+  } elseif ($PageSlug -eq "average-balance") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_average_balance_trace_bundle_preserves_adb_candidate_boundary",
+      "tests/test_project_mcp_servers.py::test_data_catalog_page_catalog_date_coverage_keeps_average_balance_excluded_candidate_boundary_when_requested",
+      "tests/test_codex_page_readiness_gate.py::test_average_balance_readiness_exposes_candidate_record_path_without_formal_promotion",
+      "tests/test_average_balance_governance_record.py",
+      "tests/test_average_balance_owner_evidence_packet.py",
+      "tests/test_average_balance_live_smoke_evidence.py",
+      "tests/test_average_balance_business_owner_approval_status.py",
       "-q"
     )
   } elseif ($PageSlug -eq "cashflow-projection") {
@@ -310,6 +323,55 @@ if ($PageSlug -eq "dashboard-home") {
       Env = @{
         "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
         "MOSS_PLAYWRIGHT_PORT" = "5892"
+      }
+    }
+  )
+} elseif ($PageSlug -eq "average-balance") {
+  $checks += @(
+    @{
+      Label = "Average Balance backend ADB API and governance tests"
+      WorkingDirectory = $root
+      Command = "python"
+      Args = @(
+        "-m",
+        "pytest",
+        "tests/test_adb_analysis_api.py",
+        "tests/test_average_balance_governance_record.py",
+        "tests/test_average_balance_owner_evidence_packet.py",
+        "tests/test_average_balance_live_smoke_evidence.py",
+        "tests/test_average_balance_business_owner_approval_status.py",
+        "tests/test_golden_samples_capture_ready.py::test_capture_ready_golden_sample_matches_selected_fields[GS-AVERAGE-BALANCE-A]",
+        "tests/test_golden_samples_capture_ready.py::test_capture_ready_golden_sample_matches_selected_fields[GS-AVERAGE-BALANCE-MONTHLY-A]",
+        "-q"
+      )
+    },
+    @{
+      Label = "Average Balance frontend tests"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test",
+        "--",
+        "src/test/AverageBalancePage.test.tsx",
+        "src/test/AverageBalanceView.test.tsx",
+        "src/test/LiveRouteRealPageSmoke.test.tsx"
+      )
+    },
+    @{
+      Label = "Average Balance browser a11y smoke"
+      WorkingDirectory = $frontendRoot
+      Command = "npm.cmd"
+      Args = @(
+        "run",
+        "test:a11y-smoke",
+        "--",
+        "--grep",
+        "@average-balance"
+      )
+      Env = @{
+        "MOSS_PLAYWRIGHT_USE_WEB_SERVER" = "1"
+        "MOSS_PLAYWRIGHT_PORT" = "5913"
       }
     }
   )

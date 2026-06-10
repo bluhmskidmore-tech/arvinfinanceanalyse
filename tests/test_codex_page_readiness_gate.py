@@ -898,8 +898,12 @@ def test_average_balance_readiness_exposes_candidate_record_path_without_formal_
     assert "docs/audits/2026-06-09-average-balance-live-smoke-evidence.md" in report["contract_docs"]
     assert any("candidate ADB analysis" in item for item in report["guardrails"])
     assert any("MTR-ADB-001" in item for item in report["truth_chain"])
+    assert any("GS-AVERAGE-BALANCE-MONTHLY-A" in item for item in report["truth_chain"])
     assert any("live-smoke reference evidence only" in item for item in report["truth_chain"])
-    assert report["golden_samples"] == ["tests/golden_samples/GS-AVERAGE-BALANCE-A"]
+    assert report["golden_samples"] == [
+        "tests/golden_samples/GS-AVERAGE-BALANCE-A",
+        "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A",
+    ]
     assert report["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
     assert any("Candidate metric dictionary-level approval remains pending" in gap for gap in report["residual_gaps"])
     assert not any("dedicated golden sample is missing" in gap for gap in report["residual_gaps"])
