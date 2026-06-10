@@ -651,20 +651,38 @@ function formatTrendAxisMonth(reportMonth: string) {
   return `${year.slice(2)}-${String(monthNumber).padStart(2, "0")}`;
 }
 
-function toSharePoint(month: BalanceMovementTrendMonth): AccountingBasisStackedSharePoint {
+type BalanceStructureSharePoint = {
+  monthLabel: string;
+  AC: number | null;
+  OCI: number | null;
+  TPL: number | null;
+  acValueYi?: number;
+  ociValueYi?: number;
+  tplValueYi?: number;
+  totalValueYi?: number;
+};
+
+function nullableNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toSharePoint(month: BalanceMovementTrendMonth): BalanceStructureSharePoint {
   const total = Number(month.current_balance_total);
-  const point: AccountingBasisStackedSharePoint = {
+  const point: BalanceStructureSharePoint = {
     monthLabel: formatTrendAxisMonth(month.report_month),
-    AC: 0,
-    OCI: 0,
-    TPL: 0,
+    AC: null,
+    OCI: null,
+    TPL: null,
     totalValueYi: Number.isFinite(total) ? total / 100000000 : undefined,
   };
   for (const bucket of balanceMovementBuckets) {
     const row = trendBucket(month, bucket);
     const value = Number(row?.current_balance);
-    const share = total > 0 && Number.isFinite(value) ? (value / total) * 100 : Number(row?.current_balance_pct);
-    point[bucket] = Number.isFinite(share) ? share : 0;
+    point[bucket] = nullableNumber(row?.current_balance_pct);
     if (bucket === "AC") point.acValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "OCI") point.ociValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
     if (bucket === "TPL") point.tplValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
@@ -672,12 +690,55 @@ function toSharePoint(month: BalanceMovementTrendMonth): AccountingBasisStackedS
   return point;
 }
 
+function toCompleteSharePoint(
+  point: BalanceStructureSharePoint,
+): AccountingBasisStackedSharePoint | null {
+  const { AC, OCI, TPL } = point;
+  if (
+    AC === null ||
+    OCI === null ||
+    TPL === null ||
+    !Number.isFinite(AC) ||
+    !Number.isFinite(OCI) ||
+    !Number.isFinite(TPL)
+  ) {
+    return null;
+  }
+  return { ...point, AC, OCI, TPL };
+}
+
 function formatSignedPoint(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}pp`;
 }
 
-function formatShareEvolutionPct(value: number) {
+function formatSignedPointNullable(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? "—"
+    : formatSignedPoint(value);
+}
+
+function nullableDelta(
+  current: number | null | undefined,
+  base: number | null | undefined,
+): number | null {
+  if (
+    current === null ||
+    current === undefined ||
+    base === null ||
+    base === undefined ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(base)
+  ) {
+    return null;
+  }
+  return current - base;
+}
+
+function formatShareEvolutionPct(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
   return `${value.toFixed(2)}%`;
 }
 
@@ -715,7 +776,7 @@ function formatSignedYiDelta(
 }
 
 type StructureShareTableRow = {
-  point: AccountingBasisStackedSharePoint;
+  point: BalanceStructureSharePoint;
   reportMonth: string;
 };
 
@@ -724,8 +785,11 @@ function numericValue(value: string | number | null | undefined) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function shareDeltaPp(row: BalanceMovementRow): number {
-  return numericValue(row.current_balance_pct) - numericValue(row.previous_balance_pct);
+function shareDeltaPp(row: BalanceMovementRow): number | null {
+  return nullableDelta(
+    nullableNumber(row.current_balance_pct),
+    nullableNumber(row.previous_balance_pct),
+  );
 }
 
 function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: string) {
@@ -753,15 +817,15 @@ type BalanceMovementDriver = {
   balanceChange: number;
   balanceChangeYi: number;
   contributionPct: number;
-  currentBalancePct: number;
-  previousBalancePct: number;
-  shareDelta: number;
+  currentBalancePct: number | null;
+  previousBalancePct: number | null;
+  shareDelta: number | null;
 };
 
 function toMovementDriver(row: BalanceMovementRow): BalanceMovementDriver {
   const balanceChange = numericValue(row.balance_change);
-  const currentBalancePct = numericValue(row.current_balance_pct);
-  const previousBalancePct = numericValue(row.previous_balance_pct);
+  const currentBalancePct = nullableNumber(row.current_balance_pct);
+  const previousBalancePct = nullableNumber(row.previous_balance_pct);
   return {
     bucket: row.basis_bucket,
     balanceChange,
@@ -769,8 +833,15 @@ function toMovementDriver(row: BalanceMovementRow): BalanceMovementDriver {
     contributionPct: numericValue(row.contribution_pct),
     currentBalancePct,
     previousBalancePct,
-    shareDelta: currentBalancePct - previousBalancePct,
+    shareDelta: nullableDelta(currentBalancePct, previousBalancePct),
   };
+}
+
+function shareBarWidth(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "0%";
+  }
+  return `${Math.min(Math.max(value, 1), 100)}%`;
 }
 
 function formatSignedYiNumber(value: number) {
@@ -1013,7 +1084,7 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
           driver.bucket,
           `变动：${formatSignedYiNumber(driver.balanceChangeYi)} 亿`,
           `贡献：${formatPct(driver.contributionPct)}`,
-          `占比变化：${formatSignedPoint(driver.shareDelta)}`,
+          `占比变化：${formatSignedPointNullable(driver.shareDelta)}`,
         ].join("<br/>");
       },
     },
@@ -2201,9 +2272,24 @@ export default function BalanceMovementAnalysisPage() {
     () => structureShareTableRows.map((row) => row.point),
     [structureShareTableRows],
   );
+  const balanceStructureChartRows = useMemo(() => {
+    const chartRows: AccountingBasisStackedSharePoint[] = [];
+    for (const point of balanceStructureTrend) {
+      const chartPoint = toCompleteSharePoint(point);
+      if (chartPoint === null) {
+        return [];
+      }
+      chartRows.push(chartPoint);
+    }
+    return chartRows;
+  }, [balanceStructureTrend]);
   const balanceStructureInsight = useMemo(() => {
-    const first = balanceStructureTrend[0];
-    const latest = balanceStructureTrend[balanceStructureTrend.length - 1];
+    const first = balanceStructureTrend[0]
+      ? toCompleteSharePoint(balanceStructureTrend[0])
+      : null;
+    const latest = balanceStructureTrend[balanceStructureTrend.length - 1]
+      ? toCompleteSharePoint(balanceStructureTrend[balanceStructureTrend.length - 1])
+      : null;
     if (!first || !latest || first.monthLabel === latest.monthLabel) {
       return null;
     }
@@ -2231,7 +2317,13 @@ export default function BalanceMovementAnalysisPage() {
   const topMovementDriver = movementDrivers[0];
   const maxShareShiftDriver = useMemo(
     () =>
-      [...movementDrivers].sort(
+      movementDrivers.filter(
+        (
+          driver,
+        ): driver is BalanceMovementDriver & {
+          shareDelta: number;
+        } => driver.shareDelta !== null && Number.isFinite(driver.shareDelta),
+      ).sort(
         (left, right) => Math.abs(right.shareDelta) - Math.abs(left.shareDelta),
       )[0],
     [movementDrivers],
@@ -2550,9 +2642,13 @@ export default function BalanceMovementAnalysisPage() {
           : movementRefreshCount > 1
             ? `，读模型 ${movementRefreshCount} 月`
             : "";
-      setRefreshMessage(`${payload.status}: ${payload.row_count} 行${refreshDetail}`);
-      await detailQuery.refetch();
-      await datesQuery.refetch();
+      const rowCountText =
+        typeof payload.row_count === "number" ? `${payload.row_count} 行` : "已排队";
+      setRefreshMessage(`${payload.status}: ${rowCountText}${refreshDetail}`);
+      if (payload.status !== "queued") {
+        await detailQuery.refetch();
+        await datesQuery.refetch();
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -2972,7 +3068,7 @@ export default function BalanceMovementAnalysisPage() {
               <p>
                 AC 压舱石占比{" "}
                 {formatPct(rowByBucket.get("AC")?.current_balance_pct)}，较期初{" "}
-                {formatSignedPoint(movementDriverByBucket.get("AC")?.shareDelta ?? 0)}
+                {formatSignedPointNullable(movementDriverByBucket.get("AC")?.shareDelta)}
               </p>
             </div>
             <div>
@@ -2980,7 +3076,7 @@ export default function BalanceMovementAnalysisPage() {
               <p>
                 OCI 配置占比{" "}
                 {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}，较期初{" "}
-                {formatSignedPoint(movementDriverByBucket.get("OCI")?.shareDelta ?? 0)}
+                {formatSignedPointNullable(movementDriverByBucket.get("OCI")?.shareDelta)}
               </p>
             </div>
           </div>
@@ -3145,17 +3241,17 @@ export default function BalanceMovementAnalysisPage() {
                       <span
                         className="balance-movement-structure-shift__previous"
                         style={{
-                          width: `${Math.min(Math.max(driver.previousBalancePct, 1), 100)}%`,
+                          width: shareBarWidth(driver.previousBalancePct),
                         }}
                       />
                       <span
                         className="balance-movement-structure-shift__current"
                         style={{
-                          width: `${Math.min(Math.max(driver.currentBalancePct, 1), 100)}%`,
+                          width: shareBarWidth(driver.currentBalancePct),
                         }}
                       />
                     </div>
-                    <em>{formatSignedPoint(driver.shareDelta)}</em>
+                    <em>{formatSignedPointNullable(driver.shareDelta)}</em>
                   </div>
                 );
               })}
@@ -3366,11 +3462,17 @@ export default function BalanceMovementAnalysisPage() {
             className="balance-movement-structure-chart"
             data-testid="balance-movement-analysis-structure-chart"
           >
-            <AccountingBasisStackedShareChart
-              rows={balanceStructureTrend}
-              title="金融投资账户结构演变：余额口径"
-            />
-            {balanceStructureTrend.length > 0 ? (
+            {balanceStructureChartRows.length > 0 ? (
+              <AccountingBasisStackedShareChart
+                rows={balanceStructureChartRows}
+                title="金融投资账户结构演变：余额口径"
+              />
+            ) : (
+              <p className="balance-movement-share-evolution-table__note">
+                占比数据缺失，结构图暂不可比
+              </p>
+            )}
+            {structureShareTableRows.length > 0 ? (
               <>
                 <p
                   className="balance-movement-share-evolution-table__title"
@@ -3405,7 +3507,7 @@ export default function BalanceMovementAnalysisPage() {
                         <th scope="col">同比·OCI</th>
                         <th scope="col">同比·TPL</th>
                         <th scope="col">同比·合计</th>
-                        {balanceStructureTrend.length > 1 ? (
+                        {structureShareTableRows.length > 1 ? (
                           <>
                             <th scope="col">较首月·AC</th>
                             <th scope="col">较首月·OCI</th>
@@ -3421,7 +3523,7 @@ export default function BalanceMovementAnalysisPage() {
                         const prev = index > 0 ? structureShareTableRows[index - 1] : null;
                         const yoyKey = priorYearSameMonth(reportMonth);
                         const yoy = yoyKey ? shareRowByReportMonth.get(yoyKey) : undefined;
-                        const showFirstDelta = balanceStructureTrend.length > 1 && first !== undefined;
+                        const showFirstDelta = structureShareTableRows.length > 1 && first !== undefined;
                         return (
                           <tr key={point.monthLabel}>
                             <th scope="row">{point.monthLabel}</th>
@@ -3434,17 +3536,17 @@ export default function BalanceMovementAnalysisPage() {
                             <td>{formatShareEvolutionYi(point.tplValueYi)}</td>
                             <td>
                               {prev
-                                ? formatSignedPoint(point.AC - prev.point.AC)
+                                ? formatSignedPointNullable(nullableDelta(point.AC, prev.point.AC))
                                 : "—"}
                             </td>
                             <td>
                               {prev
-                                ? formatSignedPoint(point.OCI - prev.point.OCI)
+                                ? formatSignedPointNullable(nullableDelta(point.OCI, prev.point.OCI))
                                 : "—"}
                             </td>
                             <td>
                               {prev
-                                ? formatSignedPoint(point.TPL - prev.point.TPL)
+                                ? formatSignedPointNullable(nullableDelta(point.TPL, prev.point.TPL))
                                 : "—"}
                             </td>
                             <td>
@@ -3455,17 +3557,17 @@ export default function BalanceMovementAnalysisPage() {
                             </td>
                             <td>
                               {yoy
-                                ? formatSignedPoint(point.AC - yoy.point.AC)
+                                ? formatSignedPointNullable(nullableDelta(point.AC, yoy.point.AC))
                                 : "—"}
                             </td>
                             <td>
                               {yoy
-                                ? formatSignedPoint(point.OCI - yoy.point.OCI)
+                                ? formatSignedPointNullable(nullableDelta(point.OCI, yoy.point.OCI))
                                 : "—"}
                             </td>
                             <td>
                               {yoy
-                                ? formatSignedPoint(point.TPL - yoy.point.TPL)
+                                ? formatSignedPointNullable(nullableDelta(point.TPL, yoy.point.TPL))
                                 : "—"}
                             </td>
                             <td>
@@ -3476,9 +3578,9 @@ export default function BalanceMovementAnalysisPage() {
                             </td>
                             {showFirstDelta ? (
                               <>
-                                <td>{formatSignedPoint(point.AC - first.point.AC)}</td>
-                                <td>{formatSignedPoint(point.OCI - first.point.OCI)}</td>
-                                <td>{formatSignedPoint(point.TPL - first.point.TPL)}</td>
+                                <td>{formatSignedPointNullable(nullableDelta(point.AC, first.point.AC))}</td>
+                                <td>{formatSignedPointNullable(nullableDelta(point.OCI, first.point.OCI))}</td>
+                                <td>{formatSignedPointNullable(nullableDelta(point.TPL, first.point.TPL))}</td>
                               </>
                             ) : null}
                           </tr>
@@ -3545,7 +3647,7 @@ export default function BalanceMovementAnalysisPage() {
                   </td>
                   <td style={tableCellStyle}>{formatPct(row.current_balance_pct)}</td>
                   <td className="balance-movement-detail-table__num">
-                    {formatSignedPoint(shareDeltaPp(row))}
+                    {formatSignedPointNullable(shareDeltaPp(row))}
                   </td>
                   <td style={tableCellStyle}>
                     {formatBalanceAmountToYiFromYuan(row.balance_change)}

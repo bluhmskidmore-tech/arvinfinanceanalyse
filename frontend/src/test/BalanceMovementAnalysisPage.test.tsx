@@ -308,6 +308,77 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
   });
 
+  it("preserves backend-missing balance share percentages instead of recomputing them", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const nullShareClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await baseClient.getBalanceMovementAnalysis(options);
+        const patchRows = (rows: typeof envelope.result.rows) =>
+          rows.map((row) => {
+            if (row.basis_bucket === "AC") {
+              return {
+                ...row,
+                previous_balance_pct: "0",
+                current_balance_pct: "0",
+              };
+            }
+            if (row.basis_bucket === "OCI") {
+              return {
+                ...row,
+                current_balance_pct: null,
+              };
+            }
+            if (row.basis_bucket === "TPL") {
+              return {
+                ...row,
+                previous_balance_pct: null,
+              };
+            }
+            return row;
+          });
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: patchRows(envelope.result.rows),
+            trend_months: envelope.result.trend_months.map((month) => ({
+              ...month,
+              rows: patchRows(month.rows),
+            })),
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: nullShareClient,
+    });
+
+    const businessSummary = await screen.findByTestId(
+      "balance-movement-analysis-business-summary",
+    );
+    expect(businessSummary).toHaveTextContent("AC 压舱石占比 0.00%，较期初 0.00pp");
+    expect(businessSummary).toHaveTextContent("OCI 配置占比 -，较期初 —");
+
+    const structureShift = screen.getByTestId("balance-movement-analysis-structure-shift");
+    expect(structureShift).toHaveTextContent("AC");
+    expect(structureShift).toHaveTextContent("期初 0.00% 期末 0.00%");
+    expect(structureShift).toHaveTextContent("期初 31.37% 期末 -");
+    expect(structureShift).toHaveTextContent("期初 - 期末 26.07%");
+    expect(structureShift).not.toHaveTextContent("期初 0.00% 期末 26.07%");
+    expect(structureShift).not.toHaveTextContent("+0.00pp");
+
+    const structureChart = screen.getByTestId("balance-movement-analysis-structure-chart");
+    expect(structureChart).toHaveTextContent("占比数据缺失，结构图暂不可比");
+    expect(within(structureChart).queryByTestId("balance-movement-echarts-stub")).not.toBeInTheDocument();
+
+    const shareEvolutionTable = screen.getByTestId("balance-movement-analysis-structure-share-table");
+    expect(within(shareEvolutionTable).getAllByText("0.00%").length).toBeGreaterThan(0);
+    expect(within(shareEvolutionTable).getAllByText("—").length).toBeGreaterThan(0);
+    expect(shareEvolutionTable).not.toHaveTextContent("NaNpp");
+  });
+
   it("hydrates report date and currency from query parameters", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const getMovementSpy = vi.fn(baseClient.getBalanceMovementAnalysis);

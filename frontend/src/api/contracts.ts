@@ -3249,8 +3249,11 @@ export type BalanceMovementRefreshPayload = {
   cache_key: string;
   report_date: string;
   currency_basis: string;
-  row_count: number;
-  source_version: string;
+  run_id?: string | null;
+  job_name?: string | null;
+  trigger_mode?: string | null;
+  row_count?: number | null;
+  source_version?: string | null;
   rule_version: string;
   product_category_refreshed_dates?: string[];
   formal_balance_refreshed_dates?: string[];
