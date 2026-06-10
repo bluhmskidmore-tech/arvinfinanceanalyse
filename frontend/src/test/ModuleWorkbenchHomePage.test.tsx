@@ -1304,9 +1304,9 @@ describe("MarketHomePage", () => {
     expect(within(page).getByTestId("module-home-yield-curve")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-snapshot")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-toolkit")).toBeInTheDocument();
-    expect(within(page).getByTestId("module-home-observation")).toBeInTheDocument();
-    expect(within(page).getAllByTestId(/^module-home-observation-/).length).toBe(6);
-    expect(within(page).getByTestId("module-home-observation-market-data")).toHaveTextContent("MD");
+    expect(within(page).getByTestId("module-home-market-bottom-nav")).toBeInTheDocument();
+    expect(within(page).getAllByTestId(/^module-home-drill-/).length).toBe(MARKET_MODULE_DRILLDOWN_COUNT);
+    expect(within(page).getByTestId("module-home-drill-market-data")).toHaveTextContent("MD");
     expect(page).not.toHaveTextContent("关键利率快照");
     expect(page).toHaveTextContent("正式利率序列");
     expect(page).toHaveTextContent("跨资产快讯");

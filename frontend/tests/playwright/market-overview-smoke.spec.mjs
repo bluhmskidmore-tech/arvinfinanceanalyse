@@ -9,7 +9,7 @@ const REQUIRED_MARKET_SURFACES = [
   "module-home-yield-curve",
   "module-home-macro-snapshot",
   "module-home-market-actions",
-  "module-home-observation",
+  "module-home-market-bottom-nav",
 ];
 
 const suspiciousTextPattern = /[\uFFFD]|\u93C3|\u9359|\u5BF0|\u9215/;
@@ -58,7 +58,7 @@ test.describe("market overview browser smoke", () => {
     const actionQueue = page.getByTestId("module-home-market-actions");
     await expect(actionQueue).toContainText("\u786E\u8BA4\u5173\u952E\u5229\u7387\u53D8\u52A8");
     await expect(actionQueue).toContainText("\u8DDF\u8E2A\u8DE8\u8D44\u4EA7\u4F20\u5BFC");
-    await expect(page.getByTestId("module-home-observation").locator("a")).toHaveCount(6);
+    await expect(page.getByTestId("module-home-market-bottom-nav").locator("a")).toHaveCount(7);
   });
 
   test("keeps the market overview first-screen surfaces inside a mobile viewport", async ({ page }) => {

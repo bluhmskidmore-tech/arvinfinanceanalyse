@@ -1418,6 +1418,110 @@
   -webkit-box-orient: vertical;
 }
 
+.marketBottomNavSection {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 2px 2px;
+  border-top: 1px solid var(--market-desk-border, #e2e6ec);
+}
+
+.marketBottomNavBar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.marketBottomNavItem {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 8px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(228, 233, 240, 0.88);
+  background: #ffffff;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 150ms ease, transform 160ms ease;
+}
+
+.marketBottomNavItem:hover {
+  background: var(--dh-blue-soft, #e8f1fb);
+  border-color: rgba(24, 80, 161, 0.22);
+  transform: translateY(-1px);
+}
+
+.marketBottomNavItemCurrent {
+  background: linear-gradient(180deg, #fff 0%, var(--dh-blue-soft, #e8f1fb) 100%);
+  box-shadow: inset 0 0 0 1px rgba(24, 80, 161, 0.16);
+}
+
+.marketBottomNavIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(24, 80, 161, 0.16);
+  background: linear-gradient(180deg, #f3f8fd 0%, #eaf2fb 100%);
+  color: var(--dh-blue-deep, #10356a);
+  font-family: var(--dh-font-mono, "IBM Plex Mono", monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.marketBottomNavItem b {
+  width: 100%;
+  color: var(--dh-ink, #0c1c33);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketBottomNavItem em {
+  width: 100%;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marketBottomNavNote {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--dh-muted-2, #8a99af);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .marketBottomNavBar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    overflow-x: visible;
+    padding: 2px 2px 0;
+    scroll-snap-type: none;
+  }
+
+  .marketBottomNavItem {
+    min-width: 0;
+    scroll-snap-align: none;
+  }
+}
+
 .observationSection {
   display: grid;
   gap: var(--dh-space-2, 12px);

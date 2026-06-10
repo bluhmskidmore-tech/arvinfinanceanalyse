@@ -19,7 +19,6 @@ const MARKET_CHANGE_CLASSES = {
 import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
 import { marketDrillIconLabel } from "./marketHomeDrillIcon";
 import { handleHorizontalScrollKeyboard } from "./marketHomeHorizontalScroll";
-import { MARKET_QUICK_ACCESS_TILES } from "./marketHomeQuickAccess";
 import MarketMacroToolkitSection from "./MarketMacroToolkitSection";
 import { MarketStructureTabPanel } from "./MarketStructureTabPanel";
 import marketStyles from "./marketHome.module.css";
@@ -506,35 +505,14 @@ export default function MarketHomeLayout({
           </div>
         </section>
 
-        <section className={marketStyles.navigationSection}>
-        <section data-testid="module-home-observation" className={marketStyles.observationSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>观察入口</span>
-          </div>
-          <div className={marketStyles.observationGrid}>
-            {MARKET_QUICK_ACCESS_TILES.map((tile) => (
-              <Link
-                className={`${dhStyles.dhCard} ${marketStyles.observationCard}`}
-                data-testid={`module-home-observation-${tile.key}`}
-                key={tile.key}
-                to={tile.path}
-              >
-                <span aria-hidden="true" className={marketStyles.marketTileIcon}>
-                  {tile.icon}
-                </span>
-                <strong>{tile.label}</strong>
-                <span className={marketStyles.observationBadge}>{tile.badge}</span>
-                <p>{tile.description}</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section data-testid="module-home-drilldowns" className={marketStyles.drillSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>模块下钻</span>
-          </div>
-          <div className={marketStyles.drillGrid}>
+        <section className={marketStyles.marketBottomNavSection} data-testid="module-home-drilldowns">
+          <nav
+            aria-label="市场模块快捷导航"
+            className={marketStyles.marketBottomNavBar}
+            data-testid="module-home-market-bottom-nav"
+            onKeyDown={handleHorizontalScrollKeyboard}
+            tabIndex={0}
+          >
             {config.drilldowns.map((item) => {
               const isCurrentHome = item.key === "market-overview";
               return (
@@ -542,26 +520,26 @@ export default function MarketHomeLayout({
                   key={item.key}
                   to={item.path}
                   aria-current={isCurrentHome ? "page" : undefined}
-                  className={`${dhStyles.dhCard} ${marketStyles.drillLink} ${isCurrentHome ? marketStyles.drillLinkCurrent : ""}`}
+                  className={`${marketStyles.marketBottomNavItem} ${
+                    isCurrentHome ? marketStyles.marketBottomNavItemCurrent : ""
+                  }`}
                   data-testid={`module-home-drill-${item.key}`}
                   title={item.description}
                 >
-                  <span aria-hidden="true" className={marketStyles.marketTileIcon}>
+                  <span aria-hidden="true" className={marketStyles.marketBottomNavIcon}>
                     {marketDrillIconLabel(item.key)}
                   </span>
                   <b>{item.label}</b>
                   <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
-                  <span className={marketStyles.drillDesc}>{item.description}</span>
                 </Link>
               );
             })}
-          </div>
+          </nav>
           {view.dataNote.lines.length > 0 ? (
-            <p className={marketStyles.dataNote} data-testid="module-home-data-note">
+            <p className={marketStyles.marketBottomNavNote} data-testid="module-home-data-note">
               {view.dataNote.lines.join(" ")}
             </p>
           ) : null}
-        </section>
         </section>
         </section>
       </main>
