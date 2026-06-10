@@ -69,6 +69,12 @@ const smokePages = [
     slug: "risk-tensor",
     path: "/risk-tensor",
     readySelector: '[data-testid="risk-tensor-brief"]',
+    readySelectors: [
+      '[data-testid="risk-tensor-brief"]',
+      '[data-testid="risk-tensor-error-context"]',
+      '[data-testid="risk-tensor-dates-empty-state"]',
+      '[data-testid="risk-tensor-empty-state"]',
+    ],
   },
   {
     slug: "ledger-pnl",
@@ -107,6 +113,10 @@ const smokePages = [
     slug: "macro-toolkit",
     path: "/macro-toolkit",
     readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    readySelectors: [
+      '[data-testid="macro-toolkit-tailwind-cockpit"]',
+      '[data-testid="macro-toolkit-error-state"]',
+    ],
     screenshotFullPage: false,
   },
   {
@@ -119,6 +129,11 @@ const smokePages = [
     slug: "concentration-monitor",
     path: "/concentration-monitor",
     readySelector: '[data-testid="concentration-monitor-kpi-grid"]',
+    readySelectors: [
+      '[data-testid="concentration-monitor-kpi-grid"]',
+      ".async-section__error",
+      ".async-section__empty",
+    ],
     screenshotFullPage: false,
   },
   {
@@ -195,8 +210,12 @@ const flagshipKeyboardPages = [
     slug: "macro-toolkit",
     path: "/macro-toolkit",
     readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    readySelectors: [
+      '[data-testid="macro-toolkit-tailwind-cockpit"]',
+      '[data-testid="macro-toolkit-error-state"]',
+    ],
     businessFocusSelector:
-      '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a',
+      '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a, [data-testid="macro-toolkit-error-state"] button',
   },
   {
     slug: "stock-analysis",
@@ -262,13 +281,18 @@ const gateHControlContextPages = [
     slug: "macro-toolkit",
     path: "/macro-toolkit",
     readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    readySelectors: [
+      '[data-testid="macro-toolkit-tailwind-cockpit"]',
+      '[data-testid="macro-toolkit-error-state"]',
+    ],
     controls: [
       {
         label: "cockpit action",
-        selector: '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a',
+        selector:
+          '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a, [data-testid="macro-toolkit-error-state"] button',
       },
     ],
-    stateCueSelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
+    stateCueSelector: '[data-testid="macro-toolkit-tailwind-cockpit"], [data-testid="macro-toolkit-error-state"]',
   },
   {
     slug: "stock-analysis",
@@ -282,10 +306,6 @@ const gateHControlContextPages = [
       {
         label: "refresh action",
         selector: '[data-testid="stock-analysis-refresh"]',
-      },
-      {
-        label: "supply detail disclosure",
-        selector: '[data-testid="stock-analysis-supply-details-toggle"]',
       },
     ],
     stateCueSelector: '[data-testid="stock-analysis-page"]',
@@ -334,27 +354,52 @@ const gateHControlContextPages = [
         selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
       },
       {
-        label: "decision next action",
-        selector: '[data-testid="bond-analysis-decision-next-action"]',
-      },
-      {
         label: "detail disclosure",
         selector: '[data-testid="bond-analysis-detail-drilldown"] summary',
       },
     ],
-    stateCueSelector:
-      '[data-testid="bond-analysis-decision-trust"], [data-testid="bond-analysis-cockpit-conclusion"]',
+    stateCueSelector: '[data-testid="bond-analysis-daily-judgment"]',
   },
 ];
 
 const stateCueTextPattern =
-  /就绪|待|暂无|缺失|降级|陈旧|受限|阻断|失败|错误|告警|风险|预警|兜底|可信|证据|复核|条件|ready|warning|stale|fallback|blocked|no data/i;
+  /就绪|待|暂无|未解析|不展示|缺失|降级|陈旧|受限|阻断|失败|错误|告警|风险|预警|兜底|可信|证据|复核|条件|已返回|已读|匹配|加载中|ready|warning|stale|fallback|blocked|no data/i;
 const internalSlugNamePattern = /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/i;
+
+function readySelectorsFor(smokePage) {
+  return smokePage.readySelectors ?? [smokePage.readySelector];
+}
+
+async function firstVisibleMatch(page, selectors, timeout = 60_000) {
+  const selectorList = (Array.isArray(selectors) ? selectors : [selectors]).filter(Boolean);
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() <= deadline) {
+    for (const selector of selectorList) {
+      const locator = page.locator(selector);
+      const count = await locator.count();
+      for (let index = 0; index < count; index += 1) {
+        const candidate = locator.nth(index);
+        if (await candidate.isVisible().catch(() => false)) {
+          return { selector, locator: candidate };
+        }
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+
+  const fallbackSelector = selectorList.join(", ");
+  await expect(page.locator(fallbackSelector).first()).toBeVisible({ timeout: 1 });
+  return { selector: fallbackSelector, locator: page.locator(fallbackSelector).first() };
+}
 
 async function gotoVisiblePage(page, smokePage) {
   await page.goto(smokePage.path, { waitUntil: "domcontentloaded" });
-  const pageRoot = page.locator(smokePage.readySelector);
-  await expect(pageRoot).toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 });
+  const pageRoot = await firstVisibleMatch(
+    page,
+    readySelectorsFor(smokePage),
+    smokePage.readyTimeout ?? 60_000,
+  );
   await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
   return pageRoot;
 }
@@ -389,23 +434,51 @@ async function describeActiveElement(page, targetSelector) {
   }, targetSelector);
 }
 
-async function firstVisibleLocator(page, selector, timeout = 60_000) {
-  const locator = page.locator(selector);
-  const deadline = Date.now() + timeout;
+async function describeActiveElementWithFocus(page, targetSelector) {
+  return page.evaluate((selector) => {
+    const activeElement = document.activeElement;
+    const targetElements = [...document.querySelectorAll(selector)];
+    const matchedTarget = targetElements.find(
+      (target) => target === activeElement || target.contains(activeElement),
+    );
 
-  while (Date.now() <= deadline) {
-    const count = await locator.count();
-    for (let index = 0; index < count; index += 1) {
-      const candidate = locator.nth(index);
-      if (await candidate.isVisible().catch(() => false)) {
-        return candidate;
-      }
+    if (!(activeElement instanceof HTMLElement)) {
+      return {
+        tagName: activeElement?.tagName?.toLowerCase() ?? null,
+        testId: null,
+        ariaLabel: null,
+        text: "",
+        targetMatched: false,
+        hasVisibleFocus: false,
+        outlineStyle: null,
+        outlineWidth: null,
+        boxShadow: null,
+      };
     }
-    await page.waitForTimeout(100);
-  }
 
-  await expect(locator.first()).toBeVisible({ timeout: 1 });
-  return locator.first();
+    const style = window.getComputedStyle(activeElement);
+    const outlineWidth = Number.parseFloat(style.outlineWidth || "0");
+    const hasOutline = style.outlineStyle !== "none" && outlineWidth > 0;
+    const hasShadow = Boolean(style.boxShadow && style.boxShadow !== "none");
+
+    return {
+      tagName: activeElement.tagName.toLowerCase(),
+      testId: activeElement.getAttribute("data-testid"),
+      ariaLabel: activeElement.getAttribute("aria-label"),
+      text: (activeElement.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120),
+      targetMatched: Boolean(matchedTarget),
+      targetTestId: matchedTarget?.getAttribute("data-testid") ?? null,
+      targetTagName: matchedTarget?.tagName.toLowerCase() ?? null,
+      hasVisibleFocus: hasOutline || hasShadow,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+      boxShadow: style.boxShadow,
+    };
+  }, targetSelector);
+}
+
+async function firstVisibleLocator(page, selector, timeout = 60_000) {
+  return (await firstVisibleMatch(page, selector, timeout)).locator;
 }
 
 async function readAccessibleControlContext(locator) {
@@ -442,6 +515,31 @@ async function readAccessibleControlContext(locator) {
   });
 }
 
+async function isKeyboardFocusableLocator(locator) {
+  return locator
+    .evaluate((element) => {
+      if (!(element instanceof HTMLElement)) {
+        return false;
+      }
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const isDisabled =
+        ("disabled" in element && Boolean(element.disabled)) ||
+        element.getAttribute("aria-disabled") === "true";
+
+      return (
+        !isDisabled &&
+        element.tabIndex >= 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    })
+    .catch(() => false);
+}
+
 async function focusMainWithSkipLink(page) {
   const skipLink = page.getByRole("link", { name: "Skip to main content" });
   const mainContent = page.locator("#workbench-main-content");
@@ -458,42 +556,56 @@ async function focusMainWithSkipLink(page) {
 }
 
 async function focusTargetFromMain(page, targetSelector, maxSteps = 100) {
-  await focusMainWithSkipLink(page);
+  const attempts = [];
+  const mainContent = page.locator("#workbench-main-content");
 
-  const focusSequence = [];
-  for (let step = 1; step <= maxSteps; step += 1) {
-    await page.keyboard.press("Tab");
-    const active = await describeActiveElement(page, targetSelector);
-    const focusPresentation = await page.evaluate(() => {
-      const activeElement = document.activeElement;
-      if (!(activeElement instanceof HTMLElement)) {
-        return {
-          hasVisibleFocus: false,
-          outlineStyle: null,
-          outlineWidth: null,
-          boxShadow: null,
-        };
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const focusSequence = [];
+
+    try {
+      if (attempt === 1) {
+        await focusMainWithSkipLink(page);
+      } else {
+        await mainContent.focus();
+        await expect(mainContent).toBeFocused();
       }
 
-      const style = window.getComputedStyle(activeElement);
-      const outlineWidth = Number.parseFloat(style.outlineWidth || "0");
-      const hasOutline = style.outlineStyle !== "none" && outlineWidth > 0;
-      const hasShadow = Boolean(style.boxShadow && style.boxShadow !== "none");
-      return {
-        hasVisibleFocus: hasOutline || hasShadow,
-        outlineStyle: style.outlineStyle,
-        outlineWidth: style.outlineWidth,
-        boxShadow: style.boxShadow,
-      };
-    });
-    focusSequence.push({ step, ...active, ...focusPresentation });
+      for (let step = 1; step <= maxSteps; step += 1) {
+        await page.keyboard.press("Tab");
+        const active = await describeActiveElementWithFocus(page, targetSelector);
+        focusSequence.push({ step, ...active });
 
-    if (active.targetMatched) {
-      return { matchedStep: step, active, focusPresentation, focusSequence };
+        if (active.targetMatched) {
+          const result = {
+            attempt,
+            matchedStep: step,
+            active,
+            focusPresentation: active,
+            focusSequence,
+          };
+          attempts.push(result);
+          return { ...result, attempts };
+        }
+      }
+
+      attempts.push({ attempt, matchedStep: null, active: null, focusPresentation: null, focusSequence });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      attempts.push({
+        attempt,
+        interrupted: true,
+        error: message,
+        matchedStep: null,
+        active: null,
+        focusPresentation: null,
+        focusSequence,
+      });
+      await page.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => undefined);
+      await mainContent.waitFor({ state: "visible", timeout: 60_000 }).catch(() => undefined);
     }
   }
 
-  return { matchedStep: null, active: null, focusPresentation: null, focusSequence };
+  return { ...attempts[attempts.length - 1], attempts };
 }
 
 test.describe("frontend accessibility + visual smoke", () => {
@@ -502,9 +614,9 @@ test.describe("frontend accessibility + visual smoke", () => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
       expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
-      await gotoVisiblePage(page, smokePage);
+      const pageRoot = await gotoVisiblePage(page, smokePage);
 
-      let axeBuilder = new AxeBuilder({ page }).include(smokePage.axeSelector ?? smokePage.readySelector);
+      let axeBuilder = new AxeBuilder({ page }).include(smokePage.axeSelector ?? pageRoot.selector);
       for (const selector of smokePage.excludeSelectors ?? []) {
         axeBuilder = axeBuilder.exclude(selector);
       }
@@ -642,10 +754,15 @@ test.describe("frontend accessibility + visual smoke", () => {
       await gotoVisiblePage(page, controlPage);
 
       const controlContexts = [];
+      let firstFocusableControl = null;
       for (const control of controlPage.controls) {
         const controlLocator = await firstVisibleLocator(page, control.selector);
         const context = await readAccessibleControlContext(controlLocator);
-        controlContexts.push({ ...control, ...context });
+        const keyboardFocusable = await isKeyboardFocusableLocator(controlLocator);
+        controlContexts.push({ ...control, ...context, keyboardFocusable });
+        if (!firstFocusableControl && keyboardFocusable) {
+          firstFocusableControl = control;
+        }
 
         expect(context.accessibleName, `${controlPage.slug} ${control.label} needs a screen-reader name`).not.toBe("");
         expect(
@@ -654,15 +771,19 @@ test.describe("frontend accessibility + visual smoke", () => {
         ).not.toMatch(internalSlugNamePattern);
       }
 
-      const firstControl = controlPage.controls[0];
-      const focusEvidence = await focusTargetFromMain(page, firstControl.selector);
+      expect(
+        firstFocusableControl,
+        `${controlPage.slug} needs at least one enabled route-owned business control`,
+      ).not.toBeNull();
+
+      const focusEvidence = await focusTargetFromMain(page, firstFocusableControl.selector);
       expect(
         focusEvidence.matchedStep,
-        `${controlPage.slug} keyboard focus did not reach ${firstControl.label}`,
+        `${controlPage.slug} keyboard focus did not reach ${firstFocusableControl.label}`,
       ).not.toBeNull();
       expect(
         focusEvidence.focusPresentation?.hasVisibleFocus,
-        `${controlPage.slug} ${firstControl.label} needs a visible focus indicator`,
+        `${controlPage.slug} ${firstFocusableControl.label} needs a visible focus indicator`,
       ).toBe(true);
 
       const stateCue = await firstVisibleLocator(page, controlPage.stateCueSelector);

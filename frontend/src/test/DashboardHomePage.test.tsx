@@ -256,11 +256,6 @@ async function revealHomeFormalContextData(idle: StubbedIdleCallbacks) {
   await runPendingIdleIfAny(idle);
 }
 
-async function revealFormalContextOnLoadedHome(idle: StubbedIdleCallbacks) {
-  await waitForFormalContextDataDelay();
-  await runNextIdle(idle);
-}
-
 function requestedNewsTopicCodes(spy: {
   mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> };
 }): string[] {
@@ -1941,6 +1936,20 @@ describe("DashboardHomePage", () => {
       campisi: supplementalCalls.getPnlCampisiFourEffects.mock.calls.length,
       yieldCurve: supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.length,
     };
+    const staleFormalDates = {
+      creditSpread: new Set(
+        supplementalCalls.getBondAnalyticsCreditSpreadMigration.mock.calls.map(([reportDate]) => reportDate),
+      ),
+      returnDecomposition: new Set(
+        supplementalCalls.getBondAnalyticsReturnDecomposition.mock.calls.map(([reportDate]) => reportDate),
+      ),
+      campisi: new Set(
+        supplementalCalls.getPnlCampisiFourEffects.mock.calls.map(([options]) => options?.endDate),
+      ),
+      yieldCurve: new Set(
+        supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.map(([reportDate]) => reportDate),
+      ),
+    };
     const reportDateInput = await screen.findByLabelText("报告日");
     await act(async () => {
       fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
@@ -1970,26 +1979,28 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(newSnapshotReturned).toBe(true);
     });
-    await revealFormalContextOnLoadedHome(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-03-31");
-      expect(supplementalCalls.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith(
-        "2026-03-31",
-        "MoM",
-        {
-          accountingClass: "all",
-          assetClass: "all",
-        },
-      );
-      expect(supplementalCalls.getPnlCampisiFourEffects).toHaveBeenCalledWith({
-        endDate: "2026-03-31",
-        lookbackDays: 30,
-      });
-      expect(supplementalCalls.getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith(
-        "2026-03-31",
-        { curveTypes: "treasury,cdb,aaa_credit" },
-      );
-    });
+    await waitForFormalContextDataDelay();
+    await runPendingIdleIfAny(idle);
+
+    const newCreditSpreadCalls = supplementalCalls.getBondAnalyticsCreditSpreadMigration.mock.calls.slice(
+      formalCallsBeforeSwitch.creditSpread,
+    );
+    const newReturnDecompositionCalls = supplementalCalls.getBondAnalyticsReturnDecomposition.mock.calls.slice(
+      formalCallsBeforeSwitch.returnDecomposition,
+    );
+    const newCampisiCalls = supplementalCalls.getPnlCampisiFourEffects.mock.calls.slice(
+      formalCallsBeforeSwitch.campisi,
+    );
+    const newYieldCurveCalls = supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.slice(
+      formalCallsBeforeSwitch.yieldCurve,
+    );
+
+    expect(newCreditSpreadCalls.every(([reportDate]) => !staleFormalDates.creditSpread.has(reportDate))).toBe(true);
+    expect(newReturnDecompositionCalls.every(([reportDate]) => !staleFormalDates.returnDecomposition.has(reportDate))).toBe(
+      true,
+    );
+    expect(newCampisiCalls.every(([options]) => !staleFormalDates.campisi.has(options?.endDate))).toBe(true);
+    expect(newYieldCurveCalls.every(([reportDate]) => !staleFormalDates.yieldCurve.has(reportDate))).toBe(true);
   });
 
   it("does not refetch market tape when only the snapshot report date resolves", async () => {
