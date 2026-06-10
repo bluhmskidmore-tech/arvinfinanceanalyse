@@ -164,7 +164,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
       latestSeries: latestEnvelope?.result.series ?? [],
       fxAnalyticalGroups: [],
     }).linkageReportDate;
-  }, [client.mode, queryClient]);
+  }, [client, queryClient]);
 
   const refreshMacroBondLinkage = useCallback(async () => {
     const reportDate = resolveLinkageReportDate();

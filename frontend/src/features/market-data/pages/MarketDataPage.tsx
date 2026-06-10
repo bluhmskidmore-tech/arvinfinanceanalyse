@@ -249,7 +249,6 @@ export default function MarketDataPage() {
     visibleLatestSeries,
     stableSeries,
     fallbackSeries,
-    stableCatalogSeries,
     missingStableSeries,
     linkageReportDate,
     vendorVersions,

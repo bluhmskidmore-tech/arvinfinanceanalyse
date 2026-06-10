@@ -4920,8 +4920,19 @@
 
 .marketCockpitCohesion .marketJudgementHero h2 {
   max-width: none;
+  color: var(--dh-ink, #0c1c33);
   font-size: 24px;
   line-height: 1.24;
+}
+
+.marketCockpitCohesion .marketJudgementHero p,
+.marketCockpitCohesion .marketJudgementHero .marketHeroEvidence,
+.marketCockpitCohesion .marketJudgementHero .marketHeroEvidence span {
+  color: var(--dh-ink-2, #2c3e5a);
+}
+
+.marketCockpitCohesion .marketJudgementHero :global(.dhTerminalEyebrow) {
+  color: var(--dh-blue, #1850a1);
 }
 
 .marketCockpitCohesion .marketKpiBox {
