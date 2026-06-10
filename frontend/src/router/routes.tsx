@@ -9,6 +9,7 @@ import {
   type WorkbenchSection,
 } from "../mocks/navigation";
 import { WorkbenchRouteFallback } from "./WorkbenchRouteFallback";
+import { WorkbenchNotFoundPage, WorkbenchRouteErrorBoundary } from "./WorkbenchRouteStatusPages";
 
 const ThemedRouteBoundary = lazy(() => import("../app/ThemedRouteBoundary"));
 const DashboardHomePage = lazy(
@@ -396,6 +397,7 @@ export const workbenchRoutes: RouteObject[] = [
   {
     path: "/",
     element: <WorkbenchShell />,
+    errorElement: routeElement(<WorkbenchRouteErrorBoundary />),
     children: [
       {
         path: "macro-analysis",
@@ -449,6 +451,10 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "product-category-pnl/audit",
         element: themedRouteElement(<ProductCategoryAdjustmentAuditPage />),
+      },
+      {
+        path: "*",
+        element: themedRouteElement(<WorkbenchNotFoundPage />),
       },
     ],
   },

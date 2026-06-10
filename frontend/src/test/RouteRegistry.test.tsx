@@ -1,10 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { Outlet } from "react-router-dom";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
-import { workbenchSections } from "../router/routes";
+import { workbenchRoutes, workbenchSections } from "../router/routes";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -274,11 +275,94 @@ beforeAll(async () => {
   await preloadWorkbenchRouteModules("agent", "dashboard-home", "decision-items", "news-events");
 }, 20_000);
 
+function ThrowingRoute(): ReactElement {
+  throw new Error("route exploded");
+}
+
 describe("RouteRegistry", () => {
   const mockClient = createApiClient({ mode: "mock" });
 
   it("exposes the current visible primary workbench entries", () => {
     expect(workbenchSections).toHaveLength(primaryWorkbenchNavigation.length);
+  });
+
+  it("declares a root error boundary and wildcard workbench 404 route", () => {
+    const rootRoute = workbenchRoutes.find((route) => route.path === "/");
+    const wildcardRoute = rootRoute?.children?.find((route) => route.path === "*");
+
+    expect(rootRoute?.errorElement).toBeDefined();
+    expect(wildcardRoute?.element).toBeDefined();
+  });
+
+  it("renders a controlled 404 page for unknown workbench paths", async () => {
+    renderWorkbenchApp(["/definitely-not-a-workbench-page"], { client: mockClient });
+
+    const notFound = await screen.findByTestId("workbench-not-found-page");
+    expect(notFound).toHaveTextContent("/definitely-not-a-workbench-page");
+    expect(screen.queryByTestId("dashboard-home-page")).not.toBeInTheDocument();
+
+    const activeGroupLinks = within(await screen.findByTestId("workbench-group-nav"))
+      .getAllByRole("link")
+      .filter((link) => link.getAttribute("data-active") === "true");
+    expect(activeGroupLinks).toHaveLength(0);
+  });
+
+  it("renders the route error boundary when a route render fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const preventExpectedRouteError = (event: ErrorEvent) => {
+      if (event.error instanceof Error && event.error.message === "route exploded") {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("error", preventExpectedRouteError);
+
+    try {
+      renderWorkbenchApp(["/boom"], {
+        client: mockClient,
+        routes: [
+          {
+            path: "/",
+            element: <Outlet />,
+            errorElement: workbenchRoutes.find((route) => route.path === "/")?.errorElement,
+            children: [{ path: "boom", element: <ThrowingRoute /> }],
+          },
+        ],
+      });
+
+      const errorPage = await screen.findByTestId("workbench-route-error-page");
+      expect(errorPage).toHaveTextContent("route exploded");
+    } finally {
+      window.removeEventListener("error", preventExpectedRouteError);
+      consoleError.mockRestore();
+    }
+  });
+
+  it("renders a permission boundary for route-level 403 errors", async () => {
+    renderWorkbenchApp(["/restricted"], {
+      client: mockClient,
+      routes: [
+        {
+          path: "/",
+          element: <Outlet />,
+          errorElement: workbenchRoutes.find((route) => route.path === "/")?.errorElement,
+          children: [
+            {
+              path: "restricted",
+              loader: () => {
+                throw new Response("not allowed", {
+                  status: 403,
+                  statusText: "Forbidden",
+                });
+              },
+              element: <div>restricted body</div>,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(await screen.findByTestId("workbench-route-permission-page")).toBeInTheDocument();
+    expect(screen.queryByText("restricted body")).not.toBeInTheDocument();
   });
 
   it("renders the dashboard route inside the workbench shell", async () => {
@@ -327,7 +411,7 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("bond-analysis-route-shell")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "债券分析" })).toBeInTheDocument();
-    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-governance-banner")).not.toBeInTheDocument();
   });
 
   it("renders the cross-asset route", async () => {

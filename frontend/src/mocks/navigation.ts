@@ -552,10 +552,7 @@ export function findWorkbenchSectionByPath(
   sections: WorkbenchSection[] = visibleWorkbenchNavigation,
 ) {
   const resolved = resolveWorkbenchPathAlias(pathname);
-  return (
-    sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ??
-    sections[0]
-  );
+  return sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ?? null;
 }
 
 export function resolveWorkbenchGroupKey(section: WorkbenchSection): WorkbenchGroupKey {
@@ -586,6 +583,10 @@ export const primaryWorkbenchNavigationGroups: WorkbenchNavigationGroup[] =
 
 export function findWorkbenchGroupByPath(pathname: string) {
   const currentSection = findWorkbenchSectionByPath(pathname);
+  if (!currentSection) {
+    return null;
+  }
+
   return (
     primaryWorkbenchNavigationGroups.find(
       (group) => resolveWorkbenchGroupKey(currentSection) === group.key,

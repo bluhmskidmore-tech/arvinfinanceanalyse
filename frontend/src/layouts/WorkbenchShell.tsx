@@ -23,6 +23,17 @@ const institutionalConsoleShellSectionKeys = new Set([
   "pnl-attribution",
 ]);
 
+const unknownWorkbenchSection: WorkbenchSection = {
+  key: "__unknown-route",
+  label: "未知页面",
+  path: "",
+  icon: "settings",
+  description: "当前路径未登记为工作台页面",
+  readiness: "live",
+  readinessLabel: "未登记",
+  readinessNote: "当前路径没有匹配到已登记的工作台页面。",
+};
+
 function useInstitutionalConsoleCss(enabled: boolean) {
   useEffect(() => {
     if (!enabled) {
@@ -148,7 +159,9 @@ export function WorkbenchShell() {
   const location = useLocation();
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
-  const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const matchedSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const currentSection = matchedSection ?? unknownWorkbenchSection;
+  const currentRouteKnown = Boolean(matchedSection);
   const isStockAnalysisShell = currentSection.key === "stock-analysis";
   const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
   const agentWorkbenchActive = agentWorkbenchSection
@@ -158,15 +171,18 @@ export function WorkbenchShell() {
   const agentNavLabel = isStockAnalysisShell ? "复核助手" : agentWorkbenchSection?.label;
   const agentNavBadgeLabel = isStockAnalysisShell ? "可用" : agentWorkbenchSection?.readinessLabel;
   const agentNavHint = isStockAnalysisShell ? "跨页证据" : "Hermes Agent";
-  const currentGroup =
-    primaryWorkbenchNavigationGroups.find(
-      (group) => group.key === resolveWorkbenchGroupKey(currentSection),
-    ) ?? primaryWorkbenchNavigationGroups[0];
-  const currentGroupVisibleSections = visibleWorkbenchNavigation.filter(
-    (section) => resolveWorkbenchGroupKey(section) === currentGroup.key,
-  );
+  const currentGroup = currentRouteKnown
+    ? (primaryWorkbenchNavigationGroups.find(
+        (group) => group.key === resolveWorkbenchGroupKey(currentSection),
+      ) ?? primaryWorkbenchNavigationGroups[0])
+    : null;
+  const currentGroupVisibleSections = currentGroup
+    ? visibleWorkbenchNavigation.filter(
+        (section) => resolveWorkbenchGroupKey(section) === currentGroup.key,
+      )
+    : [];
   const currentGroupSections =
-    currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
+    currentGroup?.key === "market" ? currentGroupVisibleSections : (currentGroup?.sections ?? []);
   const isModuleHomePage = [
     "portfolio-home",
     "market-overview",
@@ -174,7 +190,7 @@ export function WorkbenchShell() {
     "performance-home",
     "reports-center",
   ].includes(currentSection.key);
-  const isPortfolioGroup = currentGroup.key === "portfolio";
+  const isPortfolioGroup = currentGroup?.key === "portfolio";
   const isDashboardCockpitShell =
     currentSection.key === "dashboard" || currentSection.key === "portfolio-home";
   const useInstitutionalConsoleShell = institutionalConsoleShellSectionKeys.has(currentSection.key);
@@ -316,7 +332,7 @@ export function WorkbenchShell() {
             className="workbench-group-nav-shell"
           >
             {primaryWorkbenchNavigationGroups.map((group) => {
-              const active = group.key === currentGroup.key;
+              const active = currentGroup ? group.key === currentGroup.key : false;
 
               return (
                 <NavLink
@@ -539,7 +555,7 @@ export function WorkbenchShell() {
                       组合状态先看错配，再看损益，最后定位仓位与归因
                     </div>
                     <div className="portfolio-workbench-lead__description">
-                      当前工作台聚合 {currentGroup.label} 的核心页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把占位页或分析口径结果误读成正式结论。
+                      当前工作台聚合 {currentGroup?.label ?? ""} 的核心页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把占位页或分析口径结果误读成正式结论。
                     </div>
                   </div>
 
@@ -640,7 +656,7 @@ export function WorkbenchShell() {
                     当前只突出可验证的真实读链路
                   </div>
                   <div className="workbench-shell-status-summary__description">
-                    当前工作台：{currentGroup.label}。页面切换收进组内导航，避免在壳层堆满入口。
+                    当前工作台：{currentGroup?.label ?? ""}。页面切换收进组内导航，避免在壳层堆满入口。
                   </div>
                 </div>
 
@@ -725,7 +741,8 @@ export function WorkbenchShell() {
           {!isDashboardCockpitShell &&
           !isBondAnalysisMinimalShell &&
           !isBalanceAnalysisCompactChrome &&
-          !isModuleHomePage ? (
+          !isModuleHomePage &&
+          currentGroup ? (
             <section
               data-testid="workbench-section-subnav"
               className="workbench-section-subnav"

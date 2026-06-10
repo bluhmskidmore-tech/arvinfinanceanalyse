@@ -343,11 +343,16 @@ describe("workbench navigation mocks", () => {
 
   it("maps aliased paths to the same section as their canonical target", () => {
     const adb = workbenchNavigation.find((s) => s.key === "average-balance");
+    const adbAliasSection = findWorkbenchSectionByPath("/adb", workbenchNavigation);
+    const averageBalanceSection = findWorkbenchSectionByPath("/average-balance", workbenchNavigation);
+
     expect(adb).toBeDefined();
-    expect(findWorkbenchSectionByPath("/adb", workbenchNavigation).key).toBe("average-balance");
-    expect(findWorkbenchSectionByPath("/average-balance", workbenchNavigation).key).toBe(
-      "average-balance",
-    );
+    expect(adbAliasSection?.key).toBe("average-balance");
+    expect(averageBalanceSection?.key).toBe("average-balance");
+  });
+
+  it("does not resolve unknown paths to the dashboard section", () => {
+    expect(findWorkbenchSectionByPath("/not-a-real-workbench-route", workbenchNavigation)).toBeNull();
   });
 
   it("keeps every workbenchPathAliases value as a real navigation path", () => {
