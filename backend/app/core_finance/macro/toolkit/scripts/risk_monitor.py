@@ -19,6 +19,7 @@
   monitor.check(current_prices, positions)
 """
 
+import os
 import sys
 import warnings
 
@@ -103,7 +104,14 @@ class RiskMonitor:
             'entry_prices':  json.dumps(self.state['entry_prices'], ensure_ascii=False),
         }
         df = pd.DataFrame([row])
-        df.to_csv(STATE_FILE, index=False, encoding='utf-8-sig')
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = STATE_FILE.with_name(f"{STATE_FILE.name}.{os.getpid()}.tmp")
+        try:
+            df.to_csv(temp_path, index=False, encoding='utf-8-sig')
+            temp_path.replace(STATE_FILE)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
 
     def _log_event(self, event_type: str, symbol: str, detail: str,
                    current_value: float = 0.0, drawdown: float = 0.0):
@@ -116,14 +124,9 @@ class RiskMonitor:
             'drawdown_pct': round(drawdown * 100, 4),
         }
         df_new = pd.DataFrame([row])
-
-        if LOG_FILE.exists():
-            df_old = pd.read_csv(LOG_FILE, encoding='utf-8-sig')
-            df_out = pd.concat([df_old, df_new], ignore_index=True)
-        else:
-            df_out = df_new
-
-        df_out.to_csv(LOG_FILE, index=False, encoding='utf-8-sig')
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        write_header = not LOG_FILE.exists() or LOG_FILE.stat().st_size == 0
+        df_new.to_csv(LOG_FILE, mode='a', header=write_header, index=False, encoding='utf-8-sig')
         print(f"  [LOG] {event_type} | {symbol} | {detail}")
 
     # ── 冷静期检查 ────────────────────────────────────────────
