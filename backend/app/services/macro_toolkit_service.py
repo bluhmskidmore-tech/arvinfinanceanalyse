@@ -215,7 +215,11 @@ def run_macro_toolkit_script(
             "message": f"script exceeded {timeout_seconds}s timeout",
         }
     except OSError as exc:
-        stdout_text, stderr_text, exit_code = _run_toolkit_script_inline(script.name, argv)
+        stdout_text, stderr_text, exit_code = _run_toolkit_script_inline(
+            script.name,
+            argv,
+            output_dir=resolved_output_dir,
+        )
         return {
             "status": "completed" if exit_code == 0 else "failed",
             "script": _script_payload(script.name, script.filename, script.group, script.default_data_sources, script.optional_dependencies, script.notes, script.path),
@@ -1585,15 +1589,48 @@ def _run_choice_stock_refresh_job(
         )
 
 
-def _run_toolkit_script_inline(name: str, argv: list[str]) -> tuple[str, str, int]:
+def _run_toolkit_script_inline(name: str, argv: list[str], *, output_dir: str | Path) -> tuple[str, str, int]:
     stdout = io.StringIO()
     stderr = io.StringIO()
+    resolved_output_dir = Path(output_dir).resolve()
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    previous_env_output_dir = os.environ.get("MOSS_MACRO_TOOLKIT_OUTPUT_DIR")
+    patched_modules = {
+        module_name: module
+        for module_name, module in sys.modules.items()
+        if module_name in {"paths", "backend.app.core_finance.macro.toolkit.paths"}
+    }
+    previous_paths = {
+        module_name: {
+            attr: getattr(module, attr)
+            for attr in ("OUTPUT_DIR", "ASSET_DIR")
+            if hasattr(module, attr)
+        }
+        for module_name, module in patched_modules.items()
+    }
     try:
+        os.environ["MOSS_MACRO_TOOLKIT_OUTPUT_DIR"] = str(resolved_output_dir)
+        for module in patched_modules.values():
+            module.OUTPUT_DIR = resolved_output_dir
+            module.ASSET_DIR = resolved_output_dir / "bond_macro_report_assets"
+            module.ASSET_DIR.mkdir(parents=True, exist_ok=True)
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             run_toolkit_script(name, argv)
     except Exception as exc:  # pragma: no cover - returned to UI as script stderr
         stderr.write(f"\ninline runner failed: {exc}")
         return stdout.getvalue(), stderr.getvalue(), 1
+    finally:
+        if previous_env_output_dir is None:
+            os.environ.pop("MOSS_MACRO_TOOLKIT_OUTPUT_DIR", None)
+        else:
+            os.environ["MOSS_MACRO_TOOLKIT_OUTPUT_DIR"] = previous_env_output_dir
+        for module_name, attrs in previous_paths.items():
+            module = patched_modules[module_name]
+            for attr in ("OUTPUT_DIR", "ASSET_DIR"):
+                if attr in attrs:
+                    setattr(module, attr, attrs[attr])
+                elif hasattr(module, attr):
+                    delattr(module, attr)
     return stdout.getvalue(), stderr.getvalue(), 0
 
 

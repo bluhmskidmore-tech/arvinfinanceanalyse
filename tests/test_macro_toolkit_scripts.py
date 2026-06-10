@@ -697,6 +697,38 @@ def test_risk_monitor_main_writes_risk_state_and_risk_log_when_final_signal_exis
     assert "active_positions=1" in log["detail"].iloc[-1]
 
 
+def test_risk_monitor_log_event_appends_without_rewriting_existing_log(tmp_path, monkeypatch) -> None:
+    script = get_toolkit_script("risk_monitor")
+    spec = importlib.util.spec_from_file_location("_legacy_risk_monitor_append", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    log_path = tmp_path / "risk_log.csv"
+    log_path.write_text(
+        "datetime,event_type,symbol,detail,current_value,drawdown_pct\n"
+        "2026-06-01 15:00:00,DAILY_CHECK,ALL,existing,0.0,0.0\n",
+        encoding="utf-8-sig",
+    )
+    monkeypatch.setattr(legacy, "STATE_FILE", tmp_path / "risk_state.csv")
+    monkeypatch.setattr(legacy, "LOG_FILE", log_path)
+
+    original_read_csv = legacy.pd.read_csv
+
+    def fail_if_log_read(path, *args, **kwargs):
+        if Path(path) == log_path:
+            raise AssertionError("risk log append should not read and rewrite the existing log")
+        return original_read_csv(path, *args, **kwargs)
+
+    monkeypatch.setattr(legacy.pd, "read_csv", fail_if_log_read)
+
+    monitor = legacy.RiskMonitor()
+    monitor._log_event("DAILY_CHECK", "ALL", "appended")
+
+    log = original_read_csv(log_path, encoding="utf-8-sig")
+    assert log["detail"].tolist() == ["existing", "appended"]
+
+
 def test_cta_trend_main_writes_cta_results_csv_to_output_dir(tmp_path, monkeypatch) -> None:
     script = get_toolkit_script("cta_trend_cn")
     spec = importlib.util.spec_from_file_location("_legacy_cta_trend_cn", script.path)
@@ -3935,6 +3967,58 @@ def test_macro_toolkit_run_script_passes_configured_output_dir_to_subprocess(tmp
     assert result["status"] == "completed", result["stderr"]
     assert calls == ["cta_trend_cn"]
     assert captured_env["MOSS_MACRO_TOOLKIT_OUTPUT_DIR"] == str(requested_output_dir.resolve())
+    assert (requested_output_dir / "cta_results.csv").read_text(encoding="utf-8") == "date,value\n2026-06-01,1\n"
+    assert not (inherited_output_dir / "cta_results.csv").exists()
+    assert [item["name"] for item in result["output_files"]] == ["cta_results.csv"]
+
+
+def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(tmp_path, monkeypatch) -> None:
+    requested_output_dir = tmp_path / "requested_output"
+    inherited_output_dir = tmp_path / "inherited_output"
+    requested_output_dir.mkdir()
+    inherited_output_dir.mkdir()
+    fake_script = SimpleNamespace(
+        name="cta_trend_cn",
+        filename="cta_trend_cn.py",
+        group="allocation",
+        default_data_sources=(),
+        optional_dependencies=(),
+        notes="",
+        path=tmp_path / "probe_cta_script.py",
+    )
+
+    def fake_run_toolkit_script(_name: str, _argv: list[str]):
+        paths = importlib.import_module("paths")
+        paths.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (paths.OUTPUT_DIR / "cta_results.csv").write_text(
+            "date,value\n2026-06-01,1\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    monkeypatch.delitem(sys.modules, "paths", raising=False)
+    monkeypatch.setenv("MOSS_MACRO_TOOLKIT_OUTPUT_DIR", str(inherited_output_dir))
+    monkeypatch.setattr(macro_toolkit_service, "get_toolkit_script", lambda _name: fake_script)
+    monkeypatch.setattr(macro_toolkit_service, "run_toolkit_script", fake_run_toolkit_script)
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_script_payload",
+        lambda *_args, **_kwargs: {"name": "cta_trend_cn"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("subprocess unavailable")),
+    )
+
+    result = macro_toolkit_service.run_macro_toolkit_script(
+        name="cta_trend_cn",
+        argv=[],
+        timeout_seconds=5,
+        output_dir=requested_output_dir,
+    )
+
+    assert result["status"] == "completed", result["stderr"]
     assert (requested_output_dir / "cta_results.csv").read_text(encoding="utf-8") == "date,value\n2026-06-01,1\n"
     assert not (inherited_output_dir / "cta_results.csv").exists()
     assert [item["name"] for item in result["output_files"]] == ["cta_results.csv"]
