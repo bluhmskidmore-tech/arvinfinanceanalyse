@@ -99,14 +99,15 @@ export function MarketDataFxFormalSection({
                       testId="market-data-fx-formal-meta"
                     />
                   ) : null}
-                  <Table<FxFormalStatusRow>
-                    data-testid="market-data-fx-formal-table"
-                    size="small"
-                    pagination={false}
-                    rowKey={(row) => row.series_id}
-                    columns={columns}
-                    dataSource={payload?.rows ?? []}
-                  />
+                  <div data-testid="market-data-fx-formal-table">
+                    <Table<FxFormalStatusRow>
+                      size="small"
+                      pagination={false}
+                      rowKey={(row) => row.series_id}
+                      columns={columns}
+                      dataSource={payload?.rows ?? []}
+                    />
+                  </div>
                 </AsyncSection>
               </div>
             ) : null,

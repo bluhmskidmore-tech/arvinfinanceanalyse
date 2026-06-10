@@ -567,7 +567,9 @@ describe("MarketDataPage", () => {
     fireEvent.click(header);
 
     expect(await screen.findByTestId("market-data-fx-formal-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("market-data-fx-formal-table")).toHaveTextContent("USD/CNY");
+    await waitFor(() => {
+      expect(screen.getByTestId("market-data-fx-formal-table")).toHaveTextContent("USD/CNY");
+    });
     expect(screen.getByTestId("market-data-fx-formal-meta")).toHaveTextContent("正式可用=是");
   });
 
