@@ -36,6 +36,9 @@ import {
   selectProductCategoryAttributionWaterfallSurface,
   selectProductCategoryDecisionFocusSurface,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
+  selectProductCategoryInterestEarningAssetLiabilityScaleChart,
+  selectProductCategoryInterestEarningSpreadChart,
+  selectProductCategoryInterestEarningSpreadYearComparisonChart,
   selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryInterestSpreadYearComparisonChart,
@@ -48,8 +51,8 @@ import {
   selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportDates,
   selectProductCategoryTrendReportPoints,
-  toneForProductCategoryValue,
   toneForProductCategoryForeignDisplayValue,
+  toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
 
 const GOLDEN_SAMPLE_A_RESPONSE = JSON.parse(
@@ -2119,6 +2122,148 @@ describe("productCategoryPnlPageModel", () => {
     });
   });
 
+  it("builds the interest-earning spread chart from its dedicated backend fields only", () => {
+    const snapshot = buildProductCategoryTrendSnapshot({
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly"],
+      scenario_rate_pct: null,
+      rows: [
+        row({
+          category_id: "interest_earning_assets",
+          weighted_yield: "99.99",
+        }),
+      ],
+      asset_total: row({
+        category_id: "asset_total",
+        weighted_yield: "88.88",
+        is_total: true,
+      }),
+      liability_total: row({
+        category_id: "liability_total",
+        side: "liability",
+        weighted_yield: "77.77",
+        is_total: true,
+      }),
+      grand_total: row({ category_id: "grand_total", is_total: true }),
+      interest_spread: interestSpreadPayload({
+        allAsset: "9.00",
+        allLiability: "8.00",
+        allSpread: "1.00",
+      }),
+      interest_earning_spread: interestSpreadPayload({
+        allAsset: "2.40",
+        allLiability: "1.63",
+        allSpread: "0.77",
+      }),
+    });
+
+    expect(selectProductCategoryInterestEarningSpreadChart([snapshot])).toEqual({
+      labels: ["2026年02月"],
+      assetYield: [2.4],
+      liabilityYield: [1.63],
+      spread: [0.77],
+    });
+  });
+
+  it("builds the interest-earning asset and interest-bearing liability scale chart from row and liability total fields", () => {
+    const snapshot = (reportDate: string, assetScaleYi: number, liabilityScaleYi: number) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            cnx_scale: yi(assetScaleYi),
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          cnx_scale: yi(liabilityScaleYi),
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+      });
+
+    expect(
+      selectProductCategoryInterestEarningAssetLiabilityScaleChart([
+        snapshot("2026-01-31", 2800, -1700),
+        snapshot("2026-02-28", 2898.5, -1728.58),
+      ]),
+    ).toEqual({
+      labels: ["2026年01月", "2026年02月"],
+      interestEarningAssetScale: [2800, 2898.5],
+      interestBearingLiabilityScale: [1700, 1728.58],
+    });
+  });
+
+  it("builds two-year interest-earning spread comparisons from dedicated backend spread fields only", () => {
+    const snapshot = (reportDate: string, allSpread: string, cnySpread: string) =>
+      buildProductCategoryTrendSnapshot({
+        report_date: reportDate,
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interest_earning_assets",
+            report_date: reportDate,
+            weighted_yield: "99.99",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", report_date: reportDate, is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          report_date: reportDate,
+          weighted_yield: "77.77",
+          is_total: true,
+        }),
+        grand_total: row({ category_id: "grand_total", report_date: reportDate, is_total: true }),
+        interest_spread: interestSpreadPayload({
+          allSpread: "9.99",
+          cnySpread: "8.88",
+        }),
+        interest_earning_spread: interestSpreadPayload({
+          allSpread,
+          cnySpread,
+        }),
+      });
+
+    expect(
+      selectProductCategoryInterestEarningSpreadYearComparisonChart([
+        snapshot("2025-01-31", "0.60", "0.55"),
+        snapshot("2025-02-28", "0.65", "0.60"),
+        snapshot("2026-01-31", "0.75", "0.70"),
+        snapshot("2026-02-28", "0.80", "0.73"),
+      ]),
+    ).toMatchObject({
+      labels: ["1月", "2月"],
+      series: [
+        { year: "2025年", spread: [0.6, 0.65] },
+        { year: "2026年", spread: [0.75, 0.8] },
+      ],
+    });
+
+    expect(
+      selectProductCategoryInterestEarningSpreadYearComparisonChart([
+        snapshot("2025-01-31", "0.60", "0.55"),
+        snapshot("2025-02-28", "0.65", "0.60"),
+        snapshot("2026-01-31", "0.75", "0.70"),
+        snapshot("2026-02-28", "0.80", "0.73"),
+      ], "cny")?.series,
+    ).toEqual([
+      { year: "2025年", spread: [0.55, 0.6] },
+      { year: "2026年", spread: [0.7, 0.73] },
+    ]);
+  });
+
   it("reads backend Decimal interest spread sample values without frontend recomputation", () => {
     const snapshot = buildProductCategoryTrendSnapshot({
       report_date: "2026-02-28",
@@ -3542,6 +3687,24 @@ describe("productCategoryPnlPageModel", () => {
         "-123456789",
       ),
     ).toBe("-1.23");
+    expect(
+      formatProductCategoryForeignDisplayValue(
+        row({ category_id: "repo_liabilities", side: "liability" }),
+        "123456789",
+      ),
+    ).toBe("-1.23");
+    expect(
+      formatProductCategoryForeignDisplayValue(
+        row({ category_id: "repo_liabilities", side: "liability" }),
+        "-123456789",
+      ),
+    ).toBe("1.23");
+    expect(
+      toneForProductCategoryForeignDisplayValue(
+        row({ category_id: "repo_liabilities", side: "liability" }),
+        "123456789",
+      ),
+    ).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.negative);
   });
 
   it("freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority", () => {
@@ -3587,24 +3750,6 @@ describe("productCategoryPnlPageModel", () => {
         cnyFtpDisplay: formatProductCategoryRowDisplayValue(rowItem, rowItem.cny_ftp),
         weightedYieldDisplay: formatProductCategoryYieldValue(rowItem.weighted_yield),
       }));
-    expect(
-      formatProductCategoryForeignDisplayValue(
-        row({ category_id: "repo_liabilities", side: "liability" }),
-        "123456789",
-      ),
-    ).toBe("-1.23");
-    expect(
-      formatProductCategoryForeignDisplayValue(
-        row({ category_id: "repo_liabilities", side: "liability" }),
-        "-123456789",
-      ),
-    ).toBe("1.23");
-    expect(
-      toneForProductCategoryForeignDisplayValue(
-        row({ category_id: "repo_liabilities", side: "liability" }),
-        "123456789",
-      ),
-    ).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.negative);
 
     expect(matrix).toEqual([
       {

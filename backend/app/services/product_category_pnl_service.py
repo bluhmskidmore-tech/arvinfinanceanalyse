@@ -639,6 +639,9 @@ def product_category_pnl_envelope(
         interest_spread=ProductCategoryInterestSpreadPayload.model_validate(
             analysis_envelope.result.summary.get("interest_spread", {})
         ),
+        interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(
+            analysis_envelope.result.summary.get("interest_earning_spread", {})
+        ),
     )
     result_meta = (
         analysis_envelope.result_meta.model_copy(update={"quality_flag": "warning"})

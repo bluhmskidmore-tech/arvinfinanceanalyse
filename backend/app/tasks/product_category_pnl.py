@@ -304,6 +304,7 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         return None
 
     typed_rows = [ProductCategoryPnlRow.model_validate(row) for row in calc_out["rows"]]
+    interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
     asset_total = ProductCategoryPnlRow.model_validate(calc_out["asset_total"])
     liability_total = ProductCategoryPnlRow.model_validate(calc_out["liability_total"])
     grand_total = ProductCategoryPnlRow.model_validate(calc_out["grand_total"])
@@ -311,6 +312,12 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         report_date=report_date,
         view="ytd",
         asset_row=asset_total.model_dump(mode="python"),
+        liability_row=liability_total.model_dump(mode="python"),
+    )
+    interest_earning_spread = calculate_product_category_interest_spread_metrics(
+        report_date=report_date,
+        view="ytd",
+        asset_row=interest_earning_assets.model_dump(mode="python"),
         liability_row=liability_total.model_dump(mode="python"),
     )
     return ProductCategoryPnlPayload(
@@ -323,6 +330,7 @@ def product_category_pnl_payload_from_canonical_ytd_anchor(
         liability_total=liability_total,
         grand_total=grand_total,
         interest_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_spread)),
+        interest_earning_spread=ProductCategoryInterestSpreadPayload.model_validate(asdict(interest_earning_spread)),
     )
 
 

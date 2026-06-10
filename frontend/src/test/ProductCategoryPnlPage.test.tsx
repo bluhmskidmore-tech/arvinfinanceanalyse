@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { beforeAll, vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
-import { PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
+import type { ProductCategoryInterestSpreadPayload } from "../api/contracts";
+import {
+  PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  formatProductCategoryChartNumberTwoDecimals,
+} from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
@@ -52,6 +56,19 @@ function fixtureCashAmount(scaleYi: number, ratePct: number, days: number): stri
 function withEmptyInterestSpread<T extends { result: object }>(envelope: T): T {
   const result = { ...envelope.result } as Record<string, unknown>;
   result.interest_spread = {
+    all_currency_asset_yield_pct: null,
+    all_currency_liability_yield_pct: null,
+    all_currency_spread_pct: null,
+    cny_asset_yield_pct: null,
+    cny_liability_yield_pct: null,
+    cny_spread_pct: null,
+  };
+  return { ...envelope, result: result as T["result"] };
+}
+
+function withEmptyInterestEarningSpread<T extends { result: object }>(envelope: T): T {
+  const result = { ...envelope.result } as Record<string, unknown>;
+  result.interest_earning_spread = {
     all_currency_asset_yield_pct: null,
     all_currency_liability_yield_pct: null,
     all_currency_spread_pct: null,
@@ -190,6 +207,13 @@ function renderWorkbenchAppWithTwoMonthLiabilityTrend() {
 }
 
 describe("ProductCategoryPnlPage", () => {
+  it("formats chart display numbers with two decimals", () => {
+    expect(formatProductCategoryChartNumberTwoDecimals(0.7)).toBe("0.70");
+    expect(formatProductCategoryChartNumberTwoDecimals("1728.585")).toBe("1728.59");
+    expect(formatProductCategoryChartNumberTwoDecimals(null)).toBe("-");
+    expect(formatProductCategoryChartNumberTwoDecimals(undefined)).toBe("-");
+  });
+
   it("renders the page shell, summary, and table structure", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
@@ -1028,9 +1052,27 @@ describe("ProductCategoryPnlPage", () => {
     expect(
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toHaveTextContent(
+      "资产负债利差趋势图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread")).toHaveTextContent(
+      "生息资产负债利差趋势图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-asset-liability-scale")).toHaveTextContent(
+      "生息资产和附息负债走势图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread-yoy")).toHaveTextContent(
+      "2年生息资产利差对比图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-earning-spread-yoy-cny")).toHaveTextContent(
+      "人民币口径2年生息资产利差对比图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toHaveTextContent(
+      "2年资产负债利差对比图",
+    );
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toHaveTextContent(
+      "人民币口径2年资产负债利差对比图",
+    );
     expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("动作类型表现");
@@ -1066,7 +1108,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("未命中诊断");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("收益率未改善");
     expect(screen.getByTestId("product-category-operating-action-backtest")).toHaveTextContent("典型样本");
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(12);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -1178,6 +1220,30 @@ describe("ProductCategoryPnlPage", () => {
     ]);
     expect(interestOption.series?.[0]?.data).toEqual([2800, 2898.5]);
     expect(interestOption.series?.[1]?.data).toEqual([1.2, 1.45]);
+
+    const interestEarningAssetLiabilityScaleOption = readChartOption(
+      "product-category-derived-chart-interest-earning-asset-liability-scale",
+    );
+    expect(interestEarningAssetLiabilityScaleOption.legend?.data).toEqual([
+      "生息资产日均额（亿元）",
+      "附息负债日均额（亿元）",
+    ]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.map((series) => series.name)).toEqual([
+      "生息资产日均额（亿元）",
+      "附息负债日均额（亿元）",
+    ]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.map((series) => series.type)).toEqual(["bar", "bar"]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.[0]?.data).toEqual([2800, 2898.5]);
+    expect(interestEarningAssetLiabilityScaleOption.series?.[1]?.data).toEqual([1728.58, 1728.58]);
+
+    const interestEarningSpreadYoyOption = readChartOption(
+      "product-category-derived-chart-interest-earning-spread-yoy",
+    );
+    expect(interestEarningSpreadYoyOption.series?.map((series) => series.name)).toEqual([
+      "2026年",
+    ]);
+    expect(interestEarningSpreadYoyOption.series?.[0]?.data).toEqual([0.77, 0.77]);
+    expect(interestEarningSpreadYoyOption.series?.[0]?.label?.show).toBe(true);
 
     expect(screen.queryByTestId("product-category-derived-chart-interest-spread")).not.toBeInTheDocument();
 
@@ -1691,6 +1757,47 @@ describe("ProductCategoryPnlPage", () => {
     });
   });
 
+  it("does not render interest-earning spread comparison charts without backend interest-earning spread fields", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31", "2025-02-28", "2025-01-31"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = withEmptyInterestEarningSpread(buildMockProductCategoryPnlEnvelope(options));
+        const interestSpread: ProductCategoryInterestSpreadPayload = {
+          all_currency_asset_yield_pct: { raw: "2.68", display: "2.68%", unit: "percent" },
+          all_currency_liability_yield_pct: { raw: "1.63", display: "1.63%", unit: "percent" },
+          all_currency_spread_pct: { raw: "1.05", display: "1.05%", unit: "percent" },
+          cny_asset_yield_pct: { raw: "2.64", display: "2.64%", unit: "percent" },
+          cny_liability_yield_pct: { raw: "1.62", display: "1.62%", unit: "percent" },
+          cny_spread_pct: { raw: "1.02", display: "1.02%", unit: "percent" },
+        };
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "interest_earning_assets"
+                ? { ...row, weighted_yield: "9.99" }
+                : row,
+            ),
+            interest_spread: interestSpread,
+          },
+        };
+      }),
+    });
+
+    await waitForTrendDiagnosticsAutoLoad();
+    expect(await screen.findByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
+    expect(await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-earning-spread-yoy")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-derived-chart-interest-earning-spread-yoy-cny")).not.toBeInTheDocument();
+  });
+
   it("builds derived charts on 2025 quarter-end points, 2025 Nov-Dec, and 2026 Jan-Mar with one view basis", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
@@ -1890,15 +1997,6 @@ describe("ProductCategoryPnlPage", () => {
     ]);
 
     const viewGroup = screen.getByRole("group", { name: "视图模式" });
-    expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
-    expect(within(viewGroup).queryByText("qtd")).not.toBeInTheDocument();
-    expect(within(viewGroup).queryByText("year_to_report_month_end")).not.toBeInTheDocument();
-  });
-
-  it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
-    const baseClient = createApiClient({ mode: "mock" });
-    const negYuan = "-123456789";
-    renderWorkbenchAppWithClient({
     const liabilityRow = within(table).getByText("liability delta fixture").closest("tr");
     expect(liabilityRow).toBeTruthy();
     expect(within(liabilityRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
@@ -1916,6 +2014,15 @@ describe("ProductCategoryPnlPage", () => {
       "1.11",
       "1.23",
     ]);
+    expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
+    expect(within(viewGroup).queryByText("qtd")).not.toBeInTheDocument();
+    expect(within(viewGroup).queryByText("year_to_report_month_end")).not.toBeInTheDocument();
+  });
+
+  it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const negYuan = "-123456789";
+    renderWorkbenchAppWithClient({
       ...baseClient,
       getProductCategoryPnl: vi.fn(async (options) => {
         const env = buildMockProductCategoryPnlEnvelope(options);

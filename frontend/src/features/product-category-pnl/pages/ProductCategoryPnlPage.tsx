@@ -34,6 +34,7 @@ import {
   collectProductCategoryGovernanceNotices,
   defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryAttributionEffect,
+  formatProductCategoryChartNumberTwoDecimals,
   formatProductCategoryDualMetaDistinctLine,
   formatProductCategoryForeignDisplayValue,
   formatProductCategoryReportMonthLabel,
@@ -56,7 +57,10 @@ import {
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
   selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
+  selectProductCategoryInterestEarningAssetLiabilityScaleChart,
   selectProductCategoryInterestEarningIncomeScaleChart,
+  selectProductCategoryInterestEarningSpreadChart,
+  selectProductCategoryInterestEarningSpreadYearComparisonChart,
   selectProductCategoryOperatingAnalysisSurface,
   selectProductCategoryOperatingActionBacktestSurface,
   selectProductCategoryInterestSpreadAttributionSurface,
@@ -434,7 +438,6 @@ function formalValueToneClassName(value: DecimalLike | null | undefined): string
   return "product-category-formal-table__cell--neutral";
 }
 
-function formalCategoryIndentClassName(level: number): string {
 function formalForeignValueToneClassName(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
@@ -449,6 +452,7 @@ function formalForeignValueToneClassName(
   return formalValueToneClassName(row.side === "liability" ? -parsed : parsed);
 }
 
+function formalCategoryIndentClassName(level: number): string {
   const clampedLevel = Math.min(Math.max(Math.trunc(level), 0), 8);
   return `product-category-formal-table__category-indent product-category-formal-table__category-indent--level-${clampedLevel}`;
 }
@@ -461,6 +465,26 @@ type DerivedChartPanelProps = {
   wide?: boolean;
   onEvents?: EChartsReactProps["onEvents"];
 };
+
+function buildAxisLabelFormatter(unit = "") {
+  return (value: unknown) => `${formatProductCategoryChartNumberTwoDecimals(value)}${unit}`;
+}
+
+function buildAxisTooltipFormatter(unit: string) {
+  return (params: unknown) => {
+    const items = Array.isArray(params) ? params : [params];
+    const axisLabel = (items[0] as { axisValueLabel?: string; name?: string } | undefined)?.axisValueLabel
+      ?? (items[0] as { name?: string } | undefined)?.name
+      ?? "";
+    const lines = items
+      .map((item) => {
+        const point = item as { marker?: string; seriesName?: string; value?: unknown };
+        return `${point.marker ?? ""}${point.seriesName ?? ""}: ${formatProductCategoryChartNumberTwoDecimals(point.value)}${unit}`;
+      })
+      .filter((line) => line.trim().length > 0);
+    return [axisLabel, ...lines].filter(Boolean).join("<br/>");
+  };
+}
 
 function buildDualAxisChartOption(input: {
   labels: string[];
@@ -478,7 +502,7 @@ function buildDualAxisChartOption(input: {
     return null;
   }
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", formatter: buildAxisTooltipFormatter("") },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
     grid: { left: 56, right: 56, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
     xAxis: {
@@ -492,11 +516,13 @@ function buildDualAxisChartOption(input: {
       {
         type: "value",
         name: input.leftAxisName,
+        axisLabel: { formatter: buildAxisLabelFormatter() },
         splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
       },
       {
         type: "value",
         name: input.rightAxisName,
+        axisLabel: { formatter: buildAxisLabelFormatter() },
         splitLine: { show: false },
       },
     ],
@@ -527,7 +553,7 @@ function buildSingleAxisChartOption(input: {
     return null;
   }
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", formatter: buildAxisTooltipFormatter("") },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
     grid: { left: 56, right: 24, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
     xAxis: {
@@ -540,6 +566,7 @@ function buildSingleAxisChartOption(input: {
     yAxis: {
       type: "value",
       name: input.axisName,
+      axisLabel: { formatter: buildAxisLabelFormatter() },
       splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
     },
     series: input.series.map((series) => ({
@@ -577,7 +604,7 @@ function buildInterestSpreadChartOption(input: {
   const lineWidths = [4, 3.4, 4];
   const symbolSizes = [8, 7, 8];
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", formatter: buildAxisTooltipFormatter("%") },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
     grid: { left: 56, right: 72, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
     xAxis: {
@@ -593,7 +620,7 @@ function buildInterestSpreadChartOption(input: {
       min: yAxisMin,
       max: yAxisMax,
       scale: true,
-      axisLabel: { formatter: "{value}%" },
+      axisLabel: { formatter: buildAxisLabelFormatter("%") },
       splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
     },
     series: input.series.map((series, index) => ({
@@ -609,7 +636,7 @@ function buildInterestSpreadChartOption(input: {
       endLabel: {
         show: true,
         color: series.color,
-        formatter: "{c}%",
+        formatter: (params: { value?: unknown }) => `${formatProductCategoryChartNumberTwoDecimals(params.value)}%`,
         fontWeight: 700,
       },
       labelLayout: { moveOverlap: "shiftY" },
@@ -639,7 +666,7 @@ function buildInterestSpreadYearComparisonChartOption(input: {
   const yAxisMin = Number((minValue - padding).toFixed(2));
   const yAxisMax = Number((maxValue + padding).toFixed(2));
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", formatter: buildAxisTooltipFormatter("%") },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
     grid: { left: 56, right: 28, top: 20, bottom: 58 },
     xAxis: {
@@ -655,7 +682,7 @@ function buildInterestSpreadYearComparisonChartOption(input: {
       min: yAxisMin,
       max: yAxisMax,
       scale: true,
-      axisLabel: { formatter: "{value}%" },
+      axisLabel: { formatter: buildAxisLabelFormatter("%") },
       splitLine: { lineStyle: { type: "solid", color: designTokens.color.neutral[300] } },
     },
     series: input.series.map((series, index) => ({
@@ -670,7 +697,7 @@ function buildInterestSpreadYearComparisonChartOption(input: {
       lineStyle: { color: series.color, width: 2.6 },
       label: {
         show: true,
-        formatter: "{c}%",
+        formatter: (params: { value?: unknown }) => `${formatProductCategoryChartNumberTwoDecimals(params.value)}%`,
         color: designTokens.color.neutral[900],
         position: index === 0 ? "top" : "bottom",
         distance: 4,
@@ -700,7 +727,7 @@ function buildIncomeYearComparisonChartOption(input: {
   const range = maxValue - minValue;
   const padding = Math.max(range * 0.18, 0.5);
   return {
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", formatter: buildAxisTooltipFormatter("亿元") },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
     grid: { left: 56, right: 28, top: 20, bottom: 58 },
     xAxis: {
@@ -716,7 +743,7 @@ function buildIncomeYearComparisonChartOption(input: {
       min: Number((minValue - padding).toFixed(2)),
       max: Number((maxValue + padding).toFixed(2)),
       scale: true,
-      axisLabel: { formatter: "{value}" },
+      axisLabel: { formatter: buildAxisLabelFormatter() },
       splitLine: { lineStyle: { type: "solid", color: designTokens.color.neutral[300] } },
     },
     series: input.series.map((series, index) => ({
@@ -731,7 +758,7 @@ function buildIncomeYearComparisonChartOption(input: {
       lineStyle: { color: series.color, width: 2.6 },
       label: {
         show: true,
-        formatter: "{c}",
+        formatter: (params: { value?: unknown }) => formatProductCategoryChartNumberTwoDecimals(params.value),
         color: designTokens.color.neutral[900],
         position: index === 0 ? "top" : "bottom",
         distance: 4,
@@ -3379,8 +3406,16 @@ export default function ProductCategoryPnlPage() {
     () => selectProductCategoryInterestEarningIncomeScaleChart(trendSnapshots),
     [trendSnapshots],
   );
+  const interestEarningAssetLiabilityScaleChart = useMemo(
+    () => selectProductCategoryInterestEarningAssetLiabilityScaleChart(trendSnapshots),
+    [trendSnapshots],
+  );
   const interestSpreadChart = useMemo(
     () => selectProductCategoryInterestSpreadChart(trendSnapshots),
+    [trendSnapshots],
+  );
+  const interestEarningSpreadChart = useMemo(
+    () => selectProductCategoryInterestEarningSpreadChart(trendSnapshots),
     [trendSnapshots],
   );
   const interestSpreadYearComparisonChart = useMemo(
@@ -3389,6 +3424,14 @@ export default function ProductCategoryPnlPage() {
   );
   const cnyInterestSpreadYearComparisonChart = useMemo(
     () => selectProductCategoryInterestSpreadYearComparisonChart(interestSpreadComparisonSnapshots, "cny"),
+    [interestSpreadComparisonSnapshots],
+  );
+  const interestEarningSpreadYearComparisonChart = useMemo(
+    () => selectProductCategoryInterestEarningSpreadYearComparisonChart(interestSpreadComparisonSnapshots),
+    [interestSpreadComparisonSnapshots],
+  );
+  const cnyInterestEarningSpreadYearComparisonChart = useMemo(
+    () => selectProductCategoryInterestEarningSpreadYearComparisonChart(interestSpreadComparisonSnapshots, "cny"),
     [interestSpreadComparisonSnapshots],
   );
   const intermediateBusinessIncomeYearComparisonChart = useMemo(
@@ -3508,6 +3551,30 @@ export default function ProductCategoryPnlPage() {
         : null,
     [interestEarningIncomeScaleChart],
   );
+  const interestEarningAssetLiabilityScaleOption = useMemo(
+    () =>
+      interestEarningAssetLiabilityScaleChart
+        ? buildSingleAxisChartOption({
+            labels: interestEarningAssetLiabilityScaleChart.labels,
+            axisName: "亿元",
+            series: [
+              {
+                name: "生息资产日均额（亿元）",
+                type: "bar",
+                data: interestEarningAssetLiabilityScaleChart.interestEarningAssetScale,
+                color: designTokens.color.info[500],
+              },
+              {
+                name: "附息负债日均额（亿元）",
+                type: "bar",
+                data: interestEarningAssetLiabilityScaleChart.interestBearingLiabilityScale,
+                color: designTokens.color.warning[500],
+              },
+            ],
+          })
+        : null,
+    [interestEarningAssetLiabilityScaleChart],
+  );
   const interestSpreadOption = useMemo(
     () =>
       interestSpreadChart
@@ -3515,7 +3582,7 @@ export default function ProductCategoryPnlPage() {
             labels: interestSpreadChart.labels,
             series: [
               {
-                name: "生息资产收益率（%）",
+                name: "资产端合计收益率（%）",
                 data: interestSpreadChart.assetYield,
                 color: designTokens.color.success[600],
               },
@@ -3525,7 +3592,7 @@ export default function ProductCategoryPnlPage() {
                 color: designTokens.color.neutral[500],
               },
               {
-                name: "生息资产利差（%）",
+                name: "资产负债利差（%）",
                 data: interestSpreadChart.spread,
                 color: designTokens.color.danger[500],
               },
@@ -3533,6 +3600,32 @@ export default function ProductCategoryPnlPage() {
           })
         : null,
     [interestSpreadChart],
+  );
+  const interestEarningSpreadOption = useMemo(
+    () =>
+      interestEarningSpreadChart
+        ? buildInterestSpreadChartOption({
+            labels: interestEarningSpreadChart.labels,
+            series: [
+              {
+                name: "生息资产收益率（%）",
+                data: interestEarningSpreadChart.assetYield,
+                color: designTokens.color.success[600],
+              },
+              {
+                name: "负债端成本率（%）",
+                data: interestEarningSpreadChart.liabilityYield,
+                color: designTokens.color.neutral[500],
+              },
+              {
+                name: "生息资产负债利差（%）",
+                data: interestEarningSpreadChart.spread,
+                color: designTokens.color.danger[500],
+              },
+            ],
+          })
+        : null,
+    [interestEarningSpreadChart],
   );
   const interestSpreadYearComparisonOption = useMemo(
     () =>
@@ -3567,6 +3660,40 @@ export default function ProductCategoryPnlPage() {
           })
         : null,
     [cnyInterestSpreadYearComparisonChart],
+  );
+  const interestEarningSpreadYearComparisonOption = useMemo(
+    () =>
+      interestEarningSpreadYearComparisonChart
+        ? buildInterestSpreadYearComparisonChartOption({
+            labels: interestEarningSpreadYearComparisonChart.labels,
+            series: interestEarningSpreadYearComparisonChart.series.map((series, index) => ({
+              name: series.year,
+              data: series.spread,
+              color:
+                index === interestEarningSpreadYearComparisonChart.series.length - 1
+                  ? designTokens.color.success[600]
+                  : designTokens.color.neutral[500],
+            })),
+          })
+        : null,
+    [interestEarningSpreadYearComparisonChart],
+  );
+  const cnyInterestEarningSpreadYearComparisonOption = useMemo(
+    () =>
+      cnyInterestEarningSpreadYearComparisonChart
+        ? buildInterestSpreadYearComparisonChartOption({
+            labels: cnyInterestEarningSpreadYearComparisonChart.labels,
+            series: cnyInterestEarningSpreadYearComparisonChart.series.map((series, index) => ({
+              name: series.year,
+              data: series.spread,
+              color:
+                index === cnyInterestEarningSpreadYearComparisonChart.series.length - 1
+                  ? designTokens.color.primary[600]
+                  : designTokens.color.neutral[500],
+            })),
+          })
+        : null,
+    [cnyInterestEarningSpreadYearComparisonChart],
   );
   const intermediateBusinessIncomeYearComparisonOption = useMemo(
     () =>
@@ -4965,8 +5092,32 @@ export default function ProductCategoryPnlPage() {
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread"
               title="资产负债利差趋势图"
-              description="仅展示后端返回的资产端收益率、负债端收益率和利差字段。"
+              description="仅展示后端返回的资产端合计收益率、负债端合计收益率和资产负债利差字段。"
               option={interestSpreadOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-earning-spread"
+              title="生息资产负债利差趋势图"
+              description="按后端返回的生息资产收益率、负债端成本率和生息资产负债利差字段展示。"
+              option={interestEarningSpreadOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-earning-asset-liability-scale"
+              title="生息资产和附息负债走势图"
+              description="按产品分类 payload 的生息资产行和 liability_total 展示日均额走势，负债规模取绝对值。"
+              option={interestEarningAssetLiabilityScaleOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-earning-spread-yoy"
+              title="2年生息资产利差对比图"
+              description="按后端返回的全口径生息资产负债利差字段展示同比曲线。"
+              option={interestEarningSpreadYearComparisonOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-earning-spread-yoy-cny"
+              title="人民币口径2年生息资产利差对比图"
+              description="按后端返回的人民币口径生息资产负债利差字段展示同比曲线。"
+              option={cnyInterestEarningSpreadYearComparisonOption}
             />
             <DerivedChartPanel
               testId="product-category-derived-chart-interest-spread-yoy"

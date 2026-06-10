@@ -542,6 +542,14 @@ export function buildMockProductCategoryPnlEnvelope(
     cny_liability_yield_pct: percentMetric("1.62"),
     cny_spread_pct: percentMetric("1.02"),
   };
+  const interestEarningSpread: ProductCategoryInterestSpreadPayload = {
+    all_currency_asset_yield_pct: percentMetric("2.40"),
+    all_currency_liability_yield_pct: percentMetric("1.63"),
+    all_currency_spread_pct: percentMetric("0.77"),
+    cny_asset_yield_pct: percentMetric("2.35"),
+    cny_liability_yield_pct: percentMetric("1.62"),
+    cny_spread_pct: percentMetric("0.73"),
+  };
 
   return buildMockApiEnvelope(
     "product_category_pnl.detail",
@@ -555,6 +563,7 @@ export function buildMockProductCategoryPnlEnvelope(
       liability_total: yuanPayload.liabilityTotal,
       grand_total: yuanPayload.grandTotal,
       interest_spread: interestSpread,
+      interest_earning_spread: interestEarningSpread,
     },
     {
       basis: scenarioRate ? "scenario" : "formal",

@@ -442,7 +442,13 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     feb_asset_total = feb_monthly_payload["result"]["asset_total"]
     feb_liability_total = feb_monthly_payload["result"]["liability_total"]
     feb_grand_total = feb_monthly_payload["result"]["grand_total"]
+    feb_interest_earning_assets = next(
+        row
+        for row in feb_monthly_payload["result"]["rows"]
+        if row["category_id"] == "interest_earning_assets"
+    )
     feb_spread = feb_monthly_payload["result"]["interest_spread"]
+    feb_interest_earning_spread = feb_monthly_payload["result"]["interest_earning_spread"]
     assert feb_spread["all_currency_spread_pct"] == {
         "raw": "167.12821433",
         "display": "167.13%",
@@ -453,6 +459,17 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
         "display": "167.28%",
         "unit": "percent",
     }
+    assert Decimal(feb_interest_earning_spread["all_currency_asset_yield_pct"]["raw"]) == Decimal(
+        str(feb_interest_earning_assets["weighted_yield"])
+    ).quantize(Decimal("0.00000001"))
+    assert Decimal(feb_interest_earning_spread["all_currency_spread_pct"]["raw"]) == (
+        Decimal(feb_interest_earning_spread["all_currency_asset_yield_pct"]["raw"])
+        - Decimal(feb_interest_earning_spread["all_currency_liability_yield_pct"]["raw"])
+    )
+    assert (
+        feb_interest_earning_spread["all_currency_spread_pct"]
+        != feb_spread["all_currency_spread_pct"]
+    )
     assert Decimal(str(feb_asset_total["baseline_ftp_rate_pct"])) == Decimal("1.60")
     assert abs(
         Decimal(str(feb_grand_total["cny_net"]))
@@ -485,8 +502,17 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch, seed_w
     baseline_asset_total = feb_monthly_payload["result"]["asset_total"]
     assert Decimal(str(scenario_asset_total["cny_ftp"])) != Decimal(str(baseline_asset_total["cny_ftp"]))
     scenario_spread = scenario_payload["result"]["interest_spread"]
+    scenario_interest_earning_spread = scenario_payload["result"]["interest_earning_spread"]
     assert scenario_spread["all_currency_spread_pct"] == feb_spread["all_currency_spread_pct"]
     assert scenario_spread["cny_spread_pct"] == feb_spread["cny_spread_pct"]
+    assert (
+        scenario_interest_earning_spread["all_currency_spread_pct"]
+        == feb_interest_earning_spread["all_currency_spread_pct"]
+    )
+    assert (
+        scenario_interest_earning_spread["cny_spread_pct"]
+        == feb_interest_earning_spread["cny_spread_pct"]
+    )
     get_settings.cache_clear()
 
 
@@ -2657,6 +2683,7 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
     env = pcs.product_category_pnl_envelope(str(duckdb_path), anchor, "ytd")
     ref_grand = float(env["result"]["grand_total"]["business_net_income"])
     ref_interest_spread = env["result"]["interest_spread"]
+    ref_interest_earning_spread = env["result"]["interest_earning_spread"]
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -2689,5 +2716,23 @@ def test_resolve_product_category_ytd_payload_canonical_fallback_matches_persist
     assert resolved.interest_spread.cny_spread_pct is not None
     assert resolved.interest_spread.cny_spread_pct.raw == Decimal(ref_interest_spread["cny_spread_pct"]["raw"])
     assert resolved.interest_spread.cny_spread_pct.display == ref_interest_spread["cny_spread_pct"]["display"]
+    assert resolved.interest_earning_spread.all_currency_spread_pct is not None
+    assert (
+        resolved.interest_earning_spread.all_currency_spread_pct.raw
+        == Decimal(ref_interest_earning_spread["all_currency_spread_pct"]["raw"])
+    )
+    assert (
+        resolved.interest_earning_spread.all_currency_spread_pct.display
+        == ref_interest_earning_spread["all_currency_spread_pct"]["display"]
+    )
+    assert resolved.interest_earning_spread.cny_spread_pct is not None
+    assert (
+        resolved.interest_earning_spread.cny_spread_pct.raw
+        == Decimal(ref_interest_earning_spread["cny_spread_pct"]["raw"])
+    )
+    assert (
+        resolved.interest_earning_spread.cny_spread_pct.display
+        == ref_interest_earning_spread["cny_spread_pct"]["display"]
+    )
 
     get_settings.cache_clear()

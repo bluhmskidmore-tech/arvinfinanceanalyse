@@ -67,6 +67,9 @@ class ProductCategoryPnlPayload(BaseModel):
     interest_spread: ProductCategoryInterestSpreadPayload = Field(
         default_factory=ProductCategoryInterestSpreadPayload
     )
+    interest_earning_spread: ProductCategoryInterestSpreadPayload = Field(
+        default_factory=ProductCategoryInterestSpreadPayload
+    )
 
 
 class ProductCategoryAttributionPoint(BaseModel):
