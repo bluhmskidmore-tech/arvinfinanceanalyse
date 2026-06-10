@@ -112,6 +112,7 @@ def _refresh_source_preview_cache(
                 governance_dir=str(governance_path),
                 ingest_batch_id=selected_ingest_batch_id,
                 source_families=list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
+                archive_root=str(settings.local_archive_path),
             )
             try:
                 cleanup_preview_backups(str(duckdb_file))

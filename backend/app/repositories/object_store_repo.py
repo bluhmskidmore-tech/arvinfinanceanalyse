@@ -83,7 +83,7 @@ class ObjectStoreRepository:
             raise NotImplementedError("Phase 1 only implements local archive mode.")
 
         effective_ingest_batch_id = ingest_batch_id or self._new_archive_batch_id()
-        archive_root = Path(self.local_archive_path)
+        archive_root = Path(self.local_archive_path).resolve()
         target_dir = archive_root / self._safe_component(source_name)
         files_dir = target_dir / "files"
         files_dir.mkdir(parents=True, exist_ok=True)
@@ -114,7 +114,7 @@ class ObjectStoreRepository:
             raise NotImplementedError("Phase 1/2 thin slice only implements local archive mode.")
 
         effective_ingest_batch_id = ingest_batch_id or self._new_archive_batch_id()
-        archive_root = Path(self.local_archive_path)
+        archive_root = Path(self.local_archive_path).resolve()
         target_dir = archive_root / self._safe_component(source_name)
         files_dir = target_dir / "files"
         files_dir.mkdir(parents=True, exist_ok=True)
@@ -155,7 +155,7 @@ class ObjectStoreRepository:
     def read_archived_bytes(self, archived_path: str) -> bytes:
         if self.mode != "local":
             raise NotImplementedError("read_archived_bytes is only implemented for local archive mode.")
-        path = Path(archived_path)
+        path = self._resolve_archived_path(archived_path)
         if not path.is_file():
             raise FileNotFoundError(str(path))
         return path.read_bytes()
@@ -165,8 +165,15 @@ class ObjectStoreRepository:
         """Yield a readable binary stream for an archived object (local mode). Caller must not use the handle outside the with-block."""
         if self.mode != "local":
             raise NotImplementedError("open_archived_binary is only implemented for local archive mode.")
-        path = Path(archived_path)
+        path = self._resolve_archived_path(archived_path)
         if not path.is_file():
             raise FileNotFoundError(str(path))
         with path.open("rb") as handle:
             yield handle
+
+    def _resolve_archived_path(self, archived_path: str) -> Path:
+        archive_root = Path(self.local_archive_path).resolve()
+        path = Path(archived_path).resolve()
+        if path != archive_root and archive_root not in path.parents:
+            raise ValueError(f"archived_path is outside local archive root: {path}")
+        return path

@@ -1750,6 +1750,61 @@ def test_materialize_ignores_manifest_rows_whose_archived_paths_no_longer_exist(
     assert summaries[0]["source_version"] == "sv_valid"
 
 
+def test_materialize_task_rejects_manifest_archived_path_outside_archive_root(tmp_path, monkeypatch):
+    materialize_module = load_module(
+        "backend.app.tasks.materialize",
+        "backend/app/tasks/materialize.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    data_root = tmp_path / "data_input"
+    outside_dir = tmp_path / "outside"
+    data_root.mkdir(parents=True, exist_ok=True)
+    outside_dir.mkdir(parents=True, exist_ok=True)
+    poisoned_file = outside_dir / "TYWLSHOW-20251231.xls"
+    poisoned_file.write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+
+    repo = governance_module.GovernanceRepository(base_dir=governance_dir)
+    repo.append(
+        governance_module.SOURCE_MANIFEST_STREAM,
+        {
+            "ingest_batch_id": "batch-poisoned",
+            "created_at": "2026-04-10T00:00:01Z",
+            "source_family": "tyw",
+            "report_date": "2025-12-31",
+            "source_file": "TYWLSHOW-20251231.xls",
+            "source_version": "sv_poisoned",
+            "archived_path": str(poisoned_file),
+            "status": "completed",
+        },
+    )
+
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    get_settings.cache_clear()
+    with pytest.raises(ValueError, match="outside archive root"):
+        materialize_module.materialize_cache_view.fn(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            data_root=str(data_root),
+        )
+
+    build_runs = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    assert any(record["status"] == "failed" for record in build_runs)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        assert conn.execute("select status from phase1_materialize_runs").fetchone()[0] == "failed"
+    finally:
+        conn.close()
+    get_settings.cache_clear()
+
+
 def test_write_preview_tables_preserves_original_schema_bootstrap_error(tmp_path, monkeypatch):
     preview_module = load_module(
         "backend.app.repositories.source_preview_repo",

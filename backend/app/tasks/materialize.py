@@ -97,6 +97,7 @@ def _materialize_cache_view(
                     governance_dir=str(governance_path),
                     data_root=str(resolved_data_root),
                     ingest_batch_id=ingest_batch_id,
+                    archive_root=str(settings.local_archive_path),
                 )
                 source_version = "__".join(
                     str(summary["source_version"])

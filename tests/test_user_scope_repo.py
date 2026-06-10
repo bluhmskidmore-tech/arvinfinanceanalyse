@@ -37,3 +37,58 @@ def test_user_scope_repo_uses_fast_postgres_connect_timeout(monkeypatch) -> None
     assert captured["dsn"] == "postgresql+psycopg://moss:moss@127.0.0.1:55432/moss"
     assert captured["future"] is True
     assert captured["connect_args"] == {"connect_timeout": 1}
+
+
+def test_scoped_grant_does_not_authorize_unscoped_request(tmp_path) -> None:
+    repo = user_scope_repo_module.UserScopeRepository(f"sqlite:///{(tmp_path / 'scope.db').as_posix()}")
+    repo.grant_scope(
+        user_id="portfolio-user",
+        role=None,
+        resource="formal_pnl",
+        action="read",
+        scope_key="portfolio_id",
+        scope_value="P001",
+    )
+
+    assert (
+        repo.has_permission(
+            user_id="portfolio-user",
+            role=None,
+            resource="formal_pnl",
+            action="read",
+        )
+        is False
+    )
+    assert (
+        repo.has_permission(
+            user_id="portfolio-user",
+            role=None,
+            resource="formal_pnl",
+            action="read",
+            scope_key="portfolio_id",
+            scope_value="P001",
+        )
+        is True
+    )
+
+
+def test_global_grant_authorizes_scoped_request(tmp_path) -> None:
+    repo = user_scope_repo_module.UserScopeRepository(f"sqlite:///{(tmp_path / 'global.db').as_posix()}")
+    repo.grant_scope(
+        user_id="global-user",
+        role=None,
+        resource="formal_pnl",
+        action="read",
+    )
+
+    assert (
+        repo.has_permission(
+            user_id="global-user",
+            role=None,
+            resource="formal_pnl",
+            action="read",
+            scope_key="portfolio_id",
+            scope_value="P001",
+        )
+        is True
+    )

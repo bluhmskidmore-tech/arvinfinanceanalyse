@@ -93,22 +93,20 @@ class UserScopeRepository:
                 )
             else:
                 stmt = stmt.where(or_(UserRoleScope.role.is_(None), UserRoleScope.role == ""))
-            if normalized_scope_key:
+            global_scope = (
+                or_(UserRoleScope.scope_key.is_(None), UserRoleScope.scope_key == ""),
+                or_(UserRoleScope.scope_value.is_(None), UserRoleScope.scope_value == ""),
+            )
+            if normalized_scope_key or normalized_scope_value:
                 stmt = stmt.where(
                     or_(
-                        UserRoleScope.scope_key.is_(None),
-                        UserRoleScope.scope_key == "",
-                        UserRoleScope.scope_key == normalized_scope_key,
+                        global_scope[0] & global_scope[1],
+                        (UserRoleScope.scope_key == normalized_scope_key)
+                        & (UserRoleScope.scope_value == normalized_scope_value),
                     )
                 )
-            if normalized_scope_value:
-                stmt = stmt.where(
-                    or_(
-                        UserRoleScope.scope_value.is_(None),
-                        UserRoleScope.scope_value == "",
-                        UserRoleScope.scope_value == normalized_scope_value,
-                    )
-                )
+            else:
+                stmt = stmt.where(global_scope[0]).where(global_scope[1])
             return session.execute(stmt).scalars().first() is not None
 
     def list_scopes_for_user(self, *, user_id: str) -> list[UserScopeGrant]:

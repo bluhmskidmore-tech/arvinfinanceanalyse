@@ -96,10 +96,23 @@ def _header_trust_enabled() -> bool:
 
 def validate_auth_startup_guardrails(settings: Settings) -> None:
     environment = str(settings.environment).strip().lower()
-    if environment != "development" and _header_trust_enabled():
+    if environment == "development":
+        return
+
+    if _header_trust_enabled():
         raise RuntimeError(
             f"{environment} environment cannot trust X-User-Id/X-User-Role headers "
             f"via {ROLE_HEADER_TRUST_ENV}; only development can enable this trust switch"
+        )
+    if os.environ.get("MOSS_USER_ID", "").strip() or os.environ.get("MOSS_USER_ROLE", "").strip():
+        raise RuntimeError(
+            f"{environment} environment cannot use MOSS_USER_ID/MOSS_USER_ROLE as an identity source; "
+            "configure a verified gateway, session, token, or API-key identity provider instead"
+        )
+    cors_origins = [origin.strip() for origin in str(settings.cors_origins or "").split(",") if origin.strip()]
+    if "*" in cors_origins:
+        raise RuntimeError(
+            f"{environment} environment cannot use wildcard CORS origins with credentialed API responses"
         )
 
 

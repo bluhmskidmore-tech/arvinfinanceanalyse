@@ -66,6 +66,26 @@ def test_startup_guardrails_reject_trusted_headers_outside_development(monkeypat
         validate_auth_startup_guardrails(Settings(environment="staging", _env_file=None))
 
 
+def test_startup_guardrails_reject_env_identity_outside_development(monkeypatch):
+    monkeypatch.setenv("MOSS_USER_ID", "prod-spoof-user")
+    monkeypatch.setenv("MOSS_USER_ROLE", "admin")
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+
+    with pytest.raises(RuntimeError, match="production.*MOSS_USER_ID|MOSS_USER_ID.*production"):
+        validate_auth_startup_guardrails(Settings(environment="production", _env_file=None))
+
+
+def test_startup_guardrails_reject_wildcard_cors_outside_development(monkeypatch):
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
+    monkeypatch.delenv("MOSS_USER_ROLE", raising=False)
+    monkeypatch.delenv(ROLE_HEADER_TRUST_ENV, raising=False)
+
+    with pytest.raises(RuntimeError, match="production.*CORS|CORS.*production"):
+        validate_auth_startup_guardrails(
+            Settings(environment="production", cors_origins="https://app.example,*", _env_file=None)
+        )
+
+
 def test_ensure_user_allowed_checks_scope_store_for_development_fallback_read(monkeypatch):
     class BrokenRepo:
         def __init__(self, _dsn: str):

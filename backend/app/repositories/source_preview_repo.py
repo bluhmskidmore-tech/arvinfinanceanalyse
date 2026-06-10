@@ -72,12 +72,14 @@ def materialize_source_previews(
     data_root: str | None = None,
     ingest_batch_id: str | None = None,
     source_families: list[str] | None = None,
+    archive_root: str | None = None,
 ) -> list[dict[str, object]]:
     manifest_rows = _load_manifest_rows(governance_dir) if governance_dir is not None else []
     selected = _select_manifest_rows(
         manifest_rows,
         ingest_batch_id=ingest_batch_id,
         source_families=source_families,
+        archive_root=archive_root,
     )
     summaries: list[dict[str, object]] = []
     row_records: list[dict[str, object]] = []
@@ -653,13 +655,15 @@ def _select_manifest_rows(
     manifest_rows: list[dict[str, object]],
     ingest_batch_id: str | None = None,
     source_families: list[str] | None = None,
+    archive_root: str | None = None,
 ) -> list[dict[str, object]]:
+    resolved_archive_root = Path(archive_root).resolve() if archive_root else None
     eligible_rows = [
         row
         for row in manifest_rows
         if str(row.get("status", "")) in MANIFEST_ELIGIBLE_STATUSES
         and row.get("archived_path")
-        and Path(str(row["archived_path"])).exists()
+        and _is_eligible_archived_path(str(row["archived_path"]), resolved_archive_root)
     ]
     if source_families is not None:
         allowed = {str(family) for family in source_families}
@@ -695,6 +699,17 @@ def _select_manifest_rows(
             )
         )
     return latest_rows
+
+
+def _is_eligible_archived_path(archived_path: str, archive_root: Path | None) -> bool:
+    path = Path(archived_path).resolve()
+    if not path.exists():
+        return False
+    if archive_root is None:
+        return True
+    if path == archive_root or archive_root in path.parents:
+        return True
+    raise ValueError(f"manifest archived_path is outside archive root: {path}")
 
 
 def _summarize_rows(
