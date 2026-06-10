@@ -2046,6 +2046,13 @@ export function BondAnalyticsInstitutionalCockpit({
               data-testid="bond-analysis-holdings-raw-grid"
               className={styles.holdingsTable}
             >
+              <div
+                data-testid="bond-analysis-holdings-scroll-cue"
+                className={styles.holdingsScrollCue}
+                aria-hidden="true"
+              >
+                <span />
+              </div>
               <div className={styles.holdingsTableHeader}>
                 <span>债券</span>
                 <span>券种</span>
@@ -2115,13 +2122,31 @@ export function BondAnalyticsInstitutionalCockpit({
           >
             <div className={styles.footerMetricPanel}>
               <strong>{unrealizedPnlDisplay}</strong>
-              <span>{Number.isFinite(unrealizedPnlMomPct) ? `较上期 ${formatSignedPct(unrealizedPnlMomPct)}` : "收益走势明细待读面返回"}</span>
+              <span>{Number.isFinite(unrealizedPnlMomPct) ? `较上期 ${formatSignedPct(unrealizedPnlMomPct)}` : "收益时序证据待返回"}</span>
+              <div className={styles.footerReturnLedger}>
+                <div>
+                  <span>估值收益</span>
+                  <strong>{unrealizedPnlDisplay}</strong>
+                </div>
+                <div>
+                  <span>较上期</span>
+                  <strong>{Number.isFinite(unrealizedPnlMomPct) ? formatSignedPct(unrealizedPnlMomPct) : "—"}</strong>
+                </div>
+                <div>
+                  <span>收益时序</span>
+                  <strong>待返回</strong>
+                </div>
+                <div>
+                  <span>处理边界</span>
+                  <strong>不补造趋势</strong>
+                </div>
+              </div>
               <div data-testid="bond-analysis-footer-primary-evidence" className={styles.footerEvidenceBlock}>
                 <div data-testid="bond-analysis-return-trend-boundary" className={styles.footerEvidenceNote}>
-                  未返回收益时序明细时不绘制趋势占位。
+                  收益时序未返回：不绘制趋势占位。
                 </div>
                 <div className={styles.footerActionBar}>
-                  <span>收益证据缺口仍保留在当前读面上下文中。</span>
+                  <span>收益证据缺口保留在当前读面上下文中。</span>
                   <Button size="small" type="text" data-testid="bond-analysis-home-open-return-decomposition" onClick={() => onOpenModuleDetail?.("return-decomposition")}>
                     打开收益拆解
                   </Button>

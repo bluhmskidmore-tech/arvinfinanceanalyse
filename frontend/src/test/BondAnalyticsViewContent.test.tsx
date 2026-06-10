@@ -267,6 +267,10 @@ describe("BondAnalyticsViewContent", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(toolbar.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(overview.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(detail).toHaveTextContent("复核入口");
+    expect(detail).toHaveTextContent("下钻证据与参数");
+    expect(detail).toHaveTextContent("不在底部生成新的方向性结论");
+    expect(detail).not.toHaveTextContent("分析师解读");
     await waitFor(() => {
       expect(latestOverviewProps?.actionAttributionResult).toEqual(
         expect.objectContaining({

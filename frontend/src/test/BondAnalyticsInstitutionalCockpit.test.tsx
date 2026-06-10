@@ -6,6 +6,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  __esModule: true,
+  default: () => <div data-testid="bond-analytics-echarts-stub" />,
+}));
+
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { BondTopHoldingItem, DV01RiskPayload, Numeric, ResultMeta } from "../api/contracts";
 import { BondAnalyticsInstitutionalCockpit } from "../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit";
@@ -347,6 +352,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     });
 
     const rawGrid = within(holdings).getByTestId("bond-analysis-holdings-raw-grid");
+    expect(within(rawGrid).getByTestId("bond-analysis-holdings-scroll-cue")).toBeInTheDocument();
     const row = within(rawGrid).getByText("NULL-001").parentElement?.parentElement;
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(5);
@@ -1149,7 +1155,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const attributionPanelRule = cssRuleBody(".referenceAttributionPanel");
     const attributionButtonRule = cssRuleBody(".referenceAttributionPanel :global(.ant-btn)");
 
-    expect(analysisRule).toContain("grid-template-columns: minmax(0, 1fr) 360px");
+    expect(analysisRule).toContain("grid-template-columns: minmax(0, 1fr) 372px");
     expect(analysisRule).toContain('"curve evidence"');
     expect(analysisRule).toContain('"attribution attribution"');
     expect(analysisRule).toContain("gap: 8px");
@@ -1275,7 +1281,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     expect(summary).toHaveTextContent("收益证据");
     expect(within(dashboard).getByTestId("bond-analysis-return-trend-boundary")).toHaveTextContent(
-      "未返回收益时序明细时不绘制趋势占位",
+      "收益时序未返回：不绘制趋势占位",
     );
     expect(summary).not.toHaveTextContent("健康");
     expect(summary).not.toHaveTextContent("稳定");
@@ -1297,6 +1303,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const footerMetricStrongRule = cssRuleBody(".footerMetricPanel strong");
     const holdingsStripRule = cssRuleBody(".holdingsEvidenceStrip");
     const holdingsTableRule = cssRuleBody(".holdingsTable");
+    const holdingsScrollCueRule = cssRuleBody(".holdingsScrollCue");
+    const holdingsScrollCueSpanRule = cssRuleBody(".holdingsScrollCue span");
     const holdingsTableRowsRule = cssRuleBody(".holdingsTableRows");
     const holdingsTableHeaderRule = cssRuleBody(".holdingsTableHeader");
     const holdingsTableHeaderFirstCellRule = cssRuleBody(".holdingsTableHeader span:first-child");
@@ -1321,12 +1329,14 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(donutRule).toContain("width: 116px");
     expect(footerGridRule).toContain("grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr)");
     expect(footerGridRule).toContain("gap: 1px");
+    expect(footerGridRule).toContain("align-items: start");
     expect(footerGridRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(footerCardRule).toContain("box-shadow: none !important");
     expect(footerPrimaryCardRule).toContain("min-width: 0");
     expect(footerSupportStackRule).toContain("gap: 1px");
     expect(footerSupportStackRule).toContain("background: var(--moss-color-neutral-200)");
-    expect(footerEvidenceBlockRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
+    expect(footerEvidenceBlockRule).toContain("gap: 6px");
+    expect(footerEvidenceBlockRule).not.toContain("border:");
     expect(footerActionBarRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(COCKPIT_CSS).toContain(".referenceFooterGrid :global(.ant-card-head)");
     expect(COCKPIT_CSS).toContain("min-height: 32px");
@@ -1334,7 +1344,12 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(holdingsStripRule).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
     expect(holdingsStripRule).toContain("border-bottom: 1px solid var(--moss-color-neutral-200)");
     expect(holdingsTableRule).toContain("overflow-x: auto");
+    expect(holdingsTableRule).toContain("scrollbar-gutter: stable");
     expect(holdingsTableRule).toContain("box-shadow: inset -18px 0 18px -22px rgba(31, 41, 55, 0.48)");
+    expect(holdingsScrollCueRule).toContain("position: sticky");
+    expect(holdingsScrollCueRule).toContain("right: 8px");
+    expect(holdingsScrollCueRule).toContain("pointer-events: none");
+    expect(holdingsScrollCueSpanRule).toContain("transform: rotate(45deg)");
     expect(holdingsTableRowsRule).toContain("min-height: 88px");
     expect(holdingsTableHeaderRule).toContain("padding: 8px 12px");
     expect(holdingsTableHeaderFirstCellRule).toContain("position: sticky");
@@ -1357,6 +1372,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(sideStackCardRule).toContain("box-shadow: none !important");
     expect(sideHeaderRule).toContain("border-left: 4px solid var(--moss-color-primary-700)");
     expect(numericCellRule).toContain("text-align: right");
+    expect(footerEvidenceNoteRule).toContain("border: 1px dashed var(--moss-color-neutral-200)");
     expect(footerEvidenceNoteRule).toContain("background: var(--moss-color-neutral-50)");
     expect(COCKPIT_CSS).not.toContain(".footerSparkline");
   });
@@ -1378,6 +1394,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(summaryCard).toContainElement(primaryEvidence);
     expect(primaryEvidence).toContainElement(trendBoundary);
     expect(trendBoundary).toHaveTextContent("不绘制趋势占位");
+    expect(summaryCard).toHaveTextContent("收益时序");
+    expect(summaryCard).toHaveTextContent("不补造趋势");
     expect(actionAttributionCard).toHaveTextContent("动作归因");
     expect(actionAttributionCard).toHaveTextContent("市值变动与 DV01 变动用于核对动作归因字段返回范围。");
     expect(riskGuardrails).toHaveTextContent("只列已返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。");
@@ -1391,17 +1409,26 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const footerGridRule = cssRuleBody(".referenceFooterGrid");
     const footerSupportStackRule = cssRuleBody(".footerSupportStack");
     const footerEvidenceBlockRule = cssRuleBody(".footerEvidenceBlock");
+    const footerReturnLedgerRule = cssRuleBody(".footerReturnLedger");
+    const footerReturnLedgerSecondRule = cssRuleBody(".footerReturnLedger div:nth-child(2n)");
+    const footerReturnLedgerLowerRule = cssRuleBody(".footerReturnLedger div:nth-child(n + 3)");
     const footerActionBarRule = cssRuleBody(".footerActionBar");
     const footerRiskRowRule = cssRuleBody(".footerRiskRow");
 
     expect(footerGridRule).toContain("display: grid");
     expect(footerGridRule).toContain("grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr)");
+    expect(footerGridRule).toContain("align-items: start");
     expect(footerSupportStackRule).toContain("display: grid");
     expect(footerSupportStackRule).toContain("gap: 1px");
     expect(footerSupportStackRule).toContain("min-width: 0");
     expect(footerEvidenceBlockRule).toContain("display: grid");
-    expect(footerEvidenceBlockRule).toContain("gap: 8px");
-    expect(footerEvidenceBlockRule).toContain("border: 1px solid var(--moss-color-neutral-100)");
+    expect(footerEvidenceBlockRule).toContain("gap: 6px");
+    expect(footerEvidenceBlockRule).toContain("min-width: 0");
+    expect(footerEvidenceBlockRule).not.toContain("border:");
+    expect(footerReturnLedgerRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(footerReturnLedgerRule).toContain("background: var(--moss-color-neutral-50)");
+    expect(footerReturnLedgerSecondRule).toContain("border-left: 1px solid var(--moss-color-neutral-100)");
+    expect(footerReturnLedgerLowerRule).toContain("border-top: 1px solid var(--moss-color-neutral-100)");
     expect(footerActionBarRule).toContain("display: grid");
     expect(footerActionBarRule).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(footerActionBarRule).toContain("align-items: center");

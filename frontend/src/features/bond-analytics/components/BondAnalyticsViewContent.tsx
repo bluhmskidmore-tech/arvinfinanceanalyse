@@ -384,17 +384,17 @@ export function BondAnalyticsViewContent() {
 
       <details
         data-testid="bond-analysis-detail-drilldown"
-        className="dashboard-detail-drilldown dashboard-progressive-disclosure"
+        className={`dashboard-detail-drilldown dashboard-progressive-disclosure ${styles.detailDrilldown}`}
         open={isDetailDrilldownOpen}
         onToggle={(event) => setIsDetailDrilldownOpen(event.currentTarget.open)}
       >
-        <summary className="dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary">
+        <summary className={`dashboard-detail-drilldown__header dashboard-progressive-disclosure__summary ${styles.detailDrilldownSummary}`}>
           <div className="dashboard-home-section-heading">
-            <span className="dashboard-home-section-eyebrow">下钻复核区</span>
-            <h2 className="dashboard-detail-drilldown__title">分析明细</h2>
+            <span className="dashboard-home-section-eyebrow">复核入口</span>
+            <h2 className="dashboard-detail-drilldown__title">下钻证据与参数</h2>
           </div>
-          <span className="dashboard-progressive-disclosure__description">
-            展开后查看动作归因、收益拆解、信用利差、重仓券和组合头条。
+          <span className={`dashboard-progressive-disclosure__description ${styles.detailDrilldownDescription}`}>
+            展开后核对动作归因、收益拆解、信用利差、重仓券和组合头条；不在底部生成新的方向性结论。
           </span>
           <span className="dashboard-progressive-disclosure__cue">展开</span>
         </summary>
