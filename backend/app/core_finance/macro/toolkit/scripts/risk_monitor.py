@@ -366,6 +366,12 @@ def main():
 
     # 冷静期状态
     if monitor.in_cooling_period():
+        monitor._save_state()
+        monitor._log_event(
+            'DAILY_CHECK',
+            'ALL',
+            f"active_positions={len(active)}; status=cooling; final_signal={signal_path.name}",
+        )
         print(f"\n[冷静期] 当前处于冷静期，至 {monitor.state['cooling_until']}")
         print("  建议：等待冷静期结束后再开仓")
         return
@@ -379,6 +385,13 @@ def main():
     else:
         print("\n  暂无持仓入场价记录")
         print("  开仓时调用: monitor.record_entry('T', 入场价格)")
+
+    monitor._save_state()
+    monitor._log_event(
+        'DAILY_CHECK',
+        'ALL',
+        f"active_positions={len(active)}; status=observed; final_signal={signal_path.name}",
+    )
 
     # 打印历史日志（最近5条）
     if LOG_FILE.exists():

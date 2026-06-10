@@ -26,6 +26,7 @@ from backend.app.repositories.tushare_adapter import (  # noqa: E402
     resolve_tushare_token_with_settings_fallback,
 )
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text  # noqa: E402
+from backend.app.tasks.broker import register_actor_once  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -769,6 +770,13 @@ def run_commodity_daily_ingest(
         "rule_version": RULE_VERSION,
         "table": "fact_commodity_futures_daily",
     }
+
+
+run_commodity_daily_ingest_task = register_actor_once(
+    "run_commodity_daily_ingest",
+    run_commodity_daily_ingest,
+    time_limit_ms=3_600_000,
+)
 
 
 def main() -> None:

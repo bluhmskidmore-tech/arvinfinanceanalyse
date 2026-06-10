@@ -666,6 +666,70 @@ def test_signal_aggregator_dates_final_signal_to_latest_input_snapshot(monkeypat
     assert result["日期"] == "2026-06-01"
 
 
+def test_risk_monitor_main_writes_risk_state_and_risk_log_when_final_signal_exists(tmp_path, monkeypatch) -> None:
+    script = get_toolkit_script("risk_monitor")
+    spec = importlib.util.spec_from_file_location("_legacy_risk_monitor", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    output_dir = tmp_path / "macro_toolkit_output"
+    output_dir.mkdir()
+    state_path = output_dir / "risk_state.csv"
+    log_path = output_dir / "risk_log.csv"
+    (output_dir / "final_signal.csv").write_text(
+        "品种,日期,最终信号,仓位比例\nT,2026-06-01,多,0.25\n",
+        encoding="utf-8-sig",
+    )
+    monkeypatch.setattr(legacy, "ROOT", output_dir)
+    monkeypatch.setattr(legacy, "STATE_FILE", state_path)
+    monkeypatch.setattr(legacy, "LOG_FILE", log_path)
+
+    legacy.main()
+
+    assert state_path.exists()
+    assert log_path.exists()
+    state = pd.read_csv(state_path, encoding="utf-8-sig")
+    log = pd.read_csv(log_path, encoding="utf-8-sig")
+    assert state["peak_value"].iloc[-1] == 1_000_000.0
+    assert log["event_type"].iloc[-1] == "DAILY_CHECK"
+    assert log["symbol"].iloc[-1] == "ALL"
+    assert "active_positions=1" in log["detail"].iloc[-1]
+
+
+def test_cta_trend_main_writes_cta_results_csv_to_output_dir(tmp_path, monkeypatch) -> None:
+    script = get_toolkit_script("cta_trend_cn")
+    spec = importlib.util.spec_from_file_location("_legacy_cta_trend_cn", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    output_dir = tmp_path / "macro_toolkit_output"
+    asset_dir = output_dir / "bond_macro_report_assets"
+    output_dir.mkdir()
+    asset_dir.mkdir()
+    dates = pd.date_range("2026-01-01", periods=90, freq="D")
+    prices = pd.DataFrame(
+        {
+            "hs300": [4000 + idx for idx in range(len(dates))],
+            "gold": [500 - idx * 0.5 for idx in range(len(dates))],
+        },
+        index=dates,
+    )
+    monkeypatch.setattr(legacy, "ROOT", output_dir)
+    monkeypatch.setattr(legacy, "ASSET_DIR", asset_dir)
+    monkeypatch.setattr(legacy, "load_prices", lambda: prices)
+    monkeypatch.setattr(legacy, "plot_signals", lambda _prices, _signals: asset_dir / "cta_signals.png")
+
+    legacy.main()
+
+    result_path = output_dir / "cta_results.csv"
+    assert result_path.exists()
+    result = pd.read_csv(result_path, encoding="utf-8-sig")
+    assert result["资产"].tolist() == ["沪深300", "黄金"]
+    assert "合成信号" in result.columns
+
+
 def test_signal_aggregator_uses_merrill_snapshot_date_when_filters_are_missing(monkeypatch) -> None:
     script = get_toolkit_script("signal_aggregator")
     spec = importlib.util.spec_from_file_location("_legacy_signal_aggregator_merrill_date", script.path)
@@ -3815,6 +3879,67 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
     assert "ErrorCode" in payload["stdout"]
 
 
+def test_macro_toolkit_run_script_passes_configured_output_dir_to_subprocess(tmp_path, monkeypatch) -> None:
+    requested_output_dir = tmp_path / "requested_output"
+    inherited_output_dir = tmp_path / "inherited_output"
+    requested_output_dir.mkdir()
+    inherited_output_dir.mkdir()
+    probe_script = tmp_path / "probe_cta_script.py"
+    probe_script.write_text("", encoding="utf-8")
+    fake_script = SimpleNamespace(
+        name="cta_trend_cn",
+        filename="cta_trend_cn.py",
+        group="allocation",
+        default_data_sources=(),
+        optional_dependencies=(),
+        notes="",
+        path=probe_script,
+    )
+    calls: list[str] = []
+
+    def fake_get_toolkit_script(name: str):
+        calls.append(name)
+        return fake_script
+
+    monkeypatch.setenv("MOSS_MACRO_TOOLKIT_OUTPUT_DIR", str(inherited_output_dir))
+    monkeypatch.setattr(macro_toolkit_service, "get_toolkit_script", fake_get_toolkit_script)
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_script_payload",
+        lambda *_args, **_kwargs: {"name": "cta_trend_cn"},
+    )
+    captured_env: dict[str, str] = {}
+
+    def fake_subprocess_run(_command, *, cwd, env, capture_output, text, timeout, check):
+        assert cwd == str(macro_toolkit_service.TOOLKIT_ROOT)
+        assert capture_output is True
+        assert text is True
+        assert timeout == 5
+        assert check is False
+        captured_env.update(env)
+        Path(env["MOSS_MACRO_TOOLKIT_OUTPUT_DIR"], "cta_results.csv").write_text(
+            "date,value\n2026-06-01,1\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(macro_toolkit_service.subprocess, "run", fake_subprocess_run)
+
+    result = macro_toolkit_service.run_macro_toolkit_script(
+        name="cta_trend_cn",
+        argv=[],
+        timeout_seconds=5,
+        output_dir=requested_output_dir,
+    )
+
+    assert result["status"] == "completed", result["stderr"]
+    assert calls == ["cta_trend_cn"]
+    assert captured_env["MOSS_MACRO_TOOLKIT_OUTPUT_DIR"] == str(requested_output_dir.resolve())
+    assert (requested_output_dir / "cta_results.csv").read_text(encoding="utf-8") == "date,value\n2026-06-01,1\n"
+    assert not (inherited_output_dir / "cta_results.csv").exists()
+    assert [item["name"] for item in result["output_files"]] == ["cta_results.csv"]
+
+
 def test_macro_toolkit_script_chain_dry_run_reports_manifest_without_executing(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -4011,6 +4136,11 @@ def test_macro_toolkit_script_chain_manual_run_reconciles_expected_outputs(tmp_p
     assert dcc_receipt["status"] == "completed"
     assert dcc_receipt["missing_outputs_after"] == ["dcc_latest.csv", "dcc_results.csv"]
     assert dcc_receipt["degraded_reason"] == "missing_expected_outputs_after_run"
+    assert dcc_receipt["blocker"] == {
+        "type": "missing_expected_outputs_after_run",
+        "script_name": "dcc_garch_cn",
+        "missing_outputs": ["dcc_latest.csv", "dcc_results.csv"],
+    }
     assert dcc_receipt["data_asof"] is None
     assert dcc_receipt["generated_at"]
     assert dcc_receipt["runtime_endpoint"] == "/ui/macro/toolkit/scripts/run-chain"

@@ -186,11 +186,14 @@ def run_macro_toolkit_script(
     output_dir: str | Path = OUTPUT_DIR,
 ) -> dict[str, object]:
     script = get_toolkit_script(name)
+    resolved_output_dir = Path(output_dir).resolve()
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     existing_python_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in (str(TOOLKIT_ROOT), str(PROJECT_ROOT), existing_python_path) if part
     )
+    env["MOSS_MACRO_TOOLKIT_OUTPUT_DIR"] = str(resolved_output_dir)
     try:
         completed = subprocess.run(
             [sys.executable, str(script.path), *argv],
@@ -1980,6 +1983,7 @@ def _run_receipt(
     outputs = output_files(output_dir)
     output_names = {str(item["name"]) for item in outputs}
     missing_outputs_after = [name for name in expected_outputs if name not in output_names]
+    degraded_reason = _macro_run_degraded_reason(status=str(result.get("status") or "unknown"), missing_outputs=missing_outputs_after)
     return {
         "order": int(step["order"]),
         "chain_id": chain_id,
@@ -1989,7 +1993,12 @@ def _run_receipt(
         "expected_outputs": expected_outputs,
         "produced_outputs": sorted(name for name in expected_outputs if name in output_names),
         "missing_outputs_after": missing_outputs_after,
-        "degraded_reason": _macro_run_degraded_reason(status=str(result.get("status") or "unknown"), missing_outputs=missing_outputs_after),
+        "degraded_reason": degraded_reason,
+        "blocker": _macro_run_blocker(
+            degraded_reason=degraded_reason,
+            script_name=str(step["script_name"]),
+            missing_outputs=missing_outputs_after,
+        ),
         "data_asof": _macro_run_data_asof(expected_outputs=expected_outputs, outputs=outputs),
         "generated_at": datetime.now(UTC).isoformat(),
         "runtime_endpoint": MACRO_TOOLKIT_RUN_CHAIN_ENDPOINT,
@@ -2009,6 +2018,21 @@ def _macro_run_degraded_reason(*, status: str, missing_outputs: list[str]) -> st
     if missing_outputs:
         return "missing_expected_outputs_after_run"
     return None
+
+
+def _macro_run_blocker(
+    *,
+    degraded_reason: str | None,
+    script_name: str,
+    missing_outputs: list[str],
+) -> dict[str, object] | None:
+    if degraded_reason != "missing_expected_outputs_after_run":
+        return None
+    return {
+        "type": degraded_reason,
+        "script_name": script_name,
+        "missing_outputs": missing_outputs,
+    }
 
 
 def _macro_run_data_asof(*, expected_outputs: list[str], outputs: list[dict[str, object]]) -> str | None:
