@@ -187,6 +187,42 @@ def test_ledger_dates_dashboard_positions_and_export_use_imported_snapshot(tmp_p
     get_settings.cache_clear()
 
 
+def test_ledger_get_read_surfaces_open_duckdb_read_only(tmp_path, monkeypatch):
+    duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
+    _import_two_position_fixture(duckdb_path)
+    original_connect = duckdb.connect
+    observed_read_modes: list[bool | None] = []
+
+    def guarded_connect(database=":memory:", *args, **kwargs):
+        read_only = kwargs.get("read_only")
+        if read_only is None and args and isinstance(args[0], bool):
+            read_only = args[0]
+        if str(database) == str(duckdb_path):
+            observed_read_modes.append(read_only)
+            if read_only is False:
+                raise RuntimeError("ledger GET read surfaces must open DuckDB read-only")
+        return original_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(duckdb, "connect", guarded_connect)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    requests = (
+        ("/api/ledger/imports", {}),
+        ("/api/ledger/dates", {}),
+        ("/api/ledger/dashboard", {"as_of_date": "2026-03-17"}),
+        ("/api/ledger/positions", {"as_of_date": "2026-03-17", "page": 1, "page_size": 10}),
+        ("/api/ledger/export/positions", {"as_of_date": "2026-03-17"}),
+    )
+
+    for path, params in requests:
+        response = client.get(path, params=params or None)
+        assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
+
+    assert observed_read_modes
+    assert set(observed_read_modes) == {True}
+    get_settings.cache_clear()
+
+
 def test_ledger_dashboard_uses_existing_zqtz_snapshot_source(tmp_path, monkeypatch):
     duckdb_path = _configure_ledger_import_env(tmp_path, monkeypatch)
     _insert_zqtz_snapshot_fixture(duckdb_path)
