@@ -1,0 +1,106 @@
+{
+  "report_kind": "calculation_p1_owner_decision_snapshot",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "refresh_command": "python scripts\\refresh_calculation_p1_owner_decision_snapshot.py",
+  "status": {
+    "overall": "owner_decision_required",
+    "fail_closed": true,
+    "chooses_or_approves_conventions": false,
+    "changes_code": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false
+  },
+  "matrix": {
+    "path": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-matrix.md",
+    "latest_verification_refresh": "2026-06-10T21:25:00+08:00",
+    "open_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-07",
+      "P1-09",
+      "P1-10",
+      "P1-11"
+    ],
+    "open_decision_count": 10,
+    "expected_open_decision_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-07",
+      "P1-09",
+      "P1-10",
+      "P1-11"
+    ],
+    "expected_open_decision_count": 10,
+    "missing_open_decision_ids": [],
+    "unexpected_open_decision_ids": [],
+    "p1_08_in_open_rows": false,
+    "verified_closed_ids": [
+      "P1-08"
+    ],
+    "p1_08_verified_closed": true,
+    "p1_08_regression": {
+      "command": "npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts src/test/BondDashboardPage.test.tsx",
+      "rerun_at": "2026-06-10T19:29:53+08:00"
+    }
+  },
+  "engineering_prework_map": {
+    "mapped_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-07",
+      "P1-09",
+      "P1-10",
+      "P1-11"
+    ],
+    "mapped_count": 10,
+    "missing_ids": [],
+    "unexpected_ids": [],
+    "boundary_checks": {
+      "does_not_choose_or_approve_convention": true,
+      "does_not_change_code": true,
+      "does_not_certify_routes_pages": true,
+      "matrix_non_approval_boundary": true,
+      "capture_template_non_approval_boundary": true
+    }
+  },
+  "capture_template": {
+    "path": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-owner-decision-capture-template.zh.md",
+    "row_ids": [
+      "P1-01",
+      "P1-02",
+      "P1-03",
+      "P1-04",
+      "P1-05",
+      "P1-06",
+      "P1-07",
+      "P1-09",
+      "P1-10",
+      "P1-11"
+    ],
+    "row_count": 10,
+    "missing_ids": [],
+    "unexpected_ids": [],
+    "pending_count": 10,
+    "captured_decision_count": 0,
+    "captured_decision_ids": []
+  },
+  "drift_errors": [],
+  "closure_gate": "Business owner and metric governance must select the authoritative convention for P1-01 through P1-07 and P1-09 through P1-11 before implementation closure. After that, docs/calc_rules.md, contracts, implementation, and targeted tests must move each selected row to verified-closed evidence without reopening P1-08.",
+  "boundary": "This snapshot is read-only owner-decision intake evidence. It does not choose or approve any calculation convention, change implementation code, approve metrics or pages, capture business-owner approval, or certify routes."
+}

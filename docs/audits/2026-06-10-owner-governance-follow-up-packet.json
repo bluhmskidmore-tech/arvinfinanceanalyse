@@ -1,6 +1,6 @@
 {
   "report_kind": "owner_governance_follow_up_packet",
-  "generated_at": "2026-06-10T16:20:49+08:00",
+  "generated_at": "2026-06-10T21:25:00+08:00",
   "repo_root": "F:\\MOSS-V3",
   "audit_date": "2026-06-10",
   "status": {
@@ -20,7 +20,8 @@
     "manifest": "docs/audits/2026-06-10-system-audit-manifest.json",
     "completion_snapshot": "docs/audits/2026-06-10-system-audit-completion-snapshot.json",
     "completion_checklist": "docs/audits/2026-06-10-system-audit-completion-checklist.md",
-    "action_register": "docs/audits/2026-06-10-system-audit-action-register.md"
+    "action_register": "docs/audits/2026-06-10-system-audit-action-register.md",
+    "system_audit_monitoring_snapshot": "docs/audits/2026-06-10-system-audit-monitoring-snapshot.json"
   },
   "blocker_packet_count": 5,
   "completion_order": [
@@ -82,7 +83,7 @@
     {
       "blocker_id": "ledger-pnl-direct-governance-record",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T19:22:49+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "responsible_owner_type": "governance_owner_and_ledger_pnl_business_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json",
@@ -97,6 +98,7 @@
         "downstream readiness result still keeps owner approval separate"
       ],
       "required_verification_commands": [
+        "python scripts\\refresh_ledger_pnl_direct_governance_record_snapshot.py",
         "python scripts\\emit_ledger_pnl_governance_record.py",
         "python scripts\\codex_page_readiness.py --page-slug ledger-pnl",
         "python -m pytest tests\\test_project_mcp_servers.py::test_lineage_evidence_governance_record_blueprint_queue_covers_default_open_gaps tests\\test_ledger_pnl_business_owner_approval_status.py -q --tb=short"
@@ -129,7 +131,7 @@
     {
       "blocker_id": "calculation-display-p1-decisions",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T19:30:36+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "responsible_owner_type": "business_owner_and_metric_governance",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-calculation-logic-audit.md",
@@ -179,7 +181,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T19:37:53+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "responsible_owner_type": "engineering_tooling_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
@@ -223,7 +225,7 @@
     {
       "blocker_id": "local-secret-hygiene",
       "current_status": "not_complete",
-      "last_checked_at": "2026-06-10T19:33:20+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "responsible_owner_type": "environment_owner_and_security_owner",
       "required_input_artifacts": [
         "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",

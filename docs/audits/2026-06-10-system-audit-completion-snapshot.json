@@ -1,6 +1,6 @@
 {
   "report_kind": "system_audit_completion_snapshot",
-  "generated_at": "2026-06-10T16:03:24+08:00",
+  "generated_at": "2026-06-10T21:25:00+08:00",
   "repo_root": "F:\\MOSS-V3",
   "audit_date": "2026-06-10",
   "status": {
@@ -19,7 +19,9 @@
     "completion_checklist": "docs/audits/2026-06-10-system-audit-completion-checklist.md",
     "action_register": "docs/audits/2026-06-10-system-audit-action-register.md",
     "owner_governance_follow_up_packet": "docs/audits/2026-06-10-owner-governance-follow-up-packet.json",
-    "owner_governance_follow_up_brief_zh": "docs/audits/2026-06-10-owner-governance-follow-up-brief.zh.md"
+    "owner_governance_follow_up_brief_zh": "docs/audits/2026-06-10-owner-governance-follow-up-brief.zh.md",
+    "calculation_owner_decision_snapshot": "docs/audits/2026-06-10-calculation-p1-owner-decision-snapshot.json",
+    "system_audit_monitoring_snapshot": "docs/audits/2026-06-10-system-audit-monitoring-snapshot.json"
   },
   "summary": {
     "open_blocker_count": 5,
@@ -62,7 +64,7 @@
     {
       "blocker_id": "ledger-pnl-direct-governance-record",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T19:22:49+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "required_evidence": [
         "approved governance workflow writes or locates direct record",
         "record covers PAGE-LEDGER-PNL-001",
@@ -84,7 +86,7 @@
     {
       "blocker_id": "calculation-display-p1-decisions",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T19:30:36+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "required_evidence": [
         "business owner selects authoritative convention for every remaining P1 row",
         "docs/calc_rules.md updated for selected conventions",
@@ -103,7 +105,7 @@
     {
       "blocker_id": "direct-app-mcp-gitnexus-evidence",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T19:37:53+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "required_evidence": [
         "fresh Codex App tool surface exposes expected MOSS MCP tools",
         "fresh Codex App tool surface exposes GitNexus tools",
@@ -123,7 +125,7 @@
     {
       "blocker_id": "local-secret-hygiene",
       "status": "not_complete",
-      "last_checked_at": "2026-06-10T19:33:20+08:00",
+      "last_checked_at": "2026-06-10T21:25:00+08:00",
       "required_evidence": [
         "environment owner rotates, removes, or accepts local-only config/.env findings outside the repository",
         "clean-runner gitleaks passes or records accepted local-only findings",
@@ -134,7 +136,7 @@
         "redacted gitleaks 2 ignored/untracked config/.env findings",
         "OSV 0 vulnerabilities does not clear secret findings",
         "latest non-closing retry at 2026-06-10T17:30:56+08:00 still has 2 redacted gitleaks findings and OSV was not refreshed because proxy 127.0.0.1:9 refused the connection",
-        "latest boundary-only recheck at 2026-06-10T19:33:20+08:00 still shows config/.env exists, is ignored, and is untracked",
+        "latest boundary-only recheck at 2026-06-10T21:25:00+08:00 still shows config/.env exists, is ignored, and is untracked",
         "secret values not captured",
         "environment owner action not recorded"
       ],

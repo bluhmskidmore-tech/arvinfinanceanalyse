@@ -1,7 +1,10 @@
 {
   "report_kind": "direct_app_mcp_gitnexus_tool_surface_snapshot",
-  "generated_at": "2026-06-10T19:37:53+08:00",
+  "generated_at": "2026-06-10T21:25:00+08:00",
   "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "refresh_command": "python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py",
+  "observation_source": "caller_supplied_tool_search_results",
   "status": {
     "overall": "tool_surface_unavailable_in_current_codex_app_session",
     "fail_closed": true,
@@ -16,15 +19,16 @@
   "tool_discovery": {
     "tool": "tool_search",
     "query": "moss metric contracts lineage evidence data catalog gitnexus MCP tools",
-    "checked_at": "2026-06-10T19:37:53+08:00",
+    "checked_at": "2026-06-10T21:25:00+08:00",
     "discovered_tool_count": 0,
-    "discovered_tools": []
+    "discovered_tools": [],
+    "relevant_direct_tool_count": 0
   },
   "focused_rechecks": [
     {
       "tool": "tool_search",
       "query": "gitnexus MCP impact call path symbol repository evidence",
-      "checked_at": "2026-06-10T19:37:53+08:00",
+      "checked_at": "2026-06-10T21:25:00+08:00",
       "returned_tool_count": 3,
       "returned_tools": [
         {
@@ -49,7 +53,7 @@
     {
       "tool": "tool_search",
       "query": "moss metric contracts lineage evidence data catalog MCP tools",
-      "checked_at": "2026-06-10T19:37:53+08:00",
+      "checked_at": "2026-06-10T21:25:00+08:00",
       "returned_tool_count": 0,
       "returned_tools": [],
       "relevant_direct_tool_count": 0,
@@ -58,7 +62,7 @@
     {
       "tool": "tool_search",
       "query": "moss-data-catalog moss-lineage-evidence moss-metric-contracts",
-      "checked_at": "2026-06-10T19:37:53+08:00",
+      "checked_at": "2026-06-10T21:25:00+08:00",
       "returned_tool_count": 0,
       "returned_tools": [],
       "relevant_direct_tool_count": 0,
@@ -66,6 +70,14 @@
     }
   ],
   "expected_direct_servers": [
+    "gitnexus",
+    "moss-metric-contracts",
+    "moss-lineage-evidence",
+    "moss-data-catalog",
+    "moss-data-quality"
+  ],
+  "detected_direct_servers": [],
+  "missing_direct_servers": [
     "gitnexus",
     "moss-metric-contracts",
     "moss-lineage-evidence",
@@ -82,7 +94,8 @@
         "moss-lineage-evidence",
         "moss-data-catalog",
         "moss-data-quality"
-      ]
+      ],
+      "all_declared_server_count": 7
     },
     {
       "path": ".mcp.json",
@@ -93,7 +106,8 @@
         "moss-lineage-evidence",
         "moss-data-catalog",
         "moss-data-quality"
-      ]
+      ],
+      "all_declared_server_count": 7
     },
     {
       "path": "docs/MCP_RUNBOOK.md",
@@ -108,11 +122,11 @@
     "closure_effect": "none"
   },
   "direct_evidence_gap": {
-    "moss_metric_contracts": "not_callable_as_direct_codex_app_tool_in_this_session",
-    "moss_lineage_evidence": "not_callable_as_direct_codex_app_tool_in_this_session",
-    "moss_data_catalog": "not_callable_as_direct_codex_app_tool_in_this_session",
-    "moss_data_quality": "not_callable_as_direct_codex_app_tool_in_this_session",
-    "gitnexus": "not_callable_as_direct_codex_app_tool_in_this_session"
+    "gitnexus": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-metric-contracts": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-lineage-evidence": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-data-catalog": "not_callable_as_direct_codex_app_tool_in_this_session",
+    "moss-data-quality": "not_callable_as_direct_codex_app_tool_in_this_session"
   },
   "closure_gate": [
     "start a fresh Codex App session or otherwise reload MCP registrations",

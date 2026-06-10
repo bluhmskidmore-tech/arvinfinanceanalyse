@@ -31,6 +31,107 @@ def _append_if_missing(value: Any, *, errors: list[str], message: str) -> None:
         errors.append(message)
 
 
+def _verify_source_artifact_link(
+    *,
+    manifest: dict[str, Any],
+    source_artifacts: dict[str, Any],
+    key: str,
+    owner: str,
+    errors: list[str],
+) -> None:
+    manifest_rel_path = manifest.get("artifacts", {}).get(key)
+    if not manifest_rel_path:
+        errors.append(f"manifest missing {key} artifact")
+        return
+    if source_artifacts.get(key) != manifest_rel_path:
+        errors.append(f"{owner} {key} source mismatch")
+
+
+def _verify_monitoring_snapshot(
+    *,
+    manifest: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    rel_path = manifest.get("artifacts", {}).get("system_audit_monitoring_snapshot")
+    if not rel_path:
+        errors.append("manifest missing system_audit_monitoring_snapshot artifact")
+        return None
+
+    path = repo_root / rel_path
+    if not path.exists():
+        errors.append("system audit monitoring snapshot artifact is missing")
+        return None
+
+    snapshot = _load_json(path)
+    if snapshot.get("report_kind") != "system_audit_monitoring_snapshot":
+        errors.append("system audit monitoring snapshot report_kind is invalid")
+
+    generated_at = snapshot.get("generated_at")
+    if manifest.get("generated_at") != generated_at:
+        errors.append("manifest generated_at does not match system audit monitoring snapshot")
+
+    expected_scope = {
+        "read_only": True,
+        "writes_duckdb": False,
+        "writes_governance_records": False,
+        "writes_or_rotates_secrets": False,
+        "reads_secret_values": False,
+        "approves_metrics": False,
+        "approves_pages": False,
+        "captures_business_owner_approval": False,
+        "certifies_routes": False,
+        "clears_secret_scan": False,
+        "promotes_candidate_data": False,
+    }
+    if snapshot.get("evidence_scope") != expected_scope:
+        errors.append("system audit monitoring snapshot evidence_scope is not fail-closed")
+
+    open_blocker_count = len(manifest.get("open_blockers", []))
+    completion = snapshot.get("completion_verification", {})
+    if completion.get("status") != "pass":
+        errors.append("system audit monitoring completion verification must pass")
+    if completion.get("open_blocker_count") != open_blocker_count:
+        errors.append("system audit monitoring open blocker count does not match manifest")
+    if completion.get("error_count") != 0:
+        errors.append("system audit monitoring completion verification has errors")
+
+    pulse = snapshot.get("pulse", {})
+    if pulse.get("status") != "pass":
+        errors.append("system audit monitoring pulse must pass")
+    if pulse.get("completion_state") != "not_complete":
+        errors.append("system audit monitoring pulse must remain not_complete")
+    if pulse.get("open_blocker_count") != open_blocker_count:
+        errors.append("system audit monitoring pulse blocker count does not match manifest")
+    if pulse.get("drift_errors") != []:
+        errors.append("system audit monitoring pulse has drift_errors")
+
+    refresh = snapshot.get("refresh_results", {})
+    calculation = refresh.get("calculation_owner_decision", {})
+    if calculation.get("captured_decision_count") != 0:
+        errors.append("system audit monitoring must not capture calculation owner decisions")
+    ledger = refresh.get("ledger_pnl_direct_governance_record", {})
+    if ledger.get("record_write_status") != "not_requested":
+        errors.append("system audit monitoring must not write Ledger PnL governance records")
+    if ledger.get("formal_use_allowed") is not False:
+        errors.append("system audit monitoring must not allow Ledger PnL formal use")
+    direct_tool = refresh.get("direct_app_mcp_gitnexus_tool_surface", {})
+    if direct_tool.get("direct_app_mcp_evidence_captured") is not False:
+        errors.append("system audit monitoring must not capture direct App MCP evidence")
+    if direct_tool.get("direct_gitnexus_evidence_captured") is not False:
+        errors.append("system audit monitoring must not capture direct GitNexus evidence")
+    secret = refresh.get("local_secret_hygiene", {})
+    if secret.get("secret_values_captured") is not False:
+        errors.append("system audit monitoring must not capture secret values")
+    if secret.get("clears_secret_scan") is not False:
+        errors.append("system audit monitoring must not clear secret scan")
+
+    if "does not write DuckDB or governance records" not in snapshot.get("boundary", ""):
+        errors.append("system audit monitoring snapshot missing non-write boundary")
+
+    return snapshot
+
+
 def _verify_follow_up_packet(
     *,
     manifest: dict[str, Any],
@@ -57,6 +158,16 @@ def _verify_follow_up_packet(
     packet = _load_json(packet_path)
     if packet.get("report_kind") != "owner_governance_follow_up_packet":
         errors.append("owner/governance follow-up packet report_kind is invalid")
+    if packet.get("generated_at") != manifest.get("generated_at"):
+        errors.append("owner/governance follow-up packet generated_at does not match manifest")
+
+    _verify_source_artifact_link(
+        manifest=manifest,
+        source_artifacts=packet.get("source_artifacts", {}),
+        key="system_audit_monitoring_snapshot",
+        owner="owner/governance follow-up packet",
+        errors=errors,
+    )
 
     status = packet.get("status", {})
     required_status = {
@@ -330,6 +441,79 @@ def _verify_calculation_p1_prework_map(
     return len(open_decision_rows)
 
 
+def _verify_calculation_p1_snapshot(
+    *,
+    manifest: dict[str, Any],
+    repo_root: Path,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    snapshot_rel_path = manifest.get("artifacts", {}).get(
+        "calculation_owner_decision_snapshot"
+    )
+    if not snapshot_rel_path:
+        errors.append("manifest missing calculation_owner_decision_snapshot artifact")
+        return None
+
+    snapshot_path = repo_root / snapshot_rel_path
+    if not snapshot_path.exists():
+        errors.append("calculation owner decision snapshot artifact is missing")
+        return None
+
+    snapshot = _load_json(snapshot_path)
+    if snapshot.get("report_kind") != "calculation_p1_owner_decision_snapshot":
+        errors.append("calculation owner decision snapshot report_kind is invalid")
+    status = snapshot.get("status", {})
+    expected_status = {
+        "overall": "owner_decision_required",
+        "fail_closed": True,
+        "chooses_or_approves_conventions": False,
+        "changes_code": False,
+        "approves_metrics": False,
+        "approves_pages": False,
+        "captures_business_owner_approval": False,
+        "certifies_routes": False,
+    }
+    for key, expected in expected_status.items():
+        if status.get(key) != expected:
+            errors.append(
+                f"calculation owner decision snapshot status {key} must be {expected!r}"
+            )
+    if snapshot.get("drift_errors") != []:
+        errors.append("calculation owner decision snapshot has drift_errors")
+
+    matrix = snapshot.get("matrix", {})
+    expected_count = manifest.get("counts", {}).get("calculation_display_open_p1")
+    if matrix.get("open_decision_ids") != EXPECTED_OPEN_CALCULATION_P1_IDS:
+        errors.append("calculation owner decision snapshot open IDs do not match expected")
+    if matrix.get("open_decision_count") != expected_count:
+        errors.append("calculation owner decision snapshot open count does not match manifest")
+    if matrix.get("p1_08_in_open_rows") is not False:
+        errors.append("calculation owner decision snapshot must keep P1-08 out of open rows")
+    if matrix.get("p1_08_verified_closed") is not True:
+        errors.append("calculation owner decision snapshot must keep P1-08 verified closed")
+
+    prework = snapshot.get("engineering_prework_map", {})
+    if prework.get("mapped_ids") != EXPECTED_OPEN_CALCULATION_P1_IDS:
+        errors.append("calculation owner decision snapshot prework IDs do not match expected")
+    if not all((prework.get("boundary_checks") or {}).values()):
+        errors.append("calculation owner decision snapshot boundary checks must all pass")
+
+    capture = snapshot.get("capture_template", {})
+    if capture.get("row_ids") != EXPECTED_OPEN_CALCULATION_P1_IDS:
+        errors.append("calculation owner decision snapshot capture IDs do not match expected")
+    if capture.get("pending_count") != expected_count:
+        errors.append("calculation owner decision snapshot pending count does not match manifest")
+    if capture.get("captured_decision_count") != 0:
+        errors.append("calculation owner decision snapshot must not capture owner decisions")
+    if "does not choose or approve any calculation convention" not in snapshot.get(
+        "boundary",
+        "",
+    ):
+        errors.append("calculation owner decision snapshot missing non-approval boundary")
+
+    return snapshot
+
+
 def verify_completion_snapshot(
     *,
     manifest_path: Path = DEFAULT_MANIFEST,
@@ -339,6 +523,22 @@ def verify_completion_snapshot(
     snapshot_path = repo_root / manifest["artifacts"]["completion_snapshot"]
     snapshot = _load_json(snapshot_path)
     errors: list[str] = []
+
+    _verify_monitoring_snapshot(
+        manifest=manifest,
+        repo_root=repo_root,
+        errors=errors,
+    )
+    if snapshot.get("generated_at") != manifest.get("generated_at"):
+        errors.append("completion snapshot generated_at does not match manifest")
+
+    _verify_source_artifact_link(
+        manifest=manifest,
+        source_artifacts=snapshot.get("source_artifacts", {}),
+        key="system_audit_monitoring_snapshot",
+        owner="completion snapshot",
+        errors=errors,
+    )
 
     open_blockers = manifest.get("open_blockers", [])
     gates = snapshot.get("completion_gates", [])
@@ -414,6 +614,11 @@ def verify_completion_snapshot(
         repo_root=repo_root,
         errors=errors,
     )
+    calculation_snapshot = _verify_calculation_p1_snapshot(
+        manifest=manifest,
+        repo_root=repo_root,
+        errors=errors,
+    )
 
     return {
         "report_kind": "system_audit_completion_snapshot_verification",
@@ -427,6 +632,11 @@ def verify_completion_snapshot(
         ),
         "follow_up_brief_blocker_count": follow_up_brief_blocker_count,
         "calculation_prework_p1_count": calculation_prework_p1_count,
+        "calculation_snapshot_status": (
+            (calculation_snapshot or {}).get("status", {}).get("overall")
+            if calculation_snapshot
+            else None
+        ),
         "errors": errors,
     }
 

@@ -1,8 +1,9 @@
 {
   "report_kind": "ledger_pnl_direct_governance_record_snapshot",
-  "generated_at": "2026-06-10T19:22:49+08:00",
+  "generated_at": "2026-06-10T21:25:00+08:00",
   "repo_root": "F:\\MOSS-V3",
   "audit_date": "2026-06-10",
+  "refresh_command": "python scripts\\refresh_ledger_pnl_direct_governance_record_snapshot.py",
   "page": {
     "page_slug": "ledger-pnl",
     "page_id": "PAGE-LEDGER-PNL-001",
@@ -53,7 +54,7 @@
     "cache_version": "cv_ledger_pnl_v1",
     "cache_key": "ledger_pnl.summary:2026-05-31:ALL",
     "result_kind": "ledger_pnl.summary",
-    "created_at": "2026-06-10T11:22:49.893759Z",
+    "created_at": "2026-06-10T21:25:00+08:00",
     "formal_use_allowed": false
   },
   "written_record_search": {
@@ -105,5 +106,5 @@
     ]
   },
   "closure_gate": "Only an approved governance workflow may write or locate the direct page/API record. After that, rerun governance validation, Ledger PnL page readiness, owner approval strict checks, and live page/API evidence review. Keep formal_use_allowed=false and closure_approved=false until owner approval and all page-specific gates are captured.",
-  "boundary": "This snapshot proves only that a field-complete dry-run candidate exists and no matching written direct record was found. It does not write governance records, approve metrics/pages, certify routes, prove live page/API execution, or capture business-owner approval."
+  "boundary": "This snapshot is refreshed by a read-only preflight. It proves only whether a field-complete dry-run candidate exists and whether matching direct-record anchors are visible in the configured governance stream. It does not write governance records, approve metrics/pages, certify routes, prove live page/API execution, or capture business-owner approval."
 }

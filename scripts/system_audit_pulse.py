@@ -287,6 +287,86 @@ def build_pulse(
     }
 
 
+def format_markdown_pulse(report: dict[str, Any]) -> str:
+    route_scope = report["route_scope"]
+    business_display = report["business_display"]
+    completion = report["completion_snapshot"]
+    readiness = report["all_page_readiness"]
+    lines = [
+        "# System Audit Pulse",
+        "",
+        f"- Generated at: `{report['generated_at']}`",
+        f"- Status: `{report['status']}`",
+        f"- Completion state: `{report['completion_state']}`",
+        f"- Full score ready: `{str(report['full_score_ready']).lower()}`",
+        f"- Open blockers: `{report['open_blocker_count']}`",
+        "",
+        "## Live Counts",
+        "",
+        "| Lane | Key Counts |",
+        "| --- | --- |",
+        (
+            "| Route scope | "
+            f"`routes={route_scope['route_count']}`, "
+            f"`business_contract_certified={route_scope['business_contract_certified_count']}`, "
+            f"`evidence_pending={route_scope['evidence_pending_count']}`, "
+            f"`visible_unseeded={route_scope['visible_unseeded_route_count']}`, "
+            f"`unclassified={route_scope['unclassified_count']}` |"
+        ),
+        (
+            "| Business display | "
+            f"`tracked_routes={business_display['tracked_route_count']}`, "
+            f"`route_gaps={business_display['route_gap_count']}`, "
+            f"`smoke_configured={business_display['browser_smoke_a11y_configured_route_count']}` |"
+        ),
+        (
+            "| Completion snapshot | "
+            f"`status={completion['status']}`, "
+            f"`open_blockers={completion['open_blocker_count']}`, "
+            f"`errors={completion['error_count']}` |"
+        ),
+        (
+            "| All-page readiness | "
+            f"`source={readiness['source']}`, "
+            f"`pages={readiness.get('page_count')}`, "
+            f"`static_pass={readiness.get('static_pass_count')}`, "
+            f"`direct_evidence_null={readiness.get('direct_evidence_null_count')}`, "
+            f"`audit_review_null={readiness.get('audit_review_null_count')}` |"
+        ),
+        "",
+        "## Open Blockers",
+        "",
+    ]
+    if report["open_blockers"]:
+        lines.extend(
+            f"- `{item['id']}`: `{item['status']}`; last_checked_at=`{item['last_checked_at']}`"
+            for item in report["open_blockers"]
+        )
+    else:
+        lines.append("- None")
+    lines.extend(
+        [
+            "",
+            "## Drift",
+            "",
+        ]
+    )
+    if report["drift_errors"]:
+        lines.extend(f"- `{error}`" for error in report["drift_errors"])
+    else:
+        lines.append("- `none`")
+    lines.extend(
+        [
+            "",
+            "## Boundary",
+            "",
+            report["claim_boundary"],
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Build a read-only pulse for system audit readiness and closure drift.",
@@ -311,7 +391,13 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         type=Path,
         default=None,
-        help="Optional JSON output path. The script never writes DuckDB or governance records.",
+        help="Optional output path. The script never writes DuckDB or governance records.",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("json", "markdown"),
+        default="json",
+        help="Output format.",
     )
     args = parser.parse_args(argv)
 
@@ -320,7 +406,11 @@ def main(argv: list[str] | None = None) -> int:
         generated_at=args.generated_at,
         include_full_readiness=args.include_full_readiness,
     )
-    payload = json.dumps(report, ensure_ascii=False, indent=2)
+    payload = (
+        format_markdown_pulse(report)
+        if args.format == "markdown"
+        else json.dumps(report, ensure_ascii=False, indent=2)
+    )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n", encoding="utf-8")

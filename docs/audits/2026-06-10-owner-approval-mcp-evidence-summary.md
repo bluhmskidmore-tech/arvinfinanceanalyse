@@ -77,7 +77,7 @@ Fastest closure order from current evidence:
 
 ## Ledger PnL Direct-Record Drill-Down
 
-A fresh Ledger PnL dry-run at `2026-06-10T19:22:49+08:00` confirms the current direct-record issue is not a missing-field problem in the candidate payload. `python scripts\emit_ledger_pnl_governance_record.py` generated a field-complete `PAGE-LEDGER-PNL-001` candidate for `/api/ledger-pnl/summary` with:
+A fresh Ledger PnL read-only refresh at `2026-06-10T21:25:00+08:00` confirms the current direct-record issue is not a missing-field problem in the candidate payload. `python scripts\refresh_ledger_pnl_direct_governance_record_snapshot.py` regenerated the dry-run snapshot for a field-complete `PAGE-LEDGER-PNL-001` candidate for `/api/ledger-pnl/summary` with:
 
 - `report_date=2026-05-31`
 - `basis=ledger`
@@ -88,7 +88,7 @@ A fresh Ledger PnL dry-run at `2026-06-10T19:22:49+08:00` confirms the current d
 - `cache_key=ledger_pnl.summary:2026-05-31:ALL`
 - `formal_use_allowed=false`
 
-The same dry-run returned `record_write_status=not_requested`, `existing_record_line=null`, and `validation_status=ready_for_audit_review`. A direct search of `data/governance/cache_manifest.jsonl` found no matching `PAGE-LEDGER-PNL-001`, `/api/ledger-pnl/summary`, or `ledger_pnl.summary:2026-05-31:ALL` record.
+The same read-only refresh returned `record_write_status=not_requested`, `existing_record_line=null`, and `validation_status=ready_for_audit_review`. A direct search of `data/governance/cache_manifest.jsonl` found no matching `PAGE-LEDGER-PNL-001`, `/api/ledger-pnl/summary`, or `ledger_pnl.summary:2026-05-31:ALL` record.
 
 Implication: Ledger PnL has an evidence-backed candidate record, but no written direct page/API governance record. The approved governance workflow still needs to write or locate that record, then rerun governance validation and manual audit review. This dry-run does not approve page closure, promote `MTR-LPN-001` through `MTR-LPN-003`, prove live page/API execution, or capture owner approval.
 

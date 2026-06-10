@@ -1,0 +1,74 @@
+{
+  "report_kind": "system_audit_monitoring_snapshot",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "write_outputs": true,
+  "evidence_scope": {
+    "read_only": true,
+    "writes_duckdb": false,
+    "writes_governance_records": false,
+    "writes_or_rotates_secrets": false,
+    "reads_secret_values": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false,
+    "clears_secret_scan": false,
+    "promotes_candidate_data": false
+  },
+  "refresh_results": {
+    "calculation_owner_decision": {
+      "status": "owner_decision_required",
+      "open_decision_count": 10,
+      "captured_decision_count": 0,
+      "drift_error_count": 0
+    },
+    "direct_app_mcp_gitnexus_tool_surface": {
+      "status": "tool_surface_unavailable_in_current_codex_app_session",
+      "detected_direct_servers": [],
+      "missing_direct_servers": [
+        "gitnexus",
+        "moss-metric-contracts",
+        "moss-lineage-evidence",
+        "moss-data-catalog",
+        "moss-data-quality"
+      ],
+      "direct_app_mcp_evidence_captured": false,
+      "direct_gitnexus_evidence_captured": false
+    },
+    "local_secret_hygiene": {
+      "status": "local_ignored_untracked_findings",
+      "latest_boundary_only_recheck_at": "2026-06-10T21:25:00+08:00",
+      "secret_values_captured": false,
+      "clears_secret_scan": false
+    },
+    "ledger_pnl_direct_governance_record": {
+      "status": "dry_run_candidate_only",
+      "record_write_status": "not_requested",
+      "formal_use_allowed": false,
+      "closure_approved": false
+    }
+  },
+  "completion_verification": {
+    "status": "pass",
+    "open_blocker_count": 5,
+    "error_count": 0,
+    "errors": []
+  },
+  "pulse": {
+    "status": "pass",
+    "completion_state": "not_complete",
+    "open_blocker_count": 5,
+    "drift_error_count": 0,
+    "drift_errors": []
+  },
+  "output_paths": {
+    "calculation_owner_decision_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-calculation-p1-owner-decision-snapshot.json",
+    "direct_app_mcp_gitnexus_tool_surface_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
+    "local_secret_hygiene_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-local-secret-hygiene-snapshot.json",
+    "ledger_pnl_direct_governance_record_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-ledger-pnl-direct-governance-record-snapshot.json",
+    "system_audit_pulse_snapshot": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-system-audit-pulse-snapshot.json"
+  },
+  "boundary": "This monitoring snapshot refreshes read-only audit artifacts and runs the read-only pulse/completion verifier. It does not write DuckDB or governance records, read or rotate secret values, capture owner approval, approve metrics or pages, certify routes, clear secret scans, or promote candidate data."
+}

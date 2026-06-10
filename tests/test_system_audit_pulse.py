@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import scripts.system_audit_pulse as pulse_module
-from scripts.system_audit_pulse import build_pulse
+from scripts.system_audit_pulse import build_pulse, format_markdown_pulse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,3 +132,44 @@ def test_system_audit_pulse_cli_outputs_json() -> None:
     assert payload["full_score_ready"] is False
     assert payload["open_blocker_count"] == 5
     assert payload["all_page_readiness"]["source"] == "manifest_last_full_readiness"
+
+
+def test_system_audit_pulse_formats_markdown_without_approval() -> None:
+    report = build_pulse(generated_at="2026-06-10T19:45:00+08:00")
+
+    markdown = format_markdown_pulse(report)
+
+    assert markdown.startswith("# System Audit Pulse")
+    assert "- Completion state: `not_complete`" in markdown
+    assert "- Open blockers: `5`" in markdown
+    assert "`business_contract_certified=0`" in markdown
+    assert "`route_gaps=0`" in markdown
+    assert "`direct_evidence_null=0`" in markdown
+    assert "`audit_review_null=0`" in markdown
+    assert "- `none`" in markdown
+    assert "does not approve metrics" in markdown
+    assert "governance records" in markdown
+
+
+def test_system_audit_pulse_cli_outputs_markdown() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--generated-at",
+            "2026-06-10T19:45:00+08:00",
+            "--format",
+            "markdown",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        text=True,
+    )
+
+    assert completed.returncode == 0
+    assert "# System Audit Pulse" in completed.stdout
+    assert "- Completion state: `not_complete`" in completed.stdout
+    assert "`business_contract_certified=0`" in completed.stdout
+    assert "does not approve metrics" in completed.stdout

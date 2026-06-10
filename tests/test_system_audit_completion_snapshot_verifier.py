@@ -31,11 +31,23 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     calculation_matrix = (
         ROOT / manifest["artifacts"]["calculation_owner_decision_matrix"]
     ).read_text(encoding="utf-8")
+    calculation_snapshot = json.loads(
+        (ROOT / manifest["artifacts"]["calculation_owner_decision_snapshot"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    monitoring_snapshot = json.loads(
+        (ROOT / manifest["artifacts"]["system_audit_monitoring_snapshot"]).read_text(
+            encoding="utf-8"
+        )
+    )
     manifest_path = audit_dir / "manifest.json"
     snapshot_path = audit_dir / "completion-snapshot.json"
     follow_up_packet_path = audit_dir / "owner-governance-follow-up-packet.json"
     follow_up_brief_path = audit_dir / "owner-governance-follow-up-brief.zh.md"
     calculation_matrix_path = audit_dir / "calculation-p1-owner-decision-matrix.md"
+    calculation_snapshot_path = audit_dir / "calculation-p1-owner-decision-snapshot.json"
+    monitoring_snapshot_path = audit_dir / "system-audit-monitoring-snapshot.json"
     original_follow_up_packet_path = manifest["artifacts"][
         "owner_governance_follow_up_packet"
     ]
@@ -49,6 +61,12 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     manifest["artifacts"][
         "calculation_owner_decision_matrix"
     ] = "docs/audits/calculation-p1-owner-decision-matrix.md"
+    manifest["artifacts"][
+        "calculation_owner_decision_snapshot"
+    ] = "docs/audits/calculation-p1-owner-decision-snapshot.json"
+    manifest["artifacts"][
+        "system_audit_monitoring_snapshot"
+    ] = "docs/audits/system-audit-monitoring-snapshot.json"
     follow_up_brief = follow_up_brief.replace(
         original_follow_up_packet_path,
         manifest["artifacts"]["owner_governance_follow_up_packet"],
@@ -63,6 +81,12 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     snapshot["source_artifacts"][
         "owner_governance_follow_up_brief_zh"
     ] = "docs/audits/owner-governance-follow-up-brief.zh.md"
+    snapshot["source_artifacts"][
+        "system_audit_monitoring_snapshot"
+    ] = "docs/audits/system-audit-monitoring-snapshot.json"
+    follow_up_packet["source_artifacts"][
+        "system_audit_monitoring_snapshot"
+    ] = "docs/audits/system-audit-monitoring-snapshot.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
     follow_up_packet_path.write_text(
@@ -71,6 +95,14 @@ def _copy_audit_files(tmp_path: Path) -> Path:
     )
     follow_up_brief_path.write_text(follow_up_brief, encoding="utf-8")
     calculation_matrix_path.write_text(calculation_matrix, encoding="utf-8")
+    calculation_snapshot_path.write_text(
+        json.dumps(calculation_snapshot, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    monitoring_snapshot_path.write_text(
+        json.dumps(monitoring_snapshot, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     return manifest_path
 
 
@@ -83,6 +115,7 @@ def test_verify_completion_snapshot_passes_for_checked_in_audit_package() -> Non
     assert result["follow_up_packet_count"] == 5
     assert result["follow_up_brief_blocker_count"] == 5
     assert result["calculation_prework_p1_count"] == 10
+    assert result["calculation_snapshot_status"] == "owner_decision_required"
     assert result["errors"] == []
 
 
@@ -98,6 +131,54 @@ def test_verify_completion_snapshot_fails_when_gate_timestamp_drifts(tmp_path: P
 
     assert result["status"] == "fail"
     assert any("last_checked_at does not match manifest" in item for item in result["errors"])
+
+
+def test_verify_completion_snapshot_fails_when_monitoring_timestamp_drifts(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    monitoring_path = tmp_path / manifest["artifacts"]["system_audit_monitoring_snapshot"]
+    monitoring = json.loads(monitoring_path.read_text(encoding="utf-8"))
+    monitoring["generated_at"] = "2099-01-01T00:00:00+00:00"
+    monitoring_path.write_text(
+        json.dumps(monitoring, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "manifest generated_at does not match system audit monitoring snapshot" in result[
+        "errors"
+    ]
+
+
+def test_verify_completion_snapshot_fails_when_monitoring_writes_governance(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    monitoring_path = tmp_path / manifest["artifacts"]["system_audit_monitoring_snapshot"]
+    monitoring = json.loads(monitoring_path.read_text(encoding="utf-8"))
+    monitoring["evidence_scope"]["writes_governance_records"] = True
+    monitoring["refresh_results"]["ledger_pnl_direct_governance_record"][
+        "record_write_status"
+    ] = "written"
+    monitoring_path.write_text(
+        json.dumps(monitoring, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "system audit monitoring snapshot evidence_scope is not fail-closed" in result[
+        "errors"
+    ]
+    assert "system audit monitoring must not write Ledger PnL governance records" in result[
+        "errors"
+    ]
 
 
 def test_verify_completion_snapshot_fails_when_follow_up_packet_approves_metrics(
@@ -117,6 +198,42 @@ def test_verify_completion_snapshot_fails_when_follow_up_packet_approves_metrics
         "owner/governance follow-up packet status approves_metrics must be False" in item
         for item in result["errors"]
     )
+
+
+def test_verify_completion_snapshot_fails_when_calculation_snapshot_approves_convention(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    snapshot_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_snapshot"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["status"]["chooses_or_approves_conventions"] = True
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert any(
+        "calculation owner decision snapshot status chooses_or_approves_conventions must be False"
+        in item
+        for item in result["errors"]
+    )
+
+
+def test_verify_completion_snapshot_fails_when_calculation_snapshot_drift_is_present(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _copy_audit_files(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    snapshot_path = tmp_path / manifest["artifacts"]["calculation_owner_decision_snapshot"]
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["drift_errors"] = ["P1-08 appears in open owner-decision rows"]
+    snapshot_path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    result = verify_completion_snapshot(manifest_path=manifest_path, repo_root=tmp_path)
+
+    assert result["status"] == "fail"
+    assert "calculation owner decision snapshot has drift_errors" in result["errors"]
 
 
 def test_verify_completion_snapshot_fails_when_ledger_write_guard_is_removed(

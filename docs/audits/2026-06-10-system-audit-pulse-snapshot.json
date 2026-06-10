@@ -1,0 +1,93 @@
+{
+  "report_kind": "system_audit_pulse",
+  "generated_at": "2026-06-10T21:25:00+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "manifest_path": "F:\\MOSS-V3\\docs\\audits\\2026-06-10-system-audit-manifest.json",
+  "status": "pass",
+  "full_score_ready": false,
+  "completion_state": "not_complete",
+  "open_blocker_count": 5,
+  "open_blockers": [
+    {
+      "id": "owner-approval-7-pages",
+      "status": "pending",
+      "last_checked_at": "2026-06-10T19:26:44+08:00"
+    },
+    {
+      "id": "ledger-pnl-direct-governance-record",
+      "status": "dry_run_candidate_only",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    },
+    {
+      "id": "calculation-display-p1-decisions",
+      "status": "owner_decision_required",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    },
+    {
+      "id": "direct-app-mcp-gitnexus-evidence",
+      "status": "tool_surface_unavailable_in_session",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    },
+    {
+      "id": "local-secret-hygiene",
+      "status": "local_ignored_untracked_findings",
+      "last_checked_at": "2026-06-10T21:25:00+08:00"
+    }
+  ],
+  "evidence_scope": {
+    "read_only": true,
+    "writes_duckdb": false,
+    "writes_governance_records": false,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "certifies_routes": false,
+    "clears_secret_scan": false,
+    "promotes_candidate_data": false
+  },
+  "route_scope": {
+    "route_count": 39,
+    "seeded_trace_bundle_count": 39,
+    "visible_navigation_route_count": 36,
+    "visible_unseeded_route_count": 0,
+    "business_contract_certified_count": 0,
+    "evidence_pending_count": 23,
+    "gate_i_gap_count": 0,
+    "frontend_ready_count": 6,
+    "frontend_only_count": 10,
+    "unclassified_count": 0
+  },
+  "business_display": {
+    "tracked_route_count": 26,
+    "route_gap_count": 0,
+    "browser_smoke_a11y_configured_route_count": 26,
+    "browser_smoke_a11y_gap_count": 0,
+    "coverage_status": "tracked"
+  },
+  "completion_snapshot": {
+    "status": "pass",
+    "open_blocker_count": 5,
+    "completion_gate_count": 5,
+    "follow_up_packet_count": 5,
+    "follow_up_brief_blocker_count": 5,
+    "calculation_prework_p1_count": 10,
+    "error_count": 0
+  },
+  "all_page_readiness": {
+    "source": "manifest_last_full_readiness",
+    "page_count": 39,
+    "static_pass_count": 39,
+    "non_static_pass_count": 0,
+    "run_supported_count": 27,
+    "owner_approval_pending_count": 7,
+    "owner_approval_action_item_sum": 84,
+    "direct_evidence_explicit_count": 39,
+    "direct_evidence_null_count": 0,
+    "audit_review_null_count": 0,
+    "missing_direct_records_count": 23,
+    "direct_records_ready_for_audit_review_count": 16,
+    "catalog_date_incomplete_count": 12
+  },
+  "drift_errors": [],
+  "claim_boundary": "This pulse is a read-only monitoring aggregate. It does not approve metrics, pages, owner signoff, governance records, secret hygiene, direct App MCP/GitNexus evidence, or route certification."
+}

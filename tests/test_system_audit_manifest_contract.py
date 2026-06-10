@@ -16,6 +16,7 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
     manifest = _load_json(MANIFEST_PATH)
 
     assert manifest["report_kind"] == "system_wide_skills_audit_manifest"
+    assert manifest["generated_at"] == "2026-06-10T21:25:00+08:00"
     assert manifest["status"] == {
         "overall": "evidence_package_ready_but_business_closure_not_achieved",
         "fail_closed": True,
@@ -43,15 +44,23 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
         "owner_approval_fail_closed_snapshot",
         "direct_app_mcp_gitnexus_tool_surface_snapshot",
         "direct_app_mcp_gitnexus_tool_surface_runbook",
+        "direct_app_mcp_gitnexus_tool_surface_refresh_script",
         "ledger_pnl_direct_governance_record_snapshot",
         "ledger_pnl_direct_governance_record_runbook",
         "local_secret_hygiene_snapshot",
         "local_secret_hygiene_runbook",
+        "local_secret_hygiene_refresh_script",
         "business_display_coverage",
         "real_backend_smoke_runbook",
         "real_backend_smoke_result",
+        "system_audit_pulse_snapshot",
         "system_audit_pulse_script",
         "system_audit_pulse_tests",
+        "system_audit_monitoring_snapshot",
+        "system_audit_monitoring_script",
+        "system_audit_monitoring_tests",
+        "system_audit_monitoring_verifier_script",
+        "system_audit_monitoring_verifier_tests",
     }
     assert required_artifacts <= set(manifest["artifacts"])
 
@@ -66,6 +75,7 @@ def test_system_audit_manifest_references_existing_artifacts_and_stays_fail_clos
 def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() -> None:
     manifest = _load_json(MANIFEST_PATH)
     coverage = _load_json(COVERAGE_REPORT_PATH)
+    pulse_snapshot = _load_json(ROOT / manifest["artifacts"]["system_audit_pulse_snapshot"])
     action_register = (ROOT / manifest["artifacts"]["action_register"]).read_text(
         encoding="utf-8"
     )
@@ -123,6 +133,40 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
         "completion_snapshot_error_count": 0,
         "readiness_source": "manifest_last_full_readiness",
     }
+    assert pulse_snapshot["report_kind"] == "system_audit_pulse"
+    assert pulse_snapshot["status"] == pulse["status"]
+    assert pulse_snapshot["completion_state"] == pulse["completion_state"]
+    assert pulse_snapshot["full_score_ready"] is False
+    assert pulse_snapshot["open_blocker_count"] == len(manifest["open_blockers"])
+    assert pulse_snapshot["route_scope"]["route_count"] == counts["seeded_pages"]
+    assert (
+        pulse_snapshot["route_scope"]["business_contract_certified_count"]
+        == counts["business_contract_certified_routes"]
+    )
+    assert (
+        pulse_snapshot["business_display"]["tracked_route_count"]
+        == counts["business_display_tracked_routes"]
+    )
+    assert (
+        pulse_snapshot["business_display"]["route_gap_count"]
+        == counts["business_display_route_gaps"]
+    )
+    assert pulse_snapshot["completion_snapshot"]["status"] == "pass"
+    assert pulse_snapshot["completion_snapshot"]["error_count"] == 0
+    assert pulse_snapshot["all_page_readiness"]["source"] == "manifest_last_full_readiness"
+    assert pulse_snapshot["drift_errors"] == []
+    assert pulse_snapshot["evidence_scope"] == {
+        "read_only": True,
+        "writes_duckdb": False,
+        "writes_governance_records": False,
+        "approves_metrics": False,
+        "approves_pages": False,
+        "captures_business_owner_approval": False,
+        "certifies_routes": False,
+        "clears_secret_scan": False,
+        "promotes_candidate_data": False,
+    }
+    assert "does not approve metrics" in pulse_snapshot["claim_boundary"]
     assert "does not approve routes" in manifest["fresh_verification"]["interpretation"]
 
     priority_rows = [
@@ -194,17 +238,108 @@ def test_system_audit_manifest_counts_match_coverage_and_fresh_verification() ->
     )
     assert "pytest tests/test_system_audit_pulse.py -q" in pulse_evidence["command"]
     assert "python scripts\\system_audit_pulse.py" in pulse_evidence["command"]
-    assert "5 passed" in pulse_evidence["result"]
+    assert "--format markdown" in pulse_evidence["command"]
+    assert "7 passed" in pulse_evidence["result"]
     assert "completion_state=not_complete" in pulse_evidence["result"]
     assert f"open_blocker_count={len(manifest['open_blockers'])}" in pulse_evidence[
         "result"
     ]
     assert "business_contract_certified_count=0" in pulse_evidence["result"]
     assert "route_gap_count=0" in pulse_evidence["result"]
+    assert "markdown watch board renders" in pulse_evidence["result"]
     assert "drift_errors=[]" in pulse_evidence["result"]
     assert "no approval/write/secret-clear/certification flags" in pulse_evidence[
         "result"
     ]
+
+    monitoring_snapshot = _load_json(
+        ROOT / manifest["artifacts"]["system_audit_monitoring_snapshot"]
+    )
+    assert monitoring_snapshot["report_kind"] == "system_audit_monitoring_snapshot"
+    assert monitoring_snapshot["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert monitoring_snapshot["evidence_scope"] == {
+        "read_only": True,
+        "writes_duckdb": False,
+        "writes_governance_records": False,
+        "writes_or_rotates_secrets": False,
+        "reads_secret_values": False,
+        "approves_metrics": False,
+        "approves_pages": False,
+        "captures_business_owner_approval": False,
+        "certifies_routes": False,
+        "clears_secret_scan": False,
+        "promotes_candidate_data": False,
+    }
+    assert monitoring_snapshot["completion_verification"]["status"] == "pass"
+    assert monitoring_snapshot["completion_verification"]["open_blocker_count"] == len(
+        manifest["open_blockers"]
+    )
+    assert monitoring_snapshot["completion_verification"]["error_count"] == 0
+    assert monitoring_snapshot["pulse"]["status"] == "pass"
+    assert monitoring_snapshot["pulse"]["completion_state"] == "not_complete"
+    assert monitoring_snapshot["pulse"]["open_blocker_count"] == len(
+        manifest["open_blockers"]
+    )
+    assert monitoring_snapshot["pulse"]["drift_errors"] == []
+    assert monitoring_snapshot["refresh_results"]["calculation_owner_decision"][
+        "open_decision_count"
+    ] == counts["calculation_display_open_p1"]
+    assert monitoring_snapshot["refresh_results"]["calculation_owner_decision"][
+        "captured_decision_count"
+    ] == 0
+    assert monitoring_snapshot["refresh_results"]["ledger_pnl_direct_governance_record"][
+        "record_write_status"
+    ] == "not_requested"
+    assert monitoring_snapshot["refresh_results"]["ledger_pnl_direct_governance_record"][
+        "formal_use_allowed"
+    ] is False
+    assert monitoring_snapshot["refresh_results"]["direct_app_mcp_gitnexus_tool_surface"][
+        "direct_app_mcp_evidence_captured"
+    ] is False
+    assert monitoring_snapshot["refresh_results"]["direct_app_mcp_gitnexus_tool_surface"][
+        "direct_gitnexus_evidence_captured"
+    ] is False
+    assert monitoring_snapshot["refresh_results"]["local_secret_hygiene"][
+        "secret_values_captured"
+    ] is False
+    assert monitoring_snapshot["refresh_results"]["local_secret_hygiene"][
+        "clears_secret_scan"
+    ] is False
+    assert "does not write DuckDB or governance records" in monitoring_snapshot[
+        "boundary"
+    ]
+    monitoring_evidence = next(
+        item
+        for item in manifest["verification_evidence"]
+        if item["scope"] == "system_audit_monitoring_refresh"
+    )
+    assert "python scripts\\refresh_system_audit_monitoring.py" in monitoring_evidence[
+        "command"
+    ]
+    assert "tests/test_system_audit_monitoring_refresh.py" in monitoring_evidence[
+        "command"
+    ]
+    assert monitoring_snapshot["generated_at"] in monitoring_evidence["result"]
+    assert "drift_errors=[]" in monitoring_evidence["result"]
+    assert "monitoring refresh tests 2 passed" in monitoring_evidence["result"]
+
+    monitoring_verifier_evidence = next(
+        item
+        for item in manifest["verification_evidence"]
+        if item["scope"] == "system_audit_monitoring_snapshot_verifier"
+    )
+    assert "tests/test_system_audit_monitoring_snapshot_verifier.py" in (
+        monitoring_verifier_evidence["command"]
+    )
+    assert "python scripts\\verify_system_audit_monitoring_snapshot.py" in (
+        monitoring_verifier_evidence["command"]
+    )
+    assert "7 passed" in monitoring_verifier_evidence["result"]
+    assert "pulse_completion_state=not_complete" in monitoring_verifier_evidence[
+        "result"
+    ]
+    assert "errors=[]" in monitoring_verifier_evidence["result"]
+    assert "direct App evidence" in monitoring_verifier_evidence["result"]
 
 
 def test_completion_checklist_maps_open_blockers_without_approval() -> None:
@@ -242,6 +377,10 @@ def test_completion_snapshot_matches_open_blockers_and_stays_non_approving() -> 
     snapshot = _load_json(ROOT / manifest["artifacts"]["completion_snapshot"])
 
     assert snapshot["report_kind"] == "system_audit_completion_snapshot"
+    assert snapshot["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert snapshot["source_artifacts"]["system_audit_monitoring_snapshot"] == manifest[
+        "artifacts"
+    ]["system_audit_monitoring_snapshot"]
     assert snapshot["status"] == {
         "overall": "not_complete",
         "fail_closed": True,
@@ -308,6 +447,10 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     )
 
     assert packet["report_kind"] == "owner_governance_follow_up_packet"
+    assert packet["generated_at"] == "2026-06-10T21:25:00+08:00"
+    assert packet["source_artifacts"]["system_audit_monitoring_snapshot"] == manifest[
+        "artifacts"
+    ]["system_audit_monitoring_snapshot"]
     assert packet["status"] == {
         "overall": "follow_up_required",
         "fail_closed": True,
@@ -405,14 +548,20 @@ def test_owner_governance_follow_up_packet_routes_all_open_blockers_fail_closed(
     assert "follow_up_packet_count=5" in main_report
     assert "follow_up_brief_blocker_count=5" in main_report
     assert "calculation_prework_p1_count=10" in main_report
+    assert "verify_system_audit_monitoring_snapshot.py" in main_report
+    assert "pulse_completion_state=not_complete" in main_report
     assert "21 passed" in main_report
+    assert "7 passed" in main_report
     assert "does not authorize Ledger PnL `--write`" in main_report
     assert "2026-06-10-owner-governance-follow-up-packet.json" in executive_summary_zh
     assert "2026-06-10-owner-governance-follow-up-brief.zh.md" in executive_summary_zh
     assert "follow_up_packet_count=5" in executive_summary_zh
     assert "follow_up_brief_blocker_count=5" in executive_summary_zh
     assert "calculation_prework_p1_count=10" in executive_summary_zh
+    assert "verify_system_audit_monitoring_snapshot.py" in executive_summary_zh
+    assert "pulse_completion_state=not_complete" in executive_summary_zh
     assert "21 passed" in executive_summary_zh
+    assert "7 passed" in executive_summary_zh
     assert "12 条优先级行动" in executive_summary_zh
     assert "不授权 Ledger PnL `--write`" in executive_summary_zh
 
@@ -612,6 +761,10 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
     ).read_text(encoding="utf-8")
 
     assert snapshot["report_kind"] == "direct_app_mcp_gitnexus_tool_surface_snapshot"
+    assert snapshot["refresh_command"] == (
+        "python scripts\\refresh_direct_app_mcp_gitnexus_tool_surface_snapshot.py"
+    )
+    assert snapshot["observation_source"] == "caller_supplied_tool_search_results"
     assert snapshot["status"] == {
         "overall": "tool_surface_unavailable_in_current_codex_app_session",
         "fail_closed": True,
@@ -633,6 +786,7 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
     assert snapshot["generated_at"] == discovery["checked_at"]
     assert discovery["discovered_tool_count"] == 0
     assert discovery["discovered_tools"] == []
+    assert discovery["relevant_direct_tool_count"] == 0
     focused_rechecks = {
         item["query"]: item for item in snapshot["focused_rechecks"]
     }
@@ -685,6 +839,8 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
         "moss-data-quality",
     }
     assert set(snapshot["expected_direct_servers"]) == expected_servers
+    assert snapshot["detected_direct_servers"] == []
+    assert set(snapshot["missing_direct_servers"]) == expected_servers
     sources_by_path = {
         source["path"]: source for source in snapshot["local_registration_sources"]
     }
@@ -823,11 +979,12 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     assert retry["osv_retry"]["status"] == "not_refreshed_network_proxy_refused"
     assert "proxy 127.0.0.1:9 refused" in retry["osv_retry"]["result"]
     latest_boundary = snapshot["latest_boundary_only_recheck"]
-    assert latest_boundary["checked_at"] == "2026-06-10T19:33:20+08:00"
+    assert latest_boundary["checked_at"] == "2026-06-10T21:25:00+08:00"
     assert latest_boundary["values_read_by_human"] is False
     assert latest_boundary["values_written_to_artifacts"] is False
     assert latest_boundary["secret_values_captured"] is False
     assert latest_boundary["scan_not_rerun"] is True
+    assert latest_boundary["dry_run_plan"]["gitleaks_redaction_enabled"] is True
     assert "did not replace the last full redacted scan evidence" in latest_boundary[
         "reason"
     ]

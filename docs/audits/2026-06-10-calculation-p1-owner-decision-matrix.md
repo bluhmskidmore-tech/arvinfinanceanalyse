@@ -45,7 +45,7 @@ For each P1 item:
 
 ## Latest Verification Refresh
 
-Refreshed at `2026-06-10T19:30:36+08:00`.
+Refreshed at `2026-06-10T21:25:00+08:00`.
 
 - Open owner-decision rows remain: `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-07`, `P1-09`, `P1-10`, `P1-11`.
 - Open owner-decision row count remains `10`.
