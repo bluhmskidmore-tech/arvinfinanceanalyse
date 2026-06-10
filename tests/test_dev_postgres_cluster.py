@@ -9,6 +9,7 @@ from tests.helpers import ROOT, load_module
 
 EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("*", None, "choice_news.data", "read"),
+    ("anonymous", "viewer", "accounting_asset_movement", "read"),
     ("anonymous", "viewer", "balance_analysis", "read"),
     ("anonymous", "viewer", "bond_analytics", "read"),
     ("anonymous", "viewer", "bond_dashboard", "read"),
