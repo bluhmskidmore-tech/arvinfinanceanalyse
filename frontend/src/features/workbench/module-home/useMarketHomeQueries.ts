@@ -32,8 +32,8 @@ export function useMarketHomeQueries(): ModuleHomeSourceQueries {
   });
 
   const macroToolkitAnalysisQuery = useQuery({
-    queryKey: ["module-home", "macro-toolkit-analysis", "core", client.mode],
-    queryFn: () => client.getMacroToolkitAnalysis({ detail: "core" }),
+    queryKey: ["module-home", "macro-toolkit-analysis", "full", client.mode],
+    queryFn: () => client.getMacroToolkitAnalysis({ detail: "full" }),
     ...MARKET_HOME_QUERY_OPTIONS,
   });
 

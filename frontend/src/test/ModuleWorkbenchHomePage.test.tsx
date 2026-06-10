@@ -1064,7 +1064,7 @@ describe("PortfolioHomePage", () => {
 });
 
 describe("MarketHomePage", () => {
-  it("requests core macro analysis before deferred strategy summaries", async () => {
+  it("requests full macro analysis before deferred strategy summaries", async () => {
     const base = createApiClient({ mode: "mock" });
     const analysis = deferred<ApiEnvelope<MacroToolkitAnalysisPayload>>();
     const getMacroToolkitAnalysis = vi.fn(() => analysis.promise);
@@ -1078,7 +1078,7 @@ describe("MarketHomePage", () => {
     renderAt("/market-overview", client);
 
     await waitFor(() => {
-      expect(getMacroToolkitAnalysis).toHaveBeenCalledWith({ detail: "core" });
+      expect(getMacroToolkitAnalysis).toHaveBeenCalledWith({ detail: "full" });
     });
     expect(getMacroToolkitStrategySummaries).not.toHaveBeenCalled();
 
