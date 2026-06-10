@@ -84,14 +84,23 @@ function readChartOption(panelTestId: string) {
   return JSON.parse(
     within(panel).getByTestId("product-category-echarts-option").textContent ?? "null",
   ) as {
-    legend?: { data?: string[] };
+    backgroundColor?: string;
+    grid?: { top?: number; bottom?: number; containLabel?: boolean };
+    legend?: { data?: string[]; top?: number; right?: number; bottom?: number };
+    tooltip?: { backgroundColor?: string; borderColor?: string };
     xAxis?: { data?: string[] } | Array<{ data?: string[] }>;
-    yAxis?: { min?: number; max?: number; scale?: boolean } | Array<{ min?: number; max?: number; scale?: boolean }>;
+    yAxis?:
+      | { min?: number; max?: number; name?: string; scale?: boolean }
+      | Array<{ min?: number; max?: number; name?: string; scale?: boolean }>;
     series?: Array<{
       name?: string;
       type?: string;
       data?: unknown[];
       yAxisIndex?: number;
+      barMinHeight?: number;
+      barGap?: string;
+      barMaxWidth?: number;
+      itemStyle?: { color?: string; borderColor?: string; borderRadius?: number[] };
       symbolSize?: number;
       lineStyle?: { width?: number };
       label?: { show?: boolean };
@@ -1246,6 +1255,49 @@ describe("ProductCategoryPnlPage", () => {
     expect(interestEarningAssetLiabilityScaleOption.series?.map((series) => series.type)).toEqual(["bar", "bar"]);
     expect(interestEarningAssetLiabilityScaleOption.series?.[0]?.data).toEqual([2800, 2898.5]);
     expect(interestEarningAssetLiabilityScaleOption.series?.[1]?.data).toEqual([1728.58, 1728.58]);
+    expect(interestEarningAssetLiabilityScaleOption.backgroundColor).toBe("#f8fafc");
+    expect(interestEarningAssetLiabilityScaleOption.tooltip).toMatchObject({
+      backgroundColor: "rgba(15, 23, 42, 0.94)",
+      borderColor: "rgba(148, 163, 184, 0.28)",
+    });
+    expect(interestEarningAssetLiabilityScaleOption.legend).toMatchObject({
+      top: 4,
+      right: 8,
+      data: [
+        "生息资产日均额（亿元）",
+        "附息负债日均额（亿元）",
+      ],
+    });
+    expect(interestEarningAssetLiabilityScaleOption.grid).toMatchObject({
+      top: 48,
+      bottom: 18,
+      containLabel: true,
+    });
+    expect(interestEarningAssetLiabilityScaleOption.yAxis).toMatchObject({
+      name: "亿元",
+      scale: true,
+    });
+    expect(interestEarningAssetLiabilityScaleOption.series?.[0]).toMatchObject({
+      barMaxWidth: 14,
+      barMinHeight: 2,
+      barGap: "30%",
+      label: { show: true },
+      itemStyle: {
+        color: "rgba(37, 99, 235, 0.78)",
+        borderColor: "rgba(29, 78, 216, 0.58)",
+        borderRadius: [4, 4, 1, 1],
+      },
+    });
+    expect(interestEarningAssetLiabilityScaleOption.series?.[1]).toMatchObject({
+      barMaxWidth: 14,
+      barMinHeight: 2,
+      label: { show: true },
+      itemStyle: {
+        color: "rgba(217, 119, 6, 0.72)",
+        borderColor: "rgba(180, 83, 9, 0.5)",
+        borderRadius: [4, 4, 1, 1],
+      },
+    });
 
     const interestEarningSpreadYoyOption = readChartOption(
       "product-category-derived-chart-interest-earning-spread-yoy",

@@ -581,6 +581,112 @@ function buildSingleAxisChartOption(input: {
   };
 }
 
+function buildInterestEarningAssetLiabilityScaleChartOption(input: {
+  labels: string[];
+  series: Array<{
+    name: string;
+    data: number[];
+    color: string;
+    borderColor: string;
+  }>;
+}): EChartsOption | null {
+  if (!input.labels.length || input.series.every((series) => series.data.length === 0)) {
+    return null;
+  }
+  return {
+    backgroundColor: "#f8fafc",
+    tooltip: {
+      trigger: "axis",
+      formatter: buildAxisTooltipFormatter("亿元"),
+      backgroundColor: "rgba(15, 23, 42, 0.94)",
+      borderColor: "rgba(148, 163, 184, 0.28)",
+      textStyle: { color: "#f8fafc", fontFamily: designTokens.fontFamily.tabular, fontSize: 12 },
+      axisPointer: {
+        type: "shadow",
+        shadowStyle: { color: "rgba(15, 23, 42, 0.06)" },
+      },
+      confine: true,
+    },
+    legend: {
+      top: 4,
+      right: 8,
+      data: input.series.map((series) => series.name),
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: designTokens.color.neutral[700], fontSize: 11 },
+    },
+    grid: { left: 18, right: 16, top: 48, bottom: 18, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLabel: {
+        interval: 0,
+        rotate: input.labels.length > 6 ? 24 : 0,
+        color: designTokens.color.neutral[600],
+        fontFamily: designTokens.fontFamily.tabular,
+        fontSize: 11,
+      },
+      axisLine: { lineStyle: { color: "rgba(148, 163, 184, 0.38)" } },
+    },
+    yAxis: {
+      type: "value",
+      name: "亿元",
+      scale: true,
+      splitNumber: 4,
+      nameTextStyle: { color: designTokens.color.neutral[500], fontSize: 11, padding: [0, 0, 0, -18] },
+      axisLabel: {
+        formatter: buildAxisLabelFormatter(),
+        color: designTokens.color.neutral[600],
+        fontFamily: designTokens.fontFamily.tabular,
+        fontSize: 11,
+      },
+      splitLine: { lineStyle: { type: "dashed", color: "rgba(148, 163, 184, 0.22)" } },
+      splitArea: {
+        show: true,
+        areaStyle: { color: ["rgba(255, 255, 255, 0.48)", "rgba(226, 232, 240, 0.18)"] },
+      },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: input.series.map((series, index) => ({
+      name: series.name,
+      type: "bar",
+      data: series.data,
+      barMaxWidth: 14,
+      barGap: index === 0 ? "30%" : undefined,
+      barMinHeight: 2,
+      itemStyle: {
+        color: series.color,
+        borderColor: series.borderColor,
+        borderWidth: 1,
+        borderRadius: [4, 4, 1, 1],
+      },
+      label: {
+        show: true,
+        position: "top",
+        distance: 5,
+        color: index === 0 ? designTokens.color.primary[700] : designTokens.color.warning[700],
+        fontFamily: designTokens.fontFamily.tabular,
+        fontSize: 11,
+        fontWeight: 700,
+        formatter: (params: { dataIndex?: number; value?: unknown }) =>
+          params.dataIndex === input.labels.length - 1
+            ? formatProductCategoryChartNumberTwoDecimals(params.value)
+            : "",
+      },
+      emphasis: {
+        focus: "series",
+        itemStyle: {
+          opacity: 0.94,
+          shadowBlur: 10,
+          shadowColor: "rgba(15, 23, 42, 0.14)",
+        },
+      },
+    })),
+  };
+}
+
 function buildInterestSpreadChartOption(input: {
   labels: string[];
   series: Array<{
@@ -3554,21 +3660,20 @@ export default function ProductCategoryPnlPage() {
   const interestEarningAssetLiabilityScaleOption = useMemo(
     () =>
       interestEarningAssetLiabilityScaleChart
-        ? buildSingleAxisChartOption({
+        ? buildInterestEarningAssetLiabilityScaleChartOption({
             labels: interestEarningAssetLiabilityScaleChart.labels,
-            axisName: "亿元",
             series: [
               {
                 name: "生息资产日均额（亿元）",
-                type: "bar",
                 data: interestEarningAssetLiabilityScaleChart.interestEarningAssetScale,
-                color: designTokens.color.info[500],
+                color: "rgba(37, 99, 235, 0.78)",
+                borderColor: "rgba(29, 78, 216, 0.58)",
               },
               {
                 name: "附息负债日均额（亿元）",
-                type: "bar",
                 data: interestEarningAssetLiabilityScaleChart.interestBearingLiabilityScale,
-                color: designTokens.color.warning[500],
+                color: "rgba(217, 119, 6, 0.72)",
+                borderColor: "rgba(180, 83, 9, 0.5)",
               },
             ],
           })
