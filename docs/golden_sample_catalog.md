@@ -38,7 +38,7 @@
 
 ## 3. 第一批范围
 
-本批覆盖 `tests/golden_samples/` 下 **21** 个目录所对应的主链与治理边界（其中 20 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
+本批覆盖 `tests/golden_samples/` 下 **22** 个目录所对应的主链与治理边界（其中 21 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
@@ -56,6 +56,7 @@
 - `/api/bond-analytics/credit-spread-migration` (`GS-CONCENTRATION-MONITOR-A`)
 - `/ui/market-data/livermore`（`GS-STOCK-ANALYSIS-OBS-A`）
 - `/api/analysis/adb` (`GS-AVERAGE-BALANCE-A`)
+- `/api/analysis/adb/monthly` (`GS-AVERAGE-BALANCE-MONTHLY-A`)
 
 不纳入本批：
 
@@ -110,7 +111,7 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
-与 `tests/test_golden_samples_capture_ready.py` 中注册的 20 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-AVERAGE-BALANCE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 21 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-AVERAGE-BALANCE-A`、`GS-AVERAGE-BALANCE-MONTHLY-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
 
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -124,6 +125,7 @@ tests/golden_samples/
 | `GS-CONCENTRATION-MONITOR-A` | `GET /api/bond-analytics/credit-spread-migration` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py` | concentration-monitor candidate concentration DTO sample; not formal risk truth or certified concentration-limit approval |
 | `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | `capture-ready` | `2026-04-03` | `tests/test_golden_samples_capture_ready.py`、`tests/test_stock_analysis_business_owner_approval_status.py` | stock-analysis Livermore observational 页面 DTO 样本；非交易指令 |
 | `GS-AVERAGE-BALANCE-A` | `GET /api/analysis/adb` | `capture-ready` | `2025-12-31` | `tests/test_golden_samples_capture_ready.py` | average-balance daily ADB candidate DTO sample; not formal balance truth, monthly ADB/NIM truth, manual audit, or owner approval |
+| `GS-AVERAGE-BALANCE-MONTHLY-A` | `GET /api/analysis/adb/monthly` | `capture-ready` | `2026-01-31` | `tests/test_golden_samples_capture_ready.py`、`tests/test_adb_analysis_api.py` | average-balance monthly ADB/NIM candidate DTO sample; not formal balance truth, governance closure, manual audit, or owner approval |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | `capture-ready` | `2026-04-30` | `tests/test_ledger_pnl_service.py`、`tests/test_golden_samples_capture_ready.py` | ledger-pnl 页面级 summary DTO 样本 |
 | `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | `capture-ready` | `2026-04-30` | `tests/test_cashflow_projection.py`, `tests/test_golden_samples_capture_ready.py` | cashflow-projection candidate liquidity projection DTO sample; not formal liquidity/risk/balance/PnL truth |
 | `GS-PROD-CAT-PNL-A` | `GET /ui/pnl/product-category` | `capture-ready` | `2026-02-28` | `tests/test_product_category_pnl_flow.py`、`tests/test_golden_samples_capture_ready.py` | formal 明细/主表样本 |
@@ -525,7 +527,7 @@ This sample must not be used to approve standalone `MTR-*` metrics, live page ex
 
 ## 9. 当前结论
 
-仓库中已有 **20** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类、PnL attribution workbench、ledger summary、cashflow projection、average-balance daily ADB、bond-analysis action-attribution、concentration-monitor credit-spread-migration、stock-analysis observation 与两类 warning profile），另有 **1** 个 supporting-only 治理边界样本目录；治理重点转为：**契约/字典/冻结 JSON 一致性**。
+仓库中已有 **21** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类、PnL attribution workbench、ledger summary、cashflow projection、average-balance daily/monthly ADB、bond-analysis action-attribution、concentration-monitor credit-spread-migration、stock-analysis observation 与两类 warning profile），另有 **1** 个 supporting-only 治理边界样本目录；治理重点转为：**契约/字典/冻结 JSON 一致性**。
 
 因此下一步是维护与对账，而不是再扩张“计划-only”文档：
 

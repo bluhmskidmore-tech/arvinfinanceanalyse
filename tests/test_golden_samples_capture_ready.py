@@ -44,6 +44,11 @@ RISK_TENSOR_SAMPLE_PATHS = {"/api/risk/tensor"}
 RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
 AVERAGE_BALANCE_SAMPLE_PATHS = {"/api/analysis/adb"}
 AVERAGE_BALANCE_READ_HEADERS = {"X-User-Id": "average-balance-read-user", "X-User-Role": "viewer"}
+BOND_ANALYTICS_CACHE_KEY = "bond_analytics:materialize:formal"
+BOND_ANALYTICS_JOB_NAME = "bond_analytics_materialize"
+BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
+BOND_ANALYTICS_CACHE_VERSION = f"cv_bond_analytics_formal__{BOND_ANALYTICS_RULE_VERSION}"
+BOND_ANALYTICS_LOCK = "lock:duckdb:formal:bond-analytics:materialize"
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -59,6 +64,35 @@ def _load_json(sample_id: str, filename: str) -> dict[str, Any]:
 
 def _read_text(sample_id: str, filename: str) -> str:
     return _sample_file(sample_id, filename).read_text(encoding="utf-8")
+
+
+def _append_bond_analytics_completed_build(
+    governance_path: Path,
+    *,
+    report_date: str,
+    source_version: str,
+    run_id: str,
+) -> None:
+    from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+    from backend.app.schemas.materialize import CacheBuildRunRecord
+
+    GovernanceRepository(base_dir=governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id=run_id,
+                job_name=BOND_ANALYTICS_JOB_NAME,
+                status="completed",
+                cache_key=BOND_ANALYTICS_CACHE_KEY,
+                cache_version=BOND_ANALYTICS_CACHE_VERSION,
+                lock=BOND_ANALYTICS_LOCK,
+                source_version=source_version or "sv_bond_analytics_golden_sample",
+                vendor_version="vv_none",
+                rule_version=BOND_ANALYTICS_RULE_VERSION,
+            ).model_dump(),
+            "report_date": report_date,
+        },
+    )
 
 
 def _extract(value: Any, path: tuple[Any, ...]) -> Any:
@@ -324,8 +358,9 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     duckdb_path = tmp_path / "bond-headline.duckdb"
+    governance_path = tmp_path / "gov"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
-    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     get_settings.cache_clear()
 
     repo = BondAnalyticsRepository(str(duckdb_path))
@@ -390,6 +425,18 @@ def _setup_bond_headline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
                 ),
             ],
         )
+    _append_bond_analytics_completed_build(
+        governance_path,
+        report_date="2026-03-30",
+        source_version="sv",
+        run_id="golden-bond-headline:2026-03-30",
+    )
+    _append_bond_analytics_completed_build(
+        governance_path,
+        report_date="2026-03-31",
+        source_version="sv",
+        run_id="golden-bond-headline:2026-03-31",
+    )
 
 
 def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -398,6 +445,7 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
         "backend/app/services/bond_analytics_service.py",
     )
     service_mod._action_attribution_cache.clear()
+    governance_path = tmp_path / "governance"
 
     monkeypatch.setattr(
         service_mod,
@@ -407,11 +455,17 @@ def _setup_bond_analysis_action_attribution(tmp_path: Path, monkeypatch: pytest.
             (),
             {
                 "duckdb_path": str(tmp_path / "bond-analysis-action-attribution.duckdb"),
-                "governance_path": tmp_path / "governance",
+                "governance_path": governance_path,
                 "governance_sql_dsn": "",
                 "postgres_dsn": "",
             },
         )(),
+    )
+    _append_bond_analytics_completed_build(
+        governance_path,
+        report_date="2026-03-31",
+        source_version="sv_bond_analysis_action_attr_gs_a",
+        run_id="golden-bond-action-attribution:2026-03-31",
     )
 
     class Repo:
@@ -463,6 +517,7 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
+    governance_path = tmp_path / "governance"
 
     monkeypatch.setattr(
         service_mod,
@@ -472,7 +527,7 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             (),
             {
                 "duckdb_path": str(tmp_path / "concentration-monitor.duckdb"),
-                "governance_path": tmp_path / "governance",
+                "governance_path": governance_path,
                 "governance_sql_dsn": "",
                 "postgres_dsn": "",
             },
@@ -538,6 +593,12 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             return rows
 
     monkeypatch.setattr(service_mod, "_repo", lambda: Repo())
+    _append_bond_analytics_completed_build(
+        governance_path,
+        report_date="2026-03-31",
+        source_version="sv_concentration_monitor_gs_a",
+        run_id="golden-concentration-monitor:2026-03-31",
+    )
     monkeypatch.setattr(
         service_mod,
         "_fetch_credit_curves",

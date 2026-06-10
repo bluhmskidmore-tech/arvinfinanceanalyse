@@ -948,7 +948,6 @@ export function formatProductCategoryRowDisplayValue(
   return (parsed / YUAN_PER_YI).toFixed(digits);
 }
 
-export function formatProductCategoryYieldValue(
 export function formatProductCategoryForeignDisplayValue(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
@@ -965,6 +964,7 @@ export function formatProductCategoryForeignDisplayValue(
   return (displayValue / YUAN_PER_YI).toFixed(digits);
 }
 
+export function formatProductCategoryYieldValue(
   value: DecimalLike | null | undefined,
   digits = 2,
 ): string {
@@ -996,6 +996,24 @@ export function toneForProductCategoryValue(value: DecimalLike | null | undefine
 }
 
 function decimalNumber(value: DecimalLike | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function productCategoryForeignDisplayNumber(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+): number | null {
+  const parsed = decimalNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+  return row.side === "liability" ? -parsed : parsed;
+}
+
 export function toneForProductCategoryForeignDisplayValue(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
@@ -1005,13 +1023,6 @@ export function toneForProductCategoryForeignDisplayValue(
     return PRODUCT_CATEGORY_VALUE_TONE_COLORS.default;
   }
   return toneForProductCategoryValue(displayValue);
-}
-
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function yiNumber(value: DecimalLike | null | undefined): number | null {
@@ -1039,17 +1050,6 @@ function toneNameForValue(value: DecimalLike | null | undefined): "neutral" | "p
 }
 
 function formatSignedProductCategoryYi(value: number | null): string {
-function productCategoryForeignDisplayNumber(
-  row: Pick<ProductCategoryPnlRow, "side">,
-  value: DecimalLike | null | undefined,
-): number | null {
-  const parsed = decimalNumber(value);
-  if (parsed === null) {
-    return null;
-  }
-  return row.side === "liability" ? -parsed : parsed;
-}
-
   return signedYiDeltaLabel(value);
 }
 
@@ -3529,8 +3529,8 @@ function productCategorySideLabel(side: string): string {
 function formatProductCategoryDiagnosticMoneyLabel(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
-): string {
   options?: { foreignDisplay?: boolean },
+): string {
   const display = options?.foreignDisplay
     ? formatProductCategoryForeignDisplayValue(row, value)
     : formatProductCategoryRowDisplayValue(row, value);

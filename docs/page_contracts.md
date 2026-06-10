@@ -1168,6 +1168,50 @@
 - 现有测试锚点：`frontend/src/test/BondDashboardPage.test.tsx`、`tests/test_bond_dashboard_api_contract.py`、`tests/test_bond_dashboard_headlines_contract.py`、`tests/test_bond_analytics_api.py`、`tests/test_result_meta_source_surface_followup.py`
 - 黄金样本状态：`GS-BOND-HEADLINE-A` 现已作为 **capture-ready** 页面样本绑定到 `GET /api/bond-dashboard/headline-kpis`，样本目录位于 `tests/golden_samples/GS-BOND-HEADLINE-A/`，并已纳入 `tests/test_golden_samples_capture_ready.py`。该样本冻结的是 bond-dashboard 首屏 headline DTO 真值与空态行为；Headline / 风险卡与正式 `MTR-*` 的字典级绑定仍见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***，本次样本冻结**不**自动批准新的字典级 metric 映射。
 
+## 13.6.1 PAGE-BOND-ANALYSIS-001 Bond Analysis Workbench
+
+### A. Page identity
+
+- Page ID: `PAGE-BOND-ANALYSIS-001`
+- Primary front-end route: `/bond-analysis`
+- Status: `active workbench entry surface`
+- Primary frontend files:
+  - `frontend/src/features/bond-analytics/BondAnalyticsView.tsx`
+  - `frontend/src/features/workbench/dashboard/dashboardCockpitModel.ts`
+- Primary downstream contracts:
+  - `PAGE-BOND-001` for the governed bond-dashboard headline and distribution reads
+  - `PAGE-POS-001` for positions drill-downs
+  - `PAGE-RISK-001` for formal risk tensor truth when risk detail is opened
+
+### B. Primary business question
+
+- The page answers: which bond analysis modules are available for the selected reporting context, and where should the user drill into governed bond, position, or risk evidence?
+- It is a workbench shell and routing surface. It must not create new formal metric definitions or reinterpret downstream DTO fields as page-level formal truth.
+- Candidate, missing, stale, fallback, and no-data states from downstream modules must remain visible instead of being normalized into a single green readiness state.
+
+### C. Data chain
+
+- The route renders the bond workbench and consumes existing bond-dashboard, positions, and risk module APIs through their domain clients.
+- Any formal-use claim must come from the returned downstream envelope, `result_meta`, or the downstream page contract. The workbench itself does not set `formal_use_allowed=true`.
+- Display-only copies of backend fields such as DV01, duration, convexity, concentration, or spread sensitivity remain source readouts, not frontend calculations.
+
+### D. Units, dates, and status
+
+- Units and precision follow the downstream DTO or formatter already owned by the corresponding page contract.
+- Report dates remain selected and resolved by the downstream module. The workbench may display the selected context but must not invent a separate `as_of_date`.
+- Empty/failure states must name the affected module and keep the user on a safe navigation path.
+- Stale or fallback metadata must stay visible when a downstream envelope reports degraded data quality.
+
+### E. Metric bindings
+
+- None. This workbench page has no standalone `MTR-*` binding.
+- Existing `MTR-*` rows remain bound only to their downstream page and sample contracts.
+
+### F. Tests
+
+- Frontend: `frontend/src/test/BondAnalyticsView.test.tsx`, `frontend/src/test/navigation.test.ts`.
+- Contract gate: `tests/test_live_route_page_contract_completeness.py`.
+
 ## 13.7 PAGE-POS-001 持仓
 
 ### A. 页面身份

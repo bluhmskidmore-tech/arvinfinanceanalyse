@@ -8,6 +8,7 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     globals: true,
     exclude: ["tests/playwright/**", "node_modules/**", "dist/**"],
+    maxWorkers: 3,
     testTimeout: 15000,
   },
 });

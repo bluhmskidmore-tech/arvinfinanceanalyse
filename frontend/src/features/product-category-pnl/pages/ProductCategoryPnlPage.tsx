@@ -435,6 +435,10 @@ function formalValueToneClassName(value: DecimalLike | null | undefined): string
 }
 
 function formalCategoryIndentClassName(level: number): string {
+  const clampedLevel = Math.min(Math.max(Math.trunc(level), 0), 8);
+  return `product-category-formal-table__category-indent product-category-formal-table__category-indent--level-${clampedLevel}`;
+}
+
 function formalForeignValueToneClassName(
   row: Pick<ProductCategoryPnlRow, "side">,
   value: DecimalLike | null | undefined,
@@ -447,10 +451,6 @@ function formalForeignValueToneClassName(
     return formalValueToneClassName(value);
   }
   return formalValueToneClassName(row.side === "liability" ? -parsed : parsed);
-}
-
-  const clampedLevel = Math.min(Math.max(Math.trunc(level), 0), 8);
-  return `product-category-formal-table__category-indent product-category-formal-table__category-indent--level-${clampedLevel}`;
 }
 
 type DerivedChartPanelProps = {

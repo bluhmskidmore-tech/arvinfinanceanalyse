@@ -1888,20 +1888,9 @@ describe("ProductCategoryPnlPage", () => {
       "1.11",
       "2.35",
     ]);
-
-    const viewGroup = screen.getByRole("group", { name: "视图模式" });
-    expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
-    expect(within(viewGroup).queryByText("qtd")).not.toBeInTheDocument();
-    expect(within(viewGroup).queryByText("year_to_report_month_end")).not.toBeInTheDocument();
-  });
-
-  it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
-    const baseClient = createApiClient({ mode: "mock" });
-    const negYuan = "-123456789";
-    renderWorkbenchAppWithClient({
-    const liabilityRow = within(table).getByText("liability delta fixture").closest("tr");
-    expect(liabilityRow).toBeTruthy();
-    expect(within(liabilityRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+    const liabilityDeltaRow = within(table).getByText("liability delta fixture").closest("tr");
+    expect(liabilityDeltaRow).toBeTruthy();
+    expect(within(liabilityDeltaRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
       "liability delta fixture",
       "578.50",
       "579.06",
@@ -1916,6 +1905,17 @@ describe("ProductCategoryPnlPage", () => {
       "1.11",
       "1.23",
     ]);
+
+    const viewGroup = screen.getByRole("group", { name: "视图模式" });
+    expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
+    expect(within(viewGroup).queryByText("qtd")).not.toBeInTheDocument();
+    expect(within(viewGroup).queryByText("year_to_report_month_end")).not.toBeInTheDocument();
+  });
+
+  it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const negYuan = "-123456789";
+    renderWorkbenchAppWithClient({
       ...baseClient,
       getProductCategoryPnl: vi.fn(async (options) => {
         const env = buildMockProductCategoryPnlEnvelope(options);

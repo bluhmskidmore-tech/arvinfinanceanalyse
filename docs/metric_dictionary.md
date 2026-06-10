@@ -387,7 +387,7 @@ MTR-RSK-001 fixed-income convention note:
 
 当前状态：
 
-- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 20 个 capture-ready 样本包。
+- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 21 个 capture-ready 样本包。
 - 该矩阵只使用本文件已有 `metric_id`，不新增或猜测产品分类指标。
 - 仍有部分样本是结构 / warning / narrative freeze，不等同于完整指标字典冻结。
 

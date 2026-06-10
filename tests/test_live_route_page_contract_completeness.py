@@ -31,10 +31,6 @@ PAGE_CONTRACTS_PATH = ROOT / "docs" / "page_contracts.md"
 ROUTE_MATURITY_PATH = ROOT / "docs" / "live_route_maturity.md"
 
 TEMP_EXCEPTION_ROUTE_PAGE_CONTRACT_WHITELIST = {
-    "/bond-analysis": (
-        "temporary-exception live route; the current contract pack documents "
-        "`/bond-dashboard` but not the governed `/bond-analysis` workbench yet."
-    ),
     "/cross-asset": (
         "temporary-exception analytical route; current page contracts stop at "
         "`/market-data` and do not yet define a dedicated cross-asset PAGE."

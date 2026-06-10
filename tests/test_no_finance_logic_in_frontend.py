@@ -70,6 +70,9 @@ DISPLAY_ONLY_FILE_SNIPPETS = {
     "features/workbench/module-home/moduleHomeModel.ts": (
         # Module home uses this as a status string for a backend field gap only.
         '? "监管 DV01 待接入，不能判定限额状态。"',
+        # Module home formats a backend-provided risk readout; it does not
+        # recompute convexity in the frontend.
+        "const raw = nativeToNumber(risk.weighted_convexity);",
     ),
     "features/workbench/module-home/portfolioDecisionModel.ts": (
         # Portfolio decision copy references backend-provided risk concepts only
