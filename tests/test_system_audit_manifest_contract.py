@@ -196,7 +196,8 @@ def test_completion_checklist_maps_open_blockers_without_approval() -> None:
     assert "10 rows remain open" in checklist
     assert "`direct-app-mcp-gitnexus-evidence`" in checklist
     assert "`tool_search` returned 0 relevant direct MOSS/GitNexus tools" in checklist
-    assert "focused MOSS/GitNexus keyword rechecks also returned 0 tools" in checklist
+    assert "focused MOSS keyword rechecks returned 0 tools" in checklist
+    assert "focused GitNexus keyword recheck returned only 3 non-evidence" in checklist
     assert "`local-secret-hygiene`" in checklist
     assert "redacted gitleaks 2 ignored/untracked" in checklist
     assert "do not run `python scripts\\emit_ledger_pnl_governance_record.py --write`" in checklist
@@ -610,11 +611,34 @@ def test_direct_app_mcp_gitnexus_snapshot_preserves_tool_surface_gap() -> None:
     gitnexus_recheck = focused_rechecks[
         "gitnexus MCP impact call path symbol repository evidence"
     ]
-    assert gitnexus_recheck["returned_tool_count"] == 0
-    assert gitnexus_recheck["returned_tools"] == []
+    assert gitnexus_recheck["returned_tool_count"] == 3
+    assert gitnexus_recheck["returned_tools"] == [
+        {
+            "name": "codex_app.handoff_thread",
+            "classification": "codex_app_thread_management",
+            "relevant_direct_moss_or_gitnexus_evidence": False,
+        },
+        {
+            "name": "codex_app.fork_thread",
+            "classification": "codex_app_thread_management",
+            "relevant_direct_moss_or_gitnexus_evidence": False,
+        },
+        {
+            "name": "codex_app.automation_update",
+            "classification": "codex_app_automation_management",
+            "relevant_direct_moss_or_gitnexus_evidence": False,
+        },
+    ]
     assert gitnexus_recheck["relevant_direct_tool_count"] == 0
+    assert "Codex App thread or automation management tools" in gitnexus_recheck[
+        "interpretation"
+    ]
     assert "no direct GitNexus or MOSS evidence tools" in gitnexus_recheck["interpretation"]
-    assert all(item["returned_tool_count"] == 0 for item in focused_rechecks.values())
+    assert all(
+        item["returned_tool_count"] == 0
+        for query, item in focused_rechecks.items()
+        if query != "gitnexus MCP impact call path symbol repository evidence"
+    )
     assert all(
         item["relevant_direct_tool_count"] == 0
         for item in focused_rechecks.values()
@@ -766,7 +790,7 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     assert retry["osv_retry"]["status"] == "not_refreshed_network_proxy_refused"
     assert "proxy 127.0.0.1:9 refused" in retry["osv_retry"]["result"]
     latest_boundary = snapshot["latest_boundary_only_recheck"]
-    assert latest_boundary["checked_at"] == "2026-06-10T19:09:35+08:00"
+    assert latest_boundary["checked_at"] == "2026-06-10T19:33:20+08:00"
     assert latest_boundary["values_read_by_human"] is False
     assert latest_boundary["values_written_to_artifacts"] is False
     assert latest_boundary["secret_values_captured"] is False
@@ -774,6 +798,10 @@ def test_local_secret_hygiene_snapshot_never_captures_values() -> None:
     assert "did not replace the last full redacted scan evidence" in latest_boundary[
         "reason"
     ]
+    assert latest_boundary["test_result"] == (
+        "pytest tests/test_supply_chain_security_scanning.py "
+        "tests/test_secret_hygiene.py -q -> 7 passed"
+    )
     assert latest_boundary["boundary_checks"]["config_env_exists"] is True
     assert latest_boundary["boundary_checks"]["git_check_ignore"]["matched_rule"] == (
         ".gitignore:4:config/.env"
