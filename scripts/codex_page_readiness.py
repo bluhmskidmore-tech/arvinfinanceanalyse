@@ -39,7 +39,6 @@ from scripts.mcp.moss_project_mcp import (  # noqa: E402
     page_catalog_date_evidence,
     page_evidence_readiness,
     page_governance_audit_review_checklist_row,
-    page_governance_audit_review_checklist,
     page_governance_record_validation,
     page_trace_bundle,
     product_page_trace_bundles,

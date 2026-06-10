@@ -1999,11 +1999,7 @@ def test_route_scope_classification_skips_catalog_date_sampling(monkeypatch) -> 
         "page_catalog_date_evidence",
         fail_catalog_date_sampling,
     )
-    monkeypatch.setattr(
-        readiness_module,
-        "page_governance_audit_review_checklist",
-        fail_catalog_date_sampling,
-    )
+    assert not hasattr(readiness_module, "page_governance_audit_review_checklist")
     monkeypatch.setattr(
         readiness_module,
         "page_governance_record_validation",
