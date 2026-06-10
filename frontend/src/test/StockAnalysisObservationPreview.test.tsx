@@ -78,9 +78,9 @@ describe("StockAnalysisObservationPreview", () => {
       />,
     );
 
-    expect(screen.getByTestId("stock-analysis-factor-preview-empty")).toHaveTextContent("Pending");
-    expect(screen.getByTestId("stock-analysis-mean-reversion-preview-empty")).toHaveTextContent("Paused");
-    expect(screen.getByTestId("stock-analysis-observation-preview")).toHaveTextContent("Mean reversion paused");
+    expect(screen.getByTestId("stock-analysis-factor-preview-empty")).toHaveTextContent("待返回");
+    expect(screen.getByTestId("stock-analysis-mean-reversion-preview-empty")).toHaveTextContent("暂停");
+    expect(screen.getByTestId("stock-analysis-observation-preview")).toHaveTextContent("超跌 暂停");
   });
 
   it("opens factor and mean-reversion candidate details from preview rows", () => {

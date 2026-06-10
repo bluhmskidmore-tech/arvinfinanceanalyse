@@ -41,7 +41,7 @@ export function StockAnalysisObservationPreview({
 }: StockAnalysisObservationPreviewProps) {
   const meanReversionCount = meanReversionMarketActive
     ? meanReversionPayload?.candidate_count ?? 0
-    : "paused";
+    : "暂停";
 
   return (
     <section
@@ -52,37 +52,37 @@ export function StockAnalysisObservationPreview({
       <div className={SA_SECTION_HEAD}>
         <div className="min-w-0">
           <p className={SA_SECTION_EYEBROW}>多策略观察池</p>
-          <h2 className={SA_CARD_TITLE}>Factor / mean-reversion pool</h2>
-          <div className="stock-analysis-page__lower-signal-strip" aria-label="Observation pool status">
+          <h2 className={SA_CARD_TITLE}>多因子 / 超跌观察池</h2>
+          <div className="stock-analysis-page__lower-signal-strip" aria-label="观察池状态">
             <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
-              <DatabaseOutlined aria-hidden="true" /> Factor {factorScreenPayload?.candidate_count ?? 0}
+              <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
-              <FireOutlined aria-hidden="true" /> Mean reversion {meanReversionCount}
+              <FireOutlined aria-hidden="true" /> 超跌 {meanReversionCount}
             </span>
           </div>
         </div>
         <span className={SA_PILL}>
-          Factor {factorScreenPayload?.candidate_count ?? 0} / Mean reversion {meanReversionCount}
+          多因子 {factorScreenPayload?.candidate_count ?? 0} / 超跌 {meanReversionCount}
         </span>
       </div>
 
       <div className="stock-analysis-page__observation-preview-grid">
         <div className="stock-analysis-page__observation-preview-panel">
-          <h3>Factor top {factorPreviewItems.length || 0}</h3>
+          <h3>多因子 Top {factorPreviewItems.length || 0}</h3>
           {!factorScreenPayload ? (
             <CompactStatusTile
               icon={<DatabaseOutlined />}
-              label="Factor"
-              value="Pending"
+              label="多因子"
+              value="待返回"
               tone="warning"
               testId="stock-analysis-factor-preview-empty"
             />
           ) : factorPreviewItems.length === 0 ? (
             <CompactStatusTile
               icon={<DatabaseOutlined />}
-              label="Factor"
-              value="0 candidates"
+              label="多因子"
+              value="0 个候选"
               testId="stock-analysis-factor-preview-empty"
             />
           ) : (
@@ -91,9 +91,9 @@ export function StockAnalysisObservationPreview({
                 <thead>
                   <tr>
                     <th scope="col">#</th>
-                    <th scope="col">Stock</th>
-                    <th scope="col">Sector</th>
-                    <th scope="col">Score</th>
+                    <th scope="col">标的</th>
+                    <th scope="col">板块</th>
+                    <th scope="col">评分</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -123,28 +123,28 @@ export function StockAnalysisObservationPreview({
         </div>
 
         <div className="stock-analysis-page__observation-preview-panel">
-          <h3>Mean reversion {meanReversionMarketActive ? "top" : ""}</h3>
+          <h3>超跌{meanReversionMarketActive ? " Top" : ""}</h3>
           {!meanReversionMarketActive ? (
             <CompactStatusTile
               icon={<FireOutlined />}
-              label="Mean reversion"
-              value="Paused"
+              label="超跌"
+              value="暂停"
               tone="warning"
               testId="stock-analysis-mean-reversion-preview-empty"
             />
           ) : !meanReversionPayload ? (
             <CompactStatusTile
               icon={<FireOutlined />}
-              label="Mean reversion"
-              value="Pending"
+              label="超跌"
+              value="待返回"
               tone="warning"
               testId="stock-analysis-mean-reversion-preview-empty"
             />
           ) : meanReversionPreviewItems.length === 0 ? (
             <CompactStatusTile
               icon={<FireOutlined />}
-              label="Mean reversion"
-              value="0 candidates"
+              label="超跌"
+              value="0 个候选"
               testId="stock-analysis-mean-reversion-preview-empty"
             />
           ) : (
@@ -174,9 +174,9 @@ export function StockAnalysisObservationPreview({
                     <span className="stock-analysis-page__mean-reversion-metrics">
                       <span>{row.sector_name}</span>
                       <span className="stock-analysis-page__mean-reversion-dd">
-                        20d drawdown {(row.drawdown_20d * 100).toFixed(1)}%
+                        20日回撤 {(row.drawdown_20d * 100).toFixed(1)}%
                       </span>
-                      <span>Score {row.score.toFixed(2)}</span>
+                      <span>评分 {row.score.toFixed(2)}</span>
                     </span>
                   </li>
                 );

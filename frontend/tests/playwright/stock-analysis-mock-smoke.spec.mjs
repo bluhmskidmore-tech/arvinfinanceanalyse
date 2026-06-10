@@ -1,7 +1,11 @@
 import { test, expect } from "@playwright/test";
 
+const dataSource = process.env.VITE_DATA_SOURCE ?? "real";
+
 test.describe("stock analysis mock browser smoke", () => {
   test("renders the mock review state with readable Chinese labels", async ({ page }) => {
+    test.skip(dataSource !== "mock", "Stock analysis mock smoke requires VITE_DATA_SOURCE=mock.");
+
     await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
 
     await expect(page.getByTestId("stock-analysis-page")).toBeVisible();
