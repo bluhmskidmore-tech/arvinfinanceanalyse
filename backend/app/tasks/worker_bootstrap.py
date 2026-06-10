@@ -19,6 +19,7 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.product_category_pnl",
     "backend.app.tasks.snapshot_materialize",
     "backend.app.tasks.fx_mid_materialize",
+    "backend.app.tasks.commodity_daily_ingest",
     "backend.app.tasks.choice_macro",
     "backend.app.tasks.choice_news",
     "backend.app.tasks.stock_factor_refresh",
