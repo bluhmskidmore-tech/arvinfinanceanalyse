@@ -208,6 +208,122 @@ def test_crisis_score_payload_matches_migrated_script_formula(monkeypatch) -> No
         assert classify_crisis_score(sample_score)[0] == legacy.classify_regime(sample_score)[0]
 
 
+def test_merrill_clock_calculations_match_documented_formula(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    script = get_toolkit_script("merrill_clock_cn")
+    spec = importlib.util.spec_from_file_location("_legacy_merrill_clock_cn", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    series = pd.Series([1, 2, 3, 4, 5, 6], dtype=float)
+    momentum = legacy.compute_momentum(series, short_window=2, long_window=4)
+    short_mean = pd.Series([5, 6], dtype=float).mean()
+    long_window = pd.Series([3, 4, 5, 6], dtype=float)
+    expected_momentum = legacy.np.tanh((short_mean - long_window.mean()) / long_window.std())
+    assert momentum.iloc[-1] == pytest.approx(expected_momentum)
+
+    liquidity_frame = pd.DataFrame(
+        {
+            "m2_yoy": [8, 8.1, 8.3, 8.6, 8.8, 9.0],
+            "social_financing": [9, 9.1, 9.2, 9.4, 9.6, 9.7],
+        },
+        dtype=float,
+    )
+    liquidity = legacy.compute_liquidity_momentum(liquidity_frame)
+    expected_liquidity = 0.5 * legacy.compute_momentum(liquidity_frame["m2_yoy"]) + 0.5 * legacy.compute_momentum(
+        liquidity_frame["social_financing"]
+    )
+    assert liquidity.iloc[-1] == pytest.approx(expected_liquidity.iloc[-1])
+
+    scores = legacy.compute_asset_scores(growth=0.8, inflation=0.7, liquidity=0.4)
+    expected_stock = legacy.np.tanh(0.45 * 0.8 + 0.15 * 0.7 - 0.3 * (0.7 - 0.5) + 0.40 * 0.4)
+    expected_bond = legacy.np.tanh(-0.35 * 0.8 - 0.35 * 0.7 + 0.30 * 0.4)
+    assert scores["股票"] == pytest.approx(expected_stock)
+    assert scores["债券"] == pytest.approx(expected_bond)
+    assert legacy.get_regime_label(growth=0.8, inflation=0.7) == "过热"
+    assert legacy.get_regime_label(growth=-0.1, inflation=-0.2) == "衰退"
+
+
+def test_bond_futures_basis_calculations_match_documented_formula(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    script = get_toolkit_script("bond_futures_data")
+    spec = importlib.util.spec_from_file_location("_legacy_bond_futures_data", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    assert legacy.calc_carry(ytm=0.025, dr007=0.018, maturity=7, coupon=0.03, days=90) == pytest.approx(
+        round((0.03 - 0.018) * 90 / 365, 6)
+    )
+    assert legacy.calc_net_basis(spot_price=101.0, futures_price=100.0, cf=0.98, carry=0.002) == pytest.approx(2.998)
+    expected_irr = round(((102.0 * 0.99 - 100.0) / 100.0 * 365 / 90) * 100, 4)
+    assert legacy.calc_irr(spot_price=100.0, futures_price=102.0, cf=0.99, coupon=0.03, days_to_delivery=90) == pytest.approx(
+        expected_irr
+    )
+
+
+def test_bond_futures_four_factor_vote_and_strength(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    script = get_toolkit_script("bond_futures_signals")
+    spec = importlib.util.spec_from_file_location("_legacy_bond_futures_signals", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    signals = pd.DataFrame(
+        {
+            "ma": [1, -1, 1],
+            "don": [1, -1, 0],
+            "macd": [0, -1, 1],
+            "bb": [-1, 0, 1],
+        },
+        index=pd.date_range("2026-06-01", periods=3),
+    )
+
+    assert legacy.vote_signal(signals, threshold=2).tolist() == [1, -1, 1]
+    assert legacy.signal_strength(1, signals) == "强"
+    price = pd.Series([10.0, 10.0, 20.0])
+    assert legacy.signal_bollinger(price, window=3, num_std=1.0).iloc[-1] == -1.0
+
+
+def test_crowding_calculation_matches_documented_formula(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
+    script = get_toolkit_script("crowding_cn")
+    spec = importlib.util.spec_from_file_location("_legacy_crowding_formula", script.path)
+    assert spec is not None and spec.loader is not None
+    legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(legacy)
+
+    positions = pd.DataFrame(
+        [
+            {
+                "member": legacy.HEDGER_KEYWORDS[0],
+                "long_oi": 100,
+                "short_oi": 50,
+                "long_chg": 10,
+                "short_chg": -5,
+                "volume": 600,
+            },
+            {
+                "member": "directional-alpha",
+                "long_oi": 50,
+                "short_oi": 100,
+                "long_chg": -4,
+                "short_chg": 8,
+                "volume": 400,
+            },
+        ]
+    )
+
+    metrics = legacy.calc_crowding(positions)
+    assert metrics["SC"] == pytest.approx(0.0)
+    assert metrics["HC"] == pytest.approx(0.3333)
+    assert metrics["C"] == pytest.approx(0.0333)
+    assert metrics["tv_oi_ratio"] == pytest.approx(6.6667)
+    assert metrics["hedge_ratio"] == pytest.approx(0.003)
+
+
 def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -4264,6 +4380,64 @@ def test_macro_model_readiness_exposes_machine_readable_artifact_receipts_for_mi
         assert receipt["page_surface"] == "/macro-toolkit#macro-toolkit-model-readiness-detail"
         assert receipt["formal_use_allowed"] is False
         assert receipt["observation_only"] is True
+
+
+def _write_macro_readiness_artifact(output_dir: Path, name: str, *, report_date: str) -> None:
+    pd.DataFrame([{"date": report_date, "value": 1.0}]).to_csv(output_dir / name, index=False)
+
+
+def test_macro_model_readiness_artifact_backed_acceptance_for_observation_models(tmp_path) -> None:
+    report_date = "2026-06-01"
+    expected_outputs_by_model = {
+        "merrill_clock": ["merrill_clock_latest.csv", "merrill_clock_history.csv"],
+        "crisis_score": ["crisis_score_latest.csv", "crisis_score_history.csv"],
+        "bond_futures_basis": ["bond_futures_latest.csv", "bond_futures_history.csv"],
+        "bond_futures_four_factor": ["bond_signals_latest.csv"],
+        "funding_conditions": ["merrill_clock_latest.csv"],
+        "crowding": ["crowding_latest.csv", "crowding_history.csv"],
+    }
+    for artifact_name in sorted({name for names in expected_outputs_by_model.values() for name in names}):
+        _write_macro_readiness_artifact(tmp_path, artifact_name, report_date=report_date)
+
+    payload = macro_toolkit_service.macro_model_readiness(output_dir=tmp_path, reference_date=report_date)
+    readiness_by_id = {item["id"]: item for item in payload["model_readiness"]}
+
+    for model_id, expected_outputs in expected_outputs_by_model.items():
+        item = readiness_by_id[model_id]
+        receipt = item["artifact_receipt"]
+
+        assert item["readiness"] == "artifact_backed"
+        assert item["missing_outputs"] == []
+        assert item["stale_outputs"] == []
+        assert item["degraded_outputs"] == []
+        assert item["degraded_reason"] is None
+        assert item["evidence_level"] == "fresh_artifacts"
+        assert item["date_basis"] == "csv_content"
+        assert item["latest_content_date"] == report_date
+        assert item["formal_use_allowed"] is False
+        assert item["observation_only"] is True
+
+        assert receipt["status"] == "artifact_backed"
+        assert receipt["model_id"] == model_id
+        assert receipt["script_name"] == item["script_name"]
+        assert receipt["artifact_paths"] == sorted(expected_outputs)
+        assert receipt["missing_artifacts"] == []
+        assert receipt["degraded_reason"] is None
+        assert receipt["data_asof"] == report_date
+        assert receipt["generated_at"]
+        assert receipt["runtime_endpoint"] == "/ui/macro/toolkit/scripts/run-chain"
+        assert receipt["page_surface"] == "/macro-toolkit#macro-toolkit-model-readiness-detail"
+        assert receipt["formal_use_allowed"] is False
+        assert receipt["observation_only"] is True
+
+    funding_item = readiness_by_id["funding_conditions"]
+    assert funding_item["script_name"] == "merrill_clock_cn"
+    assert funding_item["expected_outputs"] == ["merrill_clock_latest.csv"]
+
+    funding_notes = " ".join(funding_item["notes"])
+    assert "DR007/NCD" in funding_notes
+    assert "Merrill liquidity momentum" in funding_notes
+    assert "not a standalone formal metric" in funding_notes
 
 
 def test_macro_toolkit_script_chain_receipts_include_contract_fields_for_dry_run(tmp_path) -> None:
