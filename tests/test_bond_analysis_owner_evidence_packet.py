@@ -186,6 +186,7 @@ def test_bond_analysis_owner_evidence_packet_cli_writes_markdown(tmp_path: Path)
     )
     assert f"- Live smoke evidence review: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in text
     assert f"- Live smoke command reference: `{LIVE_SMOKE_COMMAND}`" in text
+    assert "- owner_signoff_runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`" in text
     assert "This packet does not approve page closure" in text
     assert "- `certification_effect=none`" in text
     assert "Fixed-income units/sign/date rules reviewed: `yes` (`pending`)" in text
@@ -241,6 +242,14 @@ def test_bond_analysis_governance_audit_packet_matches_generator_output() -> Non
     assert f"Live smoke evidence review: `{LIVE_SMOKE_EVIDENCE_ARTIFACT}`" in actual
     assert f"Live smoke command reference: `{LIVE_SMOKE_COMMAND}`" in actual
     assert "Closure approved: `closure_approved=false`" in actual
+
+
+def test_bond_analysis_owner_evidence_packet_surfaces_owner_runbook_anchor() -> None:
+    owner = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
+
+    assert "- owner_signoff_runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`" in owner
+    assert "This packet does not approve page closure" in owner
+    assert "- `certification_effect=none`" in owner
 
 
 def test_bond_analysis_signoff_and_audit_packets_surface_no_certification_scope() -> None:

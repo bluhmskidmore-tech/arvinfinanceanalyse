@@ -35,6 +35,7 @@ Reviewed sign-off packet: `docs/pnl/bond-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/bond-analysis-owner-evidence-packet.md`
 Reviewed fixed-income convention decision draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
+Owner signoff runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`
 
 ## Fixed-Income Convention Decisions
 

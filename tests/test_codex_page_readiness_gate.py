@@ -419,7 +419,11 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
         "python scripts/emit_bond_analysis_governance_record.py",
         "python scripts/emit_bond_analysis_governance_record.py --write",
     ]
-    assert "check_bond_analysis_business_owner_approval.py --require-captured" in report["approval_status_commands"][1]
+    assert report["approval_status_commands"] == [
+        "python scripts/check_bond_analysis_business_owner_approval.py",
+        "python scripts/check_bond_analysis_business_owner_approval.py --require-captured",
+        "powershell -ExecutionPolicy Bypass -File scripts/codex-page-readiness.ps1 -PageSlug bond-analysis -RequireApprovalCaptured",
+    ]
     assert report["run_supported"] is True
     assert report["catalog_date_evidence"]["status"] == "sampled"
     assert report["catalog_date_evidence"]["present_table_count"] == 1
@@ -440,7 +444,11 @@ def test_bond_analysis_readiness_surfaces_direct_candidate_lane_without_borrowin
     assert any("candidate sign-off evidence only" in item for item in report["truth_chain"])
     assert any("remains unsigned" in item for item in report["truth_chain"])
     assert any("review-only convention evidence" in item for item in report["truth_chain"])
-    assert any("without promoting Bond Analysis to formal fixed-income metric truth" in item for item in report["truth_chain"])
+    assert (
+        "docs/pnl/bond-analysis-owner-signoff-runbook.md lists the human review, fill, "
+        "and post-signing verification commands without promoting Bond Analysis to formal "
+        "fixed-income metric truth."
+    ) in report["truth_chain"]
 
     gates = {gate["name"]: gate for gate in report["static_gates"]}
     assert gates["catalog_date_evidence_sampled"]["outcome"] == "pass"

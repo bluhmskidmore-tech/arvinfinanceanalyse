@@ -47,6 +47,7 @@ Reviewed sign-off packet: `docs/pnl/bond-analysis-sign-off-packet.md`
 Reviewed governance audit packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 Reviewed owner evidence packet: `docs/pnl/bond-analysis-owner-evidence-packet.md`
 Reviewed fixed-income convention decision draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
+Owner signoff runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`
 
 ## Evidence Review
 
@@ -159,6 +160,22 @@ def test_bond_analysis_business_owner_approval_checker_reports_pending_template(
         "captures_business_owner_approval": False,
         "certification_effect": "none",
     }
+
+
+def test_bond_analysis_business_owner_approval_template_references_owner_runbook() -> None:
+    text = TEMPLATE.read_text(encoding="utf-8")
+
+    assert "Reviewed sign-off packet: `docs/pnl/bond-analysis-sign-off-packet.md`" in text
+    assert (
+        "Reviewed governance audit packet: `docs/pnl/bond-analysis-governance-audit-packet.md`"
+        in text
+    )
+    assert "Reviewed owner evidence packet: `docs/pnl/bond-analysis-owner-evidence-packet.md`" in text
+    assert (
+        "Reviewed fixed-income convention decision draft: "
+        "`docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`"
+    ) in text
+    assert "Owner signoff runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`" in text
 
 
 def test_bond_analysis_business_owner_approval_checker_require_captured_blocks_pending() -> None:

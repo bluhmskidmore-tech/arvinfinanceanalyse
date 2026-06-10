@@ -78,6 +78,7 @@ Commands:
 - governance_audit_packet: `docs/pnl/bond-analysis-governance-audit-packet.md`
 - approval_template: `docs/pnl/bond-analysis-business-owner-approval-template.md`
 - fixed_income_convention_decision_draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
+- owner_signoff_runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`
 - live_smoke_evidence: `docs/audits/2026-06-09-bond-analysis-live-smoke-evidence.md`
 - golden_sample: `tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A`
 - readiness_command: `python scripts/codex_page_readiness.py --page-slug bond-analysis`

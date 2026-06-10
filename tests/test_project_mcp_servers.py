@@ -1552,7 +1552,11 @@ def test_bond_analysis_trace_bundle_preserves_candidate_owner_handoff_boundaries
         assert any("candidate sign-off evidence only" in item for item in payload["truth_chain"])
         assert any("remains unsigned" in item for item in payload["truth_chain"])
         assert any("review-only convention evidence" in item for item in payload["truth_chain"])
-        assert any("without promoting Bond Analysis to formal fixed-income metric truth" in item for item in payload["truth_chain"])
+        assert (
+            "docs/pnl/bond-analysis-owner-signoff-runbook.md lists the human review, fill, "
+            "and post-signing verification commands without promoting Bond Analysis to formal "
+            "fixed-income metric truth."
+        ) in payload["truth_chain"]
         assert any("do not certify /bond-analysis" in item for item in payload["guardrails"])
         assert any("Do not use PAGE-BOND-001" in item for item in payload["guardrails"])
         assert any("Do not promote DV01" in item for item in payload["guardrails"])

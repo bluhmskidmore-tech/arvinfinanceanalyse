@@ -164,6 +164,7 @@ def build_packet(
             "governance_audit_packet": "docs/pnl/bond-analysis-governance-audit-packet.md",
             "approval_template": "docs/pnl/bond-analysis-business-owner-approval-template.md",
             "fixed_income_convention_decision_draft": FIXED_INCOME_CONVENTION_DECISION_ANCHOR,
+            "owner_signoff_runbook": "docs/pnl/bond-analysis-owner-signoff-runbook.md",
             "live_smoke_evidence": LIVE_SMOKE_EVIDENCE_ARTIFACT,
             "golden_sample": "tests/golden_samples/GS-BOND-ANALYSIS-ACTION-ATTR-A",
             "readiness_command": "python scripts/codex_page_readiness.py --page-slug bond-analysis",
