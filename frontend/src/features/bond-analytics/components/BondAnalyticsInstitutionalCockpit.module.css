@@ -258,6 +258,11 @@
   background: var(--moss-color-neutral-50);
 }
 
+.referenceKpiTile[data-state="gap"] {
+  border-left: 2px solid var(--moss-color-neutral-200);
+  background: var(--moss-color-card-bg);
+}
+
 .referenceKpiHeader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -288,6 +293,12 @@
   white-space: nowrap;
 }
 
+.referenceKpiTile[data-state="gap"] .referenceKpiHeader span {
+  border-style: dashed;
+  background: var(--moss-color-neutral-50);
+  color: var(--moss-color-neutral-500);
+}
+
 .referenceKpiValue {
   color: var(--moss-color-primary-900);
   font-family: var(--moss-font-mono);
@@ -296,6 +307,10 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
+}
+
+.referenceKpiTile[data-state="gap"] .referenceKpiValue {
+  color: var(--moss-color-neutral-500);
 }
 
 .referenceKpiValue[data-tone="positive"] {

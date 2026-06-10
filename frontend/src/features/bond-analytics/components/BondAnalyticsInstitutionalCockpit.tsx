@@ -661,8 +661,17 @@ function ReferenceKpiTile({
   status?: string;
   tone?: "default" | "positive" | "negative";
 }) {
+  let state: "gap" | "pending" | "ready" | undefined;
+  if (status === "缺口") {
+    state = "gap";
+  } else if (status === "待读面") {
+    state = "pending";
+  } else if (status === "已读") {
+    state = "ready";
+  }
+
   return (
-    <div className={styles.referenceKpiTile}>
+    <div className={styles.referenceKpiTile} data-state={state}>
       <div className={styles.referenceKpiHeader}>
         <div className={styles.referenceKpiLabel}>{label}</div>
         {status ? <span>{status}</span> : null}

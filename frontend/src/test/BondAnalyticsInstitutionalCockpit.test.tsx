@@ -427,6 +427,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     });
     expect(kpiRibbon).toHaveTextContent("DV01");
     expect(kpiRibbon).toHaveTextContent("Carry+Roll");
+    expect(within(kpiRibbon).getByText("Carry+Roll").closest('[data-state="gap"]')).not.toBeNull();
     expect(kpiRibbon).toHaveTextContent("缺口");
     expect(kpiRibbon).toHaveTextContent("接口未返回");
     expect(kpiRibbon).toHaveTextContent("待读面");
@@ -800,6 +801,50 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(summary).not.toHaveTextContent("3,711,830");
   });
 
+  it("does not promote missing accounting-class DV01 as the lead DV01 row", async () => {
+    const nullDv01 = formatRawAsNumeric({ raw: null, unit: "dv01", sign_aware: false });
+    const dv01ByClass = {
+      AC: {
+        ...createDv01RiskPayload("AC", 2.1, 123_000),
+        total_dv01: nullDv01,
+      },
+      OCI: {
+        ...createDv01RiskPayload("OCI", 3.43, 3_546_830),
+        total_dv01: nullDv01,
+      },
+      TPL: {
+        ...createDv01RiskPayload("TPL", 0.65, 42_000),
+        total_dv01: nullDv01,
+      },
+      all: {
+        ...createDv01RiskPayload("all", 2.88, 3_711_830),
+        total_dv01: nullDv01,
+      },
+    };
+    const getBondAnalyticsDv01Risk = vi.fn(async (_reportDate: string, options?: { accountingClass?: string }) => ({
+      result_meta: createResultMeta({ result_kind: "bond_analytics.dv01_risk" }),
+      result: dv01ByClass[(options?.accountingClass ?? "OCI") as keyof typeof dv01ByClass],
+    }));
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDv01Risk,
+    };
+
+    renderCockpit(client);
+
+    const mobileReadout = await screen.findByTestId("bond-analysis-accounting-dv01-mobile-readout");
+
+    await waitFor(() => {
+      expect(getBondAnalyticsDv01Risk).toHaveBeenCalledTimes(4);
+    });
+
+    expect(mobileReadout).not.toHaveTextContent(/\bAC\b/);
+    expect(mobileReadout).not.toHaveTextContent(/\bOCI\b/);
+    expect(mobileReadout).not.toHaveTextContent(/\bTPL\b/);
+    expect(mobileReadout).not.toHaveTextContent("2.10");
+    expect(mobileReadout).not.toHaveTextContent("3.43");
+  });
+
   it("renders formal yield-curve tenors on the desktop first-screen curve panel", async () => {
     const base = createApiClient({ mode: "mock" });
     const getBondAnalyticsYieldCurveTermStructure = vi.fn(async (reportDate: string) => ({
@@ -1008,6 +1053,7 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     const kpiRailRule = cssRuleBody(".holdingsKpiRail");
     const kpiGridRule = cssRuleBody(".holdingsKpiGrid");
     const kpiTileRule = cssRuleBody(".referenceKpiTile");
+    const kpiGapTileRule = cssRuleBody('.referenceKpiTile[data-state="gap"]');
     const kpiValueRule = cssRuleBody(".referenceKpiValue");
     const titleRule = cssRuleBody(".referenceTitle");
     const topbarReadoutStrongRule = cssRuleBody(".referenceTopbarReadout strong");
@@ -1066,6 +1112,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(kpiTileRule).toContain("min-height: 52px");
     expect(kpiTileRule).toContain("padding: 8px 8px");
     expect(kpiTileRule).toContain("background: var(--moss-color-neutral-50)");
+    expect(kpiGapTileRule).toContain("border-left: 2px solid var(--moss-color-neutral-200)");
+    expect(kpiGapTileRule).toContain("background: var(--moss-color-card-bg)");
     expect(kpiValueRule).toContain("font-size: 15px");
     expect(signalRule).not.toMatch(/display:\s*none/);
   });

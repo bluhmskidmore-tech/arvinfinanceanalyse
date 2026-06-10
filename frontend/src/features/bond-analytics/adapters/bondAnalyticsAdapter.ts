@@ -30,7 +30,7 @@ export function bondNumericDisplay(n: Numeric | string | null | undefined): stri
 }
 
 /** ECharts / table magnitude from risk tensor string or bond-analytics Numeric. */
-export function bondChartMagnitude(value: Numeric | string): number {
+export function bondChartMagnitude(value: Numeric | string): number | null {
   return bondNumericRaw(value);
 }
 

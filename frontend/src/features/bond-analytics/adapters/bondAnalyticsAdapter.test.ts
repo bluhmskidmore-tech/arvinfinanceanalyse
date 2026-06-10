@@ -113,6 +113,11 @@ describe("bondChartMagnitude", () => {
   it("accepts Numeric", () => {
     expect(bondChartMagnitude(num({ raw: 4, unit: "ratio" }))).toBe(4);
   });
+
+  it("preserves missing magnitude", () => {
+    expect(bondChartMagnitude("x")).toBeNull();
+    expect(bondChartMagnitude(num({ raw: null }))).toBeNull();
+  });
 });
 
 describe("returnDecompositionWaterfall helpers", () => {
