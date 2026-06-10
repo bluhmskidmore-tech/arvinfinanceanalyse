@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SourceSurface = Literal[
     "executive_analytical",
@@ -79,3 +79,13 @@ class ResultMeta(BaseModel):
                     f"source_surface is required for governed result_kind={self.result_kind!r}."
                 )
         return self
+
+
+class ResultEnvelope(BaseModel):
+    """Top-level JSON envelope for governed API read responses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: dict[str, Any]
+    result: dict[str, Any] | list[Any]
+    calibration: dict[str, Any] | None = None

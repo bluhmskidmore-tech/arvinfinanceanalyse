@@ -94,11 +94,46 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/pnl/by-business-analysis" in paths
     assert "/api/pnl/by-business/manual-adjustments" in paths
     assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/edit" in paths
+    assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/approve" in paths
     assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/revoke" in paths
     assert "/api/pnl/by-business/manual-adjustments/{adjustment_id}/restore" in paths
     assert "/api/pnl/yearly-summary" in paths
     assert "/api/data/refresh_pnl" in paths
     assert "/api/data/import_status/pnl" in paths
+
+
+def test_pnl_formal_read_routes_declare_result_envelope_response_model():
+    from fastapi.routing import APIRoute
+
+    route_module = load_module("backend.app.api.routes.pnl", "backend/app/api/routes/pnl.py")
+    from backend.app.schemas.result_meta import ResultEnvelope
+
+    routes = {
+        route.path: route
+        for route in route_module.router.routes
+        if isinstance(route, APIRoute) and "GET" in route.methods
+    }
+
+    expected_paths = {
+        "/api/pnl/dates",
+        "/api/pnl/data",
+        "/api/pnl/bridge",
+        "/api/pnl/overview",
+        "/api/pnl/v1-data",
+        "/api/pnl/by-business",
+        "/api/pnl/by-business-ytd",
+        "/api/pnl/by-business-monthly",
+        "/api/pnl/by-business-analysis",
+        "/api/pnl/yearly-summary",
+    }
+
+    missing_model = [
+        path
+        for path in sorted(expected_paths)
+        if routes[path].response_model is not ResultEnvelope
+    ]
+
+    assert missing_model == []
 
 
 def test_pnl_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
@@ -1818,7 +1853,9 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     seed_wildcard_scope,
 ):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
-    _grant_pnl_read_scope(UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn))
+    scope_repo = UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn)
+    _grant_pnl_read_scope(scope_repo)
+    scope_repo.grant_scope(user_id="*", role=None, resource="pnl_by_business.adjustment", action="approve")
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
     monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
@@ -1868,6 +1905,15 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
         },
     )
     assert create_response.status_code == 200
+    assert create_response.json()["approval_status"] == "pending"
+    adjustment_id = create_response.json()["adjustment_id"]
+
+    approve_response = client.post(
+        f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/approve",
+        headers={"X-User-Id": "checker", "X-User-Role": "reviewer"},
+    )
+    assert approve_response.status_code == 200
+    assert approve_response.json()["approval_status"] == "approved"
 
     ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
     assert ytd_response.status_code == 200
@@ -1903,6 +1949,182 @@ def test_pnl_by_business_manual_adjustment_feeds_ytd_monthly_and_analysis(
     analysis_row = analysis_response.json()["result"]["rows"][0]
     assert analysis_row["manual_adjustment"] == "25.00"
     assert analysis_row["total_pnl"] == "150.50"
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_manual_adjustment_request_approved_is_forced_pending(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _grant_pnl_read_scope(UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn))
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_pnl_by_business_ytd_balance_rows(duckdb_path)
+    category_module = load_module(
+        "backend.app.core_finance.zqtz_asset_bond_category",
+        "backend/app/core_finance/zqtz_asset_bond_category.py",
+    )
+    row_defs = {str(row["row_key"]): row for row in category_module.ZQTZ_ASSET_BOND_ROWS}
+    policy_type = str(row_defs["asset_zqtz_policy_financial_bond"]["match_keywords"][0])
+    monkeypatch.setenv("MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS", "true")
+    get_settings.cache_clear()
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'P001', 'Rate Desk', 'CC-RATE', 'T', 'FVTPL', 'CNY',
+              100.00, 0.00, 25.50, 0.00, 125.50,
+              'fi-policy-pending-base', 'rv_pnl_phase2_materialize_v1', 'ib-policy-pending-base', 'trace-policy-pending-base'
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, sub_type, business_type_primary,
+              invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              '2025-12-31', 'P001', 'policy financial bond', 'Rate Desk', 'CC-RATE',
+              'asset', ?, ?, ?, ?,
+              'T', 'FVTPL', 'asset', 'CNY', 'CNY',
+              1000.00000000, 1000.00000000, 0.00000000, false,
+              'sv-policy-pending-balance', 'rv-policy-pending-balance', 'ib-policy-pending-balance', 'trace-policy-pending-balance'
+            )
+            """,
+            [policy_type, policy_type, policy_type, policy_type],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    create_response = client.post(
+        "/api/pnl/by-business/manual-adjustments",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": policy_type,
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "25.00",
+            "reason": "request cannot self-approve",
+        },
+    )
+    assert create_response.status_code == 200
+    adjustment_id = create_response.json()["adjustment_id"]
+    assert create_response.json()["approval_status"] == "pending"
+
+    edit_response = client.post(
+        f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/edit",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": policy_type,
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "30.00",
+            "reason": "edit cannot self-approve",
+        },
+    )
+    assert edit_response.status_code == 200
+    assert edit_response.json()["approval_status"] == "pending"
+
+    ytd_response = client.get("/api/pnl/by-business-ytd", params={"year": 2025, "as_of_date": "2025-12-31"})
+    assert ytd_response.status_code == 200
+    ytd_result = ytd_response.json()["result"]
+    ytd_by_key = {item["row_key"]: item for item in ytd_result["items"]}
+    policy_item = ytd_by_key["asset_zqtz_policy_financial_bond"]
+    assert policy_item["manual_adjustment"] == "0.00"
+    assert policy_item["total_pnl"] == "125.50"
+    assert "pnl_by_business_adjustments" not in ytd_result["source_tables"]
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_manual_adjustment_approval_requires_checker(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    scope_repo = UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn)
+    _grant_pnl_read_scope(scope_repo)
+    scope_repo.grant_scope(user_id="*", role=None, resource="pnl_by_business.adjustment", action="approve")
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    create_response = client.post(
+        "/api/pnl/by-business/manual-adjustments",
+        headers={"X-User-Id": "maker", "X-User-Role": "analyst"},
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "Policy Financial Bond",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "manual_adjustment": "25.00",
+            "reason": "maker cannot self approve",
+        },
+    )
+    assert create_response.status_code == 200
+    created = create_response.json()
+    assert created["approval_status"] == "pending"
+    assert created["created_by"] == "maker"
+    adjustment_id = created["adjustment_id"]
+
+    self_approve_response = client.post(
+        f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/approve",
+        headers={"X-User-Id": "maker", "X-User-Role": "analyst"},
+    )
+    assert self_approve_response.status_code == 403
+
+    checker_approve_response = client.post(
+        f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/approve",
+        headers={"X-User-Id": "checker", "X-User-Role": "reviewer"},
+    )
+    assert checker_approve_response.status_code == 200
+    approved = checker_approve_response.json()
+    assert approved["approval_status"] == "approved"
+    assert approved["approved_by"] == "checker"
+    assert approved["created_by"] == "maker"
+    get_settings.cache_clear()
+
+
+def test_pnl_by_business_manual_adjustment_restore_returns_to_pending(
+    tmp_path,
+    monkeypatch,
+    seed_wildcard_scope,
+):
+    _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _grant_pnl_read_scope(UserScopeRepository(get_settings().governance_sql_dsn or get_settings().postgres_dsn))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    create_response = client.post(
+        "/api/pnl/by-business/manual-adjustments",
+        json={
+            "report_date": "2025-12-31",
+            "row_key": "asset_zqtz_policy_financial_bond",
+            "business_type": "Policy Financial Bond",
+            "operator": "DELTA",
+            "manual_adjustment": "25.00",
+            "reason": "restore should need approval again",
+        },
+    )
+    assert create_response.status_code == 200
+    adjustment_id = create_response.json()["adjustment_id"]
+
+    revoke_response = client.post(f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/revoke")
+    assert revoke_response.status_code == 200
+    assert revoke_response.json()["approval_status"] == "rejected"
+
+    restore_response = client.post(f"/api/pnl/by-business/manual-adjustments/{adjustment_id}/restore")
+    assert restore_response.status_code == 200
+    restored = restore_response.json()
+    assert restored["event_type"] == "restored"
+    assert restored["approval_status"] == "pending"
+    assert restored["approved_by"] == ""
     get_settings.cache_clear()
 
 
@@ -4665,7 +4887,7 @@ def test_pnl_import_status_returns_503_when_status_backend_fails(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_pnl_dates_returns_empty_when_storage_is_unavailable(tmp_path, monkeypatch):
+def test_pnl_dates_returns_503_when_storage_is_unavailable(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     governance_dir.mkdir(parents=True, exist_ok=True)
     _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
@@ -4677,13 +4899,12 @@ def test_pnl_dates_returns_empty_when_storage_is_unavailable(tmp_path, monkeypat
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/pnl/dates")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["result"]["report_dates"] == []
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Formal pnl storage is unavailable."
     get_settings.cache_clear()
 
 
-def test_pnl_overview_returns_404_when_storage_is_unavailable(tmp_path, monkeypatch):
+def test_pnl_overview_returns_503_when_storage_is_unavailable(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     governance_dir.mkdir(parents=True, exist_ok=True)
     _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
@@ -4695,7 +4916,117 @@ def test_pnl_overview_returns_404_when_storage_is_unavailable(tmp_path, monkeypa
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/pnl/overview", params={"report_date": "2025-12-31"})
 
-    assert response.status_code == 404
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Formal pnl storage is unavailable."
+    get_settings.cache_clear()
+
+
+def test_pnl_dates_returns_503_when_required_tables_are_missing(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
+    duckdb_path = tmp_path / "empty-schema.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/dates")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Formal pnl storage is unavailable."
+    get_settings.cache_clear()
+
+
+def test_pnl_dates_accepts_single_available_fact_table(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
+    duckdb_path = tmp_path / "formal-fi-only.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_pnl_fi (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              currency_basis varchar,
+              interest_income_514 decimal(24, 8),
+              fair_value_change_516 decimal(24, 8),
+              capital_gain_517 decimal(24, 8),
+              manual_adjustment decimal(24, 8),
+              total_pnl decimal(24, 8),
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_pnl_fi values (
+              '2025-12-31', 'P001', 'Rate Desk', 'CC-RATE', 'T', 'FVTPL', 'CNY',
+              100.00, 0.00, 25.50, 0.00, 125.50,
+              'fi-only-v1', 'rv_pnl_phase2_materialize_v1', 'ib-fi-only', 'trace-fi-only'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/dates")
+
+    assert response.status_code == 200
+    assert response.json()["result"]["report_dates"] == ["2025-12-31"]
+    assert response.json()["result"]["formal_fi_report_dates"] == ["2025-12-31"]
+    assert response.json()["result"]["nonstd_bridge_report_dates"] == []
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/api/pnl/data", {"date": "2025-12-31"}),
+        ("/api/pnl/v1-data", {"date": "2025-12-31"}),
+        ("/api/pnl/by-business", {"report_date": "2025-12-31"}),
+        ("/api/pnl/by-business-ytd", {"year": 2025, "as_of_date": "2025-12-31"}),
+        ("/api/pnl/by-business-monthly", {"year": 2025, "as_of_date": "2025-12-31"}),
+        ("/api/pnl/by-business-analysis", {"year": 2025, "as_of_date": "2025-12-31"}),
+        ("/api/pnl/yearly-summary", {"year": 2025}),
+    ],
+)
+def test_pnl_finance_read_surfaces_return_503_when_storage_is_unavailable(
+    path,
+    params,
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "missing.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(path, params=params)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Formal pnl storage is unavailable."
     get_settings.cache_clear()
 
 

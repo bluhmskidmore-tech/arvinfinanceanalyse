@@ -21,10 +21,28 @@ class PnlRepository:
     path: str
 
     def list_union_report_dates(self) -> list[str]:
-        return sorted(
-            set(self.list_formal_fi_report_dates()) | set(self.list_nonstd_bridge_report_dates()),
-            reverse=True,
-        )
+        fact_tables = ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge")
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            available_tables = [table_name for table_name in fact_tables if self._table_exists(conn, table_name)]
+            if not available_tables:
+                raise RuntimeError("Formal pnl storage is unavailable.")
+            report_dates: set[str] = set()
+            for table_name in available_tables:
+                rows = conn.execute(
+                    f"""
+                    select distinct report_date
+                    from {table_name}
+                    order by report_date desc
+                    """
+                ).fetchall()
+                report_dates.update(str(row[0]) for row in rows)
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return sorted(report_dates, reverse=True)
 
     def list_formal_fi_report_dates(self) -> list[str]:
         return self._list_report_dates("fact_formal_pnl_fi")
@@ -294,8 +312,6 @@ class PnlRepository:
                 dates,
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return {}
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -811,8 +827,6 @@ class PnlRepository:
                 [report_date, report_date, report_date, report_date, report_date],
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -973,8 +987,6 @@ class PnlRepository:
                 [y, as_of_date, y, as_of_date],
             ).fetchone()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return False
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -1008,8 +1020,6 @@ class PnlRepository:
                 [y, as_of_date],
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -1154,8 +1164,6 @@ class PnlRepository:
                 [y, as_of_date, y, as_of_date],
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -1247,6 +1255,8 @@ class PnlRepository:
     def _list_report_dates(self, table_name: str) -> list[str]:
         try:
             conn = duckdb.connect(self.path, read_only=True)
+            if not self._table_exists(conn, table_name):
+                return []
             rows = conn.execute(
                 f"""
                 select distinct report_date
@@ -1255,8 +1265,6 @@ class PnlRepository:
                 """
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -1559,8 +1567,6 @@ class PnlRepository:
                 [*params, *params],
             ).fetchall()
         except duckdb.Error as exc:
-            if "cannot open database" in str(exc).lower():
-                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():

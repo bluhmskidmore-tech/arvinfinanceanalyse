@@ -222,7 +222,7 @@ class PnlByBusinessManualAdjustmentRequest(BaseModel):
     row_key: str = Field(min_length=1)
     business_type: str = ""
     operator: Literal["ADD", "DELTA", "OVERRIDE"] = "DELTA"
-    approval_status: Literal["approved", "pending", "rejected"] = "approved"
+    approval_status: Literal["approved", "pending", "rejected"] = "pending"
     manual_adjustment: Decimal
     reason: str = ""
 
@@ -258,6 +258,8 @@ class PnlByBusinessManualAdjustmentPayload(BaseModel):
     approval_status: str
     manual_adjustment: Decimal
     reason: str = ""
+    created_by: str = ""
+    approved_by: str = ""
 
 
 class PnlByBusinessManualAdjustmentListPayload(BaseModel):

@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Literal
 
 import duckdb
@@ -136,6 +137,21 @@ def _pnl_repo() -> PnlRepository:
     return PnlRepository(str(get_settings().duckdb_path))
 
 
+def _is_missing_formal_pnl_storage(exc: RuntimeError) -> bool:
+    if str(exc) != "Formal pnl storage is unavailable.":
+        return False
+    return not Path(get_settings().duckdb_path).exists()
+
+
+def _formal_fi_report_dates_for_workbench(repo: PnlRepository | None = None) -> list[str]:
+    try:
+        return (repo or _pnl_repo()).list_formal_fi_report_dates()
+    except RuntimeError as exc:
+        if _is_missing_formal_pnl_storage(exc):
+            return []
+        raise
+
+
 def _bond_repo() -> BondAnalyticsRepository:
     return BondAnalyticsRepository(str(get_settings().duckdb_path))
 
@@ -178,7 +194,7 @@ def _month_series_descending_from_dates(all_dates: list[str], months: int) -> li
 
 
 def _latest_formal_report_date() -> str | None:
-    dates = _pnl_repo().list_formal_fi_report_dates()
+    dates = _formal_fi_report_dates_for_workbench()
     return dates[0] if dates else None
 
 
@@ -689,7 +705,7 @@ def volume_rate_attribution_envelope(
     compare_type: CompareType = "mom",
 ) -> dict[str, object]:
     repo = _pnl_repo()
-    dates = repo.list_formal_fi_report_dates()
+    dates = _formal_fi_report_dates_for_workbench(repo)
     if not dates:
         payload = pa_wb.build_volume_rate_attribution(
             current_pnl=[],
@@ -780,7 +796,7 @@ def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None
     repo = _pnl_repo()
     curve = _curve_repo()
     bond = _bond_repo()
-    pnl_dates = repo.list_formal_fi_report_dates()
+    pnl_dates = _formal_fi_report_dates_for_workbench(repo)
     if not pnl_dates:
         payload = pa_wb.build_tpl_market_correlation(
             monthly_points=[],
@@ -895,7 +911,7 @@ def pnl_composition_envelope(
     trend_months: int = 6,
 ) -> dict[str, object]:
     repo = _pnl_repo()
-    dates = repo.list_formal_fi_report_dates()
+    dates = _formal_fi_report_dates_for_workbench(repo)
     if not dates:
         payload = pa_wb.build_pnl_composition(
             report_period="",
@@ -989,7 +1005,7 @@ def pnl_composition_envelope(
 
 def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[str, object]:
     """Summarizes only the formal FI / bond-analysis attribution lens."""
-    repo_dates = _pnl_repo().list_formal_fi_report_dates()
+    repo_dates = _formal_fi_report_dates_for_workbench()
     rd = report_date or (repo_dates[0] if repo_dates else "")
     if not repo_dates:
         summary = pa_wb.build_pnl_attribution_analysis_summary(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 from uuid import uuid4
 
 from backend.app.core_finance.config.classification_rules import LEDGER_PNL_ACCOUNT_PREFIXES
@@ -71,6 +72,7 @@ PNL_CACHE_KEY = CACHE_KEY
 PNL_CACHE_VERSION = PNL_RESULT_CACHE_VERSION
 PNL_JOB_NAME = "pnl_materialize"
 PENDING_SOURCE_VERSION = "sv_pnl_pending"
+_REAL_PNL_REPOSITORY = PnlRepository
 TWOPLACES = Decimal("0.01")
 RATIOPLACES = Decimal("0.000001")
 FTP_RATE_PCT = Decimal("1.600000")
@@ -87,6 +89,17 @@ PNL_BY_BUSINESS_KEYED_ANALYSIS_DIMENSIONS: tuple[PnlByBusinessAnalysisDimension,
     "cost_center",
     "instrument",
 )
+
+
+def _ensure_formal_pnl_storage_available(duckdb_path: str) -> None:
+    if PnlRepository is not _REAL_PNL_REPOSITORY:
+        return
+    if str(duckdb_path) == ":memory:":
+        return
+    if not Path(str(duckdb_path)).exists():
+        raise RuntimeError("Formal pnl storage is unavailable.")
+
+
 ANALYSIS_BOND_BUCKETS: tuple[tuple[str, str, frozenset[str]], ...] = (
     (
         "rate_bond",
@@ -312,6 +325,7 @@ def pnl_import_status(settings: Settings, *, run_id: str | None = None) -> dict[
 
 
 def pnl_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     formal_fi_report_dates = repo.list_formal_fi_report_dates()
     nonstd_bridge_report_dates = repo.list_nonstd_bridge_report_dates()
@@ -330,6 +344,7 @@ def pnl_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, ob
 
 
 def pnl_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     if report_date not in repo.list_union_report_dates():
         raise ValueError(
@@ -351,6 +366,7 @@ def pnl_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str
 
 
 def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     if report_date not in repo.list_union_report_dates():
         raise ValueError(
@@ -380,6 +396,7 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
 
 
 def pnl_v1_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     source_root = resolve_pnl_data_input_root()
     refresh_input = load_latest_pnl_refresh_input(
@@ -437,6 +454,7 @@ def pnl_v1_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: 
 
 
 def pnl_by_business_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     if report_date not in repo.list_formal_fi_report_dates():
         raise ValueError(f"No formal pnl data found for report_date={report_date} in fact_formal_pnl_fi.")
@@ -648,6 +666,8 @@ def _load_pnl_by_business_manual_adjustment_events(settings: Settings) -> list[d
                 "approval_status": str(row.get("approval_status") or ""),
                 "manual_adjustment": row.get("manual_adjustment") or "0",
                 "reason": str(row.get("reason") or ""),
+                "created_by": str(row.get("created_by") or ""),
+                "approved_by": str(row.get("approved_by") or ""),
             }
         )
     return events
@@ -837,6 +857,7 @@ def _pnl_by_business_ytd_from_formal_facts(
     """年度累计：逐报表月按当月 ZQTZ 口径分类后累计，避免用期末分类重写历史月份。"""
     if not as_of_date.startswith(f"{year:04d}-"):
         raise ValueError(f"as_of_date={as_of_date} is outside requested year={year}.")
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     loaded_dates = sorted(
         d
@@ -1078,14 +1099,20 @@ def clear_pnl_by_business_ytd_cache() -> None:
 def create_pnl_by_business_manual_adjustment(
     settings: Settings,
     payload: PnlByBusinessManualAdjustmentRequest,
+    *,
+    created_by: str = "",
 ) -> dict[str, object]:
     created_at = datetime.now(UTC).isoformat()
+    payload_data = payload.model_dump()
+    payload_data["approval_status"] = "pending"
     record = PnlByBusinessManualAdjustmentPayload(
         adjustment_id=f"pba-{uuid4()}",
         event_type="created",
         created_at=created_at,
         stream=PNL_BY_BUSINESS_ADJUSTMENT_STREAM,
-        **payload.model_dump(),
+        **payload_data,
+        created_by=str(created_by or ""),
+        approved_by="",
     )
     GovernanceRepository(base_dir=settings.governance_path).append(
         PNL_BY_BUSINESS_ADJUSTMENT_STREAM,
@@ -1102,12 +1129,15 @@ def update_pnl_by_business_manual_adjustment(
     payload: PnlByBusinessManualAdjustmentRequest,
 ) -> dict[str, object]:
     current = _require_pnl_by_business_manual_adjustment(settings, adjustment_id)
+    payload_data = payload.model_dump()
     updated = PnlByBusinessManualAdjustmentPayload.model_validate(
         {
             **current,
-            **payload.model_dump(),
+            **payload_data,
             "event_type": "edited",
             "created_at": datetime.now(UTC).isoformat(),
+            "approval_status": "pending",
+            "approved_by": "",
         }
     )
     GovernanceRepository(base_dir=settings.governance_path).append(
@@ -1116,6 +1146,36 @@ def update_pnl_by_business_manual_adjustment(
     )
     _clear_pnl_by_business_manual_adjustment_caches()
     return updated.model_dump(mode="json")
+
+
+def approve_pnl_by_business_manual_adjustment(
+    settings: Settings,
+    *,
+    adjustment_id: str,
+    approved_by: str,
+) -> dict[str, object]:
+    current = _require_pnl_by_business_manual_adjustment(settings, adjustment_id)
+    checker = str(approved_by or "").strip()
+    maker = str(current.get("created_by") or "").strip()
+    if maker and checker and maker == checker:
+        raise PermissionError("PnL by-business adjustment creator cannot approve the same adjustment.")
+    if str(current.get("approval_status") or "") == "approved":
+        return PnlByBusinessManualAdjustmentPayload.model_validate(current).model_dump(mode="json")
+    approved = PnlByBusinessManualAdjustmentPayload.model_validate(
+        {
+            **current,
+            "event_type": "approved",
+            "created_at": datetime.now(UTC).isoformat(),
+            "approval_status": "approved",
+            "approved_by": checker,
+        }
+    )
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        PNL_BY_BUSINESS_ADJUSTMENT_STREAM,
+        approved.model_dump(mode="json"),
+    )
+    _clear_pnl_by_business_manual_adjustment_caches()
+    return approved.model_dump(mode="json")
 
 
 def revoke_pnl_by_business_manual_adjustment(settings: Settings, *, adjustment_id: str) -> dict[str, object]:
@@ -1128,6 +1188,7 @@ def revoke_pnl_by_business_manual_adjustment(settings: Settings, *, adjustment_i
             "event_type": "revoked",
             "created_at": datetime.now(UTC).isoformat(),
             "approval_status": "rejected",
+            "approved_by": "",
         }
     )
     GovernanceRepository(base_dir=settings.governance_path).append(
@@ -1140,14 +1201,15 @@ def revoke_pnl_by_business_manual_adjustment(settings: Settings, *, adjustment_i
 
 def restore_pnl_by_business_manual_adjustment(settings: Settings, *, adjustment_id: str) -> dict[str, object]:
     current = _require_pnl_by_business_manual_adjustment(settings, adjustment_id)
-    if str(current.get("approval_status") or "") == "approved":
+    if str(current.get("approval_status") or "") in {"approved", "pending"}:
         return PnlByBusinessManualAdjustmentPayload.model_validate(current).model_dump(mode="json")
     restored = PnlByBusinessManualAdjustmentPayload.model_validate(
         {
             **current,
             "event_type": "restored",
             "created_at": datetime.now(UTC).isoformat(),
-            "approval_status": "approved",
+            "approval_status": "pending",
+            "approved_by": "",
         }
     )
     GovernanceRepository(base_dir=settings.governance_path).append(
@@ -1193,6 +1255,7 @@ def _pnl_by_business_ytd_envelope_uncached(
     - **刷新包路径**（``MOSS_PNL_BY_BUSINESS_YTD_PREFER_FORMAL_FACTS=false`` 或当年无 formal 行）：对每个 ``report_date`` 调 ``load_latest_pnl_refresh_input`` + ``_iter_v1_compatible_pnl_records``。
     - ``items``：ZQTZ 多桶命中时各行 ``total_pnl`` 可重叠，**行加总不必等于** ``result["total_pnl"]``。
     """
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     settings = get_settings()
     as_cap = as_of_date or repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=None)
@@ -1247,6 +1310,7 @@ def pnl_by_business_analysis_envelope(
     business_key: str | None = None,
     dimension: PnlByBusinessAnalysisDimension = "monthly",
 ) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     as_cap = as_of_date or repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=None)
     if not as_cap:
@@ -1348,6 +1412,7 @@ def pnl_by_business_monthly_envelope(
     year: int,
     as_of_date: str | None = None,
 ) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     as_cap = as_of_date or repo.max_formal_or_nonstd_report_date_in_year(year=year, as_of_cap=None)
     if not as_cap:
@@ -1435,6 +1500,7 @@ def pnl_by_business_monthly_envelope(
 
 
 def pnl_yearly_summary_envelope(*, duckdb_path: str, governance_dir: str, year: int) -> dict[str, object]:
+    _ensure_formal_pnl_storage_available(duckdb_path)
     repo = PnlRepository(duckdb_path)
     rows = [
         PnlYearlyBusinessSummaryRow(
