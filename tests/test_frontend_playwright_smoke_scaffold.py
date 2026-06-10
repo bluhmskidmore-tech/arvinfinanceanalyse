@@ -25,7 +25,8 @@ def test_frontend_playwright_smoke_scaffold_uses_safe_server_probe_and_artifacts
 
     spec_text = spec_path.read_text(encoding="utf-8")
     assert "@axe-core/playwright" in spec_text
-    assert 'test.skip(!serverCheck.ok, serverCheck.reason);' in spec_text
+    assert "expect(serverCheck.ok, serverCheck.reason).toBe(true);" in spec_text
+    assert "test.skip(!serverCheck.ok" not in spec_text
     assert 'waitUntil: "domcontentloaded"' in spec_text
     assert 'toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 })' in spec_text
     assert "page.screenshot({" in spec_text
@@ -98,5 +99,6 @@ def test_frontend_package_exposes_playwright_smoke_scripts():
 def test_ci_runs_frontend_accessibility_smoke_with_local_server():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
+    assert "VITE_DATA_SOURCE=real npm run build" in workflow
     assert "MOSS_PLAYWRIGHT_USE_WEB_SERVER: \"1\"" in workflow
     assert "npm run test:a11y-smoke" in workflow

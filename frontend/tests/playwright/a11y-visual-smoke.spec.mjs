@@ -128,6 +128,12 @@ const smokePages = [
     screenshotFullPage: false,
   },
   {
+    slug: "average-balance",
+    path: "/average-balance",
+    readySelector: '[data-testid="average-balance-page"]',
+    screenshotFullPage: false,
+  },
+  {
     slug: "bond-analysis",
     path: "/bond-analysis",
     readySelector: '[data-testid="bond-analysis-overview"]',
@@ -233,7 +239,7 @@ const gateHControlContextPages = [
       },
     ],
     stateCueSelector:
-      '[data-testid="cross-asset-decision-rail"], [data-testid="cross-asset-ncd-proxy-warning"], [data-testid="cross-asset-livermore-status"]',
+      '[data-testid="cross-asset-trust-panel"], [data-testid="cross-asset-action-rail"], [data-testid="cross-asset-data-status-strip"]',
   },
   {
     slug: "ledger-pnl",
@@ -385,14 +391,20 @@ async function describeActiveElement(page, targetSelector) {
 
 async function firstVisibleLocator(page, selector, timeout = 60_000) {
   const locator = page.locator(selector);
-  await expect(locator.first()).toBeVisible({ timeout });
-  const count = await locator.count();
-  for (let index = 0; index < count; index += 1) {
-    const candidate = locator.nth(index);
-    if (await candidate.isVisible().catch(() => false)) {
-      return candidate;
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() <= deadline) {
+    const count = await locator.count();
+    for (let index = 0; index < count; index += 1) {
+      const candidate = locator.nth(index);
+      if (await candidate.isVisible().catch(() => false)) {
+        return candidate;
+      }
     }
+    await page.waitForTimeout(100);
   }
+
+  await expect(locator.first()).toBeVisible({ timeout: 1 });
   return locator.first();
 }
 
@@ -488,7 +500,7 @@ test.describe("frontend accessibility + visual smoke", () => {
   for (const smokePage of smokePages) {
     test(`${smokePage.slug} has no critical axe violations @${smokePage.slug}`, async ({ page }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
-      test.skip(!serverCheck.ok, serverCheck.reason);
+      expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
       await gotoVisiblePage(page, smokePage);
 
@@ -518,7 +530,7 @@ test.describe("frontend accessibility + visual smoke", () => {
       page,
     }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
-      test.skip(!serverCheck.ok, serverCheck.reason);
+      expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
       await gotoVisiblePage(page, keyboardPage);
 
@@ -560,7 +572,7 @@ test.describe("frontend accessibility + visual smoke", () => {
       page,
     }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
-      test.skip(!serverCheck.ok, serverCheck.reason);
+      expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
       await gotoVisiblePage(page, keyboardPage);
 
@@ -625,7 +637,7 @@ test.describe("frontend accessibility + visual smoke", () => {
       page,
     }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
-      test.skip(!serverCheck.ok, serverCheck.reason);
+      expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
       await gotoVisiblePage(page, controlPage);
 
