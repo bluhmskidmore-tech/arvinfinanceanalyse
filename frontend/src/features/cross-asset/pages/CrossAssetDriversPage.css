@@ -705,15 +705,20 @@
 }
 
 .cross-asset-decision-hero .moss-page-v2-decision-hero__conclusion {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   max-width: 92ch;
-  padding: 4px 0 0;
-  border-color: rgba(24, 80, 161, 0.14);
-  border-left-color: var(--ca-accent);
-  background: transparent;
+  padding: 5px 0 0 8px;
+  border-left: 3px solid var(--ca-accent);
+  background: color-mix(in srgb, var(--ca-info-bg) 22%, #ffffff);
   color: var(--ca-text);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 800;
-  line-height: 1.34;
+  line-height: 1.42;
+  white-space: normal;
 }
 
 .cross-asset-decision-hero__actions {

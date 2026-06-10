@@ -103,7 +103,7 @@ describe("CrossAssetPage", () => {
     expect(heroTitleBlock).toContain("font-size: 1rem;");
     expect(heroTitleBlock).toContain("color: var(--ca-slate);");
     expect(heroConclusionBlock).toContain("max-width: 92ch;");
-    expect(heroConclusionBlock).toContain("font-size: 0.75rem;");
+    expect(heroConclusionBlock).toContain("font-size: 0.8125rem;");
     expect(css).toContain(".cross-asset-status-region--compact");
     expect(statusPillBlock).toContain("white-space: nowrap;");
     expect(transmissionCanvasBlock).toContain("border-left: 3px solid var(--ca-accent);");
@@ -640,7 +640,8 @@ describe("CrossAssetPage", () => {
     expect(analyticsGrid).toContainElement(waterfallDecision);
     expect(analyticsGrid).toContainElement(waterfallGapStrip);
     expect(riskRail).toContainElement(foldedVolAssets);
-    expect(foldedVolAssets).toHaveTextContent("其余 3 项");
+    expect(foldedVolAssets).toHaveTextContent(/其余 \d+ 项/);
+    expect(foldedVolAssets).toHaveTextContent("常规波动");
     expect(foldedVolAssets).toHaveAttribute("title", expect.stringContaining("USD/CNY"));
   });
 
@@ -680,6 +681,9 @@ describe("CrossAssetPage", () => {
       expect(gapStrip.querySelectorAll(".ca-waterfall__evidence-chip")).toHaveLength(2);
     });
     expect(screen.queryByTestId("cross-asset-driver-waterfall-gap-summary")).not.toBeInTheDocument();
+    const waterfallEvidence = screen.getByTestId("cross-asset-driver-waterfall-evidence");
+    expect(waterfallEvidence).toHaveTextContent("流动性代理");
+    expect(waterfallEvidence).not.toHaveTextContent("Liquidity proxy");
   });
 
   it("keeps candidate actions visually attached to the transmission diagnostics", async () => {
@@ -1394,8 +1398,8 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-ncd-proxy-warning")).toBeInTheDocument();
     await waitFor(() => {
       const warning = screen.getByTestId("cross-asset-ncd-proxy-warning");
-      expect(warning).toHaveTextContent(/not actual NCD issuance matrix/i);
-      expect(warning).toHaveTextContent(/landed|quote medians unavailable/i);
+      expect(warning).toHaveTextContent(/不是真实 NCD 发行矩阵/);
+      expect(warning).toHaveTextContent(/Tushare Shibor/);
     });
     expect(await screen.findByText("Duration view favors adding exposure.")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
@@ -1415,6 +1419,9 @@ describe("CrossAssetPage", () => {
       "CSI300 equity-bond spread",
     );
     expect(screen.getByTestId("cross-asset-transmission-axis-mega_cap_equities")).toHaveTextContent("23.54%");
+    const judgment = screen.getByTestId("cross-asset-asset-class-judgment");
+    expect(judgment).not.toHaveTextContent("CSI300 equity-bond spread is 5.10ppt");
+    expect(judgment).toHaveTextContent("股票通道");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-stock")).toHaveTextContent("股票分析");
     expect(screen.getByTestId("cross-asset-asset-analysis-commodities")).toHaveTextContent("大宗商品");
@@ -1859,6 +1866,58 @@ describe("CrossAssetPage", () => {
     expect(await screen.findByText("国债供给窗口")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-event-calendar")).not.toHaveTextContent("仅分析口径");
     expect((await screen.findAllByText("仅分析口径")).length).toBeGreaterThan(0);
+  });
+
+  it("shows a regime-based first-screen conclusion when linkage analysis is unavailable", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getMacroBondLinkageAnalysis: vi.fn(async () => {
+        throw new Error("macro_bond_linkage.analysis failed");
+      }),
+    };
+
+    renderPage(client);
+
+    const hero = await screen.findByTestId("cross-asset-decision-hero");
+    await waitFor(() => {
+      expect(hero).toHaveTextContent("联动分析暂不可用");
+      expect(hero).toHaveTextContent("首屏参考市场体制");
+    });
+    expect(screen.getByTestId("cross-asset-research-card-duration")).toHaveTextContent(
+      "联动分析暂不可用，四维判断待恢复。",
+    );
+  });
+
+  it("surfaces permission-denied linkage and ncd modules on the first screen", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getMacroBondLinkageAnalysis: vi.fn(async () => {
+        throw new Error("User is not allowed to read macro_bond_linkage.");
+      }),
+      getNcdFundingProxy: vi.fn(async () => {
+        throw new Error("User is not allowed to read market_data_ncd_proxy.");
+      }),
+    };
+
+    renderPage(client);
+
+    const hero = await screen.findByTestId("cross-asset-decision-hero");
+    const statusFlags = await screen.findByTestId("cross-asset-status-flags");
+    const trustPanel = await screen.findByTestId("cross-asset-trust-panel");
+
+    await waitFor(() => {
+      expect(hero).toHaveTextContent("联动分析权限受限");
+      expect(statusFlags).toHaveTextContent("权限受限");
+      expect(statusFlags).toHaveTextContent("macro_bond_linkage.analysis");
+      expect(statusFlags).toHaveTextContent("market_data_ncd_proxy");
+    });
+    expect(screen.getByTestId("cross-asset-research-card-duration")).toHaveTextContent(
+      "联动分析权限受限，四维判断待开通。",
+    );
+    expect(trustPanel).toHaveTextContent("申请读取权限");
+    expect(await screen.findByTestId("cross-asset-ncd-proxy-warning")).toHaveTextContent(
+      "无 NCD/资金代理读取权限",
+    );
   });
 
   it("surfaces a first-screen loading failure when the latest macro chain fails", async () => {

@@ -12,6 +12,13 @@ import type {
 import type { CalendarItem } from "../../../components/CalendarList";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
+import {
+  linkageUnavailableEvidence,
+  linkageUnavailableSummary,
+  type CrossAssetModuleFailure,
+  type CrossAssetQueryFailureKind,
+} from "./crossAssetQueryFailure";
+import { summarizeCrossAssetLinkageWarnings } from "./crossAssetLinkageWarnings";
 
 type StatusTone = "normal" | "caution" | "warning" | "danger";
 type ActionTone = "bull" | "warning" | "bear";
@@ -178,17 +185,55 @@ function ncdRowCaption(row: NcdFundingProxyPayload["rows"][number]) {
   return `${row.label}: ${parts.join(" · ")}`;
 }
 
+const NCD_PROXY_WARNING_PATTERNS: ReadonlyArray<{ pattern: RegExp; text: string }> = [
+  {
+    pattern: /proxy only;\s*not actual ncd issuance matrix\.?/i,
+    text: "仅为资金利率代理，不是真实 NCD 发行矩阵。",
+  },
+  {
+    pattern: /using landed (?:external warehouse )?(?:tushare )?shibor;\s*quote medians unavailable\.?/i,
+    text: "使用已落地的 Tushare Shibor；报价中位数不可用。",
+  },
+];
+
+export function localizeNcdProxyLabel(label: string | null | undefined): string {
+  const trimmed = String(label ?? "").trim();
+  if (!trimmed) {
+    return "NCD / 资金代理";
+  }
+  if (/^tushare shibor funding proxy$/i.test(trimmed)) {
+    return "Tushare Shibor 资金代理";
+  }
+  return trimmed;
+}
+
+export function formatNcdProxyWarningText(warnings: string[]): string {
+  const localized = warnings
+    .map((warning) => warning.trim())
+    .filter(Boolean)
+    .map((warning) => {
+      const match = NCD_PROXY_WARNING_PATTERNS.find((entry) => entry.pattern.test(warning));
+      return match?.text ?? warning;
+    });
+  return [...new Set(localized)].join(" ");
+}
+
 export function buildCrossAssetNcdProxyEvidence(input: {
   result?: NcdFundingProxyPayload | null;
   /** false when the client request failed or returned nothing usable */
   available: boolean;
+  failureKind?: CrossAssetQueryFailureKind;
 }): CrossAssetNcdProxyEvidence {
   if (!input.available || !input.result) {
+    const proxyWarning =
+      input.failureKind === "permission"
+        ? "当前账号无 NCD/资金代理读取权限，请联系管理员开通。"
+        : "NCD 资金代理数据不可用（请求失败或空载荷）。";
     return {
       asOfDate: null,
       proxyLabel: "NCD / funding",
       isActualNcdMatrix: false,
-      proxyWarning: "NCD 资金代理数据不可用（请求失败或空载荷）。",
+      proxyWarning,
       rowCaptions: [],
       sourceMeta: "unavailable",
     };
@@ -201,9 +246,9 @@ export function buildCrossAssetNcdProxyEvidence(input: {
   const warnings = payload.warnings.map((warning) => warning.trim()).filter(Boolean);
   return {
     asOfDate: payload.as_of_date,
-    proxyLabel: payload.proxy_label,
+    proxyLabel: localizeNcdProxyLabel(payload.proxy_label),
     isActualNcdMatrix: payload.is_actual_ncd_matrix,
-    proxyWarning: warnings.length > 0 ? warnings.join(" ") : defaultProxyWarn,
+    proxyWarning: warnings.length > 0 ? formatNcdProxyWarningText(warnings) : defaultProxyWarn,
     rowCaptions: payload.rows.slice(0, 3).map((row) => ncdRowCaption(row)),
     sourceMeta: "backend",
   };
@@ -493,31 +538,63 @@ function fallbackAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroB
 
 const HEURISTIC_AXIS_WARNING =
   "仅来自环境评分的启发式判断，不是治理后的传导主线信号。";
-const LINKAGE_UNAVAILABLE_MESSAGE = "macro_bond_linkage.analysis 加载失败；暂不生成兜底研究判断。";
+function resolveLinkageUnavailableKind(input: {
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
+  moduleFailures?: CrossAssetModuleFailure[];
+  loadingFailures?: string[];
+}): CrossAssetQueryFailureKind | undefined {
+  if (input.linkageUnavailableReason) {
+    return input.linkageUnavailableReason;
+  }
+  const linkageFailure = input.moduleFailures?.find(
+    (failure) => failure.module === "macro_bond_linkage.analysis",
+  );
+  if (linkageFailure) {
+    return linkageFailure.kind;
+  }
+  if (input.loadingFailures?.includes("macro_bond_linkage.analysis")) {
+    return "load";
+  }
+  return undefined;
+}
+
+function isLinkageUnavailable(input: {
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
+  moduleFailures?: CrossAssetModuleFailure[];
+  loadingFailures?: string[];
+}): boolean {
+  return resolveLinkageUnavailableKind(input) != null;
+}
 const OPTION_LOCAL_EVIDENCE_NOTE =
   "本地 phase1_macro_vendor_catalog / choice_market_snapshot / fact_choice_macro_daily 未发现已治理序列";
 
-function unavailableResearchView(key: (typeof RESEARCH_VIEW_ORDER)[number]): MacroBondResearchView {
+function unavailableResearchView(
+  key: (typeof RESEARCH_VIEW_ORDER)[number],
+  reason?: CrossAssetQueryFailureKind,
+): MacroBondResearchView {
   return {
     key,
     status: "pending_signal",
     stance: "pending_signal",
     confidence: "low",
-    summary: LINKAGE_UNAVAILABLE_MESSAGE,
+    summary: linkageUnavailableSummary(reason),
     affected_targets: [],
-    evidence: ["macro_bond_linkage.analysis 加载失败"],
+    evidence: [linkageUnavailableEvidence(reason)],
   };
 }
 
-function unavailableTransmissionAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroBondTransmissionAxis {
+function unavailableTransmissionAxis(
+  axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number],
+  reason?: CrossAssetQueryFailureKind,
+): MacroBondTransmissionAxis {
   return {
     axis_key: axisKey,
     status: "pending_signal",
     stance: "pending_signal",
-    summary: LINKAGE_UNAVAILABLE_MESSAGE,
+    summary: linkageUnavailableSummary(reason),
     impacted_views: [],
     required_series_ids: [],
-    warnings: ["macro_bond_linkage.analysis 加载失败"],
+    warnings: [linkageUnavailableEvidence(reason)],
   };
 }
 
@@ -793,6 +870,63 @@ function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
   return rows.find((row) => row.axisKey === key);
 }
 
+function compactAxisStanceExplanation(
+  axis: CrossAssetTransmissionAxisRow | undefined,
+  pending: string,
+): string {
+  if (axis?.status === "ready") {
+    return `${axis.label} ${axis.stanceLabel}。`;
+  }
+  return pending;
+}
+
+function synthesizeStockRowExplanation(
+  equityAxis: CrossAssetTransmissionAxisRow | undefined,
+  megaCapAxis: CrossAssetTransmissionAxisRow | undefined,
+): string {
+  const parts = [equityAxis, megaCapAxis]
+    .filter((axis): axis is CrossAssetTransmissionAxisRow => axis?.status === "ready")
+    .map((axis) => `${axis.label} ${axis.stanceLabel}`);
+  if (parts.length > 0) {
+    return `股票通道：${parts.join("，")}；细项见资产明细。`;
+  }
+  return "治理后的股票分析待接入；代理确认前，股票证据与债券结论保持分离。";
+}
+
+function synthesizeCommodityRowExplanation(
+  commodityAxis: CrossAssetTransmissionAxisRow | undefined,
+  commodityLines: CrossAssetClassAnalysisLine[],
+): string {
+  const readyCount = commodityLines.filter((line) => line.status === "ready").length;
+  if (readyCount > 0) {
+    const axisPart =
+      commodityAxis?.status === "ready" ? `商品与通胀 ${commodityAxis.stanceLabel}` : "挂牌指标已接入";
+    return `${axisPart}；${readyCount} 项商品细项见下方明细。`;
+  }
+  return compactAxisStanceExplanation(
+    commodityAxis,
+    "治理后的商品链条判断待接入；只使用已展示的布伦特和钢材证据，不追加无支持的通胀压力判断。",
+  );
+}
+
+function megaCapLineExplanation(
+  megaCapTop10: ResolvedCrossAssetKpi | undefined,
+  megaCapTop5: ResolvedCrossAssetKpi | undefined,
+  megaCapAxis: CrossAssetTransmissionAxisRow | undefined,
+): string {
+  const kpiParts = [megaCapTop10, megaCapTop5]
+    .filter(hasUsableKpi)
+    .map((kpi) => explanationFromKpi(kpi, ""))
+    .filter(Boolean);
+  if (kpiParts.length > 0) {
+    return kpiParts.join("；");
+  }
+  return compactAxisStanceExplanation(
+    megaCapAxis,
+    explanationFromKpi(megaCapTop10, "治理后的大市值引领代理待接入，大盘权重通道暂不下结论。"),
+  );
+}
+
 export function buildCrossAssetClassAnalysisRows(input: {
   kpis: ResolvedCrossAssetKpi[];
   transmissionAxes: CrossAssetTransmissionAxisRow[];
@@ -848,9 +982,12 @@ export function buildCrossAssetClassAnalysisRows(input: {
       ]
         .filter(Boolean)
         .join("；"),
-      explanation:
-        equityAxis?.summary ??
-        explanationFromKpi(csi300Pe, "治理后的沪深300估值与股债利差输入待接入。"),
+      explanation: hasUsableKpi(csi300Pe)
+        ? explanationFromKpi(csi300Pe, "治理后的沪深300估值与股债利差输入待接入。")
+        : compactAxisStanceExplanation(
+            equityAxis,
+            "治理后的沪深300估值与股债利差输入待接入。",
+          ),
     },
     {
       key: "mega_cap_weight",
@@ -876,9 +1013,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       ]
         .filter(Boolean)
         .join("；"),
-      explanation:
-        megaCapAxis?.summary ??
-        explanationFromKpi(megaCapTop10, "治理后的大市值引领代理待接入，大盘权重通道暂不下结论。"),
+      explanation: megaCapLineExplanation(megaCapTop10, megaCapTop5, megaCapAxis),
     },
   ];
   const commodityLines: CrossAssetClassAnalysisLine[] = [
@@ -924,9 +1059,10 @@ export function buildCrossAssetClassAnalysisRows(input: {
               ],
               "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
             )
-          : commodityAxis?.status === "ready"
-            ? commodityAxis.summary
-            : "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
+          : compactAxisStanceExplanation(
+              commodityAxis,
+              "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
+            ),
     },
   ];
   const optionLines: CrossAssetClassAnalysisLine[] = [
@@ -979,10 +1115,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "股票分析",
       status: stockReady ? "ready" : "pending_signal",
       direction: equityAxis?.stance ?? stockLines.find((line) => line.status === "ready")?.direction ?? "pending",
-      explanation:
-        equityAxis?.summary ??
-        megaCapAxis?.summary ??
-        "治理后的股票分析待接入；代理确认前，股票证据与债券结论保持分离。",
+      explanation: synthesizeStockRowExplanation(equityAxis, megaCapAxis),
       lines: stockLines,
     },
     {
@@ -990,9 +1123,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "大宗商品分析",
       status: commodityReady ? "ready" : "pending_signal",
       direction: commodityAxis?.stance ?? commodityLines.find((line) => line.status === "ready")?.direction ?? "pending",
-      explanation:
-        commodityAxis?.summary ??
-        "治理后的商品链条判断待接入；只使用已展示的布伦特和钢材证据，不追加无支持的通胀压力判断。",
+      explanation: synthesizeCommodityRowExplanation(commodityAxis, commodityLines),
       lines: commodityLines,
     },
     {
@@ -1026,19 +1157,24 @@ export function buildCrossAssetDriversViewModel(input: {
   ncdProxyAvailable: boolean;
   /** When macro/linkage fetches fail, pass stable module keys for status flags. */
   loadingFailures?: string[];
+  moduleFailures?: CrossAssetModuleFailure[];
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetDriversViewModel {
-  const linkageUnavailable = input.loadingFailures?.includes("macro_bond_linkage.analysis") ?? false;
+  const linkageUnavailableKind = resolveLinkageUnavailableKind(input);
+  const linkageUnavailable = isLinkageUnavailable(input);
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
     env: input.env,
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const transmissionAxes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const assetClassAnalysisRows = buildCrossAssetClassAnalysisRows({
     kpis: input.kpis,
@@ -1054,6 +1190,7 @@ export function buildCrossAssetDriversViewModel(input: {
     linkageWarnings: input.linkageWarnings,
     ncdProxy: input.ncdProxy,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const watchList = buildCrossAssetWatchList({
     kpis: input.kpis,
@@ -1062,6 +1199,7 @@ export function buildCrossAssetDriversViewModel(input: {
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     linkageUnavailable,
+    linkageUnavailableReason: linkageUnavailableKind,
   });
   const eventCalendarRows = buildCrossAssetEventItems({
     events: input.calendarEvents,
@@ -1072,6 +1210,8 @@ export function buildCrossAssetDriversViewModel(input: {
   const ncdProxyEvidence = buildCrossAssetNcdProxyEvidence({
     result: input.ncdProxy,
     available: input.ncdProxyAvailable,
+    failureKind: input.moduleFailures?.find((failure) => failure.module === "market_data_ncd_proxy")
+      ?.kind,
   });
   const statusFlags = buildCrossAssetStatusFlags({
     latestMeta: input.latestMeta,
@@ -1079,7 +1219,9 @@ export function buildCrossAssetDriversViewModel(input: {
     latestSeries: input.latestSeries,
     crossAssetDataDate: input.crossAssetDataDate,
     linkageReportDate: input.linkageReportDate,
+    linkageWarnings: input.linkageWarnings,
     loadingFailures: input.loadingFailures,
+    moduleFailures: input.moduleFailures,
   });
 
   return {
@@ -1094,19 +1236,42 @@ export function buildCrossAssetDriversViewModel(input: {
   };
 }
 
+function hasLinkageQualityWarning(meta?: ResultMeta, linkageWarnings?: string[]): boolean {
+  return meta?.quality_flag === "warning" || (linkageWarnings?.length ?? 0) > 0;
+}
+
 export function buildCrossAssetStatusFlags(input: {
   latestMeta?: ResultMeta;
   linkageMeta?: ResultMeta;
   latestSeries: ChoiceMacroLatestPoint[];
   crossAssetDataDate: string;
   linkageReportDate: string;
+  linkageWarnings?: string[];
   loadingFailures?: string[];
+  moduleFailures?: CrossAssetModuleFailure[];
 }): CrossAssetStatusFlag[] {
   const flags: CrossAssetStatusFlag[] = [];
 
-  const loadingFailures = (input.loadingFailures ?? []).filter(Boolean);
-  if (loadingFailures.length > 0) {
-    const modules = loadingFailures.join(", ");
+  const moduleFailures =
+    input.moduleFailures ??
+    (input.loadingFailures ?? [])
+      .filter(Boolean)
+      .map((module) => ({ module, kind: "load" as const }));
+  const permissionFailures = moduleFailures.filter((failure) => failure.kind === "permission");
+  const loadFailures = moduleFailures.filter((failure) => failure.kind === "load");
+
+  if (permissionFailures.length > 0) {
+    const modules = permissionFailures.map((failure) => failure.module).join(", ");
+    flags.push({
+      id: "access-denied",
+      label: `权限受限 · ${modules}`,
+      tone: "danger",
+      detail: "当前账号无权读取上述模块；四维判断与 NCD 代理不可用，请联系管理员开通读取权限。",
+    });
+  }
+
+  if (loadFailures.length > 0) {
+    const modules = loadFailures.map((failure) => failure.module).join(", ");
     flags.push({
       id: "loading-failure",
       label: `加载失败 · ${modules}`,
@@ -1121,6 +1286,18 @@ export function buildCrossAssetStatusFlags(input: {
       label: "仅分析口径",
       tone: "warning",
       detail: "本页读取分析链路，不替代正式执行输出。",
+    });
+  }
+
+  if (hasLinkageQualityWarning(input.linkageMeta, input.linkageWarnings)) {
+    const warningSummary = summarizeCrossAssetLinkageWarnings(input.linkageWarnings ?? []);
+    flags.push({
+      id: "linkage-quality-warning",
+      label: "联动预警",
+      tone: "warning",
+      detail:
+        warningSummary ??
+        "联动分析质量标记为预警；使用前请核对报告日、风险张量日期与指标历史长度。",
     });
   }
 
@@ -1187,10 +1364,13 @@ export function buildResearchSummaryCards(input: {
   topCorrelations: MacroBondLinkageTopCorrelation[];
   linkageWarnings: string[];
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetResearchViewCard[] {
   const backendViews = new Map((input.researchViews ?? []).map((row) => [row.key, row]));
   const unavailableViews = new Map(
-    RESEARCH_VIEW_ORDER.map((key) => [key, unavailableResearchView(key)] as const),
+    RESEARCH_VIEW_ORDER.map(
+      (key) => [key, unavailableResearchView(key, input.linkageUnavailableReason)] as const,
+    ),
   );
   const fallbackViews = new Map(
     buildFallbackResearchViews(input).map((row) => [row.key, row] as const),
@@ -1212,10 +1392,13 @@ export function buildTransmissionAxisRows(input: {
   transmissionAxes?: MacroBondTransmissionAxis[];
   env: Partial<MacroBondLinkageEnvironmentScore>;
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetTransmissionAxisRow[] {
   const backendAxes = new Map((input.transmissionAxes ?? []).map((row) => [row.axis_key, row]));
   const unavailableAxes = new Map(
-    TRANSMISSION_AXIS_ORDER.map((axisKey) => [axisKey, unavailableTransmissionAxis(axisKey)] as const),
+    TRANSMISSION_AXIS_ORDER.map(
+      (axisKey) => [axisKey, unavailableTransmissionAxis(axisKey, input.linkageUnavailableReason)] as const,
+    ),
   );
   const fallbackAxes = new Map(
     buildFallbackTransmissionAxes(input).map((row) => [row.axis_key, row] as const),
@@ -1242,12 +1425,14 @@ export function buildCrossAssetCandidateActions(input: {
   /** 仅作旁证，不得当作真实 NCD 发行矩阵 */
   ncdProxy?: NcdFundingProxyPayload | null;
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetCandidateAction[] {
   const views = buildResearchSummaryCards(input);
   const axes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
     linkageUnavailable: input.linkageUnavailable,
+    linkageUnavailableReason: input.linkageUnavailableReason,
   });
   const rows: CrossAssetCandidateAction[] = [];
   const ncd = input.ncdProxy;
@@ -1256,8 +1441,8 @@ export function buildCrossAssetCandidateActions(input: {
     rows.push({
       tone: "warning",
       action: "将 NCD/资金仅视为代理旁证。",
-      reason: warnings.length > 0 ? warnings.join(" ") : "不是实际同业存单发行矩阵。",
-      evidence: ncd.proxy_label,
+      reason: warnings.length > 0 ? formatNcdProxyWarningText(warnings) : "不是实际同业存单发行矩阵。",
+      evidence: localizeNcdProxyLabel(ncd.proxy_label),
     });
   }
 
@@ -1378,6 +1563,7 @@ export function buildCrossAssetWatchList(input: {
   topCorrelations: MacroBondLinkageTopCorrelation[];
   linkageWarnings: string[];
   linkageUnavailable?: boolean;
+  linkageUnavailableReason?: CrossAssetQueryFailureKind;
 }): CrossAssetWatchRow[] {
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
@@ -1385,11 +1571,13 @@ export function buildCrossAssetWatchList(input: {
     topCorrelations: input.topCorrelations,
     linkageWarnings: input.linkageWarnings,
     linkageUnavailable: input.linkageUnavailable,
+    linkageUnavailableReason: input.linkageUnavailableReason,
   });
   const axisRows = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: {},
     linkageUnavailable: input.linkageUnavailable,
+    linkageUnavailableReason: input.linkageUnavailableReason,
   });
   const readyResearch = researchCards.filter((row) => row.status === "ready");
   const readyAxes = axisRows.filter((row) => row.status === "ready");

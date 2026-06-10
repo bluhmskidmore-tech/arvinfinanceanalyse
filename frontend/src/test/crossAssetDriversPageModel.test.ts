@@ -110,6 +110,28 @@ describe("crossAssetDriversPageModel", () => {
     expect(fallback?.detail).toContain("降级快照");
   });
 
+  it("surfaces linkage quality warnings with localized detail in status flags", () => {
+    const flags = buildCrossAssetStatusFlags({
+      linkageMeta: makeResultMeta({
+        result_kind: "macro_bond_linkage.analysis",
+        quality_flag: "warning",
+      }),
+      latestSeries: [makePoint("EMM01843735", "Choice financial condition", -1.54)],
+      crossAssetDataDate: "2026-06-09",
+      linkageReportDate: "2026-06-09",
+      linkageWarnings: [
+        "风险张量使用最近日期 2026-05-31，目标日期为 2026-06-09。",
+        "Indicator history too short: SHIBOR:隔夜",
+      ],
+    });
+
+    const linkageWarning = flags.find((flag) => flag.id === "linkage-quality-warning");
+    expect(linkageWarning?.label).toBe("联动预警");
+    expect(linkageWarning?.tone).toBe("warning");
+    expect(linkageWarning?.detail).toContain("风险张量沿用 2026-05-31");
+    expect(linkageWarning?.detail).not.toContain("Indicator history too short");
+  });
+
   it("marks the cross-asset chain as dual-source when Choice and Tushare supplements coexist", () => {
     const flags = buildCrossAssetStatusFlags({
       latestMeta: makeResultMeta(),
@@ -137,6 +159,25 @@ describe("crossAssetDriversPageModel", () => {
 
     expect(flags.find((flag) => flag.id === "source-blocked")?.label).toBe("来源受限");
     expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("双源就绪");
+  });
+
+  it("splits permission denials from transport load failures in status flags", () => {
+    const flags = buildCrossAssetStatusFlags({
+      latestSeries: [],
+      crossAssetDataDate: "",
+      linkageReportDate: "",
+      moduleFailures: [
+        { module: "macro_bond_linkage.analysis", kind: "permission" },
+        { module: "choice_macro.latest", kind: "load" },
+      ],
+    });
+
+    expect(flags.find((flag) => flag.id === "access-denied")?.label).toContain(
+      "macro_bond_linkage.analysis",
+    );
+    expect(flags.find((flag) => flag.id === "loading-failure")?.label).toContain(
+      "choice_macro.latest",
+    );
   });
 
   it("puts failed module ids on the loading-failure flag label for header-only pill visibility", () => {
@@ -419,6 +460,59 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines[0].explanation).toContain("治理后的权益期权输入尚不可用");
   });
 
+  it("does not repeat full transmission-axis summaries inside asset-class detail lines", () => {
+    const equitySummary =
+      "CSI300 equity-bond spread is 5.10ppt with CSI300 move -0.35%.";
+    const megaCapSummary = "CSI300 top10 weight concentration is 23.54% (top5 15.53%).";
+    const kpis = resolveCrossAssetKpis([
+      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16 }),
+      makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, {
+        unit: "%",
+        latest_change: 0.2,
+      }),
+      makePoint("CA.MEGA_CAP_TOP5_WEIGHT", "CSI300 Top5 weight", 15.532, {
+        unit: "%",
+        latest_change: 0.1,
+      }),
+    ]);
+    const axes = buildTransmissionAxisRows({
+      transmissionAxes: [
+        {
+          axis_key: "equity_bond_spread",
+          status: "ready",
+          stance: "conflicted",
+          summary: equitySummary,
+          impacted_views: ["duration", "credit"],
+          required_series_ids: ["tushare.index.000300.SH.daily"],
+          warnings: [],
+        } satisfies MacroBondTransmissionAxis,
+        {
+          axis_key: "mega_cap_equities",
+          status: "ready",
+          stance: "neutral",
+          summary: megaCapSummary,
+          impacted_views: ["credit", "instrument"],
+          required_series_ids: ["tushare.index.000300.SH.weight"],
+          warnings: [],
+        } satisfies MacroBondTransmissionAxis,
+      ],
+      env: {},
+    });
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: axes });
+    const stock = rows.find((row) => row.key === "stock");
+    const valuation = stock?.lines.find((line) => line.key === "valuation_spread");
+    const megaCap = stock?.lines.find((line) => line.key === "mega_cap_weight");
+
+    expect(stock?.explanation).toContain("股票通道");
+    expect(stock?.explanation).not.toContain(equitySummary);
+    expect(stock?.explanation).not.toContain(megaCapSummary);
+    expect(valuation?.explanation).toContain("14.58");
+    expect(valuation?.explanation).not.toContain(equitySummary);
+    expect(megaCap?.explanation).toContain("23.54%");
+    expect(megaCap?.explanation).not.toContain(megaCapSummary);
+  });
+
   it("treats a landed latest value as usable even without sparkline history", () => {
     const kpis = resolveCrossAssetKpis([
       makePoint("CA.BRENT", "Brent", 82.3, {
@@ -682,8 +776,9 @@ describe("crossAssetDriversPageModel", () => {
       },
     });
     expect(evidence.isActualNcdMatrix).toBe(false);
-    expect(evidence.proxyWarning).toMatch(/not actual NCD issuance matrix/i);
-    expect(evidence.proxyWarning).toMatch(/warehouse|landed|quote medians unavailable/i);
+    expect(evidence.proxyLabel).toBe("Tushare Shibor 资金代理");
+    expect(evidence.proxyWarning).toContain("不是真实 NCD 发行矩阵");
+    expect(evidence.proxyWarning).toContain("Tushare Shibor");
     expect(evidence.rowCaptions[0]).toContain("Shibor fixing");
     expect(evidence.rowCaptions[0]).toContain("9M 1.464");
     expect(evidence.rowCaptions.some((line) => /Quote median/i.test(line))).toBe(false);
@@ -704,9 +799,9 @@ describe("crossAssetDriversPageModel", () => {
       },
     });
     expect(actions[0].action).toContain("NCD");
-    expect(actions[0].reason).toMatch(/not actual NCD issuance matrix/i);
-    expect(actions[0].reason).toMatch(/quote medians unavailable/i);
-    expect(actions[0].action).not.toMatch(/真实|actual\s+NCD\s+issuance\s+matrix/i);
+    expect(actions[0].reason).toContain("不是真实 NCD 发行矩阵");
+    expect(actions[0].reason).toContain("Tushare Shibor");
+    expect(actions[0].action).not.toMatch(/actual\s+NCD\s+issuance\s+matrix/i);
   });
 
   it("buildCrossAssetDriversViewModel aggregates cards, axes, calendar, NCD evidence, and flags", () => {

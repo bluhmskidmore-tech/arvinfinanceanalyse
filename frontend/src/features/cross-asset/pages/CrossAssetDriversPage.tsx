@@ -25,6 +25,18 @@ import { MarketCandidateActions } from "../components/MarketCandidateActions";
 import { PageOutput } from "../components/PageOutput";
 import { WatchList } from "../components/WatchList";
 import {
+  classifyCrossAssetQueryFailure,
+  type CrossAssetModuleFailure,
+} from "../lib/crossAssetQueryFailure";
+import {
+  formatLinkageEnvironmentScoreDetail,
+  formatLinkageCorrelationTarget,
+  formatLinkageRateDirection,
+  formatWaterfallContributingFactorName,
+  formatWaterfallContributingFactorSummary,
+} from "../lib/crossAssetLinkageLabels";
+import { formatCrossAssetLinkageWarnings } from "../lib/crossAssetLinkageWarnings";
+import {
   buildCrossAssetCandidateActions,
   buildCrossAssetClassAnalysisRows,
   buildCrossAssetEquityEvidenceItems,
@@ -1230,8 +1242,14 @@ function CrossAssetTrustPanel({
     (linkageMeta?.fallback_mode != null && linkageMeta.fallback_mode !== "none");
   const hasFallbackFlag = statusFlags.some((flag) => flag.id === "fallback");
   const hasFallback = hasFallbackMeta || hasFallbackFlag;
-  const nextAction =
-    statusFlags.length > 0 ? "核对状态" : hasBothMeta ? "进入四维判断" : "等待数据返回";
+  const hasAccessDenied = statusFlags.some((flag) => flag.id === "access-denied");
+  const nextAction = hasAccessDenied
+    ? "申请读取权限"
+    : statusFlags.length > 0
+      ? "核对状态"
+      : hasBothMeta
+        ? "进入四维判断"
+        : "等待数据返回";
   const statusLabel =
     statusFlags.length > 0 ? `${statusFlags.length} 项提示` : hasBothMeta ? "状态正常" : "等待证据";
   const badgeLabel = hasFallback ? "含降级" : hasBothMeta ? "可读" : "待返回";
@@ -1276,6 +1294,8 @@ function compactStatusFlagDetail(flag: CrossAssetStatusFlag): string {
   if (flag.id === "source-blocked") return "来源受限";
   if (flag.id === "choice-source-missing") return "Choice 缺口";
   if (flag.id === "loading-failure") return "加载失败";
+  if (flag.id === "access-denied") return "权限受限";
+  if (flag.id === "linkage-quality-warning") return "联动预警";
   if (flag.id === "no-data") return "暂无数据";
   return flag.detail;
 }
@@ -1319,9 +1339,6 @@ function CrossAssetDecisionHeader({
         </section>
       </div>
       <div className="cross-asset-decision-header__meta">
-        <span>
-          数据日期 <strong className="cross-asset-drivers-page__report-date">{reportDate || "—"}</strong>
-        </span>
         <Link to="/market-data" className="cross-asset-market-link">市场数据</Link>
         {isMockMode ? <span className="cross-asset-mode-badge">本地模拟</span> : null}
       </div>
@@ -1451,15 +1468,15 @@ function NcdProxyEvidencePanel({
         <span className="cross-asset-ncd-proxy__summary-meta">
           {evidence.asOfDate ? (
             <span data-testid="cross-asset-ncd-asof" className="cross-asset-ncd-proxy__asof">
-              as of {evidence.asOfDate}
+              截至 {evidence.asOfDate}
             </span>
           ) : null}
           {isLoading ? (
-            <StatusPill status="caution" label="loading" />
+            <StatusPill status="caution" label="加载中" />
           ) : (
             <StatusPill
               status={isProxyNotMatrix ? "warning" : "normal"}
-              label={isProxyNotMatrix ? "proxy · not NCD matrix" : "actual matrix (verify)"}
+              label={isProxyNotMatrix ? "代理口径 · 非 NCD 矩阵" : "矩阵口径（待核对）"}
             />
           )}
         </span>
@@ -2313,14 +2330,15 @@ function waterfallFactorEvidence(
     return {
       status: "missing",
       label: "样本不足",
-      reason: WATERFALL_MISSING_REASON[category] ?? "该因子没有进入 contributing_factors，当前按 0 展示。",
+      reason: WATERFALL_MISSING_REASON[category] ?? "该因子暂无贡献明细，当前按 0 展示。",
     };
   }
 
   if (isFlat) {
     const factor = factors[0];
     const latestValue = factorTextValue(factor?.latest_value);
-    const seriesName = typeof factor?.series_name === "string" ? factor.series_name : bar.label;
+    const factorSeriesName = typeof factor?.series_name === "string" ? factor.series_name : null;
+    const seriesName = formatWaterfallContributingFactorName(factorSeriesName, category);
     return {
       status: "neutral",
       label: "中性",
@@ -2331,13 +2349,14 @@ function waterfallFactorEvidence(
   }
 
   const factorCount = factors.length;
+  const factorSummary = formatWaterfallContributingFactorSummary(factors);
   return {
     status: "ready",
     label: factorCount > 0 ? `${factorCount} 项证据` : "有分值",
     reason:
       factorCount > 0
-        ? `${bar.label} 已进入环境评分，贡献 ${bar.value.toFixed(2)}。`
-        : `${bar.label} 接口返回了分值，但未展开 contributing_factors 明细。`,
+        ? `${factorSummary} 已进入环境评分，${bar.label} 贡献 ${bar.value.toFixed(2)}。`
+        : `${bar.label} 接口返回了分值，但未展开贡献因子明细。`,
   };
 }
 
@@ -2575,8 +2594,36 @@ export default function CrossAssetDriversPage() {
     [macroBondLinkageQuery.data?.result],
   );
   const linkageMeta = macroBondLinkageQuery.data?.result_meta;
-  const macroBondLinkageWarnings = useMemo(() => macroBondLinkage.warnings ?? [], [macroBondLinkage.warnings]);
+  const macroBondLinkageWarnings = useMemo(
+    () => formatCrossAssetLinkageWarnings(macroBondLinkage.warnings ?? []),
+    [macroBondLinkage.warnings],
+  );
   const macroBondLinkageUnavailable = macroBondLinkageQuery.isError;
+  const linkageUnavailableReason = macroBondLinkageQuery.isError
+    ? classifyCrossAssetQueryFailure(macroBondLinkageQuery.error)
+    : undefined;
+  const moduleFailures = useMemo((): CrossAssetModuleFailure[] => {
+    const failures: CrossAssetModuleFailure[] = [];
+    if (latestQuery.isError) {
+      failures.push({
+        module: "choice_macro.latest",
+        kind: classifyCrossAssetQueryFailure(latestQuery.error),
+      });
+    }
+    if (macroBondLinkageQuery.isError) {
+      failures.push({
+        module: "macro_bond_linkage.analysis",
+        kind: classifyCrossAssetQueryFailure(macroBondLinkageQuery.error),
+      });
+    }
+    if (ncdFundingProxyQuery.isError) {
+      failures.push({
+        module: "market_data_ncd_proxy",
+        kind: classifyCrossAssetQueryFailure(ncdFundingProxyQuery.error),
+      });
+    }
+    return failures;
+  }, [latestQuery.error, latestQuery.isError, macroBondLinkageQuery.error, macroBondLinkageQuery.isError, ncdFundingProxyQuery.error, ncdFundingProxyQuery.isError]);
   const hasPortfolioImpact = Object.keys(macroBondLinkage.portfolio_impact ?? {}).length > 0;
   const linkageBodyEmpty =
     macroBondLinkageQuery.isSuccess &&
@@ -2593,6 +2640,31 @@ export default function CrossAssetDriversPage() {
   const correlationMatrix = useMemo(() => buildCorrelationMatrix(kpis), [kpis]);
   const momentumRows = useMemo(() => buildMomentumScoreboard(kpis), [kpis]);
   const volAlert = useMemo(() => detectVolatilityClustering(kpis), [kpis]);
+  const marketRegime = useMemo(() => identifyMarketRegime(kpis), [kpis]);
+  const firstScreenConclusion = useMemo(() => {
+    if (macroBondLinkageQuery.isLoading || latestQuery.isLoading) {
+      return null;
+    }
+    if (env.signal_description) {
+      return env.signal_description;
+    }
+    if (macroBondLinkageUnavailable) {
+      const prefix =
+        linkageUnavailableReason === "permission"
+          ? "联动分析权限受限"
+          : "联动分析暂不可用";
+      return `${prefix}；首屏参考市场体制 ${marketRegime.label}：${marketRegime.description}`;
+    }
+    return null;
+  }, [
+    env.signal_description,
+    latestQuery.isLoading,
+    linkageUnavailableReason,
+    macroBondLinkageQuery.isLoading,
+    macroBondLinkageUnavailable,
+    marketRegime.description,
+    marketRegime.label,
+  ]);
   const erpData = useMemo(() => computeEquityBondERP(kpis), [kpis]);
   const waterfallBars = useMemo(() => buildDriverWaterfall(env), [env]);
   const drivers = useMemo(() => buildDriverColumns(env), [env]);
@@ -2606,8 +2678,16 @@ export default function CrossAssetDriversPage() {
         topCorrelations: macroBondLinkage.top_correlations ?? [],
         linkageWarnings: macroBondLinkageWarnings,
         linkageUnavailable: macroBondLinkageUnavailable,
+        linkageUnavailableReason,
       }),
-    [env, macroBondLinkage.research_views, macroBondLinkage.top_correlations, macroBondLinkageUnavailable, macroBondLinkageWarnings],
+    [
+      env,
+      linkageUnavailableReason,
+      macroBondLinkage.research_views,
+      macroBondLinkage.top_correlations,
+      macroBondLinkageUnavailable,
+      macroBondLinkageWarnings,
+    ],
   );
   const transmissionAxisRows = useMemo(
     () =>
@@ -2615,8 +2695,9 @@ export default function CrossAssetDriversPage() {
         transmissionAxes: macroBondLinkage.transmission_axes,
         env,
         linkageUnavailable: macroBondLinkageUnavailable,
+        linkageUnavailableReason,
       }),
-    [env, macroBondLinkage.transmission_axes, macroBondLinkageUnavailable],
+    [env, linkageUnavailableReason, macroBondLinkage.transmission_axes, macroBondLinkageUnavailable],
   );
   const assetClassAnalysisRows = useMemo(
     () =>
@@ -2637,8 +2718,17 @@ export default function CrossAssetDriversPage() {
       buildCrossAssetNcdProxyEvidence({
         result: ncdProxyPayload,
         available: ncdFundingProxyQuery.isSuccess && !ncdFundingProxyQuery.isError && Boolean(ncdFundingProxyQuery.data),
+        failureKind: ncdFundingProxyQuery.isError
+          ? classifyCrossAssetQueryFailure(ncdFundingProxyQuery.error)
+          : undefined,
       }),
-    [ncdFundingProxyQuery.data, ncdFundingProxyQuery.isError, ncdFundingProxyQuery.isSuccess, ncdProxyPayload],
+    [
+      ncdFundingProxyQuery.data,
+      ncdFundingProxyQuery.error,
+      ncdFundingProxyQuery.isError,
+      ncdFundingProxyQuery.isSuccess,
+      ncdProxyPayload,
+    ],
   );
   const candidateActions = useMemo(
     () =>
@@ -2650,9 +2740,11 @@ export default function CrossAssetDriversPage() {
         linkageWarnings: macroBondLinkageWarnings,
         ncdProxy: ncdProxyPayload,
         linkageUnavailable: macroBondLinkageUnavailable,
+        linkageUnavailableReason,
       }),
     [
       env,
+      linkageUnavailableReason,
       macroBondLinkage.research_views,
       macroBondLinkage.top_correlations,
       macroBondLinkage.transmission_axes,
@@ -2677,9 +2769,11 @@ export default function CrossAssetDriversPage() {
         topCorrelations: macroBondLinkage.top_correlations ?? [],
         linkageWarnings: macroBondLinkageWarnings,
         linkageUnavailable: macroBondLinkageUnavailable,
+        linkageUnavailableReason,
       }),
     [
       kpis,
+      linkageUnavailableReason,
       macroBondLinkage.research_views,
       macroBondLinkage.top_correlations,
       macroBondLinkage.transmission_axes,
@@ -2699,10 +2793,8 @@ export default function CrossAssetDriversPage() {
       latestSeries,
       crossAssetDataDate,
       linkageReportDate,
-      loadingFailures: [
-        latestQuery.isError ? "choice_macro.latest" : "",
-        macroBondLinkageQuery.isError ? "macro_bond_linkage.analysis" : "",
-      ],
+      linkageWarnings: macroBondLinkageWarnings,
+      moduleFailures,
     });
   }, [
     crossAssetDataDate,
@@ -2714,6 +2806,8 @@ export default function CrossAssetDriversPage() {
     linkageReportDate,
     macroBondLinkageQuery.isError,
     macroBondLinkageQuery.isLoading,
+    macroBondLinkageWarnings,
+    moduleFailures,
   ]);
 
   return (
@@ -2726,7 +2820,7 @@ export default function CrossAssetDriversPage() {
           <div className="cross-asset-first-screen__intro" data-testid="cross-asset-first-screen-intro">
             <CrossAssetDecisionHeader
               reportDate={crossAssetDataDate || linkageReportDate}
-              conclusion={env.signal_description ?? null}
+              conclusion={firstScreenConclusion}
               isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
               isMockMode={client.mode !== "real"}
             />
@@ -2997,8 +3091,12 @@ export default function CrossAssetDriversPage() {
                         <div data-testid="cross-asset-linkage-rate-direction">
                           <KpiCard
                             title="利率方向"
-                            value={env.rate_direction ?? "不可用"}
-                            detail={env.rate_direction_score != null ? `direction score ${env.rate_direction_score.toFixed(2)}` : "缺少方向评分。"}
+                            value={formatLinkageRateDirection(env.rate_direction)}
+                            detail={formatLinkageEnvironmentScoreDetail(
+                              "方向分值",
+                              env.rate_direction_score,
+                              "缺少方向评分。",
+                            )}
                             valueVariant="text"
                             tone={toneFromSignedNumber(env.rate_direction_score != null ? env.rate_direction_score : null)}
                           />
@@ -3065,7 +3163,11 @@ export default function CrossAssetDriversPage() {
                       linkageWarnings={macroBondLinkageWarnings}
                       topCorrelationSummary={
                         macroBondLinkage.top_correlations?.[0]
-                          ? `${macroBondLinkage.top_correlations[0].series_name} -> ${macroBondLinkage.top_correlations[0].target_family}${macroBondLinkage.top_correlations[0].target_tenor ? ` ${macroBondLinkage.top_correlations[0].target_tenor}` : ""}`
+                          ? formatLinkageCorrelationTarget(
+                              macroBondLinkage.top_correlations[0].series_name,
+                              macroBondLinkage.top_correlations[0].target_family,
+                              macroBondLinkage.top_correlations[0].target_tenor,
+                            )
                           : null
                       }
                     />
