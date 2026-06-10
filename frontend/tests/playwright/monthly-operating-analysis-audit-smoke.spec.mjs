@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+const dataSource = process.env.VITE_DATA_SOURCE ?? "real";
+
 async function probeServer(baseURL) {
   if (!baseURL) {
     return { ok: false, reason: "Playwright baseURL is not configured." };
@@ -39,6 +41,11 @@ function qdbMeta(resultKind) {
 
 test.describe("monthly operating analysis audit browser smoke", () => {
   test("renders the empty audit state as an operable real interface page", async ({ page }, testInfo) => {
+    test.skip(
+      dataSource !== "real",
+      "Monthly operating analysis audit smoke requires the real client with route-mocked API responses.",
+    );
+
     const serverCheck = await probeServer(testInfo.project.use.baseURL);
     test.skip(!serverCheck.ok, serverCheck.reason);
 
