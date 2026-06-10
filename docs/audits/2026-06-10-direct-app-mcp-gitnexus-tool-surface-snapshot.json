@@ -1,6 +1,6 @@
 {
   "report_kind": "direct_app_mcp_gitnexus_tool_surface_snapshot",
-  "generated_at": "2026-06-10T13:05:58+08:00",
+  "generated_at": "2026-06-10T15:56:52+08:00",
   "repo_root": "F:\\MOSS-V3",
   "status": {
     "overall": "tool_surface_unavailable_in_current_codex_app_session",
@@ -16,7 +16,7 @@
   "tool_discovery": {
     "tool": "tool_search",
     "query": "moss metric contracts lineage evidence data catalog gitnexus MCP tools",
-    "checked_at": "2026-06-10T13:05:58+08:00",
+    "checked_at": "2026-06-10T15:56:52+08:00",
     "discovered_tool_count": 0,
     "discovered_tools": []
   },

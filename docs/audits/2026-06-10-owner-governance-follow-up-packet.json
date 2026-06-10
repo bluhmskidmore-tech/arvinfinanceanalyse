@@ -1,0 +1,199 @@
+{
+  "report_kind": "owner_governance_follow_up_packet",
+  "generated_at": "2026-06-10T16:20:49+08:00",
+  "repo_root": "F:\\MOSS-V3",
+  "audit_date": "2026-06-10",
+  "status": {
+    "overall": "follow_up_required",
+    "fail_closed": true,
+    "approves_metrics": false,
+    "approves_pages": false,
+    "captures_business_owner_approval": false,
+    "writes_governance_records": false,
+    "certifies_routes": false,
+    "clears_secret_scan": false,
+    "captures_direct_app_mcp_gitnexus_evidence": false,
+    "requests_or_captures_secret_values": false,
+    "authorizes_ledger_pnl_governance_write": false
+  },
+  "source_artifacts": {
+    "manifest": "docs/audits/2026-06-10-system-audit-manifest.json",
+    "completion_snapshot": "docs/audits/2026-06-10-system-audit-completion-snapshot.json",
+    "completion_checklist": "docs/audits/2026-06-10-system-audit-completion-checklist.md",
+    "action_register": "docs/audits/2026-06-10-system-audit-action-register.md"
+  },
+  "blocker_packet_count": 5,
+  "completion_order": [
+    "calculation-display-p1-decisions",
+    "ledger-pnl-direct-governance-record",
+    "owner-approval-7-pages",
+    "direct-app-mcp-gitnexus-evidence",
+    "local-secret-hygiene"
+  ],
+  "blocker_packets": [
+    {
+      "blocker_id": "owner-approval-7-pages",
+      "current_status": "not_complete",
+      "last_checked_at": "2026-06-10T15:17:35+08:00",
+      "responsible_owner_type": "page_business_owners_and_engineering_qa_gatekeeper",
+      "required_input_artifacts": [
+        "docs/audits/2026-06-10-owner-review-brief.zh.md",
+        "docs/audits/2026-06-10-owner-decision-capture-template.zh.md",
+        "docs/audits/2026-06-10-owner-approval-mcp-evidence-summary.md",
+        "docs/audits/2026-06-10-owner-approval-fail-closed-snapshot.json"
+      ],
+      "required_meeting_or_governance_output": [
+        "owner name, role, decision, approval date, and signature for each of the seven pending pages",
+        "page-specific evidence-review acknowledgement for product-category-pnl",
+        "page-specific evidence-review acknowledgement for balance-analysis",
+        "page-specific evidence-review acknowledgement for average-balance",
+        "page-specific evidence-review acknowledgement for ledger-pnl after its direct-record gap is cleared",
+        "page-specific evidence-review acknowledgement for pnl-attribution",
+        "page-specific evidence-review acknowledgement for bond-analysis",
+        "page-specific evidence-review acknowledgement for stock-analysis"
+      ],
+      "required_verification_commands": [
+        "python scripts\\check_*_business_owner_approval.py --require-captured",
+        "python scripts\\codex_page_readiness.py --all",
+        "python -m pytest <seven owner approval status test files> -q"
+      ],
+      "explicit_non_approval_boundary": "This packet does not capture owner approval, certify routes, or approve any page.",
+      "prohibited_actions": [
+        "mark any pending page closure_approved=true without captured owner approval evidence",
+        "treat the accepted real-backend smoke result as owner approval",
+        "approve ledger-pnl before the direct governance record gap is cleared"
+      ],
+      "fail_closed_until": "All seven owner approval packets are captured and strict owner checks pass."
+    },
+    {
+      "blocker_id": "ledger-pnl-direct-governance-record",
+      "current_status": "not_complete",
+      "last_checked_at": "2026-06-10T15:20:42+08:00",
+      "responsible_owner_type": "governance_owner_and_ledger_pnl_business_owner",
+      "required_input_artifacts": [
+        "docs/audits/2026-06-10-ledger-pnl-direct-governance-record-snapshot.json",
+        "docs/audits/2026-06-10-ledger-pnl-direct-governance-record-runbook.md",
+        "docs/audits/2026-06-10-owner-approval-mcp-evidence-summary.md"
+      ],
+      "required_meeting_or_governance_output": [
+        "governance-owner authorization to write or locate the direct record",
+        "direct record covers PAGE-LEDGER-PNL-001",
+        "direct record covers /api/ledger-pnl/summary",
+        "direct record covers ledger_pnl.summary:2026-05-31:ALL",
+        "downstream readiness result still keeps owner approval separate"
+      ],
+      "required_verification_commands": [
+        "python scripts\\emit_ledger_pnl_governance_record.py",
+        "python scripts\\codex_page_readiness.py --page-slug ledger-pnl",
+        "python -m pytest tests\\test_project_mcp_servers.py::test_lineage_evidence_governance_record_blueprint_queue_covers_default_open_gaps tests\\test_ledger_pnl_business_owner_approval_status.py -q --tb=short"
+      ],
+      "authorization_required_commands_not_preapproved": [
+        "python scripts\\emit_ledger_pnl_governance_record.py --write"
+      ],
+      "explicit_non_approval_boundary": "This packet does not write the Ledger PnL governance record and does not authorize --write execution.",
+      "prohibited_actions": [
+        "run python scripts\\emit_ledger_pnl_governance_record.py --write without explicit governance-owner/user authorization",
+        "promote dry-run output to a written governance record",
+        "set formal_use_allowed=true from dry-run evidence alone"
+      ],
+      "fail_closed_until": "A written or located direct record exists and validation proves the page can advance without overriding owner approval."
+    },
+    {
+      "blocker_id": "calculation-display-p1-decisions",
+      "current_status": "not_complete",
+      "last_checked_at": "2026-06-10T15:07:55+08:00",
+      "responsible_owner_type": "business_owner_and_metric_governance",
+      "required_input_artifacts": [
+        "docs/audits/2026-06-10-calculation-logic-audit.md",
+        "docs/audits/2026-06-10-calculation-p1-owner-decision-matrix.md",
+        "docs/calc_rules.md"
+      ],
+      "required_meeting_or_governance_output": [
+        "authoritative convention selected for P1-01",
+        "authoritative convention selected for P1-02",
+        "authoritative convention selected for P1-03",
+        "authoritative convention selected for P1-04",
+        "authoritative convention selected for P1-05",
+        "authoritative convention selected for P1-06",
+        "authoritative convention selected for P1-07",
+        "authoritative convention selected for P1-09",
+        "authoritative convention selected for P1-10",
+        "authoritative convention selected for P1-11",
+        "docs/calc_rules.md and page contracts updated for selected conventions before implementation closure"
+      ],
+      "required_verification_commands": [
+        "npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts src/test/BondDashboardPage.test.tsx",
+        "targeted formatter, adapter, selector, service, or API tests for each selected convention",
+        "python scripts\\verify_system_audit_completion_snapshot.py"
+      ],
+      "explicit_non_approval_boundary": "This packet records follow-up work only; it does not choose or approve any calculation convention.",
+      "prohibited_actions": [
+        "infer a formal metric convention from UI copy or preview data",
+        "change implementation before owner convention selection when the rule is ambiguous",
+        "reopen P1-08 without new contrary evidence"
+      ],
+      "fail_closed_until": "All 10 owner-decision rows are moved to verified-closed evidence with targeted tests."
+    },
+    {
+      "blocker_id": "direct-app-mcp-gitnexus-evidence",
+      "current_status": "not_complete",
+      "last_checked_at": "2026-06-10T15:56:52+08:00",
+      "responsible_owner_type": "engineering_tooling_owner",
+      "required_input_artifacts": [
+        "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-snapshot.json",
+        "docs/audits/2026-06-10-direct-app-mcp-gitnexus-tool-surface-runbook.md",
+        ".codex/config.toml",
+        ".mcp.json",
+        "docs/MCP_RUNBOOK.md"
+      ],
+      "required_meeting_or_governance_output": [
+        "fresh Codex App session exposes expected MOSS MCP tools or tooling owner records the exposure blocker",
+        "fresh Codex App session exposes GitNexus tools or tooling owner records the exposure blocker",
+        "direct App evidence is compared against local stdio evidence without promoting fallback evidence"
+      ],
+      "required_verification_commands": [
+        "tool_search query: moss metric contracts lineage evidence data catalog gitnexus MCP tools",
+        "pytest tests/test_system_audit_manifest_contract.py -q"
+      ],
+      "explicit_non_approval_boundary": "This packet does not capture direct Codex App MCP/GitNexus evidence.",
+      "prohibited_actions": [
+        "treat local stdio MCP success as direct App-surface closure",
+        "claim GitNexus impact evidence without direct tool exposure or owner resolution",
+        "approve metrics or pages from tooling availability alone"
+      ],
+      "fail_closed_until": "Direct App MOSS/GitNexus evidence exists or the blocker is explicitly resolved by the tool owner."
+    },
+    {
+      "blocker_id": "local-secret-hygiene",
+      "current_status": "not_complete",
+      "last_checked_at": "2026-06-10T15:45:10+08:00",
+      "responsible_owner_type": "environment_owner_and_security_owner",
+      "required_input_artifacts": [
+        "docs/audits/2026-06-10-local-secret-hygiene-snapshot.json",
+        "docs/audits/2026-06-10-local-secret-hygiene-runbook.md",
+        "test_output/security-scans/osv-report.json",
+        "test_output/security-scans/gitleaks-report.json"
+      ],
+      "required_meeting_or_governance_output": [
+        "environment owner rotates, removes, or accepts the local-only findings outside the repository",
+        "clean-runner gitleaks passes or records accepted local-only findings without values",
+        "security owner confirms no secret values enter source control, docs, tests, logs, screenshots, commits, or chat"
+      ],
+      "required_verification_commands": [
+        "python scripts\\supply_chain_security_scan.py --dry-run",
+        "git check-ignore -v config/.env",
+        "git ls-files -- config/.env",
+        "git status --ignored --short -- config/.env"
+      ],
+      "explicit_non_approval_boundary": "This packet does not read, request, capture, rotate, clear, or approve any secret value.",
+      "prohibited_actions": [
+        "read or paste config/.env values",
+        "commit config/.env or any credential value",
+        "weaken gitleaks rules to make local findings disappear",
+        "copy secret values into docs, tests, logs, screenshots, commits, or chat"
+      ],
+      "fail_closed_until": "Owner action is recorded without secret values and the redacted scan result no longer contradicts the closure claim."
+    }
+  ],
+  "global_non_approval_boundary": "This follow-up packet is a routing and handoff artifact only. It does not approve metrics, pages, governance records, route certification, direct App MCP/GitNexus evidence, local secret hygiene, or business-owner signoff."
+}

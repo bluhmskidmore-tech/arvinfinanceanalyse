@@ -67,16 +67,17 @@
 | 必须复跑的验证 | governance validation + `scripts/check_ledger_pnl_business_owner_approval.py --require-captured` after owner packet is complete |
 | 备注 | dry-run candidate 不能作为 written record；`formal_use_allowed=false` 仍然有效，直到 approved workflow 和后续 review 改变它 |
 
-## 真实后端 smoke 安排
+## 真实后端 smoke 结果确认
 
 | 字段 | 填写 |
 | --- | --- |
-| live backend URL / port |  |
+| 当前结果 | `47 passed` |
+| 结果文件 | `docs/audits/2026-06-10-real-backend-smoke-result.md` |
+| live backend URL / port | `http://127.0.0.1:7888` |
+| frontend URL / port | `http://127.0.0.1:5888` |
 | data source | real |
-| 执行窗口 |  |
-| 失败处理 owner |  |
-| 目标命令 | `npm run test:a11y-smoke -- --workers=1` with real backend target |
-| 通过条件 | no mixed data-source skips; failures triaged with route, screenshot, console, and axe evidence |
+| 下一次重跑触发条件 | route scope、backend target、frontend data-source setup 或 smoke contract 变化 |
+| 非批准边界 | smoke 结果不批准指标、页面、治理记录、owner approval 或 direct App MCP/GitNexus closure |
 
 ## Secret hygiene 处理
 
@@ -97,7 +98,7 @@
 | 每个待实现 P1 都有 verification gate | pending |
 | `ledger-pnl` direct-record 处理路径已确定 | pending |
 | 7 个页面审批字段已进入对应单页模板 | pending |
-| full real-backend smoke 执行计划已确定 | pending |
+| full real-backend smoke `47 passed` 结果已复核，且未被当成业务审批 | pending |
 | secret hygiene 处理路径已确定 | pending |
 
 ## 非批准声明

@@ -43,6 +43,16 @@ For each P1 item:
 - This matrix does not change `formal_use_allowed` or `closure_approved`.
 - This matrix does not replace MCP metric-contract, lineage, or catalog evidence.
 
+## Latest Verification Refresh
+
+Refreshed at `2026-06-10T15:07:55+08:00`.
+
+- Open owner-decision rows remain: `P1-01`, `P1-02`, `P1-03`, `P1-04`, `P1-05`, `P1-06`, `P1-07`, `P1-09`, `P1-10`, `P1-11`.
+- Open owner-decision row count remains `10`.
+- `P1-08` remains in the verified-closed section only.
+- `npm.cmd test -- src/features/bond-dashboard/utils/format.test.ts src/test/BondDashboardPage.test.tsx` was rerun at `2026-06-10T15:04:17+08:00` and passed with 2 test files and 16 tests.
+- This refresh does not choose any owner convention, approve any metric, certify any route/page, or replace MCP metric-contract, lineage, or catalog evidence.
+
 ## Verified Closed Before Owner Review
 
 | ID | Area | Closure Evidence | Residual Boundary |

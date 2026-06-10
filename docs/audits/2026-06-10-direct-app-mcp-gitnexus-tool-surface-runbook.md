@@ -7,7 +7,7 @@ Use this runbook to close the direct Codex App MCP/GitNexus evidence gap after a
 ## Current Recorded State
 
 - `tool_search` query: `moss metric contracts lineage evidence data catalog gitnexus MCP tools`
-- Last recorded result: 0 direct tools found in the current Codex App tool surface.
+- Last recorded result at `2026-06-10T15:56:52+08:00`: 0 direct tools found in the current Codex App tool surface.
 - Local registration files declare the expected servers:
   - `.codex/config.toml`
   - `.mcp.json`
