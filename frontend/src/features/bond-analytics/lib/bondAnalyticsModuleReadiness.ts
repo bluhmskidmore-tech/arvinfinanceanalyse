@@ -160,7 +160,7 @@ export function deriveActionAttributionReadiness(
     return {
       tier: "status",
       statusLabel: "request-error",
-      statusReason: input.actionAttributionError,
+      statusReason: "动作归因不可用，保持驾驶舱快照。",
       warnings: [],
     };
   }

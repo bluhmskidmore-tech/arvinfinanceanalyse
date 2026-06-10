@@ -165,4 +165,53 @@ describe("PositionsView", () => {
     );
     expect(duplicateKeyWarnings).toHaveLength(0);
   });
+
+  it("links bond rows to the bond trading desk", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBalanceAnalysisDates = vi.fn(async () =>
+      envelope("balance_analysis.dates", { report_dates: ["2026-04-30"] }),
+    );
+    client.getPositionsBondSubTypes = vi.fn(async (): Promise<ApiEnvelope<SubTypesResponse>> =>
+      envelope("positions.bonds.sub_types", { sub_types: ["Gov"] }),
+    );
+    client.getPositionsBondsList = vi.fn(
+      async (): Promise<ApiEnvelope<PageResponse<BondPositionItem>>> =>
+        envelope("positions.bonds.list", {
+          items: [
+            {
+              bond_code: "POS001.IB",
+              credit_name: "持仓样例",
+              sub_type: "Gov",
+              asset_class: "HTM",
+              market_value: "100000000.00000000",
+              face_value: "100000000.00000000",
+              valuation_net_price: "100.00000000",
+              yield_rate: "0.03000000",
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <MemoryRouter initialEntries={["/positions?report_date=2026-04-30"]}>
+            <PositionsView />
+          </MemoryRouter>
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const link = await screen.findByTestId("positions-bond-trading-desk-link-POS001.IB");
+    expect(link).toHaveAttribute(
+      "href",
+      "/bond-trading-desk?bond_code=POS001.IB&report_date=2026-04-30",
+    );
+  });
 });

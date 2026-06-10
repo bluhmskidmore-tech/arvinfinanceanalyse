@@ -199,7 +199,8 @@ describe("BondAnalyticsViewContent", () => {
     vi.unstubAllGlobals();
   });
 
-  it("passes initial wiring state into overview and detail mocks", async () => {
+  it("defers detail wiring until a drilldown is opened", async () => {
+    const user = userEvent.setup();
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsDates: vi.fn(async () => ({
@@ -211,7 +212,6 @@ describe("BondAnalyticsViewContent", () => {
     renderViewContent(client);
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
-    await screen.findByTestId("mock-bond-analytics-detail-section");
 
     await waitFor(() => {
       expect(latestOverviewProps?.reportDate).toBeTruthy();
@@ -220,16 +220,20 @@ describe("BondAnalyticsViewContent", () => {
     const firstDate = (latestOverviewProps?.dateOptions as { value: string }[])[0]?.value;
     expect(firstDate).toBeTruthy();
     expect(latestOverviewProps?.reportDate).toBe(firstDate);
-    expect(latestDetailProps?.reportDate).toBe(firstDate);
-
     expect(latestOverviewProps?.periodType).toBe("MoM");
-    expect(latestDetailProps?.periodType).toBe("MoM");
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
 
-    expect(latestDetailProps?.activeTab).toBe("action-attribution");
-    expect(screen.getByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+
+    expect(await screen.findByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
       "data-active-tab",
-      "action-attribution",
+      "credit-spread",
     );
+    expect(latestDetailProps?.reportDate).toBe(firstDate);
+    expect(latestDetailProps?.periodType).toBe("MoM");
+    expect(latestDetailProps?.activeTab).toBe("credit-spread");
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
   });
 
@@ -279,7 +283,8 @@ describe("BondAnalyticsViewContent", () => {
       );
     });
     expect(detail).not.toHaveAttribute("open");
-    expect(latestDetailProps?.activeTab).toBe("action-attribution");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
   });
 
   it("keeps the workstation visible when action-attribution evidence fails", async () => {
@@ -453,13 +458,19 @@ describe("BondAnalyticsViewContent", () => {
     await screen.findByTestId("mock-bond-analytics-overview-panels");
 
     await user.click(screen.getByTestId("trigger-open-credit-spread"));
-    expect(latestDetailProps?.activeTab).toBe("credit-spread");
+    await waitFor(() => {
+      expect(latestDetailProps?.activeTab).toBe("credit-spread");
+    });
 
     await user.click(screen.getByTestId("trigger-report-date"));
-    expect(latestDetailProps?.reportDate).toBe("2025-12-31");
+    await waitFor(() => {
+      expect(latestDetailProps?.reportDate).toBe("2025-12-31");
+    });
 
     await user.click(screen.getByTestId("trigger-period-type"));
-    expect(latestDetailProps?.periodType).toBe("YTD");
+    await waitFor(() => {
+      expect(latestDetailProps?.periodType).toBe("YTD");
+    });
   });
 
   it("surfaces successful refresh run id to overview and remounts the detail mock", async () => {
@@ -482,6 +493,8 @@ describe("BondAnalyticsViewContent", () => {
     await waitFor(() => {
       expect(latestOverviewProps?.reportDate).toBeTruthy();
     });
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+    await screen.findByTestId("mock-bond-analytics-detail-section");
     const instanceBefore = screen
       .getByTestId("mock-bond-analytics-detail-section")
       .getAttribute("data-detail-instance");

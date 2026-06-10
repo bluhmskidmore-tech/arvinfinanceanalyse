@@ -3,10 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsMarketContextStrip", () => ({
-  BondAnalyticsMarketContextStrip: (props: { reportDate: string; leadModuleLabel: string; truthStrip: { title: string } }) => (
+  BondAnalyticsMarketContextStrip: (props: { leadModuleLabel: string; truthStrip: { title: string } }) => (
     <div
       data-testid="mock-bond-market-context-strip"
-      data-report-date={props.reportDate}
       data-lead-module={props.leadModuleLabel}
       data-truth-title={props.truthStrip.title}
     />
@@ -188,7 +187,6 @@ describe("BondAnalyticsOverviewPanels", () => {
     expect(screen.getByTestId("mock-bond-event-calendar")).toBeInTheDocument();
 
     const market = screen.getByTestId("mock-bond-market-context-strip");
-    expect(market).toHaveAttribute("data-report-date", "2026-03-31");
     expect(market).toHaveAttribute("data-lead-module", "Lead from overview model");
     expect(market).toHaveAttribute("data-truth-title", "真值与证据");
 

@@ -64,6 +64,9 @@ const CashflowProjectionPage = lazy(
 const BondAnalyticsView = lazy(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
 );
+const BondTradingDeskPage = lazy(
+  () => import("../features/bond-trading-desk/pages/BondTradingDeskPage"),
+);
 const BondDashboardPage = lazy(
   () => import("../features/bond-dashboard/pages/BondDashboardPage"),
 );
@@ -276,6 +279,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: themedRouteElement(<BondAnalyticsView />),
+      };
+    }
+
+    if (section.path === "/bond-trading-desk") {
+      return {
+        path: section.path.slice(1),
+        element: themedRouteElement(<BondTradingDeskPage />),
       };
     }
 

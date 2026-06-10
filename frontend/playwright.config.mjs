@@ -19,11 +19,13 @@ export default defineConfig({
       ? {
           command: `npm run dev -- --host 127.0.0.1 --port ${playwrightPort}`,
           url: playwrightBaseURL,
-          reuseExistingServer: !process.env.CI,
+          // Fresh mock dev server when Playwright owns startup (avoids reusing a real-mode :5888).
+          reuseExistingServer:
+            process.env.MOSS_PLAYWRIGHT_REUSE_SERVER === "1" && process.env.CI !== "true",
           timeout: 120_000,
           env: {
             ...process.env,
-            VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "real",
+            VITE_DATA_SOURCE: process.env.VITE_DATA_SOURCE ?? "mock",
           },
         }
       : undefined,

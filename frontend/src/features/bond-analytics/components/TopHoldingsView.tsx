@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Space, Spin, Statistic, Table } from "antd";
+import { Link } from "react-router-dom";
 import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { designTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { formatPct, formatYi } from "../utils/formatters";
@@ -12,7 +14,7 @@ interface Props {
 
 const TOP_N_OPTIONS = [10, 20, 30, 50, 100] as const;
 
-const columns = [
+const buildColumns = (reportDate: string) => [
   { title: "代码", dataIndex: "instrument_code", key: "instrument_code" },
   { title: "名称", dataIndex: "instrument_name", key: "instrument_name" },
   { title: "发行人", dataIndex: "issuer_name", key: "issuer_name" },
@@ -37,6 +39,18 @@ const columns = [
     dataIndex: "weight",
     key: "weight",
     render: (v: Numeric) => formatPct(v),
+  },
+  {
+    title: "单券台",
+    key: "trading_desk",
+    render: (_: unknown, row: BondTopHoldingsPayload["items"][number]) => (
+      <Link
+        to={buildBondTradingDeskPath(row.instrument_code, reportDate)}
+        data-testid={`bond-trading-desk-link-${row.instrument_code}`}
+      >
+        打开
+      </Link>
+    ),
   },
 ];
 
@@ -66,6 +80,8 @@ export function TopHoldingsView({ reportDate }: Props) {
       cancelled = true;
     };
   }, [client, reportDate, topN]);
+
+  const columns = useMemo(() => buildColumns(reportDate), [reportDate]);
 
   const topWeightSum = useMemo(() => {
     if (!data?.items.length) return null;

@@ -7,6 +7,7 @@ const routeModulePreloaders = {
   "bank-ledger-dashboard": () =>
     import("../features/ledger-dashboard/pages/LedgerDashboardPage"),
   "bond-analysis": () => import("../features/bond-analytics/components/BondAnalyticsView"),
+  "bond-trading-desk": () => import("../features/bond-trading-desk/pages/BondTradingDeskPage"),
   "bond-dashboard": () => import("../features/bond-dashboard/pages/BondDashboardPage"),
   "cashflow-projection": () =>
     import("../features/cashflow-projection/pages/CashflowProjectionPage"),

@@ -40,6 +40,20 @@ export const liveRouteReadinessContracts = {
       "src/test/BondAnalyticsViewContent.test.tsx",
     ],
   },
+  "/bond-trading-desk": {
+    sourceFiles: ["src/features/bond-trading-desk/pages/BondTradingDeskPage.tsx"],
+    sourceAnchors: [
+      "bond-trading-desk-page",
+      "bond-trading-desk-conclusion",
+      "bond-trading-desk-compose-strip",
+    ],
+    verificationFiles: [
+      "src/test/BondTradingDeskPage.test.tsx",
+      "src/features/bond-trading-desk/lib/bondTradingDeskPageModel.test.ts",
+      "tests/playwright/bond-trading-desk-desktop-layout.spec.mjs",
+      "tests/playwright/bond-trading-desk-drill.spec.mjs",
+    ],
+  },
   "/cross-asset": {
     sourceFiles: ["src/features/cross-asset/pages/CrossAssetDriversPage.tsx"],
     sourceAnchors: ["cross-asset-drivers-page", "cross-asset-research-views"],

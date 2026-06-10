@@ -65,6 +65,13 @@ export function BondAnalyticsOverviewPanels({
   lastAnalyticsRefreshRunId = null,
   calendarItems = [],
 }: BondAnalyticsOverviewPanelsProps) {
+  const activeReadinessItem =
+    overviewModel.readinessItems.find((item) => item.key === overviewModel.activeModuleContext.key) ??
+    overviewModel.readinessItems[0];
+  const decisionWatchlistItems = overviewModel.readinessItems.filter(
+    (item) => item.key !== activeReadinessItem.key,
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "grid", gap: 8 }} data-testid="bond-analysis-top-cockpit">
@@ -72,14 +79,17 @@ export function BondAnalyticsOverviewPanels({
           reportDate={reportDate}
           actionAttribution={actionAttributionResult}
           topAnomalies={overviewModel.topAnomalies}
+          decisionRail={{
+            activeModuleContext: overviewModel.activeModuleContext,
+            activeReadinessItem,
+            watchlistItems: decisionWatchlistItems,
+          }}
           onOpenModuleDetail={onOpenModuleDetail}
         />
 
         <BondAnalyticsMarketContextStrip
-          reportDate={reportDate}
-          periodType={periodType}
           leadModuleLabel={overviewModel.activeModuleContext.label}
-          leadPromotionLabel="Drill available"
+          leadPromotionLabel="可进入下钻"
           truthStrip={overviewModel.truthStrip}
         />
 

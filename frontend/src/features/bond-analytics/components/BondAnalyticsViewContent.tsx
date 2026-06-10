@@ -233,7 +233,8 @@ export function BondAnalyticsViewContent() {
     periodType,
     activeModuleKey: activeTab,
     actionAttributionEnvelope: actionAttributionQuery.data ?? null,
-    actionAttributionLoading: actionAttributionQuery.isFetching,
+    actionAttributionLoading:
+      actionAttributionQuery.isPending && !actionAttributionQuery.isError,
     actionAttributionError: actionAttributionErrorMessage,
   });
 
@@ -399,7 +400,7 @@ export function BondAnalyticsViewContent() {
           <span className="dashboard-progressive-disclosure__cue">展开</span>
         </summary>
 
-        {canRenderAnalytics ? (
+        {canRenderAnalytics && isDetailDrilldownOpen ? (
           <Suspense
             fallback={
               <div className={styles.detailFallback} data-testid="bond-analysis-detail-loading">
@@ -420,11 +421,11 @@ export function BondAnalyticsViewContent() {
               />
             </div>
           </Suspense>
-        ) : (
+        ) : !canRenderAnalytics ? (
           <div className={styles.detailFallback} data-testid="bond-analysis-detail-loading">
             报告日确认后加载明细模块。
           </div>
-        )}
+        ) : null}
       </details>
     </section>
   );

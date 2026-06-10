@@ -17,6 +17,7 @@ import type {
   RatingStatsResponse,
   SubTypesResponse,
 } from "./contracts";
+import { buildMockBondTradingDeskPositionsBonds } from "../mocks/bondTradingDeskDrillFixtures";
 
 export type PositionsClientMethods = {
   getPositionsBondSubTypes: (
@@ -132,11 +133,12 @@ export function createDemoPositionsClient(
       includeIssued?: boolean;
     }) {
       await delay();
+      const items = buildMockBondTradingDeskPositionsBonds();
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "positions.bonds.list",
         {
-          items: [],
-          total: 0,
+          items,
+          total: items.length,
           page: options.page,
           page_size: options.pageSize,
         },

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
@@ -114,12 +115,14 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
         }
       >
         <ApiClientProvider client={client}>
-          <BondAnalyticsInstitutionalCockpit
-            reportDate="2026-03-31"
-            topAnomalies={[]}
-            actionAttribution={null}
-            {...props}
-          />
+          <MemoryRouter>
+            <BondAnalyticsInstitutionalCockpit
+              reportDate="2026-03-31"
+              topAnomalies={[]}
+              actionAttribution={null}
+              {...props}
+            />
+          </MemoryRouter>
         </ApiClientProvider>
       </QueryClientProvider>,
     );
@@ -377,6 +380,51 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
       await screen.findByTestId("bond-analysis-home-open-top-holdings"),
     );
     expect(onOpenModuleDetail).toHaveBeenCalledWith("top-holdings");
+  });
+
+  it("renders the decision rail inside the hero aside when decision rail props are supplied", async () => {
+    const onOpenModuleDetail = vi.fn();
+
+    renderCockpit(createApiClient({ mode: "mock" }), {
+      onOpenModuleDetail,
+      decisionRail: {
+        activeModuleContext: {
+          key: "action-attribution",
+          label: "动作归因",
+          description: "读取治理后的动作归因结果。",
+          statusLabel: "eligible",
+          statusReason: "动作归因已返回。",
+        },
+        activeReadinessItem: {
+          key: "action-attribution",
+          label: "动作归因",
+          description: "说明",
+          detailHint: "提示",
+          statusLabel: "eligible",
+          statusReason: "动作归因已返回。",
+          promotionDestination: "headline",
+          warnings: [],
+        },
+        watchlistItems: [
+          {
+            key: "return-decomposition",
+            label: "收益拆解",
+            description: "说明",
+            detailHint: "提示",
+            statusLabel: "placeholder-blocked",
+            statusReason: "待返回",
+            promotionDestination: "readiness-only",
+            warnings: [],
+          },
+        ],
+      },
+    });
+
+    const aside = await screen.findByTestId("bond-analysis-hero-aside");
+    expect(within(aside).getByTestId("bond-analysis-decision-rail")).toBeInTheDocument();
+    expect(within(aside).getByTestId("bond-analysis-decision-trust")).toHaveTextContent(
+      "读取治理后的动作归因结果。",
+    );
   });
 
   it("renders the reference-style bond analysis workstation hierarchy on the first screen", async () => {
@@ -1090,8 +1138,14 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
     expect(heroRule).not.toContain("border-left:");
     expect(heroRule).toContain("background: var(--moss-color-card-bg)");
     expect(heroRule).toContain("padding: 14px 18px");
+    expect(heroRule).toContain('grid-template-areas:');
+    expect(heroRule).toContain('"identity identity"');
+    expect(heroRule).toContain('"main governance"');
     expect(heroRule).not.toContain("linear-gradient");
     expect(heroRule).not.toMatch(/box-shadow:/);
+    const heroAsideRule = cssRuleBody(".heroAside");
+    expect(heroAsideRule).toContain("grid-area: governance");
+    expect(heroGovernanceRule).toContain("border: 1px solid var(--moss-color-neutral-200)");
     expect(heroMainRule).toContain("grid-template-columns: minmax(360px, 1fr) minmax(520px, 0.62fr)");
     expect(heroHeadlineRule).toContain("font-size: 26px");
     expect(heroHeadlineRule).toContain("-webkit-line-clamp: 2");

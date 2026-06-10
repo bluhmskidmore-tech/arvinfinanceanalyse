@@ -15,13 +15,15 @@ import {
   Tabs,
   Typography,
 } from "antd";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
+  BondPositionItem,
   CounterpartyStatsResponse,
   IndustryStatsResponse,
   PositionDirection,
@@ -695,6 +697,21 @@ export default function PositionsView() {
                         dataIndex: "yield_rate",
                         align: "right",
                         render: (v: string | null) => formatRatePercent(v),
+                      },
+                      {
+                        title: "单券台",
+                        key: "trading_desk",
+                        render: (_: unknown, row: BondPositionItem) =>
+                          row.bond_code ? (
+                            <Link
+                              to={buildBondTradingDeskPath(row.bond_code, reportDate)}
+                              data-testid={`positions-bond-trading-desk-link-${row.bond_code}`}
+                            >
+                              打开
+                            </Link>
+                          ) : (
+                            "—"
+                          ),
                       },
                     ]}
                   />

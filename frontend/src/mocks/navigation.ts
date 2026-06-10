@@ -82,6 +82,7 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   "decision-items": "overview",
   "portfolio-home": "portfolio",
   "bond-analysis": "portfolio",
+  "bond-trading-desk": "portfolio",
   "balance-analysis": "portfolio",
   "balance-movement-analysis": "portfolio",
   "liability-analytics": "portfolio",
@@ -178,6 +179,18 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "已开放",
     readinessNote: "已接债券分析交易台首屏、组合读面、风险监控和下钻复核入口。",
+  },
+  {
+    key: "bond-trading-desk",
+    label: "单券交易分析台",
+    path: "/bond-trading-desk",
+    icon: "bond",
+    description: "单券只读拼装读面，由重仓券/持仓深钻进入。",
+    readiness: "live",
+    readinessLabel: "深钻路由",
+    readinessNote:
+      "只拼装 top-holdings / positions / 利差列表；盘口、约束与相似券等待后端契约，导航默认隐藏。",
+    navigationVisibility: "hidden",
   },
   {
     key: "cross-asset",

@@ -1,6 +1,7 @@
-﻿import { useMemo, type CSSProperties } from "react";
+﻿import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card } from "antd";
+import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
@@ -18,7 +19,12 @@ import {
   computeRelativeChangePct,
   toBp,
 } from "../lib/bondAnalyticsHomeCalculations";
+import type {
+  BondAnalyticsActiveModuleContext,
+  BondAnalyticsReadinessItem,
+} from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
+import { BondAnalyticsDecisionRail } from "./BondAnalyticsDecisionRail";
 import type { ActionAttributionResponse } from "../types";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
@@ -31,6 +37,7 @@ import {
 import { formatBp, formatPct, formatWan, formatYi } from "../utils/formatters";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
 import ReactECharts from "../../../lib/echarts";
+import { buildBondTradingDeskPath } from "../../bond-trading-desk/lib/bondTradingDeskPageModel";
 import { panelStyle } from "./bondAnalyticsCockpitTokens";
 import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
@@ -471,7 +478,7 @@ function MobileReadoutField({
 }: {
   label: string;
   value: string;
-  detail?: string;
+  detail?: ReactNode;
 }) {
   return (
     <div className={styles.mobileReadoutField}>
@@ -617,9 +624,11 @@ function AccountingDv01SummaryPanel({
 function HoldingsMobileReadout({
   holdings,
   unavailable,
+  reportDate,
 }: {
   holdings: BondTopHoldingItem[];
   unavailable: boolean;
+  reportDate: string;
 }) {
   const leadHolding = unavailable ? null : holdings[0] ?? null;
   const leadName = leadHolding
@@ -627,7 +636,14 @@ function HoldingsMobileReadout({
     : unavailable
       ? "读面暂未返回"
       : "暂无持仓明细";
-  const leadDetail = leadHolding ? leadHolding.instrument_code : undefined;
+  const leadDetail = leadHolding ? (
+    <Link
+      to={buildBondTradingDeskPath(leadHolding.instrument_code, reportDate)}
+      data-testid={`bond-trading-desk-link-${leadHolding.instrument_code}`}
+    >
+      {leadHolding.instrument_code}
+    </Link>
+  ) : undefined;
   const statusLabel = unavailable ? "读面暂未返回" : `${holdings.length} 只可见`;
 
   return (
@@ -1356,9 +1372,11 @@ function DistributionDonut({
 function HoldingRows({
   holdings,
   unavailable,
+  reportDate,
 }: {
   holdings: BondTopHoldingItem[];
   unavailable: boolean;
+  reportDate: string;
 }) {
   if (unavailable) {
     return <div className={styles.tableEmpty}>{TOP_HOLDINGS_HOME_NOTE}</div>;
@@ -1374,7 +1392,12 @@ function HoldingRows({
         <div key={item.instrument_code} className={styles.holdingsTableRow}>
           <div className={styles.holdingNameCell}>
             <strong>{item.instrument_name ?? item.instrument_code}</strong>
-            <span>{item.instrument_code}</span>
+            <Link
+              to={buildBondTradingDeskPath(item.instrument_code, reportDate)}
+              data-testid={`bond-trading-desk-link-${item.instrument_code}`}
+            >
+              {item.instrument_code}
+            </Link>
           </div>
           <span>{item.asset_class}</span>
           <span>{formatTextEvidenceDisplay(item.rating)}</span>
@@ -1436,16 +1459,24 @@ function RegionDistributionPanel({
   );
 }
 
+export interface BondAnalyticsInstitutionalCockpitDecisionRailProps {
+  activeModuleContext: BondAnalyticsActiveModuleContext;
+  activeReadinessItem: BondAnalyticsReadinessItem;
+  watchlistItems: BondAnalyticsReadinessItem[];
+}
+
 export interface BondAnalyticsInstitutionalCockpitProps {
   reportDate: string;
   topAnomalies?: string[];
   actionAttribution?: ActionAttributionResponse | null;
+  decisionRail?: BondAnalyticsInstitutionalCockpitDecisionRailProps;
   onOpenModuleDetail?: (key: BondAnalyticsModuleKey) => void;
 }
 
 export function BondAnalyticsInstitutionalCockpit({
   reportDate,
   actionAttribution = null,
+  decisionRail,
   onOpenModuleDetail,
 }: BondAnalyticsInstitutionalCockpitProps) {
   const client = useApiClient();
@@ -1843,35 +1874,46 @@ export function BondAnalyticsInstitutionalCockpit({
             </div>
           </div>
 
-          <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
-            <div className={styles.heroGovernanceLead}>
-              <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
-              <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
-              <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
+          <aside data-testid="bond-analysis-hero-aside" className={styles.heroAside}>
+            <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
+              <div className={styles.heroGovernanceLead}>
+                <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
+                <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
+                <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
+              </div>
+              <div className={styles.heroGovernanceMetrics}>
+                <span>久期 {durationDisplay}</span>
+                <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
+                <span>信用占比 {creditWeightDisplay}</span>
+              </div>
+              <div className={styles.heroGovernanceStatus}>
+                <span>
+                  报告日 {topbarReportStatus} · {topbarReportDate}
+                </span>
+                <span>
+                  首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
+                </span>
+              </div>
+              <div className={styles.heroVerdictRow}>
+                {deskVerdictFields.map((field) => (
+                  <div key={field.label} className={styles.heroVerdictField}>
+                    <span>{field.label}</span>
+                    <strong>{field.value}</strong>
+                    <small>{field.detail}</small>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className={styles.heroGovernanceMetrics}>
-              <span>久期 {durationDisplay}</span>
-              <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
-              <span>信用占比 {creditWeightDisplay}</span>
-            </div>
-            <div className={styles.heroGovernanceStatus}>
-              <span>
-                报告日 {topbarReportStatus} · {topbarReportDate}
-              </span>
-              <span>
-                首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
-              </span>
-            </div>
-            <div className={styles.heroVerdictRow}>
-              {deskVerdictFields.map((field) => (
-                <div key={field.label} className={styles.heroVerdictField}>
-                  <span>{field.label}</span>
-                  <strong>{field.value}</strong>
-                  <small>{field.detail}</small>
-                </div>
-              ))}
-            </div>
-          </div>
+
+            {decisionRail && onOpenModuleDetail ? (
+              <BondAnalyticsDecisionRail
+                activeModuleContext={decisionRail.activeModuleContext}
+                activeReadinessItem={decisionRail.activeReadinessItem}
+                watchlistItems={decisionRail.watchlistItems}
+                onOpenModuleDetail={onOpenModuleDetail}
+              />
+            ) : null}
+          </aside>
         </section>
 
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
@@ -2024,7 +2066,11 @@ export function BondAnalyticsInstitutionalCockpit({
             className={styles.referenceHoldingsCard}
             styles={{ body: { padding: 0 } }}
           >
-            <HoldingsMobileReadout holdings={topHoldings} unavailable={topHoldingsUnavailable} />
+            <HoldingsMobileReadout
+              holdings={topHoldings}
+              unavailable={topHoldingsUnavailable}
+              reportDate={dashboardReportDate}
+            />
             <div data-testid="bond-analysis-holdings-evidence-strip" className={styles.holdingsEvidenceStrip}>
               <div>
                 <span>返回持仓</span>
@@ -2062,7 +2108,11 @@ export function BondAnalyticsInstitutionalCockpit({
                 <span>久期</span>
                 <span>权重</span>
               </div>
-              <HoldingRows holdings={topHoldings} unavailable={topHoldingsUnavailable} />
+              <HoldingRows
+                holdings={topHoldings}
+                unavailable={topHoldingsUnavailable}
+                reportDate={dashboardReportDate}
+              />
             </div>
           </Card>
 
@@ -2174,7 +2224,12 @@ export function BondAnalyticsInstitutionalCockpit({
                   </div>
                   <div className={styles.footerActionBar}>
                     <span>市值变动与 DV01 变动用于核对动作归因字段返回范围。</span>
-                    <Button size="small" type="text" data-testid="bond-analysis-decision-next-action" onClick={() => onOpenModuleDetail?.("action-attribution")}>
+                    <Button
+                      size="small"
+                      type="text"
+                      data-testid="bond-analysis-footer-open-action-attribution"
+                      onClick={() => onOpenModuleDetail?.("action-attribution")}
+                    >
                       打开动作归因
                     </Button>
                   </div>

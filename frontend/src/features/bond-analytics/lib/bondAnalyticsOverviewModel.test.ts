@@ -195,6 +195,14 @@ describe("buildBondAnalyticsOverviewModel", () => {
         expect.objectContaining({
           key: "action-attribution",
           statusLabel: "request-error",
+          statusReason: "动作归因不可用，保持驾驶舱快照。",
+        }),
+      ]),
+    );
+    expect(model.readinessItems).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({
+          statusReason: "backend 503 for action attribution",
         }),
       ]),
     );

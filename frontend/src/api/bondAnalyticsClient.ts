@@ -36,6 +36,10 @@ import type {
   YieldDistributionPayload,
 } from "./contracts";
 import { formatRawAsNumeric } from "../utils/format";
+import {
+  buildMockBondTradingDeskTopHoldings,
+  sumMockTopHoldingsMarketValue,
+} from "../mocks/bondTradingDeskDrillFixtures";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 import { sampleBondBusinessTypeMetricRows } from "../fixtures/dashboardCoreWorkbenchSamples";
 import type { CashflowClientMethods } from "./cashflowClient";
@@ -914,13 +918,14 @@ export function createDemoBondAnalyticsClient(
     },
     async getBondAnalyticsTopHoldings(reportDate: string, topN = 20) {
       await delay();
+      const items = buildMockBondTradingDeskTopHoldings(topN);
       return (await ensureMockClientBundle()).buildMockApiEnvelope(
         "bond_analytics.top_holdings",
         {
           report_date: reportDate,
           top_n: topN,
-          items: [],
-          total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          items,
+          total_market_value: sumMockTopHoldingsMarketValue(items),
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },

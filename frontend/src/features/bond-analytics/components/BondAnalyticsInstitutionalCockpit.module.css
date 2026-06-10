@@ -343,6 +343,10 @@
 .heroSection {
   display: grid;
   grid-area: hero;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 376px);
+  grid-template-areas:
+    "identity identity"
+    "main governance";
   gap: 12px;
   padding: 14px 18px;
   border-radius: 6px;
@@ -350,6 +354,7 @@
 }
 
 .heroIdentity {
+  grid-area: identity;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
@@ -373,10 +378,12 @@
 }
 
 .heroMain {
+  grid-area: main;
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(520px, 0.62fr);
   gap: 20px;
   align-items: start;
+  min-width: 0;
 }
 
 .heroConclusion {
@@ -465,10 +472,21 @@
   color: var(--moss-color-success-600);
 }
 
+.heroAside {
+  grid-area: governance;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
 .heroGovernance {
   display: grid;
   gap: 6px;
-  padding-top: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
 }
 
 .heroGovernanceLead {
@@ -2137,6 +2155,26 @@
 }
 
 @media (max-width: 1180px) {
+  .heroSection {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "identity"
+      "main"
+      "governance";
+  }
+
+  .heroAside {
+    gap: 12px;
+  }
+
+  .heroGovernance {
+    padding: 12px 0 0;
+    border: 0;
+    border-top: 1px solid var(--moss-color-neutral-100);
+    border-radius: 0;
+    background: transparent;
+  }
+
   .referenceDashboard,
   .referenceBottomGrid {
     grid-template-columns: minmax(0, 1fr);
