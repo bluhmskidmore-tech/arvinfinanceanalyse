@@ -1,7 +1,14 @@
 import { Link } from "react-router-dom";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { marketChangePresentation } from "./marketHomeChangeTone";
 import type { ModuleHomeDetailPanel, ModuleHomeTone } from "./moduleHomeModel";
+
+const MARKET_CHANGE_CLASSES = {
+  up: dhStyles.dhUpRed,
+  down: dhStyles.dhDownGreen,
+  neutral: dhStyles.dhMuted,
+} as const;
 import { MarketPanelSummary } from "./MarketPanelSummary";
 import marketStyles from "./marketHome.module.css";
 
@@ -43,16 +50,24 @@ export function MarketRateLadder({ panel, viewAllPath = "/market-data" }: Market
             <span>变动</span>
             <span>日期</span>
           </div>
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const change = marketChangePresentation(row.detail, row.sparkline, MARKET_CHANGE_CLASSES);
+            return (
             <div className={marketStyles.rateTableRow} data-testid={`module-home-rate-${row.key}`} key={row.key}>
               <span className={marketStyles.rateTableLabel}>{row.label}</span>
               <span className={`${marketStyles.rateTableValue} ${dhStyles.dhNum} ${toneClass(row.tone)}`}>
                 {row.value}
               </span>
-              <span className={`${marketStyles.rateTableChange} ${dhStyles.dhNum}`}>{row.detail ?? "—"}</span>
+              <span
+                className={`${marketStyles.rateTableChange} ${dhStyles.dhNum} ${change.className}`}
+                data-change={change.direction ?? "flat"}
+              >
+                {row.detail ?? "—"}
+              </span>
               <span className={`${marketStyles.rateTableDate} ${dhStyles.dhNum}`}>{row.tradeDate}</span>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className={marketStyles.panelEmpty}>{panel.stateDetail || "未匹配到关键利率点。"}</p>

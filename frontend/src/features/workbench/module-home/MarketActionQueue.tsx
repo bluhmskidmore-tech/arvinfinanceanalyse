@@ -1,8 +1,15 @@
 import { Link } from "react-router-dom";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { marketChangePresentation } from "./marketHomeChangeTone";
 import type { ModuleHomeDetailPanel, ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
+
+const MARKET_CHANGE_CLASSES = {
+  up: dhStyles.dhUpRed,
+  down: dhStyles.dhDownGreen,
+  neutral: dhStyles.dhMuted,
+} as const;
 
 type MarketActionQueueProps = {
   view: ModuleHomeView;
@@ -16,6 +23,7 @@ type MarketActionItem = {
   rank: string;
   title: string;
   evidence: string[];
+  evidenceSparkline?: readonly number[];
   evidencePack: string[];
   task: {
     owner: string;
@@ -44,6 +52,10 @@ function compactParts(parts: Array<string | undefined | null>) {
   return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== "-"));
 }
 
+function isChangeEvidencePart(part: string) {
+  return /bp|%|日变动|[+-]\d/.test(part);
+}
+
 function renderFieldSegments(parts: string[]) {
   return parts.flatMap((part, index) =>
     index > 0
@@ -57,12 +69,31 @@ function renderFieldSegments(parts: string[]) {
   );
 }
 
-function renderBlockTextSeparator(key: string) {
-  return (
-    <span aria-hidden="true" className={marketStyles.blockTextSeparator} hidden key={key}>
-      {" / "}
-    </span>
-  );
+function renderColoredFieldSegments(parts: string[], sparkline?: readonly number[]) {
+  return parts.flatMap((part, index) => {
+    const change = marketChangePresentation(
+      isChangeEvidencePart(part) ? part : undefined,
+      isChangeEvidencePart(part) ? sparkline : undefined,
+      MARKET_CHANGE_CLASSES,
+    );
+    const segment = (
+      <span
+        className={change.direction ? change.className : undefined}
+        data-change={change.direction}
+        key={`${part}-${index}`}
+      >
+        {part}
+      </span>
+    );
+    return index > 0
+      ? [
+          <span className={marketStyles.fieldSeparator} key={`${part}-${index}-separator`}>
+            {" / "}
+          </span>,
+          segment,
+        ]
+      : [segment];
+  });
 }
 
 function taskMetaParts(item: MarketActionItem) {
@@ -182,6 +213,7 @@ function buildActionQueue({
       rank: "P2",
       title: "确认关键利率变动",
       evidence: firstRowEvidence(keyRatePanel),
+      evidenceSparkline: keyRatePanel?.rows[0]?.sparkline,
       evidencePack: firstRowEvidencePack(keyRatePanel, keyRateLabel, "market-data"),
       task: {
         owner: "市场数据岗",
@@ -204,6 +236,7 @@ function buildActionQueue({
     rank: "P3",
     title: "跟踪跨资产传导",
     evidence: crossAssetEvidence.length > 0 ? crossAssetEvidence : compactParts([crossAssetStatus?.detail, "跨资产传导解释以 /cross-asset 为准。"]),
+    evidenceSparkline: macroPanel?.rows[0]?.sparkline,
     evidencePack:
       crossAssetEvidence.length > 0
         ? firstRowEvidencePack(macroPanel, "跨资产传导", "cross-asset")
@@ -235,68 +268,72 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
   }
 
   return (
-    <section className={marketStyles.actionQueue} data-testid="module-home-market-actions">
+    <section
+      className={`${marketStyles.actionQueue} ${marketStyles.marketDeskPanel}`}
+      data-testid="module-home-market-actions"
+    >
       <div className={marketStyles.actionQueueHeader}>
         <span>下一步动作</span>
-        <strong>只保留今天需要看的事</strong>
+        <em>只保留今天需要看的事</em>
         <em data-testid="module-home-market-actions-audit-label" hidden>
           Action Queue · Owner / SLA / Gate / Evidence Pack
         </em>
       </div>
-      <div className={marketStyles.actionQueueList}>
+      <div className={marketStyles.actionQueueTape}>
+        <div aria-hidden="true" className={marketStyles.actionQueueTableHead}>
+          <span>优先级</span>
+          <span>事项</span>
+          <span>证据</span>
+          <span>入口</span>
+        </div>
         {items.map((item) => {
           const taskParts = taskMetaParts(item);
           const gateParts = gateMetaParts(item);
           const packParts = evidencePackParts(item);
           return (
             <Link
-              className={marketStyles.actionQueueItem}
+              className={marketStyles.actionQueueTableRow}
               data-testid={`module-home-market-action-${item.key}`}
               data-tone={item.tone}
               key={item.key}
               to={item.path}
             >
               <span className={`${marketStyles.actionQueueRank} ${toneClass(item.tone)}`}>{item.rank}</span>
-              {renderBlockTextSeparator(`${item.key}-rank-main`)}
-              <div className={marketStyles.actionQueueMain}>
-                <div className={marketStyles.actionQueueTitleRow}>
-                  <strong>{item.title}</strong>
-                  <b data-testid={`module-home-market-action-${item.key}-target`}>{item.label}</b>
-                </div>
-                {renderBlockTextSeparator(`${item.key}-title-evidence`)}
-                <em
-                  aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
-                  data-testid={`module-home-market-action-${item.key}-evidence`}
+              <strong className={marketStyles.actionQueueTableTitle}>{item.title}</strong>
+              <em
+                aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
+                className={marketStyles.actionQueueTableEvidence}
+                data-testid={`module-home-market-action-${item.key}-evidence`}
+              >
+                {item.evidence.length > 0
+                  ? renderColoredFieldSegments(item.evidence, item.evidenceSparkline)
+                  : <span>待返回</span>}
+              </em>
+              <b className={marketStyles.actionQueueTableTarget} data-testid={`module-home-market-action-${item.key}-target`}>
+                {item.label}
+              </b>
+              <div className={marketStyles.actionQueueMetaGrid} hidden>
+                <span
+                  aria-label={taskParts.join(" / ")}
+                  className={marketStyles.actionQueueTaskMeta}
+                  data-testid={`module-home-market-action-${item.key}-task-meta`}
                 >
-                  {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
-                </em>
-                {renderBlockTextSeparator(`${item.key}-evidence-task`)}
-                <div className={marketStyles.actionQueueMetaGrid} hidden>
-                  <span
-                    aria-label={taskParts.join(" / ")}
-                    className={marketStyles.actionQueueTaskMeta}
-                    data-testid={`module-home-market-action-${item.key}-task-meta`}
-                  >
-                    {renderFieldSegments(taskParts)}
-                  </span>
-                  {renderBlockTextSeparator(`${item.key}-task-gate`)}
-                  <span
-                    aria-label={gateParts.join(" / ")}
-                    className={marketStyles.actionQueueGate}
-                    data-testid={`module-home-market-action-${item.key}-gate`}
-                  >
-                    {renderFieldSegments(gateParts)}
-                  </span>
-                  {renderBlockTextSeparator(`${item.key}-gate-pack`)}
-                  <span
-                    aria-label={packParts.join(" / ")}
-                    className={marketStyles.actionQueueEvidencePack}
-                    data-testid={`module-home-market-action-${item.key}-evidence-pack`}
-                  >
-                    {renderFieldSegments(packParts)}
-                    {renderBlockTextSeparator(`${item.key}-pack-end`)}
-                  </span>
-                </div>
+                  {renderFieldSegments(taskParts)}
+                </span>
+                <span
+                  aria-label={gateParts.join(" / ")}
+                  className={marketStyles.actionQueueGate}
+                  data-testid={`module-home-market-action-${item.key}-gate`}
+                >
+                  {renderFieldSegments(gateParts)}
+                </span>
+                <span
+                  aria-label={packParts.join(" / ")}
+                  className={marketStyles.actionQueueEvidencePack}
+                  data-testid={`module-home-market-action-${item.key}-evidence-pack`}
+                >
+                  {renderFieldSegments(packParts)}
+                </span>
               </div>
             </Link>
           );

@@ -166,8 +166,12 @@
   order: 5;
 }
 
-.drilldownBlock {
+.portfolioCockpit > [data-testid="module-home-portfolio-quick-access"] {
   order: 6;
+}
+
+.drilldownBlock {
+  order: 7;
 }
 
 .sectionHead {
@@ -698,17 +702,141 @@
   -webkit-line-clamp: 2;
 }
 
+.portfolioKpiValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.portfolioKpiSparkline {
+  flex: 0 0 92px;
+  width: 92px;
+  height: 30px;
+  opacity: 1;
+}
+
+.kpiGridTape {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(24, 80, 161, 0.28) transparent;
+}
+
+.kpiGridTape::-webkit-scrollbar {
+  height: 6px;
+}
+
+.kpiGridTape::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(24, 80, 161, 0.22);
+}
+
+.portfolioRiskTickerBar {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(114, 147, 190, 0.28);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgba(10, 24, 42, 0.98) 0%, rgba(14, 32, 56, 0.96) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.portfolioRiskTickerHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.portfolioRiskTickerHead span {
+  color: #86bdf8;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.portfolioRiskTickerHead strong {
+  color: rgba(226, 239, 255, 0.86);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.portfolioRiskTickerTrack {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  min-width: 0;
+  overflow-x: auto;
+  background: rgba(114, 147, 190, 0.18);
+}
+
+.portfolioRiskTickerCell {
+  display: grid;
+  gap: 2px;
+  min-width: 108px;
+  padding: 8px 10px;
+  background: rgba(8, 18, 32, 0.92);
+}
+
+.portfolioRiskTickerLabel {
+  color: rgba(190, 208, 234, 0.78);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.portfolioRiskTickerValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.portfolioRiskTickerValue {
+  color: #f8fbff;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.portfolioRiskTickerChange {
+  color: rgba(190, 208, 234, 0.62);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1.25;
+}
+
+.portfolioRiskTickerChangeNeutral {
+  color: rgba(190, 208, 234, 0.62);
+}
+
+.portfolioRiskTickerEmpty {
+  margin: 0;
+  color: rgba(190, 208, 234, 0.72);
+  font-size: 11px;
+}
+
 .kpiGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(148px, 168px);
+  gap: 8px;
+  width: max(100%, 100%);
 }
 
 .kpiCard {
   position: relative;
   align-content: start;
-  min-height: 112px;
-  padding: 14px 15px 12px;
+  min-height: 108px;
+  min-width: 0;
+  padding: 12px 13px 10px;
   overflow: hidden;
   border: 1px solid rgba(24, 80, 161, 0.12);
   border-radius: 8px;
@@ -719,11 +847,8 @@
 }
 
 .kpiCard:nth-child(-n + 2) {
-  grid-column: span 3;
-  min-height: 126px;
-  padding: 16px 18px 14px;
   background:
-    linear-gradient(135deg, rgba(24, 80, 161, 0.12), rgba(45, 138, 94, 0.055) 54%, rgba(255, 255, 255, 0)),
+    linear-gradient(135deg, rgba(24, 80, 161, 0.09), rgba(45, 138, 94, 0.045) 54%, rgba(255, 255, 255, 0)),
     #ffffff;
 }
 
@@ -2016,6 +2141,304 @@
   line-height: 1.45;
 }
 
+.holdingsHeroBand {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(24, 80, 161, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.holdingsHeroHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.holdingsHeroKicker {
+  display: block;
+  color: var(--portfolio-chart-blue, #1850a1);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.holdingsHeroHead strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--portfolio-chart-ink, #17212f);
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.holdingsHeroMeta {
+  margin: 4px 0 0;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 11px;
+}
+
+.holdingsHeroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.holdingsHeroBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+  gap: 16px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.holdingsHeroTableStack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.holdingsHeroTableBlock {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.holdingsHeroTableTitle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--dh-ink-2, #2c3e5a);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.holdingsHeroTableState {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3f6fa;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.holdingsHeroTableEmpty,
+.holdingsHeroChartEmpty {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed rgba(32, 48, 74, 0.14);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.holdingsHeroChartEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  text-align: center;
+}
+
+.holdingsHeroTableWrap {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid rgba(32, 48, 74, 0.1);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.holdingsHeroTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.holdingsHeroTable th {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(32, 48, 74, 0.1);
+  background: #f3f6fa;
+  color: var(--dh-muted, #6b7d95);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+
+.holdingsHeroTable td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(32, 48, 74, 0.06);
+  color: var(--dh-ink, #0c1c33);
+  vertical-align: middle;
+}
+
+.holdingsHeroTable tbody tr:hover {
+  background: rgba(24, 80, 161, 0.04);
+}
+
+.holdingsHeroTable td:first-child {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.holdingsHeroTable td:first-child span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holdingsHeroDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--portfolio-chart-blue, #1850a1);
+  flex-shrink: 0;
+}
+
+.holdingsHeroDot[data-color-index="1"] {
+  background: var(--portfolio-chart-info, #2563eb);
+}
+
+.holdingsHeroDot[data-color-index="2"] {
+  background: var(--portfolio-chart-green, #2d8a5e);
+}
+
+.holdingsHeroDot[data-color-index="3"] {
+  background: var(--portfolio-chart-amber, #d97706);
+}
+
+.holdingsHeroDot[data-color-index="4"] {
+  background: var(--portfolio-chart-red, #ef4444);
+}
+
+.holdingsHeroNumeric {
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.holdingsHeroChartCol {
+  position: relative;
+  min-height: 220px;
+  padding: 8px;
+  border: 1px solid rgba(32, 48, 74, 0.1);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.holdingsHeroChartCenter {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: grid;
+  gap: 2px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.holdingsHeroChartCenter span {
+  color: var(--dh-muted, #6b7d95);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.holdingsHeroChartCenter strong {
+  color: var(--dh-ink, #0c1c33);
+  font-family: var(--dh-font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 16px;
+  font-weight: 850;
+}
+
+.holdingsHeroEmpty {
+  margin: 0;
+  font-size: 12px;
+}
+
+.holdingsGridSecondary > :first-child {
+  grid-column: auto;
+  min-height: 352px;
+  --dist-chart-height: 188px;
+}
+
+.holdingsGridSecondary > :first-child .distPanelHead h3,
+.holdingsGridSecondary > :first-child .distLabel,
+.holdingsGridSecondary > :first-child .distMetric,
+.holdingsGridSecondary > :first-child .distMarketValue,
+.holdingsGridSecondary > :first-child .distMeta,
+.holdingsGridSecondary > :first-child .distTopHighlight strong,
+.holdingsGridSecondary > :first-child .distTopHighlight em,
+.holdingsGridSecondary > :first-child .distChartCenter span,
+.holdingsGridSecondary > :first-child .distChartCenter strong {
+  color: inherit;
+}
+
+.holdingsGridSecondary > :first-child .distPanel {
+  background: #ffffff;
+}
+
+.holdingsGridSecondary > :first-child .distPanel::before {
+  background: linear-gradient(90deg, var(--portfolio-chart-blue, #1850a1), var(--portfolio-chart-green, #2d8a5e));
+}
+
+.quickAccessBlock {
+  padding-top: 4px;
+}
+
+.quickAccessGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quickAccessCard {
+  min-height: 72px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px !important;
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.quickAccessCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(24, 80, 161, 0.28) !important;
+}
+
+.quickAccessCard span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #e8f1fb, #f0fdf4);
+  color: var(--dh-blue, #1850a1);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.quickAccessCard b {
+  font-size: 13px;
+}
+
+.quickAccessCard em {
+  font-size: 10px;
+  color: var(--dh-muted, #6b7d95);
+}
+
 .drillGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2121,6 +2544,19 @@
   background: var(--dh-red-soft, #fbf1f0);
 }
 
+@media (min-width: 1320px) {
+  .kpiGridTape {
+    overflow-x: visible;
+  }
+
+  .kpiGrid {
+    grid-auto-flow: row;
+    grid-auto-columns: unset;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
+}
+
 @media (max-width: 760px) {
   .decisionPanel {
     grid-template-columns: minmax(0, 1fr);
@@ -2160,19 +2596,6 @@
 
   .chartSnapshotGrid {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .kpiGrid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
-  .kpiCard {
-    min-height: 104px;
-  }
-
-  .kpiCard:nth-child(-n + 2),
-  .kpiCard:nth-child(n + 3) {
-    grid-column: span 3;
   }
 
   .statusGrid {
@@ -2263,18 +2686,9 @@
     justify-self: start;
   }
 
-  .kpiGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .kpiCard:nth-child(-n + 2),
-  .kpiCard:nth-child(n + 3) {
-    grid-column: auto;
-  }
-
   .kpiCard {
     min-height: 98px;
-    padding: 12px 13px 11px;
+    padding: 11px 12px 10px;
   }
 
   .kpiValue {

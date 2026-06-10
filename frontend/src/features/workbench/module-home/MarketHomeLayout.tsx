@@ -8,7 +8,18 @@ import type { ModuleWorkbenchHomeConfig } from "./moduleHomeConfig";
 import { MarketActionQueue } from "./MarketActionQueue";
 import { MarketDepthPanel } from "./MarketDepthPanel";
 import { MarketDecisionMatrix } from "./MarketDecisionMatrix";
-import { MarketRateLadder } from "./MarketKeyRateCard";
+import { MarketMacroTickerBar } from "./MarketMacroTickerBar";
+import { marketChangePresentation, resolveMarketChangeDirection } from "./marketHomeChangeTone";
+
+const MARKET_CHANGE_CLASSES = {
+  up: dhStyles.dhUpRed,
+  down: dhStyles.dhDownGreen,
+  neutral: dhStyles.dhMuted,
+} as const;
+import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
+import { marketDrillIconLabel } from "./marketHomeDrillIcon";
+import { handleHorizontalScrollKeyboard } from "./marketHomeHorizontalScroll";
+import { MARKET_QUICK_ACCESS_TILES } from "./marketHomeQuickAccess";
 import MarketMacroToolkitSection from "./MarketMacroToolkitSection";
 import { MarketStructureTabPanel } from "./MarketStructureTabPanel";
 import marketStyles from "./marketHome.module.css";
@@ -34,6 +45,10 @@ function toneClass(tone: ModuleHomeTone) {
   if (tone === "watch") return dhStyles.dhMuted;
   if (tone === "error") return dhStyles.dhUpRed;
   return "";
+}
+
+function changeDirectionClass(detail: string | undefined, sparkline: readonly number[] | undefined) {
+  return marketChangePresentation(detail, sparkline, MARKET_CHANGE_CLASSES).className;
 }
 
 function statePillClass(tone: ModuleHomeTone) {
@@ -119,6 +134,7 @@ export default function MarketHomeLayout({
       value: tenYearRow?.value ?? "待返回",
       detail: compactMarketParts([tenYearRow?.detail, tenYearRow?.tradeDate]).join(" / "),
       tone: tenYearRow?.tone ?? keyRatePanel?.tone ?? "muted",
+      sparkline: tenYearRow?.sparkline,
     },
     {
       key: "liquidity",
@@ -126,6 +142,7 @@ export default function MarketHomeLayout({
       value: liquidityRow?.value ?? "待返回",
       detail: compactMarketParts([liquidityRow?.detail, liquidityRow?.tradeDate]).join(" / "),
       tone: liquidityRow?.tone ?? keyRatePanel?.tone ?? "muted",
+      sparkline: liquidityRow?.sparkline,
     },
     {
       key: "cross-asset",
@@ -133,6 +150,7 @@ export default function MarketHomeLayout({
       value: crossAssetRow?.value ?? "待返回",
       detail: compactMarketParts([crossAssetRow?.detail, crossAssetRow?.tradeDate]).join(" / "),
       tone: crossAssetRow?.tone ?? macroPanel?.tone ?? "muted",
+      sparkline: crossAssetRow?.sparkline,
     },
     {
       key: "macro",
@@ -140,10 +158,11 @@ export default function MarketHomeLayout({
       value: macroStanceRow?.value ?? macroStanceRow?.label ?? "观察",
       detail: compactMarketParts([macroStanceRow?.detail, macroStanceRow?.tradeDate]).join(" / "),
       tone: macroStanceRow?.tone ?? macroOverviewPanel?.tone ?? "muted",
+      sparkline: undefined,
     },
   ];
   const sourceScopeSegments = sourceSegments(view.sourceScope);
-  const marketKpis = marketPulse.slice(0, 3);
+  const marketKpis = marketPulse.slice(0, 4);
   const marketReadingOrder = "先看利率曲线与流动性，再看跨资产传导，必要时进入下钻复核。";
   const marketJudgementCue = marketCue(
     compactMarketParts([tenYearRow ? "10Y" : null, liquidityRow?.label]),
@@ -197,8 +216,9 @@ export default function MarketHomeLayout({
       <main className={`${dhStyles.dhMain} ${marketStyles.marketPageMain}`}>
         <section
           data-testid="module-home-market-cockpit"
-          className={marketStyles.marketInstitutionalCockpit}
+          className={`${marketStyles.marketInstitutionalCockpit} ${marketStyles.marketCockpitCohesion}`}
         >
+          <MarketMacroTickerBar keyRatePanel={keyRatePanel} macroPanel={macroPanel} />
           <section
             data-testid="module-home-market-primary-grid"
             className={marketStyles.marketPrimaryGrid}
@@ -206,44 +226,74 @@ export default function MarketHomeLayout({
             <div className={marketStyles.marketPrimaryColumn}>
               <section className={marketStyles.decisionSection}>
                 <section data-testid="module-home-briefing" className={`${dhStyles.dhHero} ${marketStyles.marketHero}`}>
-          {primaryBriefing ? (
-            <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement} ${marketStyles.judgementCard}`}>
-              <span className={dhStyles.dhTerminalEyebrow}>本日市场判断</span>
-              <h2>{primaryBriefing.conclusion}</h2>
-              <p className={`${dhStyles.dhImpact} ${marketStyles.marketHeroEvidence}`} data-testid="module-home-market-hero-evidence">
-                <span>{marketJudgementCue}</span>
-              </p>
-              <div className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`} data-testid="module-home-market-hero-meta" hidden>
-                <span>{view.stateDetail}</span>
-                <span>{primaryBriefing.evidence}</span>
-                <span className={marketStyles.marketHeroSources}>
-                  {sourceScopeSegments.length > 0
-                    ? sourceScopeSegments.map((part, index) => <em key={part}>{index > 0 ? ` / ${part}` : part}</em>)
-                    : <em>{view.sourceScope}</em>}
-                </span>
-              </div>
-            </article>
-          ) : null}
-          <article
-            data-testid="module-home-kpi-strip"
-            className={`${dhStyles.dhCard} ${marketStyles.marketKpiBox}`}
-          >
-            {marketKpis.map((item) => (
-              <div className={`${dhStyles.dhMetricTile} ${marketStyles.marketKpiTile}`} data-tone={item.tone} key={item.key}>
-                <div className={dhStyles.dhMetricLabel}>{item.label}</div>
-                <div className={`${dhStyles.dhMetricValue} ${dhStyles.dhNum} ${toneClass(item.tone)}`}>
-                  {item.value}
-                </div>
-                <div className={dhStyles.dhChange}>
-                  <span className={`${dhStyles.dhMuted} ${marketStyles.marketKpiDetail}`} data-testid={`module-home-market-kpi-${item.key}-detail`}>
-                    {evidenceSegments(item.detail).map((part) => (
-                      <em key={part}>{part}</em>
-                    ))}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </article>
+                  {primaryBriefing ? (
+                    <article
+                      className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement} ${marketStyles.judgementCard} ${marketStyles.marketJudgementHero} ${marketStyles.marketDeskPanel}`}
+                    >
+                      <span className={dhStyles.dhTerminalEyebrow}>本日市场判断</span>
+                      <h2>{primaryBriefing.conclusion}</h2>
+                      <p
+                        className={`${dhStyles.dhImpact} ${marketStyles.marketHeroEvidence}`}
+                        data-testid="module-home-market-hero-evidence"
+                      >
+                        <span>{marketJudgementCue}</span>
+                      </p>
+                      <div
+                        className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`}
+                        data-testid="module-home-market-hero-meta"
+                        hidden
+                      >
+                        <span>{view.stateDetail}</span>
+                        <span>{primaryBriefing.evidence}</span>
+                        <span className={marketStyles.marketHeroSources}>
+                          {sourceScopeSegments.length > 0
+                            ? sourceScopeSegments.map((part, index) => (
+                                <em key={part}>{index > 0 ? ` / ${part}` : part}</em>
+                              ))
+                            : <em>{view.sourceScope}</em>}
+                        </span>
+                      </div>
+                    </article>
+                  ) : null}
+                  <div data-testid="module-home-kpi-strip" className={marketStyles.marketKpiBox}>
+                    {marketKpis.map((item) => {
+                      const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
+                      return (
+                        <div
+                          className={`${marketStyles.marketKpiTile} ${marketStyles.marketDeskPanel}`}
+                          data-tone={item.tone}
+                          key={item.key}
+                        >
+                          <div className={dhStyles.dhMetricLabel}>{item.label}</div>
+                          <div className={marketStyles.marketKpiValueRow}>
+                            <div
+                              className={`${dhStyles.dhMetricValue} ${dhStyles.dhNum} ${marketStyles.marketMetricNum} ${toneClass(item.tone)}`}
+                            >
+                              {item.value}
+                            </div>
+                            {item.sparkline && item.sparkline.length >= 2 ? (
+                              <MarketHomeKpiSparkline
+                                values={item.sparkline}
+                                tone={item.tone}
+                                changeDirection={changeDirection}
+                              />
+                            ) : null}
+                          </div>
+                          <div className={dhStyles.dhChange}>
+                            <span
+                              className={`${changeDirectionClass(item.detail, item.sparkline)} ${marketStyles.marketMetricNum} ${marketStyles.marketKpiDetail}`}
+                              data-testid={`module-home-market-kpi-${item.key}-detail`}
+                              data-change={changeDirection ?? "flat"}
+                            >
+                              {evidenceSegments(item.detail).map((part) => (
+                                <em key={part}>{part}</em>
+                              ))}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </section>
 
                 {secondaryBriefings.length > 0 ? (
@@ -300,13 +350,38 @@ export default function MarketHomeLayout({
                 行情 {latestTradeDate || "—"}，正式序列 {formalTradeDate || "—"}；{view.stateLabel}。
               </p>
 
-              <div className={marketStyles.evidenceRailMetricGrid} data-testid="module-home-market-evidence-rail-metrics">
-                {marketKpis.map((item) => (
-                  <div className={marketStyles.evidenceRailMetric} data-tone={item.tone} key={item.key}>
-                    <span>{item.label}</span>
-                    <strong className={dhStyles.dhNum}>{item.value}</strong>
-                  </div>
-                ))}
+              <div
+                className={marketStyles.evidenceRailScrollBlock}
+                data-testid="module-home-market-evidence-rail-metrics-scroll"
+              >
+                <span className={marketStyles.evidenceRailScrollHint}>滑动查看更多指标</span>
+                <div
+                  aria-label="市场快照指标"
+                  className={marketStyles.evidenceRailMetricGrid}
+                  data-testid="module-home-market-evidence-rail-metrics"
+                  onKeyDown={handleHorizontalScrollKeyboard}
+                  role="region"
+                  tabIndex={0}
+                >
+                  {marketKpis.map((item) => {
+                    const change = marketChangePresentation(item.detail, item.sparkline, MARKET_CHANGE_CLASSES);
+                    return (
+                      <div className={marketStyles.evidenceRailMetric} data-tone={item.tone} key={item.key}>
+                        <span>{item.label}</span>
+                        <strong className={`${dhStyles.dhNum} ${marketStyles.marketMetricNum}`}>{item.value}</strong>
+                        {item.detail ? (
+                          <em
+                            className={`${dhStyles.dhNum} ${marketStyles.evidenceRailMetricDetail} ${change.className}`}
+                            data-testid={`module-home-market-evidence-rail-${item.key}`}
+                            data-change={change.direction ?? "flat"}
+                          >
+                            {item.detail}
+                          </em>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <section
@@ -325,85 +400,111 @@ export default function MarketHomeLayout({
                 </div>
               </section>
 
-              <nav className={marketStyles.evidenceRailActionList} aria-label="市场模块入口">
-                <Link to="/market-data" className={marketStyles.evidenceRailLink}>
-                  市场数据
-                </Link>
-                <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>
-                  宏观工具
-                </Link>
-                <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>
-                  跨资产
-                </Link>
-              </nav>
+              <div
+                className={marketStyles.evidenceRailScrollBlock}
+                data-testid="module-home-market-evidence-rail-actions-scroll"
+              >
+                <span className={marketStyles.evidenceRailScrollHint}>滑动查看更多入口</span>
+                <nav
+                  aria-label="市场模块入口"
+                  className={marketStyles.evidenceRailActionList}
+                  onKeyDown={handleHorizontalScrollKeyboard}
+                  tabIndex={0}
+                >
+                  <Link to="/market-data" className={marketStyles.evidenceRailLink}>
+                    市场数据
+                  </Link>
+                  <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>
+                    宏观工具
+                  </Link>
+                  <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>
+                    跨资产
+                  </Link>
+                </nav>
+              </div>
             </aside>
           </section>
 
-        <section className={marketStyles.marketWorkbenchSection}>
+        <section className={marketStyles.marketDepthZone} data-testid="module-home-market-depth-zone">
           <div className={dhStyles.dhSectionTitle}>
-            <span>市场工作台</span>
+            <span>市场深度</span>
             <Link to="/market-data" className={dhStyles.dhLink}>
               完整市场数据 →
             </Link>
           </div>
-          <div className={marketStyles.workGrid}>
-          {keyRatePanel ? <MarketRateLadder panel={keyRatePanel} viewAllPath="/market-data" /> : null}
-          <div
-            data-testid="module-home-market-terminal"
-            className={`${dhStyles.dhCard} ${marketStyles.terminalCard} ${
-              isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""
-            }`}
-          >
-            <div className={dhStyles.dhSectionTitle}>
-              <span>行情序列</span>
-            </div>
-            <Tabs defaultActiveKey="formal-rate-series" items={tabItems} />
-          </div>
-          </div>
-        </section>
+          <p className={marketStyles.marketDepthLead}>
+            曲线、跨资产与正式序列按参考驾驶舱栅格展开；图表与表格均来自既有 API 返回，前端不重算指标。
+          </p>
 
-        <section className={marketStyles.depthSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>市场深度</span>
-          </div>
-          <div className={marketStyles.depthQuad}>
+          <section className={marketStyles.marketAnalysisGrid} data-testid="module-home-market-analysis-grid">
             {yieldCurvePanel ? (
               <MarketDepthPanel
+                chartHeight={220}
+                className={marketStyles.marketAnalysisCurve}
+                layout="chart-first"
                 panel={yieldCurvePanel}
                 testId={DETAIL_PANEL_TEST_IDS[yieldCurvePanel.key]}
               />
             ) : null}
-            {macroPanel ? (
-              <MarketDepthPanel panel={macroPanel} testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]} />
-            ) : null}
+            <div className={marketStyles.marketAnalysisSideStack}>
+              {macroPanel ? (
+                <MarketDepthPanel panel={macroPanel} testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]} />
+              ) : null}
+              {catalogPanel ? (
+                <MarketDepthPanel
+                  compact
+                  panel={catalogPanel}
+                  testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
+                />
+              ) : null}
+            </div>
+            <div
+              className={`${marketStyles.marketDeskPanel} ${marketStyles.terminalCard} ${marketStyles.marketAnalysisRates} ${
+                isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""
+              }`}
+              data-testid="module-home-market-terminal"
+            >
+              <div className={dhStyles.dhSectionTitle}>
+                <span>正式利率序列</span>
+              </div>
+              <Tabs defaultActiveKey="formal-rate-series" items={tabItems} />
+            </div>
+          </section>
+
+          <section className={marketStyles.marketDistributionGrid} data-testid="module-home-market-distribution-grid">
             {formalPanel ? (
               <MarketDepthPanel
+                compact
                 panel={formalPanel}
                 testId={DETAIL_PANEL_TEST_IDS[formalPanel.key]}
-                compact
               />
             ) : null}
-            {catalogPanel ? (
+            {keyRatePanel && keyRatePanel.rows.length > 0 ? (
+              <MarketDepthPanel compact panel={keyRatePanel} testId="module-home-key-rate-depth" />
+            ) : null}
+            {macroOverviewPanel && macroOverviewPanel.rows.length > 0 ? (
               <MarketDepthPanel
-                panel={catalogPanel}
-                testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
                 compact
+                panel={macroOverviewPanel}
+                testId="module-home-macro-overview-depth"
               />
             ) : null}
+          </section>
+
+          <div className={marketStyles.marketToolkitRow}>
+            <MarketMacroToolkitSection
+              overviewPanel={macroOverviewPanel}
+              signalPanel={macroSignalPanel}
+              capabilityPanel={macroCapabilityPanel}
+              indicatorPanel={macroIndicatorPanel}
+              strategyPanel={macroStrategyPanel}
+              aShareRiskPanel={macroAShareRiskPanel}
+              hasonPanel={macroHasonPanel}
+              shadowPanel={macroShadowPanel}
+              runtimePanel={macroRuntimePanel}
+            />
           </div>
         </section>
-
-        <MarketMacroToolkitSection
-          overviewPanel={macroOverviewPanel}
-          signalPanel={macroSignalPanel}
-          capabilityPanel={macroCapabilityPanel}
-          indicatorPanel={macroIndicatorPanel}
-          strategyPanel={macroStrategyPanel}
-          aShareRiskPanel={macroAShareRiskPanel}
-          hasonPanel={macroHasonPanel}
-          shadowPanel={macroShadowPanel}
-          runtimePanel={macroRuntimePanel}
-        />
 
         <section className={marketStyles.navigationSection}>
         <section data-testid="module-home-observation" className={marketStyles.observationSection}>
@@ -411,21 +512,21 @@ export default function MarketHomeLayout({
             <span>观察入口</span>
           </div>
           <div className={marketStyles.observationGrid}>
-            <Link className={`${dhStyles.dhCard} ${marketStyles.observationCard}`} to="/cross-asset">
-              <strong>跨资产驱动</strong>
-              <span className={marketStyles.observationBadge}>观察口径</span>
-              <p>宏观、汇率与权益向债券组合的传导解释。</p>
-            </Link>
-            <Link className={`${dhStyles.dhCard} ${marketStyles.observationCard}`} to="/news-events">
-              <strong>新闻事件</strong>
-              <span className={marketStyles.observationBadge}>已开放</span>
-              <p>Choice 新闻事件、回调异常与事件列表摘要。</p>
-            </Link>
-            <Link className={`${dhStyles.dhCard} ${marketStyles.observationCard}`} to="/macro-toolkit">
-              <strong>宏观工具</strong>
-              <span className={marketStyles.observationBadge}>工具口径</span>
-              <p>脚本注册表、信号卡片与能力模块完整页。</p>
-            </Link>
+            {MARKET_QUICK_ACCESS_TILES.map((tile) => (
+              <Link
+                className={`${dhStyles.dhCard} ${marketStyles.observationCard}`}
+                data-testid={`module-home-observation-${tile.key}`}
+                key={tile.key}
+                to={tile.path}
+              >
+                <span aria-hidden="true" className={marketStyles.marketTileIcon}>
+                  {tile.icon}
+                </span>
+                <strong>{tile.label}</strong>
+                <span className={marketStyles.observationBadge}>{tile.badge}</span>
+                <p>{tile.description}</p>
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -441,9 +542,13 @@ export default function MarketHomeLayout({
                   key={item.key}
                   to={item.path}
                   aria-current={isCurrentHome ? "page" : undefined}
-                  className={`${marketStyles.drillLink} ${isCurrentHome ? marketStyles.drillLinkCurrent : ""}`}
+                  className={`${dhStyles.dhCard} ${marketStyles.drillLink} ${isCurrentHome ? marketStyles.drillLinkCurrent : ""}`}
+                  data-testid={`module-home-drill-${item.key}`}
                   title={item.description}
                 >
+                  <span aria-hidden="true" className={marketStyles.marketTileIcon}>
+                    {marketDrillIconLabel(item.key)}
+                  </span>
                   <b>{item.label}</b>
                   <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
                   <span className={marketStyles.drillDesc}>{item.description}</span>

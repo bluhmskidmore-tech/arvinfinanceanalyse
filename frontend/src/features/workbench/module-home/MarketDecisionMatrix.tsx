@@ -1,6 +1,13 @@
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { marketChangePresentation } from "./marketHomeChangeTone";
 import type { ModuleHomeDetailPanel, ModuleHomeDetailRow, ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
+
+const MARKET_CHANGE_CLASSES = {
+  up: dhStyles.dhUpRed,
+  down: dhStyles.dhDownGreen,
+  neutral: dhStyles.dhMuted,
+} as const;
 
 type MarketDecisionMatrixProps = {
   view: ModuleHomeView;
@@ -19,6 +26,8 @@ type MatrixItem = {
   label: string;
   headline: string;
   summary: string[];
+  summaryDetail?: string;
+  summarySparkline?: readonly number[];
   meta: string[];
   evidence: string[];
   tone: ModuleHomeTone;
@@ -72,14 +81,6 @@ function rowHeadline(row?: ModuleHomeDetailRow, fallback = "待返回") {
   return row ? `${row.label} ${row.value}` : fallback;
 }
 
-function renderBlockTextSeparator(key: string) {
-  return (
-    <span aria-hidden="true" className={marketStyles.blockTextSeparator} hidden key={key}>
-      {" / "}
-    </span>
-  );
-}
-
 function rowMeta(row?: ModuleHomeDetailRow) {
   if (!row) return [];
   return compactParts([validDate(row.tradeDate) ? row.tradeDate : null, row.detail, row.source]);
@@ -88,6 +89,13 @@ function rowMeta(row?: ModuleHomeDetailRow) {
 function rowSummary(row?: ModuleHomeDetailRow) {
   if (!row) return [];
   return compactParts([row.detail, validDate(row.tradeDate) ? row.tradeDate : null]);
+}
+
+function matrixChangeText(item: MatrixItem) {
+  if (item.summaryDetail?.trim()) {
+    return item.summaryDetail;
+  }
+  return item.summary[0] ?? "—";
 }
 
 function findRow(panel: ModuleHomeDetailPanel | undefined, patterns: string[]) {
@@ -133,6 +141,8 @@ export function MarketDecisionMatrix({
       label: "利率曲线",
       headline: rowHeadline(rateRow, "待曲线核验"),
       summary: rateRow ? rowSummary(rateRow) : compactParts([yieldCurvePanel?.stateDetail ?? keyRatePanel?.stateDetail]),
+      summaryDetail: rateRow?.detail,
+      summarySparkline: rateRow?.sparkline,
       meta: panelCoverage(ratePanel, formalTradeDate),
       evidence: rateRow ? rowMeta(rateRow) : compactParts([yieldCurvePanel?.stateDetail ?? keyRatePanel?.stateDetail]),
       tone: yieldCurvePanel?.tone ?? keyRatePanel?.tone ?? "muted",
@@ -142,6 +152,8 @@ export function MarketDecisionMatrix({
       label: "流动性",
       headline: rowHeadline(liquidity),
       summary: rowSummary(liquidity),
+      summaryDetail: liquidity?.detail,
+      summarySparkline: liquidity?.sparkline,
       meta: liquidity ? rowMeta(liquidity) : panelCoverage(keyRatePanel, latestTradeDate),
       evidence: compactParts([keyRatePanel?.stateDetail]),
       tone: liquidity?.tone ?? keyRatePanel?.tone ?? "muted",
@@ -151,6 +163,8 @@ export function MarketDecisionMatrix({
       label: "跨资产",
       headline: rowHeadline(crossAsset),
       summary: rowSummary(crossAsset),
+      summaryDetail: crossAsset?.detail,
+      summarySparkline: crossAsset?.sparkline,
       meta: panelCoverage(macroPanel, latestTradeDate),
       evidence: compactParts([macroPanel?.meta]),
       tone: macroPanel?.tone ?? "muted",
@@ -160,6 +174,8 @@ export function MarketDecisionMatrix({
       label: "宏观归因",
       headline: rowHeadline(macroStance),
       summary: rowSummary(macroStance),
+      summaryDetail: macroStance?.detail,
+      summarySparkline: macroStance?.sparkline,
       meta: panelCoverage(macroOverviewPanel, latestTradeDate),
       evidence: compactParts([macroOverviewPanel?.stateDetail]),
       tone: macroStance?.tone ?? macroOverviewPanel?.tone ?? "muted",
@@ -175,8 +191,12 @@ export function MarketDecisionMatrix({
       auditOnly: true,
     },
   ];
+
   return (
-    <section className={marketStyles.decisionMatrix} data-testid="module-home-market-matrix">
+    <section
+      className={`${marketStyles.decisionMatrix} ${marketStyles.marketDeskPanel}`}
+      data-testid="module-home-market-matrix"
+    >
       <div className={marketStyles.decisionMatrixHeader}>
         <span>市场决策要点</span>
         <em>利率 / 流动性 / 跨资产 / 宏观</em>
@@ -184,45 +204,90 @@ export function MarketDecisionMatrix({
           Market Decision Tape
         </i>
       </div>
-      <div className={marketStyles.decisionMatrixGrid}>
-        {items.map((item) => (
-          <article
-            className={marketStyles.decisionMatrixCell}
-            data-testid={`module-home-market-matrix-cell-${item.key}`}
-            data-tone={item.tone}
-            hidden={item.auditOnly}
-            key={item.key}
-          >
-            <span>{item.label}</span>
-            <strong
-              className={`${dhStyles.dhNum} ${toneClass(item.tone)}`}
-              data-testid={`module-home-market-matrix-cell-${item.key}-headline`}
+      <div className={marketStyles.decisionMatrixTape}>
+        <div aria-hidden="true" className={marketStyles.decisionMatrixTableHead}>
+          <span>维度</span>
+          <span>读数</span>
+          <span>变动</span>
+        </div>
+        {items.map((item) => {
+          const summaryChange = marketChangePresentation(
+            item.summaryDetail,
+            item.summarySparkline,
+            MARKET_CHANGE_CLASSES,
+          );
+          const changeText = matrixChangeText(item);
+
+          if (item.auditOnly) {
+            return (
+              <div
+                className={marketStyles.decisionMatrixTableRow}
+                data-testid={`module-home-market-matrix-cell-${item.key}`}
+                data-tone={item.tone}
+                hidden
+                key={item.key}
+              >
+                <span className={marketStyles.decisionMatrixTableLabel}>{item.label}</span>
+                <strong data-testid={`module-home-market-matrix-cell-${item.key}-headline`}>{item.headline}</strong>
+                <span data-testid={`module-home-market-matrix-cell-${item.key}-summary`}>—</span>
+                <em
+                  aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
+                  className={marketStyles.decisionMatrixMeta}
+                  data-testid={`module-home-market-matrix-cell-${item.key}-meta`}
+                >
+                  {item.meta.length > 0 ? renderFieldSegments(item.meta) : <span>待返回</span>}
+                </em>
+                <p
+                  className={marketStyles.decisionMatrixEvidence}
+                  aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
+                  data-testid={`module-home-market-matrix-cell-${item.key}-evidence`}
+                >
+                  {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              className={marketStyles.decisionMatrixTableRow}
+              data-testid={`module-home-market-matrix-cell-${item.key}`}
+              data-tone={item.tone}
+              key={item.key}
             >
-              {item.headline}
-            </strong>
-            {item.summary.length > 0 ? (
-              <small className={marketStyles.decisionMatrixSummary}>{renderFieldSegments(item.summary)}</small>
-            ) : null}
-            {renderBlockTextSeparator(`${item.key}-headline-meta`)}
-            <em
-              aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
-              className={marketStyles.decisionMatrixMeta}
-              data-testid={`module-home-market-matrix-cell-${item.key}-meta`}
-              hidden
-            >
-              {item.meta.length > 0 ? renderFieldSegments(item.meta) : <span>待返回</span>}
-            </em>
-            {renderBlockTextSeparator(`${item.key}-meta-evidence`)}
-            <p
-              className={marketStyles.decisionMatrixEvidence}
-              aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
-              data-testid={`module-home-market-matrix-cell-${item.key}-evidence`}
-              hidden
-            >
-              {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
-            </p>
-          </article>
-        ))}
+              <span className={marketStyles.decisionMatrixTableLabel}>{item.label}</span>
+              <strong
+                className={`${marketStyles.decisionMatrixTableValue} ${dhStyles.dhNum} ${marketStyles.marketMetricNum} ${toneClass(item.tone)}`}
+                data-testid={`module-home-market-matrix-cell-${item.key}-headline`}
+              >
+                {item.headline}
+              </strong>
+              <span
+                className={`${marketStyles.decisionMatrixTableChange} ${dhStyles.dhNum} ${marketStyles.marketMetricNum} ${summaryChange.className}`}
+                data-change={summaryChange.direction ?? "flat"}
+                data-testid={`module-home-market-matrix-cell-${item.key}-summary`}
+              >
+                {changeText}
+              </span>
+              <em
+                aria-label={item.meta.length > 0 ? item.meta.join(" / ") : undefined}
+                className={marketStyles.decisionMatrixMeta}
+                data-testid={`module-home-market-matrix-cell-${item.key}-meta`}
+                hidden
+              >
+                {item.meta.length > 0 ? renderFieldSegments(item.meta) : <span>待返回</span>}
+              </em>
+              <p
+                className={marketStyles.decisionMatrixEvidence}
+                aria-label={item.evidence.length > 0 ? item.evidence.join(" / ") : undefined}
+                data-testid={`module-home-market-matrix-cell-${item.key}-evidence`}
+                hidden
+              >
+                {item.evidence.length > 0 ? renderFieldSegments(item.evidence) : <span>待返回</span>}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

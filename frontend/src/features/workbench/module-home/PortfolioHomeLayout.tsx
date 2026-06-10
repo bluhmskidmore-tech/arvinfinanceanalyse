@@ -12,9 +12,20 @@ import type {
   ModuleHomeView,
 } from "./moduleHomeModel";
 import type { ModuleWorkbenchHomeConfig } from "./moduleHomeConfig";
+import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
+import { marketChangePresentation, resolveMarketChangeDirection } from "./marketHomeChangeTone";
 import { PortfolioDistributionPanel } from "./PortfolioDistributionPanel";
+import { PortfolioHoldingsHeroBand } from "./PortfolioHoldingsHeroBand";
+import { PORTFOLIO_QUICK_ACCESS_TILES } from "./portfolioHomeQuickAccess";
+import { PortfolioRiskTickerBar } from "./PortfolioRiskTickerBar";
 import { PortfolioStructureTabPanel } from "./PortfolioStructureTabPanel";
 import styles from "./portfolioHome.module.css";
+
+const PORTFOLIO_KPI_CHANGE_CLASSES = {
+  up: dhStyles.dhUpRed,
+  down: dhStyles.dhDownGreen,
+  neutral: dhStyles.dhMuted,
+} as const;
 
 const ANALYSIS_TABS = [
   { key: "portfolio-comparison", label: "子组合" },
@@ -446,6 +457,10 @@ export default function PortfolioHomeLayout({
   const riskPanel = panelByKey(view.detailPanels, "risk-indicators-detail");
   const basisPanel = panelByKey(view.detailPanels, "balance-basis");
   const pnlPanel = panelByKey(view.detailPanels, "pnl-attribution-summary");
+  const assetTypePanel = view.distributionPanels?.find((panel) => panel.key === "asset-type");
+  const portfolioComparisonPanel = panelByKey(view.detailPanels, "portfolio-comparison");
+  const secondaryDistributionPanels =
+    view.distributionPanels?.filter((panel) => panel.key !== "asset-type") ?? [];
 
   const tabItems = useMemo(() => {
     const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
@@ -498,9 +513,70 @@ export default function PortfolioHomeLayout({
         <section data-testid="module-home-portfolio-cockpit" className={styles.portfolioCockpit}>
           <section data-testid="module-home-portfolio-first-screen" className={styles.portfolioPrimaryGrid}>
             <div className={styles.portfolioPrimaryColumn}>
+              <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
+                <SectionHead label="指标" title="核心指标" />
+                <div className={styles.kpiGridTape}>
+                <div className={styles.kpiGrid}>
+                  {view.kpis.map((item) => {
+                    const value = splitKpiValue(item.value);
+                    const changeDirection = resolveMarketChangeDirection(item.detail, item.sparkline);
+                    return (
+                      <article
+                        className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard}`}
+                        data-tone={item.tone}
+                        key={item.key}
+                        data-testid={`module-home-portfolio-kpi-${item.key}`}
+                      >
+                        <div className={dhStyles.dhTerminalKpiTop}>
+                          <span className={styles.kpiLabel}>{item.label}</span>
+                        </div>
+                        <div className={styles.portfolioKpiValueRow}>
+                          <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>
+                            <span>{value.number}</span>
+                            {value.unit ? (
+                              <>
+                                {" "}
+                                <small>{value.unit}</small>
+                              </>
+                            ) : null}
+                          </div>
+                          {item.sparkline && item.sparkline.length >= 2 ? (
+                            <MarketHomeKpiSparkline
+                              values={item.sparkline}
+                              tone={item.tone}
+                              changeDirection={changeDirection}
+                              className={styles.portfolioKpiSparkline}
+                            />
+                          ) : null}
+                        </div>
+                        <div
+                          className={`${styles.kpiDetail} ${marketChangePresentation(
+                            item.detail,
+                            item.sparkline,
+                            PORTFOLIO_KPI_CHANGE_CLASSES,
+                          ).className}`}
+                          data-testid={`module-home-portfolio-kpi-${item.key}-detail`}
+                          data-change={changeDirection ?? "flat"}
+                        >
+                          {item.detail}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+                </div>
+              </section>
+
+              <PortfolioRiskTickerBar riskPanel={riskPanel} />
+
+              <PortfolioHoldingsHeroBand
+                panel={assetTypePanel}
+                portfolioComparisonPanel={portfolioComparisonPanel}
+              />
+
               <DecisionPanel view={view} />
 
-              <PortfolioChartSnapshot panels={view.distributionPanels} />
+              <PortfolioChartSnapshot panels={secondaryDistributionPanels} />
 
               <section data-testid="module-home-briefing" className={styles.sectionBlock}>
                 <SectionHead label="组合" title="组合摘要" />
@@ -517,36 +593,6 @@ export default function PortfolioHomeLayout({
                       <span className={styles.briefEvidence}>{item.evidence}</span>
                     </article>
                   ))}
-                </div>
-              </section>
-
-              <section data-testid="module-home-kpi-strip" className={styles.sectionBlock}>
-                <SectionHead label="指标" title="核心指标" />
-                <div className={styles.kpiGrid}>
-                  {view.kpis.map((item) => {
-                    const value = splitKpiValue(item.value);
-                    return (
-                      <article
-                        className={`${dhStyles.dhCard} ${dhStyles.dhTerminalKpi} ${styles.kpiCard}`}
-                        data-tone={item.tone}
-                        key={item.key}
-                      >
-                        <div className={dhStyles.dhTerminalKpiTop}>
-                          <span className={styles.kpiLabel}>{item.label}</span>
-                        </div>
-                        <div className={`${styles.kpiValue} ${toneClass(item.tone)}`}>
-                          <span>{value.number}</span>
-                          {value.unit ? (
-                            <>
-                              {" "}
-                              <small>{value.unit}</small>
-                            </>
-                          ) : null}
-                        </div>
-                        <div className={styles.kpiDetail}>{item.detail}</div>
-                      </article>
-                    );
-                  })}
                 </div>
               </section>
             </div>
@@ -574,22 +620,22 @@ export default function PortfolioHomeLayout({
             </div>
           </section>
 
-        {view.distributionPanels && view.distributionPanels.length > 0 ? (
+        {secondaryDistributionPanels.length > 0 ? (
           <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
             <div className={styles.sectionHead}>
               <span>持仓</span>
-              <strong>持仓结构</strong>
+              <strong>结构分布</strong>
               <Link className={styles.holdingsSectionLink} to="/positions">
                 持仓透视
               </Link>
             </div>
-            <div className={styles.holdingsGrid}>
-              {view.distributionPanels.map((panel) => (
+            <div className={`${styles.holdingsGrid} ${styles.holdingsGridSecondary}`}>
+              {secondaryDistributionPanels.map((panel) => (
                 <DistributionPanelCard panel={panel} key={panel.key} />
               ))}
             </div>
           </section>
-        ) : (
+        ) : !view.distributionPanels?.length ? (
           <section data-testid="module-home-holdings-structure" className={`${styles.sectionBlock} ${styles.holdingsAnalysisBand}`}>
             <div className={styles.sectionHead}>
               <span>持仓</span>
@@ -599,7 +645,7 @@ export default function PortfolioHomeLayout({
               当前无可用正式持仓结构读数；样例明细不展示为组合事实。
             </p>
           </section>
-        )}
+        ) : null}
 
         <section
           data-testid="module-home-portfolio-terminal"
@@ -624,8 +670,30 @@ export default function PortfolioHomeLayout({
           </div>
         </section>
 
+        <section
+          data-testid="module-home-portfolio-quick-access"
+          className={`${styles.sectionBlock} ${styles.quickAccessBlock}`}
+        >
+          <SectionHead label="快捷" title="分析入口" />
+          <div className={styles.quickAccessGrid}>
+            {PORTFOLIO_QUICK_ACCESS_TILES.map((tile) => (
+              <Link
+                key={tile.key}
+                to={tile.path}
+                className={`${dhStyles.dhCard} ${dhStyles.dhTerminalQuick} ${styles.quickAccessCard}`}
+                title={tile.description}
+                data-testid={`module-home-portfolio-quick-${tile.key}`}
+              >
+                <span>{tile.icon}</span>
+                <b>{tile.label}</b>
+                <em>{tile.badge}</em>
+              </Link>
+            ))}
+          </div>
+        </section>
+
         <section data-testid="module-home-drilldowns" className={`${styles.sectionBlock} ${styles.drilldownBlock}`}>
-          <SectionHead label="明细" title="下钻入口" />
+          <SectionHead label="明细" title="全部分组入口" />
           <div className={styles.drillGrid}>
             {config.drilldowns.map((item) => {
               const icon = (item.icon && DRILL_ICON_MAP[item.icon]) ?? <LightIcon name="arrow-right" />;

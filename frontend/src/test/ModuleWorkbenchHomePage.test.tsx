@@ -181,7 +181,16 @@ function realPortfolioHomeSummary(): BondDashboardHomeSummaryPayload {
         total_dv01: n(105_628_442.39590558, "dv01"),
         bond_count: 1710,
       },
-      prev_kpis: null,
+      prev_kpis: {
+        total_market_value: n(330_000_000_000, "yuan"),
+        unrealized_pnl: n(8_100_000_000, "yuan", true),
+        weighted_ytm: n(0.0251, "pct", true),
+        weighted_duration: n(4.35, "ratio"),
+        weighted_coupon: n(0.0185, "pct", true),
+        credit_spread_median: n(0.0235, "pct", true),
+        total_dv01: n(104_000_000, "dv01"),
+        bond_count: 1700,
+      },
     },
     risk: {
       report_date: reportDate,
@@ -755,6 +764,56 @@ describe("PortfolioHomePage", () => {
     expect(page).not.toHaveTextContent("不可用于业务决策");
   });
 
+  it("renders portfolio terminal kpi sparklines from prev_kpis and a risk ticker strip", async () => {
+    renderAt("/portfolio", realPortfolioClient());
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(within(page).getByTestId("module-home-portfolio-risk-ticker")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-kpi-strip").querySelectorAll("svg").length).toBeGreaterThanOrEqual(
+        2,
+      );
+      expect(within(page).getByTestId("module-home-portfolio-kpi-bond-market-detail")).toHaveTextContent("环比");
+      expect(within(page).getByTestId("module-home-portfolio-ticker-risk-total-dv01")).toHaveTextContent("万元");
+    });
+  });
+
+  it("renders portfolio holdings hero table and quick access tiles from API-backed panels", async () => {
+    renderAt("/portfolio", realPortfolioClient());
+
+    const page = await screen.findByTestId("module-workbench-home");
+    await waitFor(() => {
+      expect(within(page).getByTestId("module-home-portfolio-holdings-hero")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-portfolio-holdings-row-政策性金融债")).toHaveTextContent(
+        "675.35",
+      );
+      expect(within(page).getByTestId("module-home-portfolio-comparison-hero-table")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-portfolio-comparison-row-portfolio-固收组合")).toHaveTextContent(
+        "固收组合",
+      );
+      expect(within(page).getByTestId("module-home-portfolio-quick-access")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-portfolio-quick-bond-dashboard")).toHaveAttribute(
+        "href",
+        "/bond-dashboard",
+      );
+      expect(within(page).getByTestId("module-home-portfolio-quick-positions")).toHaveAttribute("href", "/positions");
+    });
+  });
+
+  it("keeps portfolio quick access after the first-screen block in cockpit DOM order", async () => {
+    renderAt("/portfolio");
+
+    const page = await screen.findByTestId("module-workbench-home");
+    const cockpit = within(page).getByTestId("module-home-portfolio-cockpit");
+    const firstScreen = within(cockpit).getByTestId("module-home-portfolio-first-screen");
+    const quickAccess = within(cockpit).getByTestId("module-home-portfolio-quick-access");
+
+    expect(
+      firstScreen.compareDocumentPosition(quickAccess) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(firstScreen).getByTestId("module-home-kpi-strip")).toBeInTheDocument();
+  });
+
   it("renders normal portfolio action queue only when all evidence is same-day formal", async () => {
     renderAt("/portfolio", realPortfolioClient());
 
@@ -955,9 +1014,12 @@ describe("PortfolioHomePage", () => {
       expect(page).toHaveTextContent("期限分布");
       expect(page).toHaveTextContent("收益率分布");
     });
+    const hero = within(page).getByTestId("module-home-portfolio-holdings-hero");
+    expect(hero).toHaveTextContent("券种分布");
     const holdings = within(page).getByTestId("module-home-holdings-structure");
     expect(within(holdings).getByTestId("module-home-distribution-yield")).toBeInTheDocument();
-    expect(within(holdings).getAllByRole("link", { name: "查看全部" }).length).toBeGreaterThanOrEqual(5);
+    expect(within(holdings).queryByTestId("module-home-distribution-asset-type")).not.toBeInTheDocument();
+    expect(within(holdings).getAllByRole("link", { name: "查看全部" }).length).toBeGreaterThanOrEqual(4);
     expect(within(holdings).getByRole("link", { name: "持仓透视" })).toHaveAttribute("href", "/positions");
   });
 
@@ -1112,7 +1174,12 @@ describe("MarketHomePage", () => {
     const evidenceRail = within(page).getByTestId("module-home-market-evidence-rail");
 
     expect(cockpit.className).toEqual(expect.stringContaining("marketInstitutionalCockpit"));
+    expect(cockpit.className).toEqual(expect.stringContaining("marketCockpitCohesion"));
+    expect(within(page).getByTestId("module-home-market-macro-ticker")).toBeInTheDocument();
     expect(primaryGrid).toContainElement(within(page).getByTestId("module-home-briefing"));
+    expect(
+      within(page).getByTestId("module-home-briefing").querySelector('[class*="marketJudgementHero"]'),
+    ).toBeTruthy();
     expect(primaryGrid).toContainElement(evidenceRail);
     expect(within(evidenceRail).getByText("市场快照")).toBeVisible();
     const evidenceRailMetrics = within(evidenceRail).getByTestId("module-home-market-evidence-rail-metrics");
@@ -1123,6 +1190,7 @@ describe("MarketHomePage", () => {
     expect(kpiStrip).toHaveTextContent("10Y国债");
     expect(kpiStrip).toHaveTextContent("流动性");
     expect(kpiStrip).toHaveTextContent("跨资产");
+    expect(kpiStrip).toHaveTextContent("宏观信号");
     expect(kpiStrip).not.toHaveTextContent("最新行情");
     expect(kpiStrip).not.toHaveTextContent("正式利率");
     expect(kpiStrip).not.toHaveTextContent("目录序列");
@@ -1156,11 +1224,24 @@ describe("MarketHomePage", () => {
     renderAt("/market-overview");
 
     const page = await screen.findByTestId("module-workbench-home");
-    expect(within(page).getByTestId("module-home-rate-snapshot")).toBeInTheDocument();
+    expect(within(page).queryByTestId("module-home-rate-snapshot")).not.toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-depth-zone")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-analysis-grid")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-distribution-grid")).toBeInTheDocument();
+    expect(within(page).getByTestId("module-home-market-terminal").className).toEqual(
+      expect.stringContaining("marketDeskPanel"),
+    );
+    expect(within(page).getByTestId("module-home-yield-curve").className).toEqual(
+      expect.stringContaining("marketDeskPanel"),
+    );
     expect(within(page).getByTestId("module-home-market-terminal")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-market-matrix")).toBeInTheDocument();
     const decisionMatrix = within(page).getByTestId("module-home-market-matrix");
+    expect(decisionMatrix.className).toEqual(expect.stringContaining("marketDeskPanel"));
     expect(decisionMatrix).toHaveTextContent("市场决策要点");
+    expect(decisionMatrix).toHaveTextContent("维度");
+    expect(decisionMatrix).toHaveTextContent("读数");
+    expect(decisionMatrix).toHaveTextContent("变动");
     expect(decisionMatrix).toHaveTextContent("待曲线核验");
     const decisionMatrixAuditLabel = within(decisionMatrix).getByTestId("module-home-market-matrix-audit-label");
     expect(decisionMatrixAuditLabel).toHaveAttribute("hidden");
@@ -1169,8 +1250,13 @@ describe("MarketHomePage", () => {
     expect(within(page).getByTestId("module-home-status-strip")).toHaveAttribute("hidden");
     expect(within(page).getByTestId("module-home-status-strip")).not.toBeVisible();
     const actionQueue = within(page).getByTestId("module-home-market-actions");
+    expect(actionQueue.className).toEqual(expect.stringContaining("marketDeskPanel"));
     expect(actionQueue).toHaveTextContent("下一步动作");
     expect(actionQueue).toHaveTextContent("只保留今天需要看的事");
+    expect(actionQueue).toHaveTextContent("优先级");
+    expect(actionQueue).toHaveTextContent("事项");
+    expect(actionQueue).toHaveTextContent("证据");
+    expect(actionQueue).toHaveTextContent("入口");
     expect(actionQueue).toHaveTextContent("补齐国债/国开曲线核验");
     const actionQueueAuditLabel = within(actionQueue).getByTestId("module-home-market-actions-audit-label");
     expect(actionQueueAuditLabel).toHaveAttribute("hidden");
@@ -1219,17 +1305,45 @@ describe("MarketHomePage", () => {
     expect(within(page).getByTestId("module-home-macro-snapshot")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-macro-toolkit")).toBeInTheDocument();
     expect(within(page).getByTestId("module-home-observation")).toBeInTheDocument();
-    expect(page).toHaveTextContent("关键利率快照");
+    expect(within(page).getAllByTestId(/^module-home-observation-/).length).toBe(6);
+    expect(within(page).getByTestId("module-home-observation-market-data")).toHaveTextContent("MD");
+    expect(page).not.toHaveTextContent("关键利率快照");
     expect(page).toHaveTextContent("正式利率序列");
     expect(page).toHaveTextContent("跨资产快讯");
     expect(page).toHaveTextContent("国债与国开曲线");
     await waitFor(() => {
       expect(page).toHaveTextContent("DR007");
+      expect(page.textContent).not.toMatch(/\dindex/);
+      expect(within(page).getByTestId("module-home-market-kpi-cross-asset-detail")).toHaveTextContent("日变动");
+      expect(within(page).getByTestId("module-home-market-kpi-cross-asset-detail")).toHaveAttribute("data-change", "down");
+      expect(within(page).getByTestId("module-home-kpi-strip").querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
+      expect(within(page).getByTestId("module-home-market-macro-ticker").querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
+      expect(within(page).getByTestId("module-home-market-macro-ticker")).toHaveTextContent("DR007");
+      expect(within(page).getByTestId("module-home-market-matrix-cell-rates-summary")).toHaveAttribute("data-change", "down");
+      const tenYearTicker = within(page).getByTestId("module-home-market-ticker-gov-10y");
+      expect(tenYearTicker.querySelector("[data-change]")).toBeTruthy();
+      expect(within(page).getByTestId("module-home-market-evidence-rail-ten-year")).toHaveAttribute("data-change");
+      const macroSnapshot = within(page).getByTestId("module-home-macro-snapshot");
+      expect(macroSnapshot.querySelector("[data-change]")).toBeTruthy();
       expect(within(page).getByTestId("module-home-market-terminal").querySelector('[data-chart-height="190"]')).toBeTruthy();
-      expect(within(page).getByTestId("module-home-rate-snapshot")).toHaveTextContent("样本");
       expect(within(page).getByTestId("module-home-market-terminal")).toHaveTextContent("图表");
       expect(within(page).getByTestId("module-home-yield-curve")).toHaveTextContent("来源");
       expect(within(page).getByTestId("module-home-macro-signals")).toBeInTheDocument();
+      expect(
+        within(page).getByTestId("module-home-macro-signal-risk_appetite").querySelector('[data-change="up"]'),
+      ).toBeTruthy();
+      expect(within(page).getByTestId("module-home-macro-signal-risk_appetite").querySelector("svg")).toBeTruthy();
+      expect(within(page).getByTestId("module-home-drill-market-overview")).toHaveTextContent("HO");
+      expect(within(page).getByTestId("module-home-market-evidence-rail-metrics-scroll")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-market-evidence-rail-actions-scroll")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-macro-signals-scroll")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-market-evidence-rail-metrics")).toHaveAttribute("tabindex", "0");
+      expect(within(page).getByTestId("module-home-macro-signals")).toHaveAttribute("tabindex", "0");
+      expect(within(page).getByTestId("module-home-market-macro-ticker-scroll")).toBeInTheDocument();
+      expect(within(page).getByTestId("module-home-market-macro-ticker").querySelector('[role="region"]')).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
       expect(within(page).getByTestId("module-home-macro-groups")).toBeInTheDocument();
       expect(page).toHaveTextContent("核心归因");
       expect(page).toHaveTextContent("工具明细");
@@ -1240,11 +1354,26 @@ describe("MarketHomePage", () => {
       expect(page).toHaveTextContent("橙色风险");
       expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("复核A股踩踏风险");
       expect(within(page).getByTestId("module-home-market-actions")).toHaveTextContent("跟踪跨资产传导");
+      const crossAssetAction = within(page).getByTestId("module-home-market-action-cross-asset-path");
+      const crossAssetEvidence = within(crossAssetAction).getByTestId(
+        "module-home-market-action-cross-asset-path-evidence",
+      );
+      expect(crossAssetEvidence.querySelector('[data-change="down"]')).toBeTruthy();
     });
     const macroGroups = within(page).getByTestId("module-home-macro-groups");
     await user.click(within(macroGroups).getByRole("button", { name: /展开明细/ }));
     await waitFor(() => {
       expect(within(page).getByTestId("module-home-macro-a-share-risk")).toBeInTheDocument();
+      expect(
+        within(page).getByTestId("module-home-macro-a-share-risk").querySelector('[class*="terminalTableHead"]'),
+      ).toBeTruthy();
+    });
+    await user.click(within(macroGroups).getByRole("tab", { name: "工具明细" }));
+    await user.click(within(macroGroups).getByRole("button", { name: /展开明细/ }));
+    await waitFor(() => {
+      const compactPanel = within(page).getByTestId("module-home-macro-capabilities");
+      expect(compactPanel.querySelector('[class*="terminalTableHeadCompact"]')).toBeTruthy();
+      expect(compactPanel).toHaveTextContent("Δ");
     });
     await user.click(within(macroGroups).getByRole("tab", { name: "组合运行" }));
     await waitFor(() => {
@@ -1291,9 +1420,6 @@ describe("MarketHomePage", () => {
 
     const page = await screen.findByTestId("module-workbench-home");
     await waitFor(() => {
-      expect(within(page).getByTestId("module-home-rate-snapshot").className).toEqual(
-        expect.stringContaining("marketCompactEmptyPanel"),
-      );
       expect(within(page).getByTestId("module-home-market-terminal").className).toEqual(
         expect.stringContaining("marketCompactEmptyTerminal"),
       );
@@ -1331,8 +1457,11 @@ describe("MarketHomePage", () => {
     expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-evidence")).toHaveTextContent(
       "2026-05-29 / -1bp / CA.CN_GOV_10Y",
     );
-    expect(matrixRateCell.textContent).toContain("2026-05-29 / 2026-05-29 / -1bp / CA.CN_GOV_10Y");
-    expect(matrixRateCell.textContent).not.toContain("2026-05-292026-05-29");
+    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-headline")).toHaveTextContent(
+      "10Y 国债 1.71%",
+    );
+    expect(within(matrixRateCell).getByTestId("module-home-market-matrix-cell-rates-summary")).toHaveTextContent("-1bp");
+    expect(matrixRateCell).toHaveTextContent("利率曲线");
     const keyRateAction = within(page).getByTestId("module-home-market-action-key-rate-check");
     const keyRateEvidence = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-evidence");
     const keyRateTaskMeta = within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-task-meta");
@@ -1343,13 +1472,17 @@ describe("MarketHomePage", () => {
     expect(keyRateEvidence).toHaveTextContent(
       "10Y 国债 / 1.71% / -1bp / 2026-05-29",
     );
+    expect(keyRateEvidence.querySelector('[data-change="down"]')).toBeTruthy();
     expect(keyRateEvidence).not.toHaveTextContent("CA.CN_GOV_10Y");
     expect(keyRateTaskMeta).not.toBeVisible();
     expect(keyRateGate).not.toBeVisible();
     expect(keyRateEvidencePack).not.toBeVisible();
     expect(keyRateEvidencePack).toHaveTextContent("Evidence Pack 10Y 国债 / CA.CN_GOV_10Y");
-    expect(keyRateAction.textContent).toContain(" / 10Y 国债 / 1.71%");
-    expect(keyRateAction.textContent).not.toContain("变动10Y 国债");
+    expect(within(keyRateAction).getByTestId("module-home-market-action-key-rate-check-target")).toHaveTextContent(
+      "利率序列",
+    );
+    expect(keyRateAction).toHaveTextContent("10Y 国债 / 1.71%");
+    expect(keyRateAction.textContent).not.toContain("事项10Y 国债");
   });
 
   it("renders all market module drilldown links", async () => {

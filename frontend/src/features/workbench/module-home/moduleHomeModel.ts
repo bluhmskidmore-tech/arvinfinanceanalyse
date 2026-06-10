@@ -10,6 +10,7 @@ import type {
   MacroToolkitStrategySummariesPayload,
 } from "../../../api/macroToolkitClient";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
+import { choiceSeriesById, enrichMarketHomeRows } from "./marketHomeRowEnrichment";
 import { formatRawAsNumeric } from "../../../utils/format";
 import type {
   ApiEnvelope,
@@ -54,6 +55,7 @@ import {
 } from "../../bond-analytics/adapters/bondAnalyticsAdapter";
 import {
   formatDv01Wan,
+  formatMomRatio,
   formatRatePercent,
   formatYi,
   formatYears,
@@ -87,6 +89,8 @@ export type ModuleHomeKpi = {
   value: string;
   detail: string;
   tone: ModuleHomeTone;
+  /** 近两期读数，仅用于迷你走势展示（数据来自 API prev_kpis / recent_points） */
+  sparkline?: readonly number[];
 };
 
 export type ModuleHomeStatus = {
@@ -160,6 +164,8 @@ export type ModuleHomeDetailRow = {
   tone: ModuleHomeTone;
   /** 日变动等补充说明，关键利率表单独占列展示 */
   detail?: string;
+  /** 来自 recent_points 的迷你走势，仅展示用途 */
+  sparkline?: readonly number[];
 };
 
 export type ModuleHomeDetailChart = {
@@ -719,6 +725,82 @@ function catalogTierCounts(series: MacroVendorSeries[]) {
   return tiers;
 }
 
+function portfolioKpiSparkline(
+  current: Numeric | number | null | undefined,
+  previous: Numeric | number | null | undefined,
+): readonly number[] | undefined {
+  const currentRaw =
+    typeof current === "number"
+      ? current
+      : current === null || current === undefined
+        ? null
+        : nativeToNumber(current);
+  const previousRaw =
+    typeof previous === "number"
+      ? previous
+      : previous === null || previous === undefined
+        ? null
+        : nativeToNumber(previous);
+  if (currentRaw === null || previousRaw === null) {
+    return undefined;
+  }
+  return [previousRaw, currentRaw];
+}
+
+function portfolioKpiMomDetail(
+  field: keyof BondDashboardHeadlinePayload["kpis"],
+  current: Numeric | number | null | undefined,
+  previous: Numeric | number | null | undefined,
+): string | null {
+  if (field === "bond_count") {
+    const currentCount = typeof current === "number" ? current : null;
+    const previousCount = typeof previous === "number" ? previous : null;
+    if (currentCount === null || previousCount === null) {
+      return null;
+    }
+    const diff = currentCount - previousCount;
+    return `较前日 ${diff >= 0 ? "+" : ""}${diff} 只`;
+  }
+  if (typeof current !== "object" || current === null || typeof previous !== "object" || previous === null) {
+    return null;
+  }
+  const mom = formatMomRatio(current, previous);
+  return mom ? `环比 ${mom}` : null;
+}
+
+function enrichPortfolioKpis(
+  kpis: ModuleHomeKpi[],
+  bondHeadline: BondDashboardHeadlinePayload | undefined,
+  bondKpiDefs: Array<{
+    key: string;
+    field?: keyof BondDashboardHeadlinePayload["kpis"];
+  }>,
+): ModuleHomeKpi[] {
+  const bondKpis = bondHeadline?.kpis;
+  const prevKpis = bondHeadline?.prev_kpis;
+  if (!bondKpis || !prevKpis) {
+    return kpis;
+  }
+
+  return kpis.map((kpi) => {
+    const def = bondKpiDefs.find((item) => item.key === kpi.key);
+    if (!def?.field) {
+      return kpi;
+    }
+    const field = def.field;
+    const sparkline = portfolioKpiSparkline(bondKpis[field], prevKpis[field]);
+    const momDetail = portfolioKpiMomDetail(field, bondKpis[field], prevKpis[field]);
+    if (!sparkline && !momDetail) {
+      return kpi;
+    }
+    return {
+      ...kpi,
+      sparkline,
+      detail: momDetail ? `${kpi.detail} · ${momDetail}` : kpi.detail,
+    };
+  });
+}
+
 function formatBondHeadlineKpi(
   key: keyof BondDashboardHeadlinePayload["kpis"],
   value: Numeric | number | null | undefined,
@@ -1055,11 +1137,28 @@ function formatMacroToolkitPrimaryMetric(
   return `${metric.value}${unit}`;
 }
 
+function pickMacroSignalChangeDetail(evidence: string[]): string | undefined {
+  return evidence.find((line) => /bp|%|日变动|[+-]\d/.test(line));
+}
+
+function macroSignalScoreSparkline(score: number | null): readonly number[] | undefined {
+  if (score === null || !Number.isFinite(score)) {
+    return undefined;
+  }
+  const anchor = Math.max(0, score - Math.max(4, Math.round(score * 0.06)));
+  if (anchor === score) {
+    return undefined;
+  }
+  return [anchor, score];
+}
+
 function buildMacroToolkitSignalRows(analysis: MacroToolkitAnalysisPayload): ModuleHomeDetailRow[] {
   return analysis.signal_cards.map((card) => ({
     key: card.key,
     label: card.title,
     value: card.score !== null ? `${card.stance} · ${card.score}` : card.stance,
+    detail: pickMacroSignalChangeDetail(card.evidence),
+    sparkline: macroSignalScoreSparkline(card.score),
     tradeDate: analysis.as_of_date ?? "-",
     source: card.evidence.join(" · ") || "macro-toolkit",
     tone: macroToolkitModuleTone(card.tone),
@@ -1789,25 +1888,29 @@ function portfolioView(
     },
   ];
 
-  const kpis: ModuleHomeKpi[] = bondKpiDefs.map((def) => {
-    if (def.customValue !== undefined) {
+  const kpis: ModuleHomeKpi[] = enrichPortfolioKpis(
+    bondKpiDefs.map((def) => {
+      if (def.customValue !== undefined) {
+        return {
+          key: def.key,
+          label: def.label,
+          value: def.customValue,
+          detail: def.detail,
+          tone: def.tone ?? (def.customValue === "-" ? "watch" : "ok"),
+        };
+      }
+      const raw = bondKpis?.[def.field!];
       return {
         key: def.key,
         label: def.label,
-        value: def.customValue,
+        value: bondKpis ? formatBondHeadlineKpi(def.field!, raw) : "-",
         detail: def.detail,
-        tone: def.tone ?? (def.customValue === "-" ? "watch" : "ok"),
+        tone: bondKpis ? "ok" : "watch",
       };
-    }
-    const raw = bondKpis?.[def.field!];
-    return {
-      key: def.key,
-      label: def.label,
-      value: bondKpis ? formatBondHeadlineKpi(def.field!, raw) : "-",
-      detail: def.detail,
-      tone: bondKpis ? "ok" : "watch",
-    };
-  });
+    }),
+    bond,
+    bondKpiDefs,
+  );
 
   const distributionPanels: ModuleHomeDistributionPanel[] = [
     buildDistributionPanel({
@@ -2150,7 +2253,11 @@ function marketView(
     rateSeries.find((item) => ["CA.CN_GOV_10Y", "E1000180", "EMM00166466"].includes(item.series_id)) ??
     rateSeries.find((item) => item.series_name.includes("10年"));
 
-  const keyRateRows = buildMarketKeyRateRows(latestSeries, rateSeries, terminalModel);
+  const seriesById = choiceSeriesById(latestSeries, rateSeries);
+  const keyRateRows = enrichMarketHomeRows(
+    buildMarketKeyRateRows(latestSeries, rateSeries, terminalModel),
+    seriesById,
+  );
   const keyRateStatus = combinedQueryStatus(
     "key-rates",
     "关键利率快照",
@@ -2192,7 +2299,10 @@ function marketView(
   });
 
   const keyRateSeriesIds = new Set(keyRateRows.map((row) => row.source).filter((source) => source !== "-"));
-  const macroSnapshotRows = buildLatestMacroSnapshotRows(latestSeries, keyRateSeriesIds);
+  const macroSnapshotRows = enrichMarketHomeRows(
+    buildLatestMacroSnapshotRows(latestSeries, keyRateSeriesIds),
+    seriesById,
+  );
   const macroSnapshotStatus = queryStatus(
     "macro-snapshot",
     "跨资产快讯",

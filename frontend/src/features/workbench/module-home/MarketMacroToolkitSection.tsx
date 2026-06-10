@@ -2,9 +2,18 @@ import { Link } from "react-router-dom";
 import { Collapse, Tabs, type TabsProps } from "antd";
 
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { marketChangePresentation, resolveMarketChangeDirection } from "./marketHomeChangeTone";
+import { handleHorizontalScrollKeyboard } from "./marketHomeHorizontalScroll";
+import { MarketHomeKpiSparkline } from "./MarketHomeKpiSparkline";
 import type { ModuleHomeDetailPanel, ModuleHomeTone } from "./moduleHomeModel";
 import { MarketDepthPanel } from "./MarketDepthPanel";
 import marketStyles from "./marketHome.module.css";
+
+const MARKET_CHANGE_CLASSES = {
+  up: dhStyles.dhUpRed,
+  down: dhStyles.dhDownGreen,
+  neutral: dhStyles.dhMuted,
+} as const;
 
 type MarketMacroToolkitSectionProps = {
   overviewPanel?: ModuleHomeDetailPanel;
@@ -183,14 +192,50 @@ export default function MarketMacroToolkitSection({
       </article>
 
       {signalPanel && signalPanel.rows.length > 0 ? (
-        <div className={marketStyles.macroSignalGrid} data-testid="module-home-macro-signals">
-          {signalPanel.rows.map((row) => (
-            <article className={marketStyles.macroSignalCard} key={row.key}>
+        <div className={marketStyles.macroSignalScrollBlock} data-testid="module-home-macro-signals-scroll">
+          <span className={marketStyles.macroSignalScrollHint}>滑动查看更多信号</span>
+          <div
+            aria-label="宏观信号卡片"
+            className={marketStyles.macroSignalGrid}
+            data-testid="module-home-macro-signals"
+            onKeyDown={handleHorizontalScrollKeyboard}
+            role="region"
+            tabIndex={0}
+          >
+          {signalPanel.rows.map((row) => {
+            const changeDirection = resolveMarketChangeDirection(row.detail, row.sparkline);
+            const change = marketChangePresentation(row.detail, row.sparkline, MARKET_CHANGE_CLASSES);
+            return (
+            <article
+              className={marketStyles.macroSignalCard}
+              data-testid={`module-home-macro-signal-${row.key}`}
+              key={row.key}
+            >
               <span className={marketStyles.macroSignalTitle}>{row.label}</span>
-              <strong className={`${marketStyles.macroSignalValue} ${toneClass(row.tone)}`}>{row.value}</strong>
+              <div className={marketStyles.macroSignalValueRow}>
+                <strong className={`${marketStyles.macroSignalValue} ${toneClass(row.tone)}`}>{row.value}</strong>
+                {row.sparkline && row.sparkline.length >= 2 ? (
+                  <MarketHomeKpiSparkline
+                    changeDirection={changeDirection}
+                    tone={row.tone}
+                    values={row.sparkline}
+                    variant="ticker"
+                  />
+                ) : null}
+              </div>
+              {row.detail ? (
+                <em
+                  className={`${marketStyles.macroSignalChange} ${dhStyles.dhNum} ${change.className}`}
+                  data-change={change.direction ?? "flat"}
+                >
+                  {row.detail}
+                </em>
+              ) : null}
               <span className={marketStyles.macroSignalEvidence}>{row.source}</span>
             </article>
-          ))}
+            );
+          })}
+          </div>
         </div>
       ) : null}
 
