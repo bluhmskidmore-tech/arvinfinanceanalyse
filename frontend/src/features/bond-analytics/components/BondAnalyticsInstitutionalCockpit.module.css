@@ -7,8 +7,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 356px;
   grid-template-areas:
-    "topbar topbar"
-    "signal signal"
+    "hero hero"
     "market market"
     "kpi kpi"
     "analysis analysis"
@@ -258,6 +257,15 @@
   background: var(--moss-color-neutral-50);
 }
 
+.referenceKpiTile[data-priority="primary"] {
+  background: var(--moss-color-card-bg);
+  box-shadow: inset 0 2px 0 var(--moss-color-primary-100);
+}
+
+.referenceKpiTile[data-priority="secondary"] {
+  background: var(--moss-color-neutral-50);
+}
+
 .referenceKpiTile[data-state="gap"] {
   border-left: 2px solid var(--moss-color-neutral-200);
   background: var(--moss-color-card-bg);
@@ -309,6 +317,10 @@
   white-space: nowrap;
 }
 
+.referenceKpiTile[data-priority="primary"] .referenceKpiValue {
+  font-size: 16px;
+}
+
 .referenceKpiTile[data-state="gap"] .referenceKpiValue {
   color: var(--moss-color-neutral-500);
 }
@@ -328,73 +340,211 @@
   line-height: 1.3;
 }
 
-.referenceTopbar {
+.heroSection {
   display: grid;
-  grid-area: topbar;
-  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr) minmax(230px, 0.44fr);
-  gap: 8px;
-  align-items: stretch;
-  padding: 8px 12px;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-left: 4px solid var(--moss-color-primary-900);
+  grid-area: hero;
+  gap: 12px;
+  padding: 14px 18px;
   border-radius: 6px;
   background: var(--moss-color-card-bg);
 }
 
-.referenceTopbarIdentity {
-  display: grid;
+.heroIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: baseline;
   min-width: 0;
 }
 
-.referenceTopbarIdentity {
-  align-content: center;
-  gap: 1px;
+.heroTitle {
+  margin: 0;
+  color: var(--moss-color-primary-900);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
-.referenceTopbarReadout {
-  display: grid;
-  align-content: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 0 16px;
-  border-right: 1px solid var(--moss-color-neutral-100);
-  border-left: 1px solid var(--moss-color-neutral-100);
-}
-
-.referenceTopbarReadout span {
-  overflow: hidden;
+.heroReportDate {
   color: var(--moss-color-neutral-600);
   font-size: 11px;
-  font-weight: 800;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
-.referenceTopbarReadout strong {
+.heroMain {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(520px, 0.62fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.heroConclusion {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.heroHeadline {
   display: -webkit-box;
   overflow: hidden;
+  margin: 0;
   color: var(--moss-color-primary-900);
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.18;
   text-overflow: ellipsis;
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
-.referenceTopbarReadout small {
+.heroDetail {
+  margin: 0;
+  color: var(--moss-color-neutral-600);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.heroMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(84px, 1fr));
+  gap: 12px;
+  align-items: start;
+  padding-left: 18px;
+  border-left: 1px solid var(--moss-color-neutral-100);
+}
+
+.heroMetric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.heroMetric > span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.heroMetric > strong,
+.heroMetricValue {
+  color: var(--moss-color-primary-900);
+  font-family: var(--moss-font-mono);
+  font-size: 25px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.heroMetricValue[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.heroMetricValue[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.heroMetricDelta {
+  color: var(--moss-color-neutral-500);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.heroMetricDelta[data-tone="positive"] {
+  color: var(--moss-color-danger-600);
+}
+
+.heroMetricDelta[data-tone="negative"] {
+  color: var(--moss-color-success-600);
+}
+
+.heroGovernance {
+  display: grid;
+  gap: 6px;
+  padding-top: 0;
+}
+
+.heroGovernanceLead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.heroGovernanceHeading {
+  color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.heroGovernanceDetail {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.heroGovernanceMetrics,
+.heroGovernanceStatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.heroVerdictRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--moss-color-neutral-100);
+}
+
+.heroVerdictField {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.heroVerdictField span {
+  color: var(--moss-color-neutral-600);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.heroVerdictField strong {
   display: -webkit-box;
   overflow: hidden;
-  color: var(--moss-color-neutral-600);
+  color: var(--moss-color-primary-900);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: normal;
+  overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.heroVerdictField small {
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .referenceMarketTicker {
@@ -454,129 +604,10 @@
   color: var(--moss-color-success-700);
 }
 
-.referenceTitle {
-  margin: 0;
-  color: var(--moss-color-primary-900);
-  font-size: 16px;
-  line-height: 1.15;
-}
-
-.referenceSubtitle {
-  margin: 1px 0 0;
-  color: var(--moss-color-neutral-600);
-  font-size: 11px;
-}
-
-.referenceTopbarStatus {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 6px;
-  background: var(--moss-color-neutral-200);
-}
-
-.referenceTopbarStatus div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding: 8px 8px;
-  background: var(--moss-color-neutral-50);
-}
-
-.referenceTopbarStatus span {
-  overflow: hidden;
-  color: var(--moss-color-neutral-600);
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.referenceTopbarStatus strong {
-  overflow: hidden;
-  color: var(--moss-color-primary-900);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.referenceTopbarStatus small {
-  overflow: hidden;
-  color: var(--moss-color-neutral-500);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.referenceSignalStrip {
-  position: relative;
-  display: grid;
-  grid-area: signal;
-  grid-template-columns: minmax(560px, 1.08fr) minmax(0, 0.92fr);
-  justify-content: space-between;
-  gap: 8px;
-  align-items: stretch;
-  padding: 8px 12px 8px 16px;
-  border: 1px solid var(--moss-color-neutral-300);
-  border-left: 4px solid var(--moss-color-primary-800);
-  border-radius: 6px;
-  background: var(--moss-color-neutral-50);
-}
-
-.deskVerdictGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--moss-color-primary-100);
-  border-radius: 6px;
-  background: var(--moss-color-primary-100);
-}
-
-.deskVerdictField {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 8px 8px;
-  background: var(--moss-color-card-bg);
-}
-
-.deskVerdictField span {
-  color: var(--moss-color-neutral-600);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.deskVerdictField strong {
-  overflow: hidden;
-  color: var(--moss-color-primary-900);
-  font-size: 13px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.deskVerdictField small {
-  color: var(--moss-color-neutral-600);
-  font-size: 11px;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
 .referenceAnalysisGrid {
   grid-area: analysis;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   grid-template-areas:
     "curve evidence"
     "attribution attribution";
@@ -927,26 +958,77 @@
 
 .curvePendingPanel {
   display: grid;
-  gap: 4px;
-  min-height: 188px;
-  align-content: center;
-  padding: 16px 16px;
-  border: 1px dashed var(--moss-color-warning-300);
-  border-radius: 12px;
-  background:
-    /* decorative gradient: warning pending panel */
-    linear-gradient(180deg, rgba(255, 248, 234, 0.94) 0%, rgba(255, 252, 245, 1) 100%);
+  gap: 8px;
+  min-height: 96px;
+  align-content: start;
+  padding: 8px 8px;
+  border: 1px dashed var(--moss-color-neutral-200);
+  border-radius: 6px;
+  background: var(--moss-color-neutral-50);
+}
+
+.curvePendingHeader {
+  display: grid;
+  gap: 3px;
 }
 
 .curvePendingPanel strong {
   color: var(--moss-color-primary-900);
-  font-size: 15px;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .curvePendingPanel span {
   color: var(--moss-color-neutral-700);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.curvePendingLedger {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 4px;
+  background: var(--moss-color-neutral-100);
+}
+
+.curvePendingRow {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--moss-color-card-bg);
+}
+
+.curvePendingRow span {
+  overflow: hidden;
+  color: var(--moss-color-neutral-600);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.curvePendingRow strong {
+  overflow: hidden;
+  color: var(--moss-color-primary-900);
   font-size: 12px;
-  line-height: 1.45;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.curvePendingRow small {
+  overflow: hidden;
+  color: var(--moss-color-neutral-500);
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .curveFallbackBlock {
@@ -1066,7 +1148,8 @@
   font-size: 10px;
   line-height: 1.2;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .referenceJudgmentCard em {
@@ -1268,74 +1351,6 @@
   grid-column: 4 / 5;
   align-self: center;
   justify-self: start;
-}
-
-.referenceSignalConclusion {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
-  gap: 12px;
-  align-items: stretch;
-  min-width: 0;
-  padding: 2px 0;
-}
-
-.referenceSignalLead {
-  display: grid;
-  gap: 4px;
-  align-content: center;
-  min-width: 0;
-}
-
-.referenceSignalLead strong {
-  color: var(--moss-color-primary-900);
-  font-size: 20px;
-  line-height: 1.16;
-}
-
-.referenceSignalLead span {
-  color: var(--moss-color-neutral-700);
-  font-size: 12px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.referenceSignalSummary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--moss-color-primary-100);
-  border-radius: 6px;
-  background: var(--moss-color-primary-100);
-}
-
-.referenceSignalSummary div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 8px 8px;
-  background: var(--moss-color-card-bg);
-}
-
-.referenceSignalSummary span {
-  overflow: hidden;
-  color: var(--moss-color-neutral-600);
-  font-size: 11px;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.referenceSignalMetric {
-  overflow: hidden;
-  color: var(--moss-color-primary-900);
-  font-family: var(--moss-font-mono);
-  font-size: 17px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .referenceDistributionGrid {
@@ -1932,7 +1947,7 @@
 .referenceFooterGrid {
   grid-area: footer;
   display: grid;
-  grid-template-columns: minmax(360px, 1.18fr) minmax(300px, 0.94fr) minmax(300px, 0.88fr);
+  grid-template-columns: minmax(0, 1.36fr) minmax(320px, 0.84fr);
   gap: 1px;
   overflow: hidden;
   border: 1px solid var(--moss-color-neutral-200);
@@ -1961,6 +1976,17 @@
   padding: 8px 8px !important;
 }
 
+.referenceFooterPrimaryCard {
+  min-width: 0;
+}
+
+.footerSupportStack {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  background: var(--moss-color-neutral-200);
+}
+
 .footerMetricPanel {
   display: grid;
   gap: 8px;
@@ -1987,6 +2013,30 @@
   color: var(--moss-color-neutral-600);
   font-size: 10px;
   line-height: 1.3;
+}
+
+.footerEvidenceBlock {
+  display: grid;
+  gap: 8px;
+  padding: 8px 8px;
+  border: 1px solid var(--moss-color-neutral-100);
+  border-radius: 6px;
+  background: var(--moss-color-card-bg);
+}
+
+.footerActionBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.footerActionBar span {
+  color: var(--moss-color-neutral-600);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .footerRiskList {
@@ -2029,8 +2079,7 @@
 
   .referenceDashboard {
     grid-template-areas:
-      "topbar"
-      "signal"
+      "hero"
       "market"
       "kpi"
       "analysis"
@@ -2045,6 +2094,11 @@
   .referenceMarketTicker,
   .referenceDistributionGrid,
   .referenceFooterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .footerSupportStack {
+    grid-column: 1 / -1;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2076,16 +2130,31 @@
 }
 
 @media (max-width: 720px) {
-  .referenceTopbar {
-    display: grid;
+  .heroMain {
     grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+    gap: 16px;
   }
 
-  .referenceSignalStrip {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+  .heroMetrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .heroVerdictRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .heroTitle {
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  .heroHeadline {
+    font-size: 24px;
   }
 
   .referenceCurveBanner,
@@ -2093,24 +2162,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .referenceTopbarStatus {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .referenceTitle {
-    white-space: normal;
-    word-break: keep-all;
-    overflow-wrap: anywhere;
-  }
-
-  .referenceSubtitle {
-    overflow-wrap: anywhere;
-  }
-
   .holdingsKpiGrid,
   .referenceAnalysisGrid,
   .referenceDistributionGrid,
   .referenceFooterGrid,
+  .footerSupportStack,
   .regionConcentrationPanel {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -2149,6 +2205,11 @@
 
   .referenceJudgmentMatrix {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .footerActionBar {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
   }
 
   .referenceJudgmentCard strong,

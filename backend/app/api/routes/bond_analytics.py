@@ -145,10 +145,10 @@ def dv01_action_plan(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     accounting_class: str = Query("OCI", description="AC / OCI / TPL / all"),
     top_n: int = Query(20, ge=1, le=100, description="Number of action rows"),
-    limit_dv01: str | None = Query(None, description="Page warning limit in CNY DV01 per 1bp"),
-    warning_dv01: str | None = Query(None, description="Page warning threshold in CNY DV01 per 1bp"),
-    hedge_instrument_dv01: str | None = Query(None, description="CNY DV01 per hedge unit per 1bp"),
-    hedge_target_dv01: str | None = Query(None, description="Target CNY DV01 after hedge/reduction per 1bp"),
+    limit_dv01: str | None = Query(None, description="Page warning limit amount per 1bp"),
+    warning_dv01: str | None = Query(None, description="Page warning threshold amount per 1bp"),
+    hedge_instrument_dv01: str | None = Query(None, description="Hedge amount per unit per 1bp"),
+    hedge_target_dv01: str | None = Query(None, description="Target amount after hedge/reduction per 1bp"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
     try:

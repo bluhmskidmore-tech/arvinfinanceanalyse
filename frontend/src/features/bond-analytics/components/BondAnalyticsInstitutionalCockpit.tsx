@@ -653,12 +653,14 @@ function ReferenceKpiTile({
   value,
   detail,
   status,
+  priority = "secondary",
   tone = "default",
 }: {
   label: string;
   value: string;
   detail: string;
   status?: string;
+  priority?: "primary" | "secondary" | "gap";
   tone?: "default" | "positive" | "negative";
 }) {
   let state: "gap" | "pending" | "ready" | undefined;
@@ -671,7 +673,7 @@ function ReferenceKpiTile({
   }
 
   return (
-    <div className={styles.referenceKpiTile} data-state={state}>
+    <div className={styles.referenceKpiTile} data-priority={priority} data-state={state}>
       <div className={styles.referenceKpiHeader}>
         <div className={styles.referenceKpiLabel}>{label}</div>
         {status ? <span>{status}</span> : null}
@@ -897,10 +899,44 @@ function ReferenceCurveReadout({
   const readableCurves = curves.filter(curveHasReadout).slice(0, 3);
 
   if (readableCurves.length === 0) {
+    const pendingRows = [
+      {
+        label: "正式曲线期限点",
+        value: "待返回",
+        detail: "收益率与日变动未返回",
+      },
+      {
+        label: "正式 KRD",
+        value: "待返回",
+        detail: "不由期限桶推导",
+      },
+      {
+        label: "期限桶观察",
+        value: "仅作观察",
+        detail: "用于暴露校验",
+      },
+      {
+        label: "前端处理",
+        value: "不补造",
+        detail: "缺口显式保留",
+      },
+    ];
+
     return (
       <div data-testid="bond-analysis-yield-curve-empty" className={styles.curvePendingPanel}>
-        <strong>正式曲线 / KRD 读面待返回</strong>
-        <span>当前未返回正式收益率曲线期限点与日变动，不用期限桶冒充 KRD，也不前端补造缺失点。</span>
+        <div className={styles.curvePendingHeader}>
+          <strong>正式曲线 / KRD 读面待返回</strong>
+          <span>当前未返回正式收益率曲线期限点与日变动，不用期限桶冒充 KRD，也不前端补造缺失点。</span>
+        </div>
+        <div className={styles.curvePendingLedger}>
+          {pendingRows.map((row) => (
+            <div key={row.label} className={styles.curvePendingRow}>
+              <span>{row.label}</span>
+              <strong>{row.value}</strong>
+              <small>{row.detail}</small>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -1760,85 +1796,93 @@ export function BondAnalyticsInstitutionalCockpit({
       : "报告日待确认";
   const topbarReadoutStatus = headlineQ.isPending ? "加载中" : headline ? "已返回" : "待返回";
   const topbarReadoutDetail = headlineQ.isPending
-    ? "首屏 KPI 加载中"
+    ? "等待后端返回"
     : headline
-      ? "首屏 KPI 已返回"
-      : "首屏 KPI 待返回";
+      ? "核心读面可用"
+      : "核心读面未返回";
 
   return (
     <section data-testid="bond-analysis-phase3-cockpit" className={styles.phaseSection}>
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
 
       <section data-testid="bond-analysis-reference-dashboard" className={styles.referenceDashboard}>
-        <div data-testid="bond-analysis-reference-topbar" className={styles.referenceTopbar}>
-          <div className={styles.referenceTopbarIdentity}>
+        <section data-testid="bond-analysis-reference-topbar" className={styles.heroSection}>
+          <div className={styles.heroIdentity}>
             <div className={styles.holdingsKicker}>债券分析</div>
-            <h2 className={styles.referenceTitle}>固定收益交易台</h2>
-            <p className={styles.referenceSubtitle}>
-              报告日 {topbarReportDate} · 首屏只展示后端读面与已确认下钻入口。
-            </p>
+            <h2 className={styles.heroTitle}>固定收益交易台</h2>
+            <span className={styles.heroReportDate}>报告日 {topbarReportDate}</span>
           </div>
-          <div className={styles.referenceTopbarReadout}>
-            <span>核心读面</span>
-            <strong>{conclusion.body}</strong>
-            <small>{conclusion.detail}</small>
-          </div>
-          <div className={styles.referenceTopbarStatus}>
-            <div data-testid="bond-analysis-topbar-status-item">
-              <span>报告日</span>
-              <strong>{topbarReportStatus}</strong>
-              <small>{topbarReportDate}</small>
-            </div>
-            <div data-testid="bond-analysis-topbar-status-item">
-              <span>首屏 KPI</span>
-              <strong>{topbarReadoutStatus}</strong>
-              <small>{topbarReadoutDetail}</small>
-            </div>
-          </div>
-        </div>
 
-        <div data-testid="bond-analysis-daily-judgment" className={styles.referenceSignalStrip}>
-          <div data-testid="bond-analysis-cockpit-conclusion" className={styles.referenceSignalConclusion}>
-            <div className={styles.referenceSignalLead}>
-              <div className={styles.conclusionKicker}>证据展开 · 固定收益读面</div>
-              <strong>首屏读面拆解</strong>
-              <span>{conclusion.detail}</span>
+          <div data-testid="bond-analysis-cockpit-conclusion" className={styles.heroMain}>
+            <div className={styles.heroConclusion}>
+              <strong className={styles.heroHeadline}>{conclusion.body}</strong>
+              <p className={styles.heroDetail}>{conclusion.detail}</p>
             </div>
-            <div className={styles.referenceSignalSummary}>
-              <div>
+            <div className={styles.heroMetrics}>
+              <div className={styles.heroMetric}>
                 <span>久期</span>
-                <strong className={styles.referenceSignalMetric}>{durationDisplay}</strong>
+                <strong>{durationDisplay}</strong>
               </div>
-              <div>
+              <div className={styles.heroMetric}>
                 <span>信用利差</span>
-                <strong className={styles.referenceSignalMetric}>{formatSpreadBpDisplay(spreadMedian)}</strong>
+                <strong>{formatSpreadBpDisplay(spreadMedian)}</strong>
               </div>
-              <div>
+              <div className={styles.heroMetric}>
                 <span>信用占比</span>
-                <strong className={styles.referenceSignalMetric}>{creditWeightDisplay}</strong>
+                <strong>{creditWeightDisplay}</strong>
+              </div>
+              <div className={styles.heroMetric}>
+                <span>总收益</span>
+                <strong className={styles.heroMetricValue} data-tone={unrealizedPnlTone}>
+                  {unrealizedPnlDisplay}
+                </strong>
+                <small className={styles.heroMetricDelta} data-tone={unrealizedPnlTone}>
+                  {formatSignedPct(unrealizedPnlMomPct)}
+                </small>
               </div>
             </div>
           </div>
-          <div className={styles.deskVerdictGrid}>
-            {deskVerdictFields.map((field) => (
-              <div key={field.label} className={styles.deskVerdictField}>
-                <span>{field.label}</span>
-                <strong>{field.value}</strong>
-                <small>{field.detail}</small>
-              </div>
-            ))}
+
+          <div data-testid="bond-analysis-daily-judgment" className={styles.heroGovernance}>
+            <div className={styles.heroGovernanceLead}>
+              <span className={styles.conclusionKicker}>证据展开 · 固定收益读面</span>
+              <span className={styles.heroGovernanceHeading}>首屏读面拆解</span>
+              <span className={styles.heroGovernanceDetail}>只展示后端返回事实，不补造读面。</span>
+            </div>
+            <div className={styles.heroGovernanceMetrics}>
+              <span>久期 {durationDisplay}</span>
+              <span>信用利差 {formatSpreadBpDisplay(spreadMedian)}</span>
+              <span>信用占比 {creditWeightDisplay}</span>
+            </div>
+            <div className={styles.heroGovernanceStatus}>
+              <span>
+                报告日 {topbarReportStatus} · {topbarReportDate}
+              </span>
+              <span>
+                首屏 KPI {topbarReadoutStatus} · {topbarReadoutDetail}
+              </span>
+            </div>
+            <div className={styles.heroVerdictRow}>
+              {deskVerdictFields.map((field) => (
+                <div key={field.label} className={styles.heroVerdictField}>
+                  <span>{field.label}</span>
+                  <strong>{field.value}</strong>
+                  <small>{field.detail}</small>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </section>
 
         <ReferenceMarketTicker series={macroSeries} unavailable={macroUnavailable} />
 
         <div className={styles.holdingsKpiRail}>
           <div data-testid="bond-analysis-kpi-ribbon" className={styles.holdingsKpiGrid}>
-            <ReferenceKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? "已读" : "待读面"} />
-            <ReferenceKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : "—"} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? "已读" : "待读面"} />
-            <ReferenceKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? "已读" : "待读面"} />
-            <ReferenceKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? "已读" : "待读面"} />
-            <ReferenceKpiTile label="Carry+Roll" value="—" detail="接口未返回 / 待读面" status="缺口" />
+            <ReferenceKpiTile label="久期" value={durationDisplay} detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "期限结构待读面"} status={Number.isFinite(dur) ? "已读" : "待读面"} priority="primary" />
+            <ReferenceKpiTile label="组合到期收益率" value={k ? formatPct(k.weighted_ytm) : "—"} detail={previousK ? `上期 ${formatPct(previousK.weighted_ytm)}` : "收益率待读面"} status={k ? "已读" : "待读面"} priority="primary" />
+            <ReferenceKpiTile label="信用利差" value={formatSpreadBpDisplay(spreadMedian)} detail="信用利差中位数" status={Number.isFinite(spreadMedianBp) ? "已读" : "待读面"} priority="primary" />
+            <ReferenceKpiTile label="DV01" value={dv01Display} detail="风险指标读面" status={hasDv01Readout ? "已读" : "待读面"} priority="primary" />
+            <ReferenceKpiTile label="Carry+Roll" value="—" detail="接口未返回 / 待读面" status="缺口" priority="gap" />
             <ReferenceKpiTile label="月度收益" value={actionPnlDisplay} detail={actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待读面"} status={actionAttribution ? "已读" : "待读面"} tone={actionPnlTone} />
             <ReferenceKpiTile label="总收益" value={unrealizedPnlDisplay} detail={`较上期 ${formatSignedPct(unrealizedPnlMomPct)}`} status={k ? "已读" : "待读面"} tone={unrealizedPnlTone} />
           </div>
@@ -2059,68 +2103,87 @@ export function BondAnalyticsInstitutionalCockpit({
             </Card>
         </aside>
 
-        <div className={styles.referenceFooterGrid}>
+        <div data-testid="bond-analysis-footer-evidence-grid" className={styles.referenceFooterGrid}>
           <Card
             variant="borderless"
             size="small"
             title={<SectionCardTitle eyebrow="收益证据" title="本期估值收益" />}
             data-testid="bond-analysis-summary-card"
             style={dashboardCardStyle}
+            className={styles.referenceFooterPrimaryCard}
             styles={{ body: cardBodyStyle }}
           >
             <div className={styles.footerMetricPanel}>
               <strong>{unrealizedPnlDisplay}</strong>
               <span>{Number.isFinite(unrealizedPnlMomPct) ? `较上期 ${formatSignedPct(unrealizedPnlMomPct)}` : "收益走势明细待读面返回"}</span>
-              <div data-testid="bond-analysis-return-trend-boundary" className={styles.footerEvidenceNote}>
-                未返回收益时序明细时不绘制趋势占位。
-              </div>
-              <Button size="small" type="text" data-testid="bond-analysis-home-open-return-decomposition" onClick={() => onOpenModuleDetail?.("return-decomposition")}>
-                打开收益拆解
-              </Button>
-            </div>
-          </Card>
-
-          <Card
-            variant="borderless"
-            size="small"
-            title={<SectionCardTitle eyebrow="动作证据" title="动作归因" />}
-            data-testid="bond-analysis-today-focus"
-            style={dashboardCardStyle}
-            styles={{ body: cardBodyStyle }}
-          >
-            <div className={styles.footerMetricPanel}>
-              <strong>{actionPnlDisplay}</strong>
-              <span>{actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待返回"}</span>
-              <div className={styles.footerChangeSplit}>
-                <span>市值 {formatSignedPct(marketValueMomPct)}</span>
-                <span>DV01 {Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : "—"}</span>
-              </div>
-              <Button size="small" type="text" data-testid="bond-analysis-decision-next-action" onClick={() => onOpenModuleDetail?.("action-attribution")}>
-                打开动作归因
-              </Button>
-            </div>
-          </Card>
-
-          <Card
-            variant="borderless"
-            size="small"
-            title={<SectionCardTitle eyebrow="风险读面" title="返回字段" />}
-            data-testid="bond-analysis-risk-guardrails"
-            style={dashboardCardStyle}
-            styles={{ body: cardBodyStyle }}
-          >
-            <div className={styles.footerRiskList}>
-              {riskRows.slice(0, 3).map((row) => (
-                <div key={row.label}>
-                  <span>{row.label}</span>
-                  <strong>{row.value}</strong>
+              <div data-testid="bond-analysis-footer-primary-evidence" className={styles.footerEvidenceBlock}>
+                <div data-testid="bond-analysis-return-trend-boundary" className={styles.footerEvidenceNote}>
+                  未返回收益时序明细时不绘制趋势占位。
                 </div>
-              ))}
-              <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread-footer" onClick={() => onOpenModuleDetail?.("credit-spread")}>
-                打开信用利差
-              </Button>
+                <div className={styles.footerActionBar}>
+                  <span>收益证据缺口仍保留在当前读面上下文中。</span>
+                  <Button size="small" type="text" data-testid="bond-analysis-home-open-return-decomposition" onClick={() => onOpenModuleDetail?.("return-decomposition")}>
+                    打开收益拆解
+                  </Button>
+                </div>
+              </div>
             </div>
           </Card>
+
+          <div data-testid="bond-analysis-footer-support-stack" className={styles.footerSupportStack}>
+            <Card
+              variant="borderless"
+              size="small"
+              title={<SectionCardTitle eyebrow="动作证据" title="动作归因" />}
+              data-testid="bond-analysis-today-focus"
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.footerMetricPanel}>
+                <strong>{actionPnlDisplay}</strong>
+                <span>{actionAttribution ? `${actionAttribution.total_actions} 笔动作` : "动作归因待返回"}</span>
+                <div className={styles.footerEvidenceBlock}>
+                  <div className={styles.footerChangeSplit}>
+                    <span>市值 {formatSignedPct(marketValueMomPct)}</span>
+                    <span>DV01 {Number.isFinite(dv01Mom) ? `${dv01Mom >= 0 ? "+" : ""}${(dv01Mom / 10000).toFixed(2)} 万` : "—"}</span>
+                  </div>
+                  <div className={styles.footerActionBar}>
+                    <span>按钮仅挂在动作归因证据块内，不独立悬浮成通用操作。</span>
+                    <Button size="small" type="text" data-testid="bond-analysis-decision-next-action" onClick={() => onOpenModuleDetail?.("action-attribution")}>
+                      打开动作归因
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card
+              variant="borderless"
+              size="small"
+              title={<SectionCardTitle eyebrow="风险读面" title="返回字段" />}
+              data-testid="bond-analysis-risk-guardrails"
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.footerRiskList}>
+                {riskRows.slice(0, 3).map((row) => (
+                  <div key={row.label}>
+                    <span>{row.label}</span>
+                    <strong>{row.value}</strong>
+                  </div>
+                ))}
+                <div className={styles.footerEvidenceNote}>
+                  只列已返回风险字段；缺失保持证据缺口，不延伸为审批或阈值结论。
+                </div>
+                <div className={styles.footerActionBar}>
+                  <span>下钻入口绑定在当前风险字段上下文。</span>
+                  <Button size="small" type="text" data-testid="bond-analysis-home-open-credit-spread-footer" onClick={() => onOpenModuleDetail?.("credit-spread")}>
+                    打开信用利差
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
         </div>
       </section>
     </section>

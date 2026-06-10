@@ -39,6 +39,29 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, task_mod
 
 
+def _append_completed_bond_analytics_build(
+    governance_dir: Path,
+    service_mod,
+    *,
+    report_date: str = "2026-03-31",
+    source_version: str = "sv_bond_test",
+) -> None:
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": f"bond-analytics-test:{report_date}",
+            "job_name": service_mod.JOB_NAME,
+            "status": "completed",
+            "cache_key": service_mod.CACHE_KEY,
+            "cache_version": service_mod.CACHE_VERSION,
+            "source_version": source_version,
+            "vendor_version": "vv_none",
+            "rule_version": service_mod.RULE_VERSION,
+            "report_date": report_date,
+        },
+    )
+
+
 def _numeric_raw(value: dict[str, object] | str) -> Decimal:
     if isinstance(value, dict):
         return Decimal(str(value["raw"]))
@@ -187,6 +210,7 @@ def test_action_attribution_success_response_uses_core_payload_builder(tmp_path,
         "backend/app/services/bond_analytics_service.py",
     )
     service_mod._action_attribution_cache.clear()
+    _append_completed_bond_analytics_build(governance_dir, service_mod)
 
     class FakeBondAnalyticsRepository:
         def list_report_dates(self):

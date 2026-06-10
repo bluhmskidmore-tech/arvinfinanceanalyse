@@ -1,6 +1,7 @@
 """Contract tests for bond-dashboard HTTP API (envelope + empty DB behavior)."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date
 from decimal import Decimal
@@ -55,6 +56,41 @@ def _replace_bond_dashboard_rows(repo: Any, *, report_date: str, rows: list[Any]
 
     with repository_task_write_scope("backend.app.tasks.bond_dashboard_api_contract_test"):
         repo.replace_bond_analytics_rows(report_date=report_date, rows=rows)
+    if rows:
+        _append_bond_analytics_completed_build(
+            report_date=report_date,
+            source_version=_first_row_source_version(rows),
+        )
+
+
+def _append_bond_analytics_completed_build(*, report_date: str, source_version: str) -> None:
+    governance_path = Path(str(get_settings().governance_path))
+    governance_path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": f"bond-dashboard-test:{report_date}",
+        "job_name": "bond_analytics_materialize",
+        "status": "completed",
+        "cache_key": "bond_analytics:materialize:formal",
+        "cache_version": "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1",
+        "source_version": source_version or "sv_bond_dashboard_test",
+        "vendor_version": "vv_none",
+        "rule_version": "rv_bond_analytics_formal_materialize_v1",
+        "report_date": report_date,
+    }
+    with (governance_path / "cache_build_run.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _first_row_source_version(rows: list[Any]) -> str:
+    for row in rows:
+        if isinstance(row, dict):
+            value = row.get("source_version")
+        else:
+            value = getattr(row, "source_version", "")
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
 
 _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
     ("/api/bond-dashboard/dates", {}),
