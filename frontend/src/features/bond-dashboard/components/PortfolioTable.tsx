@@ -2,7 +2,17 @@ import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { BondDashboardHeadlinePayload, Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
-import { formatDv01Wan, formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
+import { formatDv01Wan, formatRatePercent, formatYears, formatYi, nativeToNumber } from "../utils/format";
+
+function sumComplete(values: (Numeric | null | undefined)[]): number | null {
+  let sum = 0;
+  for (const value of values) {
+    const raw = nativeToNumber(value);
+    if (raw === null) return null;
+    sum += raw;
+  }
+  return sum;
+}
 
 export function PortfolioTable({
   data,
@@ -14,8 +24,8 @@ export function PortfolioTable({
   loading: boolean;
 }) {
   const rows = data?.items ?? [];
-  const totalMv = rows.reduce((s, r) => s + nativeToNumber(r.total_market_value), 0);
-  const totalDv01 = rows.reduce((s, r) => s + nativeToNumber(r.total_dv01), 0);
+  const totalMv = sumComplete(rows.map((r) => r.total_market_value));
+  const totalDv01 = sumComplete(rows.map((r) => r.total_dv01));
   const totalBonds = rows.reduce((s, r) => s + r.bond_count, 0);
 
   const columns: ColumnsType<PortfolioComparisonItem> = [
@@ -39,7 +49,7 @@ export function PortfolioTable({
       dataIndex: "weighted_duration",
       key: "dur",
       align: "right",
-      render: (v: Numeric) => nativeToNumber(v).toFixed(2),
+      render: (v: Numeric) => formatYears(v),
     },
     {
       title: "DV01(万元)",
@@ -82,7 +92,7 @@ export function PortfolioTable({
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
                 <strong data-testid="bond-dashboard-portfolio-summary-duration">
-                  {headline ? nativeToNumber(headline.kpis.weighted_duration).toFixed(2) : "—"}
+                  {headline ? formatYears(headline.kpis.weighted_duration) : "—"}
                 </strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={4} align="right">

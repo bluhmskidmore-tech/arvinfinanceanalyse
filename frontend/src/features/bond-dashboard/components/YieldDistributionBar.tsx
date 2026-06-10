@@ -19,9 +19,8 @@ export function YieldDistributionBar({
   const [mode, setMode] = useState<"yield" | "tenor">("yield");
 
   const loading = mode === "yield" ? loadingYield : loadingTenor;
-  const weightedLabel = yieldData
-    ? `${(nativeToNumber(yieldData.weighted_ytm) * 100).toFixed(2)}%`
-    : "—";
+  const weightedYtm = yieldData ? nativeToNumber(yieldData.weighted_ytm) : null;
+  const weightedLabel = weightedYtm === null ? "—" : `${(weightedYtm * 100).toFixed(2)}%`;
 
   const categories =
     mode === "yield"
@@ -29,8 +28,14 @@ export function YieldDistributionBar({
       : (tenorData?.items ?? []).map((i) => i.category);
   const valuesYi =
     mode === "yield"
-      ? (yieldData?.items ?? []).map((i) => nativeToNumber(i.total_market_value) / 1e8)
-      : (tenorData?.items ?? []).map((i) => nativeToNumber(i.total_market_value) / 1e8);
+      ? (yieldData?.items ?? []).map((i) => {
+          const raw = nativeToNumber(i.total_market_value);
+          return raw === null ? null : raw / 1e8;
+        })
+      : (tenorData?.items ?? []).map((i) => {
+          const raw = nativeToNumber(i.total_market_value);
+          return raw === null ? null : raw / 1e8;
+        });
 
   const option: EChartsOption = {
     color: ["#1677ff"],

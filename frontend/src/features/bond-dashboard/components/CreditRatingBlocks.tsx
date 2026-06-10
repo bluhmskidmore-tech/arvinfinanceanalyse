@@ -43,7 +43,11 @@ export function CreditRatingBlocks({
   const items = [...(data?.items ?? [])].sort(
     (a, b) => ratingRank(a.category) - ratingRank(b.category),
   );
-  const total = items.reduce((s, i) => s + nativeToNumber(i.total_market_value), 0) || 1;
+  const total =
+    items.reduce((s, i) => {
+      const raw = nativeToNumber(i.total_market_value);
+      return raw === null ? s : s + raw;
+    }, 0) || 1;
 
   return (
     <Card
@@ -58,7 +62,8 @@ export function CreditRatingBlocks({
           <div style={{ color: "rgba(0,0,0,0.35)", padding: 16 }}>暂无数据</div>
         ) : (
           items.map((it) => {
-            const w = (nativeToNumber(it.total_market_value) / total) * 100;
+            const rawMarketValue = nativeToNumber(it.total_market_value);
+            const w = rawMarketValue === null ? 6 : (rawMarketValue / total) * 100;
             const percentage = formatRatePercent(it.percentage);
             const bg =
               RATING_COLORS[it.category.trim().toUpperCase()] ??
@@ -81,7 +86,9 @@ export function CreditRatingBlocks({
               >
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{it.category || "—"}</div>
                 <div style={{ fontSize: 13, marginTop: 6 }}>{formatYi(it.total_market_value)} 亿</div>
-                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>{percentage}%</div>
+                <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>
+                  {percentage === "—" ? "—" : `${percentage}%`}
+                </div>
               </div>
             );
           })

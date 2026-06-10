@@ -24,7 +24,7 @@ vi.mock("../lib/echarts", () => ({
   ),
 }));
 
-function resultMeta(resultKind: string): ResultMeta {
+function resultMeta(resultKind: string, overrides: Partial<ResultMeta> = {}): ResultMeta {
   const isBondHeadline = resultKind === "bond_dashboard.headline_kpis";
   return {
     trace_id: `tr_${resultKind}`,
@@ -40,13 +40,14 @@ function resultMeta(resultKind: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-19T00:00:00Z",
+    ...overrides,
   };
 }
 
-const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
-const pct = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
-const ratio = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
-const dv01 = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
+const yuan = (raw: number | null) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+const pct = (raw: number | null) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
+const ratio = (raw: number | null) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+const dv01 = (raw: number | null) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
 
 describe("BondDashboardPage", () => {
   it("shows title and KPI cards when mock data loads", async () => {
@@ -302,6 +303,128 @@ describe("BondDashboardPage", () => {
       expect(screen.getByTestId("bond-dashboard-portfolio-summary-ytm")).toHaveTextContent("2.57");
       expect(screen.getByTestId("bond-dashboard-business-type-metrics")).toHaveTextContent("2.57%");
     });
+  });
+
+  it("does not turn missing governed numerics into a zero-exposure business conclusion", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis"),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(null),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025),
+          weighted_duration: ratio(4.1),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(100),
+          bond_count: 1,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardRiskIndicators = async () => ({
+      result_meta: resultMeta("bond_dashboard.risk_indicators"),
+      result: {
+        report_date: "2026-04-30",
+        total_market_value: yuan(null),
+        total_dv01: dv01(100),
+        weighted_duration: ratio(4.1),
+        credit_ratio: ratio(null),
+        weighted_convexity: ratio(0.03),
+        total_spread_dv01: dv01(40),
+        reinvestment_ratio_1y: ratio(0.12),
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const conclusion = await screen.findByTestId("bond-dashboard-conclusion");
+    expect(conclusion).toHaveTextContent("暂无数据");
+    expect(conclusion).toHaveTextContent("不形成投放状态结论");
+    expect(conclusion).not.toHaveTextContent("尚未形成有效持仓");
+    expect(conclusion).not.toHaveTextContent("信用占比 0.0%");
+  });
+
+  it("surfaces first-screen result_meta degradation for headline and risk envelopes", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: resultMeta("bond_dashboard.dates"),
+      result: { report_dates: ["2026-04-30"] },
+    });
+    client.getBondDashboardHeadlineKpis = async () => ({
+      result_meta: resultMeta("bond_dashboard.headline_kpis", {
+        vendor_status: "vendor_stale",
+        fallback_mode: "latest_snapshot",
+        resolved_report_date: "2026-04-29",
+        as_of_date: "2026-04-29",
+      }),
+      result: {
+        report_date: "2026-04-30",
+        prev_report_date: null,
+        kpis: {
+          total_market_value: yuan(100_000_000),
+          unrealized_pnl: yuan(0),
+          weighted_ytm: pct(0.025),
+          weighted_duration: ratio(4.1),
+          weighted_coupon: pct(0.02),
+          credit_spread_median: pct(0.01),
+          total_dv01: dv01(100),
+          bond_count: 1,
+        },
+        prev_kpis: null,
+      },
+    });
+    client.getBondDashboardRiskIndicators = async () => ({
+      result_meta: resultMeta("bond_dashboard.risk_indicators", {
+        quality_flag: "warning",
+        vendor_status: "vendor_stale",
+        fallback_mode: "latest_snapshot",
+        resolved_report_date: "2026-04-29",
+        as_of_date: "2026-04-29",
+      }),
+      result: {
+        report_date: "2026-04-30",
+        total_market_value: yuan(100_000_000),
+        total_dv01: dv01(100),
+        weighted_duration: ratio(4.1),
+        credit_ratio: ratio(0.4),
+        weighted_convexity: ratio(0.03),
+        total_spread_dv01: dv01(40),
+        reinvestment_ratio_1y: ratio(0.12),
+      },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    const metaPanel = await screen.findByTestId("bond-dashboard-first-screen-result-meta");
+    expect(metaPanel).toHaveTextContent("供应商陈旧");
+    expect(metaPanel).toHaveTextContent("最新快照降级");
+    expect(metaPanel).toHaveTextContent("2026-04-29");
   });
 
   it("renders the shared portfolio golden sample on the bond dashboard source page", async () => {

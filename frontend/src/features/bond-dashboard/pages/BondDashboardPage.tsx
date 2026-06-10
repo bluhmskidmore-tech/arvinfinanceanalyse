@@ -5,7 +5,8 @@ import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography, Table } from
 
 import { useApiClient } from "../../../api/client";
 import { apiQueryKeys } from "../../../api/queryKeys";
-import type { BondDashboardHeadlinePayload, RiskIndicatorsPayload } from "../../../api/contracts";
+import type { BondDashboardHeadlinePayload, Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AssetStructurePie, type AssetGroupBy } from "../components/AssetStructurePie";
 import { CreditRatingBlocks } from "../components/CreditRatingBlocks";
 import { HeadlineKpis } from "../components/HeadlineKpis";
@@ -15,7 +16,27 @@ import { PortfolioTable } from "../components/PortfolioTable";
 import { RiskIndicatorsPanel } from "../components/RiskIndicatorsPanel";
 import { SpreadTable } from "../components/SpreadTable";
 import { YieldDistributionBar } from "../components/YieldDistributionBar";
-import { formatRatePercent, formatYi, formatYears, nativeToNumber } from "../utils/format";
+import { formatRatePercent, formatYi, formatYears } from "../utils/format";
+
+function numericRawOrNull(value: Numeric | null | undefined): number | null {
+  return value?.raw === null || value?.raw === undefined || !Number.isFinite(value.raw)
+    ? null
+    : value.raw;
+}
+
+function formatYiOrNoData(value: Numeric | null | undefined): string {
+  return numericRawOrNull(value) === null ? "暂无数据" : formatYi(value);
+}
+
+function formatYearsOrNoData(value: Numeric | null | undefined): string {
+  return numericRawOrNull(value) === null ? "暂无数据" : formatYears(value);
+}
+
+function formatCreditRatioDetail(value: Numeric | null | undefined): string {
+  return numericRawOrNull(value) === null
+    ? "当前信用占比暂无数据"
+    : `当前信用占比 ${formatRatePercent(value, 1)}%`;
+}
 
 function buildDashboardConclusion(
   headline: BondDashboardHeadlinePayload | undefined,
@@ -29,15 +50,27 @@ function buildDashboardConclusion(
     };
   }
 
-  const totalMarketValue = nativeToNumber(headline.kpis.total_market_value);
-  const creditRatio = nativeToNumber(risk.credit_ratio);
+  const totalMarketValue = numericRawOrNull(headline.kpis.total_market_value);
+  const creditRatio = numericRawOrNull(risk.credit_ratio);
   const creditTone =
-    creditRatio >= 0.5 ? "信用仓位偏高" : creditRatio >= 0.3 ? "信用仓位适中" : "利率债占比更高";
+    creditRatio === null
+      ? "信用仓位暂无数据"
+      : creditRatio >= 0.5
+        ? "信用仓位偏高"
+        : creditRatio >= 0.3
+          ? "信用仓位适中"
+          : "利率债占比更高";
+  const investmentState =
+    totalMarketValue === null
+      ? "不形成投放状态结论"
+      : totalMarketValue > 0
+        ? "处于已投放状态"
+        : "尚未形成有效持仓";
 
   return {
     title: "当前结论",
-    body: `组合规模约 ${formatYi(headline.kpis.total_market_value)}，久期约 ${formatYears(headline.kpis.weighted_duration)}，${creditTone}。`,
-    detail: `当前信用占比 ${formatRatePercent(risk.credit_ratio, 1)}%，总市值${totalMarketValue > 0 ? "处于已投放状态" : "尚未形成有效持仓"}。`,
+    body: `组合规模约 ${formatYiOrNoData(headline.kpis.total_market_value)}，久期约 ${formatYearsOrNoData(headline.kpis.weighted_duration)}，${creditTone}。`,
+    detail: `${formatCreditRatioDetail(risk.credit_ratio)}，总市值${investmentState}。`,
   };
 }
 
@@ -155,6 +188,7 @@ export default function BondDashboardPage() {
   });
 
   const dateOptions = datesQuery.data?.result.report_dates ?? [];
+  const hasFirstScreenMeta = Boolean(headlineQuery.data?.result_meta || riskQuery.data?.result_meta);
   const conclusion =
     headlineQuery.data?.result && riskQuery.data?.result
       ? buildDashboardConclusion(headlineQuery.data.result, riskQuery.data.result)
@@ -252,6 +286,25 @@ export default function BondDashboardPage() {
         ) : null}
 
         <HeadlineKpis data={headlineQuery.data?.result} loading={headlineQuery.isLoading} />
+
+        {hasFirstScreenMeta ? (
+          <FormalResultMetaPanel
+            testId="bond-dashboard-first-screen-result-meta"
+            title="债券首页首屏证据"
+            sections={[
+              {
+                key: "headline",
+                title: "首屏指标",
+                meta: headlineQuery.data?.result_meta,
+              },
+              {
+                key: "risk",
+                title: "风险指标",
+                meta: riskQuery.data?.result_meta,
+              },
+            ]}
+          />
+        ) : null}
 
         <Card
           data-testid="bond-dashboard-business-type-metrics"

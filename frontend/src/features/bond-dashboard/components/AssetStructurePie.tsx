@@ -41,7 +41,7 @@ export function AssetStructurePie({
     tooltip: {
       trigger: "item",
       formatter: (p: unknown) => {
-        const x = p as { name: string; value: number; percent: number };
+        const x = p as { name: string; value: number | null; percent: number };
         return `${x.name}<br/>${x.percent.toFixed(2)}%<br/>${formatYi(x.value)} 亿`;
       },
     },

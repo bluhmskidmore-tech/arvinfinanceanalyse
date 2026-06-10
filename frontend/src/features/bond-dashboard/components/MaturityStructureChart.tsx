@@ -13,8 +13,14 @@ export function MaturityStructureChart({
 }) {
   const items = data?.items ?? [];
   const categories = items.map((i) => i.maturity_bucket);
-  const barYi = items.map((i) => nativeToNumber(i.total_market_value) / 1e8);
-  const linePct = items.map((i) => nativeToNumber(i.percentage) * 100);
+  const barYi = items.map((i) => {
+    const raw = nativeToNumber(i.total_market_value);
+    return raw === null ? null : raw / 1e8;
+  });
+  const linePct = items.map((i) => {
+    const raw = nativeToNumber(i.percentage);
+    return raw === null ? null : raw * 100;
+  });
 
   const option: EChartsOption = {
     color: ["#1677ff", "#ff7a45"],
