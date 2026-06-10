@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { Collapse, Select } from "antd";
 
 import { FilterBar } from "../../../components/FilterBar";
@@ -31,9 +31,6 @@ type MarketDataHeroSectionProps = {
   watchDate: string;
   onWatchDateChange: (value: string) => void;
   isFormalBasis: boolean;
-  catalogCount: number;
-  stableCount: number;
-  stableCatalogCount: number;
   terminalKpiMetrics: MarketOverviewMetric[];
   pipelineOverviewMetrics: MarketOverviewMetric[];
   terminalTickerItems: MarketTerminalTickerItem[];
@@ -52,6 +49,48 @@ type MarketDataHeroSectionProps = {
   activeFilterSummary: string;
 };
 
+function MarketOverviewMetricCard({
+  metric,
+  variant = "pipeline",
+}: {
+  metric: MarketOverviewMetric;
+  variant?: "terminal" | "pipeline";
+}) {
+  const tone = metric.tone ?? "default";
+  return (
+    <article
+      data-testid={metric.testId}
+      className={[
+        "market-data-overview-card",
+        variant === "terminal" ? "market-data-terminal-kpi-card" : "",
+        `market-data-overview-card--${tone}`,
+        metric.valueVariant === "text" ? "market-data-overview-card--text" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <span aria-hidden className="market-data-overview-card__bar" />
+      {variant === "terminal" ? (
+        <div className="market-data-terminal-kpi-card__head">
+          <div className="market-data-overview-card__label">{metric.title}</div>
+          {metric.sparklineValues && metric.sparklineValues.length >= 2 ? (
+            <MarketTerminalSparkline values={metric.sparklineValues} tone={metric.sparklineTone} />
+          ) : null}
+        </div>
+      ) : (
+        <div className="market-data-overview-card__label">{metric.title}</div>
+      )}
+      <div
+        className="market-data-overview-card__value"
+        style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
+      >
+        {metric.value}
+      </div>
+      <p className="market-data-overview-card__detail">{metric.detail}</p>
+    </article>
+  );
+}
+
 function MarketTerminalKpiStrip({ metrics }: { metrics: MarketOverviewMetric[] }) {
   if (metrics.length === 0) {
     return (
@@ -66,89 +105,41 @@ function MarketTerminalKpiStrip({ metrics }: { metrics: MarketOverviewMetric[] }
       testId="market-data-terminal-kpi-strip"
       className="dashboard-overview-hero-strip market-data-terminal-kpi-strip"
     >
-      {metrics.map((metric) => {
-        const tone = metric.tone ?? "default";
-        return (
-          <article
-            key={metric.testId}
-            data-testid={metric.testId}
-            className={[
-              "market-data-overview-card market-data-terminal-kpi-card",
-              `market-data-overview-card--${tone}`,
-              metric.valueVariant === "text" ? "market-data-overview-card--text" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <span aria-hidden className="market-data-overview-card__bar" />
-            <div className="market-data-terminal-kpi-card__head">
-              <div className="market-data-overview-card__label">{metric.title}</div>
-              {metric.sparklineValues && metric.sparklineValues.length >= 2 ? (
-                <MarketTerminalSparkline
-                  values={metric.sparklineValues}
-                  tone={metric.sparklineTone}
-                />
-              ) : null}
-            </div>
-            <div
-              className="market-data-overview-card__value"
-              style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
-            >
-              {metric.value}
-            </div>
-            <p className="market-data-overview-card__detail">{metric.detail}</p>
-          </article>
-        );
-      })}
+      {metrics.map((metric) => (
+        <MarketOverviewMetricCard key={metric.testId} metric={metric} variant="terminal" />
+      ))}
     </KpiBand>
   );
 }
 
 function MarketPipelineKpiCollapse({ metrics }: { metrics: MarketOverviewMetric[] }) {
+  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const expanded = activeKeys.includes("pipeline-kpis");
+
   return (
     <Collapse
       data-testid="market-data-pipeline-kpi-collapse"
       className="market-data-pipeline-kpi-collapse"
       bordered={false}
-      defaultActiveKey={[]}
+      activeKey={activeKeys}
+      onChange={(keys) => {
+        const nextKeys = Array.isArray(keys) ? keys : [keys];
+        setActiveKeys(nextKeys);
+      }}
       items={[
         {
           key: "pipeline-kpis",
           label: `读面运维指标（${metrics.length}）`,
-          forceRender: true,
-          children: (
+          children: expanded ? (
             <KpiBand
               testId="market-data-pipeline-kpi-strip"
               className="dashboard-overview-hero-strip market-data-overview-strip market-data-pipeline-kpi-strip"
             >
-              {metrics.map((metric) => {
-                const tone = metric.tone ?? "default";
-                return (
-                  <article
-                    key={metric.testId}
-                    data-testid={metric.testId}
-                    className={[
-                      "market-data-overview-card",
-                      `market-data-overview-card--${tone}`,
-                      metric.valueVariant === "text" ? "market-data-overview-card--text" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    <span aria-hidden className="market-data-overview-card__bar" />
-                    <div className="market-data-overview-card__label">{metric.title}</div>
-                    <div
-                      className="market-data-overview-card__value"
-                      style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
-                    >
-                      {metric.value}
-                    </div>
-                    <p className="market-data-overview-card__detail">{metric.detail}</p>
-                  </article>
-                );
-              })}
+              {metrics.map((metric) => (
+                <MarketOverviewMetricCard key={metric.testId} metric={metric} />
+              ))}
             </KpiBand>
-          ),
+          ) : null,
         },
       ]}
     />
@@ -160,9 +151,6 @@ export function MarketDataHeroSection({
   watchDate,
   onWatchDateChange,
   isFormalBasis,
-  catalogCount,
-  stableCount,
-  stableCatalogCount,
   terminalKpiMetrics,
   pipelineOverviewMetrics,
   terminalTickerItems,
@@ -212,10 +200,11 @@ export function MarketDataHeroSection({
       <div className="market-data-hero-inner">
         <DataStatusStrip testId="market-data-data-status-strip">
           <div className="market-data-header-meta">
-            <span>利率主表口径：{isFormalBasis ? "正式" : "分析/候选"}</span>
-            <span>目录 {catalogCount}</span>
-            <span>
-              稳定回收 {stableCount} / {stableCatalogCount}
+            <span data-testid="market-data-formal-basis-chip">
+              利率主表口径：{isFormalBasis ? "正式" : "分析/候选"}
+            </span>
+            <span className="market-data-header-meta__hint">
+              目录与稳定回收见下方「读面运维指标」
             </span>
           </div>
         </DataStatusStrip>

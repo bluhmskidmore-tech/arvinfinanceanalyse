@@ -24,10 +24,10 @@
 
 | 类型 | 说明 |
 |------|------|
-| UX | DataStatusStrip 与 KPI 横带均含「目录 / 稳定 / 联动报告日」类信息，首屏略重复。 |
+| UX | ~~DataStatusStrip 与 KPI 横带重复目录/稳定回收~~ → **已处理（2026-06-10f）**：状态条仅保留利率口径；目录/稳定回收仅在折叠「读面运维指标」内展示。 |
 | UX | 主业务问句偏长；可收敛为「先看清读面 ready 与口径边界」。 |
 | 性能 | ~~宏观深度 Tabs 三栏均 `forceRender: true`~~ → **已处理（2026-06-10）**：按 `macroDepthTab` 条件渲染，仅挂载当前 Tab。 |
-| 性能 | 联动 `Collapse` 默认折叠且无 `forceRender`（保持）。运维 KPI 折叠仍 `forceRender: true`（测试需要）。 |
+| 性能 | ~~联动 API 首屏即拉取~~ → **已处理（2026-06-10g）**：`getMacroBondLinkageAnalysis` 仅在信用利差/压力 Tab 或展开联动折叠块后启用；联动大块抽至 `MarketDataLinkageSection`。~~运维 KPI `forceRender`~~ → **已处理（2026-06-10f）**：展开后才挂载 `market-data-pipeline-kpi-strip`。 |
 | 性能 | ~~窗口聚焦重复请求~~ → **已处理（2026-06-10）**：市场页 queries `refetchOnWindowFocus: false`；`staleTime` 由 `externalDataQueryOptions` 提供。 |
 | UX | ~~Livermore 整段展开占首屏以下~~ → **已处理（2026-06-10）**：`market-data-livermore-collapse` 默认折叠 + 延迟 `getLivermoreStrategy`。 |
 | 治理 | **Route B（2026-06-10）**：`GS-MKT-RATES-FRAGMENT-A` 冻结 formal rates 片段；来源筛选优先 catalog `vendor_name`；Playwright smoke。`GAP-MKT-DATA` 全页缺口仍在。 |

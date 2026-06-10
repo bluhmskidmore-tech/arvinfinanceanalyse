@@ -305,6 +305,11 @@
   min-height: 18px;
 }
 
+.market-data-header-meta__hint {
+  color: var(--moss-color-text-secondary);
+  font-size: 11px;
+}
+
 .market-data-filter-tray {
   padding: 8px 10px;
   border: 1px solid rgba(27, 34, 38, 0.16);

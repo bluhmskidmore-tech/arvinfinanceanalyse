@@ -6,7 +6,7 @@ test.describe("market data terminal first screen", () => {
 
     const pageRoot = page.locator('[data-testid="market-data-page"]');
     await expect(pageRoot).toBeVisible();
-    await expect(pageRoot).toHaveAttribute("data-layout-rev", "2026-06-10e");
+    await expect(pageRoot).toHaveAttribute("data-layout-rev", "2026-06-10g");
 
     const ticker = page.locator('[data-testid="market-data-terminal-ticker"]');
     await expect(ticker).toBeVisible({ timeout: 30_000 });

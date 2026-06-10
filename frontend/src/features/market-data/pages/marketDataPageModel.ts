@@ -34,7 +34,7 @@ export type { MarketCreditSegmentFilter };
 
 const SPREAD_TENOR_SLOTS: SpreadTenorSlot[] = ["3Y", "5Y", "10Y"];
 
-type SpreadSlot = {
+export type SpreadSlot = {
   tenor: SpreadTenorSlot;
   point: MacroBondLinkageTopCorrelation | null;
 };

@@ -8,6 +8,7 @@ import {
   externalDataQueryOptions,
   nonCancellingRefetchOptions,
 } from "../../../app/externalDataRefreshPolicy";
+import { buildMarketDataCategoryStore } from "../lib/marketDataCategoryStore";
 import { buildMarketDataPageModel } from "../pages/marketDataPageModel";
 
 function todayIsoDate() {
@@ -20,6 +21,7 @@ function todayIsoDate() {
 
 type UseMarketDataPageDataOptions = {
   livermoreEnabled?: boolean;
+  linkageEnabled?: boolean;
 };
 
 const marketDataQueryFocusOptions = {
@@ -28,6 +30,7 @@ const marketDataQueryFocusOptions = {
 
 export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}) {
   const livermoreEnabled = options.livermoreEnabled ?? false;
+  const linkageEnabled = options.linkageEnabled ?? false;
   const client = useApiClient();
   const queryClient = useQueryClient();
   const [watchDate, setWatchDate] = useState(todayIsoDate);
@@ -115,7 +118,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
   const macroBondLinkageQuery = useQuery({
     queryKey: macroBondLinkageQueryKey,
     queryFn: () => client.getMacroBondLinkageAnalysis({ reportDate: basePageModel.linkageReportDate }),
-    enabled: Boolean(basePageModel.linkageReportDate),
+    enabled: linkageEnabled && Boolean(basePageModel.linkageReportDate),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
     ...marketDataQueryFocusOptions,
@@ -145,16 +148,34 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     ],
   );
 
+  const resolveLinkageReportDate = useCallback(() => {
+    const latestEnvelope = queryClient.getQueryData<Awaited<ReturnType<typeof client.getChoiceMacroLatest>>>([
+      "market-data",
+      "choice-macro-latest",
+      client.mode,
+    ]);
+    const catalogEnvelope = queryClient.getQueryData<Awaited<ReturnType<typeof client.getMacroFoundation>>>([
+      "market-data",
+      "macro-foundation",
+      client.mode,
+    ]);
+    return buildMarketDataCategoryStore({
+      catalog: catalogEnvelope?.result.catalog ?? [],
+      latestSeries: latestEnvelope?.result.series ?? [],
+      fxAnalyticalGroups: [],
+    }).linkageReportDate;
+  }, [client.mode, queryClient]);
+
   const refreshMacroBondLinkage = useCallback(async () => {
-    if (!basePageModel.linkageReportDate) {
+    const reportDate = resolveLinkageReportDate();
+    if (!reportDate) {
       return;
     }
-    await queryClient.cancelQueries({ queryKey: macroBondLinkageQueryKey, exact: true });
-    const envelope = await client.getMacroBondLinkageAnalysis({
-      reportDate: basePageModel.linkageReportDate,
-    });
-    queryClient.setQueryData(macroBondLinkageQueryKey, envelope);
-  }, [basePageModel.linkageReportDate, client, macroBondLinkageQueryKey, queryClient]);
+    const linkageQueryKey = ["market-data", "macro-bond-linkage", client.mode, reportDate] as const;
+    await queryClient.cancelQueries({ queryKey: linkageQueryKey, exact: true });
+    const envelope = await client.getMacroBondLinkageAnalysis({ reportDate });
+    queryClient.setQueryData(linkageQueryKey, envelope);
+  }, [client, queryClient, resolveLinkageReportDate]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -173,7 +194,6 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? `刷新未完成：${payload.status}`);
       }
-      setRefreshStatus("刷新完成");
       await Promise.all([
         catalogQuery.refetch(nonCancellingRefetchOptions),
         latestQuery.refetch(nonCancellingRefetchOptions),
@@ -181,9 +201,10 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
         fxAnalyticalQuery.refetch(nonCancellingRefetchOptions),
         fxFormalStatusQuery.refetch(nonCancellingRefetchOptions),
         ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions),
-        refreshMacroBondLinkage(),
-        livermoreStrategyQuery.refetch(nonCancellingRefetchOptions),
+        livermoreEnabled ? livermoreStrategyQuery.refetch(nonCancellingRefetchOptions) : Promise.resolve(),
       ]);
+      await refreshMacroBondLinkage();
+      setRefreshStatus("刷新完成");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setRefreshError(msg);
@@ -200,6 +221,7 @@ export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}
     fxFormalStatusQuery,
     ncdFundingProxyQuery,
     refreshMacroBondLinkage,
+    livermoreEnabled,
     livermoreStrategyQuery,
   ]);
 

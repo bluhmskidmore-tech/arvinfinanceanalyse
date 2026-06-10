@@ -1,22 +1,15 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { Collapse } from "antd";
-
 import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
 import { PageSectionLead, type PageSectionLeadProps } from "../../../components/page/PagePrimitives";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import type {
-  ChoiceMacroRecentPoint,
-  MacroBondLinkageTopCorrelation,
-  ResultMeta,
-} from "../../../api/contracts";
+import type { ChoiceMacroRecentPoint, ResultMeta } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../../../components/KpiCard";
-import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
 import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
 import { MarketDataFxFormalSection } from "../components/MarketDataFxFormalSection";
+import { MarketDataLinkageSection } from "../components/MarketDataLinkageSection";
 import { MarketDataLivermoreSection } from "../components/MarketDataLivermoreSection";
 import { MacroLatestReadinessBanner } from "../components/MacroLatestReadinessBanner";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
@@ -28,7 +21,6 @@ import {
   marketSeriesRefreshTier,
   type MarketObservationPoint,
 } from "../lib/marketDataCategoryStore";
-import { formatSignedNumber } from "../lib/marketDataFormat";
 import { designTokens } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import {
@@ -73,13 +65,6 @@ function MarketSectionLead({
 }: Omit<PageSectionLeadProps, "style"> & { flushTop?: boolean }) {
   return <PageSectionLead {...props} style={marketDataSectionLeadStyle} />;
 }
-
-const TARGET_FAMILY_LABELS: Record<string, string> = {
-  treasury: "国债收益率",
-  cdb: "国开收益率",
-  aaa_credit: "AAA 信用收益率",
-  credit_spread: "信用利差",
-};
 
 function formatRecentPoint(point: ChoiceMacroRecentPoint) {
   return `${point.trade_date} ${point.value_numeric.toFixed(2)}`;
@@ -140,64 +125,6 @@ function fxAnalyticalGroupDescription(description: string) {
       "人民币指数和估算指数序列保留为分析口径，不流入正式外汇读面。",
   };
   return labels[description] ?? description;
-}
-
-function familyLabel(targetFamily: string) {
-  return TARGET_FAMILY_LABELS[targetFamily] ?? targetFamily;
-}
-
-function formatCorrelation(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) {
-    return "不可用";
-  }
-  return value.toFixed(2);
-}
-
-function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
-  const dirClass =
-    point.direction === "positive"
-      ? "market-data-dir-pill--pos"
-      : point.direction === "negative"
-        ? "market-data-dir-pill--neg"
-        : "market-data-dir-pill--neu";
-  return (
-    <div
-      key={`${point.series_id}:${point.target_family}:${point.target_tenor ?? "none"}`}
-      className="market-data-inset-card market-data-inset-card--surface"
-    >
-      <div className="market-data-corr-card-header">
-        <div>
-          <div className="market-data-series-title">{point.series_name}</div>
-          <div className="market-data-dim-label">{point.series_id}</div>
-        </div>
-        <div className={`market-data-dir-pill ${dirClass}`}>{point.direction}</div>
-      </div>
-
-      <div className="market-data-body-line">
-        目标维度：{familyLabel(point.target_family)}
-        {point.target_tenor ? ` / ${point.target_tenor}` : " / 期限不可用"}
-      </div>
-
-      <div className="market-data-corr-grid-inner">
-        <div>
-          <div className="market-data-dim-label">3月相关</div>
-          <div className="market-data-tabular">{formatCorrelation(point.correlation_3m)}</div>
-        </div>
-        <div>
-          <div className="market-data-dim-label">6月相关</div>
-          <div className="market-data-tabular">{formatCorrelation(point.correlation_6m)}</div>
-        </div>
-        <div>
-          <div className="market-data-dim-label">1年相关</div>
-          <div className="market-data-tabular">{formatCorrelation(point.correlation_1y)}</div>
-        </div>
-        <div>
-          <div className="market-data-dim-label">领先/滞后</div>
-          <div className="market-data-tabular">{`${point.lead_lag_days} 天`}</div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function renderSeriesCards(
@@ -285,6 +212,16 @@ function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): 
 
 export default function MarketDataPage() {
   const [livermoreExpanded, setLivermoreExpanded] = useState(false);
+  const [linkageCollapseExpanded, setLinkageCollapseExpanded] = useState(false);
+  const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
+  const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
+  const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
+  const linkageFetchEnabled =
+    linkageCollapseExpanded ||
+    macroDepthTab === "spreads" ||
+    macroDepthTab === "linkage" ||
+    creditSegment !== "both";
   const {
     clientMode,
     watchDate,
@@ -303,7 +240,10 @@ export default function MarketDataPage() {
     macroBondLinkageQuery,
     ncdFundingProxy,
     refreshGateSupplement,
-  } = useMarketDataPageData({ livermoreEnabled: livermoreExpanded });
+  } = useMarketDataPageData({
+    livermoreEnabled: livermoreExpanded,
+    linkageEnabled: linkageFetchEnabled,
+  });
   const {
     catalog,
     visibleLatestSeries,
@@ -333,10 +273,6 @@ export default function MarketDataPage() {
     pipelineOverviewMetrics,
     terminalTickerItems,
   } = pageModel;
-  const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
-  const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
-  const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
   const catalogVendorNames = useMemo(() => buildCatalogVendorNameMap(catalog), [catalog]);
   const filteredTickerItems = useMemo(
     () =>
@@ -392,7 +328,7 @@ export default function MarketDataPage() {
   const railMetrics = filteredTerminalKpiMetrics.slice(0, 3);
 
   return (
-    <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-06-10e">
+    <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-06-10g">
       <section className="market-data-terminal-cockpit" data-testid="market-data-terminal-cockpit">
         <div className="market-data-terminal-primary-grid" data-testid="market-data-terminal-primary-grid">
           <div className="market-data-terminal-primary-column">
@@ -401,9 +337,6 @@ export default function MarketDataPage() {
         watchDate={watchDate}
         onWatchDateChange={setWatchDate}
         isFormalBasis={isFormalBasis}
-        catalogCount={catalog.length}
-        stableCount={stableSeries.length}
-        stableCatalogCount={stableCatalogSeries.length}
         terminalKpiMetrics={filteredTerminalKpiMetrics}
         pipelineOverviewMetrics={pipelineOverviewMetrics}
         terminalTickerItems={filteredTickerItems}
@@ -748,222 +681,15 @@ export default function MarketDataPage() {
       </MarketSectionBlock>
       )}
 
-      <MarketSectionBlock>
-        <MarketSectionLead
-          eyebrow="分析口径"
-          title="宏观-债市联动"
-          description="联动区保留为分析口径折叠块，继续显式标注分析口径和非正式口径，不向正式结果读面越界。"
-        />
-        <Collapse
-          data-testid="market-data-linkage-collapse"
-          bordered={false}
-        defaultActiveKey={[]}
-        items={[
-          {
-            key: "macro-linkage",
-            label: "宏观-债市联动（分析口径，点击展开）",
-            children: (
-              <AsyncSection
-                title="宏观-债市联动"
-                isLoading={macroBondLinkageQuery.isLoading}
-                isError={macroBondLinkageQuery.isError}
-                isEmpty={
-                  !macroBondLinkageQuery.isLoading &&
-                  !macroBondLinkageQuery.isError &&
-                  (macroBondLinkage.top_correlations?.length ?? 0) === 0 &&
-                  macroBondLinkageWarnings.length === 0
-                }
-                onRetry={() => void macroBondLinkageQuery.refetch(nonCancellingRefetchOptions)}
-              >
-                <div className="market-data-stack-gap-5">
-            <section data-testid="market-data-linkage-caveat" className="market-data-linkage-caveat">
-              <div className="market-data-linkage-caveat-tags">
-                <span className="market-data-pill-tag market-data-pill-tag--info">分析口径</span>
-                <span className="market-data-pill-tag market-data-pill-tag--warn">非正式口径</span>
-              </div>
-              <div className="market-data-linkage-caveat-body">
-                本区为宏观联动分析口径。组合影响仅用于研究和配置讨论，属于分析估算，不代表账本口径下的损益（PnL）、
-                不代表正式估值归因，也不替代债券分析的正式读面。
-              </div>
-              {macroBondLinkageWarnings.length > 0 ? (
-                <ul data-testid="market-data-linkage-warning-list" className="market-data-linkage-warning-list">
-                  {macroBondLinkageWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="market-data-linkage-warning-empty" data-testid="market-data-linkage-warning-empty">
-                  当前无额外方法警示。
-                </div>
-              )}
-            </section>
-
-            <div className="market-data-summary-grid">
-              <div data-testid="market-data-linkage-composite-score">
-                <KpiCard
-                  title="综合评分"
-                  value={
-                    macroBondLinkage.environment_score?.composite_score != null
-                      ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
-                      : "不可用"
-                  }
-                  detail={macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分数据。"}
-                  valueVariant="text"
-                  tone={toneFromSignedNumber(
-                    macroBondLinkage.environment_score?.composite_score != null
-                      ? macroBondLinkage.environment_score.composite_score
-                      : null,
-                  )}
-                />
-              </div>
-              <div data-testid="market-data-linkage-rate-direction">
-                <KpiCard
-                  title="利率方向"
-                  value={macroBondLinkage.environment_score?.rate_direction ?? "不可用"}
-                  detail={
-                    macroBondLinkage.environment_score?.rate_direction_score != null
-                      ? `direction score ${macroBondLinkage.environment_score.rate_direction_score.toFixed(2)}`
-                      : "缺少方向评分。"
-                  }
-                  valueVariant="text"
-                  tone={toneFromSignedNumber(
-                    macroBondLinkage.environment_score?.rate_direction_score != null
-                      ? macroBondLinkage.environment_score.rate_direction_score
-                      : null,
-                  )}
-                />
-              </div>
-              <div data-testid="market-data-linkage-liquidity-score">
-                <KpiCard
-                  title="流动性评分"
-                  value={
-                    macroBondLinkage.environment_score?.liquidity_score != null
-                      ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
-                      : "不可用"
-                  }
-                  detail="正值偏松，负值偏紧。"
-                  valueVariant="text"
-                  tone={toneFromSignedNumber(
-                    macroBondLinkage.environment_score?.liquidity_score != null
-                      ? macroBondLinkage.environment_score.liquidity_score
-                      : null,
-                  )}
-                />
-              </div>
-              <div data-testid="market-data-linkage-growth-score">
-                <KpiCard
-                  title="增长评分"
-                  value={
-                    macroBondLinkage.environment_score?.growth_score != null
-                      ? macroBondLinkage.environment_score.growth_score.toFixed(2)
-                      : "不可用"
-                  }
-                  detail="宏观增长方向的简化分值。"
-                  valueVariant="text"
-                  tone={toneFromSignedNumber(
-                    macroBondLinkage.environment_score?.growth_score != null
-                      ? macroBondLinkage.environment_score.growth_score
-                      : null,
-                  )}
-                />
-              </div>
-            </div>
-
-            <section data-testid="market-data-linkage-portfolio-impact" className="market-data-detail-panel">
-              <h2 className="market-data-linkage-panel-title">组合影响估算</h2>
-              <p className="market-data-linkage-panel-lede">
-                以下数值为分析口径估算，基于宏观环境评分与组合在利率、利差维度上的敏感度静态映射，不代表正式损益。
-              </p>
-              {hasPortfolioImpact ? (
-                <div className="market-data-portfolio-grid">
-                  <div>
-                    <div className="market-data-dim-label">利率变动</div>
-                    <div className="market-data-tabular">
-                      {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="market-data-dim-label">利差走阔</div>
-                    <div className="market-data-tabular">
-                      {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="market-data-dim-label">利率影响</div>
-                    <div className="market-data-tabular">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_pnl_impact)}</div>
-                  </div>
-                  <div>
-                    <div className="market-data-dim-label">利差影响</div>
-                    <div className="market-data-tabular">{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_pnl_impact)}</div>
-                  </div>
-                  <div>
-                    <div className="market-data-dim-label">合计估算</div>
-                    <div className="market-data-tabular">{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
-                  </div>
-                  <div>
-                    <div className="market-data-dim-label">影响占比</div>
-                    <div className="market-data-tabular">{macroBondLinkage.portfolio_impact?.impact_ratio_to_market_value ?? "不可用"}</div>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  data-testid="market-data-linkage-portfolio-impact-unavailable"
-                  className="market-data-portfolio-empty"
-                >
-                  当前报告日未返回组合影响估算，状态按不可用处理，不在前端补零。
-                </div>
-              )}
-            </section>
-
-            <section data-testid="market-data-linkage-spread-tenors" className="market-data-detail-panel">
-              <h2 className="market-data-linkage-panel-title">信用利差显式维度</h2>
-              <p className="market-data-linkage-panel-lede">
-                仅按结构化字段渲染，不从标签或目标收益率反推期限。
-              </p>
-              <div className="market-data-spread-slot-grid">
-                {spreadSlots.map(({ tenor, point }) => (
-                  <div
-                    key={tenor}
-                    data-testid={`market-data-linkage-spread-slot-${tenor}`}
-                    className="market-data-spread-slot"
-                  >
-                    <div className="market-data-slot-title">{`信用利差 ${tenor}`}</div>
-                    {point ? (
-                      <>
-                        <div className="market-data-muted-body">{point.series_name}</div>
-                        <div className="market-data-tabular">{`1年相关 ${formatCorrelation(point.correlation_1y)}`}</div>
-                        <div className="market-data-tabular">{`领先/滞后 ${point.lead_lag_days} 天`}</div>
-                      </>
-                    ) : (
-                      <div className="market-data-muted-body">
-                        不可用：当前载荷未返回该期限的结构化相关性，不在前端推断。
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section data-testid="market-data-linkage-top-correlations" className="market-data-detail-panel">
-              <h2 className="market-data-linkage-panel-title">相关性前十</h2>
-              {(nonSpreadTopCorrelations.length > 0 ||
-                spreadSlots.some((slot) => slot.point !== null)) ? (
-                <div className="market-data-stack-gap-3">
-                  {(macroBondLinkage.top_correlations ?? []).map((point) =>
-                    renderCorrelationCard(point),
-                  )}
-                </div>
-              ) : (
-                <div className="market-data-corr-empty">当前无可展示的结构化相关性结果。</div>
-              )}
-            </section>
-                </div>
-              </AsyncSection>
-            ),
-          },
-        ]}
+      <MarketDataLinkageSection
+        macroBondLinkageQuery={macroBondLinkageQuery}
+        macroBondLinkage={macroBondLinkage}
+        macroBondLinkageWarnings={macroBondLinkageWarnings}
+        hasPortfolioImpact={hasPortfolioImpact}
+        spreadSlots={spreadSlots}
+        nonSpreadTopCorrelations={nonSpreadTopCorrelations}
+        onExpandedChange={setLinkageCollapseExpanded}
       />
-      </MarketSectionBlock>
 
       {MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ? (
         <MarketSectionBlock>
