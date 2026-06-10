@@ -10,6 +10,7 @@ SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "ledger-pnl-sign-off-packet.md"
 AUDIT_PACKET = ROOT / "docs" / "pnl" / "ledger-pnl-governance-audit-packet.md"
 OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "ledger-pnl-owner-evidence-packet.md"
 APPROVAL_TEMPLATE = ROOT / "docs" / "pnl" / "ledger-pnl-business-owner-approval-template.md"
+OWNER_SIGNOFF_RUNBOOK = ROOT / "docs" / "pnl" / "ledger-pnl-owner-signoff-runbook.md"
 
 
 def test_ledger_pnl_signoff_packet_preserves_candidate_boundary() -> None:
@@ -98,3 +99,30 @@ def test_ledger_pnl_business_owner_approval_template_references_review_packets()
         in template
     )
     assert "Reviewed owner evidence packet: `docs/pnl/ledger-pnl-owner-evidence-packet.md`" in template
+
+
+def test_ledger_pnl_owner_signoff_runbook_preserves_candidate_boundary() -> None:
+    text = OWNER_SIGNOFF_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "# Ledger PnL Owner Signoff Runbook" in text
+    assert "`PAGE-LEDGER-PNL-001`" in text
+    assert "`/api/ledger-pnl/summary`" in text
+    assert "`docs/pnl/ledger-pnl-business-owner-approval-template.md`" in text
+    assert "`docs/pnl/ledger-pnl-owner-evidence-packet.md`" in text
+    assert "`docs/pnl/ledger-pnl-sign-off-packet.md`" in text
+    assert "`docs/pnl/ledger-pnl-governance-audit-packet.md`" in text
+    assert "Keep `formal_use_allowed=false`." in text
+    assert "Keep `closure_approved=false`." in text
+    assert "Keep `certification_effect=none`." in text
+    assert "Do not promote `MTR-LPN-001` through `MTR-LPN-003` to formal use." in text
+    assert "Do not promote Ledger PnL summary values to formal PnL truth." in text
+    assert "Do not treat dry-run governance output as a written direct PAGE/API governance record." in text
+    assert "`GS-LEDGER-PNL-SUMMARY-A`" in text
+    assert "`captured-awaiting-approval`" in text
+    assert "`GS-LEDGER-PNL-FIN-IND-202603-B`" in text
+    assert "Run `python scripts/check_ledger_pnl_business_owner_approval.py --require-captured`" not in text
+    assert "`python scripts/check_ledger_pnl_business_owner_approval.py --require-captured`" in text
+    assert (
+        "Passing it still does not promote Ledger PnL to formal PnL truth or set "
+        "`closure_approved=true`."
+    ) in text
