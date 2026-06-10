@@ -3,6 +3,7 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceMacroLatestPoint,
   FxAnalyticalPayload,
+  FxFormalStatusPayload,
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
   MacroVendorPayload,
@@ -22,10 +23,14 @@ import {
 } from "../lib/livermoreStrategyModel";
 import {
   buildMarketDataTerminalModel,
+  buildTerminalTickerItems,
+  type MarketCreditSegmentFilter,
   type MarketDataTerminalModel,
+  type MarketTerminalTickerItem,
 } from "../lib/marketDataTerminalModel";
 
 export type SpreadTenorSlot = "3Y" | "5Y" | "10Y";
+export type { MarketCreditSegmentFilter };
 
 const SPREAD_TENOR_SLOTS: SpreadTenorSlot[] = ["3Y", "5Y", "10Y"];
 
@@ -43,6 +48,7 @@ export type MarketDataStatusBadges = {
 export type MarketDataEvidenceLines = {
   formalRates: string;
   macroLatest: string;
+  fxFormal: string;
   fxAnalytical: string;
   ncdProxy: string;
   livermore: string;
@@ -64,6 +70,8 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   nonSpreadTopCorrelations: MacroBondLinkageTopCorrelation[];
   macroMeta: ResultMeta | undefined;
   formalRatesMeta: ResultMeta | undefined;
+  fxFormalStatus: FxFormalStatusPayload | null;
+  fxFormalMeta: ResultMeta | undefined;
   fxAnalyticalMeta: ResultMeta | undefined;
   ncdFundingProxyMeta: ResultMeta | undefined;
   rateQuotesSource: MarketDataTerminalModel["rateQuotes"]["source"];
@@ -71,13 +79,16 @@ export type MarketDataPageModel = MarketDataCategoryStore & {
   isFormalBasis: boolean;
   statusBadges: MarketDataStatusBadges;
   evidenceLines: MarketDataEvidenceLines;
-  overviewMetrics: MarketOverviewMetric[];
+  terminalTickerItems: MarketTerminalTickerItem[];
+  terminalKpiMetrics: MarketOverviewMetric[];
+  pipelineOverviewMetrics: MarketOverviewMetric[];
 };
 
 type BuildMarketDataPageModelInput = {
   catalogEnvelope?: ApiEnvelope<MacroVendorPayload>;
   latestEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
   fxAnalyticalEnvelope?: ApiEnvelope<FxAnalyticalPayload>;
+  fxFormalStatusEnvelope?: ApiEnvelope<FxFormalStatusPayload>;
   formalRatesEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
   macroBondLinkageEnvelope?: ApiEnvelope<MacroBondLinkagePayload>;
   livermoreStrategyEnvelope?: Parameters<typeof buildLivermoreStrategyModel>[0]["envelope"];
@@ -155,22 +166,87 @@ function correlationStrength(point: MacroBondLinkageTopCorrelation) {
   );
 }
 
-function buildSpreadSlots(
+function creditSegmentMatches(seriesName: string, creditSegment: MarketCreditSegmentFilter): boolean {
+  if (creditSegment === "both") {
+    return true;
+  }
+  if (creditSegment === "mtn") {
+    return seriesName.includes("中票");
+  }
+  return seriesName.includes("城投");
+}
+
+export function buildSpreadSlots(
   topCorrelations: MacroBondLinkageTopCorrelation[] | undefined,
+  creditSegment: MarketCreditSegmentFilter = "both",
 ): SpreadSlot[] {
+  const spreadPool = (topCorrelations ?? []).filter(
+    (item) =>
+      item.target_family === "credit_spread" && creditSegmentMatches(item.series_name, creditSegment),
+  );
+
   return SPREAD_TENOR_SLOTS.map((tenor) => ({
     tenor,
     point:
-      (topCorrelations ?? [])
-        .filter((item) => item.target_family === "credit_spread" && item.target_tenor === tenor)
+      spreadPool
+        .filter((item) => item.target_tenor === tenor)
         .sort((left, right) => correlationStrength(right) - correlationStrength(left))[0] ?? null,
   }));
 }
 
-function buildOverviewMetrics(input: {
+function terminalKpiTone(delta: string): MarketOverviewMetric["tone"] {
+  if (delta.startsWith("+")) {
+    return "negative";
+  }
+  if (delta.startsWith("-")) {
+    return "positive";
+  }
+  return "default";
+}
+
+export function buildTerminalKpiMetricsFromTickerItems(
+  items: MarketTerminalTickerItem[],
+): MarketOverviewMetric[] {
+  return items.map((item) => ({
+    testId: `market-data-terminal-kpi-${item.key}`,
+    title: item.label,
+    value: item.value,
+    detail: `${item.delta} · ${item.tradeDate} · ${item.seriesId}`,
+    tone: terminalKpiTone(item.delta),
+    valueVariant: "metric",
+    sparklineValues: item.sparklineValues,
+    sparklineTone: item.tone,
+  }));
+}
+
+function buildTerminalKpiMetrics(terminalModel: MarketDataTerminalModel): MarketOverviewMetric[] {
+  return buildTerminalKpiMetricsFromTickerItems(buildTerminalTickerItems(terminalModel));
+}
+
+export function buildFxFormalStatusCollapseLabel(input: {
+  payload: FxFormalStatusPayload | null | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}): string {
+  if (input.isLoading) {
+    return "正式外汇中间价（加载中…）";
+  }
+  if (input.isError) {
+    return "正式外汇中间价（加载失败，点击展开）";
+  }
+  const payload = input.payload;
+  if (!payload) {
+    return "正式外汇中间价（点击展开）";
+  }
+  return `正式外汇中间价 · 物化 ${payload.materialized_count}/${payload.candidate_count} · 沿用 ${payload.carry_forward_count}（点击展开）`;
+}
+
+function buildPipelineOverviewMetrics(input: {
   catalogCount: number;
   categoryStore: MarketDataCategoryStore;
   fxAnalyticalGroupCount: number;
+  fxFormalStatus?: FxFormalStatusPayload | null;
+  fxFormalMeta?: ResultMeta;
 }): MarketOverviewMetric[] {
   const { categoryStore } = input;
   return [
@@ -215,10 +291,22 @@ function buildOverviewMetrics(input: {
             : "default",
     },
     {
+      testId: "market-data-fx-formal-materialized",
+      title: "正式外汇物化",
+      value: `${input.fxFormalStatus?.materialized_count ?? 0} / ${input.fxFormalStatus?.candidate_count ?? 0}`,
+      detail: `物化/候选对数 · 最新交易日 ${input.fxFormalStatus?.latest_trade_date ?? "—"} · 沿用 ${input.fxFormalStatus?.carry_forward_count ?? 0}`,
+      tone:
+        input.fxFormalMeta?.formal_use_allowed === false
+          ? "warning"
+          : (input.fxFormalStatus?.materialized_count ?? 0) === 0
+            ? "warning"
+            : "default",
+    },
+    {
       testId: "market-data-fx-analytical-group-count",
       title: "外汇观察分组",
       value: String(input.fxAnalyticalGroupCount),
-      detail: "后端返回的分析口径外汇分组数量。",
+      detail: "后端返回的分析口径外汇分组数量（与正式外汇状态分离）。",
     },
     {
       testId: "market-data-fx-analytical-series-count",
@@ -240,6 +328,7 @@ function buildOverviewMetrics(input: {
 function buildEvidenceLines(input: {
   formalRatesMeta?: ResultMeta;
   latestMeta?: ResultMeta;
+  fxFormalMeta?: ResultMeta;
   fxAnalyticalMeta?: ResultMeta;
   ncdFundingProxyMeta?: ResultMeta;
   livermoreMeta?: ResultMeta;
@@ -248,6 +337,7 @@ function buildEvidenceLines(input: {
   return {
     formalRates: metaEvidenceLine("formal rates", input.formalRatesMeta),
     macroLatest: metaEvidenceLine("macro latest", input.latestMeta),
+    fxFormal: metaEvidenceLine("FX formal", input.fxFormalMeta),
     fxAnalytical: metaEvidenceLine("FX analytical", input.fxAnalyticalMeta),
     ncdProxy: metaEvidenceLine("NCD proxy", input.ncdFundingProxyMeta),
     livermore: metaEvidenceLine("Livermore", input.livermoreMeta),
@@ -271,6 +361,8 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
   const macroBondLinkage: Partial<MacroBondLinkagePayload> = input.macroBondLinkageEnvelope?.result ?? {};
   const spreadSlots = buildSpreadSlots(macroBondLinkage.top_correlations);
   const formalRatesMeta = input.formalRatesEnvelope?.result_meta;
+  const fxFormalStatus = input.fxFormalStatusEnvelope?.result ?? null;
+  const fxFormalMeta = input.fxFormalStatusEnvelope?.result_meta;
   const macroMeta =
     formalRatesMeta ?? input.latestEnvelope?.result_meta ?? input.catalogEnvelope?.result_meta;
   const sourcePendingCount = [
@@ -299,6 +391,8 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     ),
     macroMeta,
     formalRatesMeta,
+    fxFormalStatus,
+    fxFormalMeta,
     fxAnalyticalMeta: input.fxAnalyticalEnvelope?.result_meta,
     ncdFundingProxyMeta: input.ncdFundingProxyMeta,
     rateQuotesSource: terminalModel.rateQuotes.source,
@@ -312,15 +406,20 @@ export function buildMarketDataPageModel(input: BuildMarketDataPageModelInput): 
     evidenceLines: buildEvidenceLines({
       formalRatesMeta,
       latestMeta: input.latestEnvelope?.result_meta,
+      fxFormalMeta,
       fxAnalyticalMeta: input.fxAnalyticalEnvelope?.result_meta,
       ncdFundingProxyMeta: input.ncdFundingProxyMeta,
       livermoreMeta: input.livermoreStrategyEnvelope?.result_meta,
       macroBondLinkageMeta: input.macroBondLinkageEnvelope?.result_meta,
     }),
-    overviewMetrics: buildOverviewMetrics({
+    terminalTickerItems: buildTerminalTickerItems(terminalModel),
+    terminalKpiMetrics: buildTerminalKpiMetrics(terminalModel),
+    pipelineOverviewMetrics: buildPipelineOverviewMetrics({
       catalogCount: catalog.length,
       categoryStore,
       fxAnalyticalGroupCount: fxAnalyticalGroups.length,
+      fxFormalStatus,
+      fxFormalMeta,
     }),
   };
 }

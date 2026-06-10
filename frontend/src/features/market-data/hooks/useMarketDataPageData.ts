@@ -18,7 +18,16 @@ function todayIsoDate() {
   return `${y}-${m}-${day}`;
 }
 
-export function useMarketDataPageData() {
+type UseMarketDataPageDataOptions = {
+  livermoreEnabled?: boolean;
+};
+
+const marketDataQueryFocusOptions = {
+  refetchOnWindowFocus: false,
+} as const;
+
+export function useMarketDataPageData(options: UseMarketDataPageDataOptions = {}) {
+  const livermoreEnabled = options.livermoreEnabled ?? false;
   const client = useApiClient();
   const queryClient = useQueryClient();
   const [watchDate, setWatchDate] = useState(todayIsoDate);
@@ -31,36 +40,50 @@ export function useMarketDataPageData() {
     queryFn: () => client.getMacroFoundation(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+    ...marketDataQueryFocusOptions,
   });
   const latestQuery = useQuery({
     queryKey: ["market-data", "choice-macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...marketDataQueryFocusOptions,
   });
   const fxAnalyticalQuery = useQuery({
     queryKey: ["market-data", "fx-analytical", client.mode],
     queryFn: () => client.getFxAnalytical(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...marketDataQueryFocusOptions,
+  });
+  const fxFormalStatusQuery = useQuery({
+    queryKey: ["market-data", "fx-formal-status", client.mode],
+    queryFn: () => client.getFxFormalStatus(),
+    retry: false,
+    ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+    ...marketDataQueryFocusOptions,
   });
   const ncdFundingProxyQuery = useQuery({
     queryKey: ["market-data", "ncd-funding-proxy", client.mode],
     queryFn: () => client.getNcdFundingProxy(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...marketDataQueryFocusOptions,
   });
   const livermoreStrategyQuery = useQuery({
     queryKey: ["market-data", "livermore-strategy", client.mode, watchDate],
     queryFn: () => client.getLivermoreStrategy({ asOfDate: watchDate }),
+    enabled: livermoreEnabled,
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+    ...marketDataQueryFocusOptions,
   });
   const formalRatesQuery = useQuery({
     queryKey: apiQueryKeys.marketRates(client.mode, watchDate),
     queryFn: () => client.getMarketDataRates(),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "stable", fetch_mode: "date_slice" }),
+    ...marketDataQueryFocusOptions,
   });
 
   const basePageModel = useMemo(
@@ -69,6 +92,7 @@ export function useMarketDataPageData() {
         catalogEnvelope: catalogQuery.data,
         latestEnvelope: latestQuery.data,
         fxAnalyticalEnvelope: fxAnalyticalQuery.data,
+        fxFormalStatusEnvelope: fxFormalStatusQuery.data,
         formalRatesEnvelope: formalRatesQuery.data,
         livermoreStrategyEnvelope: livermoreStrategyQuery.data,
         ncdFundingProxyMeta: ncdFundingProxyQuery.data?.result_meta,
@@ -77,6 +101,7 @@ export function useMarketDataPageData() {
       catalogQuery.data,
       latestQuery.data,
       fxAnalyticalQuery.data,
+      fxFormalStatusQuery.data,
       formalRatesQuery.data,
       livermoreStrategyQuery.data,
       ncdFundingProxyQuery.data?.result_meta,
@@ -93,6 +118,7 @@ export function useMarketDataPageData() {
     enabled: Boolean(basePageModel.linkageReportDate),
     retry: false,
     ...externalDataQueryOptions({ refresh_tier: "fallback", fetch_mode: "latest" }),
+    ...marketDataQueryFocusOptions,
   });
 
   const pageModel = useMemo(
@@ -101,6 +127,7 @@ export function useMarketDataPageData() {
         catalogEnvelope: catalogQuery.data,
         latestEnvelope: latestQuery.data,
         fxAnalyticalEnvelope: fxAnalyticalQuery.data,
+        fxFormalStatusEnvelope: fxFormalStatusQuery.data,
         formalRatesEnvelope: formalRatesQuery.data,
         macroBondLinkageEnvelope: macroBondLinkageQuery.data,
         livermoreStrategyEnvelope: livermoreStrategyQuery.data,
@@ -110,6 +137,7 @@ export function useMarketDataPageData() {
       catalogQuery.data,
       latestQuery.data,
       fxAnalyticalQuery.data,
+      fxFormalStatusQuery.data,
       formalRatesQuery.data,
       macroBondLinkageQuery.data,
       livermoreStrategyQuery.data,
@@ -151,6 +179,7 @@ export function useMarketDataPageData() {
         latestQuery.refetch(nonCancellingRefetchOptions),
         formalRatesQuery.refetch(nonCancellingRefetchOptions),
         fxAnalyticalQuery.refetch(nonCancellingRefetchOptions),
+        fxFormalStatusQuery.refetch(nonCancellingRefetchOptions),
         ncdFundingProxyQuery.refetch(nonCancellingRefetchOptions),
         refreshMacroBondLinkage(),
         livermoreStrategyQuery.refetch(nonCancellingRefetchOptions),
@@ -168,6 +197,7 @@ export function useMarketDataPageData() {
     latestQuery,
     formalRatesQuery,
     fxAnalyticalQuery,
+    fxFormalStatusQuery,
     ncdFundingProxyQuery,
     refreshMacroBondLinkage,
     livermoreStrategyQuery,
@@ -185,6 +215,7 @@ export function useMarketDataPageData() {
     catalogQuery,
     latestQuery,
     fxAnalyticalQuery,
+    fxFormalStatusQuery,
     ncdFundingProxyQuery,
     livermoreStrategyQuery,
     formalRatesQuery,

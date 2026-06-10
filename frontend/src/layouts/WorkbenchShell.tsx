@@ -220,6 +220,7 @@ export function WorkbenchShell() {
   const isLiabilityAnalyticsCompactChrome = currentSection.key === "liability-analytics";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
+  const isMarketDataTerminalMain = currentSection.key === "market-data";
   const isPortfolioPageOwnedChrome =
     isBalanceAnalysisCompactChrome ||
     isBalanceMovementAnalysisCompactChrome ||
@@ -229,12 +230,14 @@ export function WorkbenchShell() {
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
     isCrossAssetImmersiveMain ||
+    isMarketDataTerminalMain ||
     isPortfolioPageOwnedChrome ||
     isModuleHomePage;
   const showFullWorkspaceGuidance =
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
+    !isMarketDataTerminalMain &&
     !isBalanceMovementAnalysisCompactChrome &&
     !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
@@ -741,6 +744,7 @@ export function WorkbenchShell() {
           {!isDashboardCockpitShell &&
           !isBondAnalysisMinimalShell &&
           !isBalanceAnalysisCompactChrome &&
+          !isMarketDataTerminalMain &&
           !isModuleHomePage &&
           currentGroup ? (
             <section

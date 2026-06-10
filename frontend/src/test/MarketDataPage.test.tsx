@@ -60,6 +60,15 @@ function renderPageWithQueryClient(client: ApiClient) {
   return { ...result, queryClient };
 }
 
+async function expandMarketDataLivermoreCollapse() {
+  const collapse = await screen.findByTestId("market-data-livermore-collapse");
+  const header = collapse.querySelector(".ant-collapse-header");
+  if (!header) {
+    throw new Error("livermore collapse header missing");
+  }
+  fireEvent.click(header);
+}
+
 function buildResultMeta(partial: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_market_data_test",
@@ -451,7 +460,7 @@ describe("MarketDataPage", () => {
     });
 
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
-    expect(screen.getByTestId("market-data-page")).toHaveAttribute("data-layout-rev", "2026-05-15d");
+    expect(screen.getByTestId("market-data-page")).toHaveAttribute("data-layout-rev", "2026-06-10e");
     expect(screen.getByTestId("market-data-readiness-verdict")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-overview-readiness-label")).toHaveTextContent("读面就绪");
     expect(screen.getByTestId("market-data-overview-secondary-label")).toHaveTextContent("辅助观察");
@@ -467,13 +476,21 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent(
       "formal_use_allowed",
     );
+    expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("FX formal");
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("FX analytical");
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("Livermore");
     expect(screen.getByTestId("market-data-macro-evidence-rail")).toHaveTextContent("macro-bond linkage");
     expect(screen.getByTestId("market-data-source-pending-deck")).toBeInTheDocument();
-    expect(screen.getByText("Livermore 趋势门控")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-source-pending-contract-note")).toHaveTextContent(
+      "待契约：国债期货",
+    );
+    expect(screen.getByTestId("market-data-fx-formal-collapse")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-fx-formal-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("market-data-livermore-collapse")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-livermore-panel")).not.toBeInTheDocument();
     expect(screen.queryByText("宏观序列与分析观察")).not.toBeInTheDocument();
     expect(screen.queryByText("目录与结果元数据")).not.toBeInTheDocument();
+    await expandMarketDataLivermoreCollapse();
     expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("WARM");
     expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
       "分析口径 · 不生成交易指令",
@@ -491,6 +508,7 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("个股候选");
     expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("风险退出");
     expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("推荐标的");
+    expect(screen.getByTestId("market-data-pipeline-kpi-collapse")).toHaveTextContent("读面运维指标");
     expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("3");
     expect(screen.getByTestId("market-data-stable-count")).toHaveTextContent("1 / 2");
     expect(screen.getByTestId("market-data-fallback-count")).toHaveTextContent("1");
@@ -533,6 +551,52 @@ describe("MarketDataPage", () => {
         asOfDate: expect.any(String),
       });
     });
+  });
+
+  it("keeps FX formal status collapsed by default and renders rows after expand", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    expect(await screen.findByTestId("market-data-fx-formal-collapse")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-fx-formal-panel")).not.toBeInTheDocument();
+
+    const collapse = screen.getByTestId("market-data-fx-formal-collapse");
+    const header = collapse.querySelector(".ant-collapse-header");
+    if (!header) {
+      throw new Error("fx formal collapse header missing");
+    }
+    fireEvent.click(header);
+
+    expect(await screen.findByTestId("market-data-fx-formal-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-fx-formal-table")).toHaveTextContent("USD/CNY");
+    expect(screen.getByTestId("market-data-fx-formal-meta")).toHaveTextContent("正式可用=是");
+  });
+
+  it("keeps Livermore deferred until the collapse is expanded", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLivermoreStrategy = vi.fn(() => base.getLivermoreStrategy());
+
+    renderPage({
+      ...base,
+      getLivermoreStrategy,
+    });
+
+    expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-livermore-collapse")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-livermore-panel")).not.toBeInTheDocument();
+    expect(getLivermoreStrategy).not.toHaveBeenCalled();
+
+    await expandMarketDataLivermoreCollapse();
+    await waitFor(() => expect(getLivermoreStrategy).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId("market-data-livermore-panel")).toBeInTheDocument();
+  });
+
+  it("renders only the active macro depth tab panel", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-macro-tab-curve")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-macro-tab-spreads")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-macro-tab-linkage")).not.toBeInTheDocument();
   });
 
   it("drives terminal market panels from formal/latest data and source-pending states", async () => {
@@ -594,6 +658,14 @@ describe("MarketDataPage", () => {
       getMarketDataRates,
       getChoiceMacroLatest,
     });
+
+    const ticker = await screen.findByTestId("market-data-terminal-ticker");
+    expect(ticker).toHaveTextContent("10年国债");
+    expect(ticker).toHaveTextContent("1.94%");
+    expect(ticker).toHaveTextContent("-1bp");
+    expect(screen.getByTestId("market-data-terminal-kpi-cgb10y")).toHaveTextContent("1.94%");
+    expect(screen.getByTestId("market-data-terminal-kpi-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-pipeline-kpi-collapse")).toHaveTextContent("读面运维指标");
 
     const rateTable = await screen.findByTestId("market-data-rate-quote-table");
     await within(rateTable).findByText("EMM00166466");
@@ -1036,6 +1108,7 @@ describe("MarketDataPage", () => {
       getLivermoreStrategy,
     });
 
+    await expandMarketDataLivermoreCollapse();
     expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("WARM");
     expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent("801001");
     expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent("000001.SZ");
@@ -1601,14 +1674,15 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
-      expect(getLivermoreStrategy).toHaveBeenCalledTimes(1);
+      expect(getLivermoreStrategy).not.toHaveBeenCalled();
     });
 
     fireEvent.change(screen.getByLabelText("日期"), { target: { value: "2026-03-01" } });
     expect(screen.getByText("观察日期 2026-03-01")).toBeInTheDocument();
 
-    const curveLabel = screen.getByText("国债 / 国开").closest("label");
-    const sourceLabel = screen.getByText("来源").closest("label");
+    const filterStrip = screen.getByTestId("market-data-filter-strip");
+    const curveLabel = within(filterStrip).getByText("国债 / 国开").closest("label");
+    const sourceLabel = within(filterStrip).getByText("来源").closest("label");
     if (!curveLabel || !sourceLabel) {
       throw new Error("filter label shell not found");
     }
@@ -1628,6 +1702,7 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(curveLabel).toHaveTextContent("国债");
     });
+    expect(screen.getByTestId("market-data-rate-curve-lock")).toHaveTextContent("国债曲线");
 
     fireEvent.mouseDown(sourceSelector);
     const sourceOption = (await screen.findAllByText("Choice")).at(-1);
@@ -1638,11 +1713,36 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(sourceLabel).toHaveTextContent("Choice");
     });
+    expect(screen.getByTestId("market-data-active-filter-summary")).toHaveTextContent(
+      "当前生效：国债 + Choice",
+    );
+
+    const creditLabel = within(filterStrip).getByText("中票 / 城投").closest("label");
+    if (!creditLabel) {
+      throw new Error("credit segment label shell not found");
+    }
+    const creditSelector = creditLabel.querySelector(".ant-select-selector");
+    if (!creditSelector) {
+      throw new Error("credit segment select shell not found");
+    }
+    fireEvent.mouseDown(creditSelector);
+    const mtnOption = (await screen.findAllByText("中票")).at(-1);
+    if (!mtnOption) {
+      throw new Error("mtn option not found");
+    }
+    fireEvent.click(mtnOption);
+    await waitFor(() => {
+      expect(screen.getByTestId("market-data-active-filter-summary")).toHaveTextContent(
+        "当前生效：国债 + 中票 + Choice",
+      );
+      expect(screen.getByTestId("market-data-macro-tab-spreads")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "信用利差" })).toHaveAttribute("aria-selected", "true");
+    });
 
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
-      expect(getLivermoreStrategy).toHaveBeenLastCalledWith({ asOfDate: "2026-03-01" });
+      expect(getLivermoreStrategy).not.toHaveBeenCalled();
     });
   });
 
@@ -1697,6 +1797,7 @@ describe("MarketDataPage", () => {
       getLivermoreStrategy,
     });
 
+    await expandMarketDataLivermoreCollapse();
     expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("STALE");
     expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent("请求日期 2026-04-29");
     expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent("最新快照降级");
@@ -1716,7 +1817,8 @@ describe("MarketDataPage", () => {
       getLivermoreStrategy,
     });
 
-    const panel = screen.getByTestId("market-data-livermore-panel");
+    await expandMarketDataLivermoreCollapse();
+    const panel = await screen.findByTestId("market-data-livermore-panel");
     await waitFor(() => {
       expect(panel).toHaveTextContent("本轮不可用");
     });

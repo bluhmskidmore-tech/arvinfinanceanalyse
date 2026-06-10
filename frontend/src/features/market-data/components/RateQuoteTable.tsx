@@ -4,12 +4,13 @@ import type { ColumnsType } from "antd/es/table";
 
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import type {
+  MarketCurveFilter,
   MarketDataRateQuoteRow,
   MarketDataRateQuoteSection,
+  MarketSourceFilter,
 } from "../lib/marketDataTerminalModel";
+import { filterRateQuoteRows } from "../lib/marketDataTerminalModel";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
-
-type CurveKind = "treasury" | "cdb";
 
 function deltaTextColor(value: string) {
   if (value.startsWith("-")) {
@@ -28,11 +29,22 @@ function sourceSummary(model: MarketDataRateQuoteSection) {
   return `口径 ${model.source.basis} · 质量 ${model.source.qualityFlag} · 降级 ${model.source.fallbackMode} · ${model.source.sourceVersion}`;
 }
 
-export function RateQuoteTable({ model }: { model: MarketDataRateQuoteSection }) {
-  const [curve, setCurve] = useState<CurveKind>("treasury");
-  const dataSource = model.rows.filter((row) =>
-    curve === "treasury" ? row.variety === "国债" : row.variety === "国开",
-  );
+export function RateQuoteTable({
+  model,
+  curveFilter = "both",
+  sourceFilter = "all",
+  catalogVendorNames,
+}: {
+  model: MarketDataRateQuoteSection;
+  curveFilter?: MarketCurveFilter;
+  sourceFilter?: MarketSourceFilter;
+  catalogVendorNames?: ReadonlyMap<string, string>;
+}) {
+  const [localCurve, setLocalCurve] = useState<"treasury" | "cdb">("treasury");
+  const showCurveTabs = curveFilter === "both";
+  const activeCurve: "treasury" | "cdb" =
+    curveFilter === "both" ? localCurve : curveFilter === "cdb" ? "cdb" : "treasury";
+  const dataSource = filterRateQuoteRows(model.rows, activeCurve, sourceFilter, catalogVendorNames);
 
   const columns: ColumnsType<MarketDataRateQuoteRow> = useMemo(
     () => [
@@ -70,15 +82,21 @@ export function RateQuoteTable({ model }: { model: MarketDataRateQuoteSection })
     <section data-testid="market-data-rate-quote-table" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>利率行情</h2>
       <p className="market-data-terminal-source">{sourceSummary(model)}</p>
-      <Tabs
-        size="small"
-        activeKey={curve}
-        onChange={(k) => setCurve(k as CurveKind)}
-        items={[
-          { key: "treasury", label: "国债" },
-          { key: "cdb", label: "国开" },
-        ]}
-      />
+      {showCurveTabs ? (
+        <Tabs
+          size="small"
+          activeKey={activeCurve}
+          onChange={(key) => setLocalCurve(key as "treasury" | "cdb")}
+          items={[
+            { key: "treasury", label: "国债" },
+            { key: "cdb", label: "国开" },
+          ]}
+        />
+      ) : (
+        <div className="market-data-terminal-curve-lock" data-testid="market-data-rate-curve-lock">
+          {curveFilter === "treasury" ? "国债曲线" : "国开曲线"}
+        </div>
+      )}
       {model.status === "ready" && dataSource.length > 0 ? (
         <Table<MarketDataRateQuoteRow>
           size="small"
@@ -88,6 +106,10 @@ export function RateQuoteTable({ model }: { model: MarketDataRateQuoteSection })
           rowKey="key"
           scroll={{ x: true }}
         />
+      ) : model.status === "ready" ? (
+        <div data-testid="market-data-rate-quotes-filter-empty" className="market-data-terminal-empty">
+          当前曲线/来源筛选下无利率序列。
+        </div>
       ) : (
         <div data-testid="market-data-rate-quotes-empty" className="market-data-terminal-empty">
           {model.emptyReason}

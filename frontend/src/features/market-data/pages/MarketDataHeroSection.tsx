@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Select } from "antd";
+import { Collapse, Select } from "antd";
 
 import { FilterBar } from "../../../components/FilterBar";
 import {
@@ -8,6 +8,9 @@ import {
   PageDecisionHero,
 } from "../../../components/page/PagePrimitives";
 import { tabularNumsStyle } from "../../../theme/designSystem";
+import { MarketTerminalSparkline } from "../components/MarketTerminalSparkline";
+import { MarketTerminalTicker } from "../components/MarketTerminalTicker";
+import type { MarketTerminalTickerItem } from "../lib/marketDataTerminalModel";
 import "./MarketDataPage.css";
 
 export type MarketOverviewTone = "default" | "positive" | "negative" | "warning" | "error";
@@ -19,6 +22,8 @@ export type MarketOverviewMetric = {
   detail: string;
   tone?: MarketOverviewTone;
   valueVariant?: "metric" | "text";
+  sparklineValues?: readonly number[];
+  sparklineTone?: "up" | "down" | "flat";
 };
 
 type MarketDataHeroSectionProps = {
@@ -29,7 +34,11 @@ type MarketDataHeroSectionProps = {
   catalogCount: number;
   stableCount: number;
   stableCatalogCount: number;
-  overviewMetrics: MarketOverviewMetric[];
+  terminalKpiMetrics: MarketOverviewMetric[];
+  pipelineOverviewMetrics: MarketOverviewMetric[];
+  terminalTickerItems: MarketTerminalTickerItem[];
+  terminalTickerBasisLabel?: string;
+  terminalTickerEmptyReason?: string;
   refreshStatus: string;
   refreshError: string;
   isRefreshing: boolean;
@@ -40,13 +49,22 @@ type MarketDataHeroSectionProps = {
   onCreditSegmentChange: Dispatch<SetStateAction<"mtn" | "urban" | "both">>;
   sourceFilter: "all" | "choice" | "internal";
   onSourceFilterChange: Dispatch<SetStateAction<"all" | "choice" | "internal">>;
+  activeFilterSummary: string;
 };
 
-function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] }) {
+function MarketTerminalKpiStrip({ metrics }: { metrics: MarketOverviewMetric[] }) {
+  if (metrics.length === 0) {
+    return (
+      <div data-testid="market-data-terminal-kpi-empty" className="market-data-terminal-kpi-empty">
+        正式利率读面暂无 KPI 序列，不展示示例走势。
+      </div>
+    );
+  }
+
   return (
     <KpiBand
-      testId="market-data-overview-hero-strip"
-      className="dashboard-overview-hero-strip market-data-overview-strip"
+      testId="market-data-terminal-kpi-strip"
+      className="dashboard-overview-hero-strip market-data-terminal-kpi-strip"
     >
       {metrics.map((metric) => {
         const tone = metric.tone ?? "default";
@@ -55,7 +73,7 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
             key={metric.testId}
             data-testid={metric.testId}
             className={[
-              "market-data-overview-card",
+              "market-data-overview-card market-data-terminal-kpi-card",
               `market-data-overview-card--${tone}`,
               metric.valueVariant === "text" ? "market-data-overview-card--text" : "",
             ]
@@ -63,7 +81,15 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
               .join(" ")}
           >
             <span aria-hidden className="market-data-overview-card__bar" />
-            <div className="market-data-overview-card__label">{metric.title}</div>
+            <div className="market-data-terminal-kpi-card__head">
+              <div className="market-data-overview-card__label">{metric.title}</div>
+              {metric.sparklineValues && metric.sparklineValues.length >= 2 ? (
+                <MarketTerminalSparkline
+                  values={metric.sparklineValues}
+                  tone={metric.sparklineTone}
+                />
+              ) : null}
+            </div>
             <div
               className="market-data-overview-card__value"
               style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
@@ -78,6 +104,57 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
   );
 }
 
+function MarketPipelineKpiCollapse({ metrics }: { metrics: MarketOverviewMetric[] }) {
+  return (
+    <Collapse
+      data-testid="market-data-pipeline-kpi-collapse"
+      className="market-data-pipeline-kpi-collapse"
+      bordered={false}
+      defaultActiveKey={[]}
+      items={[
+        {
+          key: "pipeline-kpis",
+          label: `读面运维指标（${metrics.length}）`,
+          forceRender: true,
+          children: (
+            <KpiBand
+              testId="market-data-pipeline-kpi-strip"
+              className="dashboard-overview-hero-strip market-data-overview-strip market-data-pipeline-kpi-strip"
+            >
+              {metrics.map((metric) => {
+                const tone = metric.tone ?? "default";
+                return (
+                  <article
+                    key={metric.testId}
+                    data-testid={metric.testId}
+                    className={[
+                      "market-data-overview-card",
+                      `market-data-overview-card--${tone}`,
+                      metric.valueVariant === "text" ? "market-data-overview-card--text" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <span aria-hidden className="market-data-overview-card__bar" />
+                    <div className="market-data-overview-card__label">{metric.title}</div>
+                    <div
+                      className="market-data-overview-card__value"
+                      style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
+                    >
+                      {metric.value}
+                    </div>
+                    <p className="market-data-overview-card__detail">{metric.detail}</p>
+                  </article>
+                );
+              })}
+            </KpiBand>
+          ),
+        },
+      ]}
+    />
+  );
+}
+
 export function MarketDataHeroSection({
   clientMode,
   watchDate,
@@ -86,7 +163,11 @@ export function MarketDataHeroSection({
   catalogCount,
   stableCount,
   stableCatalogCount,
-  overviewMetrics,
+  terminalKpiMetrics,
+  pipelineOverviewMetrics,
+  terminalTickerItems,
+  terminalTickerBasisLabel,
+  terminalTickerEmptyReason,
   refreshStatus,
   refreshError,
   isRefreshing,
@@ -97,6 +178,7 @@ export function MarketDataHeroSection({
   onCreditSegmentChange,
   sourceFilter,
   onSourceFilterChange,
+  activeFilterSummary,
 }: MarketDataHeroSectionProps) {
   return (
     <PageDecisionHero
@@ -191,6 +273,12 @@ export function MarketDataHeroSection({
                   />
                 </label>
               </FilterBar>
+              <div
+                data-testid="market-data-active-filter-summary"
+                className="market-data-active-filter-summary"
+              >
+                当前生效：{activeFilterSummary}
+              </div>
             </div>
           </div>
 
@@ -202,7 +290,14 @@ export function MarketDataHeroSection({
             </div>
           )}
 
-          <MarketOverviewHeroStrip metrics={overviewMetrics} />
+          <MarketTerminalTicker
+            items={terminalTickerItems}
+            basisLabel={terminalTickerBasisLabel}
+            emptyReason={terminalTickerEmptyReason}
+          />
+
+          <MarketTerminalKpiStrip metrics={terminalKpiMetrics} />
+          <MarketPipelineKpiCollapse metrics={pipelineOverviewMetrics} />
         </div>
       </div>
     </PageDecisionHero>

@@ -38,7 +38,7 @@
 
 ## 3. 第一批范围
 
-本批覆盖 `tests/golden_samples/` 下 **21** 个目录所对应的主链与治理边界（其中 20 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
+本批覆盖 `tests/golden_samples/` 下 **22** 个目录所对应的主链与治理边界（其中 21 个为 capture-ready，1 个为 supporting-only；含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
@@ -55,6 +55,7 @@
 - `/api/bond-analytics/action-attribution`
 - `/api/bond-analytics/credit-spread-migration` (`GS-CONCENTRATION-MONITOR-A`)
 - `/ui/market-data/livermore`（`GS-STOCK-ANALYSIS-OBS-A`）
+- `/ui/market-data/rates` formal fragment（`GS-MKT-RATES-FRAGMENT-A`；**非** full-page closure）
 - `/api/analysis/adb` (`GS-AVERAGE-BALANCE-A`)
 
 不纳入本批：
@@ -110,7 +111,7 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
-与 `tests/test_golden_samples_capture_ready.py` 中注册的 20 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-AVERAGE-BALANCE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 21 个 `sample_id` 对齐（含 `GS-PNL-ATTR-WB-A`、`GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B`、`GS-BOND-HEADLINE-A`、`GS-BOND-ANALYSIS-ACTION-ATTR-A`、`GS-CONCENTRATION-MONITOR-A`、`GS-STOCK-ANALYSIS-OBS-A`、`GS-MKT-RATES-FRAGMENT-A`、`GS-AVERAGE-BALANCE-A`、`GS-LEDGER-PNL-SUMMARY-A`、`GS-CASHFLOW-PROJECTION-A` 与 `GS-PROD-CAT-PNL-A`）。`GS-PORTFOLIO-HOME-A` 是 supporting-only 样本包，不进入 capture-ready 矩阵。
 
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
@@ -123,6 +124,7 @@ tests/golden_samples/
 | `GS-BOND-ANALYSIS-ACTION-ATTR-A` | `GET /api/bond-analytics/action-attribution` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py`、`tests/test_bond_analysis_business_owner_approval_status.py` | bond-analysis action-attribution 页面 DTO 样本 |
 | `GS-CONCENTRATION-MONITOR-A` | `GET /api/bond-analytics/credit-spread-migration` | `capture-ready` | `2026-03-31` | `tests/test_golden_samples_capture_ready.py` | concentration-monitor candidate concentration DTO sample; not formal risk truth or certified concentration-limit approval |
 | `GS-STOCK-ANALYSIS-OBS-A` | `GET /ui/market-data/livermore` | `capture-ready` | `2026-04-03` | `tests/test_golden_samples_capture_ready.py`、`tests/test_stock_analysis_business_owner_approval_status.py` | stock-analysis Livermore observational 页面 DTO 样本；非交易指令 |
+| `GS-MKT-RATES-FRAGMENT-A` | `GET /ui/market-data/rates` | `capture-ready` | `2026-04-10` | `tests/test_golden_samples_capture_ready.py`、`frontend/src/features/market-data/lib/marketDataRatesFragmentGolden.test.ts` | PAGE-MKT-001 formal rates **fragment** only；不关闭 `GAP-MKT-DATA` |
 | `GS-AVERAGE-BALANCE-A` | `GET /api/analysis/adb` | `capture-ready` | `2025-12-31` | `tests/test_golden_samples_capture_ready.py` | average-balance daily ADB candidate DTO sample; not formal balance truth, monthly ADB/NIM truth, manual audit, or owner approval |
 | `GS-LEDGER-PNL-SUMMARY-A` | `GET /api/ledger-pnl/summary` | `capture-ready` | `2026-04-30` | `tests/test_ledger_pnl_service.py`、`tests/test_golden_samples_capture_ready.py` | ledger-pnl 页面级 summary DTO 样本 |
 | `GS-CASHFLOW-PROJECTION-A` | `GET /api/cashflow-projection` | `capture-ready` | `2026-04-30` | `tests/test_cashflow_projection.py`, `tests/test_golden_samples_capture_ready.py` | cashflow-projection candidate liquidity projection DTO sample; not formal liquidity/risk/balance/PnL truth |
@@ -143,7 +145,7 @@ tests/golden_samples/
 
 ## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
 
-与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。`/market-data` 保持 mixed-source；当前没有 full-page capture-ready golden sample，但 `GET /ui/market-data/rates` 对应的 formal rates 片段可以单独测试与 lineage 核对。`/market-data` 的 **GAP-MKT-DATA**、NCD proxy、Livermore blocked、宏观联动警示等文档化边界见 `docs/page_contracts.md` §13.8.J 与 `docs/plans/market-workbench-cursor-prompts.md`（执行拆分，非权威定义）。
+与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。`/market-data` 保持 mixed-source；**无** full-page capture-ready golden sample，但 `GS-MKT-RATES-FRAGMENT-A` 已冻结 `GET /ui/market-data/rates` formal rates 片段（`capture-ready pending approval`）。`/market-data` 的 **GAP-MKT-DATA**、NCD proxy、Livermore blocked、宏观联动警示等文档化边界见 `docs/page_contracts.md` §13.8.J 与 `docs/plans/market-workbench-cursor-prompts.md`（执行拆分，非权威定义）。
 
 | 前端路由 | `page_id` | 可钉 `metric_id`（字典已批） | `sample_id` | 测试锚点 |
 | --- | --- | --- | --- | --- |
@@ -154,7 +156,7 @@ tests/golden_samples/
 | `/bond-analysis` | `PAGE-BOND-ANALYSIS-001` | `MTR-BOND-ACT-001`~`MTR-BOND-ACT-006`（candidate；`formal_use_allowed=false`；pending owner approval） | `GS-BOND-ANALYSIS-ACTION-ATTR-A` **capture-ready pending approval**（冻结 `GET /api/bond-analytics/action-attribution` 页面 DTO；非公式/owner 审批） | `tests/test_golden_samples_capture_ready.py`；`tests/test_bond_analysis_business_owner_approval_status.py` |
 | `/stock-analysis` | `GAP-STOCK-ANALYSIS-PAGE` | —（observational-only；无 `PAGE-STOCK-*` / `MTR-STOCK-*` approval；`formal_use_allowed=false`） | `GS-STOCK-ANALYSIS-OBS-A` **capture-ready pending approval**（冻结 `GET /ui/market-data/livermore` observation DTO；非交易指令/owner 审批） | `tests/test_golden_samples_capture_ready.py`；`tests/test_stock_analysis_business_owner_approval_status.py` |
 | `/positions` | `PAGE-POS-001`（见 §13.7） | —（**GAP-POS-LIST**：`MTR-*` / 样本仍未钉死） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
-| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（mixed-source；无 full-page capture-ready 黄金样本） | — | `frontend/src/test/MarketDataPage.test.tsx` |
+| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（mixed-source；无 full-page `metric_id` 黄金样本） | `GS-MKT-RATES-FRAGMENT-A` **capture-ready pending approval**（formal rates fragment only） | `tests/test_golden_samples_capture_ready.py`；`frontend/src/features/market-data/lib/marketDataRatesFragmentGolden.test.ts`；`frontend/src/test/MarketDataPage.test.tsx` |
 
 ## 6. 样本定义
 

@@ -44,6 +44,8 @@ RISK_TENSOR_SAMPLE_PATHS = {"/api/risk/tensor"}
 RISK_TENSOR_READ_HEADERS = {"X-User-Id": "risk-tensor-read-user", "X-User-Role": "viewer"}
 AVERAGE_BALANCE_SAMPLE_PATHS = {"/api/analysis/adb"}
 AVERAGE_BALANCE_READ_HEADERS = {"X-User-Id": "average-balance-read-user", "X-User-Role": "viewer"}
+MARKET_DATA_RATES_SAMPLE_PATHS = {"/ui/market-data/rates"}
+MARKET_DATA_RATES_READ_HEADERS = {"X-User-Id": "macro-vendor-read-user", "X-User-Role": "viewer"}
 
 
 def _sample_file(sample_id: str, filename: str) -> Path:
@@ -594,6 +596,208 @@ def _setup_concentration_monitor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         source_version="sv_concentration_monitor_gs_a",
         run_id="golden-sample:concentration-monitor:2026-03-31",
     )
+
+
+def _setup_market_data_rates_fragment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import duckdb
+
+    duckdb_path = tmp_path / "market-data-rates-fragment.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "EMM00166466",
+                    "中债国债到期收益率:10年",
+                    "2026-04-10",
+                    1.71,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-1",
+                ),
+                (
+                    "EMM00166466",
+                    "中债国债到期收益率:10年",
+                    "2026-04-09",
+                    1.72,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-2",
+                ),
+                (
+                    "EMM00166462",
+                    "中债国债到期收益率:5年",
+                    "2026-04-10",
+                    1.58,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-3",
+                ),
+                (
+                    "EMM00166498",
+                    "中债国开债到期收益率:5年",
+                    "2026-04-10",
+                    2.05,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-4",
+                ),
+                (
+                    "EMM00166502",
+                    "中债国开债到期收益率:10年",
+                    "2026-04-10",
+                    2.18,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-5",
+                ),
+                (
+                    "M001",
+                    "公开市场7天逆回购利率",
+                    "2026-04-10",
+                    1.75,
+                    "daily",
+                    "%",
+                    "sv_market_data_rates_gs_a",
+                    "vv_choice_macro_gs_a",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-6",
+                ),
+                (
+                    "M002",
+                    "DR007",
+                    "2026-04-10",
+                    1.83,
+                    "daily",
+                    "%",
+                    "sv_public_funding",
+                    "vv_public_repo",
+                    "rv_choice_macro_public_history_v1",
+                    "ok",
+                    "gs-mkt-rates-a-7",
+                ),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "EMM00166466",
+                    "中债国债到期收益率:10年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "EMM00166462",
+                    "中债国债到期收益率:5年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "EMM00166498",
+                    "中债国开债到期收益率:5年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "EMM00166502",
+                    "中债国开债到期收益率:10年",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "M001",
+                    "公开市场7天逆回购利率",
+                    "choice",
+                    "vv_choice_macro_gs_a",
+                    "daily",
+                    "%",
+                ),
+                (
+                    "M002",
+                    "DR007",
+                    "choice",
+                    "vv_public_repo",
+                    "daily",
+                    "%",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    _grant_sample_read_scope(
+        tmp_path,
+        monkeypatch,
+        db_name="market-data-rates-read-scope.db",
+        resource="macro_vendor",
+    )
+    get_settings.cache_clear()
 
 
 def _setup_stock_analysis_observation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1328,6 +1532,8 @@ def _run_request_payload(
             resource="adb_analysis",
         )
         headers = AVERAGE_BALANCE_READ_HEADERS
+    elif request["path"] in MARKET_DATA_RATES_SAMPLE_PATHS:
+        headers = MARKET_DATA_RATES_READ_HEADERS
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.request(
         request["method"],
@@ -1960,6 +2166,40 @@ def _validate_cashflow_projection(actual: dict[str, Any], expected: dict[str, An
     )
 
 
+def _validate_market_data_rates_fragment(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    actual["result_meta"]["generated_at"] = expected["result_meta"]["generated_at"]
+    actual["result_meta"]["trace_id"] = expected["result_meta"]["trace_id"]
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "source_version"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result_meta", "source_surface"),
+            ("result", "read_target"),
+        ],
+    )
+    actual_by_id = {str(item["series_id"]): item for item in actual["result"]["series"]}
+    expected_by_id = {str(item["series_id"]): item for item in expected["result"]["series"]}
+    assert set(actual_by_id) == set(expected_by_id)
+    for series_id, expected_item in expected_by_id.items():
+        actual_item = actual_by_id[series_id]
+        assert actual_item["trade_date"] == expected_item["trade_date"]
+        assert actual_item["value_numeric"] == expected_item["value_numeric"]
+        assert actual_item["unit"] == expected_item["unit"]
+        if "latest_change" in expected_item:
+            assert actual_item.get("latest_change") == expected_item["latest_change"]
+
+
 def _validate_stock_analysis_observation(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -2089,6 +2329,10 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-STOCK-ANALYSIS-OBS-A": CaptureReadyCase(
         setup=_setup_stock_analysis_observation,
         validator=_validate_stock_analysis_observation,
+    ),
+    "GS-MKT-RATES-FRAGMENT-A": CaptureReadyCase(
+        setup=_setup_market_data_rates_fragment,
+        validator=_validate_market_data_rates_fragment,
     ),
     "GS-EXEC-OVERVIEW-A": CaptureReadyCase(setup=_setup_exec_overview, validator=_validate_exec_overview),
     "GS-EXEC-PNL-ATTR-A": CaptureReadyCase(setup=_setup_exec_pnl_attr, validator=_validate_exec_pnl_attr),

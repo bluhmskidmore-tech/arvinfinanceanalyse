@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Collapse } from "antd";
 
 import { nonCancellingRefetchOptions } from "../../../app/externalDataRefreshPolicy";
@@ -16,7 +16,8 @@ import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
 import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
-import { LivermoreStrategyPanel } from "../components/LivermoreStrategyPanel";
+import { MarketDataFxFormalSection } from "../components/MarketDataFxFormalSection";
+import { MarketDataLivermoreSection } from "../components/MarketDataLivermoreSection";
 import { MacroLatestReadinessBanner } from "../components/MacroLatestReadinessBanner";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
@@ -30,9 +31,16 @@ import {
 import { formatSignedNumber } from "../lib/marketDataFormat";
 import { designTokens } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
+import {
+  buildCatalogVendorNameMap,
+  buildMarketDataActiveFilterSummary,
+  filterTerminalTickerItems,
+} from "../lib/marketDataTerminalModel";
 import { useMarketDataPageData } from "../hooks/useMarketDataPageData";
+import { MarketTerminalSparkline } from "../components/MarketTerminalSparkline";
 import { MarketDataHeroSection } from "./MarketDataHeroSection";
 import { MarketDataMacroDepthTabs } from "./MarketDataMacroDepthTabs";
+import { buildSpreadSlots, buildTerminalKpiMetricsFromTickerItems } from "./marketDataPageModel";
 import "./MarketDataPage.css";
 
 /** 产品默认：不显式铺开 Choice 宏观序列读面大卡与页尾目录/追踪版本证据面板（仍为分析读面保留接口拉取与市场概览 KPI）。 */
@@ -276,6 +284,7 @@ function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): 
 }
 
 export default function MarketDataPage() {
+  const [livermoreExpanded, setLivermoreExpanded] = useState(false);
   const {
     clientMode,
     watchDate,
@@ -288,12 +297,13 @@ export default function MarketDataPage() {
     catalogQuery,
     latestQuery,
     fxAnalyticalQuery,
+    fxFormalStatusQuery,
     ncdFundingProxyQuery,
     livermoreStrategyQuery,
     macroBondLinkageQuery,
     ncdFundingProxy,
     refreshGateSupplement,
-  } = useMarketDataPageData();
+  } = useMarketDataPageData({ livermoreEnabled: livermoreExpanded });
   const {
     catalog,
     visibleLatestSeries,
@@ -311,7 +321,6 @@ export default function MarketDataPage() {
     macroBondLinkageMeta,
     macroBondLinkageWarnings,
     hasPortfolioImpact,
-    spreadSlots,
     nonSpreadTopCorrelations,
     macroMeta,
     formalRatesMeta,
@@ -321,12 +330,47 @@ export default function MarketDataPage() {
     isFormalBasis,
     statusBadges,
     evidenceLines,
-    overviewMetrics,
+    pipelineOverviewMetrics,
+    terminalTickerItems,
   } = pageModel;
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
   const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
   const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
+  const catalogVendorNames = useMemo(() => buildCatalogVendorNameMap(catalog), [catalog]);
+  const filteredTickerItems = useMemo(
+    () =>
+      filterTerminalTickerItems(
+        terminalTickerItems,
+        curveFilter,
+        sourceFilter,
+        terminalModel,
+        catalogVendorNames,
+      ),
+    [terminalTickerItems, curveFilter, sourceFilter, terminalModel, catalogVendorNames],
+  );
+  const filteredTerminalKpiMetrics = useMemo(
+    () => buildTerminalKpiMetricsFromTickerItems(filteredTickerItems),
+    [filteredTickerItems],
+  );
+  const spreadSlots = useMemo(
+    () => buildSpreadSlots(macroBondLinkage.top_correlations, creditSegment),
+    [macroBondLinkage.top_correlations, creditSegment],
+  );
+  const activeFilterSummary = useMemo(
+    () =>
+      buildMarketDataActiveFilterSummary({
+        curveFilter,
+        creditSegment,
+        sourceFilter,
+      }),
+    [curveFilter, creditSegment, sourceFilter],
+  );
+  useEffect(() => {
+    if (creditSegment !== "both") {
+      setMacroDepthTab("spreads");
+    }
+  }, [creditSegment]);
   const formalUseBlocked =
     formalRatesMeta?.basis === "formal" && formalRatesMeta.formal_use_allowed === false;
   const ratesBasisLabel = `${formalRatesMeta?.basis ?? rateQuotesSource?.basis ?? "unknown"}${
@@ -345,10 +389,10 @@ export default function MarketDataPage() {
     { label: "降级", value: formalRatesMeta?.fallback_mode ?? rateQuotesSource?.fallbackMode ?? "unknown" },
     { label: "Source", value: formalRatesMeta?.source_version ?? rateQuotesSource?.sourceVersion ?? "source-pending" },
   ];
-  const railMetrics = overviewMetrics.slice(0, 3);
+  const railMetrics = filteredTerminalKpiMetrics.slice(0, 3);
 
   return (
-    <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-05-15d">
+    <section className="market-data-page" data-testid="market-data-page" data-layout-rev="2026-06-10e">
       <section className="market-data-terminal-cockpit" data-testid="market-data-terminal-cockpit">
         <div className="market-data-terminal-primary-grid" data-testid="market-data-terminal-primary-grid">
           <div className="market-data-terminal-primary-column">
@@ -360,7 +404,17 @@ export default function MarketDataPage() {
         catalogCount={catalog.length}
         stableCount={stableSeries.length}
         stableCatalogCount={stableCatalogSeries.length}
-        overviewMetrics={overviewMetrics}
+        terminalKpiMetrics={filteredTerminalKpiMetrics}
+        pipelineOverviewMetrics={pipelineOverviewMetrics}
+        terminalTickerItems={filteredTickerItems}
+        terminalTickerBasisLabel={
+          formalRatesMeta?.basis === "formal"
+            ? `正式口径 · ${formalRatesMeta.formal_use_allowed ? "可用" : "blocked"}`
+            : rateQuotesSource?.basis
+              ? `口径 ${rateQuotesSource.basis}`
+              : undefined
+        }
+        terminalTickerEmptyReason={terminalModel.rateQuotes.emptyReason}
         refreshStatus={refreshStatus}
         refreshError={refreshError}
         isRefreshing={isRefreshing}
@@ -371,6 +425,7 @@ export default function MarketDataPage() {
         onCreditSegmentChange={setCreditSegment}
         sourceFilter={sourceFilter}
         onSourceFilterChange={setSourceFilter}
+        activeFilterSummary={activeFilterSummary}
       />
 
       {macroMeta ? (
@@ -404,7 +459,12 @@ export default function MarketDataPage() {
           className="market-data-command-grid"
           data-testid="market-data-macro-workbench"
         >
-          <RateQuoteTable model={terminalModel.rateQuotes} />
+          <RateQuoteTable
+            model={terminalModel.rateQuotes}
+            curveFilter={curveFilter}
+            sourceFilter={sourceFilter}
+            catalogVendorNames={catalogVendorNames}
+          />
           <MarketDataMacroDepthTabs
             macroDepthTab={macroDepthTab}
             onMacroDepthTabChange={setMacroDepthTab}
@@ -458,7 +518,16 @@ export default function MarketDataPage() {
                   key={metric.testId}
                   className={`market-data-terminal-rail-metric market-data-terminal-rail-metric--${metric.tone ?? "default"}`}
                 >
-                  <span>{metric.title}</span>
+                  <div className="market-data-terminal-rail-metric-head">
+                    <span>{metric.title}</span>
+                    {metric.sparklineValues && metric.sparklineValues.length >= 2 ? (
+                      <MarketTerminalSparkline
+                        values={metric.sparklineValues}
+                        tone={metric.sparklineTone}
+                        variant="ticker"
+                      />
+                    ) : null}
+                  </div>
                   <strong>{metric.value}</strong>
                   <small>{metric.detail}</small>
                 </div>
@@ -473,28 +542,34 @@ export default function MarketDataPage() {
         </div>
       </section>
 
-      <MarketSectionBlock>
-        <MarketSectionLead
-          eyebrow="A 股防守策略"
-          title="Livermore 趋势门控"
-          description="后端返回门控、就绪度与诊断结果；前端只做类型化展示，不补算业务规则。"
-        />
-        <LivermoreStrategyPanel
-          model={livermoreStrategy}
-          isLoading={livermoreStrategyQuery.isLoading}
-          isError={livermoreStrategyQuery.isError}
-          fetchErrorDetail={
-            livermoreStrategyQuery.error instanceof Error
-              ? livermoreStrategyQuery.error.message
-              : null
-          }
-          onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
-          onRefreshGateSupplement={refreshGateSupplement}
-        />
-      </MarketSectionBlock>
+      <MarketDataLivermoreSection
+        model={livermoreStrategy}
+        isLoading={livermoreStrategyQuery.isLoading}
+        isError={livermoreStrategyQuery.isError}
+        fetchErrorDetail={
+          livermoreStrategyQuery.error instanceof Error
+            ? livermoreStrategyQuery.error.message
+            : null
+        }
+        onRetry={() => void livermoreStrategyQuery.refetch(nonCancellingRefetchOptions)}
+        onRefreshGateSupplement={refreshGateSupplement}
+        onExpandedChange={setLivermoreExpanded}
+      />
+
+      <MarketDataFxFormalSection
+        payload={pageModel.fxFormalStatus}
+        meta={pageModel.fxFormalMeta}
+        isLoading={fxFormalStatusQuery.isLoading}
+        isError={fxFormalStatusQuery.isError}
+        onRetry={() => void fxFormalStatusQuery.refetch(nonCancellingRefetchOptions)}
+      />
 
       <div id="market-data-liquidity-deck" className="market-data-observation-grid">
-        <MoneyMarketTable model={terminalModel.moneyMarket} />
+        <MoneyMarketTable
+          model={terminalModel.moneyMarket}
+          sourceFilter={sourceFilter}
+          catalogVendorNames={catalogVendorNames}
+        />
         <BondFuturesTable model={terminalModel.bondFutures} />
         <NcdMatrix
           payload={ncdFundingProxy}
@@ -513,6 +588,9 @@ export default function MarketDataPage() {
       </div>
       <div className="market-data-source-pending-summary" data-testid="market-data-source-pending-summary">
         source-pending {sourcePendingCount}
+        <span data-testid="market-data-source-pending-contract-note">
+          · 待契约：国债期货 / 现券成交 / 信用成交（后端未暴露，前端不展示 demo）
+        </span>
       </div>
 
       <section
@@ -523,6 +601,7 @@ export default function MarketDataPage() {
         <strong>证据与口径（只读）</strong>
         <span>{evidenceLines.formalRates}</span>
         <span>{evidenceLines.macroLatest}</span>
+        <span>{evidenceLines.fxFormal}</span>
         <span>{evidenceLines.fxAnalytical}</span>
         <span>{evidenceLines.ncdProxy}</span>
         <span>{evidenceLines.livermore}</span>

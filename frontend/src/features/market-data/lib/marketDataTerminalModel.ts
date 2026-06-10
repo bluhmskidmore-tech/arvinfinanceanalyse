@@ -29,6 +29,7 @@ export type MarketDataTerminalRowBase = {
   vendorVersion: string;
   qualityFlag: ApiQuality | "unknown";
   sourceMode: string;
+  sparklineValues: number[];
 };
 
 export type MarketDataRateQuoteRow = MarketDataTerminalRowBase & {
@@ -68,6 +69,217 @@ export type MarketDataTerminalModel = {
   bondTrades: MarketDataSourcePendingSection;
   creditTrades: MarketDataSourcePendingSection;
 };
+
+export type MarketTerminalTickerItem = {
+  key: string;
+  label: string;
+  value: string;
+  delta: string;
+  tone: "up" | "down" | "flat";
+  tradeDate: string;
+  seriesId: string;
+  sparklineValues: number[];
+};
+
+export type MarketCurveFilter = "treasury" | "cdb" | "both";
+export type MarketSourceFilter = "all" | "choice" | "internal";
+export type MarketCreditSegmentFilter = "mtn" | "urban" | "both";
+
+const CURVE_FILTER_LABELS: Record<MarketCurveFilter, string | null> = {
+  treasury: "国债",
+  cdb: "国开",
+  both: null,
+};
+
+const CREDIT_SEGMENT_LABELS: Record<MarketCreditSegmentFilter, string | null> = {
+  mtn: "中票",
+  urban: "城投",
+  both: null,
+};
+
+const SOURCE_FILTER_LABELS: Record<MarketSourceFilter, string | null> = {
+  choice: "Choice",
+  internal: "内部",
+  all: null,
+};
+
+export function buildMarketDataActiveFilterSummary(input: {
+  curveFilter: MarketCurveFilter;
+  creditSegment: MarketCreditSegmentFilter;
+  sourceFilter: MarketSourceFilter;
+}): string {
+  const parts = [
+    CURVE_FILTER_LABELS[input.curveFilter],
+    CREDIT_SEGMENT_LABELS[input.creditSegment],
+    SOURCE_FILTER_LABELS[input.sourceFilter],
+  ].filter((label): label is string => Boolean(label));
+
+  return parts.length > 0 ? parts.join(" + ") : "全部";
+}
+
+const TICKER_RATE_KEYS_BY_CURVE: Record<MarketCurveFilter, ReadonlySet<string>> = {
+  both: new Set(["cgb10y", "cdb10y", "cgb5y", "cdb5y"]),
+  treasury: new Set(["cgb10y", "cgb5y"]),
+  cdb: new Set(["cdb10y", "cdb5y"]),
+};
+
+const TERMINAL_TICKER_RATE_SPECS: Array<{
+  key: string;
+  label: string;
+  variety: string;
+  tenor: string;
+}> = [
+  { key: "cgb10y", label: "10年国债", variety: "国债", tenor: "10Y" },
+  { key: "cdb10y", label: "10年国开", variety: "国开", tenor: "10Y" },
+  { key: "cgb5y", label: "5年国债", variety: "国债", tenor: "5Y" },
+  { key: "cdb5y", label: "5年国开", variety: "国开", tenor: "5Y" },
+];
+
+const TERMINAL_TICKER_MONEY_SPECS: Array<{ key: string; label: string; name: string }> = [
+  { key: "dr007", label: "DR007", name: "DR007" },
+  { key: "omo7d", label: "7天逆回购", name: "公开市场7天逆回购利率" },
+];
+
+function tickerToneFromDelta(delta: string): MarketTerminalTickerItem["tone"] {
+  if (delta.startsWith("+")) {
+    return "up";
+  }
+  if (delta.startsWith("-")) {
+    return "down";
+  }
+  return "flat";
+}
+
+export function buildCatalogVendorNameMap(
+  catalog: ReadonlyArray<{ series_id: string; vendor_name?: string | null }>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const entry of catalog) {
+    const vendorName = entry.vendor_name?.trim();
+    if (vendorName) {
+      out.set(entry.series_id, vendorName);
+    }
+  }
+  return out;
+}
+
+export function classifyTerminalSource(
+  sourceVersion: string,
+  vendorVersion: string,
+  catalogVendorName?: string | null,
+): "choice" | "internal" {
+  if (catalogVendorName?.trim().toLowerCase() === "choice") {
+    return "choice";
+  }
+  const haystack = `${sourceVersion} ${vendorVersion}`.toLowerCase();
+  return haystack.includes("choice") ? "choice" : "internal";
+}
+
+export function matchesSourceFilter(
+  row: Pick<MarketDataTerminalRowBase, "seriesId" | "sourceVersion" | "vendorVersion">,
+  sourceFilter: MarketSourceFilter,
+  catalogVendorNames?: ReadonlyMap<string, string>,
+): boolean {
+  if (sourceFilter === "all") {
+    return true;
+  }
+  const catalogVendorName = catalogVendorNames?.get(row.seriesId);
+  return (
+    classifyTerminalSource(row.sourceVersion, row.vendorVersion, catalogVendorName) === sourceFilter
+  );
+}
+
+export function filterRateQuoteRows(
+  rows: MarketDataRateQuoteRow[],
+  curveFilter: MarketCurveFilter,
+  sourceFilter: MarketSourceFilter = "all",
+  catalogVendorNames?: ReadonlyMap<string, string>,
+): MarketDataRateQuoteRow[] {
+  const sourceFiltered = rows.filter((row) => matchesSourceFilter(row, sourceFilter, catalogVendorNames));
+  if (curveFilter === "both") {
+    return sourceFiltered;
+  }
+  const variety = curveFilter === "treasury" ? "国债" : "国开";
+  return sourceFiltered.filter((row) => row.variety === variety);
+}
+
+export function filterMoneyMarketRows(
+  rows: MarketDataMoneyMarketRow[],
+  sourceFilter: MarketSourceFilter = "all",
+  catalogVendorNames?: ReadonlyMap<string, string>,
+): MarketDataMoneyMarketRow[] {
+  return rows.filter((row) => matchesSourceFilter(row, sourceFilter, catalogVendorNames));
+}
+
+export function filterTerminalTickerItems(
+  items: MarketTerminalTickerItem[],
+  curveFilter: MarketCurveFilter,
+  sourceFilter: MarketSourceFilter,
+  model: MarketDataTerminalModel,
+  catalogVendorNames?: ReadonlyMap<string, string>,
+): MarketTerminalTickerItem[] {
+  const allowedRateKeys = TICKER_RATE_KEYS_BY_CURVE[curveFilter];
+  const allowedSeriesIds = new Set([
+    ...model.rateQuotes.rows
+      .filter((row) => matchesSourceFilter(row, sourceFilter, catalogVendorNames))
+      .map((row) => row.seriesId),
+    ...model.moneyMarket.rows
+      .filter((row) => matchesSourceFilter(row, sourceFilter, catalogVendorNames))
+      .map((row) => row.seriesId),
+  ]);
+
+  return items.filter((item) => {
+    if (!allowedSeriesIds.has(item.seriesId)) {
+      return false;
+    }
+    if (item.key.startsWith("cgb") || item.key.startsWith("cdb")) {
+      return allowedRateKeys.has(item.key);
+    }
+    return true;
+  });
+}
+
+export function buildTerminalTickerItems(model: MarketDataTerminalModel): MarketTerminalTickerItem[] {
+  const items: MarketTerminalTickerItem[] = [];
+
+  for (const spec of TERMINAL_TICKER_RATE_SPECS) {
+    const row = model.rateQuotes.rows.find(
+      (candidate) => candidate.variety === spec.variety && candidate.tenor === spec.tenor,
+    );
+    if (!row) {
+      continue;
+    }
+    items.push({
+      key: spec.key,
+      label: spec.label,
+      value: row.rateText,
+      delta: row.deltaText,
+      tone: tickerToneFromDelta(row.deltaText),
+      tradeDate: row.tradeDate,
+      seriesId: row.seriesId,
+      sparklineValues: row.sparklineValues,
+    });
+  }
+
+  for (const spec of TERMINAL_TICKER_MONEY_SPECS) {
+    const row = model.moneyMarket.rows.find((candidate) => candidate.name === spec.name);
+    if (!row) {
+      continue;
+    }
+    items.push({
+      key: spec.key,
+      label: spec.label,
+      value: row.rateText,
+      delta: row.deltaText,
+      tone: tickerToneFromDelta(row.deltaText),
+      tradeDate: row.tradeDate,
+      seriesId: row.seriesId,
+      sparklineValues: row.sparklineValues,
+    });
+  }
+
+  return items;
+}
 
 type BuildMarketDataTerminalModelOptions = {
   ratesEnvelope?: ApiEnvelope<ChoiceMacroLatestPayload>;
@@ -145,6 +357,21 @@ function findSourcePoint(map: Map<string, SourcePoint>, seriesIds: string[]) {
   return null;
 }
 
+export function buildTerminalSparklineValues(point: ChoiceMacroLatestPoint): number[] {
+  const sorted = [...(point.recent_points ?? [])].sort((left, right) =>
+    left.trade_date.localeCompare(right.trade_date),
+  );
+  const values = sorted.map((recentPoint) => recentPoint.value_numeric);
+  if (values.length === 0) {
+    return [point.value_numeric];
+  }
+  const latest = values[values.length - 1];
+  if (latest !== point.value_numeric) {
+    values.push(point.value_numeric);
+  }
+  return values;
+}
+
 function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
   const { point, meta } = sourcePoint;
   return {
@@ -158,6 +385,7 @@ function rowBase(sourcePoint: SourcePoint): MarketDataTerminalRowBase {
     vendorVersion: point.vendor_version || meta.vendor_version,
     qualityFlag: point.quality_flag ?? meta.quality_flag ?? "unknown",
     sourceMode: point.fetch_mode ?? "unknown",
+    sparklineValues: buildTerminalSparklineValues(point),
   };
 }
 

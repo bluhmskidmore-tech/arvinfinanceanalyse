@@ -6,7 +6,9 @@ import { designTokens } from "../../../theme/designSystem";
 import type {
   MarketDataMoneyMarketRow,
   MarketDataMoneyMarketSection,
+  MarketSourceFilter,
 } from "../lib/marketDataTerminalModel";
+import { filterMoneyMarketRows } from "../lib/marketDataTerminalModel";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 function deltaTextColor(value: string) {
@@ -26,7 +28,16 @@ function sourceSummary(model: MarketDataMoneyMarketSection) {
   return `口径 ${model.source.basis} · 质量 ${model.source.qualityFlag} · 降级 ${model.source.fallbackMode} · ${model.source.sourceVersion}`;
 }
 
-export function MoneyMarketTable({ model }: { model: MarketDataMoneyMarketSection }) {
+export function MoneyMarketTable({
+  model,
+  sourceFilter = "all",
+  catalogVendorNames,
+}: {
+  model: MarketDataMoneyMarketSection;
+  sourceFilter?: MarketSourceFilter;
+  catalogVendorNames?: ReadonlyMap<string, string>;
+}) {
+  const dataSource = filterMoneyMarketRows(model.rows, sourceFilter, catalogVendorNames);
   const columns: ColumnsType<MarketDataMoneyMarketRow> = useMemo(
     () => [
       { title: "品种", dataIndex: "name", key: "name", width: 128 },
@@ -55,15 +66,19 @@ export function MoneyMarketTable({ model }: { model: MarketDataMoneyMarketSectio
     <section data-testid="market-data-money-market-table" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>资金市场</h2>
       <p className="market-data-terminal-source">{sourceSummary(model)}</p>
-      {model.status === "ready" ? (
+      {model.status === "ready" && dataSource.length > 0 ? (
         <Table<MarketDataMoneyMarketRow>
           size="small"
           pagination={false}
           columns={columns}
-          dataSource={model.rows}
+          dataSource={dataSource}
           rowKey="key"
           scroll={{ x: true }}
         />
+      ) : model.status === "ready" ? (
+        <div data-testid="market-data-money-market-filter-empty" className="market-data-terminal-empty">
+          当前来源筛选下无资金利率序列。
+        </div>
       ) : (
         <div data-testid="market-data-money-market-empty" className="market-data-terminal-empty">
           {model.emptyReason}
