@@ -98,7 +98,13 @@ export default function MarketHomeLayout({
   formalTradeDate,
 }: MarketHomeLayoutProps) {
   const stateTone: ModuleHomeTone =
-    view.stateLabel === "读取失败" ? "error" : view.stateLabel === "读取中" ? "muted" : "ok";
+    view.stateLabel === "读取失败"
+      ? "error"
+      : view.stateLabel === "部分失败"
+        ? "watch"
+        : view.stateLabel === "读取中"
+          ? "muted"
+          : "ok";
 
   const primaryBriefing = view.briefings[0];
   const secondaryBriefings = view.briefings.slice(1);
@@ -176,7 +182,9 @@ export default function MarketHomeLayout({
         key: tab.key,
         label: tab.label,
         children: panel ? (
-          <MarketStructureTabPanel panel={panel} />
+          <div data-testid={DETAIL_PANEL_TEST_IDS[tab.key]}>
+            <MarketStructureTabPanel panel={panel} />
+          </div>
         ) : (
           <p className={marketStyles.panelEmpty}>暂无数据</p>
         ),
@@ -200,7 +208,6 @@ export default function MarketHomeLayout({
         <div
           className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}
           data-testid="module-home-market-topbar-audit-meta"
-          hidden
         >
           <span className={statePillClass(stateTone)} data-tone={stateTone}>
             {view.stateLabel}
@@ -217,7 +224,6 @@ export default function MarketHomeLayout({
           data-testid="module-home-market-cockpit"
           className={`${marketStyles.marketInstitutionalCockpit} ${marketStyles.marketCockpitCohesion}`}
         >
-          <MarketMacroTickerBar keyRatePanel={keyRatePanel} macroPanel={macroPanel} />
           <section
             data-testid="module-home-market-primary-grid"
             className={marketStyles.marketPrimaryGrid}
@@ -337,14 +343,13 @@ export default function MarketHomeLayout({
             >
               <div className={marketStyles.evidenceRailHeader}>
                 <span>市场快照</span>
-                <strong data-tone={stateTone} hidden>
+                <strong data-tone={stateTone}>
                   {view.stateLabel}
                 </strong>
               </div>
               <p
                 className={marketStyles.evidenceRailState}
                 data-testid="module-home-market-evidence-rail-state"
-                hidden
               >
                 行情 {latestTradeDate || "—"}，正式序列 {formalTradeDate || "—"}；{view.stateLabel}。
               </p>
@@ -386,7 +391,7 @@ export default function MarketHomeLayout({
               <section
                 className={marketStyles.evidenceRailCard}
                 data-testid="module-home-market-audit-status"
-                hidden
+                data-tone={stateTone}
               >
                 <span className={marketStyles.evidenceRailLabel}>约束检查结果</span>
                 <div className={marketStyles.evidenceRailStatusList}>
@@ -424,6 +429,8 @@ export default function MarketHomeLayout({
             </aside>
           </section>
 
+        <MarketMacroTickerBar keyRatePanel={keyRatePanel} macroPanel={macroPanel} />
+
         <section className={marketStyles.marketDepthZone} data-testid="module-home-market-depth-zone">
           <div className={dhStyles.dhSectionTitle}>
             <span>市场深度</span>
@@ -432,7 +439,7 @@ export default function MarketHomeLayout({
             </Link>
           </div>
           <p className={marketStyles.marketDepthLead}>
-            曲线、跨资产与正式序列按参考驾驶舱栅格展开；图表与表格均来自既有 API 返回，前端不重算指标。
+            曲线与跨资产在上栅格展开；正式序列、目录与快讯集中在下方 Tab，避免同口径重复展示。
           </p>
 
           <section className={marketStyles.marketAnalysisGrid} data-testid="module-home-market-analysis-grid">
@@ -445,18 +452,21 @@ export default function MarketHomeLayout({
                 testId={DETAIL_PANEL_TEST_IDS[yieldCurvePanel.key]}
               />
             ) : null}
-            <div className={marketStyles.marketAnalysisSideStack}>
-              {macroPanel ? (
-                <MarketDepthPanel panel={macroPanel} testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]} />
-              ) : null}
-              {catalogPanel ? (
-                <MarketDepthPanel
-                  compact
-                  panel={catalogPanel}
-                  testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
-                />
-              ) : null}
-            </div>
+            {macroPanel ? (
+              <MarketDepthPanel
+                className={marketStyles.marketAnalysisMacro}
+                panel={macroPanel}
+                testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]}
+              />
+            ) : null}
+            {catalogPanel ? (
+              <MarketDepthPanel
+                className={marketStyles.marketAnalysisCatalog}
+                compact
+                panel={catalogPanel}
+                testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
+              />
+            ) : null}
             <div
               className={`${marketStyles.marketDeskPanel} ${marketStyles.terminalCard} ${marketStyles.marketAnalysisRates} ${
                 isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""
@@ -471,13 +481,6 @@ export default function MarketHomeLayout({
           </section>
 
           <section className={marketStyles.marketDistributionGrid} data-testid="module-home-market-distribution-grid">
-            {formalPanel ? (
-              <MarketDepthPanel
-                compact
-                panel={formalPanel}
-                testId={DETAIL_PANEL_TEST_IDS[formalPanel.key]}
-              />
-            ) : null}
             {keyRatePanel && keyRatePanel.rows.length > 0 ? (
               <MarketDepthPanel compact panel={keyRatePanel} testId="module-home-key-rate-depth" />
             ) : null}

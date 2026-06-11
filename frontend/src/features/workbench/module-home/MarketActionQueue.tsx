@@ -312,7 +312,7 @@ export function MarketActionQueue(props: MarketActionQueueProps) {
               <b className={marketStyles.actionQueueTableTarget} data-testid={`module-home-market-action-${item.key}-target`}>
                 {item.label}
               </b>
-              <div className={marketStyles.actionQueueMetaGrid} hidden>
+              <div className={marketStyles.actionQueueMetaGrid}>
                 <span
                   aria-label={taskParts.join(" / ")}
                   className={marketStyles.actionQueueTaskMeta}
