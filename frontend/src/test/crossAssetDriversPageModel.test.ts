@@ -22,6 +22,19 @@ import {
   buildCrossAssetWatchList,
 } from "../features/cross-asset/lib/crossAssetDriversPageModel";
 
+const FORMAL_NCD_MATRIX_BLOCKED_STATUS = {
+  status: "blocked",
+  required_shape: "tenor_rating_matrix",
+  current_proxy_basis: "shibor_funding_proxy",
+  choice_status: "shibor_landed; formal_ncd_matrix_unconfirmed",
+  tushare_status: "shibor_landed; formal_ncd_matrix_unconfirmed",
+  missing_requirements: [
+    "governed NCD tenor-rating source contract",
+    "issuer/rating tenor matrix rows",
+    "unit/date semantics and golden sample approval",
+  ],
+};
+
 function makeResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_cross_asset_test",
@@ -584,11 +597,11 @@ describe("crossAssetDriversPageModel", () => {
     ]);
     expect(items[0]).toMatchObject({
       sourceLabel: "Choice接入码: EMM01843735",
-      unitLabel: "index",
+      unitLabel: "指数",
       tradeDate: "2026-04-10",
     });
     expect(items[1].sourceLabel).toBe("Tushare: CA.CSI300_PE");
-    expect(items[1].unitLabel).toBe("x");
+    expect(items[1].unitLabel).toBe("倍");
     expect(items[2].valueLabel).toBe("23.54%");
     expect(items[2].unitLabel).toBe("%");
     expect(items[3].sourceLabel).toBe("Tushare: CA.MEGA_CAP_TOP5_WEIGHT");
@@ -757,6 +770,7 @@ describe("crossAssetDriversPageModel", () => {
         as_of_date: "2026-04-23",
         proxy_label: "Tushare Shibor funding proxy",
         is_actual_ncd_matrix: false,
+        formal_ncd_matrix_status: FORMAL_NCD_MATRIX_BLOCKED_STATUS,
         rows: [
           {
             row_key: "shibor_fixing",
@@ -791,6 +805,7 @@ describe("crossAssetDriversPageModel", () => {
         as_of_date: "2026-04-23",
         proxy_label: "Test proxy",
         is_actual_ncd_matrix: false,
+        formal_ncd_matrix_status: FORMAL_NCD_MATRIX_BLOCKED_STATUS,
         rows: [],
         warnings: [
           "Proxy only; not actual NCD issuance matrix.",
@@ -802,6 +817,45 @@ describe("crossAssetDriversPageModel", () => {
     expect(actions[0].reason).toContain("不是真实 NCD 发行矩阵");
     expect(actions[0].reason).toContain("Tushare Shibor");
     expect(actions[0].action).not.toMatch(/actual\s+NCD\s+issuance\s+matrix/i);
+  });
+
+  it("surfaces mixed Choice/Tushare proxy provenance and fallback tenor date", () => {
+    const evidence = buildCrossAssetNcdProxyEvidence({
+      available: true,
+      result: {
+        as_of_date: "2026-06-09",
+        proxy_label: "Choice/Tushare Shibor funding proxy",
+        is_actual_ncd_matrix: false,
+        formal_ncd_matrix_status: FORMAL_NCD_MATRIX_BLOCKED_STATUS,
+        rows: [
+          {
+            row_key: "shibor_fixing",
+            label: "Shibor fixing",
+            "1M": 1.427,
+            "3M": 1.4144,
+            "6M": 1.4299,
+            "9M": 1.45,
+            "1Y": 1.43,
+            quote_count: null,
+          },
+        ],
+        warnings: [
+          "Proxy only; not actual NCD issuance matrix.",
+          "Using landed Choice Shibor with Tushare fallback for 9M; fallback date 2026-05-28; quote medians unavailable.",
+        ],
+      },
+    });
+
+    expect(evidence.asOfDate).toBe("2026-06-09");
+    expect(evidence.proxyLabel).toBe("Choice/Tushare Shibor 资金代理");
+    expect(evidence.proxyWarning).toContain("使用已落地 Choice Shibor");
+    expect(evidence.proxyWarning).toContain("由 Tushare 补齐");
+    expect(evidence.proxyWarning).toContain("9M");
+    expect(evidence.proxyWarning).toContain("2026-05-28");
+    expect(evidence.proxyWarning).toContain("不是真实 NCD 发行矩阵");
+    expect(evidence.proxyWarning).not.toContain("Using landed Choice Shibor");
+    expect(evidence.rowCaptions[0]).toContain("1M 1.427");
+    expect(evidence.rowCaptions[0]).toContain("9M 1.45");
   });
 
   it("buildCrossAssetDriversViewModel aggregates cards, axes, calendar, NCD evidence, and flags", () => {
@@ -917,7 +971,7 @@ describe("crossAssetDriversPageModel", () => {
       linkageWarnings: ["analytical only"],
     });
 
-    expect(actions[0].reason.toLowerCase()).toContain("duration");
+    expect(actions[0].reason).toContain("久期判断");
     expect(actions.some((row) => row.evidence.includes("全球利率"))).toBe(true);
     expect(watchRows[0].note).toContain("久期判断");
     expect(watchRows[0].signalText).toContain("全球利率");

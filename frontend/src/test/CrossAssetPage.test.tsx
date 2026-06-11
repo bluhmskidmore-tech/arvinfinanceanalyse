@@ -148,6 +148,7 @@ describe("CrossAssetPage", () => {
     expect(decisionHeader).not.toHaveTextContent("CA.DRIVERS");
     expect(marketStateStrip).toHaveTextContent("市场状态");
     expect(marketTape).toHaveAttribute("role", "list");
+    expect(marketTape).toHaveAttribute("aria-label", "跨资产市场快讯");
     expect(marketTape.querySelectorAll('[role="listitem"]')).toHaveLength(6);
     expect(marketTape).toHaveTextContent("CN10Y");
     expect(marketTape).toHaveTextContent("DR007");
@@ -445,7 +446,8 @@ describe("CrossAssetPage", () => {
     expect(evidence).toHaveTextContent("CA.MEGA_CAP_TOP5_WEIGHT");
 
     const broadIndex = screen.getByTestId("cross-asset-equity-evidence-broad_index");
-    expect(broadIndex).toHaveTextContent("index");
+    expect(broadIndex).toHaveTextContent("指数");
+    expect(broadIndex).not.toHaveTextContent("index");
     expect(broadIndex).toHaveTextContent("Tushare");
   });
 
@@ -1224,10 +1226,10 @@ describe("CrossAssetPage", () => {
     expect(evidenceDetails).not.toHaveAttribute("open");
     expect(evidenceZone).toContainElement(evidenceGroups);
     expect(evidenceGroups).toContainElement(fullKpiBand);
-    expect(evidenceTape).toHaveTextContent("Bond anchor");
-    expect(evidenceTape).toHaveTextContent("Risk appetite");
-    expect(evidenceTape).toHaveTextContent("Inflation pulse");
-    expect(evidenceTape).toHaveTextContent("External constraint");
+    expect(evidenceTape).toHaveTextContent("债券锚");
+    expect(evidenceTape).toHaveTextContent("风险偏好");
+    expect(evidenceTape).toHaveTextContent("通胀脉冲");
+    expect(evidenceTape).toHaveTextContent("外部约束");
     expect(evidenceTape).toHaveTextContent("因子");
     expect(evidenceTape).toHaveTextContent("当前");
     expect(evidenceTape).toHaveTextContent("变化");
@@ -1242,6 +1244,12 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-evidence-group-commodity_inflation")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-evidence-group-fx_spread")).toBeInTheDocument();
     expect(Boolean(evidenceGroups.compareDocumentPosition(heatmap!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    await waitFor(() => {
+      const firstLinkagePair = heatmap?.querySelector("tbody tr td:first-child");
+      expect(firstLinkagePair?.textContent ?? "").toContain("→");
+      expect(firstLinkagePair?.textContent ?? "").not.toContain("->");
+      expect(firstLinkagePair?.textContent ?? "").not.toContain("暂无治理后的联动排序");
+    });
   });
 
   it("exposes the first-screen action rail as a labelled complementary region", async () => {
@@ -1401,21 +1409,24 @@ describe("CrossAssetPage", () => {
       expect(warning).toHaveTextContent(/不是真实 NCD 发行矩阵/);
       expect(warning).toHaveTextContent(/Tushare Shibor/);
     });
-    expect(await screen.findByText("Duration view favors adding exposure.")).toBeInTheDocument();
+    expect(await screen.findByText("久期判断偏积极，可讨论增加敞口。")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-transmission-axes")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-card-duration")).toHaveTextContent(
-      "Duration view favors adding exposure.",
+      "久期判断偏积极，可讨论增加敞口。",
     );
     expect(screen.getByTestId("cross-asset-research-card-instrument")).toHaveTextContent(
-      "Instrument view prefers rates plus high-grade credit.",
+      "品种判断偏好利率与高等级信用。",
     );
     expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent(
-      "Global rates cap aggressive long-end chasing.",
+      "全球利率制约激进拉长久期。",
     );
     expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent("已就绪");
     expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent("偏紧");
     expect(screen.getByTestId("cross-asset-transmission-axis-equity_bond_spread")).toHaveTextContent(
+      "沪深300股债利差",
+    );
+    expect(screen.getByTestId("cross-asset-transmission-axis-equity_bond_spread")).not.toHaveTextContent(
       "CSI300 equity-bond spread",
     );
     expect(screen.getByTestId("cross-asset-transmission-axis-mega_cap_equities")).toHaveTextContent("23.54%");
@@ -1449,8 +1460,10 @@ describe("CrossAssetPage", () => {
     expect(equityEvidence).toHaveTextContent("CA.CSI300_PE");
     expect(equityEvidence).toHaveTextContent("CA.MEGA_CAP_WEIGHT");
     expect(equityEvidence).toHaveTextContent("CA.MEGA_CAP_TOP5_WEIGHT");
-    expect(equityEvidence).toHaveTextContent("index");
-    expect(equityEvidence).toHaveTextContent("x");
+    expect(equityEvidence).toHaveTextContent("指数");
+    expect(equityEvidence).not.toHaveTextContent("index");
+    expect(equityEvidence).toHaveTextContent("倍");
+    expect(equityEvidence).not.toHaveTextContent(" x ");
     expect(equityEvidence).toHaveTextContent("%");
     expect(screen.getByTestId("cross-asset-equity-evidence-broad_index")).toHaveTextContent("来源受限");
     expect(screen.getByTestId("cross-asset-equity-evidence-csi300_pe")).toHaveTextContent("降级");
@@ -1514,8 +1527,24 @@ describe("CrossAssetPage", () => {
     expect(panel).toHaveTextContent("个股候选");
     expect(panel).toHaveTextContent("风险退出");
     expect(panel).toHaveTextContent("缺持仓快照");
-    expect(panel).toHaveTextContent("position snapshot");
+    expect(panel).toHaveTextContent("持仓快照输入未闭合");
+    expect(panel).toHaveTextContent("持仓快照缺失，暂无可执行风险退出样本。");
+    expect(panel).not.toHaveTextContent("position snapshot");
+    expect(panel).not.toHaveTextContent("livermore_position_snapshot");
     expect(screen.getByTestId("cross-asset-livermore-risk-exit")).toHaveTextContent("未闭环");
+  });
+
+  it("localizes Livermore readiness summaries on the strategy status panel", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    const panel = await screen.findByTestId("cross-asset-livermore-status");
+    await waitFor(() => {
+      expect(panel).toHaveTextContent("市场门控");
+    });
+    expect(panel).toHaveTextContent("趋势门控可用；市场宽度与涨停质量仍缺数。");
+    expect(panel).toHaveTextContent("个股候选筛选已可由 Choice 个股输入支撑。");
+    expect(panel).not.toHaveTextContent("Trend-only market gate");
+    expect(panel).not.toHaveTextContent("Stock pivot candidate");
   });
 
   it("submits manually entered Livermore positions from the cross-asset page", async () => {

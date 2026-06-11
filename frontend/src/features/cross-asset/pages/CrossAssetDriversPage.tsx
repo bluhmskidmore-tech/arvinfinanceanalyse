@@ -24,10 +24,12 @@ import { CrossAssetSparkline } from "../components/CrossAssetSparkline";
 import { MarketCandidateActions } from "../components/MarketCandidateActions";
 import { PageOutput } from "../components/PageOutput";
 import { WatchList } from "../components/WatchList";
+import { riskExitBlockedDetail } from "../../stock-analysis/lib/stockAnalysisPageCopy";
 import {
   classifyCrossAssetQueryFailure,
   type CrossAssetModuleFailure,
 } from "../lib/crossAssetQueryFailure";
+import { formatLivermoreReadinessSummary } from "../lib/crossAssetLivermoreCopy";
 import {
   formatLinkageEnvironmentScoreDetail,
   formatLinkageCorrelationTarget,
@@ -134,7 +136,7 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
   }
 
   return correlations.slice(0, 8).map((row, index) => {
-    const indicator = `${row.series_name} -> ${row.target_family}${row.target_tenor ? ` (${row.target_tenor})` : ""}`;
+    const indicator = formatLinkageCorrelationTarget(row.series_name, row.target_family, row.target_tenor);
     const id = [
       row.series_id,
       row.series_name,
@@ -553,11 +555,13 @@ function LivermoreStrategyStatusPanel({
   const riskLabel = riskClosed
     ? `${payload?.risk_exit?.signal_count ?? 0}/${payload?.risk_exit?.position_count ?? 0}`
     : "缺持仓快照";
+  const localizedRiskReason = riskReason ? riskExitBlockedDetail(riskReason, "risk_exit") : "";
   const riskDetail = riskClosed
     ? `退出信号 ${payload?.risk_exit?.signal_count ?? 0} 条，覆盖持仓 ${payload?.risk_exit?.position_count ?? 0} 条。`
     : riskReason
-      ? `position snapshot 输入未闭合：${riskReason}`
-      : riskReadiness?.summary || "缺少 livermore_position_snapshot 持仓输入，风险退出规则无法闭环。";
+      ? `持仓快照输入未闭合：${localizedRiskReason}`
+      : formatLivermoreReadinessSummary(riskReadiness?.summary, "risk_exit") ||
+        "缺少持仓快照输入，风险退出规则无法闭环。";
   const candidateCount = payload?.stock_candidates?.candidate_count ?? 0;
   const manualAsOfDate = (payload?.as_of_date ?? asOfDate) || "";
   const requestedDate = manualAsOfDate || "待定";
@@ -595,7 +599,8 @@ function LivermoreStrategyStatusPanel({
               <strong className="cross-asset-livermore__value">{payload.market_gate.state}</strong>
               <small className="cross-asset-livermore__detail">
                 {payload.market_gate.passed_conditions}/{payload.market_gate.required_conditions} 条通过 · 暴露{" "}
-                {formatLivermoreExposure(payload.market_gate.exposure)} · {gateReadiness?.summary ?? "门控状态待定"}
+                {formatLivermoreExposure(payload.market_gate.exposure)} ·{" "}
+                {formatLivermoreReadinessSummary(gateReadiness?.summary, gateReadiness?.key) || "门控状态待定"}
               </small>
             </div>
             <div className="cross-asset-livermore__metric">
@@ -603,7 +608,8 @@ function LivermoreStrategyStatusPanel({
               <strong className="cross-asset-livermore__value">{candidateCount}</strong>
               <small className="cross-asset-livermore__detail">
                 {payload.supported_outputs.includes("stock_candidates") ? "候选筛选已就绪" : "候选筛选未开放"} ·{" "}
-                {candidatesReadiness?.summary ?? "候选状态待定"}
+                {formatLivermoreReadinessSummary(candidatesReadiness?.summary, candidatesReadiness?.key) ||
+                  "候选状态待定"}
               </small>
             </div>
             <div
@@ -915,7 +921,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
   {
     key: "rates_liquidity",
     title: "利率与流动性",
-    cue: "Bond anchor",
+    cue: "债券锚",
     digest: "久期空间",
     summary: "先看长端约束和资金锚，判断债券方向是否有顺风。",
     kpiKeys: ["cn_gov_10y", "us_gov_10y", "money_market_7d"],
@@ -923,7 +929,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
   {
     key: "equity_risk",
     title: "权益风险偏好",
-    cue: "Risk appetite",
+    cue: "风险偏好",
     digest: "风险约束",
     summary: "用指数、估值和权重结构判断风险偏好是否挤压债券。",
     kpiKeys: ["financial_conditions", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
@@ -931,7 +937,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
   {
     key: "commodity_inflation",
     title: "商品通胀",
-    cue: "Inflation pulse",
+    cue: "通胀脉冲",
     digest: "通胀脉冲",
     summary: "把能源、黑色和有色拆开看，避免把商品噪声直接推成通胀结论。",
     kpiKeys: ["brent", "steel", "copper", "aluminum"],
@@ -939,7 +945,7 @@ const CROSS_ASSET_EVIDENCE_GROUPS: CrossAssetEvidenceGroupConfig[] = [
   {
     key: "fx_spread",
     title: "汇率与中美利差",
-    cue: "External constraint",
+    cue: "外部约束",
     digest: "外部压力",
     summary: "汇率和利差共同决定外部压力的上限与节奏。",
     kpiKeys: ["gov_spread", "usdcny"],
@@ -975,7 +981,7 @@ function CrossAssetMarketTape({ kpis }: { kpis: ResolvedCrossAssetKpi[] }) {
   const kpisByKey = useMemo(() => new Map(kpis.map((kpi) => [kpi.key, kpi])), [kpis]);
 
   return (
-    <div className="cross-asset-market-tape" data-testid="cross-asset-market-tape" role="list" aria-label="跨资产市场 tape">
+    <div className="cross-asset-market-tape" data-testid="cross-asset-market-tape" role="list" aria-label="跨资产市场快讯">
       {MARKET_TAPE_ITEMS.map((item) => {
         const kpi = kpisByKey.get(item.key);
         return (

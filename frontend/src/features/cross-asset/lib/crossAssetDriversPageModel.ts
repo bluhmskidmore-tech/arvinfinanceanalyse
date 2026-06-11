@@ -18,6 +18,11 @@ import {
   type CrossAssetModuleFailure,
   type CrossAssetQueryFailureKind,
 } from "./crossAssetQueryFailure";
+import { formatLinkageCorrelationTarget } from "./crossAssetLinkageLabels";
+import {
+  formatCrossAssetLinkageEvidence,
+  formatCrossAssetLinkageSummary,
+} from "./crossAssetLinkageSummaries";
 import { summarizeCrossAssetLinkageWarnings } from "./crossAssetLinkageWarnings";
 
 type StatusTone = "normal" | "caution" | "warning" | "danger";
@@ -196,10 +201,27 @@ const NCD_PROXY_WARNING_PATTERNS: ReadonlyArray<{ pattern: RegExp; text: string 
   },
 ];
 
+function translateNcdProxyWarning(warning: string): string {
+  const choiceTushareFallback = warning.match(
+    /^Using landed Choice Shibor with Tushare fallback for ([^;]+);\s*fallback date ([^;]+);\s*quote medians unavailable\.?$/i,
+  );
+  if (choiceTushareFallback) {
+    const tenor = choiceTushareFallback[1]?.trim() || "fallback tenors";
+    const fallbackDate = choiceTushareFallback[2]?.trim() || "待定";
+    return `使用已落地 Choice Shibor，由 Tushare 补齐 ${tenor}；补齐日期 ${fallbackDate}；报价中位数不可用。`;
+  }
+
+  const match = NCD_PROXY_WARNING_PATTERNS.find((entry) => entry.pattern.test(warning));
+  return match?.text ?? warning;
+}
+
 export function localizeNcdProxyLabel(label: string | null | undefined): string {
   const trimmed = String(label ?? "").trim();
   if (!trimmed) {
     return "NCD / 资金代理";
+  }
+  if (/^choice\/tushare shibor funding proxy$/i.test(trimmed)) {
+    return "Choice/Tushare Shibor 资金代理";
   }
   if (/^tushare shibor funding proxy$/i.test(trimmed)) {
     return "Tushare Shibor 资金代理";
@@ -211,10 +233,7 @@ export function formatNcdProxyWarningText(warnings: string[]): string {
   const localized = warnings
     .map((warning) => warning.trim())
     .filter(Boolean)
-    .map((warning) => {
-      const match = NCD_PROXY_WARNING_PATTERNS.find((entry) => entry.pattern.test(warning));
-      return match?.text ?? warning;
-    });
+    .map((warning) => translateNcdProxyWarning(warning));
   return [...new Set(localized)].join(" ");
 }
 
@@ -506,7 +525,13 @@ function buildFallbackResearchViews(input: {
         : "兜底判断：在信心提升前，利率、同业存单和高等级信用保持均衡。",
     affected_targets: ["rates", "ncd", "high_grade_credit"],
     evidence: topCorr
-      ? [`${topCorr.series_name} -> ${topCorr.target_family} ${topCorr.target_tenor ?? ""}`.trim()]
+      ? [
+          formatLinkageCorrelationTarget(
+            topCorr.series_name,
+            topCorr.target_family,
+            topCorr.target_tenor,
+          ),
+        ]
       : input.linkageWarnings.slice(0, 1),
   };
 
@@ -663,10 +688,10 @@ function viewCardFromSource(
     label: typedKey ? RESEARCH_VIEW_LABEL[typedKey] : normalizeLabel(view.key),
     stance: normalizeLabel(view.stance),
     confidence: normalizeLabel(view.confidence),
-    summary: view.summary,
+    summary: formatCrossAssetLinkageSummary(view.summary),
     status: view.status,
     affectedTargets: view.affected_targets ?? [],
-    evidence: view.evidence ?? [],
+    evidence: (view.evidence ?? []).map((item) => formatCrossAssetLinkageEvidence(item)),
     source,
   };
 }
@@ -682,7 +707,7 @@ function transmissionAxisFromSource(
     status: axis.status,
     stance: normalizeLabel(axis.stance),
     stanceLabel: transmissionStanceLabel(axis.stance),
-    summary: axis.summary,
+    summary: formatCrossAssetLinkageSummary(axis.summary),
     impactedViews: axis.impacted_views ?? [],
     requiredSeriesIds: axis.required_series_ids ?? [],
     warnings: axis.warnings ?? [],
@@ -823,9 +848,21 @@ const EQUITY_EVIDENCE_DEFINITIONS = [
   },
 ] as const;
 
+const CROSS_ASSET_EVIDENCE_UNIT_ZH: Record<string, string> = {
+  index: "指数",
+  x: "倍",
+};
+
+function formatCrossAssetEvidenceUnitLabel(unit: string | null | undefined, fallback: string) {
+  const raw = unit?.trim() || fallback.trim();
+  if (!raw) {
+    return "—";
+  }
+  return CROSS_ASSET_EVIDENCE_UNIT_ZH[raw.toLowerCase()] ?? raw;
+}
+
 function unitLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: string) {
-  const unit = kpi?.unit?.trim();
-  return unit || fallback;
+  return formatCrossAssetEvidenceUnitLabel(kpi?.unit, fallback);
 }
 
 function equityEvidenceStatusFromKpi(
@@ -1502,7 +1539,11 @@ export function buildCrossAssetCandidateActions(input: {
       action: "暂缓候选动作。",
       reason: "当前对齐的研究判断证据不足。",
       evidence: topCorr
-        ? `${topCorr.series_name} -> ${topCorr.target_family} ${topCorr.target_tenor ?? ""}`.trim()
+        ? formatLinkageCorrelationTarget(
+            topCorr.series_name,
+            topCorr.target_family,
+            topCorr.target_tenor,
+          )
         : "环境评分与头部相关性仍偏弱",
     });
   }
